@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Swift and Xcode
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Tooling and OS
+.remember/
+.DS_Store
+.env
+.env.*
