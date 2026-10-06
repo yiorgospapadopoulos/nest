@@ -1,0 +1,223 @@
+"""Provider-neutral agent types, so engines other than Claude (Codex) can plug in later."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Literal, Protocol
+
+from pydantic import BaseModel, Field, JsonValue
+
+from harness.config.models import Effort, PermissionMode
+
+
+class TextBlock(BaseModel):
+    type: Literal["text"] = "text"
+    text: str
+
+
+class ThinkingBlock(BaseModel):
+    type: Literal["thinking"] = "thinking"
+    text: str
+
+
+class ToolUseBlock(BaseModel):
+    type: Literal["tool_use"] = "tool_use"
+    id: str
+    name: str
+    input: dict[str, JsonValue]
+
+
+class ToolResultBlock(BaseModel):
+    type: Literal["tool_result"] = "tool_result"
+    tool_use_id: str
+    content: str
+    is_error: bool = False
+
+
+type MessageBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
+
+
+class TokenUsage(BaseModel):
+    """Tokens one turn used; components the engine did not report count as zero."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+
+
+class ResultInfo(BaseModel):
+    """The end of one turn."""
+
+    is_error: bool
+    subtype: str
+    duration_ms: int
+    num_turns: int
+    cost_usd: float | None
+    errors: list[str]
+    tokens: TokenUsage = Field(default_factory=TokenUsage)
+
+
+class UsageWindow(BaseModel):
+    utilization: float
+    resets_at: datetime | None
+
+
+class UsageInfo(BaseModel):
+    """Subscription usage: the five-hour and seven-day windows, when reported."""
+
+    five_hour: UsageWindow | None
+    seven_day: UsageWindow | None
+
+
+@dataclass(frozen=True)
+class McpServer:
+    """An MCP server (or claude.ai connector) the agent's engine loaded, with its status."""
+
+    name: str
+    status: str
+    # Why it failed, when the engine says.
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionSpec:
+    cwd: Path
+    permission_mode: PermissionMode
+    model: str | None = None
+    effort: Effort | None = None
+    # The engine's own session id to continue a previous conversation.
+    resume_id: str | None = None
+    extra_dirs: tuple[Path, ...] = ()
+    system_prompt_append: str | None = None
+
+
+@dataclass(frozen=True)
+class ImageInput:
+    media_type: str
+    data: str  # base64
+
+
+@dataclass(frozen=True)
+class UserInput:
+    text: str
+    images: tuple[ImageInput, ...] = ()
+    # Other attachments; the agent reads them from these absolute paths.
+    file_paths: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class PermissionRequest:
+    tool_name: str
+    tool_input: dict[str, JsonValue]
+    # The engine's own sentence for the prompt, when it provides one.
+    title: str | None = None
+
+
+@dataclass(frozen=True)
+class PermissionDecision:
+    behavior: Literal["allow", "deny"]
+    message: str | None = None
+
+
+@dataclass(frozen=True)
+class QuestionOption:
+    label: str
+    description: str | None = None
+    # The option the agent prefers.
+    recommended: bool = False
+
+
+@dataclass(frozen=True)
+class Question:
+    question: str
+    header: str | None
+    options: tuple[QuestionOption, ...]
+    multi_select: bool
+
+
+@dataclass(frozen=True)
+class QuestionRequest:
+    """Questions the agent asks the user, each answered with an option or free text."""
+
+    questions: tuple[Question, ...]
+    tool_use_id: str | None = None
+
+
+@dataclass(frozen=True)
+class QuestionAnswer:
+    # Question text to the answer; None when the user dismissed the questions.
+    answers: dict[str, str] | None
+    message: str | None = None
+
+
+class ApprovalHandler(Protocol):
+    """Where an agent run takes what needs the user: tool permissions and questions."""
+
+    async def decide(self, request: PermissionRequest) -> PermissionDecision: ...
+
+    async def ask(self, request: QuestionRequest) -> QuestionAnswer: ...
+
+
+class ProviderEventSink(Protocol):
+    """Where a running agent reports everything it does, for the whole life of the run.
+
+    Output can arrive without a user message: an agent may start a turn on its own, for
+    example when a background task it launched finishes. `result` ends every turn.
+    """
+
+    async def message(self, blocks: list[MessageBlock], parent_tool_use_id: str | None) -> None: ...
+
+    async def text_delta(self, text: str) -> None: ...
+
+    async def result(self, info: ResultInfo) -> None: ...
+
+    async def usage(self, info: UsageInfo) -> None: ...
+
+    async def provider_session_id(self, session_id: str) -> None: ...
+
+    async def connectors(self, servers: list[McpServer]) -> None:
+        """The MCP servers the engine loaded for this run, reported when it starts.
+
+        Most are still connecting then; `AgentRun.connector_statuses` has the settled ones.
+        """
+        ...
+
+    async def background_tasks(self, running: int) -> None:
+        """How many background tasks the agent has running, reported when it changes."""
+        ...
+
+    async def stopped(self, error: str) -> None:
+        """The agent process ended on its own; the run is unusable and already closed."""
+        ...
+
+
+class AgentRun(Protocol):
+    """A live agent process for one session."""
+
+    async def send(self, user_input: UserInput) -> None:
+        """Submit a user message; what the agent does comes through the sink."""
+        ...
+
+    async def interrupt(self) -> None: ...
+
+    async def set_model(self, model: str | None) -> None: ...
+
+    async def set_permission_mode(self, mode: PermissionMode) -> None: ...
+
+    async def connector_statuses(self) -> list[McpServer]:
+        """The live status of the run's MCP servers and connectors."""
+        ...
+
+    async def close(self) -> None:
+        """Stop the agent and wait for its process (and its exit hooks) to finish."""
+        ...
+
+
+class AgentProvider(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    async def open(
+        self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
+    ) -> AgentRun: ...

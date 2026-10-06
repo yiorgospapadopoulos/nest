@@ -1,0 +1,216 @@
+"""Claude provider on the Claude Agent SDK (D003), with the agent git block layers (D013)."""
+
+import asyncio
+from collections.abc import AsyncIterable, AsyncIterator, Callable
+from contextlib import suppress
+from pathlib import Path
+from typing import Any, Protocol
+
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    HookMatcher,
+    McpStatusResponse,
+    Message,
+    PermissionResult,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    ToolPermissionContext,
+)
+from claude_agent_sdk.types import PermissionMode as SdkPermissionMode
+from claude_agent_sdk.types import SystemPromptPreset
+from pydantic import JsonValue
+
+from harness.config.models import PermissionMode
+from harness.providers.base import (
+    ApprovalHandler,
+    McpServer,
+    PermissionRequest,
+    ProviderEventSink,
+    SessionSpec,
+    UserInput,
+)
+from harness.providers.claude_messages import BackgroundTasks, mcp_servers, translate
+from harness.providers.claude_questions import (
+    ASK_USER_QUESTION,
+    QUESTION_TIMEOUT_SECONDS,
+    QuestionBridge,
+)
+from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
+
+DEFAULT_DENY_MESSAGE = "The user denied this action."
+
+
+class SdkClient(Protocol):
+    """The part of ClaudeSDKClient the provider uses; tests substitute a fake."""
+
+    async def connect(self) -> None: ...
+
+    async def query(
+        self, prompt: str | AsyncIterable[dict[str, Any]], session_id: str = ...
+    ) -> None: ...
+
+    def receive_messages(self) -> AsyncIterator[Message]: ...
+
+    async def interrupt(self) -> None: ...
+
+    async def set_model(self, model: str | None = ...) -> None: ...
+
+    async def set_permission_mode(self, mode: SdkPermissionMode) -> None: ...
+
+    async def get_mcp_status(self) -> McpStatusResponse: ...
+
+    async def disconnect(self) -> None: ...
+
+
+type ClientFactory = Callable[[ClaudeAgentOptions], SdkClient]
+
+
+def agent_env(gh_config_dir: Path) -> dict[str, str]:
+    """Layer 3: no git credential helpers, prompts or GitHub token for the agent."""
+    return {
+        # An empty credential.helper resets every configured helper.
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "credential.helper",
+        "GIT_CONFIG_VALUE_0": "",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ASKPASS": "/usr/bin/false",
+        "GH_CONFIG_DIR": str(gh_config_dir),
+        # The SDK merges this over the daemon's environment, so tokens are blanked, not removed.
+        "GH_TOKEN": "",
+        "GITHUB_TOKEN": "",
+    }
+
+
+def build_options(
+    spec: SessionSpec, handler: ApprovalHandler, gh_config_dir: Path
+) -> ClaudeAgentOptions:
+    questions = QuestionBridge(handler)
+
+    async def can_use_tool(
+        tool_name: str, tool_input: dict[str, JsonValue], context: ToolPermissionContext
+    ) -> PermissionResult:
+        if tool_name == ASK_USER_QUESTION:
+            return questions.permission(tool_input, context.tool_use_id)
+        decision = await handler.decide(PermissionRequest(tool_name, tool_input, context.title))
+        if decision.behavior == "allow":
+            return PermissionResultAllow()
+        return PermissionResultDeny(message=decision.message or DEFAULT_DENY_MESSAGE)
+
+    system_prompt: SystemPromptPreset = {"type": "preset", "preset": "claude_code"}
+    if spec.system_prompt_append:
+        system_prompt["append"] = spec.system_prompt_append
+    return ClaudeAgentOptions(
+        cwd=spec.cwd,
+        model=spec.model,
+        effort=spec.effort,
+        permission_mode=spec.permission_mode,
+        resume=spec.resume_id,
+        add_dirs=list(spec.extra_dirs),
+        system_prompt=system_prompt,
+        # Load the user's own Claude Code setup: CLAUDE.md, skills, plugins, MCP, hooks.
+        setting_sources=["user", "project", "local"],
+        include_partial_messages=True,
+        can_use_tool=can_use_tool,
+        disallowed_tools=list(GIT_WRITE_RULES),
+        hooks={
+            "PreToolUse": [
+                HookMatcher(matcher="Bash", hooks=[block_git_writes]),
+                HookMatcher(
+                    matcher=ASK_USER_QUESTION,
+                    hooks=[questions.hook],
+                    timeout=QUESTION_TIMEOUT_SECONDS,
+                ),
+            ]
+        },
+        env=agent_env(gh_config_dir),
+    )
+
+
+class ClaudeRun:
+    """One CLI process. A single reader consumes its output for the whole life of the run,
+    so turns the agent starts on its own are reported like any other.
+    """
+
+    def __init__(self, client: SdkClient, sink: ProviderEventSink) -> None:
+        self._client = client
+        self._sink = sink
+        self._tasks = BackgroundTasks()
+        self._reader = asyncio.create_task(self._read())
+
+    async def send(self, user_input: UserInput) -> None:
+        await self._client.query(_single(_user_message(user_input)))
+
+    async def interrupt(self) -> None:
+        await self._client.interrupt()
+
+    async def set_model(self, model: str | None) -> None:
+        await self._client.set_model(model)
+
+    async def set_permission_mode(self, mode: PermissionMode) -> None:
+        await self._client.set_permission_mode(mode)
+
+    async def connector_statuses(self) -> list[McpServer]:
+        status = await self._client.get_mcp_status()
+        return mcp_servers(status.get("mcpServers"))
+
+    async def close(self) -> None:
+        self._reader.cancel()
+        await asyncio.gather(self._reader, return_exceptions=True)
+        # Closes stdin and waits for the CLI to exit, so its SessionEnd hooks have run.
+        await self._client.disconnect()
+
+    async def _read(self) -> None:
+        error = "the agent process ended"
+        try:
+            async for message in self._client.receive_messages():
+                running = self._tasks.update(message)
+                if running is not None:
+                    await self._sink.background_tasks(running)
+                await translate(message, self._sink)
+        except Exception as exc:
+            error = str(exc)
+        with suppress(Exception):
+            await self._client.disconnect()
+        await self._sink.stopped(error)
+
+
+class ClaudeProvider:
+    name = "claude"
+
+    def __init__(
+        self, gh_config_dir: Path, client_factory: ClientFactory = ClaudeSDKClient
+    ) -> None:
+        self._gh_config_dir = gh_config_dir
+        self._client_factory = client_factory
+
+    async def open(
+        self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
+    ) -> ClaudeRun:
+        client = self._client_factory(build_options(spec, handler, self._gh_config_dir))
+        await client.connect()
+        return ClaudeRun(client, sink)
+
+
+def _user_message(user_input: UserInput) -> dict[str, Any]:
+    text = user_input.text
+    if user_input.file_paths:
+        listing = "\n".join(f"- {path}" for path in user_input.file_paths)
+        text = f"{text}\n\nAttached files:\n{listing}"
+    content: list[dict[str, Any]] = [
+        {
+            "type": "image",
+            "source": {"type": "base64", "media_type": image.media_type, "data": image.data},
+        }
+        for image in user_input.images
+    ]
+    content.append({"type": "text", "text": text})
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+    }
+
+
+async def _single(message: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    yield message
