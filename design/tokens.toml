@@ -1,0 +1,229 @@
+# Design tokens for harness, the single source for the PWA (CSS) and the Mac app (Swift).
+# Values come from the locked mockups (D020, D021). Regenerate after editing:
+#   cd daemon && uv run harness design generate
+#
+# Colors are `#rrggbb` or `rgba(r,g,b,a)`. Every color has a light and a dark value.
+# Names are snake_case; they become kebab-case CSS variables and camelCase Swift names.
+
+# Neutrals, grouped by role. CSS: --<group>-<name>, for example --text-primary.
+[colors.page]
+base = { light = "#eeeeec", dark = "#0c0c0d" }
+glow_start = { light = "rgba(150,170,190,0.2)", dark = "rgba(110,130,160,0.12)" }
+glow_end = { light = "rgba(205,190,165,0.18)", dark = "rgba(160,140,110,0.07)" }
+
+[colors.text]
+primary = { light = "#1a1b20", dark = "#f2f3f7" }
+secondary = { light = "rgba(26,27,32,0.68)", dark = "rgba(242,243,247,0.7)" }
+tertiary = { light = "rgba(26,27,32,0.47)", dark = "rgba(242,243,247,0.47)" }
+
+[colors.line]
+hairline = { light = "rgba(0,0,0,0.08)", dark = "rgba(255,255,255,0.09)" }
+strong = { light = "rgba(0,0,0,0.16)", dark = "rgba(255,255,255,0.18)" }
+
+[colors.fill]
+subtle = { light = "rgba(0,0,0,0.045)", dark = "rgba(255,255,255,0.065)" }
+strong = { light = "rgba(0,0,0,0.085)", dark = "rgba(255,255,255,0.12)" }
+
+[colors.surface]
+code = { light = "rgba(255,255,255,0.55)", dark = "rgba(0,0,0,0.25)" }
+scrim = { light = "rgba(236,238,246,0.34)", dark = "rgba(0,0,0,0.3)" }
+# Project tab strip and the window shell behind panels.
+strip = { light = "rgba(22,26,48,0.08)", dark = "rgba(0,0,0,0.34)" }
+shell = { light = "rgba(255,255,255,0.36)", dark = "rgba(255,255,255,0.045)" }
+# User message bubble when the "neutral" bubble color is chosen instead of the accent.
+neutral_bubble = { light = "rgba(255,255,255,0.92)", dark = "rgba(255,255,255,0.12)" }
+
+[colors.diff]
+added_fill = { light = "rgba(34,165,89,0.13)", dark = "rgba(53,208,122,0.15)" }
+added_text = { light = "#14723a", dark = "#6be3a0" }
+removed_fill = { light = "rgba(229,72,77,0.11)", dark = "rgba(255,105,97,0.14)" }
+removed_text = { light = "#bd2c27", dark = "#ff9a93" }
+
+[colors.signal]
+approve = { light = "#1f9a52", dark = "#23904e" }
+running_ring = { light = "rgba(10,122,255,0.45)", dark = "rgba(61,155,255,0.5)" }
+# Amber glow on a background project tab that needs the user.
+attention_glow = { light = "rgba(240,154,18,0.55)", dark = "rgba(255,179,64,0.5)" }
+
+# Fixed semantic status colors: a dot or bar (fill), readable text, and a soft background.
+[status.running]
+fill = { light = "#0a7aff", dark = "#3d9bff" }
+text = { light = "#0062d1", dark = "#7ab8ff" }
+soft = { light = "rgba(10,122,255,0.12)", dark = "rgba(61,155,255,0.17)" }
+
+[status.waiting]
+fill = { light = "#f09a12", dark = "#ffb340" }
+text = { light = "#8f5100", dark = "#ffc466" }
+soft = { light = "rgba(240,154,18,0.16)", dark = "rgba(255,179,64,0.16)" }
+
+[status.review]
+fill = { light = "#22a559", dark = "#35d07a" }
+text = { light = "#14723a", dark = "#5fe09a" }
+soft = { light = "rgba(34,165,89,0.13)", dark = "rgba(53,208,122,0.15)" }
+
+[status.failed]
+fill = { light = "#e5484d", dark = "#ff6961" }
+text = { light = "#bd2c27", dark = "#ff8f88" }
+soft = { light = "rgba(229,72,77,0.12)", dark = "rgba(255,105,97,0.15)" }
+
+[status.done]
+fill = { light = "#8a8f98", dark = "#8e9199" }
+text = { light = "#5a5e66", dark = "#a8abb3" }
+soft = { light = "rgba(138,143,152,0.16)", dark = "rgba(142,145,153,0.18)" }
+
+[status.interrupted]
+fill = { light = "#8a7b6b", dark = "#b3a493" }
+text = { light = "#6b5d4f", dark = "#c9bba9" }
+soft = { light = "rgba(138,123,107,0.16)", dark = "rgba(179,164,147,0.16)" }
+
+# User-selectable accents. `on` is the text color drawn on top of the accent fill.
+[accent]
+default = "graphite"
+
+[accent.options.graphite]
+fill = { light = "#2b2b2e", dark = "#e6e6e9" }
+on = { light = "#ffffff", dark = "#141416" }
+
+[accent.options.ocean]
+fill = { light = "#2c6a9a", dark = "#79b4e3" }
+on = { light = "#ffffff", dark = "#141416" }
+
+[accent.options.teal]
+fill = { light = "#1f7a78", dark = "#5cc4bf" }
+on = { light = "#ffffff", dark = "#141416" }
+
+[accent.options.moss]
+fill = { light = "#55702f", dark = "#a5c26f" }
+on = { light = "#ffffff", dark = "#141416" }
+
+[accent.options.clay]
+fill = { light = "#a5573a", dark = "#e39a78" }
+on = { light = "#ffffff", dark = "#141416" }
+
+[accent.options.rose]
+fill = { light = "#a34a62", dark = "#e293a9" }
+on = { light = "#ffffff", dark = "#141416" }
+
+# Liquid Glass panels. Blur in points, saturation in percent.
+[glass]
+border = { light = "rgba(255,255,255,0.64)", dark = "rgba(255,255,255,0.13)" }
+specular = { light = "rgba(255,255,255,0.95)", dark = "rgba(255,255,255,0.22)" }
+outline = { light = "rgba(16,24,40,0.1)", dark = "rgba(0,0,0,0.5)" }
+shadow = { light = "rgba(28,34,70,0.2)", dark = "rgba(0,0,0,0.55)" }
+blur = { normal = 20, heavy = 30 }
+saturation = 185
+
+[glass.tint]
+regular = { light = "rgba(255,255,255,0.5)", dark = "rgba(34,36,48,0.5)" }
+strong = { light = "rgba(255,255,255,0.76)", dark = "rgba(28,30,40,0.76)" }
+clear = { light = "rgba(255,255,255,0.28)", dark = "rgba(255,255,255,0.05)" }
+
+# Window wallpapers: a base color under three soft radial glows. Geometry in percent:
+# `center` and `size` (ellipse radii) relative to the window, `fade` where the glow ends.
+[wallpaper]
+default = "stone"
+
+[wallpaper.options.stone]
+base = { light = "#ebe6de", dark = "#191713" }
+stops = [
+    { color = { light = "#d8cdbd", dark = "#3b342a" }, center = [12, 18], size = [55, 65], fade = 70 },
+    { color = { light = "#e4d9c9", dark = "#2c271f" }, center = [88, 10], size = [50, 60], fade = 70 },
+    { color = { light = "#c9c1b4", dark = "#4a4236" }, center = [62, 100], size = [70, 70], fade = 72 },
+]
+
+[wallpaper.options.sage]
+base = { light = "#e3e8df", dark = "#121612" }
+stops = [
+    { color = { light = "#c2d1bc", dark = "#2a3a2b" }, center = [85, 85], size = [60, 60], fade = 70 },
+    { color = { light = "#d5dfcd", dark = "#1f2a20" }, center = [10, 90], size = [55, 60], fade = 70 },
+    { color = { light = "#b2c2b5", dark = "#3a4a3c" }, center = [40, 0], size = [60, 60], fade = 72 },
+]
+
+[wallpaper.options.sky]
+base = { light = "#e2e9ef", dark = "#10151b" }
+stops = [
+    { color = { light = "#c0d3e2", dark = "#23384a" }, center = [0, 50], size = [50, 60], fade = 70 },
+    { color = { light = "#d4e0e9", dark = "#1a2833" }, center = [100, 20], size = [55, 60], fade = 70 },
+    { color = { light = "#b6c8d5", dark = "#2f4658" }, center = [60, 100], size = [60, 60], fade = 72 },
+]
+
+[wallpaper.options.slate]
+base = { light = "#e0e3e7", dark = "#121417" }
+stops = [
+    { color = { light = "#c1c8d0", dark = "#2b3139" }, center = [18, 30], size = [45, 55], fade = 70 },
+    { color = { light = "#d0d6dd", dark = "#20252c" }, center = [82, 25], size = [45, 55], fade = 70 },
+    { color = { light = "#acb5c0", dark = "#3a424d" }, center = [50, 100], size = [60, 60], fade = 70 },
+]
+
+# Corner radii in points. The phone variants are the larger iPhone shapes.
+[radius]
+window = 24
+sheet = 24
+sheet_phone = 30
+panel = 20
+pane = 18
+card = 16
+card_phone = 22
+control = 10
+chip = 7
+pill = 999
+
+# Spacing scale in points.
+[spacing]
+xxs = 2
+xs = 4
+sm = 6
+md = 8
+lg = 10
+xl = 12
+xxl = 16
+xxxl = 24
+
+[typography.family]
+system = ["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"]
+mono = ["ui-monospace", "SF Mono", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"]
+
+# Font sizes in points. `body` is the Mac window base size; the phone base is `body_phone`.
+[typography.size]
+micro = 10
+caption = 11
+label = 11.5
+small = 12
+callout = 12.5
+body = 13
+subhead = 14
+body_phone = 15
+headline = 17
+title = 19
+large_title = 32
+
+[typography.weight]
+regular = 400
+medium = 500
+semibold = 600
+emphasized = 650
+bold = 700
+heavy = 800
+
+[typography.line_height]
+tight = 1.1
+body = 1.4
+
+# Durations in milliseconds; easings as cubic-bezier control points [x1, y1, x2, y2].
+[motion.duration]
+instant = 150
+fast = 200
+normal = 300
+sheet = 340
+slow = 400
+pulse = 1800
+attention = 2600
+
+[motion.easing]
+standard = [0.25, 0.1, 0.25, 1]
+ease_out = [0, 0, 0.58, 1]
+ease_in_out = [0.42, 0, 0.58, 1]
+# Panels sliding and resizing.
+glide = [0.2, 0.9, 0.25, 1]
+# Popovers and menus appearing, with a small overshoot.
+pop = [0.2, 0.9, 0.3, 1.15]
