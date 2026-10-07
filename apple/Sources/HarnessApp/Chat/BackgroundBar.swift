@@ -1,21 +1,24 @@
 import HarnessKit
 import SwiftUI
 
-/// "N running · M completed" just above the composer, like Claude Code: the chat's
-/// subagents and background commands, which can outlive the turn that started them.
-/// Clicking it opens the Running and Completed lists upwards.
+/// "N running · M completed" just above the composer, like Claude Code: the subagents and
+/// background commands of the current exchange (since the user's latest message), plus
+/// any earlier one still at work. Clicking it opens the Running and Completed lists
+/// upwards.
 struct BackgroundBar: View {
     static let listHeight = 220.0
 
     let chat: String
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let summary = shell.activity.background(session: chat)
+            .exchange(since: shell.model.transcripts.existing(chat)?.exchangeStartedAt)
         if !summary.isEmpty {
             let expanded = shell.projectState.expandedBackground.contains(chat)
-            let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+            let shape = glass.rounded(glass.radius.card)
             VStack(spacing: 0) {
                 if expanded {
                     ScrollView {
@@ -40,6 +43,7 @@ struct BackgroundBar: View {
                             .font(.ui(TypeSize.callout, .medium))
                             .monospacedDigit()
                             .foregroundStyle(Palette.t2)
+                            .shimmer(summary.running > 0)
                         Spacer(minLength: 4)
                         Image(systemName: Icon.chevron)
                             .font(.system(size: 9, weight: .semibold))
@@ -50,14 +54,14 @@ struct BackgroundBar: View {
                     .frame(height: 30)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(RowHoverStyle(radius: DesignTokens.Radius.card))
+                .buttonStyle(RowHoverStyle(radius: glass.radius.card))
                 .help(expanded ? "Hide background tasks" : "Show background tasks")
                 .accessibilityLabel(summary.label)
                 .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             }
-            .background(shape.fill(Palette.glassRegular))
+            .background(shape.fill(glass.tint))
             .clipShape(shape)
-            .overlay(shape.stroke(Palette.glassBorder, lineWidth: 1))
+            .overlay(GlassEdges(shape: shape))
             .padding(.horizontal, 10)
             .padding(.bottom, 6)
         }

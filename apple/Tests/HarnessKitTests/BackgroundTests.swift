@@ -78,6 +78,8 @@ import Testing
         #expect(!summary.isEmpty)
         #expect(BackgroundSummary.empty.isEmpty)
         #expect(BackgroundSummary.empty.label == "0 running · 0 completed")
+        #expect(BackgroundSummary(running: 1, completed: 0, items: []).label == "1 running task")
+        #expect(BackgroundSummary(running: 2, completed: 0, items: []).label == "2 running tasks")
         #expect(summary.runningItems.map(\.id) == ["toolu_10"])
         #expect(summary.finishedItems.map(\.id) == ["toolu_09", "toolu_11"])
         #expect(summary.runningCommands.map(\.name) == ["npm run dev"])
@@ -105,6 +107,36 @@ import Testing
         copy.finish(toolUseID: "toolu_99", as: .failed, at: at)
         #expect(copy.label == "0 running · 3 completed")
         #expect(copy.items[1].status == .done)
+    }
+
+    @Test func theExchangeKeepsItsOwnTasksAndAnyStillRunning() {
+        // Started 09:12:40 (done), 09:13:00 (running) and 09:13:10 (failed).
+        let current = summary.exchange(since: Fixture.date("2026-10-06T09:13:05Z"))
+        #expect(current.items.map(\.id) == ["toolu_10", "toolu_11"])
+        #expect((current.running, current.completed) == (1, 1))
+        #expect(current.label == "1 running · 1 completed")
+
+        // A task started at the very moment of the message belongs to it.
+        #expect(summary.exchange(since: Fixture.date("2026-10-06T09:12:40Z")) == summary)
+        // Without a message to start from, every task counts.
+        #expect(summary.exchange(since: nil) == summary)
+
+        // An earlier task still at work counts as running, its finished siblings do not.
+        let next = Fixture.date("2026-10-06T10:00:00Z")
+        let later = summary.exchange(since: next)
+        #expect(later.items.map(\.id) == ["toolu_10"])
+        #expect(later.label == "1 running task")
+
+        var settled = summary
+        settled.finish(toolUseID: "toolu_10", as: .done, at: next)
+        #expect(settled.exchange(since: next).isEmpty)
+        #expect(settled.exchange(since: next).items.isEmpty)
+
+        // A finished task of unknown start cannot be placed in the exchange.
+        var unstarted = summary
+        unstarted.items[0].startedAt = nil
+        #expect(
+            unstarted.exchange(since: .distantPast).items.map(\.id) == ["toolu_10", "toolu_11"])
     }
 
     @Test func runningNeverGoesBelowZero() {

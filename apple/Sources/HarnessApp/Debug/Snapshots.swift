@@ -104,6 +104,18 @@
                 try await renderModelsGlassAndPanes(model, shell, controller, folder)
                 return
             }
+            if only == "b27" {
+                try await renderGlassThemes(model, shell, controller, folder)
+                return
+            }
+            if only == "b28" {
+                try await renderArchiveConnectorsAndPlainFolders(model, shell, controller, folder)
+                return
+            }
+            if only == "b29" {
+                try await renderTurnActivity(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -217,11 +229,388 @@
             try await renderConveniences(model, shell, controller, folder)
             try await renderToolsAndPullRequests(model, shell, controller, folder)
             try await renderSearchAndStuck(model, shell, controller, folder)
+            try await renderGlassThemes(model, shell, controller, folder)
+            try await renderArchiveConnectorsAndPlainFolders(model, shell, controller, folder)
+            try await renderTurnActivity(model, shell, controller, folder)
+            try await renderExchangeBar(model, shell, controller, folder)
+        }
+
+        /// B29: a running turn with its timer, thinking, a running agents group and a
+        /// running group of commands beside a finished turn that says how long it worked;
+        /// then the thinking and the commands group open.
+        private static func renderTurnActivity(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            let start = Date().addingTimeInterval(-74)
+            var id = 20_000
+            func receive(_ session: String, _ type: String, _ payload: [String: Any], at: Date) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(at), "session_id": session,
+                    "payload": payload,
+                ])
+                model.transcripts.receive(event)
+            }
+            func blocks(_ list: [[String: Any]]) -> [String: Any] {
+                ["blocks": list, "parent_tool_use_id": NSNull()]
+            }
+            func use(_ tool: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["type": "tool_use", "id": tool, "name": name, "input": input]
+            }
+            func result(_ tool: String, _ content: String) -> [String: Any] {
+                ["type": "tool_result", "tool_use_id": tool, "content": content]
+            }
+
+            // c2 runs: its first turn ends, then a new one thinks, starts three agents
+            // and runs a few commands.
+            let ended: [String: Any] = [
+                "is_error": false, "subtype": "success", "duration_ms": 95_000, "num_turns": 6,
+                "cost_usd": NSNull(), "errors": [],
+            ]
+            receive("c2", "session.result", ended, at: start - 5)
+            receive(
+                "c2", "session.user_message", ["text": "Add DOI links", "attachments": []],
+                at: start)
+            let thinking =
+                "The DOI field is missing on a few entries. Check which ones first, then add the links and rerun the snapshot test."
+            receive(
+                "c2", "session.message",
+                blocks([["type": "thinking", "text": thinking, "duration_ms": 8_400]]),
+                at: start + 9)
+            receive(
+                "c2", "session.message",
+                blocks([["type": "text", "text": "Checking the entries in parallel."]]),
+                at: start + 10)
+            for (index, year) in ["2026", "2025", "2024"].enumerated() {
+                receive(
+                    "c2", "session.message",
+                    blocks([
+                        use(
+                            "ag\(index)", "Agent",
+                            ["subagent_type": "Explore", "description": "DOIs of \(year)"])
+                    ]),
+                    at: start + 11)
+            }
+            receive(
+                "c2", "session.message",
+                blocks([result("ag0", "6 DOIs"), result("ag1", "5 DOIs")]), at: start + 30)
+            receive(
+                "c2", "session.message",
+                blocks([
+                    ["type": "text", "text": "Two years are done. Wiring the links meanwhile."]
+                ]),
+                at: start + 31)
+            receive(
+                "c2", "session.message",
+                blocks([use("b1", "Read", ["file_path": "lib/bibtex.ts"])]),
+                at: start + 32)
+            receive(
+                "c2", "session.message", blocks([result("b1", "export function parseBib() {}")]),
+                at: start + 33)
+            receive(
+                "c2", "session.message", blocks([use("b2", "Bash", ["command": "npm run lint"])]),
+                at: start + 34)
+            receive("c2", "session.message", blocks([result("b2", "no problems")]), at: start + 40)
+            receive(
+                "c2", "session.message",
+                blocks([use("b3", "Bash", ["command": "npm test -- publications"])]),
+                at: start + 41)
+
+            // c3 finished: its turn says how long it worked.
+            receive(
+                "c3", "session.result",
+                [
+                    "is_error": false, "subtype": "success", "duration_ms": 72_400, "num_turns": 4,
+                    "cost_usd": NSNull(), "errors": [],
+                ], at: Date())
+
+            // The plain-folder snapshots before this left recipes in front.
+            model.app.selectProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.expandedBackground = []
+                state.openChat("c2", in: workspace)
+                state.openChat("c3", in: workspace)
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b29-turn-activity", folder)
+
+            shell.expandedItems.formUnion(["e20003-0", "tools-b1", "tools-ag0"])
+            try await pair(controller, "b29-turn-activity-open", folder)
+            shell.expandedItems.subtract(["e20003-0", "tools-b1", "tools-ag0"])
+        }
+
+        /// B29: the background bar counts the current exchange only. c3's earlier turn
+        /// finished four tasks; the user's next message started three agents and one is
+        /// done, so the bar reads "2 running · 1 completed".
+        private static func renderExchangeBar(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            let now = Date()
+            var id = 21_000
+            func event(_ type: String, _ payload: [String: Any], at: Date) -> Event {
+                id += 1
+                return try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
+                    "payload": payload,
+                ])
+            }
+            func item(
+                _ tool: String, _ kind: String, _ name: String, _ description: String,
+                started: Double, finished: Double? = nil
+            ) -> [String: Any] {
+                [
+                    "id": tool, "kind": kind, "name": name, "description": description,
+                    "status": finished == nil ? "running" : "done",
+                    "started_at": SampleData.iso(now.addingTimeInterval(-started)),
+                    "finished_at": finished.map { SampleData.iso(now.addingTimeInterval(-$0)) }
+                        ?? NSNull(),
+                ]
+            }
+            let years = ["2026", "2025", "2024"]
+            let calls: [[String: Any]] = years.enumerated().map { index, year in
+                [
+                    "type": "tool_use", "id": "cx\(index)", "name": "Agent",
+                    "input": [
+                        "subagent_type": "Explore", "description": "Contrast on \(year) pages",
+                    ],
+                ]
+            }
+            let background: [[String: Any]] = [
+                item(
+                    "toolu_find", "agent", "Explore", "Find theme toggles", started: 560,
+                    finished: 540),
+                item(
+                    "toolu_css", "agent", "general-purpose", "Audit CSS variables", started: 550,
+                    finished: 500),
+                item(
+                    "toolu_lint", "bash", "npm run lint", "Lint the styles", started: 480,
+                    finished: 470),
+                item(
+                    "toolu_tests", "bash", "npm test -- theme", "Theme tests", started: 460,
+                    finished: 430),
+                item(
+                    "cx0", "agent", "Explore", "Contrast on 2026 pages", started: 80, finished: 30),
+                item("cx1", "agent", "Explore", "Contrast on 2025 pages", started: 80),
+                item("cx2", "agent", "Explore", "Contrast on 2024 pages", started: 80),
+            ]
+            let events = [
+                event(
+                    "session.user_message",
+                    ["text": "Now check the contrast on every page", "attachments": []],
+                    at: now - 90),
+                event(
+                    "session.state", ["state": "running", "error": NSNull(), "turn_start": true],
+                    at: now - 89),
+                event(
+                    "session.message", ["blocks": calls, "parent_tool_use_id": NSNull()],
+                    at: now - 80),
+                event(
+                    "session.message",
+                    [
+                        "blocks": [
+                            ["type": "tool_result", "tool_use_id": "cx0", "content": "All pass"]
+                        ],
+                        "parent_tool_use_id": NSNull(),
+                    ], at: now - 30),
+            ]
+            events.forEach(model.transcripts.receive)
+            let agents = event(
+                "session.agents",
+                [
+                    "agents": [],
+                    "background": ["running": 2, "completed": 5, "items": background],
+                ], at: now - 30)
+            // Opening the pane loads the sample detail again; the live snapshot follows it.
+            let follow: (NSView) async -> Void = { _ in
+                model.activity.apply(agents)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+
+            model.app.selectProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.expandedBackground = []
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            try await pair(controller, "b29-exchange-bar", folder, prepare: follow)
+            model.app.update("todo-ui") { $0.expandedBackground = ["c3"] }
+            try await pair(controller, "b29-exchange-bar-expanded", folder, prepare: follow)
+            model.app.update("todo-ui") { $0.expandedBackground = [] }
+        }
+
+        /// B28: an archived Claude Code chat in the open Archived group, the Claude Code
+        /// row's menu, the Connectors sheet folded and with a group open, and a plain
+        /// folder's toolbar with Init and the chat it prefills.
+        private static func renderArchiveConnectorsAndPlainFolders(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.selectProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+            }
+            try await model.claudeChats.setArchived("cc-next", true)
+            shell.archivedOpen.insert("todo-ui")
+            try await pair(controller, "b28-sidebar-archived", folder)
+            try await pair(controller, "b28-claude-row-menu", folder, revealsHoverControls: true)
+            for chat in ["cc-pipeline", "cc-next"] {
+                let archived = model.claudeChats.chat(chat)?.archived ?? false
+                try await pairView(
+                    MenuPreview(
+                        title: model.claudeChats.chat(chat)?.title ?? chat,
+                        rows: [
+                            MenuPreview.Row(title: "Open"),
+                            MenuPreview.Row(title: "Continue in harness"),
+                            MenuPreview.Row(title: archived ? "Unarchive" : "Archive"),
+                        ]
+                    ).frame(width: 260), "b28-claude-menu-\(archived ? "archived" : "idle")",
+                    folder)
+            }
+            shell.archivedOpen.remove("todo-ui")
+
+            shell.connectorGroupsOpen = []
+            shell.show(.connectors)
+            try await pair(controller, "b28-connectors-folded", folder)
+            shell.connectorGroupsOpen = [.claudeCode]
+            try await pair(controller, "b28-connectors-open", folder)
+            shell.close()
+
+            model.app.openProject("recipes")
+            try await pair(controller, "b28-plain-folder", folder)
+            shell.setUpGit()
+            try await pair(controller, "b28-init-chat", folder)
+        }
+
+        /// B27: every glass theme in light and dark over the sample desktop, two chats side
+        /// by side with the ocean accent, and the Settings sheet with its Glass row.
+        private static func renderGlassThemes(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            for id in ["c1", "c2"] {
+                try await model.transcripts.transcript(for: id).load()
+            }
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.needsYou]
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c1")
+            }
+            let accent = shell.settings.accent
+            shell.settings.accent = .ocean
+            for style in DesignTokens.GlassTheme.all {
+                shell.settings.glass = style
+                try await pair(controller, "b27-glass-\(style.name)", folder)
+            }
+            shell.settings.accent = accent
+            for style in [DesignTokens.GlassTheme.clear, DesignTokens.GlassTheme.smoke] {
+                shell.settings.glass = style
+                shell.show(.settings)
+                try await pair(controller, "b27-settings-\(style.name)", folder)
+                shell.close()
+            }
+            shell.settings.glass = DesignTokens.GlassTheme.default
+            try await renderPaneWidths(model, shell, controller, folder)
+        }
+
+        /// Panes at the widths a 1440 by 900 window with both side panels gives them: two
+        /// side by side, three, four (one a browser), and one at the 280 point minimum,
+        /// in Clear light and Smoke dark. Nothing may spill out of its pane.
+        private static func renderPaneWidths(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            let workspace = CGSize(width: 828, height: 790)
+            for id in ["c1", "c2", "c3", "c4"] {
+                try await model.transcripts.transcript(for: id).load()
+            }
+            BrowserSession.sampleHTML = samplePage
+            let browser = ToolPane.browser(url: "http://localhost:3000/")
+            let layouts: [(String, (inout ProjectState) -> Void)] = [
+                (
+                    "two",
+                    { state in
+                        state.openChat("c1", in: workspace)
+                        state.openChat("c2", in: workspace)
+                    }
+                ),
+                (
+                    "three",
+                    { state in
+                        for id in ["c1", "c2", "c3"] {
+                            state.openChat(id, in: workspace)
+                        }
+                    }
+                ),
+                (
+                    "four",
+                    { state in
+                        for id in ["c1", "c2", "c3"] {
+                            state.openChat(id, in: workspace)
+                        }
+                        state.openTool(browser, in: workspace)
+                    }
+                ),
+                (
+                    "narrow",
+                    { state in
+                        state.openChat("c1", in: workspace)
+                        state.openChat("c2", in: workspace)
+                        if let gutter = state.layout.gutterFrames(in: workspace).first {
+                            state.layout.resize(split: gutter.split, ratio: 0, in: workspace)
+                        }
+                    }
+                ),
+            ]
+            for (name, arrange) in layouts {
+                model.app.update("todo-ui") { state in
+                    state.view = .workspace
+                    state.layout = WorkspaceLayout()
+                    state.leftCollapsed = false
+                    state.rightCollapsed = false
+                    state.openCards = [.needsYou]
+                    arrange(&state)
+                    state.focusPane("c1")
+                }
+                shell.syncToolsForSnapshots()
+                if name == "four" {
+                    let page = shell.tools.browser(for: browser) { _ in }
+                    await waitUntil { page.url != nil && !page.isLoading }
+                }
+                let frames = shell.projectState.layout.paneFrames(in: workspace)
+                print("\(name): \(frames.map { "\($0.chat) \(Int($0.frame.width))" })")
+                for (style, suffix, appearance) in [
+                    (DesignTokens.GlassTheme.clear, "clear-light", NSAppearance.Name.aqua),
+                    (DesignTokens.GlassTheme.smoke, "smoke-dark", .darkAqua),
+                ] {
+                    shell.settings.glass = style
+                    try await snap(controller, "b27-panes-\(name)-\(suffix)", appearance, folder)
+                }
+            }
+            shell.settings.glass = DesignTokens.GlassTheme.default
         }
 
         /// B26: the model list and thinking levels as the menus show them, Settings' agent
         /// defaults and account, the account row, a new chat starting from the defaults,
-        /// the see-through window over a sample desktop (and a painted wallpaper), and a
+        /// the see-through window over a sample desktop, and a
         /// browser pane beside two chats with a check that it stays inside its slot.
         private static func renderModelsGlassAndPanes(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
@@ -273,7 +662,7 @@
             shell.newChat()
             try await pair(controller, "b26-new-chat-desktop", folder)
 
-            // The see-through window over a busy desktop, then a painted wallpaper.
+            // The see-through window over a busy desktop.
             for id in ["c1", "c2"] {
                 try await model.transcripts.transcript(for: id).load()
             }
@@ -284,9 +673,6 @@
                 state.focusPane("c1")
             }
             try await pair(controller, "b26-glass-desktop", folder)
-            shell.settings.wallpaper = .sky
-            try await snap(controller, "b26-glass-wallpaper-light", .aqua, folder)
-            shell.settings.wallpaper = .desktop
             shell.show(.settings)
             try await pair(controller, "b26-settings-sheet", folder)
             shell.close()
@@ -815,7 +1201,7 @@
             _ view: some View, _ name: String, _ folder: URL
         ) async throws {
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                let content = view.background(Palette.glassStrong)
+                let content = view.background(GlassPalette.standard.surface)
                     .background(Palette.page)
                     .environment(\.reducedMotion, true)
                 let window = NSWindow(

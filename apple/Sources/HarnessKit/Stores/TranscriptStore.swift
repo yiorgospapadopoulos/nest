@@ -10,16 +10,30 @@ public struct ToolCall: Sendable, Hashable {
     public var isError: Bool
 }
 
+/// How a turn ended: how long it worked, and whether it was interrupted or failed.
+public struct TurnEnd: Sendable, Hashable {
+    public var durationMS: Int
+    public var stopped: Bool
+
+    public init(durationMS: Int, stopped: Bool) {
+        self.durationMS = durationMS
+        self.stopped = stopped
+    }
+}
+
 public struct TranscriptItem: Sendable, Hashable, Identifiable {
     public enum Content: Sendable, Hashable {
         case user(text: String, attachments: [Attachment])
         /// Assistant text; `streaming` while deltas arrive before the final message.
         case assistant(String, streaming: Bool)
-        case thinking(String)
+        /// Thinking text, with how long it took when known.
+        case thinking(String, durationMS: Int?)
         case tool(ToolCall)
         /// An inline marker for an approval of this session.
         case approval(id: String, kind: ApprovalKind, status: ApprovalStatus)
         case result(TurnResult)
+        /// The end of a turn whose length is known: "Worked for 1m 12s".
+        case turnEnd(TurnEnd)
         /// A short line such as an interruption, a failure or an opened pull request.
         case notice(String)
     }
@@ -65,6 +79,14 @@ public final class TranscriptStore {
     public private(set) var hasNewer = false
     /// The event the view should scroll to and highlight next.
     public private(set) var focus: TranscriptFocus?
+    /// When the open turn started; nil between turns.
+    public private(set) var turnStartedAt: Date?
+    /// When the user's latest message was sent: the current exchange, whose background
+    /// tasks the bar counts, began then. Turns the agent starts by itself stay in it.
+    public private(set) var exchangeStartedAt: Date?
+    /// The end of the last turn, while no other turn started since: an interruption or
+    /// failure reported after the result marks it stopped.
+    private var lastTurnEnd: String?
     /// Live events that arrived before the history.
     private var early: [Event] = []
     /// The stored events applied, oldest first, to rebuild the items with older ones.
@@ -94,24 +116,29 @@ public final class TranscriptStore {
         case .claudeChat:
             // Claude Code may have rewound or compacted it since, so start over.
             events = try await api.claudeChatEvents(sessionID)
-            items = []
-            history = []
-            lastEventID = 0
+            reset()
         }
         events.forEach(apply)
         finishLoading()
     }
 
     /// The items the transcript shows: successful turn results and empty (redacted)
-    /// thinking are left out.
+    /// thinking of unknown length are left out.
     public var visibleItems: [TranscriptItem] {
         items.filter { item in
             switch item.content {
             case .result(let result): result.isError
-            case .thinking(let text): !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            case .thinking(let text, let duration):
+                duration != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             default: true
             }
         }
+    }
+
+    /// The open turn's latest content is thinking.
+    public var isThinking: Bool {
+        guard turnStartedAt != nil, case .thinking = items.last?.content else { return false }
+        return true
     }
 
     // MARK: Focus and pages
@@ -191,13 +218,20 @@ public final class TranscriptStore {
     /// Builds the items again from these stored events, keeping text that streams.
     private func rebuild(_ events: [Event]) {
         let streaming = items.last { $0.id == Self.streamingID }
-        items = []
-        history = []
-        lastEventID = 0
+        reset()
         events.forEach(apply)
         if let streaming, !hasNewer {
             items.append(streaming)
         }
+    }
+
+    private func reset() {
+        items = []
+        history = []
+        lastEventID = 0
+        turnStartedAt = nil
+        exchangeStartedAt = nil
+        lastTurnEnd = nil
     }
 
     // MARK: Events
@@ -220,6 +254,8 @@ public final class TranscriptStore {
         let eventID = event.id
         switch event.body {
         case .userMessage(let message):
+            startTurn(at: event.ts)
+            exchangeStartedAt = event.ts
             append(key, .user(text: message.text, attachments: message.attachments), eventID)
         case .message(let message) where message.parentToolUseID == nil:
             endStreaming()
@@ -230,14 +266,22 @@ public final class TranscriptStore {
             stream(text)
         case .result(let result):
             endStreaming()
+            endTurn(
+                key, eventID, at: event.ts, durationMS: result.durationMS, stopped: result.isError)
             append(key, .result(result), eventID)
+        case .sessionState(.running, _):
+            startTurn(at: event.ts, marked: event.payload["turn_start"]?.boolValue == true)
+        case .sessionState(.idle, _):
+            settleTurn(key, eventID, event, stopped: false)
         case .approvalCreated(let approval), .approvalResolved(let approval):
             mark(approval, eventID)
         case .sessionState(.interrupted, _):
             endStreaming()
+            settleTurn(key, eventID, event, stopped: true)
             append(key, .notice("Interrupted"), eventID)
         case .sessionState(.failed, let error):
             endStreaming()
+            settleTurn(key, eventID, event, stopped: true)
             append(key, .notice(error ?? "Failed"), eventID)
         case .gitFailed(let step, let stderr):
             append(key, .notice("git \(step) failed: \(stderr)"), eventID)
@@ -252,8 +296,8 @@ public final class TranscriptStore {
         switch block {
         case .text(let text):
             append(id, .assistant(text, streaming: false), eventID)
-        case .thinking(let text):
-            append(id, .thinking(text), eventID)
+        case .thinking(let text, let duration):
+            append(id, .thinking(text, durationMS: duration), eventID)
         case .toolUse(let toolID, let name, let input):
             append(
                 toolID,
@@ -278,6 +322,46 @@ public final class TranscriptStore {
             items[items.count - 1].content = .assistant(sofar + text, streaming: true)
         } else {
             append(Self.streamingID, .assistant(text, streaming: true), nil)
+        }
+    }
+
+    // MARK: Turns
+
+    /// A user message, or the agent going on by itself, opens a turn unless one is open;
+    /// the daemon's `turn_start` mark always starts one.
+    private func startTurn(at date: Date, marked: Bool = false) {
+        guard turnStartedAt == nil || marked else { return }
+        turnStartedAt = date
+        lastTurnEnd = nil
+    }
+
+    /// Ends the open turn with a line saying how long it took, preferring the engine's
+    /// duration; a turn of unknown start and length gets no line.
+    private func endTurn(
+        _ key: String, _ eventID: Int?, at date: Date, durationMS: Int?, stopped: Bool
+    ) {
+        let measured = turnStartedAt.map { Int(date.timeIntervalSince($0) * 1000) }
+        turnStartedAt = nil
+        lastTurnEnd = nil
+        guard let duration = durationMS ?? measured else { return }
+        let id = "\(key)-end"
+        append(id, .turnEnd(TurnEnd(durationMS: duration, stopped: stopped)), eventID)
+        lastTurnEnd = id
+    }
+
+    /// The session left the turn (idle, interrupted or failed), with the daemon's measure
+    /// of the turn when it sends one: the open turn ends, or the turn its result just
+    /// ended takes that measure and, when stopped, says so.
+    private func settleTurn(_ key: String, _ eventID: Int?, _ event: Event, stopped: Bool) {
+        let duration = event.payload["duration_ms"]?.numberValue.map { Int($0) }
+        if turnStartedAt != nil {
+            endTurn(key, eventID, at: event.ts, durationMS: duration, stopped: stopped)
+        } else if let id = lastTurnEnd, let index = items.firstIndex(where: { $0.id == id }),
+            case .turnEnd(var end) = items[index].content
+        {
+            end.durationMS = duration ?? end.durationMS
+            end.stopped = end.stopped || stopped
+            items[index].content = .turnEnd(end)
         }
     }
 

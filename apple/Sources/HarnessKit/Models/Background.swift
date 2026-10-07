@@ -34,7 +34,8 @@ public struct BackgroundItem: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// A session's subagents and background commands, oldest first, with their counts.
+/// A session's subagents and background commands, oldest first, with their counts. The
+/// bar shows the current exchange's share (`exchange(since:)`).
 public struct BackgroundSummary: Codable, Sendable, Hashable {
     public var running: Int
     /// Finished, whether done or failed.
@@ -46,14 +47,31 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
     /// Nothing ran: the bar stays hidden.
     public var isEmpty: Bool { running == 0 && completed == 0 }
 
-    /// The bar's text, such as "2 running · 3 completed".
-    public var label: String { "\(running) running · \(completed) completed" }
+    /// The bar's text, such as "2 running · 3 completed", or "1 running task" while none
+    /// finished yet.
+    public var label: String {
+        if completed == 0 && running > 0 {
+            return running == 1 ? "1 running task" : "\(running) running tasks"
+        }
+        return "\(running) running · \(completed) completed"
+    }
 
     public var runningItems: [BackgroundItem] { items.filter(\.isRunning) }
     public var finishedItems: [BackgroundItem] { items.filter { !$0.isRunning } }
     /// Background commands still running; subagents are listed with the agents.
     public var runningCommands: [BackgroundItem] {
         runningItems.filter { $0.kind == .bash }
+    }
+
+    /// The bar's tasks: those of the exchange the user's latest message (at `start`)
+    /// opened, and any earlier one still at work. Without that message, all of them.
+    public func exchange(since start: Date?) -> BackgroundSummary {
+        guard let start else { return self }
+        let kept = items.filter { item in
+            item.isRunning || item.startedAt.map { $0 >= start } == true
+        }
+        let running = kept.count(where: \.isRunning)
+        return BackgroundSummary(running: running, completed: kept.count - running, items: kept)
     }
 
     /// Applies a task's end ahead of the next snapshot: the item started by that tool call
