@@ -9,10 +9,12 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from harness.clock import Clock
 from harness.engine.fetch import FetchError
 from harness.engine.models import FALLBACK_MODELS, ModelList
+from harness.engine.profile import profile_name
 from harness.engine.store import EngineInfoStore
 from harness.errors import InvalidInputError
 from harness.providers.base import AccountInfo, EngineDetails, ModelOption
@@ -48,7 +50,11 @@ class EngineInfo:
         interval: timedelta = INTERVAL,
         retry: timedelta = RETRY,
         tick: timedelta = TICK,
+        account_file: Path | None = None,
     ) -> None:
+        """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039);
+        None reads no file.
+        """
         self._store = store
         self._fetch = fetch
         self._clock = clock
@@ -56,6 +62,7 @@ class EngineInfo:
         self._interval = interval
         self._retry = retry
         self._tick = tick
+        self._account_file = account_file
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._last_attempt: datetime | None = None
@@ -77,7 +84,14 @@ class EngineInfo:
         return listed or ModelList(models=list(FALLBACK_MODELS), updated_at=None)
 
     async def account(self) -> AccountInfo:
-        return await self._store.account() or AccountInfo()
+        """The engine's account; without a name from the engine, Claude Code's profile name,
+        read on every call so a rename shows at the next refresh.
+        """
+        account = await self._store.account() or AccountInfo()
+        if account.display_name is not None:
+            return account
+        name = await asyncio.to_thread(profile_name, self._account_file)
+        return account.model_copy(update={"display_name": name})
 
     async def find(self, model: str | None) -> ModelOption | None:
         """The reported entry for `model` (None is Claude Code's default); None when the

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import timedelta
 from pathlib import Path
@@ -40,6 +41,7 @@ class Harness:
             store=self.store,
             fetch=lambda: fetch_details(self.factory, timedelta(seconds=1)),
             clock=self.clock,
+            account_file=None,
             **timing,
         )
 
@@ -145,6 +147,39 @@ async def test_a_failed_refresh_keeps_the_cache_and_logs_the_kind(
     assert (await h.engine.models()).updated_at == START
     assert "RuntimeError" in caplog.text
     assert "person@example.com" not in caplog.text
+
+
+def _profile(home: Path, name: str) -> Path:
+    path = home / ".claude.json"
+    path.write_text(json.dumps({"oauthAccount": {"displayName": name}}), encoding="utf-8")
+    return path
+
+
+async def test_without_an_engine_name_the_claude_code_profile_name_is_shown(
+    h: Harness, tmp_path: Path
+) -> None:
+    path = _profile(tmp_path, "Sam")
+    engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, account_file=path)
+
+    assert await engine.account() == AccountInfo(display_name="Sam")
+    await engine.report(EngineDetails(account=ACCOUNT))
+    assert await engine.account() == ACCOUNT.model_copy(update={"display_name": "Sam"})
+
+    # Read again on every request, so a rename shows at the next refresh.
+    _profile(tmp_path, "Sam R.")
+    assert (await engine.account()).display_name == "Sam R."
+    path.unlink()
+    assert (await engine.account()).display_name is None
+    assert (await h.store.account()) == ACCOUNT
+
+
+async def test_the_engines_own_display_name_wins(h: Harness, tmp_path: Path) -> None:
+    path = _profile(tmp_path, "From the file")
+    engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, account_file=path)
+
+    await engine.report(EngineDetails(account=AccountInfo(display_name="From the engine")))
+
+    assert (await engine.account()).display_name == "From the engine"
 
 
 async def test_a_report_with_only_an_account_keeps_the_models(h: Harness) -> None:

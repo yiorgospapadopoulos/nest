@@ -1,3 +1,4 @@
+import json
 import tomllib
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -91,6 +92,19 @@ async def test_the_engine_list_and_account_are_served_in_claude_codes_order(api:
         "plan": "Claude Max",
         "organization": "Acme",
     }
+
+
+async def test_the_account_name_comes_from_claude_codes_profile(api: Api) -> None:
+    await known_models(api, "default")
+    path = api.ctx.paths.claude_account_file
+    assert path is not None
+    profile = {"oauthAccount": {"displayName": " ", "fullName": "Sam Rivera"}}
+    path.write_text(json.dumps(profile), encoding="utf-8")
+
+    account = (await api.http.get("/api/account")).json()
+
+    assert account["display_name"] == "Sam Rivera"
+    assert account["email"] == "person@example.com"
 
 
 async def test_a_session_run_refreshes_the_list(api: Api) -> None:

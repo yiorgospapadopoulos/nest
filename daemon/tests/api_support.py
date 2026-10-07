@@ -38,6 +38,7 @@ def make_paths(tmp_path: Path, modules: list[str] | None = None) -> AppPaths:
         data_dir=tmp_path / "data",
         web_dist=tmp_path / "web",
         claude_dir=tmp_path / "claude",
+        claude_account_file=tmp_path / "claude.json",
     )
     if modules is not None:
         paths.config_dir.mkdir(parents=True)

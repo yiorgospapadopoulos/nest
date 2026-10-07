@@ -50,6 +50,14 @@ def test_claude_dir_follows_claude_codes_own_setting(tmp_path: Path) -> None:
     assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).claude_dir is None
 
 
+def test_the_claude_account_file_follows_home_and_claude_codes_setting(tmp_path: Path) -> None:
+    overridden = AppPaths.from_env({"CLAUDE_CONFIG_DIR": str(tmp_path / "cc")}, home=tmp_path)
+
+    assert AppPaths.from_env({}, home=tmp_path).claude_account_file == tmp_path / ".claude.json"
+    assert overridden.claude_account_file == tmp_path / "cc" / ".claude.json"
+    assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).claude_account_file is None
+
+
 def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     paths = AppPaths(config_dir=tmp_path / "c", data_dir=tmp_path / "d")
 

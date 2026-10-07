@@ -23,18 +23,26 @@ class AppPaths:
     # Claude Code's data, read only (D028): chats to import and which ones are open.
     # None reads no Claude Code chats, so tests never see the real ones.
     claude_dir: Path | None = None
+    # Claude Code's own settings file, read only for the account name (D039). None reads nothing.
+    claude_account_file: Path | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], home: Path) -> Self:
         config_dir = env.get(CONFIG_DIR_ENV) or home / ".config" / "harness"
         data_dir = env.get(DATA_DIR_ENV) or home / "Library" / "Application Support" / "harness"
         web_dist = env.get(WEB_DIST_ENV) or DEFAULT_WEB_DIST
-        claude_dir = env.get(CLAUDE_CONFIG_DIR_ENV) or home / ".claude"
+        claude_config = env.get(CLAUDE_CONFIG_DIR_ENV)
+        claude_dir = claude_config or home / ".claude"
+        # Claude Code keeps `.claude.json` in its config folder when one is set, else in home.
+        account_file = (
+            Path(claude_config) / ".claude.json" if claude_config else home / ".claude.json"
+        )
         return cls(
             config_dir=Path(config_dir),
             data_dir=Path(data_dir),
             web_dist=Path(web_dist),
             claude_dir=Path(claude_dir),
+            claude_account_file=account_file,
         )
 
     @property

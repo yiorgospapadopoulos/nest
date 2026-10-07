@@ -14,6 +14,7 @@ from harness.approvals.store import ApprovalStore
 from harness.attachments.store import AttachmentStore
 from harness.auth.devices import DeviceService
 from harness.auth.secrets import SecretStore
+from harness.claude_sessions.archive import ChatArchive
 from harness.claude_sessions.catalog import ClaudeChats
 from harness.claude_sessions.live import LiveChats
 from harness.clock import Clock
@@ -113,7 +114,7 @@ class AppContext:
         db = await Database.open(paths.db_path)
         bus = EventBus(db, clock)
         notifier = Notifier(bus)
-        repos = RepoService(paths)
+        repos = RepoService(paths, bus)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
         tracking = Tracking(bus)
@@ -124,7 +125,10 @@ class AppContext:
         search = SearchIndex(db)
         commands = CommandStore(db, clock)
         engine = EngineInfo(
-            EngineInfoStore(db, clock), fetch=lambda: fetch_details(engine_factory), clock=clock
+            EngineInfoStore(db, clock),
+            fetch=lambda: fetch_details(engine_factory),
+            clock=clock,
+            account_file=paths.claude_account_file,
         )
         sessions = SessionManager(
             store=store,
@@ -142,6 +146,7 @@ class AppContext:
                 connectors,
                 commands,
                 engine,
+                repos,
             ),
             # Read for each new session, so edits through the API apply at once.
             defaults=lambda: context.settings.agents,
@@ -200,6 +205,7 @@ class AppContext:
                 claude_dir=paths.claude_dir,
                 repos=repos,
                 store=store,
+                archive=ChatArchive(db, clock),
                 bus=bus,
                 live=live_chats,
                 on_refresh=search.sync_claude_chats,
