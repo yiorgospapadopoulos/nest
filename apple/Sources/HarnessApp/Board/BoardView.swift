@@ -29,6 +29,7 @@ extension BoardColumn {
 private struct ColumnView: View {
     let column: BoardColumn
     let sessions: [Session]
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,13 +63,14 @@ private struct ColumnView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .panelGlass(radius: DesignTokens.Radius.panel, tint: .clear)
+        .panelGlass(radius: glass.radius.panel, tint: .clear, raised: false)
     }
 }
 
 private struct BoardCard: View {
     let session: Session
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
     @State private var hovering = false
 
     var body: some View {
@@ -109,7 +111,7 @@ private struct BoardCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .panelGlass(radius: DesignTokens.Radius.card)
+        .panelGlass(radius: glass.radius.card)
         .offset(y: hovering ? -2 : 0)
         .onHover { hover in withAnimation(.smooth(duration: 0.2)) { hovering = hover } }
     }

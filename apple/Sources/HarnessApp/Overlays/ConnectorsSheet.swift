@@ -27,15 +27,64 @@ struct ConnectorsSheet: View {
                 .padding(.vertical, 28)
             }
             ForEach(sections) { section in
-                SheetSection(title: section.title) {
-                    ForEach(Array(section.connectors.enumerated()), id: \.element.id) {
-                        index, connector in
-                        ConnectorRow(connector: connector, first: index == 0)
-                    }
-                }
+                ConnectorGroup(section: section)
             }
         }
         .task { try? await shell.model.connectors.load() }
+    }
+}
+
+/// A folding group of connectors: its title, count and any trouble, with the rows below
+/// once it is unfolded.
+private struct ConnectorGroup: View {
+    let section: ConnectorSection
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let open = shell.connectorGroupsOpen.contains(section.kind)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    if open {
+                        shell.connectorGroupsOpen.remove(section.kind)
+                    } else {
+                        shell.connectorGroupsOpen.insert(section.kind)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: Icon.chevron)
+                        .font(.system(size: 9, weight: .bold))
+                        .rotationEffect(.degrees(open ? 0 : -90))
+                    Text(section.title.uppercased()).tracking(0.66)
+                    if let attention = section.attention {
+                        Label(attention, systemImage: Icon.warning)
+                            .labelStyle(TightLabelStyle())
+                            .foregroundStyle(StatusTone.waiting.textColor)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Text("\(section.connectors.count)").fontWeight(.semibold).monospacedDigit()
+                }
+                .font(.ui(TypeSize.caption, .bold))
+                .foregroundStyle(Palette.t3)
+                .padding(.top, 18)
+                .padding(.bottom, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .accessibilityLabel(
+                "\(section.title), \(section.connectors.count)\(section.attention.map { ", \($0)" } ?? "")"
+            )
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            if open {
+                ForEach(Array(section.connectors.enumerated()), id: \.element.id) {
+                    index, connector in
+                    ConnectorRow(connector: connector, first: index == 0)
+                }
+            }
+        }
     }
 }
 

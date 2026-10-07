@@ -181,3 +181,7 @@ struct VisibilityRequest: Encodable {
 struct OpenRepoRequest: Encodable {
     var app: RepoApp
 }
+
+struct ArchiveRequest: Encodable {
+    var archived: Bool
+}

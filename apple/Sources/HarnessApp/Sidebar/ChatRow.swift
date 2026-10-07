@@ -6,6 +6,7 @@ struct ChatRow: View {
     let session: Session
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
     @State private var hovering = false
     @FocusState private var renameFocused: Bool
 
@@ -47,18 +48,19 @@ struct ChatRow: View {
             .opacity(hovering ? 0 : 1)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.vertical, glass.spacing.rowPaddingY)
         .background(
             isSelected ? accent.soft : (isOpen || hovering) ? Palette.fill : .clear,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            in: glass.rounded(glass.radius.item)
         )
         .overlay(alignment: .trailing) {
             if hovering {
-                ChatActionsMenu(session: session)
+                RowActionsMenu(title: session.title) { ChatActions(session: session) }
                     .padding(.trailing, 5)
             }
         }
         .contentShape(Rectangle())
+        .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.openChat(session.id) }
         .onDrag {
@@ -84,8 +86,8 @@ struct ChatRow: View {
             .font(.ui(TypeSize.callout))
             .padding(.horizontal, 9)
             .frame(height: 32)
-            .background(Palette.glassStrong, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(accent.accent, lineWidth: 2))
+            .background(glass.surface, in: glass.rounded(glass.radius.item))
+            .overlay(glass.rounded(glass.radius.item).stroke(accent.accent, lineWidth: 2))
             .padding(.vertical, 2)
             .focused($renameFocused)
             .onAppear { renameFocused = true }
@@ -99,28 +101,31 @@ struct ChatRow: View {
     }
 }
 
-/// The "..." button that shows on hover.
-private struct ChatActionsMenu: View {
-    let session: Session
+/// A sidebar row's "..." button that shows on hover.
+struct RowActionsMenu<Actions: View>: View {
+    let title: String
+    @ViewBuilder let actions: () -> Actions
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Menu {
-            ChatActions(session: session)
+            actions()
         } label: {
             Image(systemName: Icon.more)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Palette.t2)
                 .frame(width: 24, height: 24)
-                .background(Palette.glassStrong, in: RoundedRectangle(cornerRadius: 7))
-                .shadow(color: Palette.glassShadow, radius: 1.5, y: 1)
+                .background(glass.surface, in: glass.rounded(glass.radius.small))
+                .shadow(color: glass.shadow, radius: 1.5, y: 1)
                 .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("More")
-        .accessibilityLabel("Actions for \(session.title)")
+        .accessibilityLabel("Actions for \(title)")
     }
 }
 
@@ -186,6 +191,7 @@ extension View {
 struct DragGhost: View {
     let title: String
     let tone: StatusTone
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 8) {
@@ -198,8 +204,8 @@ struct DragGhost: View {
         .padding(.leading, 11)
         .padding(.trailing, 14)
         .frame(height: 36)
-        .background(Palette.glassStrong, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.glassBorder))
+        .background(glass.surface, in: glass.rounded(glass.radius.item))
+        .overlay(glass.rounded(glass.radius.item).stroke(glass.stroke))
         .rotationEffect(.degrees(-2))
     }
 }

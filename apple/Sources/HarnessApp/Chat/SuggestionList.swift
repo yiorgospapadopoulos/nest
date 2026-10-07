@@ -11,9 +11,10 @@ struct SuggestionList: View {
     let active: Int
     let pick: (Completion) -> Void
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+        let shape = glass.rounded(glass.radius.card)
         VStack(alignment: .leading, spacing: 2) {
             Text(list.title)
                 .font(.ui(TypeSize.micro, .bold))
@@ -41,9 +42,9 @@ struct SuggestionList: View {
             }
         }
         .padding(6)
-        .background(shape.fill(Palette.glassRegular))
-        .overlay(shape.stroke(Palette.glassBorder))
-        .shadow(color: Palette.glassShadow.opacity(0.4), radius: 10, y: 6)
+        .background(shape.fill(glass.surface))
+        .overlay(GlassEdges(shape: shape))
+        .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(list.title)
     }
@@ -91,6 +92,7 @@ struct SuggestionList: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }

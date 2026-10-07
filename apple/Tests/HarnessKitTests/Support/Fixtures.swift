@@ -25,6 +25,7 @@ enum Fixture {
     static var sessions: [Session] { decode([Session].self, "sessions") }
     static var archivedSessions: [Session] { decode([Session].self, "sessions_archived") }
     static var repos: [Repo] { decode([Repo].self, "repos") }
+    static var plainRepo: Repo { decode(Repo.self, "repo_plain") }
     static var approvals: [Approval] { decode([Approval].self, "approvals") }
     static var events: [Event] { decode([Event].self, "session_events") }
     static var diff: SessionDiff { decode(SessionDiff.self, "diff") }
@@ -38,13 +39,13 @@ enum Fixture {
     /// A Claude Code chat with changes applied.
     static func claudeChat(
         _ id: String, repo: String = "todo-ui", title: String = "A Claude Code chat",
-        lastActivity: Double = 1_000, automated: Bool = false
+        lastActivity: Double = 1_000, automated: Bool = false, archived: Bool = false
     ) -> ClaudeChat {
         ClaudeChat(
             id: id, repo: repo, title: title, cwd: "/repo/\(repo)",
             createdAt: Date(timeIntervalSince1970: 0),
             lastActivityAt: Date(timeIntervalSince1970: lastActivity), messageCount: 2,
-            automated: automated)
+            automated: automated, archived: archived)
     }
 
     static func approval(_ id: String) -> Approval {
@@ -72,16 +73,22 @@ enum Fixture {
 
     /// An event built from a JSON payload.
     static func event(
-        _ type: String, _ payload: String, id: Int? = 1, session: String? = "s1"
+        _ type: String, _ payload: String, id: Int? = 1, session: String? = "s1",
+        ts: String = "2026-10-06T09:00:00Z"
     ) -> Event {
         let sessionJSON = session.map { "\"\($0)\"" } ?? "null"
         let idJSON = id.map(String.init) ?? "null"
         return decode(
             Event.self,
             json: """
-                {"id": \(idJSON), "type": "\(type)", "ts": "2026-10-06T09:00:00Z",
+                {"id": \(idJSON), "type": "\(type)", "ts": "\(ts)",
                  "session_id": \(sessionJSON), "payload": \(payload)}
                 """)
+    }
+
+    /// A date from an ISO 8601 timestamp such as an event's `ts`.
+    static func date(_ text: String) -> Date {
+        try! Date(text, strategy: .iso8601)
     }
 
     static func json(_ value: some Encodable) -> String {

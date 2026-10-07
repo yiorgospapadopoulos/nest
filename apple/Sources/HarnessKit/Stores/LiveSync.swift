@@ -92,6 +92,16 @@ public final class LiveSync {
             app.forgetChat(id)
         case .notify(let notice):
             onNotice?(notice)
+        case .repoUpdated:
+            app.reloadRepos()
+        case .result:
+            // A turn in a plain folder may have run git init; the repo update event, when
+            // the daemon sends one, makes this redundant but harmless.
+            if let id = event.sessionID, let repo = sessions.session(id)?.repo,
+                app.repo(repo)?.git == false
+            {
+                app.reloadRepos()
+            }
         default:
             break
         }

@@ -40,11 +40,13 @@
 
         func health() async throws -> Health { try decode(["status": "ok", "version": "0.1.0"]) }
 
+        /// Four git repositories and a plain folder, "recipes".
         func repos() async throws -> [Repo] {
-            try ["todo-ui", "weather-forecast", "map-viewer", "harness"].map { name in
-                try decode([
+            try ["todo-ui", "weather-forecast", "map-viewer", "harness", "recipes"].map { name in
+                let git = name != "recipes"
+                return try decode([
                     "name": name, "path": "/Users/me/Projects/\(name)",
-                    "default_branch": "main",
+                    "default_branch": git ? "main" : NSNull(), "git": git,
                     "worktree": [
                         "default": true, "link": [], "setup": [], "setup_timeout_seconds": 900,
                     ],
@@ -169,6 +171,16 @@
 
         func claudeChatEvents(_ id: String) async throws -> [Event] {
             chatEvents[id] ?? []
+        }
+
+        func setClaudeChatArchived(_ id: String, archived: Bool) async throws -> ClaudeChat {
+            try lock.withLock {
+                guard let index = chatList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound("No Claude Code chat \(id)")
+                }
+                chatList[index].archived = archived
+                return chatList[index]
+            }
         }
 
         /// An idle in-place session in the chat's folder, with the chat's history.

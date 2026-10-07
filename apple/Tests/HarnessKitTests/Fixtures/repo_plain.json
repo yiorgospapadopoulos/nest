@@ -1,0 +1,12 @@
+{
+  "name": "notes",
+  "path": "/Users/example/notes",
+  "default_branch": null,
+  "git": false,
+  "worktree": {
+    "default": null,
+    "link": [],
+    "setup": [],
+    "setup_timeout_seconds": 900
+  }
+}

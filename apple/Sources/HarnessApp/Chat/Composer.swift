@@ -13,6 +13,7 @@ struct Composer: View {
     /// Snapshots show the suggestions without focus.
     @Environment(\.revealsHoverControls) private var reveal
     @Environment(\.seeThrough) private var seeThrough
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let draft = shell.draft(for: chat)
@@ -36,6 +37,13 @@ struct Composer: View {
         .padding(.bottom, 10)
         .onChange(of: suggestions?.trigger) { _, trigger in
             draft.completion.update(for: trigger)
+        }
+        .task(id: draft.wantsFocus) {
+            guard draft.wantsFocus else { return }
+            // Once the field is in the window, so focus lands in it.
+            await Task.yield()
+            focused = true
+            draft.wantsFocus = false
         }
         .task(id: commandSource(suggestions)) {
             guard suggestions?.trigger.kind == .command, let repo = shell.project else { return }
@@ -101,7 +109,7 @@ struct Composer: View {
     }
 
     private func field(_ draft: ComposerDraft, suggestions: CompletionList?) -> some View {
-        let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+        let shape = glass.rounded(glass.radius.card)
         let status = shell.dictation.status(for: chat)
         return VStack(alignment: .leading, spacing: 0) {
             if !draft.attachments.isEmpty {
@@ -127,13 +135,14 @@ struct Composer: View {
             ControlRow(chat: chat, draft: draft)
         }
         .padding(EdgeInsets(top: 4, leading: 12, bottom: 6, trailing: 8))
-        .background(shape.fill(GlassTint.reading.color(seeThrough: seeThrough)))
-        .overlay(
-            shape.stroke(
-                focused || dropTargeted ? accent.accent : Palette.glassBorder,
-                lineWidth: focused || dropTargeted ? 2 : 1)
-        )
-        .shadow(color: Palette.glassShadow.opacity(0.4), radius: 10, y: 6)
+        .background(shape.fill(GlassTint.reading.color(in: glass, seeThrough: seeThrough)))
+        .overlay(GlassEdges(shape: shape))
+        .overlay {
+            if focused || dropTargeted {
+                shape.strokeBorder(accent.accent, lineWidth: 2)
+            }
+        }
+        .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             loadFiles(providers)
             return true
@@ -242,6 +251,7 @@ extension MessageField {
 private struct BlockedNote: View {
     let text: String
     let dismiss: () -> Void
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -263,11 +273,10 @@ private struct BlockedNote: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 8)
         .background(
-            StatusTone.waiting.soft,
-            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+            StatusTone.waiting.soft, in: glass.rounded(glass.radius.small)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.chip, style: .continuous)
+            glass.rounded(glass.radius.small)
                 .strokeBorder(StatusTone.waiting.textColor.opacity(0.25))
         )
         .accessibilityElement(children: .combine)
@@ -276,6 +285,7 @@ private struct BlockedNote: View {
 
 private struct AttachmentChips: View {
     let draft: ComposerDraft
+    @Environment(\.glass) private var glass
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -303,7 +313,7 @@ private struct AttachmentChips: View {
                     .padding(.trailing, 3)
                     .frame(height: 24)
                     .background(
-                        Palette.fill, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.chip))
+                        Palette.fill, in: glass.rounded(glass.radius.small))
                 }
             }
         }
@@ -317,6 +327,7 @@ private struct ControlRow: View {
     let chat: String
     let draft: ComposerDraft
     @Environment(Shell.self) private var shell
+    @Environment(\.paneFit) private var fit
 
     var body: some View {
         let session = shell.sessions.session(chat)
@@ -336,10 +347,10 @@ private struct ControlRow: View {
                 chat: chat, model: isDraft ? draft.model : session?.model,
                 effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
             PermissionMenu(chat: chat, mode: isDraft ? draft.permission : session?.permissionMode)
-            if isDraft {
+            if isDraft && shell.repo?.git != false {
                 ModeMenu(draft: draft)
-            } else if let context = session?.context {
-                ContextMeter(chat: chat, context: context)
+            } else if let context = session?.context, let label = fit.context.label(context) {
+                ContextMeter(chat: chat, context: context, label: label)
             }
             Spacer(minLength: 4)
             SendButton(
@@ -406,6 +417,7 @@ private struct MicButton: View {
                     }
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
             .help("Stop dictation")
             .accessibilityLabel("Stop dictation")
         } else {
@@ -425,6 +437,7 @@ private struct SendButton: View {
     let sending: Bool
     let action: (SendButtonMode) -> Void
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Button {
@@ -435,14 +448,14 @@ private struct SendButton: View {
                 Image(systemName: Icon.stop).font(.system(size: 10))
                     .foregroundStyle(StatusTone.failed.textColor)
                     .frame(width: 28, height: 28)
-                    .background(StatusTone.failed.soft, in: Circle())
+                    .background(StatusTone.failed.soft, in: glass.control)
             case .queue:
                 Text("Queue")
                     .font(.ui(TypeSize.small, .semibold))
                     .foregroundStyle(accent.onAccent)
                     .padding(.horizontal, 12)
                     .frame(height: 28)
-                    .background(accent.accent, in: Capsule())
+                    .background(accent.accent, in: glass.control)
             case .send:
                 Group {
                     if sending {
@@ -453,10 +466,11 @@ private struct SendButton: View {
                 }
                 .foregroundStyle(accent.onAccent)
                 .frame(width: 28, height: 28)
-                .background(accent.accent, in: Circle())
+                .background(accent.accent, in: glass.control)
             }
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .help(help)
         .accessibilityLabel(label)
     }
@@ -482,6 +496,8 @@ private struct SendButton: View {
 private struct ContextMeter: View {
     let chat: String
     let context: SessionContext
+    /// "context 41%", or "41%" in a narrow pane.
+    let label: String
     @Environment(Shell.self) private var shell
     @State private var hovering = false
 
@@ -491,7 +507,7 @@ private struct ContextMeter: View {
                 Button("Compact") { shell.compact(chat) }
             }
         } label: {
-            Text(context.label)
+            Text(label)
                 .font(.ui(TypeSize.label, .medium))
                 .monospacedDigit()
                 .foregroundStyle(color)
@@ -506,6 +522,7 @@ private struct ContextMeter: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }

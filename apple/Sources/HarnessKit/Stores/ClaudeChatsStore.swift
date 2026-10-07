@@ -36,29 +36,36 @@ public struct SidebarGroup: Sendable, Hashable, Identifiable {
 
     public var id: SessionGroupKind { kind }
 
-    /// The sessions' groups with the repo's Claude Code chats added to Idle, where the
-    /// rows are sorted by last activity, newest first.
+    /// The sessions' groups with the repo's Claude Code chats added to Idle, or to
+    /// Archived once archived; those groups' rows are sorted by last activity, newest first.
     public static func merge(_ groups: [SessionGroup], chats: [ClaudeChat]) -> [SidebarGroup] {
         var merged = groups.map {
             SidebarGroup(kind: $0.kind, entries: $0.sessions.map(SidebarEntry.session))
         }
-        guard !chats.isEmpty else { return merged }
+        add(chats.filter { !$0.archived }, to: .idle, in: &merged)
+        add(chats.filter(\.archived), to: .archived, in: &merged)
+        return merged
+    }
+
+    private static func add(
+        _ chats: [ClaudeChat], to kind: SessionGroupKind, in merged: inout [SidebarGroup]
+    ) {
+        guard !chats.isEmpty else { return }
         let order = SessionGroupKind.allCases
         let index =
-            merged.firstIndex { $0.kind == .idle }
-            ?? merged.firstIndex { order.firstIndex(of: $0.kind)! > order.firstIndex(of: .idle)! }
+            merged.firstIndex { $0.kind == kind }
+            ?? merged.firstIndex { order.firstIndex(of: $0.kind)! > order.firstIndex(of: kind)! }
             ?? merged.count
-        let existing = merged.indices.contains(index) && merged[index].kind == .idle
+        let existing = merged.indices.contains(index) && merged[index].kind == kind
         let entries =
             ((existing ? merged[index].entries : []) + chats.map(SidebarEntry.claudeChat))
             .sorted { ($0.lastActivity, $0.id) > ($1.lastActivity, $1.id) }
-        let idle = SidebarGroup(kind: .idle, entries: entries)
+        let group = SidebarGroup(kind: kind, entries: entries)
         if existing {
-            merged[index] = idle
+            merged[index] = group
         } else {
-            merged.insert(idle, at: index)
+            merged.insert(group, at: index)
         }
-        return merged
     }
 }
 
@@ -101,7 +108,7 @@ public final class ClaudeChatsStore {
         chats[id]
     }
 
-    /// The repo's chats, most recently active first.
+    /// The repo's chats, archived ones included, most recently active first.
     public func chats(in repo: String) -> [ClaudeChat] {
         chats.values.filter { $0.repo == repo }.sorted {
             ($0.lastActivityAt, $0.id) > ($1.lastActivityAt, $1.id)
@@ -120,6 +127,19 @@ public final class ClaudeChatsStore {
         let session = try await api.adoptClaudeChat(id)
         chats[id] = nil
         return session
+    }
+
+    /// Moves the chat to Archived, or back, at once; the daemon's answer replaces it, and
+    /// a failure puts the flag back and throws. Nothing is asked when it is already so.
+    public func setArchived(_ id: String, _ archived: Bool) async throws {
+        guard let chat = chats[id], chat.archived != archived else { return }
+        chats[id]?.archived = archived
+        do {
+            chats[id] = try await api.setClaudeChatArchived(id, archived: archived)
+        } catch {
+            chats[id]?.archived = chat.archived
+            throw error
+        }
     }
 
     public func apply(_ event: Event) {

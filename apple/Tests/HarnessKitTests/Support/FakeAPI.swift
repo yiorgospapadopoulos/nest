@@ -245,6 +245,22 @@ final class FakeAPI: HarnessAPI {
         try call("claudeChatEvents", id) { $0.claudeChatEvents[id] ?? [] }
     }
 
+    /// Waits at its gate before it answers, so a failure can follow a refresh.
+    func setClaudeChatArchived(_ id: String, archived: Bool) async throws -> ClaudeChat {
+        state.withLock { $0.calls.append("setClaudeChatArchived \(id) \(archived)") }
+        await pass("setClaudeChatArchived")
+        return try state.withLock { state in
+            if let failure = state.failures["setClaudeChatArchived"] {
+                throw failure
+            }
+            guard let index = state.claudeChats.firstIndex(where: { $0.id == id }) else {
+                throw APIError.notFound("No Claude Code chat \(id)")
+            }
+            state.claudeChats[index].archived = archived
+            return state.claudeChats[index]
+        }
+    }
+
     func adoptClaudeChat(_ id: String) async throws -> Session {
         try call("adoptClaudeChat", id) { state in
             let chat = state.claudeChats.first { $0.id == id }!

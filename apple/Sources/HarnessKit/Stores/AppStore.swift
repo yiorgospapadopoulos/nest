@@ -168,6 +168,8 @@ public final class AppStore {
     public var connection = ConnectionState.disconnected
     /// The last error of a background refresh.
     public var syncError: APIError?
+    /// The latest repo reload `reloadRepos` started.
+    @ObservationIgnored public private(set) var reloadingRepos: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
     /// Open project tabs in order, by repo name.
     public private(set) var openProjects: [String]
@@ -206,6 +208,20 @@ public final class AppStore {
             currentProject = openProjects.first
         }
         save()
+    }
+
+    /// Lists the repos again in the background, after the ones started before; a failure
+    /// shows as the sync error.
+    public func reloadRepos() {
+        let previous = reloadingRepos
+        reloadingRepos = Task {
+            await previous?.value
+            do {
+                try await loadRepos()
+            } catch {
+                syncError = error as? APIError ?? .transport(String(describing: error))
+            }
+        }
     }
 
     public func repo(_ name: String) -> Repo? {

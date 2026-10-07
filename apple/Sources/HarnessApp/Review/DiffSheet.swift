@@ -10,6 +10,7 @@ struct DiffSheet: View {
 
     let approvalID: String
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
     @State private var layout = Layout.split
     @State private var collapsed: Set<String> = []
     @State private var failure: String?
@@ -63,8 +64,8 @@ struct DiffSheet: View {
         }
         .foregroundStyle(Palette.t1)
         .frame(maxWidth: 1180, maxHeight: .infinity)
-        .sheetGlass(radius: DesignTokens.Radius.sheet)
-        .shadow(color: Palette.glassShadow, radius: 30, y: 18)
+        .sheetGlass(radius: glass.sheetRadius)
+        .shadow(color: glass.shadow, radius: 30, y: 18)
         .task(id: approvalID) { await load(session) }
     }
 
@@ -146,6 +147,7 @@ private struct FileSection: View {
     let layout: DiffSheet.Layout
     let collapsed: Bool
     let toggle: () -> Void
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -181,7 +183,7 @@ private struct FileSection: View {
                 .frame(height: 36)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: 12))
+            .buttonStyle(RowHoverStyle(radius: glass.radius.card))
             if !collapsed {
                 Rectangle().fill(Palette.hair).frame(height: 1)
                 if file.binary {
@@ -205,9 +207,9 @@ private struct FileSection: View {
                 }
             }
         }
-        .background(Palette.glassClear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hair))
+        .background(glass.subtle, in: glass.rounded(glass.radius.card))
+        .clipShape(glass.rounded(glass.radius.card))
+        .overlay(glass.rounded(glass.radius.card).strokeBorder(Palette.hair))
     }
 
     private func note(_ text: String) -> some View {

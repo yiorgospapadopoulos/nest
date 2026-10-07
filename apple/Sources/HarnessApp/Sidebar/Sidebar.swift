@@ -7,6 +7,7 @@ struct Sidebar: View {
     static let railWidth = 56.0
 
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let collapsed = shell.projectState.leftCollapsed
@@ -19,7 +20,7 @@ struct Sidebar: View {
         }
         .frame(width: collapsed ? Self.railWidth : Self.width)
         .frame(maxHeight: .infinity)
-        .panelGlass(radius: DesignTokens.Radius.panel)
+        .panelGlass(radius: glass.radius.panel)
         .confirmationDialog(
             "Delete this chat?", isPresented: deleteBinding, titleVisibility: .visible
         ) {
@@ -46,6 +47,7 @@ struct Sidebar: View {
 private struct SidebarFull: View {
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let project = shell.project ?? ""
@@ -75,13 +77,17 @@ private struct SidebarFull: View {
                 Label("New chat", systemImage: Icon.plus)
                     .frame(maxWidth: .infinity)
                     .frame(height: 32)
-                    .background(accent.accent, in: RoundedRectangle(cornerRadius: 11))
+                    .background(
+                        accent.accent,
+                        in: glass.rounded(min(glass.radius.item + 1, glass.radius.control))
+                    )
                     .foregroundStyle(accent.onAccent)
                     .font(.ui(TypeSize.callout, .semibold))
                     .labelStyle(TightLabelStyle())
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
             .padding(.bottom, 4)
 
             ScrollView {
@@ -111,12 +117,13 @@ private struct GroupSection: View {
     let group: SidebarGroup
     let project: String
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         if group.kind == .archived {
             let open = shell.archivedOpen.contains(project)
             Button {
-                withAnimation(.smooth(duration: 0.2)) {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
                     if open {
                         shell.archivedOpen.remove(project)
                     } else {
@@ -131,10 +138,9 @@ private struct GroupSection: View {
                 }
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
             .accessibilityLabel("Archived, \(group.entries.count)")
-            if open {
-                rows
-            }
+            ArchivedRows(open: open) { rows }
         } else {
             header { marker }
             rows
@@ -199,7 +205,7 @@ struct AccountRow: View {
                 .padding(4)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: 10))
+            .buttonStyle(RowHoverStyle())
             .padding(.vertical, -4)
             .padding(.leading, -4)
             .help("Connectors")
@@ -223,6 +229,30 @@ struct SettingsButton: View {
         .buttonStyle(.harness(.ghost, iconOnly: true))
         .help("Settings")
         .accessibilityLabel("Settings")
+    }
+}
+
+/// The Archived group's rows, folding under its header: their height closes to nothing
+/// as they fade, so nothing slides and the groups above stay put. They stay laid out
+/// while closed to know the height to open to.
+private struct ArchivedRows<Rows: View>: View {
+    let open: Bool
+    @ViewBuilder let rows: Rows
+    @State private var height: CGFloat?
+
+    var body: some View {
+        VStack(spacing: 0) { rows }
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: {
+                height = $0
+            }
+            .frame(height: open ? height : 0, alignment: .top)
+            .clipped()
+            .opacity(open ? 1 : 0)
+            .allowsHitTesting(open)
+            .accessibilityHidden(!open)
     }
 }
 
@@ -271,6 +301,7 @@ private struct SidebarRail: View {
                     Avatar(name: shell.accountName)
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .help("\(shell.accountName), Connectors")
                 SettingsButton()
             }
@@ -288,27 +319,27 @@ private struct RailChat: View {
     let isOpen: Bool
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
     @State private var hovering = false
 
     var body: some View {
         let tone = tone
+        let shape = glass.rounded(min(glass.radius.item + 2, 12))
         Text(Initials.of(entry.title))
             .font(.ui(TypeSize.label, .bold))
             .foregroundStyle(Palette.t1)
             .frame(width: 36, height: 36)
             .background(
-                isOpen ? accent.soft : hovering ? Palette.fill2 : Palette.fill,
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                isOpen ? accent.soft : hovering ? Palette.fill2 : Palette.fill, in: shape
             )
             .overlay {
                 if isOpen {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(accent.accent, lineWidth: 1.5)
+                    shape.strokeBorder(accent.accent, lineWidth: 1.5)
                 }
             }
             .overlay(alignment: .topTrailing) {
                 StatusDot(tone: tone, hollow: hollow, size: 10, pulses: false)
-                    .background(Circle().fill(Palette.glassStrong).padding(-2))
+                    .background(Circle().fill(glass.surface).padding(-2))
                     .offset(x: 2, y: -2)
             }
             .overlay(alignment: .bottomTrailing) {
@@ -318,6 +349,7 @@ private struct RailChat: View {
                 }
             }
             .contentShape(Rectangle())
+            .pointerStyle(.link)
             .onHover { hovering = $0 }
             .onTapGesture { shell.openChat(entry.id) }
             .onDrag {

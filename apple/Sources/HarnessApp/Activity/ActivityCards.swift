@@ -134,7 +134,7 @@ private struct AgentRow: View {
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: 12))
+            .buttonStyle(RowHoverStyle())
             if expanded {
                 StepList(agent: agent)
             }
@@ -382,7 +382,7 @@ private struct GoalRow: View {
                 .padding(.vertical, 9)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: 12))
+            .buttonStyle(RowHoverStyle())
             if expanded && hasTasks {
                 Checklist(goals: goals)
             }

@@ -42,6 +42,8 @@ public protocol HarnessAPI: Sendable {
     func claudeChat(_ id: String) async throws -> ClaudeChat
     /// The chat's read-only history, as session events numbered from 1.
     func claudeChatEvents(_ id: String) async throws -> [Event]
+    /// Archives or unarchives the chat in harness; answers the updated chat.
+    func setClaudeChatArchived(_ id: String, archived: Bool) async throws -> ClaudeChat
     /// Continues the chat in harness: the new session, or the one that already continues it.
     func adoptClaudeChat(_ id: String) async throws -> Session
 

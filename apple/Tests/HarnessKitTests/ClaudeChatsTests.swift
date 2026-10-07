@@ -28,6 +28,16 @@ import Testing
         #expect(automated.automated)
     }
 
+    @Test func archivedIsReadAndMissingMeansNotArchived() {
+        // The fixture's first chat says false and its second leaves the key out.
+        #expect(Fixture.claudeChats.map(\.archived) == [false, false])
+        let archived = Fixture.decode(ClaudeChat.self, "claude_chat_archived")
+        #expect(archived.archived)
+        #expect(archived.id == Fixture.claudeChats[0].id)
+        #expect(!Fixture.claudeChat("c").archived)
+        #expect(Fixture.claudeChat("c", archived: true).archived)
+    }
+
     @Test func paneIDsAreTheirOwnNamespace() {
         let chat = Fixture.claudeChat("abc")
         #expect(chat.paneID == "claude-code:abc")
@@ -178,6 +188,76 @@ import Testing
         #expect(api.calls.last == "adoptClaudeChat \(chat.id)")
     }
 
+    @Test func archivingMarksTheChatAtOnceAndKeepsTheDaemonsAnswer() async throws {
+        try await store.load()
+        let id = Fixture.claudeChats[0].id
+        let gate = AsyncStream<Void>.makeStream()
+        api.set {
+            $0.gates["setClaudeChatArchived"] = gate.stream
+            // The daemon's copy moved on since the list was read.
+            $0.claudeChats[0].messageCount = 15
+        }
+
+        let task = Task { try await store.setArchived(id, true) }
+        try await waitFor { api.calls.last == "setClaudeChatArchived \(id) true" }
+        // Optimistic: the sidebar moves it before the daemon answers.
+        #expect(store.chat(id)?.archived == true)
+        gate.continuation.finish()
+        try await task.value
+
+        var answer = Fixture.claudeChats[0]
+        answer.archived = true
+        answer.messageCount = 15
+        #expect(store.chat(id) == answer)
+        // Archived chats stay listed, so Unarchive can find them.
+        #expect(store.chats(in: "todo-ui").count == 2)
+
+        try await store.setArchived(id, false)
+        #expect(store.chat(id)?.archived == false)
+        #expect(api.calls.last == "setClaudeChatArchived \(id) false")
+    }
+
+    @Test func aFailedArchiveRollsBackAndThrows() async throws {
+        try await store.load()
+        let id = Fixture.claudeChats[1].id
+        api.fail("setClaudeChatArchived")
+
+        await #expect(throws: APIError.server(status: 500, detail: "boom")) {
+            try await store.setArchived(id, true)
+        }
+
+        #expect(store.chat(id) == Fixture.claudeChats[1])
+    }
+
+    @Test func aRollbackKeepsWhatARefreshBroughtMeanwhile() async throws {
+        try await store.load()
+        let id = Fixture.claudeChats[0].id
+        let gate = AsyncStream<Void>.makeStream()
+        api.set {
+            $0.gates["setClaudeChatArchived"] = gate.stream
+            $0.failures["setClaudeChatArchived"] = APIError.notFound("No such chat")
+        }
+        let task = Task { try await store.setArchived(id, true) }
+        try await waitFor { store.chat(id)?.archived == true }
+        api.set { $0.claudeChats[0].title = "Renamed in Claude Code" }
+        // The refresh still sees the chat archived, as the optimistic update left it.
+        api.set { $0.claudeChats[0].archived = true }
+        try await store.load(repo: "todo-ui")
+        gate.continuation.finish()
+
+        await #expect(throws: APIError.notFound("No such chat")) { try await task.value }
+
+        #expect(store.chat(id)?.title == "Renamed in Claude Code")
+        #expect(store.chat(id)?.archived == false)
+    }
+
+    @Test func archivingAChatAlreadyThereOrUnknownAsksNothing() async throws {
+        try await store.load()
+        try await store.setArchived(Fixture.claudeChats[0].id, false)
+        try await store.setArchived("missing", true)
+        #expect(api.calls == ["claudeChats all automated=false"])
+    }
+
     @Test func aFailedAdoptKeepsTheChat() async throws {
         try await store.load()
         api.fail("adoptClaudeChat")
@@ -219,6 +299,34 @@ import Testing
 
         let only = SidebarGroup.merge([], chats: [Fixture.claudeChat("c")])
         #expect(only.map(\.kind) == [.idle])
+    }
+
+    @Test func archivedChatsJoinArchivedAndLeaveIdle() {
+        let archivedSession = Fixture.session("old", updatedAt: Date(timeIntervalSince1970: 500))
+        let merged = SidebarGroup.merge(
+            groups([(.idle, [Fixture.session("idle")]), (.archived, [archivedSession])]),
+            chats: [
+                Fixture.claudeChat("live", lastActivity: 300),
+                Fixture.claudeChat("gone", lastActivity: 900, archived: true),
+                Fixture.claudeChat("older", lastActivity: 100, archived: true),
+            ])
+
+        #expect(merged.map(\.kind) == [.idle, .archived])
+        #expect(merged[0].entries.map(\.id) == ["idle", "claude-code:live"])
+        #expect(merged[1].entries.map(\.id) == ["claude-code:gone", "old", "claude-code:older"])
+    }
+
+    @Test func anArchivedGroupIsAddedForArchivedChatsAlone() {
+        let merged = SidebarGroup.merge(
+            groups([(.running, [Fixture.session("run")])]),
+            chats: [Fixture.claudeChat("gone", archived: true)])
+        #expect(merged.map(\.kind) == [.running, .archived])
+        #expect(merged[1].entries.map(\.id) == ["claude-code:gone"])
+
+        let between = SidebarGroup.merge(
+            groups([(.pinned, []), (.done, [])]),
+            chats: [Fixture.claudeChat("a", archived: true), Fixture.claudeChat("i")])
+        #expect(between.map(\.kind) == [.pinned, .idle, .done, .archived])
     }
 
     @Test func withoutChatsTheGroupsStayAsTheyAre() {

@@ -261,6 +261,14 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "GET", "/api/claude-chats/c1/events", response: Fixture.text("claude_chat_events")
         ) { _ = try await $0.claudeChatEvents("c1") },
+        RouteCase(
+            "PUT", "/api/claude-chats/c1/archived", body: #"{"archived":true}"#,
+            response: Fixture.text("claude_chat_archived")
+        ) { _ = try await $0.setClaudeChatArchived("c1", archived: true) },
+        RouteCase(
+            "PUT", "/api/claude-chats/c1/archived", body: #"{"archived":false}"#,
+            response: claudeChatJSON
+        ) { _ = try await $0.setClaudeChatArchived("c1", archived: false) },
         RouteCase("POST", "/api/claude-chats/c1/adopt", response: sessionJSON) {
             _ = try await $0.adoptClaudeChat("c1")
         },

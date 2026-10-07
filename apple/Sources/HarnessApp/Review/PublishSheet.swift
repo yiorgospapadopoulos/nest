@@ -133,6 +133,7 @@ private struct SheetTextField: View {
     @Binding var text: String
     let lines: Int
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -145,9 +146,9 @@ private struct SheetTextField: View {
             .focused($focused)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Palette.glassClear, in: RoundedRectangle(cornerRadius: 10))
+            .background(glass.subtle, in: glass.rounded(glass.radius.item))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                glass.rounded(glass.radius.item)
                     .strokeBorder(
                         focused ? accent.accent : Palette.hair, lineWidth: focused ? 2 : 1)
             )

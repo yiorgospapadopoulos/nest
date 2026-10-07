@@ -19,6 +19,19 @@ public struct ConnectorSection: Sendable, Hashable, Identifiable {
 
     public var id: ConnectorSectionKind { kind }
     public var title: String { kind.title }
+
+    /// What the folded group's header warns about, such as "1 needs sign-in, 2 failed";
+    /// nil when nothing needs sign-in or failed.
+    public var attention: String? {
+        let states = connectors.map(\.state)
+        let signIns = states.count(where: { $0 == .needsSignIn })
+        let failures = states.count(where: { $0 == .failed })
+        let parts = [
+            signIns > 0 ? "\(signIns) \(signIns == 1 ? "needs" : "need") sign-in" : nil,
+            failures > 0 ? "\(failures) failed" : nil,
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
 }
 
 /// A connector's status as the sheet's pill shows it.

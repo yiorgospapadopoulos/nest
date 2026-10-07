@@ -8,6 +8,7 @@ struct RightPanel: View {
     static let railWidth = 56.0
 
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let state = shell.projectState
@@ -17,9 +18,9 @@ struct RightPanel: View {
                 ActivityRail(counts: counts)
                     .frame(width: Self.railWidth)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .panelGlass(radius: DesignTokens.Radius.panel)
+                    .panelGlass(radius: glass.radius.panel)
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: glass.spacing.gap) {
                     ForEach(RightCard.allCases, id: \.self) { card in
                         CardView(card: card, open: state.openCards.contains(card), counts: counts)
                     }
@@ -105,6 +106,7 @@ private struct CardView: View {
     let open: Bool
     let counts: PanelCounts
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
@@ -132,7 +134,7 @@ private struct CardView: View {
                 .frame(height: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: 18))
+            .buttonStyle(RowHoverStyle(radius: glass.radius.pane))
             .accessibilityLabel("\(card.title), \(counts.count(card))")
             .accessibilityAddTraits(open ? .isSelected : [])
             if open {
@@ -152,7 +154,7 @@ private struct CardView: View {
             }
         }
         .frame(maxHeight: open ? .infinity : 44, alignment: .top)
-        .panelGlass(radius: 18)
+        .panelGlass(radius: glass.radius.pane)
     }
 }
 
@@ -204,6 +206,7 @@ struct RailButtonStyle: ButtonStyle {
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
                 .contentShape(Rectangle())
+                .pointerStyle(.link)
         }
     }
 }
@@ -224,6 +227,7 @@ struct ChatLink: View {
                 .underline(hovering)
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .onHover { hovering = $0 }
         .help("Open this chat")
     }

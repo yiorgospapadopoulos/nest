@@ -18,11 +18,13 @@ public struct ClaudeChat: Decodable, Sendable, Hashable, Identifiable {
     public var openInClaudeCode: Bool
     /// Started by a script or tool rather than a person; hidden unless asked for.
     public var automated: Bool
+    /// Archived in harness: listed under Archived instead of Idle.
+    public var archived: Bool
 
     public init(
         id: String, repo: String, title: String, cwd: String, worktree: String? = nil,
         createdAt: Date, lastActivityAt: Date, messageCount: Int,
-        openInClaudeCode: Bool = false, automated: Bool = false
+        openInClaudeCode: Bool = false, automated: Bool = false, archived: Bool = false
     ) {
         self.id = id
         self.repo = repo
@@ -34,17 +36,18 @@ public struct ClaudeChat: Decodable, Sendable, Hashable, Identifiable {
         self.messageCount = messageCount
         self.openInClaudeCode = openInClaudeCode
         self.automated = automated
+        self.archived = archived
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, repo, title, cwd, worktree, automated
+        case id, repo, title, cwd, worktree, automated, archived
         case createdAt = "created_at"
         case lastActivityAt = "last_activity_at"
         case messageCount = "message_count"
         case openInClaudeCode = "open_in_claude_code"
     }
 
-    /// `automated` is optional, since older daemons do not send it.
+    /// `automated` and `archived` are optional, since older daemons do not send them.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -57,7 +60,8 @@ public struct ClaudeChat: Decodable, Sendable, Hashable, Identifiable {
             lastActivityAt: try container.decode(Date.self, forKey: .lastActivityAt),
             messageCount: try container.decode(Int.self, forKey: .messageCount),
             openInClaudeCode: try container.decode(Bool.self, forKey: .openInClaudeCode),
-            automated: try container.decodeIfPresent(Bool.self, forKey: .automated) ?? false)
+            automated: try container.decodeIfPresent(Bool.self, forKey: .automated) ?? false,
+            archived: try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false)
     }
 
     /// The workspace pane id of this chat; it cannot clash with session or draft ids.

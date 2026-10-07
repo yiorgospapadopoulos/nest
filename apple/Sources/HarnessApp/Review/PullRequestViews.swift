@@ -26,6 +26,7 @@ struct PRChip: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .fixedSize()
         .help("Pull request #\(String(pr.number)): \(PRBadge.checksSummary(pr.checks))")
         .accessibilityLabel(
@@ -176,6 +177,7 @@ struct MergeBody: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .help("Open on GitHub")
                 .padding(.top, 7)
                 HStack(spacing: 6) {

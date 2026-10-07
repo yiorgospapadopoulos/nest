@@ -152,6 +152,11 @@ public struct APIClient: HarnessAPI {
         try await get("claude-chats", id, "events")
     }
 
+    public func setClaudeChatArchived(_ id: String, archived: Bool) async throws -> ClaudeChat {
+        try await call(
+            "PUT", ["claude-chats", id, "archived"], body: ArchiveRequest(archived: archived))
+    }
+
     public func adoptClaudeChat(_ id: String) async throws -> Session {
         try await call("POST", ["claude-chats", id, "adopt"])
     }

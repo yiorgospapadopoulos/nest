@@ -135,6 +135,7 @@ private struct PlanBody: View {
     let style: ApprovalCard.Style
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let note = Binding(
@@ -150,8 +151,8 @@ private struct PlanBody: View {
                     plan
                 }
             }
-            .background(Palette.glassClear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.hair))
+            .background(glass.subtle, in: glass.rounded(glass.radius.item))
+            .overlay(glass.rounded(glass.radius.item).strokeBorder(Palette.hair))
             .padding(.top, 8)
             CardField(placeholder: "Note for Claude (optional)", text: note) {
                 shell.keepPlanning(approval)
@@ -247,6 +248,7 @@ private struct OptionList: View {
     let question: Question
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let chosen = shell.approvals.selection(for: approval, question: question)
@@ -287,16 +289,16 @@ private struct OptionList: View {
                     .padding(.horizontal, 9)
                     .padding(.vertical, 7)
                     .background(
-                        on ? accent.soft : Palette.glassClear,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        on ? accent.soft : glass.subtle, in: glass.rounded(glass.radius.item)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        glass.rounded(glass.radius.item)
                             .strokeBorder(on ? accent.accent : Palette.hair)
                     )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
@@ -340,6 +342,7 @@ private struct ReviewBody: View {
         let session = shell.sessions.session(approval.sessionID)
         let violation = session?.gitViolation ?? false
         let acknowledged = shell.approvals.acknowledgedViolations.contains(approval.id)
+        let git = shell.app.repo(approval.repo)?.git != false
         VStack(alignment: .leading, spacing: 0) {
             if style == .panel {
                 Text(approval.title)
@@ -354,8 +357,10 @@ private struct ReviewBody: View {
                     DiffBar(additions: review.additions, deletions: review.deletions)
                 }
                 Spacer(minLength: 4)
-                Button("View changes") { shell.show(.diff(approval.id)) }
-                    .buttonStyle(LinkButtonStyle())
+                if git {
+                    Button("View changes") { shell.show(.diff(approval.id)) }
+                        .buttonStyle(LinkButtonStyle())
+                }
             }
             .padding(.top, 6)
             .padding(.bottom, 4)
@@ -406,7 +411,8 @@ private struct ReviewBody: View {
                         .grows(style)
                     }
                     .buttonStyle(.card(.approve))
-                    .disabled(violation && !acknowledged)
+                    .disabled(!git || (violation && !acknowledged))
+                    .help(git ? "" : "Not a git repository: nothing to commit")
                     Button("Reject") {
                         withAnimation(.smooth(duration: 0.2)) { confirmingReject = true }
                     }
@@ -535,13 +541,16 @@ struct DiffBar: View {
     }
 }
 
-/// The card's button row.
+/// The card's button row; in a narrow pane the buttons stack instead of spilling out.
 struct ActionRow<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        HStack(spacing: 6) { content() }
-            .padding(.top, 9)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { content() }
+            VStack(alignment: .leading, spacing: 6) { content() }
+        }
+        .padding(.top, 9)
     }
 }
 
@@ -551,6 +560,7 @@ struct CardField: View {
     @Binding var text: String
     var submit: (() -> Void)?
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -563,9 +573,9 @@ struct CardField: View {
             .onSubmit { submit?() }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
-            .background(Palette.glassClear, in: RoundedRectangle(cornerRadius: 9))
+            .background(glass.subtle, in: glass.rounded(glass.radius.small + 2))
             .overlay(
-                RoundedRectangle(cornerRadius: 9)
+                glass.rounded(glass.radius.small + 2)
                     .strokeBorder(
                         focused ? accent.accent : Palette.hair, lineWidth: focused ? 2 : 1)
             )
@@ -602,6 +612,7 @@ struct LinkButtonStyle: ButtonStyle {
                 .padding(.vertical, 2)
                 .background(hovering ? Palette.fill : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
+                .pointerStyle(.link)
         }
     }
 }
@@ -637,6 +648,7 @@ struct Switch: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .accessibilityAddTraits(isOn ? [.isToggle, .isSelected] : .isToggle)
     }
 }

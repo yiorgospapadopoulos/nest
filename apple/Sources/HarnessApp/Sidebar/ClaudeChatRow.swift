@@ -7,7 +7,11 @@ struct ClaudeChatRow: View {
     let chat: ClaudeChat
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
+    @Environment(\.revealsHoverControls) private var revealsHoverControls
     @State private var hovering = false
+
+    private var showsMenu: Bool { hovering || revealsHoverControls }
 
     var body: some View {
         let state = shell.projectState
@@ -40,14 +44,23 @@ struct ClaudeChatRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Room for the "..." button, so the lines end before it rather than under it.
+            .padding(.trailing, showsMenu ? 24 : 0)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.vertical, glass.spacing.rowPaddingY)
         .background(
             isSelected ? accent.soft : (isOpen || hovering) ? Palette.fill : .clear,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            in: glass.rounded(glass.radius.item)
         )
+        .overlay(alignment: .trailing) {
+            if showsMenu {
+                RowActionsMenu(title: chat.title) { ClaudeChatActions(chat: chat) }
+                    .padding(.trailing, 5)
+            }
+        }
         .contentShape(Rectangle())
+        .pointerStyle(.link)
         .onHover { hovering = $0 }
         .onTapGesture { shell.openChat(pane) }
         .onDrag {
@@ -68,7 +81,7 @@ struct ClaudeChatRow: View {
     }
 }
 
-/// Open and continue in harness.
+/// Open, continue in harness, and archive or unarchive.
 struct ClaudeChatActions: View {
     let chat: ClaudeChat
     @Environment(Shell.self) private var shell
@@ -83,6 +96,12 @@ struct ClaudeChatActions: View {
             shell.continueInHarness(chat.paneID)
         } label: {
             Label("Continue in harness", systemImage: Icon.spark)
+        }
+        Divider()
+        Button {
+            shell.setArchived(chat, !chat.archived)
+        } label: {
+            Label(chat.archived ? "Unarchive" : "Archive", systemImage: Icon.archive)
         }
     }
 }
@@ -106,12 +125,14 @@ struct ClaudeCodeMarker: View {
 
 /// The rail's corner mark for a Claude Code chat.
 struct ClaudeCodeBadge: View {
+    @Environment(\.glass) private var glass
+
     var body: some View {
         Image(systemName: Icon.terminal)
             .font(.system(size: 7, weight: .bold))
             .foregroundStyle(Palette.t2)
             .frame(width: 14, height: 14)
-            .background(Palette.glassStrong, in: Circle())
+            .background(glass.surface, in: Circle())
             .overlay(Circle().strokeBorder(Palette.hair))
             .accessibilityHidden(true)
     }

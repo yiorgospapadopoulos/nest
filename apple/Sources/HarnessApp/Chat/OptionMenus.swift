@@ -1,12 +1,14 @@
 import HarnessKit
 import SwiftUI
 
-/// A selector that reads as plain text, highlights on hover and opens a list.
+/// A selector that reads as plain text, highlights on hover and opens a list. Its title
+/// truncates when the row is short of room.
 struct QuietMenu<Items: View>: View {
     let title: String
     let help: String
     @ViewBuilder let items: () -> Items
     @State private var hovering = false
+    @Environment(\.paneFit) private var fit
 
     var body: some View {
         Menu {
@@ -16,7 +18,8 @@ struct QuietMenu<Items: View>: View {
                 .font(.ui(TypeSize.callout, .medium))
                 .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
                 .lineLimit(1)
-                .padding(.horizontal, 7)
+                .truncationMode(.tail)
+                .padding(.horizontal, fit.compact ? 4 : 7)
                 .frame(height: 26)
                 .background(
                     hovering ? Palette.fill : .clear,
@@ -26,8 +29,9 @@ struct QuietMenu<Items: View>: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
         .onHover { hovering = $0 }
         .help(help)
         .accessibilityLabel("\(help): \(title)")
@@ -55,9 +59,11 @@ struct ModelMenu: View {
     let chat: String
     let model: String?
     @Environment(Shell.self) private var shell
+    @Environment(\.paneFit) private var fit
 
     var body: some View {
-        QuietMenu(title: shell.agents.label(for: model), help: "Model") {
+        let label = shell.agents.label(for: model)
+        QuietMenu(title: fit.compact ? PaneFit.shortModel(label) : label, help: "Model") {
             ModelItems(current: model) { shell.setModel($0, for: chat) }
         }
     }
@@ -93,9 +99,11 @@ struct EffortMenu: View {
     /// Open chats take a new effort from their next message on.
     let isOpen: Bool
     @Environment(Shell.self) private var shell
+    @Environment(\.paneFit) private var fit
 
     var body: some View {
-        QuietMenu(title: effort?.label ?? "Default", help: "Thinking") {
+        let label = fit.compact ? effort?.shortLabel : effort?.label
+        QuietMenu(title: label ?? "Default", help: "Thinking") {
             ThinkingItems(model: model, effort: effort) { level in
                 if let level {
                     shell.setEffort(level, for: chat)
@@ -140,9 +148,11 @@ struct PermissionMenu: View {
     let chat: String
     let mode: PermissionMode?
     @Environment(Shell.self) private var shell
+    @Environment(\.paneFit) private var fit
 
     var body: some View {
-        QuietMenu(title: mode?.label ?? "Ask", help: "Permission mode") {
+        let label = fit.compact ? mode?.shortLabel : mode?.label
+        QuietMenu(title: label ?? "Ask", help: "Permission mode") {
             Section("Permission mode") {
                 ForEach(PermissionMode.selectable, id: \.self) { option in
                     OptionItem(title: option.label, detail: option.summary, checked: mode == option)
