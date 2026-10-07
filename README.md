@@ -13,7 +13,7 @@ Status: early development.
 | `daemon/` | Python daemon (FastAPI, websockets, Claude Agent SDK, SQLite). Runs on the Mac as a background service. |
 | `web/` | iPhone PWA (React, TypeScript, Vite), served by the daemon. |
 | `apple/` | Native Mac app: a Swift package with the `HarnessKit` logic library and the `HarnessApp` SwiftUI executable (D024). |
-| `design/` | `tokens.toml`, the design tokens shared by both clients (`make tokens` regenerates the CSS and Swift outputs). |
+| `design/` | `tokens.toml`, the design tokens shared by both clients (`make tokens` regenerates the CSS and Swift outputs). It includes the five glass themes (Clear, the default, Frosted, Smoke, Blue Grey and Deep): CSS variables `--glass-*` switched by `data-glass="<id>"`, Swift `DesignTokens.GlassTheme`. See D039. |
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ make check     # every quality gate: format, lint, types, tests with 100% covera
 make fmt       # auto-format and auto-fix lint
 make test      # tests only
 make check-apple  # Swift lint, build, tests with 100% HarnessKit coverage
-make app       # build apple/build/Harness.app (ad-hoc signed)
+make app       # build apple/build/Harness.app (signed with "Harness Local Signing" when present, else ad hoc; D042)
 make run-app   # build and open the Mac app
 make install-app  # build and copy Harness.app into /Applications
 make tokens    # regenerate design token outputs
@@ -39,6 +39,14 @@ make tokens    # regenerate design token outputs
 ## Mac app
 
 Approvals, questions and reviews are answered in the Needs you card or inline in the chat; reviews open a side-by-side diff and an approve sheet (commit message, push, pull request). Keyboard: Cmd-N new chat, Cmd-W close the focused pane, Cmd-1 to Cmd-9 project tabs, Cmd-Shift-[ and ] previous and next project, Cmd-K search and commands, Cmd-, settings, Cmd-Return send, Esc closes sheets. macOS notifications follow Settings > Notifications and are skipped for a chat that is on screen; the Dock badge counts pending approvals.
+
+To add a project, pick a folder. The root folder of a git repository works as before. Any other folder (outside git, even a new empty one) opens as a plain folder project: chats work in place in it, with no worktrees, branches, reviews, commits or pull requests, and git actions on it answer 409 `not_a_git_repository`. Ask Claude to initialize a repository there (`git init` is allowed; commits and pushes stay blocked) and the project turns into a normal git project at the end of that turn, or the next time projects are listed. See D041.
+
+The pointer shows what can be done (a pointing hand on buttons, rows and tabs, an open hand on pane headers that can be dragged). In Connectors (click the account name) the claude.ai connectors and the plugins sit in dropdowns, closed until clicked, with a count and a note when something needs sign-in or failed. Add folder (the + after the project tabs) opens the folder picker as a sheet with New Folder; a plain folder shows an Init chip in place of the branch, which opens a new chat with a prefilled (not sent) request to run `git init` (D041).
+
+To stop the Keychain asking again after every rebuild, create a self-signed code-signing certificate named `Harness Local Signing` once (Certificate Assistant > Create a Certificate, Self-Signed Root, Code Signing, then Always Trust for Code Signing in Keychain Access); `make app` signs with it when the login keychain has it (D042).
+
+Settings > Appearance picks the glass theme (Clear, Frosted, Smoke, Blue Grey, Deep) and the accent; the iPhone has the same choice in Account > Appearance. See D039.
 
 The window is see-through: it sits on the system's behind-window blur, so your real desktop shows through the glass (with Reduce Transparency on, macOS makes it opaque). See D038.
 
@@ -110,7 +118,7 @@ The search field at the top of the Projects tab finds chats across every project
 
 ## Models, account and agent defaults
 
-The model and thinking selectors list exactly what Claude Code offers: the daemon reads the model list and the signed-in account from Claude Code's startup handshake (a short-lived process with your user settings, no tools and no transcript; no model call, no tokens) on start and every 6 hours, and every agent run refreshes them. They are cached in the database; until Claude Code has answered once, the selectors offer the aliases Default, Opus, Sonnet and Haiku. Thinking shows only the levels the chosen model takes (Extra high and Max included) and is not available for Haiku. Account > Profile shows the name (when Claude Code reports one) and plan; the email stays hidden until you tap Show. See D038.
+The model and thinking selectors list exactly what Claude Code offers: the daemon reads the model list and the signed-in account from Claude Code's startup handshake (a short-lived process with your user settings, no tools and no transcript; no model call, no tokens) on start and every 6 hours, and every agent run refreshes them. They are cached in the database; until Claude Code has answered once, the selectors offer the aliases Default, Opus, Sonnet and Haiku. Thinking shows only the levels the chosen model takes (Extra high and Max included) and is not available for Haiku. Account > Profile shows the name and plan; the name is the one Claude Code shows for your account, read from Claude Code's `~/.claude.json` (`oauthAccount.displayName`, else `fullName`; nothing else in that file is used, and it is never changed) when the handshake sends none (D039); the email stays hidden until you tap Show. See D038.
 
 New chats use the agent defaults (Settings > Agent defaults on the Mac, Account > Agent defaults in the iPhone app, or `PUT /api/agents/defaults`) for anything the composer leaves unset. New chats work in place unless the defaults say Worktree; a repo's `[worktree] default = true` or `false` overrides that for the repo, and a repo file without it follows the default. A thinking level the chosen model does not take is refused (422) when chosen, and dropped when it only comes from the defaults.
 
@@ -147,11 +155,17 @@ refresh_minutes = 3   # 0 turns the automatic refresh off; Refresh still works
 
 harness lists the Claude Code chats of each registered repo (from the terminal, the desktop app or an editor), read from `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR`), never written. Chats a program started through an Agent SDK (entrypoint `sdk-py` and the like, such as automated security reviews) are hidden unless "Show automated chats" is switched on (per device). A chat opens read-only; "Continue in harness" turns it into a harness session in the chat's own folder, and the next message resumes it. Sending is refused while the chat is open in Claude Code. New harness worktrees live in `<repo>/.claude/worktrees/harness-<id>` (excluded in the repo's `.git/info/exclude`), so `claude --resume` in the project finds harness chats too. The Claude desktop app only lists chats it started itself. See D028.
 
+Archive a Claude Code chat you are done with from its actions (the dots button, long-press or swipe left on iPhone): it moves into the Archived folder with archived harness chats, and Unarchive brings it back. The archive is harness's own state (a table in its database), never written to Claude Code, so Claude Code and the Claude app still show the chat. harness can list more chats than the Claude app: it also finds chats from editors such as the VS Code extension and the terminal, and it cannot see chats you archived in the Claude app, since that state is not in Claude Code's transcripts. Archiving does not stop "Continue in harness". See D040.
+
 ## Claude Code chats in the Mac app
 
 Chats you started in Claude Code (Terminal or the Claude desktop app) for a registered project appear in the sidebar's Idle group with a "Claude Code" label. Opening one shows its history read-only; **Continue in harness** takes it over. Automated SDK runs are hidden unless **Settings > Claude Code chats > Show automated chats** is on. Sending is refused while the chat is open in Claude Code.
 
 Dictation uses Apple's on-device `SpeechAnalyzer` (macOS 26 and later), downloading the language model on first use, with project names and coding terms as hints; it falls back to the older speech recognizer when needed.
+
+## What the agent is doing
+
+While a turn runs, the end of the transcript shows a live "Working... 12s" (or "Thinking... 4s" while the agent thinks), timed from the turn's start; when the turn ends, a small line says "Worked for 1m 12s", or "Stopped after 40s" for an interrupted or failed turn. Each thinking block is a collapsed "Thought for 8s" row that opens to the thinking (without a chevron when the model left the text out; "Thought" when the time is unknown, as in Claude Code's own transcripts). Two or more tool calls in a row collapse into one row such as "Running 2 commands, reading 1 file", which glows while any call runs, reads "Ran 3 commands, read 2 files, edited 1 file" when all are done, shows a failed count, and opens to the calls as they show on their own. Agents read "Running 3 agents, 2 done" then "Ran 3 agents"; the background bar glows while tasks run ("1 running task" for one). With reduced motion the glow is a static highlight. See D045.
 
 ## Claude Code conveniences
 
@@ -176,9 +190,9 @@ All routes need a device token (`Authorization: Bearer <token>` or the `harness_
 | Area | Routes |
 |---|---|
 | Devices | `POST /api/pairing/codes`, `POST /api/pairing/redeem`, `GET /api/devices`, `DELETE /api/devices/{id}` |
-| Repos | `GET/POST /api/repos`, `GET/DELETE /api/repos/{name}` (`?purge_sessions=true` also deletes its sessions; the folder is never touched), `GET /api/repos/{name}/link-suggestions`, `PUT /api/repos/{name}/worktree` (`default` true or false overrides the agent default mode for the repo; null follows it), `GET /api/repos/{name}/commands` (slash commands of the repo's latest agent run, for new chats) |
+| Repos | `GET/POST /api/repos` (POST body `{path, name?}`: a git work tree root, or any folder outside git as a plain folder; each repo has `git` and `default_branch`, null for plain folders; a `repo.updated` event `{name, repo}` follows when a plain folder becomes a repository), `GET/DELETE /api/repos/{name}` (`?purge_sessions=true` also deletes its sessions; the folder is never touched), `GET /api/repos/{name}/link-suggestions`, `PUT /api/repos/{name}/worktree` (`default` true or false overrides the agent default mode for the repo; null follows it), `GET /api/repos/{name}/commands` (slash commands of the repo's latest agent run, for new chats) |
 | Sessions | `GET/POST /api/sessions`, `GET/PATCH/DELETE /api/sessions/{id}` (the detail adds `tasks`, `agents` and `background`, the running and completed subagents and background commands, and `queued`, the follow-ups waiting for the turn; every session has `context`, how full the context window is, and `stuck`, `{reason, since, details}` or null), `GET /api/sessions/{id}/events?after=&before=&limit=` (oldest first; with `limit`, the events nearest `before` when given, else nearest `after`, for paging around a search hit), `POST /api/sessions/{id}/messages` (202; while a turn runs the message is queued and `queued_message` is set, and with `interrupt: true` the turn is stopped and the message runs next, ahead of the queue; 409 with `code: "open_in_claude_code"` while Claude Code has the chat open), `DELETE /api/sessions/{id}/queue/{queued_id}`, `POST /api/sessions/{id}/interrupt`, `GET /api/sessions/{id}/commands` (slash commands and agents), `GET /api/sessions/{id}/files?q=` (up to 50 files for @ mentions) |
-| Claude Code chats | `GET /api/claude-chats?repo=&include_automated=` (chats of registered repos that harness does not own; automated ones only with `include_automated=true`, each with `entrypoint` and `automated`), `GET /api/claude-chats/{id}`, `GET /api/claude-chats/{id}/events` (read-only history as session events), `POST /api/claude-chats/{id}/adopt` (continue in harness: 201 with the new session, 200 with the existing one) |
+| Claude Code chats | `GET /api/claude-chats?repo=&include_automated=` (chats of registered repos that harness does not own; automated ones only with `include_automated=true`, each with `entrypoint` and `automated`), `GET /api/claude-chats/{id}`, `GET /api/claude-chats/{id}/events` (read-only history as session events), `POST /api/claude-chats/{id}/adopt` (continue in harness: 201 with the new session, 200 with the existing one), `PUT /api/claude-chats/{id}/archived` (`{archived}`; harness-only, returns the chat; archived chats stay in the list with `archived: true`) |
 | Review | `GET /api/sessions/{id}/diff`, `POST /api/sessions/{id}/approve`, `POST /api/sessions/{id}/reject`, `POST /api/sessions/{id}/feedback` |
 | Approvals | `GET /api/approvals`, `GET /api/approvals/{id}`, `POST /api/approvals/{id}/resolve` (kinds `permission`, `question`, `plan` with `decision` `approve` or `keep_planning`, `review`, and `merge`, which only takes `{"dismiss": true}`) |
 | Pull requests | `GET /api/prs?repo=&state=open\|merged\|closed\|all` (default open; pull requests harness opened, each `{session_id, repo, session_title, session_state, url, summary, pr}`), `POST /api/sessions/{id}/merge` (`{method: squash\|merge\|rebase, delete_branch}`, defaults squash and true; closes the session and removes its worktree; 502 with `step` and `stderr` when gh fails, 409 without an open pull request or while the agent works), `POST /api/sessions/{id}/pr/refresh` (read it from GitHub now; 502 when gh fails). Every session has `pr` (last known status or null) and `pr_summary` |
@@ -190,6 +204,6 @@ All routes need a device token (`Authorization: Bearer <token>` or the `harness_
 | Notifications | `GET /api/push/vapid-key`, `POST/DELETE /api/push/subscribe` (the caller's own subscriptions), `POST /api/push/test`, `GET/PUT /api/notifications/settings` |
 | Connectors and usage | `GET /api/connectors`, `GET /api/usage/month?year=&month=` (probe tokens apart in `probes`), `GET /api/usage/limits`, `POST /api/usage/refresh` (429 with `Retry-After` within 20 s of the last probe, 502 when Claude reports nothing), `GET/PUT /api/usage/settings`, `POST /api/clients/visibility` |
 | Local apps | `POST /api/sessions/{id}/open-in-claude-code`, `POST /api/repos/{name}/open` (`vscode`, `finder`, `terminal`) |
-| Events | `WS /api/events?after=<id>` (replay, then live; text deltas and `claude_chats.updated` arrive with `id: null`) |
+| Events | `WS /api/events?after=<id>` (replay, then live; text deltas, `session.thinking` and `claude_chats.updated` arrive with `id: null`) |
 
 Coverage is enforced at 100%: daemon line and branch coverage, and web lines, branches, functions and statements.
