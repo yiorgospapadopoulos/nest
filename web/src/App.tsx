@@ -1,7 +1,73 @@
-export function App() {
+import type { ReactNode } from "react";
+import type { Api } from "./api/client.ts";
+import type { SocketFactory } from "./api/events.ts";
+import { AppearanceProvider } from "./appearance/AppearanceProvider.tsx";
+import { Pairing } from "./screens/Pairing.tsx";
+import { Shell } from "./screens/Shell.tsx";
+import { useStore } from "./store/context.ts";
+import { StoreProvider } from "./store/StoreProvider.tsx";
+import { Toast } from "./ui/Toast.tsx";
+
+interface Props {
+  api: Api;
+  connect: SocketFactory;
+  storage?: () => Storage;
+  location?: { protocol: string; host: string };
+}
+
+export function App({ api, connect, storage, location }: Props) {
   return (
-    <main>
-      <h1>harness</h1>
+    <AppearanceProvider {...(storage === undefined ? {} : { storage })}>
+      <StoreProvider
+        api={api}
+        connect={connect}
+        {...(storage === undefined ? {} : { storage })}
+        {...(location === undefined ? {} : { location })}
+      >
+        <div className="app">
+          <Root />
+          <div className="topfade" aria-hidden="true" />
+        </div>
+        <Toast />
+      </StoreProvider>
+    </AppearanceProvider>
+  );
+}
+
+function Root() {
+  const { state, actions } = useStore();
+  switch (state.auth) {
+    case "loading":
+      return <main className="center" aria-busy="true" aria-label="Loading" />;
+    case "unpaired":
+      return <Pairing />;
+    case "forbidden":
+      return (
+        <Notice title="This address is not allowed">
+          Add it to <code>server.allowed_origins</code> in the daemon settings on your Mac.
+        </Notice>
+      );
+    case "offline":
+      return (
+        <Notice title="Can't reach your Mac">
+          Check that the Mac is awake and harness is running.
+          <button className="b b-pri" onClick={() => void actions.retry()}>
+            Try again
+          </button>
+        </Notice>
+      );
+    case "ready":
+      return <Shell />;
+  }
+}
+
+function Notice({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <main className="center">
+      <section className="pair gl" aria-label={title}>
+        <h1>{title}</h1>
+        <p>{children}</p>
+      </section>
     </main>
   );
 }
