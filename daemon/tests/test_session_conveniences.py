@@ -113,7 +113,10 @@ async def test_context_usage_failures_leave_the_meter_alone(
         session = await env.reach(created.id, SessionState.IDLE)
 
     assert session.context is None
-    assert "reading the context usage" in caplog.text
+    assert (
+        f"the context report of session {created.id} failed"
+        " (RuntimeError: control request timed out)"
+    ) in caplog.text
     assert types.SESSION_CONTEXT not in await env.event_types(created.id)
 
 

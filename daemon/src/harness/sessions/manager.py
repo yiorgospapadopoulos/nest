@@ -27,7 +27,7 @@ from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError, N
 from harness.sessions.files import FileIndex
 from harness.sessions.git_audit import snapshot_refs
 from harness.sessions.hooks import SessionHooks
-from harness.sessions.live import BYPASS, LiveSession, live_bypass
+from harness.sessions.live import LiveSession
 from harness.sessions.models import (
     ChatImport,
     CreateSession,
@@ -283,15 +283,9 @@ class SessionManager:
             await self._release(session_id, "the session was archived")
         session = await self._save_changes(session_id, changes)
         live = self._live.get(session_id)
-        run = live.run if live is not None else None
-        if run is not None:
-            if "model" in changes:
-                await run.set_model(session.model)
-            # A run that did not open in bypass cannot enter it live; the next message
-            # reopens it in bypass instead (D046).
-            entering_bypass = session.permission_mode == BYPASS and not live_bypass(live)
-            if "permission_mode" in changes and not entering_bypass:
-                await run.set_permission_mode(session.permission_mode)
+        if live is not None and {"model", "permission_mode"} & changes.keys():
+            # Read back from the store, so of two quick changes the last one wins (D048).
+            await self._turns.apply_controls(live)
         return session
 
     async def close(self, session_id: str, remove_worktree: bool) -> Session:
@@ -404,9 +398,13 @@ class SessionManager:
             return chosen
         return default if effort_problem(option, default) is None else None
 
-    def _handler_for(self, session_id: str) -> ApprovalHandler:
+    def _handler_for(self, live: LiveSession) -> ApprovalHandler:
+        async def on_mode(session_id: str, mode: PermissionMode) -> None:
+            live.run_mode = mode
+            await self._on_mode(session_id, mode)
+
         return SessionPrompts(
-            session_id, self._approvals, self._store, self._on_waiting, self._on_mode
+            live.session_id, self._approvals, self._store, self._on_waiting, on_mode
         )
 
     async def _on_mode(self, session_id: str, mode: PermissionMode) -> None:

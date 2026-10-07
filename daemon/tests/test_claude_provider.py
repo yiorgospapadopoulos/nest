@@ -134,7 +134,8 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     assert options.disallowed_tools == list(GIT_WRITE_RULES)
     assert options.hooks is not None
     git_matcher, question_matcher = options.hooks["PreToolUse"]
-    assert git_matcher.matcher == "Bash"
+    # Every tool, so MCP and other shell tools are checked too (D049).
+    assert git_matcher.matcher == "*"
     assert git_matcher.hooks == [block_git_writes]
     assert question_matcher.matcher == "AskUserQuestion"
     assert question_matcher.timeout == QUESTION_TIMEOUT_SECONDS
@@ -637,3 +638,43 @@ async def test_context_usage_comes_from_the_engine(tmp_path: Path) -> None:
 
     assert usage == ContextUsage(percent=6, used=12994, limit=200000)
     assert missing is None
+
+
+async def test_a_message_that_fails_to_translate_does_not_end_the_run(tmp_path: Path) -> None:
+    """B-05: only the CLI's own stream ending is fatal; one bad message is skipped."""
+    opened = Opened(tmp_path)
+    _, client = await opened.open(SessionSpec(tmp_path, "default"))
+
+    client.push(task_done("t1", "a status the SDK does not know"), task_started("t2"))
+    await until(lambda: len(tasks_reported(opened.sink)) >= 2)
+
+    assert tasks_reported(opened.sink) == [
+        AgentTask(task_id="t1", phase="finished", status="stopped"),
+        AgentTask(task_id="t2", phase="started", description="sleep 40"),
+    ]
+    assert not any(name == "stopped" for name, _ in opened.sink.calls)
+
+
+async def test_a_sink_failure_is_logged_and_the_run_keeps_reading(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    opened = Opened(tmp_path)
+    _, client = await opened.open(SessionSpec(tmp_path, "default"))
+    original = opened.sink.message
+    failures = iter([RuntimeError("disk full")])
+
+    async def flaky(*args: object, **kwargs: object) -> None:
+        error = next(failures, None)
+        if error is not None:
+            raise error
+        await original(*args, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    opened.sink.message = flaky  # pyright: ignore[reportAttributeAccessIssue]
+    client.push(
+        AssistantMessage(content=[TextBlock("first")], model="m"),
+        AssistantMessage(content=[TextBlock("second")], model="m"),
+    )
+    await until(lambda: any(name == "message" for name, _ in opened.sink.calls))
+
+    assert not any(name == "stopped" for name, _ in opened.sink.calls)
+    assert "could not handle a message from the agent (RuntimeError: disk full)" in caplog.text

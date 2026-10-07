@@ -13,6 +13,7 @@ from harness.config.models import RepoConfig
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.providers.base import AgentProvider, AgentRun, ApprovalHandler, SessionSpec
+from harness.sessions.bookkeeping import isolated
 from harness.sessions.git_audit import changed_refs, snapshot_refs
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import BYPASS, LiveSession
@@ -51,7 +52,7 @@ class TurnRunner:
         worktrees: WorktreeManager,
         attachments: AttachmentStore,
         provider: AgentProvider,
-        handler_for: Callable[[str], ApprovalHandler],
+        handler_for: Callable[[LiveSession], ApprovalHandler],
         idle_close: timedelta,
         queue: MessageQueue,
         clock: Clock,
@@ -126,10 +127,14 @@ class TurnRunner:
         )
 
     async def turn_finished(self, live: LiveSession) -> None:
-        await self._audit(live)
+        """Audit and report the turn, then end it or deliver the next queued message.
+        The audit and reports are bookkeeping: their failure never keeps the turn open.
+        """
+        session_id = live.session_id
+        await isolated("the git audit", session_id, self._audit(live))
         run = live.run
         if run is not None:
-            await self._report_context(live.session_id, run)
+            await isolated("the context report", session_id, self._report_context(session_id, run))
         # An interrupted turn keeps the queue: the user stopped the agent on purpose,
         # unless they did so to send a message (a nudge) right away.
         hold = live.interrupted and not live.resume_queue
@@ -143,11 +148,15 @@ class TurnRunner:
             previous = live.task
             live.task = asyncio.create_task(self.guard(live, self._deliver(live, queued, previous)))
         if run is not None:
-            await self._report_connectors(live.session_id, run)
+            await isolated(
+                "the connector report", session_id, self._report_connectors(session_id, run)
+            )
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         # The run already closed itself; the next message opens a new one and resumes.
         live.run = None
+        # Its background tasks ended with it; a stale count would keep later runs open.
+        live.background_tasks = 0
         if live.turn_active:
             await self._end_turn(live, SessionState.FAILED, error)
 
@@ -167,13 +176,7 @@ class TurnRunner:
 
     async def _report_context(self, session_id: str, run: AgentRun) -> None:
         """How full the context window is after the turn, for the session's meter."""
-        try:
-            usage = await run.context_usage()
-        except Exception:
-            logger.warning(
-                "reading the context usage of session %s failed", session_id, exc_info=True
-            )
-            return
+        usage = await run.context_usage()
         if usage is None:
             return
         await self._store.update(session_id, context=usage)
@@ -190,43 +193,47 @@ class TurnRunner:
 
     async def _report_connectors(self, session_id: str, run: AgentRun) -> None:
         """MCP connections have settled by the end of a turn, unlike at the run's start."""
-        try:
-            servers = await run.connector_statuses()
-        except Exception:
-            logger.warning(
-                "reading the connector status of session %s failed", session_id, exc_info=True
-            )
-            return
+        servers = await run.connector_statuses()
         await self._hooks.connectors_reported(session_id, servers)
 
+    async def apply_controls(self, live: LiveSession) -> None:
+        """Bring the live run to the session's saved model and permission mode. Without a
+        run there is nothing to do: a run that is opening applies them once open.
+        """
+        async with live.controls:
+            run = live.run
+            if run is not None:
+                await _apply_controls(live, run, await self._store.get(live.session_id))
+
     async def _ensure_run(self, live: LiveSession, session: Session, cwd: Path) -> AgentRun:
-        """The live run, or a new one resuming the agent's last session."""
+        """The live run, or a new one resuming the agent's last session. Controls saved
+        while a run opens apply once it is open, so the saved ones always win (D048).
+        """
         dirs = await self._attachments.file_dirs(session.id)
-        # A new effort waits while background tasks run: closing would stop them.
-        needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
-        current = (
-            live.run_effort == session.effort and not needs_bypass
-        ) or live.background_tasks > 0
-        if live.run is not None and set(dirs) <= set(live.run_dirs) and current:
-            return live.run
-        await live.close_run()
-        spec = SessionSpec(
-            cwd=cwd,
-            permission_mode=session.permission_mode,
-            model=session.model,
-            effort=session.effort,
-            resume_id=session.provider_session_id,
-            extra_dirs=dirs,
-            system_prompt_append=HARNESS_PROMPT,
-        )
-        sink = SessionSink(
-            live, self._bus, self._store, self, self._hooks, session.provider_session_id
-        )
-        live.run = await self._provider.open(spec, self._handler_for(session.id), sink)
-        live.run_dirs = dirs
-        live.run_effort = session.effort
-        live.run_bypass = session.permission_mode == BYPASS
-        return live.run
+        while (run := live.run) is None or not _fits(live, session, dirs):
+            await live.close_run()
+            spec = SessionSpec(
+                cwd=cwd,
+                permission_mode=session.permission_mode,
+                model=session.model,
+                effort=session.effort,
+                resume_id=session.provider_session_id,
+                extra_dirs=dirs,
+                system_prompt_append=HARNESS_PROMPT,
+            )
+            sink = SessionSink(
+                live, self._bus, self._store, self, self._hooks, session.provider_session_id
+            )
+            live.run = await self._provider.open(spec, self._handler_for(live), sink)
+            live.run_dirs = dirs
+            live.run_effort = session.effort
+            live.run_bypass = session.permission_mode == BYPASS
+            live.run_model = session.model
+            live.run_mode = session.permission_mode
+            # A new effort or bypass chosen while it opened needs another run.
+            session = await self._store.get(session.id)
+        await self.apply_controls(live)
+        return run
 
     async def _audit(self, live: LiveSession) -> None:
         """Compare refs with the turn's start; the end of this turn starts the next one."""
@@ -239,3 +246,25 @@ class TurnRunner:
             await self._bus.publish(
                 types.SESSION_GIT_VIOLATION, {"changes": changes}, live.session_id
             )
+
+
+def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...]) -> bool:
+    """Whether the live run can take the session's next message as it is."""
+    if not set(dirs) <= set(live.run_dirs):
+        return False
+    # A new effort, or bypass for a run that did not open in it, needs a new run (D046),
+    # but waits while background tasks run: closing would stop them.
+    needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
+    return (live.run_effort == session.effort and not needs_bypass) or live.background_tasks > 0
+
+
+async def _apply_controls(live: LiveSession, run: AgentRun, session: Session) -> None:
+    if session.model != live.run_model:
+        await run.set_model(session.model)
+        live.run_model = session.model
+    mode = session.permission_mode
+    # A run that did not open in bypass cannot enter it live; the next message reopens
+    # it in bypass instead (D046).
+    if mode != live.run_mode and (mode != BYPASS or live.run_bypass):
+        await run.set_permission_mode(mode)
+        live.run_mode = mode

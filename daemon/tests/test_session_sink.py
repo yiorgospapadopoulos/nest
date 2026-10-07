@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import aclosing
 from datetime import UTC, datetime, timedelta
 
@@ -8,6 +9,8 @@ from harness.events import types
 from harness.events.bus import EventBus
 from harness.providers.base import (
     AgentTask,
+    CommandCatalog,
+    EngineDetails,
     McpServer,
     ResultInfo,
     TextBlock,
@@ -17,6 +20,7 @@ from harness.providers.base import (
     UsageWindow,
 )
 from harness.sessions.live import LiveSession
+from harness.sessions.models import Session
 from harness.sessions.sink import SessionSink
 from harness.sessions.store import SessionStore
 from harness.storage.db import Database
@@ -216,3 +220,89 @@ async def test_provider_session_id_is_stored_once_per_change(
     assert unchanged.provider_session_id is None
     assert stored.provider_session_id == "new"
     assert stored.updated_at == written_at
+
+
+class BrokenTurns:
+    async def agent_active(self, live: LiveSession) -> None:
+        raise RuntimeError("active")
+
+    async def turn_finished(self, live: LiveSession) -> None:
+        raise RuntimeError("finished")
+
+    async def run_stopped(self, live: LiveSession, error: str) -> None:
+        raise RuntimeError("stopped")
+
+    async def background_tasks(self, live: LiveSession, running: int) -> None:
+        raise RuntimeError("background")
+
+
+class BrokenHooks:
+    async def state_changed(self, session: Session) -> None:
+        raise LookupError("state")
+
+    async def message(self, session_id: str) -> None:
+        raise LookupError("message")
+
+    async def turn_result(self, session_id: str, info: ResultInfo) -> None:
+        raise LookupError("result")
+
+    async def usage(self, info: UsageInfo) -> None:
+        raise LookupError("usage")
+
+    async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
+        raise LookupError("connectors")
+
+    async def commands_reported(self, session_id: str, catalog: CommandCatalog) -> None:
+        raise LookupError("commands")
+
+    async def engine_reported(self, details: EngineDetails) -> None:
+        raise LookupError("engine")
+
+
+async def test_no_error_reaches_the_agent_run(
+    db: Database, clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The run treats an error from the sink as the agent crashing; bookkeeping must not."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    sink = SessionSink(LiveSession(session.id), bus, store, BrokenTurns(), BrokenHooks(), None)
+    await db.close()  # every event and store write fails from here on
+    result = ResultInfo(
+        is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=0.1, errors=[]
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await sink.message([TextBlock(text="Hello")], None)
+        await sink.text_delta("Hel")
+        await sink.thinking(True)
+        await sink.result(result)
+        await sink.usage(UsageInfo(five_hour=None, seven_day=None))
+        await sink.connectors([])
+        await sink.commands(CommandCatalog())
+        await sink.engine_details(EngineDetails())
+        await sink.provider_session_id("sdk-1")
+        await sink.background_tasks(1)
+        await sink.task(AgentTask(task_id="t1", phase="started"))
+        await sink.stopped("process ended")
+
+    kinds = [record.getMessage().split(" of session ")[0] for record in caplog.records]
+    assert kinds == [
+        "starting a turn",
+        "the message event",
+        "the message hooks",
+        "starting a turn",
+        "starting a turn",
+        "the result event",
+        "the turn result hooks",
+        "ending the turn",
+        "the usage event",
+        "the usage hooks",
+        "the connector report",
+        "the command report",
+        "the engine report",
+        "storing the agent's session id",
+        "the background task count",
+        "the task event",
+        "the message hooks",
+        "the run's end",
+    ]

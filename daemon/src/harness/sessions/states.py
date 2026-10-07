@@ -1,4 +1,7 @@
-"""Session state changes: stored, announced as an event, then passed to the hooks."""
+"""Session state changes: stored, announced as an event, then passed to the hooks.
+
+A failing hook is only logged: the change itself has happened (D048).
+"""
 
 from collections.abc import Mapping
 
@@ -6,6 +9,7 @@ from pydantic import JsonValue
 
 from harness.events import types
 from harness.events.bus import EventBus
+from harness.sessions.bookkeeping import isolated
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.models import Session, SessionState
 from harness.sessions.store import SessionStore
@@ -29,5 +33,5 @@ class StateWriter:
         await self._bus.publish(
             types.SESSION_STATE, {"state": state, "error": error, **(turn or {})}, session_id
         )
-        await self._hooks.state_changed(session)
+        await isolated("the state hooks", session_id, self._hooks.state_changed(session))
         return session

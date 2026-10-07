@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 BYPASS: PermissionMode = "bypassPermissions"
 
 
-def live_bypass(live: "LiveSession | None") -> bool:
-    """Whether the session's live run opened in bypass, so it may switch into it (D046)."""
-    return live is not None and live.run_bypass
-
-
 @dataclass(eq=False)
 class LiveSession:
     session_id: str
@@ -32,6 +27,11 @@ class LiveSession:
     run_effort: Effort | None = None
     # Whether the run opened in bypass: only such a run may switch into it live (D046).
     run_bypass: bool = False
+    # The model and permission mode the run has now, to bring it to the saved ones (D048).
+    run_model: str | None = None
+    run_mode: PermissionMode | None = None
+    # Held while the saved model and mode are read and sent to the run, so the last saved win.
+    controls: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Setup, opening the run and submitting a message. At most one at a time.
     task: asyncio.Task[None] | None = None
     # The agent is working, after a user message or on its own, until the turn's result.
@@ -99,6 +99,8 @@ class LiveSession:
 
     async def close_run(self) -> None:
         run, self.run = self.run, None
+        # Background tasks live in the agent process and end with it.
+        self.background_tasks = 0
         if run is None:
             return
         try:

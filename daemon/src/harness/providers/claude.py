@@ -1,6 +1,7 @@
 """Claude provider on the Claude Agent SDK (D003), with the agent git block layers (D013)."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from contextlib import suppress
 from pathlib import Path
@@ -49,6 +50,8 @@ DEFAULT_DENY_MESSAGE = "The user denied this action."
 # The tool Claude calls in plan mode to present its plan and ask to start working (D032).
 EXIT_PLAN_MODE = "ExitPlanMode"
 KEEP_PLANNING_MESSAGE = "Keep planning."
+
+logger = logging.getLogger(__name__)
 
 
 class SdkClient(Protocol):
@@ -141,7 +144,7 @@ def build_options(
         disallowed_tools=list(GIT_WRITE_RULES),
         hooks={
             "PreToolUse": [
-                HookMatcher(matcher="Bash", hooks=[block_git_writes]),
+                HookMatcher(matcher="*", hooks=[block_git_writes]),
                 HookMatcher(
                     matcher=ASK_USER_QUESTION,
                     hooks=[questions.hook],
@@ -196,16 +199,25 @@ class ClaudeRun:
         error = "the agent process ended"
         try:
             async for message in self._client.receive_messages():
-                running = self._tasks.update(message)
-                if running is not None:
-                    await self._sink.background_tasks(running)
-                await translate(message, self._sink, self._thinking)
+                await self._handle(message)
         except Exception as exc:
             error = str(exc)
         with suppress(Exception):
             await self._client.disconnect()
         await self._abandon_tasks()
         await self._sink.stopped(error)
+
+    async def _handle(self, message: Message) -> None:
+        """One message; a failure here skips it instead of ending a healthy run (B-05)."""
+        try:
+            running = self._tasks.update(message)
+            if running is not None:
+                await self._sink.background_tasks(running)
+            await translate(message, self._sink, self._thinking)
+        except Exception as exc:
+            logger.warning(
+                "could not handle a message from the agent (%s: %s)", type(exc).__name__, exc
+            )
 
     async def _abandon_tasks(self) -> None:
         """Background tasks live in the agent process and end with it."""
