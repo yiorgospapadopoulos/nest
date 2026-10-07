@@ -1,0 +1,32 @@
+[
+  {
+    "name": "claude.ai Gmail",
+    "display_name": "Gmail",
+    "group": "claude.ai",
+    "status": "needs-auth",
+    "error": null,
+    "manage_hint": "claude.ai",
+    "source": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "last_seen_at": "2026-10-06T09:12:35.5Z"
+  },
+  {
+    "name": "plugin:engineering:github",
+    "display_name": "github",
+    "group": "plugin",
+    "status": "connected",
+    "error": null,
+    "manage_hint": "claude_code",
+    "source": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "last_seen_at": "2026-10-06T09:12:35Z"
+  },
+  {
+    "name": "serena",
+    "display_name": "serena",
+    "group": "local",
+    "status": "failed",
+    "error": "spawn ENOENT",
+    "manage_hint": "claude_code",
+    "source": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "last_seen_at": "2026-10-06T09:12:35Z"
+  }
+]

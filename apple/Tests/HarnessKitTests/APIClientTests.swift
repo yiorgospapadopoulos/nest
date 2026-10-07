@@ -1,0 +1,532 @@
+import Foundation
+import Testing
+
+@testable import HarnessKit
+
+/// One API method: what it sends and a response it can read.
+struct RouteCase: Sendable, CustomTestStringConvertible {
+    let method: String
+    let target: String
+    let body: String?
+    let response: String
+    let call: @Sendable (APIClient) async throws -> Void
+
+    var testDescription: String { "\(method) \(target)" }
+
+    init(
+        _ method: String, _ target: String, body: String? = nil, response: String = "{}",
+        _ call: @escaping @Sendable (APIClient) async throws -> Void
+    ) {
+        self.method = method
+        self.target = target
+        self.body = body
+        self.response = response
+        self.call = call
+    }
+
+    static let sessionJSON = Fixture.text("session_detail")
+    static let approvalJSON = Fixture.json(Fixture.approval("ap-perm"))
+    static let repoJSON = Fixture.json(Fixture.repos[0])
+    static let stuckJSON = """
+        {"waiting_minutes": 15, "silent_minutes": 0, "repeated_calls": 4, "turn_minutes": 60}
+        """
+    static let defaultsJSON = """
+        {"model": "opus", "effort": "high", "permission_mode": "default", "mode": "in_place"}
+        """
+    static let claudeChatJSON = """
+        {"id": "c1", "repo": "todo-ui", "title": "T", "cwd": "/r", "worktree": null,
+         "created_at": "2026-10-06T09:00:00Z", "last_activity_at": "2026-10-06T09:00:00Z",
+         "message_count": 1, "open_in_claude_code": false}
+        """
+
+    static let all: [RouteCase] = [
+        RouteCase("GET", "/api/health", response: #"{"status": "ok", "version": "0.1.0"}"#) {
+            _ = try await $0.health()
+        },
+        RouteCase("GET", "/api/repos", response: Fixture.text("repos")) {
+            _ = try await $0.repos()
+        },
+        RouteCase("GET", "/api/repos/todo-ui", response: repoJSON) {
+            _ = try await $0.repo("todo-ui")
+        },
+        RouteCase(
+            "POST", "/api/repos", body: #"{"name":"cv","path":"/tmp/cv"}"#, response: repoJSON
+        ) { _ = try await $0.registerRepo(path: "/tmp/cv", name: "cv") },
+        RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
+            _ = try await $0.linkSuggestions(repo: "todo-ui")
+        },
+        RouteCase(
+            "PUT", "/api/repos/todo-ui/worktree",
+            body: #"{"default":false,"link":[".env"],"setup":["make"],"setup_timeout_seconds":60}"#,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateWorktree(
+                repo: "todo-ui",
+                config: WorktreeConfig(
+                    isDefault: false, link: [".env"], setup: ["make"], setupTimeoutSeconds: 60))
+        },
+        RouteCase("POST", "/api/repos/todo-ui/open", body: #"{"app":"vscode"}"#, response: "") {
+            try await $0.openRepo("todo-ui", in: .vscode)
+        },
+        RouteCase("GET", "/api/sessions?archived=false", response: Fixture.text("sessions")) {
+            _ = try await $0.sessions(repo: nil, archived: false)
+        },
+        RouteCase("GET", "/api/sessions?repo=todo-ui&archived=true", response: "[]") {
+            _ = try await $0.sessions(repo: "todo-ui", archived: true)
+        },
+        RouteCase("GET", "/api/sessions/s1", response: sessionJSON) {
+            _ = try await $0.session("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions",
+            body:
+                #"{"allow_dirty":false,"attachment_ids":["a1"],"effort":"high","mode":"in_place","model":"opus","permission_mode":"plan","prompt":"Fix it","repo":"todo-ui","title":"Fix"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(
+                    repo: "todo-ui", prompt: "Fix it", title: "Fix", mode: .inPlace, model: "opus",
+                    effort: .high, permissionMode: .plan, attachmentIDs: ["a1"]))
+        },
+        RouteCase(
+            "POST", "/api/sessions",
+            body: #"{"allow_dirty":true,"attachment_ids":[],"prompt":"Go","repo":"todo-ui"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(repo: "todo-ui", prompt: "Go", allowDirty: true))
+        },
+        RouteCase(
+            "PATCH", "/api/sessions/s1",
+            body:
+                #"{"archived":true,"model":"haiku","permission_mode":"default","pinned":true,"title":"New"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.updateSession(
+                "s1",
+                UpdateSessionRequest(
+                    model: "haiku", permissionMode: .default, title: "New", pinned: true,
+                    archived: true))
+        },
+        RouteCase("PATCH", "/api/sessions/s1", body: #"{"effort":"xhigh"}"#, response: sessionJSON)
+        { _ = try await $0.updateSession("s1", UpdateSessionRequest(effort: .xhigh)) },
+        RouteCase("DELETE", "/api/sessions/s1?remove_worktree=true", response: sessionJSON) {
+            _ = try await $0.closeSession("s1", removeWorktree: true)
+        },
+        RouteCase("DELETE", "/api/sessions/s1?remove_worktree=false", response: sessionJSON) {
+            _ = try await $0.closeSession("s1", removeWorktree: false)
+        },
+        RouteCase("DELETE", "/api/sessions/s1?purge=true", response: "") {
+            try await $0.deleteSession("s1")
+        },
+        RouteCase(
+            "GET", "/api/sessions/s1/events?after=12", response: Fixture.text("session_events")
+        ) {
+            _ = try await $0.sessionEvents("s1", after: 12)
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/messages", body: #"{"attachment_ids":["a1"],"text":"More"}"#,
+            response: sessionJSON
+        ) { _ = try await $0.sendMessage("s1", text: "More", attachmentIDs: ["a1"]) },
+        RouteCase(
+            "GET", "/api/sessions/s1/events?after=0&before=40&limit=100",
+            response: Fixture.text("session_events")
+        ) { _ = try await $0.sessionEvents("s1", after: 0, before: 40, limit: 100) },
+        RouteCase(
+            "POST", "/api/sessions/s1/messages",
+            body: #"{"attachment_ids":[],"interrupt":true,"text":"Try again"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.sendMessage(
+                "s1", text: "Try again", attachmentIDs: [], interrupt: true)
+        },
+        RouteCase(
+            "GET", "/api/search?q=zod%20form&limit=20",
+            response: #"{"hits": [], "indexing": true}"#
+        ) { _ = try await $0.search(query: "zod form", repo: nil, limit: 20) },
+        RouteCase(
+            "GET", "/api/search?q=zod&repo=todo-ui&limit=5",
+            response: #"{"hits": [], "indexing": false}"#
+        ) { _ = try await $0.search(query: "zod", repo: "todo-ui", limit: 5) },
+        RouteCase("GET", "/api/models", response: Fixture.text("models")) {
+            _ = try await $0.models()
+        },
+        RouteCase(
+            "GET", "/api/account",
+            response:
+                #"{"display_name": "G", "email": null, "plan": "Claude Max", "organization": null}"#
+        ) { _ = try await $0.account() },
+        RouteCase("GET", "/api/agents/defaults", response: defaultsJSON) {
+            _ = try await $0.agentDefaults()
+        },
+        RouteCase(
+            "PUT", "/api/agents/defaults",
+            body: #"{"effort":null,"mode":"worktree","model":null,"permission_mode":"plan"}"#,
+            response: defaultsJSON
+        ) {
+            _ = try await $0.updateAgentDefaults(
+                AgentDefaults(model: nil, effort: nil, permissionMode: .plan, mode: .worktree))
+        },
+        RouteCase("GET", "/api/stuck/settings", response: stuckJSON) {
+            _ = try await $0.stuckSettings()
+        },
+        RouteCase(
+            "PUT", "/api/stuck/settings",
+            body:
+                #"{"repeated_calls":4,"silent_minutes":0,"turn_minutes":60,"waiting_minutes":15}"#,
+            response: stuckJSON
+        ) {
+            _ = try await $0.updateStuckSettings(
+                StuckSettings(
+                    waitingMinutes: 15, silentMinutes: 0, repeatedCalls: 4, turnMinutes: 60))
+        },
+        RouteCase("POST", "/api/sessions/s1/interrupt", response: "") {
+            try await $0.interrupt("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/open-in-claude-code",
+            response: #"{"launcher": "/tmp/x.command", "warning": null}"#
+        ) { _ = try await $0.openInClaudeCode("s1") },
+        RouteCase("GET", "/api/sessions/s1/diff", response: Fixture.text("diff")) {
+            _ = try await $0.diff("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/approve",
+            body:
+                #"{"acknowledge_violation":false,"commit_message":"Add zod","open_pr":true,"push":true}"#,
+            response: sessionJSON
+        ) { _ = try await $0.approve("s1", ApproveRequest(commitMessage: "Add zod")) },
+        RouteCase(
+            "POST", "/api/sessions/s1/approve",
+            body:
+                #"{"acknowledge_violation":true,"commit_message":"M","files":["a.txt"],"open_pr":false,"pr_body":"B","pr_title":"T","push":false}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.approve(
+                "s1",
+                ApproveRequest(
+                    commitMessage: "M", files: ["a.txt"], push: false, openPR: false, prTitle: "T",
+                    prBody: "B", acknowledgeViolation: true))
+        },
+        RouteCase("POST", "/api/sessions/s1/reject", response: sessionJSON) {
+            _ = try await $0.reject("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/feedback", body: #"{"text":"Use a DAG"}"#,
+            response: sessionJSON
+        ) { _ = try await $0.feedback("s1", text: "Use a DAG") },
+        RouteCase(
+            "POST", "/api/sessions/s1/merge", body: #"{"delete_branch":true,"method":"rebase"}"#,
+            response: sessionJSON
+        ) { _ = try await $0.merge("s1", MergeRequest(method: .rebase)) },
+        RouteCase("POST", "/api/sessions/s1/pr/refresh", response: sessionJSON) {
+            _ = try await $0.refreshPR("s1")
+        },
+        RouteCase("GET", "/api/approvals", response: Fixture.text("approvals")) {
+            _ = try await $0.approvals(status: nil, project: nil)
+        },
+        RouteCase("GET", "/api/approvals?status=pending&project=todo-ui", response: "[]") {
+            _ = try await $0.approvals(status: .pending, project: "todo-ui")
+        },
+        RouteCase("GET", "/api/approvals/ap1", response: approvalJSON) {
+            _ = try await $0.approval("ap1")
+        },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":true,"behavior":"allow","dismiss":false}"#, response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .allow(always: true)) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":false,"behavior":"deny","dismiss":false,"message":"No"}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .deny(message: "No")) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":false,"answers":{"Q?":["A","B"]},"dismiss":false}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .answer(["Q?": ["A", "B"]])) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve", body: #"{"always":false,"dismiss":true}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .dismiss()) },
+        RouteCase("GET", "/api/claude-chats", response: Fixture.text("claude_chats")) {
+            _ = try await $0.claudeChats(repo: nil, includeAutomated: false)
+        },
+        RouteCase("GET", "/api/claude-chats?repo=todo-ui&include_automated=true", response: "[]") {
+            _ = try await $0.claudeChats(repo: "todo-ui", includeAutomated: true)
+        },
+        RouteCase("GET", "/api/claude-chats/c1", response: claudeChatJSON) {
+            _ = try await $0.claudeChat("c1")
+        },
+        RouteCase(
+            "GET", "/api/claude-chats/c1/events", response: Fixture.text("claude_chat_events")
+        ) { _ = try await $0.claudeChatEvents("c1") },
+        RouteCase("POST", "/api/claude-chats/c1/adopt", response: sessionJSON) {
+            _ = try await $0.adoptClaudeChat("c1")
+        },
+        RouteCase("GET", "/api/connectors", response: Fixture.text("connectors")) {
+            _ = try await $0.connectors()
+        },
+        RouteCase(
+            "GET", "/api/usage/month?year=2026&month=10", response: Fixture.text("usage_month")
+        ) {
+            _ = try await $0.usageMonth(year: 2026, month: 10)
+        },
+        RouteCase("GET", "/api/usage/limits", response: Fixture.text("usage_limits")) {
+            _ = try await $0.usageLimits()
+        },
+        RouteCase("POST", "/api/usage/refresh", response: Fixture.text("usage_limits")) {
+            _ = try await $0.refreshUsage()
+        },
+        RouteCase("GET", "/api/usage/settings", response: #"{"refresh_minutes": 3}"#) {
+            _ = try await $0.usageSettings()
+        },
+        RouteCase(
+            "PUT", "/api/usage/settings", body: #"{"refresh_minutes":0}"#,
+            response: #"{"refresh_minutes": 0}"#
+        ) { _ = try await $0.updateUsageSettings(UsageSettings(refreshMinutes: 0)) },
+        RouteCase(
+            "POST", "/api/clients/visibility", body: #"{"client":"mac","visible":true}"#,
+            response: ""
+        ) { try await $0.reportVisibility(true, client: "mac") },
+        RouteCase(
+            "POST", "/api/pairing/codes",
+            response: #"{"code": "4F7K-9QX2", "expires_at": "2026-10-06T09:05:00Z"}"#
+        ) { _ = try await $0.createPairingCode() },
+        RouteCase("GET", "/api/devices", response: Fixture.text("devices")) {
+            _ = try await $0.devices()
+        },
+        RouteCase("DELETE", "/api/devices/dev-phone", response: "") {
+            try await $0.revokeDevice("dev-phone")
+        },
+        RouteCase("GET", "/api/repos/todo-ui/commands", response: commandsJSON) {
+            _ = try await $0.repoCommands("todo-ui")
+        },
+        RouteCase("GET", "/api/sessions/s1/commands", response: commandsJSON) {
+            _ = try await $0.sessionCommands("s1")
+        },
+        RouteCase("GET", "/api/sessions/s1/files?q=src/a%20b", response: #"{"files": []}"#) {
+            _ = try await $0.sessionFiles("s1", query: "src/a b")
+        },
+        RouteCase("DELETE", "/api/sessions/s1/queue/q9", response: "") {
+            try await $0.cancelQueued("s1", queuedID: "q9")
+        },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":false,"decision":"approve","dismiss":false}"#, response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .approvePlan) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body:
+                #"{"always":false,"decision":"keep_planning","dismiss":false,"message":"Smaller"}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .keepPlanning(note: "  Smaller\n")) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":false,"decision":"keep_planning","dismiss":false}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .keepPlanning(note: "  ")) },
+    ]
+
+    static let commandsJSON = """
+        {"source": "session", "commands": [{"name": "compact", "description": "Compact",
+         "argument_hint": "<instructions>"}], "agents": [{"name": "Explore", "description": null}],
+         "updated_at": "2026-10-07T01:00:00Z"}
+        """
+}
+
+@Suite struct APIClientTests {
+    let transport = FakeTransport()
+    var client: APIClient { APIClient(token: "tok-123", transport: transport) }
+
+    @Test(arguments: RouteCase.all)
+    func sendsTheRouteAndReadsItsResponse(route: RouteCase) async throws {
+        transport.reply(200, route.response)
+
+        try await route.call(client)
+
+        let request = transport.last
+        #expect(request.httpMethod == route.method)
+        #expect(request.url?.host() == "127.0.0.1")
+        #expect(request.url?.port == 8765)
+        #expect(request.target == route.target)
+        #expect(request.bodyText == route.body)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-123")
+        #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+        let contentType = request.value(forHTTPHeaderField: "Content-Type")
+        #expect(contentType == (route.body == nil ? nil : "application/json"))
+    }
+
+    @Test func readsResponseValues() async throws {
+        transport.reply(fixture: "sessions")
+        let sessions = try await client.sessions(repo: nil, archived: false)
+        #expect(sessions.map(\.title) == ["Validate contact form with zod", "Dark mode contrast"])
+
+        transport.reply(200, #"{"launcher": "/tmp/x.command", "warning": "still running"}"#)
+        #expect(try await client.openInClaudeCode("s1").warning == "still running")
+    }
+
+    @Test func pathComponentsAreEscaped() async throws {
+        transport.reply(200, RouteCase.repoJSON)
+        _ = try await client.repo("a b/c")
+        #expect(transport.last.target == "/api/repos/a%20b%2Fc")
+    }
+
+    @Test func usesTheGivenBaseURL() async throws {
+        let remote = APIClient(
+            token: "t", baseURL: URL(string: "https://mac.tailnet.ts.net")!, transport: transport)
+        transport.reply(200, #"{"status": "ok", "version": "0.1.0"}"#)
+        _ = try await remote.health()
+        #expect(transport.last.url?.absoluteString == "https://mac.tailnet.ts.net/api/health")
+        #expect(remote.baseURL.host() == "mac.tailnet.ts.net")
+    }
+
+    @Test func uploadsAttachmentsAsMultipart() async throws {
+        transport.reply(
+            201,
+            #"{"id": "att1", "filename": "shot.png", "media_type": "image/png", "size": 3, "created_at": "2026-10-06T09:00:00Z"}"#
+        )
+
+        let attachment = try await client.uploadAttachment(
+            filename: "shot.png", mediaType: "image/png", data: Data([1, 2, 3]))
+
+        #expect(attachment.id == "att1")
+        #expect(attachment.createdAt != nil)
+        let request = transport.last
+        #expect(request.target == "/api/attachments")
+        #expect(request.httpMethod == "POST")
+        let contentType = try #require(request.value(forHTTPHeaderField: "Content-Type"))
+        #expect(contentType.hasPrefix("multipart/form-data; boundary=harness-"))
+        let boundary = String(contentType.split(separator: "=").last!)
+        let expected =
+            Data(
+                ("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"shot.png\"\r\n"
+                    + "Content-Type: image/png\r\n\r\n").utf8) + Data([1, 2, 3])
+            + Data("\r\n--\(boundary)--\r\n".utf8)
+        #expect(request.httpBody == expected)
+    }
+
+    @Test func multipartFilenamesCannotBreakTheHeader() {
+        let form = MultipartForm(
+            fieldName: "file", filename: "a\"b\r\nc.txt", mediaType: "text/plain", data: Data(),
+            boundary: "B")
+        let text = String(decoding: form.body, as: UTF8.self)
+        #expect(text.contains("filename=\"abc.txt\""))
+        #expect(form.contentType == "multipart/form-data; boundary=B")
+    }
+}
+
+@Suite struct APIErrorTests {
+    let transport = FakeTransport()
+    var client: APIClient { APIClient(token: "t", transport: transport) }
+
+    func failure(_ status: Int, _ body: String, headers: [String: String] = [:]) async -> APIError?
+    {
+        transport.reply(status, body, headers: headers)
+        do {
+            _ = try await client.health()
+            return nil
+        } catch {
+            return error as? APIError
+        }
+    }
+
+    @Test func mapsStatusCodesWithTheDaemonsDetail() async {
+        #expect(
+            await failure(401, #"{"detail": "not authenticated"}"#)
+                == .unauthorized("not authenticated"))
+        #expect(
+            await failure(404, #"{"detail": "unknown session"}"#) == .notFound("unknown session"))
+        #expect(await failure(409, #"{"detail": "busy"}"#) == .conflict("busy", files: []))
+        #expect(
+            await failure(
+                409, #"{"detail": "Close it there first.", "code": "open_in_claude_code"}"#)
+                == .openInClaudeCode("Close it there first."))
+        #expect(
+            await failure(409, #"{"detail": "other", "code": "something_else"}"#)
+                == .conflict("other", files: []))
+        #expect(
+            await failure(400, #"{"detail": "invalid or expired pairing code"}"#)
+                == .invalidInput("invalid or expired pairing code"))
+        #expect(await failure(413, #"{"detail": "too large"}"#) == .payloadTooLarge("too large"))
+        #expect(
+            await failure(424, #"{"detail": "VS Code is not installed"}"#)
+                == .appNotInstalled("VS Code is not installed"))
+        #expect(await failure(502, #"{"detail": "open failed"}"#) == .badGateway("open failed"))
+        #expect(await failure(500, #"{"detail": "boom"}"#) == .server(status: 500, detail: "boom"))
+    }
+
+    @Test func dirtyCheckoutListsItsFiles() async {
+        let error = await failure(
+            409, #"{"detail": "the checkout has uncommitted changes", "files": ["a.txt", "b.txt"]}"#
+        )
+        #expect(
+            error == .conflict("the checkout has uncommitted changes", files: ["a.txt", "b.txt"]))
+    }
+
+    @Test func gitFailuresCarryStepAndStderr() async {
+        let error = await failure(
+            502, #"{"detail": "git push failed: denied", "step": "push", "stderr": "denied\n"}"#)
+        #expect(error == .gitFailed("git push failed: denied", step: "push", stderr: "denied\n"))
+        let bare = await failure(502, #"{"detail": "git commit failed", "step": "commit"}"#)
+        #expect(bare == .gitFailed("git commit failed", step: "commit", stderr: ""))
+    }
+
+    @Test func validationErrorsJoinTheirMessages() async {
+        let error = await failure(
+            422,
+            #"{"detail": [{"loc": ["body", "prompt"], "msg": "Field required"}, {"loc": ["body"], "msg": "Extra inputs are not permitted"}]}"#
+        )
+        #expect(error == .invalidInput("Field required; Extra inputs are not permitted"))
+    }
+
+    @Test func rateLimitsReadRetryAfter() async {
+        let error = await failure(
+            429, #"{"detail": "too many failed pairing attempts"}"#, headers: ["retry-after": "60"])
+        #expect(error == .rateLimited("too many failed pairing attempts", retryAfter: 60))
+        #expect(await failure(429, "{}") == .rateLimited("client error", retryAfter: nil))
+        // Without the header, the body's retry_after (the usage refresh sends both).
+        #expect(
+            await failure(429, #"{"detail": "too soon", "retry_after": 12}"#)
+                == .rateLimited("too soon", retryAfter: 12))
+    }
+
+    @Test func bodiesWithoutDetailFallBackToTheStatusText() async {
+        #expect(
+            await failure(503, "<html>down</html>")
+                == .server(status: 503, detail: "service unavailable"))
+        #expect(await failure(404, #"{"detail": []}"#) == .notFound("not found"))
+    }
+
+    @Test func unreachableDaemonIsATransportError() async {
+        transport.fail(.cannotConnectToHost)
+        await #expect(throws: APIError.self) { _ = try await client.health() }
+    }
+
+    @Test func unreadableResponsesAreDecodingErrors() async {
+        transport.reply(200, #"{"status": 1}"#)
+        do {
+            _ = try await client.health()
+            Issue.record("expected a decoding error")
+        } catch let error as APIError {
+            guard case .decoding = error else {
+                Issue.record("got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("got \(error)")
+        }
+    }
+
+    @Test func everyErrorHasAMessage() {
+        let errors: [APIError] = [
+            .unauthorized("a"), .notFound("a"), .conflict("a", files: []),
+            .openInClaudeCode("a"), .invalidInput("a"),
+            .payloadTooLarge("a"), .rateLimited("a", retryAfter: nil), .appNotInstalled("a"),
+            .gitFailed("a", step: "s", stderr: ""), .badGateway("a"),
+            .server(status: 500, detail: "a"),
+            .transport("a"), .decoding("a"),
+        ]
+        #expect(errors.map(\.message) == Array(repeating: "a", count: errors.count))
+    }
+}

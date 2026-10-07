@@ -1,0 +1,25 @@
+[
+  {
+    "id": "7c1e9a52-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+    "repo": "todo-ui",
+    "title": "Fix the hero image on mobile",
+    "cwd": "/Users/example/Projects/todo-ui",
+    "worktree": null,
+    "created_at": "2026-10-05T18:02:11.204Z",
+    "last_activity_at": "2026-10-06T08:40:00.5Z",
+    "message_count": 14,
+    "open_in_claude_code": true,
+    "automated": false
+  },
+  {
+    "id": "2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d",
+    "repo": "todo-ui",
+    "title": "Try a serif headline",
+    "cwd": "/Users/example/Projects/todo-ui/.claude/worktrees/serif",
+    "worktree": "serif",
+    "created_at": "2026-10-04T10:00:00Z",
+    "last_activity_at": "2026-10-04T11:30:00Z",
+    "message_count": 6,
+    "open_in_claude_code": false
+  }
+]

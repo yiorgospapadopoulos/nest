@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "type": "session.user_message",
+    "ts": "2026-10-05T18:02:11Z",
+    "session_id": "7c1e9a52-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+    "payload": {"text": "The hero image is cut off on phones", "attachments": []}
+  },
+  {
+    "id": 2,
+    "type": "session.message",
+    "ts": "2026-10-05T18:02:20Z",
+    "session_id": "7c1e9a52-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+    "payload": {
+      "blocks": [
+        {"type": "text", "text": "I'll look at src/components/Hero.tsx first."},
+        {"type": "tool_use", "id": "toolu_1", "name": "Read", "input": {"file_path": "/repo/src/components/Hero.tsx"}}
+      ],
+      "parent_tool_use_id": null
+    }
+  }
+]

@@ -1,0 +1,64 @@
+{
+  "base": "1111111111111111111111111111111111111111",
+  "stats": {
+    "files": 2,
+    "additions": 3,
+    "deletions": 1
+  },
+  "files": [
+    {
+      "path": "app/globals.css",
+      "old_path": null,
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1,
+      "binary": false,
+      "truncated": false,
+      "hunks": [
+        {
+          "old_start": 10,
+          "old_lines": 3,
+          "new_start": 10,
+          "new_lines": 4,
+          "header": ":root {",
+          "lines": [
+            {
+              "kind": "context",
+              "text": "  --bg: #fff;",
+              "old_line": 10,
+              "new_line": 10
+            },
+            {
+              "kind": "delete",
+              "text": "  --muted: #999;",
+              "old_line": 11,
+              "new_line": null
+            },
+            {
+              "kind": "add",
+              "text": "  --muted: #6b6b6b;",
+              "old_line": null,
+              "new_line": 11
+            },
+            {
+              "kind": "add",
+              "text": "  --muted-strong: #4a4a4a;",
+              "old_line": null,
+              "new_line": 12
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "public/logo.png",
+      "old_path": "public/old-logo.png",
+      "status": "renamed",
+      "additions": 0,
+      "deletions": 0,
+      "binary": true,
+      "truncated": false,
+      "hunks": []
+    }
+  ]
+}

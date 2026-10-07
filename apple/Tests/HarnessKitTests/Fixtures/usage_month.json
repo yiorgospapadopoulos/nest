@@ -1,0 +1,169 @@
+{
+  "year": 2026,
+  "month": 10,
+  "sessions": 12,
+  "tokens": {
+    "input_tokens": 120000,
+    "output_tokens": 80000,
+    "cache_creation_input_tokens": 50000,
+    "cache_read_input_tokens": 246000,
+    "total": 496000
+  },
+  "days": [
+    {
+      "date": "2026-10-01",
+      "tokens": 1000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-02",
+      "tokens": 2000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-03",
+      "tokens": 3000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-04",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "date": "2026-10-05",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "date": "2026-10-06",
+      "tokens": 6000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-07",
+      "tokens": 7000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-08",
+      "tokens": 8000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-09",
+      "tokens": 9000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-10",
+      "tokens": 10000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-11",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "date": "2026-10-12",
+      "tokens": 12000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-13",
+      "tokens": 13000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-14",
+      "tokens": 14000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-15",
+      "tokens": 15000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-16",
+      "tokens": 16000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-17",
+      "tokens": 17000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-18",
+      "tokens": 18000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-19",
+      "tokens": 19000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-20",
+      "tokens": 20000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-21",
+      "tokens": 21000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-22",
+      "tokens": 22000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-23",
+      "tokens": 23000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-24",
+      "tokens": 24000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-25",
+      "tokens": 25000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-26",
+      "tokens": 26000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-27",
+      "tokens": 27000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-28",
+      "tokens": 28000,
+      "sessions": 2
+    },
+    {
+      "date": "2026-10-29",
+      "tokens": 29000,
+      "sessions": 3
+    },
+    {
+      "date": "2026-10-30",
+      "tokens": 30000,
+      "sessions": 1
+    },
+    {
+      "date": "2026-10-31",
+      "tokens": 31000,
+      "sessions": 2
+    }
+  ]
+}
