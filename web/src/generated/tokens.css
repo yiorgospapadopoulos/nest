@@ -48,6 +48,16 @@
   --glass-specular: rgba(255,255,255,0.95);
   --glass-outline: rgba(16,24,40,0.1);
   --glass-shadow: rgba(28,34,70,0.2);
+  --glass-tint: rgba(255,255,255,0.2);
+  --glass-surface: rgba(250,250,252,0.68);
+  --glass-surface-subtle: rgba(255,255,255,0.1);
+  --glass-stroke: rgba(255,255,255,0.5);
+  --glass-edge: rgba(16,24,40,0.12);
+  --glass-highlight: rgba(255,255,255,0.85);
+  --glass-rim: rgba(255,255,255,0.18);
+  --glass-shadow-color: rgba(20,28,50,0.16);
+  --glass-strip: rgba(255,255,255,0.06);
+  --glass-shell: rgba(255,255,255,0.1);
   --accent-fill: var(--accent-light-fill, #2b2b2e);
   --accent-on: var(--accent-light-on, #ffffff);
   --wallpaper-stone-base: #ebe6de;
@@ -120,6 +130,33 @@
   --motion-easing-ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
   --motion-easing-glide: cubic-bezier(0.2, 0.9, 0.25, 1);
   --motion-easing-pop: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  --glass-backdrop-blur: 10px;
+  --glass-backdrop-saturation: 160%;
+  --glass-radius-window: 24px;
+  --glass-radius-panel: 20px;
+  --glass-radius-pane: 18px;
+  --glass-radius-card: 14px;
+  --glass-radius-item: 10px;
+  --glass-radius-control: 999px;
+  --glass-radius-small: 7px;
+  --glass-radius-tab: 12px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 10px;
+  --glass-shadow-panel-blur: 28px;
+  --glass-shadow-panel-spread: -16px;
+  --glass-shadow-window-far-y: 50px;
+  --glass-shadow-window-far-blur: 100px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 18px;
+  --glass-shadow-window-near-blur: 36px;
+  --glass-shadow-window-near-spread: -18px;
   color-scheme: light;
 }
 
@@ -172,6 +209,16 @@
     --glass-specular: rgba(255,255,255,0.22);
     --glass-outline: rgba(0,0,0,0.5);
     --glass-shadow: rgba(0,0,0,0.55);
+    --glass-tint: rgba(24,26,32,0.26);
+    --glass-surface: rgba(30,32,38,0.74);
+    --glass-surface-subtle: rgba(255,255,255,0.035);
+    --glass-stroke: rgba(255,255,255,0.14);
+    --glass-edge: rgba(0,0,0,0.5);
+    --glass-highlight: rgba(255,255,255,0.2);
+    --glass-rim: rgba(255,255,255,0.04);
+    --glass-shadow-color: rgba(0,0,0,0.45);
+    --glass-strip: rgba(0,0,0,0.14);
+    --glass-shell: rgba(10,12,16,0.12);
     --accent-fill: var(--accent-dark-fill, #e6e6e9);
     --accent-on: var(--accent-dark-on, #141416);
     --wallpaper-stone-base: #191713;
@@ -242,6 +289,16 @@
   --glass-specular: rgba(255,255,255,0.22);
   --glass-outline: rgba(0,0,0,0.5);
   --glass-shadow: rgba(0,0,0,0.55);
+  --glass-tint: rgba(24,26,32,0.26);
+  --glass-surface: rgba(30,32,38,0.74);
+  --glass-surface-subtle: rgba(255,255,255,0.035);
+  --glass-stroke: rgba(255,255,255,0.14);
+  --glass-edge: rgba(0,0,0,0.5);
+  --glass-highlight: rgba(255,255,255,0.2);
+  --glass-rim: rgba(255,255,255,0.04);
+  --glass-shadow-color: rgba(0,0,0,0.45);
+  --glass-strip: rgba(0,0,0,0.14);
+  --glass-shell: rgba(10,12,16,0.12);
   --accent-fill: var(--accent-dark-fill, #e6e6e9);
   --accent-on: var(--accent-dark-on, #141416);
   --wallpaper-stone-base: #191713;
@@ -296,6 +353,346 @@
   --accent-dark-fill: #e293a9;
   --accent-light-on: #ffffff;
   --accent-dark-on: #141416;
+}
+
+[data-glass="clear"] {
+  --glass-tint: rgba(255,255,255,0.2);
+  --glass-surface: rgba(250,250,252,0.68);
+  --glass-surface-subtle: rgba(255,255,255,0.1);
+  --glass-stroke: rgba(255,255,255,0.5);
+  --glass-edge: rgba(16,24,40,0.12);
+  --glass-highlight: rgba(255,255,255,0.85);
+  --glass-rim: rgba(255,255,255,0.18);
+  --glass-shadow-color: rgba(20,28,50,0.16);
+  --glass-strip: rgba(255,255,255,0.06);
+  --glass-shell: rgba(255,255,255,0.1);
+  --glass-backdrop-blur: 10px;
+  --glass-backdrop-saturation: 160%;
+  --glass-radius-window: 24px;
+  --glass-radius-panel: 20px;
+  --glass-radius-pane: 18px;
+  --glass-radius-card: 14px;
+  --glass-radius-item: 10px;
+  --glass-radius-control: 999px;
+  --glass-radius-small: 7px;
+  --glass-radius-tab: 12px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 10px;
+  --glass-shadow-panel-blur: 28px;
+  --glass-shadow-panel-spread: -16px;
+  --glass-shadow-window-far-y: 50px;
+  --glass-shadow-window-far-blur: 100px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 18px;
+  --glass-shadow-window-near-blur: 36px;
+  --glass-shadow-window-near-spread: -18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-glass="clear"], :root:not([data-theme="light"]) [data-glass="clear"] {
+    --glass-tint: rgba(24,26,32,0.26);
+    --glass-surface: rgba(30,32,38,0.74);
+    --glass-surface-subtle: rgba(255,255,255,0.035);
+    --glass-stroke: rgba(255,255,255,0.14);
+    --glass-edge: rgba(0,0,0,0.5);
+    --glass-highlight: rgba(255,255,255,0.2);
+    --glass-rim: rgba(255,255,255,0.04);
+    --glass-shadow-color: rgba(0,0,0,0.45);
+    --glass-strip: rgba(0,0,0,0.14);
+    --glass-shell: rgba(10,12,16,0.12);
+  }
+}
+
+:root[data-theme="dark"][data-glass="clear"], :root[data-theme="dark"] [data-glass="clear"] {
+  --glass-tint: rgba(24,26,32,0.26);
+  --glass-surface: rgba(30,32,38,0.74);
+  --glass-surface-subtle: rgba(255,255,255,0.035);
+  --glass-stroke: rgba(255,255,255,0.14);
+  --glass-edge: rgba(0,0,0,0.5);
+  --glass-highlight: rgba(255,255,255,0.2);
+  --glass-rim: rgba(255,255,255,0.04);
+  --glass-shadow-color: rgba(0,0,0,0.45);
+  --glass-strip: rgba(0,0,0,0.14);
+  --glass-shell: rgba(10,12,16,0.12);
+}
+
+[data-glass="frosted"] {
+  --glass-tint: rgba(248,248,250,0.72);
+  --glass-surface: rgba(252,252,253,0.9);
+  --glass-surface-subtle: rgba(255,255,255,0.4);
+  --glass-stroke: rgba(255,255,255,0.72);
+  --glass-edge: rgba(16,24,40,0.1);
+  --glass-highlight: rgba(255,255,255,0.95);
+  --glass-rim: rgba(255,255,255,0.32);
+  --glass-shadow-color: rgba(20,28,50,0.14);
+  --glass-strip: rgba(238,239,242,0.5);
+  --glass-shell: rgba(246,247,249,0.5);
+  --glass-backdrop-blur: 48px;
+  --glass-backdrop-saturation: 140%;
+  --glass-radius-window: 24px;
+  --glass-radius-panel: 22px;
+  --glass-radius-pane: 20px;
+  --glass-radius-card: 16px;
+  --glass-radius-item: 11px;
+  --glass-radius-control: 999px;
+  --glass-radius-small: 7px;
+  --glass-radius-tab: 12px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 8px;
+  --glass-shadow-panel-blur: 24px;
+  --glass-shadow-panel-spread: -14px;
+  --glass-shadow-window-far-y: 50px;
+  --glass-shadow-window-far-blur: 100px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 18px;
+  --glass-shadow-window-near-blur: 36px;
+  --glass-shadow-window-near-spread: -18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-glass="frosted"], :root:not([data-theme="light"]) [data-glass="frosted"] {
+    --glass-tint: rgba(46,48,54,0.74);
+    --glass-surface: rgba(52,54,60,0.92);
+    --glass-surface-subtle: rgba(255,255,255,0.07);
+    --glass-stroke: rgba(255,255,255,0.13);
+    --glass-edge: rgba(0,0,0,0.5);
+    --glass-highlight: rgba(255,255,255,0.17);
+    --glass-rim: rgba(255,255,255,0.05);
+    --glass-shadow-color: rgba(0,0,0,0.45);
+    --glass-strip: rgba(28,29,33,0.6);
+    --glass-shell: rgba(36,37,42,0.55);
+  }
+}
+
+:root[data-theme="dark"][data-glass="frosted"], :root[data-theme="dark"] [data-glass="frosted"] {
+  --glass-tint: rgba(46,48,54,0.74);
+  --glass-surface: rgba(52,54,60,0.92);
+  --glass-surface-subtle: rgba(255,255,255,0.07);
+  --glass-stroke: rgba(255,255,255,0.13);
+  --glass-edge: rgba(0,0,0,0.5);
+  --glass-highlight: rgba(255,255,255,0.17);
+  --glass-rim: rgba(255,255,255,0.05);
+  --glass-shadow-color: rgba(0,0,0,0.45);
+  --glass-strip: rgba(28,29,33,0.6);
+  --glass-shell: rgba(36,37,42,0.55);
+}
+
+[data-glass="smoke"] {
+  --glass-tint: rgba(108,110,116,0.24);
+  --glass-surface: rgba(226,227,230,0.88);
+  --glass-surface-subtle: rgba(100,102,108,0.12);
+  --glass-stroke: rgba(255,255,255,0.3);
+  --glass-edge: rgba(0,0,0,0.18);
+  --glass-highlight: rgba(255,255,255,0.45);
+  --glass-rim: rgba(0,0,0,0.06);
+  --glass-shadow-color: rgba(0,0,0,0.24);
+  --glass-strip: rgba(80,82,88,0.2);
+  --glass-shell: rgba(120,122,128,0.16);
+  --glass-backdrop-blur: 26px;
+  --glass-backdrop-saturation: 115%;
+  --glass-radius-window: 20px;
+  --glass-radius-panel: 16px;
+  --glass-radius-pane: 14px;
+  --glass-radius-card: 11px;
+  --glass-radius-item: 8px;
+  --glass-radius-control: 8px;
+  --glass-radius-small: 6px;
+  --glass-radius-tab: 10px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 12px;
+  --glass-shadow-panel-blur: 30px;
+  --glass-shadow-panel-spread: -14px;
+  --glass-shadow-window-far-y: 50px;
+  --glass-shadow-window-far-blur: 100px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 18px;
+  --glass-shadow-window-near-blur: 36px;
+  --glass-shadow-window-near-spread: -18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-glass="smoke"], :root:not([data-theme="light"]) [data-glass="smoke"] {
+    --glass-tint: rgba(16,16,18,0.58);
+    --glass-surface: rgba(24,24,26,0.9);
+    --glass-surface-subtle: rgba(0,0,0,0.25);
+    --glass-stroke: rgba(255,255,255,0.08);
+    --glass-edge: rgba(0,0,0,0.7);
+    --glass-highlight: rgba(255,255,255,0.1);
+    --glass-rim: rgba(0,0,0,0.3);
+    --glass-shadow-color: rgba(0,0,0,0.6);
+    --glass-strip: rgba(0,0,0,0.4);
+    --glass-shell: rgba(12,12,14,0.35);
+  }
+}
+
+:root[data-theme="dark"][data-glass="smoke"], :root[data-theme="dark"] [data-glass="smoke"] {
+  --glass-tint: rgba(16,16,18,0.58);
+  --glass-surface: rgba(24,24,26,0.9);
+  --glass-surface-subtle: rgba(0,0,0,0.25);
+  --glass-stroke: rgba(255,255,255,0.08);
+  --glass-edge: rgba(0,0,0,0.7);
+  --glass-highlight: rgba(255,255,255,0.1);
+  --glass-rim: rgba(0,0,0,0.3);
+  --glass-shadow-color: rgba(0,0,0,0.6);
+  --glass-strip: rgba(0,0,0,0.4);
+  --glass-shell: rgba(12,12,14,0.35);
+}
+
+[data-glass="bluegrey"] {
+  --glass-tint: rgba(214,224,236,0.48);
+  --glass-surface: rgba(234,240,247,0.88);
+  --glass-surface-subtle: rgba(210,222,236,0.26);
+  --glass-stroke: rgba(255,255,255,0.55);
+  --glass-edge: rgba(20,40,70,0.14);
+  --glass-highlight: rgba(255,255,255,0.9);
+  --glass-rim: rgba(120,150,190,0.14);
+  --glass-shadow-color: rgba(30,50,90,0.2);
+  --glass-strip: rgba(120,145,180,0.14);
+  --glass-shell: rgba(205,218,234,0.3);
+  --glass-backdrop-blur: 32px;
+  --glass-backdrop-saturation: 170%;
+  --glass-radius-window: 24px;
+  --glass-radius-panel: 20px;
+  --glass-radius-pane: 18px;
+  --glass-radius-card: 14px;
+  --glass-radius-item: 10px;
+  --glass-radius-control: 999px;
+  --glass-radius-small: 7px;
+  --glass-radius-tab: 12px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 10px;
+  --glass-shadow-panel-blur: 28px;
+  --glass-shadow-panel-spread: -16px;
+  --glass-shadow-window-far-y: 50px;
+  --glass-shadow-window-far-blur: 100px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 18px;
+  --glass-shadow-window-near-blur: 36px;
+  --glass-shadow-window-near-spread: -18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-glass="bluegrey"], :root:not([data-theme="light"]) [data-glass="bluegrey"] {
+    --glass-tint: rgba(26,36,52,0.56);
+    --glass-surface: rgba(30,42,60,0.9);
+    --glass-surface-subtle: rgba(60,90,130,0.1);
+    --glass-stroke: rgba(160,190,230,0.14);
+    --glass-edge: rgba(0,0,0,0.5);
+    --glass-highlight: rgba(190,215,255,0.18);
+    --glass-rim: rgba(0,0,0,0.2);
+    --glass-shadow-color: rgba(0,8,24,0.55);
+    --glass-strip: rgba(8,16,30,0.4);
+    --glass-shell: rgba(20,30,46,0.3);
+  }
+}
+
+:root[data-theme="dark"][data-glass="bluegrey"], :root[data-theme="dark"] [data-glass="bluegrey"] {
+  --glass-tint: rgba(26,36,52,0.56);
+  --glass-surface: rgba(30,42,60,0.9);
+  --glass-surface-subtle: rgba(60,90,130,0.1);
+  --glass-stroke: rgba(160,190,230,0.14);
+  --glass-edge: rgba(0,0,0,0.5);
+  --glass-highlight: rgba(190,215,255,0.18);
+  --glass-rim: rgba(0,0,0,0.2);
+  --glass-shadow-color: rgba(0,8,24,0.55);
+  --glass-strip: rgba(8,16,30,0.4);
+  --glass-shell: rgba(20,30,46,0.3);
+}
+
+[data-glass="deep"] {
+  --glass-tint: rgba(160,174,196,0.55);
+  --glass-surface: rgba(214,222,234,0.94);
+  --glass-surface-subtle: rgba(140,156,182,0.3);
+  --glass-stroke: rgba(255,255,255,0.42);
+  --glass-edge: rgba(10,20,40,0.3);
+  --glass-highlight: rgba(255,255,255,0.75);
+  --glass-rim: rgba(10,20,40,0.2);
+  --glass-shadow-color: rgba(10,20,45,0.42);
+  --glass-strip: rgba(60,74,100,0.26);
+  --glass-shell: rgba(130,146,172,0.3);
+  --glass-backdrop-blur: 44px;
+  --glass-backdrop-saturation: 180%;
+  --glass-radius-window: 28px;
+  --glass-radius-panel: 26px;
+  --glass-radius-pane: 24px;
+  --glass-radius-card: 18px;
+  --glass-radius-item: 12px;
+  --glass-radius-control: 999px;
+  --glass-radius-small: 7px;
+  --glass-radius-tab: 14px;
+  --glass-spacing-gap: 10px;
+  --glass-spacing-row-padding-y: 7px;
+  --glass-spacing-transcript-padding-top: 14px;
+  --glass-spacing-transcript-padding-x: 16px;
+  --glass-spacing-transcript-padding-bottom: 10px;
+  --glass-spacing-transcript-gap: 11px;
+  --glass-spacing-strip-height: 46px;
+  --glass-spacing-toolbar-height: 48px;
+  --glass-shadow-panel-y: 22px;
+  --glass-shadow-panel-blur: 50px;
+  --glass-shadow-panel-spread: -20px;
+  --glass-shadow-window-far-y: 70px;
+  --glass-shadow-window-far-blur: 120px;
+  --glass-shadow-window-far-spread: -40px;
+  --glass-shadow-window-near-y: 24px;
+  --glass-shadow-window-near-blur: 48px;
+  --glass-shadow-window-near-spread: -20px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-glass="deep"], :root:not([data-theme="light"]) [data-glass="deep"] {
+    --glass-tint: rgba(6,10,18,0.72);
+    --glass-surface: rgba(14,18,28,0.94);
+    --glass-surface-subtle: rgba(0,0,0,0.3);
+    --glass-stroke: rgba(255,255,255,0.1);
+    --glass-edge: rgba(0,0,0,0.8);
+    --glass-highlight: rgba(255,255,255,0.2);
+    --glass-rim: rgba(255,255,255,0.05);
+    --glass-shadow-color: rgba(0,0,0,0.75);
+    --glass-strip: rgba(0,0,0,0.5);
+    --glass-shell: rgba(4,6,12,0.4);
+  }
+}
+
+:root[data-theme="dark"][data-glass="deep"], :root[data-theme="dark"] [data-glass="deep"] {
+  --glass-tint: rgba(6,10,18,0.72);
+  --glass-surface: rgba(14,18,28,0.94);
+  --glass-surface-subtle: rgba(0,0,0,0.3);
+  --glass-stroke: rgba(255,255,255,0.1);
+  --glass-edge: rgba(0,0,0,0.8);
+  --glass-highlight: rgba(255,255,255,0.2);
+  --glass-rim: rgba(255,255,255,0.05);
+  --glass-shadow-color: rgba(0,0,0,0.75);
+  --glass-strip: rgba(0,0,0,0.5);
+  --glass-shell: rgba(4,6,12,0.4);
 }
 
 .wallpaper-stone {

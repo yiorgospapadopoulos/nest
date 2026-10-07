@@ -7,11 +7,13 @@ from harness.design.models import ThemedColor, Tokens
 from harness.design.tree import (
     Bezier,
     FontStack,
+    Group,
     Leaf,
     Measure,
     Node,
     Value,
     format_number,
+    glass_theme_group,
     token_tree,
 )
 
@@ -36,6 +38,7 @@ def render_css(tokens: Tokens) -> str:
         + "}\n",
         _rule(':root[data-theme="dark"]', [*dark, "color-scheme: dark"]),
         *accents,
+        *_glass_themes(tokens),
         *_wallpaper_classes(tokens),
     ]
     return HEADER + "\n" + "\n".join(rules)
@@ -56,17 +59,28 @@ def _leaves(
             yield from _leaves(node.children, path)
 
 
+def _split(group: Group, prefix: tuple[str, ...]) -> tuple[list[Themed], list[Fixed]]:
+    """A group's variables: colors with both modes, everything else with one value."""
+    themed: list[Themed] = []
+    fixed: list[Fixed] = []
+    for path, value in _leaves(group.children, prefix):
+        if isinstance(value, ThemedColor):
+            themed.append((_variable(path), value.light, value.dark))
+        else:
+            fixed.append((_variable(path), _value(value)))
+    return themed, fixed
+
+
 def _variables(tokens: Tokens) -> tuple[list[Themed], list[Fixed]]:
     themed: list[Themed] = []
     fixed: list[Fixed] = []
-    for section in token_tree(tokens):
+    themes = tokens.glass.themes
+    for section in (*token_tree(tokens), glass_theme_group(themes.options[themes.default])):
         # Neutral colors read best without a prefix: --text-primary, --surface-code.
         prefix = () if section.name == "colors" else (section.name,)
-        for path, value in _leaves(section.children, prefix):
-            if isinstance(value, ThemedColor):
-                themed.append((_variable(path), value.light, value.dark))
-            else:
-                fixed.append((_variable(path), _value(value)))
+        section_themed, section_fixed = _split(section, prefix)
+        themed += section_themed
+        fixed += section_fixed
     default = tokens.accent.options[tokens.accent.default]
     for part, color in (("fill", default.fill), ("on", default.on)):
         light = f"var(--accent-light-{part}, {color.light})"
@@ -104,6 +118,25 @@ def _accent_overrides(tokens: Tokens) -> Iterator[str]:
             for theme, value in (("light", color.light), ("dark", color.dark))
         ]
         yield _rule(f':root[data-accent="{name}"]', declarations)
+
+
+def _glass_themes(tokens: Tokens) -> Iterator[str]:
+    """Every theme in full, so an element inside a page with another theme can show it too."""
+    system_dark = ':root:not([data-theme="light"])'
+    chosen_dark = ':root[data-theme="dark"]'
+    for name, style in tokens.glass.themes.options.items():
+        themed, fixed = _split(glass_theme_group(style), ("glass",))
+        light = [f"{variable}: {value}" for variable, value, _ in themed]
+        light += [f"{variable}: {value}" for variable, value in fixed]
+        dark = [f"{variable}: {value}" for variable, _, value in themed]
+        theme = f'[data-glass="{name}"]'
+        yield _rule(theme, light)
+        yield (
+            f"{DARK_MEDIA} {{\n"
+            + _rule(f"{system_dark}{theme}, {system_dark} {theme}", dark, "  ")
+            + "}\n"
+        )
+        yield _rule(f"{chosen_dark}{theme}, {chosen_dark} {theme}", dark)
 
 
 def _wallpaper_classes(tokens: Tokens) -> Iterator[str]:

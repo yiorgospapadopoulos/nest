@@ -46,6 +46,81 @@ public struct WallpaperStyle: Equatable, Sendable {
     public let stops: [WallpaperStop]
 }
 
+/// What shows through the glass: blur radius in points, saturation as a factor.
+public struct GlassBackdrop: Equatable, Sendable {
+    public let blur: Double
+    public let saturation: Double
+}
+
+public struct GlassColors: Equatable, Sendable {
+    /// Panel tint.
+    public let tint: ThemedColor
+    /// Strong surface: menus, popovers, inputs.
+    public let surface: ThemedColor
+    public let surfaceSubtle: ThemedColor
+    /// Border of a glass element.
+    public let stroke: ThemedColor
+    /// Thin outer line that separates the glass from what is behind it.
+    public let edge: ThemedColor
+    /// Specular highlight along the top edge.
+    public let highlight: ThemedColor
+    /// Rim along the bottom edge.
+    public let rim: ThemedColor
+    public let shadowColor: ThemedColor
+    /// Project tab strip.
+    public let strip: ThemedColor
+    /// Window shell behind the panels.
+    public let shell: ThemedColor
+}
+
+public struct GlassRadius: Equatable, Sendable {
+    public let window: Double
+    public let panel: Double
+    public let pane: Double
+    public let card: Double
+    public let item: Double
+    public let control: Double
+    public let small: Double
+    public let tab: Double
+}
+
+public struct GlassSpacing: Equatable, Sendable {
+    public let gap: Double
+    public let rowPaddingY: Double
+    public let transcriptPaddingTop: Double
+    public let transcriptPaddingX: Double
+    public let transcriptPaddingBottom: Double
+    public let transcriptGap: Double
+    public let stripHeight: Double
+    public let toolbarHeight: Double
+}
+
+/// A drop shadow: vertical offset, blur and spread in points.
+public struct GlassShadow: Equatable, Sendable {
+    public let y: Double
+    public let blur: Double
+    public let spread: Double
+}
+
+public struct GlassShadows: Equatable, Sendable {
+    public let panel: GlassShadow
+    /// The window casts two layered shadows.
+    public let windowFar: GlassShadow
+    public let windowNear: GlassShadow
+}
+
+/// A glass theme with every value resolved; `name` is the theme's id.
+public struct GlassStyle: Equatable, Sendable {
+    public let name: String
+    public let displayName: String
+    public let summary: String
+    public let backdrop: GlassBackdrop
+    public let colors: GlassColors
+    public let radius: GlassRadius
+    public let spacing: GlassSpacing
+    public let shadow: GlassShadows
+}
+
 /// Durations are in seconds, saturation is a factor, sizes are in points.
 public enum DesignTokens {
     public enum Colors {
@@ -143,6 +218,105 @@ public enum DesignTokens {
             public static let heavy: Double = 30
         }
         public static let saturation: Double = 1.85
+    }
+    public enum GlassTheme {
+        public static let clear = GlassStyle(
+            name: "clear", displayName: "Clear", summary: "The base layer. Barely tinted, light blur, the most see-through.",
+            backdrop: GlassBackdrop(blur: 10, saturation: 1.6),
+            colors: GlassColors(
+                tint: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.2), dark: RGBA(red: 0.094118, green: 0.101961, blue: 0.12549, alpha: 0.26)),
+                surface: ThemedColor(light: RGBA(red: 0.980392, green: 0.980392, blue: 0.988235, alpha: 0.68), dark: RGBA(red: 0.117647, green: 0.12549, blue: 0.14902, alpha: 0.74)),
+                surfaceSubtle: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.035)),
+                stroke: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.5), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.14)),
+                edge: ThemedColor(light: RGBA(red: 0.062745, green: 0.094118, blue: 0.156863, alpha: 0.12), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.5)),
+                highlight: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.85), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.2)),
+                rim: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.18), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.04)),
+                shadowColor: ThemedColor(light: RGBA(red: 0.078431, green: 0.109804, blue: 0.196078, alpha: 0.16), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.45)),
+                strip: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.06), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.14)),
+                shell: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1), dark: RGBA(red: 0.039216, green: 0.047059, blue: 0.062745, alpha: 0.12))
+            ),
+            radius: GlassRadius(window: 24, panel: 20, pane: 18, card: 14, item: 10, control: 999, small: 7, tab: 12),
+            spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, stripHeight: 46, toolbarHeight: 48),
+            shadow: GlassShadows(panel: GlassShadow(y: 10, blur: 28, spread: -16), windowFar: GlassShadow(y: 50, blur: 100, spread: -40), windowNear: GlassShadow(y: 18, blur: 36, spread: -18))
+        )
+        public static let frosted = GlassStyle(
+            name: "frosted", displayName: "Frosted", summary: "Milky glass with a heavy blur. The most readable.",
+            backdrop: GlassBackdrop(blur: 48, saturation: 1.4),
+            colors: GlassColors(
+                tint: ThemedColor(light: RGBA(red: 0.972549, green: 0.972549, blue: 0.980392, alpha: 0.72), dark: RGBA(red: 0.180392, green: 0.188235, blue: 0.211765, alpha: 0.74)),
+                surface: ThemedColor(light: RGBA(red: 0.988235, green: 0.988235, blue: 0.992157, alpha: 0.9), dark: RGBA(red: 0.203922, green: 0.211765, blue: 0.235294, alpha: 0.92)),
+                surfaceSubtle: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.4), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.07)),
+                stroke: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.72), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.13)),
+                edge: ThemedColor(light: RGBA(red: 0.062745, green: 0.094118, blue: 0.156863, alpha: 0.1), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.5)),
+                highlight: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.95), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.17)),
+                rim: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.32), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.05)),
+                shadowColor: ThemedColor(light: RGBA(red: 0.078431, green: 0.109804, blue: 0.196078, alpha: 0.14), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.45)),
+                strip: ThemedColor(light: RGBA(red: 0.933333, green: 0.937255, blue: 0.94902, alpha: 0.5), dark: RGBA(red: 0.109804, green: 0.113725, blue: 0.129412, alpha: 0.6)),
+                shell: ThemedColor(light: RGBA(red: 0.964706, green: 0.968627, blue: 0.976471, alpha: 0.5), dark: RGBA(red: 0.141176, green: 0.145098, blue: 0.164706, alpha: 0.55))
+            ),
+            radius: GlassRadius(window: 24, panel: 22, pane: 20, card: 16, item: 11, control: 999, small: 7, tab: 12),
+            spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, stripHeight: 46, toolbarHeight: 48),
+            shadow: GlassShadows(panel: GlassShadow(y: 8, blur: 24, spread: -14), windowFar: GlassShadow(y: 50, blur: 100, spread: -40), windowNear: GlassShadow(y: 18, blur: 36, spread: -18))
+        )
+        public static let smoke = GlassStyle(
+            name: "smoke", displayName: "Smoke", summary: "Neutral grey smoked glass, darkest in dark mode.",
+            backdrop: GlassBackdrop(blur: 26, saturation: 1.15),
+            colors: GlassColors(
+                tint: ThemedColor(light: RGBA(red: 0.423529, green: 0.431373, blue: 0.454902, alpha: 0.24), dark: RGBA(red: 0.062745, green: 0.062745, blue: 0.070588, alpha: 0.58)),
+                surface: ThemedColor(light: RGBA(red: 0.886275, green: 0.890196, blue: 0.901961, alpha: 0.88), dark: RGBA(red: 0.094118, green: 0.094118, blue: 0.101961, alpha: 0.9)),
+                surfaceSubtle: ThemedColor(light: RGBA(red: 0.392157, green: 0.4, blue: 0.423529, alpha: 0.12), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.25)),
+                stroke: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.3), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08)),
+                edge: ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.18), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.7)),
+                highlight: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.45), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1)),
+                rim: ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.06), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.3)),
+                shadowColor: ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.24), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.6)),
+                strip: ThemedColor(light: RGBA(red: 0.313725, green: 0.321569, blue: 0.345098, alpha: 0.2), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.4)),
+                shell: ThemedColor(light: RGBA(red: 0.470588, green: 0.478431, blue: 0.501961, alpha: 0.16), dark: RGBA(red: 0.047059, green: 0.047059, blue: 0.054902, alpha: 0.35))
+            ),
+            radius: GlassRadius(window: 20, panel: 16, pane: 14, card: 11, item: 8, control: 8, small: 6, tab: 10),
+            spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, stripHeight: 46, toolbarHeight: 48),
+            shadow: GlassShadows(panel: GlassShadow(y: 12, blur: 30, spread: -14), windowFar: GlassShadow(y: 50, blur: 100, spread: -40), windowNear: GlassShadow(y: 18, blur: 36, spread: -18))
+        )
+        public static let bluegrey = GlassStyle(
+            name: "bluegrey", displayName: "Blue Grey", summary: "A cool slate tint, like glass in shade.",
+            backdrop: GlassBackdrop(blur: 32, saturation: 1.7),
+            colors: GlassColors(
+                tint: ThemedColor(light: RGBA(red: 0.839216, green: 0.878431, blue: 0.92549, alpha: 0.48), dark: RGBA(red: 0.101961, green: 0.141176, blue: 0.203922, alpha: 0.56)),
+                surface: ThemedColor(light: RGBA(red: 0.917647, green: 0.941176, blue: 0.968627, alpha: 0.88), dark: RGBA(red: 0.117647, green: 0.164706, blue: 0.235294, alpha: 0.9)),
+                surfaceSubtle: ThemedColor(light: RGBA(red: 0.823529, green: 0.870588, blue: 0.92549, alpha: 0.26), dark: RGBA(red: 0.235294, green: 0.352941, blue: 0.509804, alpha: 0.1)),
+                stroke: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.55), dark: RGBA(red: 0.627451, green: 0.745098, blue: 0.901961, alpha: 0.14)),
+                edge: ThemedColor(light: RGBA(red: 0.078431, green: 0.156863, blue: 0.27451, alpha: 0.14), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.5)),
+                highlight: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.9), dark: RGBA(red: 0.745098, green: 0.843137, blue: 1, alpha: 0.18)),
+                rim: ThemedColor(light: RGBA(red: 0.470588, green: 0.588235, blue: 0.745098, alpha: 0.14), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.2)),
+                shadowColor: ThemedColor(light: RGBA(red: 0.117647, green: 0.196078, blue: 0.352941, alpha: 0.2), dark: RGBA(red: 0, green: 0.031373, blue: 0.094118, alpha: 0.55)),
+                strip: ThemedColor(light: RGBA(red: 0.470588, green: 0.568627, blue: 0.705882, alpha: 0.14), dark: RGBA(red: 0.031373, green: 0.062745, blue: 0.117647, alpha: 0.4)),
+                shell: ThemedColor(light: RGBA(red: 0.803922, green: 0.854902, blue: 0.917647, alpha: 0.3), dark: RGBA(red: 0.078431, green: 0.117647, blue: 0.180392, alpha: 0.3))
+            ),
+            radius: GlassRadius(window: 24, panel: 20, pane: 18, card: 14, item: 10, control: 999, small: 7, tab: 12),
+            spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, stripHeight: 46, toolbarHeight: 48),
+            shadow: GlassShadows(panel: GlassShadow(y: 10, blur: 28, spread: -16), windowFar: GlassShadow(y: 50, blur: 100, spread: -40), windowNear: GlassShadow(y: 18, blur: 36, spread: -18))
+        )
+        public static let deep = GlassStyle(
+            name: "deep", displayName: "Deep", summary: "Thick, heavily tinted glass with strong depth.",
+            backdrop: GlassBackdrop(blur: 44, saturation: 1.8),
+            colors: GlassColors(
+                tint: ThemedColor(light: RGBA(red: 0.627451, green: 0.682353, blue: 0.768627, alpha: 0.55), dark: RGBA(red: 0.023529, green: 0.039216, blue: 0.070588, alpha: 0.72)),
+                surface: ThemedColor(light: RGBA(red: 0.839216, green: 0.870588, blue: 0.917647, alpha: 0.94), dark: RGBA(red: 0.054902, green: 0.070588, blue: 0.109804, alpha: 0.94)),
+                surfaceSubtle: ThemedColor(light: RGBA(red: 0.54902, green: 0.611765, blue: 0.713725, alpha: 0.3), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.3)),
+                stroke: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.42), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1)),
+                edge: ThemedColor(light: RGBA(red: 0.039216, green: 0.078431, blue: 0.156863, alpha: 0.3), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.8)),
+                highlight: ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.75), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.2)),
+                rim: ThemedColor(light: RGBA(red: 0.039216, green: 0.078431, blue: 0.156863, alpha: 0.2), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.05)),
+                shadowColor: ThemedColor(light: RGBA(red: 0.039216, green: 0.078431, blue: 0.176471, alpha: 0.42), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.75)),
+                strip: ThemedColor(light: RGBA(red: 0.235294, green: 0.290196, blue: 0.392157, alpha: 0.26), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.5)),
+                shell: ThemedColor(light: RGBA(red: 0.509804, green: 0.572549, blue: 0.67451, alpha: 0.3), dark: RGBA(red: 0.015686, green: 0.023529, blue: 0.047059, alpha: 0.4))
+            ),
+            radius: GlassRadius(window: 28, panel: 26, pane: 24, card: 18, item: 12, control: 999, small: 7, tab: 14),
+            spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, stripHeight: 46, toolbarHeight: 48),
+            shadow: GlassShadows(panel: GlassShadow(y: 22, blur: 50, spread: -20), windowFar: GlassShadow(y: 70, blur: 120, spread: -40), windowNear: GlassShadow(y: 24, blur: 48, spread: -20))
+        )
+        public static let all: [GlassStyle] = [clear, frosted, smoke, bluegrey, deep]
+        public static let `default` = clear
     }
     public enum Wallpaper {
         public static let stone = WallpaperStyle(name: "stone", base: ThemedColor(light: RGBA(red: 0.921569, green: 0.901961, blue: 0.870588, alpha: 1), dark: RGBA(red: 0.098039, green: 0.090196, blue: 0.07451, alpha: 1)), stops: [

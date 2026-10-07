@@ -140,3 +140,70 @@ def test_repository_css_is_well_formed_and_complete_in_both_themes() -> None:
         "sky",
         "slate",
     ]
+    glass = re.findall(r'^\[data-glass="([a-z]+)"\] \{', css, flags=re.MULTILINE)
+    assert glass == ["clear", "frosted", "smoke", "bluegrey", "deep"]
+    old_glass = {"--glass-border", "--glass-specular", "--glass-outline", "--glass-shadow"}
+    old_glass |= {f"--glass-tint-{name}" for name in ("regular", "strong", "clear")}
+    for theme in glass:
+        dark = _declarations(_block(css, GLASS_DARK_EXPLICIT.format(theme)))
+        assert dark == _declarations(_block(css, GLASS_DARK_MEDIA.format(theme), "  "))
+        assert set(dark) == {name for name in media if name.startswith("--glass-")} - old_glass
+
+
+GLASS_DARK_MEDIA = (
+    '  :root:not([data-theme="light"])[data-glass="{0}"], '
+    ':root:not([data-theme="light"]) [data-glass="{0}"] {{\n'
+)
+GLASS_DARK_EXPLICIT = (
+    ':root[data-theme="dark"][data-glass="{0}"], :root[data-theme="dark"] [data-glass="{0}"] {{\n'
+)
+
+
+def test_the_default_glass_theme_lives_on_root_in_both_modes(css: str) -> None:
+    light = _declarations(_block(css, ":root {\n"))
+    dark = _declarations(_block(css, DARK_EXPLICIT))
+    assert light["--glass-tint"] == "rgba(255,255,255,0.2)"
+    assert dark["--glass-tint"] == "rgba(24,26,32,0.26)"
+    assert dark["--glass-shadow-color"] == "rgba(24,26,32,0.26)"
+    assert light["--glass-backdrop-blur"] == "10px"
+    assert light["--glass-backdrop-saturation"] == "160%"
+    assert light["--glass-radius-control"] == "999px"
+    assert light["--glass-spacing-transcript-padding-x"] == "16px"
+    assert light["--glass-spacing-toolbar-height"] == "48px"
+    assert light["--glass-shadow-panel-spread"] == "-16px"
+    assert light["--glass-shadow-window-far-blur"] == "100px"
+    assert "--glass-radius-control" not in dark
+
+
+def test_every_glass_theme_sets_its_full_values_under_data_glass(css: str) -> None:
+    root = _declarations(_block(css, ":root {\n"))
+    root_dark = _declarations(_block(css, DARK_EXPLICIT))
+    glass = {name: value for name, value in root.items() if name.startswith("--glass-")}
+    theme_names = {
+        name for name in glass if not name.startswith(("--glass-tint-", "--glass-blur-"))
+    }
+    theme_names -= {"--glass-border", "--glass-specular", "--glass-outline", "--glass-shadow"}
+    theme_names -= {"--glass-saturation"}
+    clear = _declarations(_block(css, '[data-glass="clear"] {\n'))
+    assert clear == {name: root[name] for name in theme_names}
+    deep = _declarations(_block(css, '[data-glass="deep"] {\n'))
+    assert set(deep) == theme_names
+    assert deep["--glass-tint"] == "rgba(160,174,196,0.55)"
+    assert deep["--glass-backdrop-blur"] == "44px"
+    assert deep["--glass-backdrop-saturation"] == "160%"
+    assert deep["--glass-radius-window"] == "28px"
+    assert deep["--glass-radius-pane"] == "18px"
+    assert deep["--glass-shadow-panel-y"] == "22px"
+    assert deep["--glass-surface"] == root["--glass-surface"]
+    media = _declarations(_block(css, GLASS_DARK_MEDIA.format("deep"), "  "))
+    explicit = _declarations(_block(css, GLASS_DARK_EXPLICIT.format("deep")))
+    assert media == explicit
+    assert explicit["--glass-tint"] == "rgba(6,10,18,0.72)"
+    assert explicit["--glass-rim"] == root_dark["--glass-rim"]
+    assert set(explicit) == {name for name in theme_names if name in root_dark}
+
+
+def test_glass_theme_rules_follow_the_base_and_accent_rules(css: str) -> None:
+    assert css.index(':root[data-accent="ocean"]') < css.index('[data-glass="clear"] {')
+    assert css.index('[data-glass="clear"] {') < css.index('[data-glass="deep"] {')
+    assert css.index('[data-glass="deep"] {') < css.index(".wallpaper-stone {")

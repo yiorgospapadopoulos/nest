@@ -1,13 +1,24 @@
 """Turn the token models into a tree of named groups and typed leaves for the emitters.
 
-Accents and wallpapers are not part of the tree: each emitter renders them in its own shape.
+Accents, wallpapers and glass themes are not part of the tree: each emitter renders them in its
+own shape. A glass theme can be turned into its own group with `glass_theme_group`.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
-from harness.design.models import Glass, Motion, StatusColors, ThemedColor, Tokens, Typography
+from pydantic import BaseModel
+
+from harness.design.models import (
+    Glass,
+    GlassStyle,
+    Motion,
+    StatusColors,
+    ThemedColor,
+    Tokens,
+    Typography,
+)
 
 
 class Unit(Enum):
@@ -100,6 +111,32 @@ def _glass(glass: Glass) -> Group:
             Leaf("saturation", Measure(glass.saturation, Unit.PERCENT)),
         ),
     )
+
+
+def glass_theme_group(style: GlassStyle) -> Group:
+    """One theme's values as a `glass` group: colors directly in it, metrics in subgroups."""
+    backdrop = style.backdrop
+    return Group(
+        "glass",
+        (
+            *(Leaf(name, color) for name, color in style.colors),
+            Group(
+                "backdrop",
+                (
+                    Leaf("blur", Measure(backdrop.blur, Unit.POINTS)),
+                    Leaf("saturation", Measure(backdrop.saturation, Unit.PERCENT)),
+                ),
+            ),
+            _points("radius", style.radius),
+            _points("spacing", style.spacing),
+            Group("shadow", tuple(_points(name, shadow) for name, shadow in style.shadow)),
+        ),
+    )
+
+
+def _points(name: str, model: BaseModel) -> Group:
+    """A model whose fields are all sizes in points, in field order."""
+    return Group(name, tuple(Leaf(key, Measure(value, Unit.POINTS)) for key, value in model))
 
 
 def _typography(typography: Typography) -> Group:

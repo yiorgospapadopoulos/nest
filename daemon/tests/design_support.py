@@ -13,6 +13,65 @@ def themed(light: str = "#000000", dark: str = "#ffffff") -> dict[str, str]:
     return {"light": light, "dark": dark}
 
 
+GLASS_COLORS = (
+    "tint",
+    "surface",
+    "surface_subtle",
+    "stroke",
+    "edge",
+    "highlight",
+    "rim",
+    "shadow_color",
+    "strip",
+    "shell",
+)
+
+
+def glass_themes() -> dict[str, Any]:
+    """A complete base theme and one that overrides a few values."""
+    colors = {name: themed("rgba(255,255,255,0.2)", "rgba(24,26,32,0.26)") for name in GLASS_COLORS}
+    clear = {
+        "name": "Clear",
+        "description": "The base layer.",
+        "backdrop": {"blur": 10, "saturation": 160},
+        "colors": colors,
+        "radius": {
+            "window": 24,
+            "panel": 20,
+            "pane": 18,
+            "card": 14,
+            "item": 10,
+            "control": 999,
+            "small": 7,
+            "tab": 12,
+        },
+        "spacing": {
+            "gap": 10,
+            "row_padding_y": 7,
+            "transcript_padding_top": 14,
+            "transcript_padding_x": 16,
+            "transcript_padding_bottom": 10,
+            "transcript_gap": 11,
+            "strip_height": 46,
+            "toolbar_height": 48,
+        },
+        "shadow": {
+            "panel": {"y": 10, "blur": 28, "spread": -16},
+            "window_far": {"y": 50, "blur": 100, "spread": -40},
+            "window_near": {"y": 18, "blur": 36, "spread": -18},
+        },
+    }
+    deep = {
+        "name": "Deep",
+        "description": "Thick glass.",
+        "backdrop": {"blur": 44},
+        "colors": {"tint": themed("rgba(160,174,196,0.55)", "rgba(6,10,18,0.72)")},
+        "radius": {"window": 28},
+        "shadow": {"panel": {"y": 22, "blur": 50, "spread": -20}},
+    }
+    return {"default": "clear", "options": {"clear": clear, "deep": deep}}
+
+
 def minimal_tokens() -> dict[str, Any]:
     return {
         "colors": {
@@ -42,6 +101,7 @@ def minimal_tokens() -> dict[str, Any]:
             "shadow": themed(),
             "blur": {"normal": 20, "heavy": 30},
             "saturation": 185,
+            "themes": glass_themes(),
         },
         "wallpaper": {
             "default": "stone",

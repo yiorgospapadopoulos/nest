@@ -1,7 +1,9 @@
 """Render the tokens as Swift constants for HarnessKit (`Generated/DesignTokens.swift`)."""
 
+from pydantic import BaseModel
+
 from harness.design.colors import parse_color
-from harness.design.models import ThemedColor, Tokens
+from harness.design.models import GlassStyle, ThemedColor, Tokens
 from harness.design.swift_names import member_name, type_name
 from harness.design.tree import (
     Bezier,
@@ -63,6 +65,81 @@ public struct WallpaperStyle: Equatable, Sendable {
     public let stops: [WallpaperStop]
 }
 
+/// What shows through the glass: blur radius in points, saturation as a factor.
+public struct GlassBackdrop: Equatable, Sendable {
+    public let blur: Double
+    public let saturation: Double
+}
+
+public struct GlassColors: Equatable, Sendable {
+    /// Panel tint.
+    public let tint: ThemedColor
+    /// Strong surface: menus, popovers, inputs.
+    public let surface: ThemedColor
+    public let surfaceSubtle: ThemedColor
+    /// Border of a glass element.
+    public let stroke: ThemedColor
+    /// Thin outer line that separates the glass from what is behind it.
+    public let edge: ThemedColor
+    /// Specular highlight along the top edge.
+    public let highlight: ThemedColor
+    /// Rim along the bottom edge.
+    public let rim: ThemedColor
+    public let shadowColor: ThemedColor
+    /// Project tab strip.
+    public let strip: ThemedColor
+    /// Window shell behind the panels.
+    public let shell: ThemedColor
+}
+
+public struct GlassRadius: Equatable, Sendable {
+    public let window: Double
+    public let panel: Double
+    public let pane: Double
+    public let card: Double
+    public let item: Double
+    public let control: Double
+    public let small: Double
+    public let tab: Double
+}
+
+public struct GlassSpacing: Equatable, Sendable {
+    public let gap: Double
+    public let rowPaddingY: Double
+    public let transcriptPaddingTop: Double
+    public let transcriptPaddingX: Double
+    public let transcriptPaddingBottom: Double
+    public let transcriptGap: Double
+    public let stripHeight: Double
+    public let toolbarHeight: Double
+}
+
+/// A drop shadow: vertical offset, blur and spread in points.
+public struct GlassShadow: Equatable, Sendable {
+    public let y: Double
+    public let blur: Double
+    public let spread: Double
+}
+
+public struct GlassShadows: Equatable, Sendable {
+    public let panel: GlassShadow
+    /// The window casts two layered shadows.
+    public let windowFar: GlassShadow
+    public let windowNear: GlassShadow
+}
+
+/// A glass theme with every value resolved; `name` is the theme's id.
+public struct GlassStyle: Equatable, Sendable {
+    public let name: String
+    public let displayName: String
+    public let summary: String
+    public let backdrop: GlassBackdrop
+    public let colors: GlassColors
+    public let radius: GlassRadius
+    public let spacing: GlassSpacing
+    public let shadow: GlassShadows
+}
+
 /// Durations are in seconds, saturation is a factor, sizes are in points.
 """
 
@@ -71,6 +148,7 @@ ORDER = (
     "status",
     "accent",
     "glass",
+    "glass_theme",
     "wallpaper",
     "radius",
     "spacing",
@@ -83,6 +161,7 @@ INDENT = "    "
 def render_swift(tokens: Tokens) -> str:
     sections = {group.name: _group(group, 1) for group in token_tree(tokens)}
     sections["accent"] = _accents(tokens)
+    sections["glass_theme"] = _glass_themes(tokens)
     sections["wallpaper"] = _wallpapers(tokens)
     body = [line for name in ORDER for line in sections[name]]
     return HEADER + PRELUDE + "public enum DesignTokens {\n" + "\n".join(body) + "\n}\n"
@@ -179,3 +258,37 @@ def _wallpapers(tokens: Tokens) -> list[str]:
 
 def _fraction(percent: float) -> str:
     return format_number(percent / 100)
+
+
+def _glass_themes(tokens: Tokens) -> list[str]:
+    themes = tokens.glass.themes
+    values = [_glass_style(name, style) for name, style in themes.options.items()]
+    return _choice("glass_theme", "GlassStyle", list(themes.options), themes.default, values)
+
+
+def _glass_style(name: str, style: GlassStyle) -> str:
+    pad = INDENT * 3
+    backdrop = style.backdrop
+    colors = [f"{pad}{INDENT}{member_name(key)}: {_themed(color)}" for key, color in style.colors]
+    shadows = ", ".join(f"{member_name(key)}: {_numbers(shadow)}" for key, shadow in style.shadow)
+    return "\n".join(
+        [
+            "GlassStyle(",
+            f'{pad}name: "{name}", displayName: "{style.name}", summary: "{style.description}",',
+            f"{pad}backdrop: GlassBackdrop(blur: {format_number(backdrop.blur)}, "
+            f"saturation: {_fraction(backdrop.saturation)}),",
+            f"{pad}colors: GlassColors(",
+            ",\n".join(colors),
+            f"{pad}),",
+            f"{pad}radius: {_numbers(style.radius)},",
+            f"{pad}spacing: {_numbers(style.spacing)},",
+            f"{pad}shadow: GlassShadows({shadows})",
+            f"{INDENT * 2})",
+        ]
+    )
+
+
+def _numbers(model: BaseModel) -> str:
+    """A struct of numbers named like its model, with its fields in order."""
+    fields = ", ".join(f"{member_name(key)}: {format_number(value)}" for key, value in model)
+    return f"{type(model).__name__}({fields})"

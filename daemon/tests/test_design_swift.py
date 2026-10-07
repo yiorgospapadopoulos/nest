@@ -34,7 +34,17 @@ def test_the_file_has_a_header_and_needs_only_foundation(swift: str) -> None:
 def test_value_types_are_public_sendable_structs(swift: str) -> None:
     for name in ("RGBA", "ThemedColor", "CubicBezier", "AccentColor", "WallpaperStop"):
         assert f"public struct {name}: Equatable, Sendable {{" in swift
-    assert "public struct WallpaperStyle: Equatable, Sendable {" in swift
+    for name in (
+        "WallpaperStyle",
+        "GlassBackdrop",
+        "GlassColors",
+        "GlassRadius",
+        "GlassSpacing",
+        "GlassShadow",
+        "GlassShadows",
+        "GlassStyle",
+    ):
+        assert f"public struct {name}: Equatable, Sendable {{" in swift
     assert "    public let light: RGBA\n    public let dark: RGBA\n" in swift
 
 
@@ -45,6 +55,7 @@ def test_sections_are_nested_enums_in_a_fixed_order(swift: str) -> None:
         "Status",
         "Accent",
         "Glass",
+        "GlassTheme",
         "Wallpaper",
         "Radius",
         "Spacing",
@@ -128,3 +139,71 @@ def test_repository_swift_is_deterministic_and_balanced() -> None:
     assert (
         "public static let all: [AccentColor] = [graphite, ocean, teal, moss, clay, rose]" in swift
     )
+    assert "public static let all: [GlassStyle] = [clear, frosted, smoke, bluegrey, deep]" in swift
+    assert 'name: "bluegrey", displayName: "Blue Grey",' in swift
+
+
+def _theme(swift: str, name: str) -> str:
+    start = swift.index(f"public static let {name} = GlassStyle(")
+    return swift[start : swift.index("\n        )\n", start)]
+
+
+def test_glass_themes_are_full_styles_with_a_default(swift: str) -> None:
+    lines = _lines(swift)
+    assert "public static let all: [GlassStyle] = [clear, deep]" in lines
+    assert "public static let `default` = clear" in lines
+    clear = _theme(swift, "clear")
+    assert 'name: "clear", displayName: "Clear", summary: "The base layer.",' in clear
+    assert "backdrop: GlassBackdrop(blur: 10, saturation: 1.6)," in clear
+    assert (
+        "radius: GlassRadius(window: 24, panel: 20, pane: 18, card: 14, item: 10, "
+        "control: 999, small: 7, tab: 12)," in clear
+    )
+    assert (
+        "spacing: GlassSpacing(gap: 10, rowPaddingY: 7, transcriptPaddingTop: 14, "
+        "transcriptPaddingX: 16, transcriptPaddingBottom: 10, transcriptGap: 11, "
+        "stripHeight: 46, toolbarHeight: 48)," in clear
+    )
+    assert (
+        "shadow: GlassShadows(panel: GlassShadow(y: 10, blur: 28, spread: -16), "
+        "windowFar: GlassShadow(y: 50, blur: 100, spread: -40), "
+        "windowNear: GlassShadow(y: 18, blur: 36, spread: -18))" in clear
+    )
+    assert "colors: GlassColors(\n                tint: ThemedColor(light: RGBA(red: 1," in clear
+    assert "\n                shadowColor: ThemedColor(" in clear
+    assert "surfaceSubtle: ThemedColor(" in clear
+
+
+def test_a_glass_theme_carries_its_inherited_values(swift: str) -> None:
+    deep = _theme(swift, "deep")
+    assert "backdrop: GlassBackdrop(blur: 44, saturation: 1.6)," in deep
+    assert "radius: GlassRadius(window: 28, panel: 20," in deep
+    assert "shadow: GlassShadows(panel: GlassShadow(y: 22, blur: 50, spread: -20), " in deep
+    assert "tint: ThemedColor(light: RGBA(red: 0.627451, green: 0.682353," in deep
+
+
+def test_the_glass_style_fields_follow_the_initializer_order(swift: str) -> None:
+    style = swift[swift.index("public struct GlassStyle") :]
+    style = style[: style.index("}")]
+    fields = re.findall(r"public let (\w+):", style)
+    assert fields == [
+        "name",
+        "displayName",
+        "summary",
+        "backdrop",
+        "colors",
+        "radius",
+        "spacing",
+        "shadow",
+    ]
+    spacing = swift[swift.index("public struct GlassSpacing") :]
+    assert re.findall(r"public let (\w+):", spacing[: spacing.index("}")]) == [
+        "gap",
+        "rowPaddingY",
+        "transcriptPaddingTop",
+        "transcriptPaddingX",
+        "transcriptPaddingBottom",
+        "transcriptGap",
+        "stripHeight",
+        "toolbarHeight",
+    ]

@@ -132,3 +132,105 @@ def test_the_root_is_found_by_walking_up(tmp_path: Path) -> None:
 def test_a_missing_root_is_reported(tmp_path: Path) -> None:
     with pytest.raises(DesignError, match=r"could not find design/tokens\.toml"):
         find_root(tmp_path)
+
+
+def test_repository_glass_themes_are_the_approved_five() -> None:
+    themes = load_tokens(REPO_ROOT / "design" / "tokens.toml").glass.themes
+    assert themes.default == "clear"
+    assert list(themes.options) == ["clear", "frosted", "smoke", "bluegrey", "deep"]
+    names = [theme.name for theme in themes.options.values()]
+    assert names == ["Clear", "Frosted", "Smoke", "Blue Grey", "Deep"]
+    clear, frosted, deep = (themes.options[name] for name in ("clear", "frosted", "deep"))
+    assert clear.backdrop.blur == 10
+    assert clear.radius.control == 999
+    # Frosted keeps Clear's window radius and strip height, and changes its own blur.
+    assert frosted.radius.window == 24
+    assert frosted.spacing.strip_height == 46
+    assert frosted.backdrop.blur == 48
+    assert themes.options["smoke"].radius.control == 8
+    assert deep.shadow.window_far.y == 70
+    assert deep.colors.tint.dark == "rgba(6,10,18,0.72)"
+
+
+def test_a_theme_inherits_what_it_does_not_override_from_the_default(tmp_path: Path) -> None:
+    data = minimal_tokens()
+    data["glass"]["themes"]["options"]["deep"]["colors"]["rim"] = {"light": "#123456"}
+    themes = load_tokens(write_tokens(tmp_path, data)).glass.themes
+    clear, deep = themes.options["clear"], themes.options["deep"]
+    assert deep.name == "Deep"
+    assert deep.backdrop.blur == 44
+    assert deep.backdrop.saturation == clear.backdrop.saturation == 160
+    assert deep.radius.window == 28
+    assert deep.radius.pane == 18
+    assert deep.colors.tint.light == "rgba(160,174,196,0.55)"
+    assert deep.colors.surface == clear.colors.surface
+    # A color can override one mode and keep the other.
+    assert deep.colors.rim.light == "#123456"
+    assert deep.colors.rim.dark == clear.colors.rim.dark
+    assert deep.shadow.panel.spread == -20
+    assert deep.shadow.window_near == clear.shadow.window_near
+    assert deep.spacing == clear.spacing
+
+
+def test_a_theme_needs_its_own_name_and_description(tmp_path: Path) -> None:
+    data = minimal_tokens()
+    del data["glass"]["themes"]["options"]["deep"]["description"]
+    _rejects(tmp_path, data, r"glass\.themes\.options\.deep\.description: Field required")
+
+
+def test_the_default_theme_must_define_every_value(tmp_path: Path) -> None:
+    data = minimal_tokens()
+    del data["glass"]["themes"]["options"]["clear"]["colors"]["rim"]
+    _rejects(tmp_path, data, r"glass\.themes\.options\.clear\.colors\.rim: Field required")
+
+
+def test_the_default_theme_must_exist(tmp_path: Path) -> None:
+    data = minimal_tokens()
+    data["glass"]["themes"]["default"] = "sand"
+    _rejects(
+        tmp_path, data, r"glass\.themes: Value error, default 'sand' is not one of the options"
+    )
+
+
+def test_a_bad_theme_color_is_rejected(tmp_path: Path) -> None:
+    data = minimal_tokens()
+    data["glass"]["themes"]["options"]["deep"]["colors"]["tint"]["dark"] = "black"
+    _rejects(
+        tmp_path,
+        data,
+        r"glass\.themes\.options\.deep\.colors\.tint\.dark: Value error, invalid color 'black'",
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"radius": {"pane": -1}}, r"deep\.radius\.pane"),
+        ({"backdrop": {"blur": -4}}, r"deep\.backdrop\.blur"),
+        ({"name": 'Deep "blue"'}, r"deep\.name"),
+        ({"description": ""}, r"deep\.description"),
+        ({"shadow": {"panel": {"depth": 3}}}, r"deep\.shadow\.panel\.depth: Extra inputs"),
+        ({"spacing": {"margin": 3}}, r"deep\.spacing\.margin: Extra inputs"),
+    ],
+)
+def test_invalid_theme_values_are_rejected(
+    tmp_path: Path, change: dict[str, Any], message: str
+) -> None:
+    data = minimal_tokens()
+    data["glass"]["themes"]["options"]["deep"].update(change)
+    _rejects(tmp_path, data, message)
+
+
+@pytest.mark.parametrize(
+    "themes",
+    [
+        "clear",
+        {"default": "clear", "options": ["clear"]},
+        {"default": ["clear"], "options": {"clear": {}}},
+        {"default": "clear", "options": {"clear": "glass"}},
+    ],
+)
+def test_malformed_theme_tables_are_rejected(tmp_path: Path, themes: object) -> None:
+    data = minimal_tokens()
+    data["glass"]["themes"] = themes
+    _rejects(tmp_path, data, r"glass\.themes")
