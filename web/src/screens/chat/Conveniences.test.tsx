@@ -1,0 +1,448 @@
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { ApiError } from "../../api/client.ts";
+import type { Approval, HarnessEvent, QueuedMessage, Session } from "../../api/types.ts";
+import { defined } from "../../test/defined.ts";
+import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
+import {
+  commandList,
+  detail,
+  event,
+  plan,
+  queuedMessage,
+  repo,
+  session,
+} from "../../test/fixtures.ts";
+import { renderApp } from "../../test/render.tsx";
+
+interface Setup {
+  chat?: Session;
+  events?: HarnessEvent[];
+  approvals?: Approval[];
+  queued?: QueuedMessage[];
+  api?: FakeApi;
+}
+
+async function openChat({
+  chat = session(),
+  events = [],
+  approvals = [],
+  queued = [],
+  api = fakeApi(),
+}: Setup = {}) {
+  api.repos.mockResolvedValue([repo("todo-ui")]);
+  api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+  api.approvals.mockResolvedValue(approvals);
+  api.session.mockResolvedValue(detail({ ...chat, queued }));
+  api.sessionEvents.mockResolvedValue(events);
+  api.resolveApproval.mockImplementation((id) =>
+    Promise.resolve({ ...defined(approvals.find((a) => a.id === id)), status: "resolved" }),
+  );
+  const rendered = await renderApp({ api });
+  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
+  await screen.findByRole("region", { name: chat.title });
+  return { ...rendered, field: screen.getByLabelText("Message") };
+}
+
+const options = (name: string) =>
+  within(screen.getByRole("listbox", { name }))
+    .getAllByRole("option")
+    .map((o) => o.textContent);
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe("slash commands", () => {
+  it("suggests the chat's commands after a leading slash and completes one", async () => {
+    const { user, api, field } = await openChat();
+
+    await user.type(field, "/");
+    expect(await screen.findByRole("listbox", { name: "Commands" })).toBeInTheDocument();
+    expect(options("Commands")).toEqual([
+      "/clearClear the conversation",
+      "/compact [focus]Summarise the conversation",
+      "/reviewReview a pull request",
+      "/security-review",
+    ]);
+    await user.type(field, "re");
+    expect(options("Commands")).toEqual(["/reviewReview a pull request", "/security-review"]);
+    await user.click(screen.getByRole("option", { name: /security-review/ }));
+    expect(field).toHaveValue("/security-review ");
+    expect(field).toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.clear(field);
+    await user.type(field, "/zzz");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, "hi /c");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(api.sessionCommands).toHaveBeenCalledTimes(1);
+    expect(api.sessionCommands).toHaveBeenCalledWith("s1");
+
+    await user.clear(field);
+    await user.type(field, "/compact keep the API notes{Enter}");
+    expect(api.sendMessage).toHaveBeenCalledWith("s1", "/compact keep the API notes", []);
+  });
+
+  it("moves through the suggestions with the arrow keys and picks with Enter or Tab", async () => {
+    const { user, api, field } = await openChat();
+
+    await user.type(field, "/c");
+    await screen.findByRole("listbox", { name: "Commands" });
+    const selected = () => screen.getByRole("option", { selected: true }).textContent;
+    expect(selected()).toMatch(/^\/clear/);
+    await user.keyboard("{ArrowDown}");
+    expect(selected()).toMatch(/^\/compact/);
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    expect(selected()).toMatch(/^\/security-review/);
+    await user.keyboard("{ArrowDown}");
+    expect(selected()).toMatch(/^\/clear/);
+    await user.keyboard("{ArrowUp}{Enter}");
+    expect(field).toHaveValue("/security-review ");
+    expect(api.sendMessage).not.toHaveBeenCalled();
+
+    await user.clear(field);
+    await user.type(field, "/co{Tab}");
+    expect(field).toHaveValue("/compact ");
+    expect(field).toHaveFocus();
+  });
+
+  it("closes when the field loses focus and opens again on return", async () => {
+    const { user, field } = await openChat();
+
+    await user.type(field, "/");
+    await screen.findByRole("listbox", { name: "Commands" });
+    await user.click(screen.getByRole("heading", { name: "Validate contact form" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.click(field);
+    expect(screen.getByRole("listbox", { name: "Commands" })).toBeInTheDocument();
+  });
+
+  it("shows nothing when the list cannot be loaded", async () => {
+    const api = fakeApi();
+    api.sessionCommands.mockRejectedValue(new ApiError(500, "boom"));
+    const { user, field } = await openChat({ api });
+
+    await user.type(field, "/");
+    await waitFor(() => {
+      expect(api.sessionCommands).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("boom")).not.toBeInTheDocument();
+  });
+
+  it("goes back to pairing when the device was revoked", async () => {
+    const api = fakeApi();
+    api.sessionCommands.mockRejectedValue(new ApiError(401, "unknown device"));
+    const { user, field } = await openChat({ api });
+
+    await user.type(field, "/");
+    expect(await screen.findByRole("heading", { name: /Pair/ })).toBeInTheDocument();
+  });
+
+  it("uses the project's last known commands in a new chat", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.repoCommands.mockResolvedValue(
+      commandList({
+        source: "repo",
+        commands: [{ name: "init", description: null, argument_hint: null }],
+      }),
+    );
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+
+    await user.type(screen.getByLabelText("Message"), "/");
+    expect(await screen.findByRole("option", { name: "/init" })).toBeInTheDocument();
+    expect(api.repoCommands).toHaveBeenCalledWith("todo-ui");
+    expect(api.sessionCommands).not.toHaveBeenCalled();
+  });
+});
+
+describe("file mentions", () => {
+  it("suggests files for the word after @ and inserts the chosen path", async () => {
+    const api = fakeApi();
+    api.files.mockResolvedValue({ files: ["src/app.py", "src/api.py"] });
+    const { user, field } = await openChat({ api });
+
+    await user.type(field, "Look at @sr");
+    expect(await screen.findByRole("listbox", { name: "Files" })).toBeInTheDocument();
+    expect(api.files).toHaveBeenLastCalledWith("s1", "sr");
+    expect(options("Files")).toEqual(["src/app.py", "src/api.py"]);
+    await user.click(screen.getByRole("option", { name: "src/app.py" }));
+    expect(field).toHaveValue("Look at @src/app.py ");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.type(field, "and me@x");
+    await act(() => new Promise((done) => setTimeout(done, 200)));
+    expect(api.files).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the answer to the latest request only", async () => {
+    const api = fakeApi();
+    const slow = deferred<{ files: string[] }>();
+    api.files.mockReturnValueOnce(slow.promise).mockResolvedValueOnce({ files: ["ab.ts"] });
+    const { user, field } = await openChat({ api });
+
+    await user.type(field, "@a");
+    await waitFor(() => {
+      expect(api.files).toHaveBeenCalledWith("s1", "a");
+    });
+    await user.type(field, "b");
+    expect(await screen.findByRole("option", { name: "ab.ts" })).toBeInTheDocument();
+    expect(api.files).toHaveBeenLastCalledWith("s1", "ab");
+    await act(async () => {
+      slow.resolve({ files: ["a.ts"] });
+      await slow.promise;
+    });
+    expect(options("Files")).toEqual(["ab.ts"]);
+  });
+
+  it("shows nothing when the files cannot be listed", async () => {
+    const api = fakeApi();
+    api.files.mockRejectedValue(new ApiError(404, "unknown session"));
+    const { user, field } = await openChat({ api });
+
+    await user.type(field, "@x");
+    await waitFor(() => {
+      expect(api.files).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("unknown session")).not.toBeInTheDocument();
+  });
+
+  it("is not offered before the chat exists", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+
+    await user.type(screen.getByLabelText("Message"), "@src");
+    await act(() => new Promise((done) => setTimeout(done, 200)));
+    expect(api.files).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("plan approval", () => {
+  const created = (a: Approval) =>
+    event({ id: 1, type: "approval.created", payload: { approval: { ...a } } });
+
+  it("shows the plan in the chat and approves it", async () => {
+    const p = plan();
+    const { user, api } = await openChat({
+      chat: session({ state: "waiting", permission_mode: "plan" }),
+      approvals: [p],
+      events: [created(p)],
+    });
+
+    const card = screen.getByRole("group", { name: "Plan ready" });
+    expect(within(card).getByRole("heading", { name: "Plan", level: 4 })).toBeInTheDocument();
+    expect(within(card).getByText("zod").tagName).toBe("STRONG");
+    expect(screen.getByText("Plan ready", { selector: ".sp span" })).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Approve plan" }));
+
+    expect(api.resolveApproval).toHaveBeenCalledWith("q4", { decision: "approve" });
+    expect(await screen.findByText("Plan approved")).toBeInTheDocument();
+  });
+
+  it("keeps planning with an optional note", async () => {
+    const p = plan();
+    const { user, api } = await openChat({ approvals: [p], events: [created(p)] });
+    const card = screen.getByRole("group", { name: "Plan ready" });
+
+    await user.click(within(card).getByRole("button", { name: "Keep planning" }));
+    const note = within(card).getByLabelText("Note for Claude");
+    expect(note).toHaveFocus();
+    await user.click(within(card).getByRole("button", { name: "Cancel" }));
+    expect(within(card).queryByLabelText("Note for Claude")).not.toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Keep planning" }));
+    await user.type(within(card).getByLabelText("Note for Claude"), "  Smaller steps {Enter}");
+
+    expect(api.resolveApproval).toHaveBeenCalledWith("q4", {
+      decision: "keep_planning",
+      message: "Smaller steps",
+    });
+    expect(await screen.findByText("Claude keeps planning")).toBeInTheDocument();
+  });
+
+  it("keeps planning without a note from the Inbox", async () => {
+    const p = plan({
+      payload: { plan: Array.from({ length: 30 }, (_, i) => `- Step ${String(i)}`).join("\n") },
+    });
+    const api = fakeApi();
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    api.approvals.mockResolvedValue([p]);
+    api.resolveApproval.mockRejectedValueOnce(new ApiError(409, "already resolved"));
+    api.resolveApproval.mockResolvedValue({ ...p, status: "resolved" });
+    const { user } = await renderApp({ api });
+
+    const card = screen.getByRole("article", { name: "Plan: Validate contact form" });
+    const more = within(card).getByRole("button", { name: "Show all" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(card.querySelector(".plan.clip")).not.toBeNull();
+    await user.click(more);
+    expect(within(card).getByRole("button", { name: "Show less" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(card.querySelector(".plan.clip")).toBeNull();
+
+    await user.click(within(card).getByRole("button", { name: "Keep planning" }));
+    await user.click(within(card).getByRole("button", { name: "Keep planning" }));
+    expect(await screen.findByText("already resolved")).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Keep planning" }));
+
+    expect(api.resolveApproval).toHaveBeenLastCalledWith("q4", {
+      decision: "keep_planning",
+      message: null,
+    });
+    expect(await screen.findByText("All clear")).toBeInTheDocument();
+  });
+
+  it("approves from the Inbox, with a short plan shown whole", async () => {
+    const p = plan();
+    const api = fakeApi();
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    api.approvals.mockResolvedValue([p]);
+    api.resolveApproval.mockResolvedValue({ ...p, status: "resolved" });
+    const { user } = await renderApp({ api });
+
+    const card = screen.getByRole("article", { name: "Plan: Validate contact form" });
+    expect(within(card).queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Approve plan" }));
+    expect(api.resolveApproval).toHaveBeenCalledWith("q4", { decision: "approve" });
+  });
+});
+
+describe("context meter", () => {
+  const context = { percent: 41.4, used: 82_000, limit: 200_000 };
+
+  it("shows how full the context is and compacts on request", async () => {
+    const { user, api, field, push } = await openChat({ chat: session({ context }) });
+
+    const meter = screen.getByRole("button", { name: "Context: 41% used" });
+    expect(meter).toHaveTextContent("context 41%");
+    await user.type(field, "Draft");
+    await user.click(meter);
+    const sheet = screen.getByRole("dialog", { name: "Context" });
+    expect(within(sheet).getByText("82k of 200k tokens")).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("menuitem", { name: /Compact/ }));
+
+    expect(api.sendMessage).toHaveBeenCalledWith("s1", "/compact", []);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(field).toHaveValue("Draft");
+
+    push({
+      id: 7,
+      session_id: "s1",
+      type: "session.context",
+      payload: { context: { percent: 3, used: 6000, limit: 200_000 } },
+    });
+    expect(screen.getByRole("button", { name: "Context: 3% used" })).toBeInTheDocument();
+    push({ id: 8, session_id: "s1", type: "session.context", payload: { context: null } });
+    expect(screen.queryByRole("button", { name: /^Context/ })).not.toBeInTheDocument();
+  });
+
+  it("says when Claude Code has the chat open", async () => {
+    const api = fakeApi();
+    api.sendMessage.mockRejectedValueOnce(
+      new ApiError(409, "open elsewhere", "open_in_claude_code"),
+    );
+    const { user } = await openChat({ chat: session({ context }), api });
+
+    await user.click(screen.getByRole("button", { name: "Context: 41% used" }));
+    await user.click(screen.getByRole("menuitem", { name: /Compact/ }));
+    expect(
+      await screen.findByText("This chat is open in Claude Code right now. Close it there first."),
+    ).toBeInTheDocument();
+  });
+
+  it("closes without compacting", async () => {
+    const { user, api } = await openChat({ chat: session({ context }) });
+
+    await user.click(screen.getByRole("button", { name: "Context: 41% used" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("is hidden until a turn reports it", async () => {
+    await openChat();
+    expect(screen.queryByRole("button", { name: /^Context/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("queued follow-ups", () => {
+  it("queues a message while a turn runs and shows it until it is delivered", async () => {
+    const { user, api, field, push } = await openChat({ chat: session({ state: "running" }) });
+    api.sendMessage.mockResolvedValue({
+      ...session({ state: "running" }),
+      queued_message: queuedMessage(),
+    });
+
+    expect(screen.getByRole("button", { name: "Interrupt" })).toBeInTheDocument();
+    await user.type(field, "Then add tests");
+    expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Queue" }));
+    expect(api.sendMessage).toHaveBeenCalledWith("s1", "Then add tests", []);
+    await waitFor(() => {
+      expect(field).toHaveValue("");
+    });
+
+    const attachment = { id: "a1", filename: "a.png", media_type: "image/png", size: 3 };
+    push({
+      id: 5,
+      session_id: "s1",
+      type: "session.queued",
+      payload: { queued: [queuedMessage({ attachments: [attachment] })] as never },
+    });
+    const bubble = defined(screen.getByText("Then add tests").closest(".m-u"));
+    expect(bubble).toHaveClass("queued");
+    expect(bubble).toHaveTextContent("Queued");
+    expect(bubble).toHaveTextContent("a.png");
+
+    push({ id: 6, session_id: "s1", type: "session.queued", payload: { queued: [] } });
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
+  it("cancels a queued message", async () => {
+    const api = fakeApi();
+    api.cancelQueued
+      .mockRejectedValueOnce(new ApiError(500, "boom"))
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new ApiError(404, "unknown queued message"));
+    const { user } = await openChat({
+      api,
+      chat: session({ state: "running" }),
+      queued: [queuedMessage(), queuedMessage({ id: "m2", text: "And docs" })],
+    });
+
+    const [first, second] = screen.getAllByRole("button", { name: "Cancel queued message" });
+    await user.click(defined(first));
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+    expect(screen.getByText("Then add tests")).toBeInTheDocument();
+    await user.click(defined(first));
+    await waitFor(() => {
+      expect(screen.queryByText("Then add tests")).not.toBeInTheDocument();
+    });
+    await user.click(defined(second));
+    expect(await screen.findByText("Already sent")).toBeInTheDocument();
+    expect(screen.queryByText("And docs")).not.toBeInTheDocument();
+    expect(api.cancelQueued.mock.calls).toEqual([
+      ["s1", "m1"],
+      ["s1", "m1"],
+      ["s1", "m2"],
+    ]);
+  });
+});
