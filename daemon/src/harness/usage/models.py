@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from harness.providers.base import TokenUsage
 
@@ -26,6 +26,13 @@ class DayUsage(BaseModel):
     sessions: int
 
 
+class ProbeTotals(BaseModel):
+    """The usage probes of a month: harness overhead, not part of the other totals."""
+
+    count: int = 0
+    tokens: int = 0
+
+
 class MonthUsage(BaseModel):
     year: int
     month: int
@@ -34,6 +41,7 @@ class MonthUsage(BaseModel):
     tokens: TokenTotals
     # Every day of the month, in order.
     days: list[DayUsage]
+    probes: ProbeTotals = Field(default_factory=ProbeTotals)
 
 
 class LimitWindow(BaseModel):

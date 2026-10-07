@@ -107,3 +107,39 @@ async def test_limits_keep_the_latest_of_each_window(usage: UsageStore, clock: F
     assert limits.seven_day is not None
     assert (limits.seven_day.utilization, limits.seven_day.resets_at) == (0.5, None)
     assert limits.seven_day.updated_at == clock.now() - timedelta(minutes=5)
+
+
+async def test_probes_are_counted_apart_from_the_users_sessions(
+    usage: UsageStore, db: Database, clock: FakeClock
+) -> None:
+    session = await SessionStore(db, clock).create(new_session())
+    await usage.record_turn(session.id, tokens(1))
+    await usage.record_probe(tokens(10))
+    await usage.record_probe(TokenUsage(input_tokens=450))
+    # Another month in Helsinki: not counted in January.
+    clock.current = datetime(2026, 2, 1, 12, tzinfo=UTC)
+    await usage.record_probe(tokens(1000))
+
+    january = await usage.month(2026, 1)
+
+    assert (january.sessions, january.tokens.total) == (1, 10)
+    assert sum(day.tokens for day in january.days) == 10
+    assert january.probes.model_dump() == {"count": 2, "tokens": 550}
+    assert (await usage.month(2026, 2)).probes.model_dump() == {"count": 1, "tokens": 10000}
+
+
+async def test_limits_updated_at_is_the_latest_window_report(
+    usage: UsageStore, clock: FakeClock
+) -> None:
+    assert await usage.limits_updated_at() is None
+
+    await usage.update_limits(
+        UsageInfo(five_hour=None, seven_day=UsageWindow(utilization=0.1, resets_at=None))
+    )
+    first = clock.now()
+    clock.advance(timedelta(minutes=2))
+    await usage.update_limits(
+        UsageInfo(five_hour=UsageWindow(utilization=0.2, resets_at=None), seven_day=None)
+    )
+
+    assert await usage.limits_updated_at() == first + timedelta(minutes=2)
