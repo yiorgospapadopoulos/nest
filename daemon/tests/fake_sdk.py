@@ -2,9 +2,15 @@
 
 import asyncio
 from collections.abc import AsyncIterable, AsyncIterator
-from typing import Any
+from typing import Any, cast
 
-from claude_agent_sdk import ClaudeAgentOptions, McpStatusResponse, Message, PermissionMode
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ContextUsageResponse,
+    McpStatusResponse,
+    Message,
+    PermissionMode,
+)
 
 # None ends the stream as if the process exited; an exception is raised from the stream.
 type StreamItem = Message | Exception | None
@@ -19,6 +25,10 @@ class FakeSdkClient:
         self.prompts: list[dict[str, Any]] = []
         self.calls: list[tuple[str, object]] = []
         self.mcp_status: McpStatusResponse = {"mcpServers": []}
+        # The initialize response; None as while connect() is still in progress.
+        self.server_info: dict[str, Any] | None = None
+        # What get_context_usage returns; tests also give malformed responses.
+        self.context: dict[str, Any] = {}
 
     def push(self, *items: StreamItem) -> None:
         for item in items:
@@ -54,6 +64,12 @@ class FakeSdkClient:
 
     async def get_mcp_status(self) -> McpStatusResponse:
         return self.mcp_status
+
+    async def get_context_usage(self) -> ContextUsageResponse:
+        return cast("ContextUsageResponse", self.context)
+
+    async def get_server_info(self) -> dict[str, Any] | None:
+        return self.server_info
 
     async def disconnect(self) -> None:
         self.disconnects += 1

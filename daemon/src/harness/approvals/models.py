@@ -7,7 +7,9 @@ from pydantic import BaseModel, JsonValue
 class ApprovalKind(StrEnum):
     PERMISSION = "permission"  # a tool call the agent waits to be allowed
     QUESTION = "question"  # the agent's AskUserQuestion, waiting for answers
+    PLAN = "plan"  # a plan the agent finished in plan mode, waiting to be approved
     REVIEW = "review"  # finished work to approve, reject or send feedback on
+    MERGE = "merge"  # a pull request whose checks passed, waiting to be merged
 
 
 class ApprovalStatus(StrEnum):
@@ -18,7 +20,7 @@ class ApprovalStatus(StrEnum):
 
 
 # Kinds an agent run waits on; they cannot outlive the run.
-BLOCKING = (ApprovalKind.PERMISSION, ApprovalKind.QUESTION)
+BLOCKING = (ApprovalKind.PERMISSION, ApprovalKind.QUESTION, ApprovalKind.PLAN)
 
 
 class Approval(BaseModel):

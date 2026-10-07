@@ -6,10 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import BaseModel
+
 from harness.clock import Clock
+from harness.prs.models import PrStatus
 from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.models import IN_FLIGHT, NewSession, Session, SessionState
 from harness.storage.db import Database
+from harness.stuck.models import StuckFlag
 
 
 class SessionStore:
@@ -56,6 +60,20 @@ class SessionStore:
         )
         return [_session(row) for row in rows]
 
+    async def provider_session_ids(self) -> set[str]:
+        """The engine session ids of every session, archived and closed ones included."""
+        rows = await self._db.fetch_all(
+            "SELECT provider_session_id FROM sessions WHERE provider_session_id IS NOT NULL"
+        )
+        return {row["provider_session_id"] for row in rows}
+
+    async def find_by_provider_session(self, provider_session_id: str) -> Session | None:
+        row = await self._db.fetch_one(
+            "SELECT * FROM sessions WHERE provider_session_id = ? ORDER BY rowid LIMIT 1",
+            (provider_session_id,),
+        )
+        return None if row is None else _session(row)
+
     async def update(self, session_id: str, **changes: object) -> Session:
         changes["updated_at"] = self._clock.now()
         # Column names come from code, never from requests.
@@ -66,11 +84,47 @@ class SessionStore:
         )
         return await self.get(session_id)
 
+    async def set_pr(self, session_id: str, pr: PrStatus) -> Session:
+        """Store the pull request's status without moving the session up the list."""
+        await self._db.execute(
+            "UPDATE sessions SET pr = ? WHERE id = ?", (pr.model_dump_json(), session_id)
+        )
+        return await self.get(session_id)
+
+    async def set_stuck(self, session_id: str, flag: StuckFlag | None) -> Session:
+        """Store why the session looks stuck (None: it does not) without reordering it."""
+        await self._db.execute(
+            "UPDATE sessions SET stuck = ? WHERE id = ?",
+            (None if flag is None else flag.model_dump_json(), session_id),
+        )
+        return await self.get(session_id)
+
+    async def clear_stuck(self) -> list[str]:
+        """Clear every stuck flag, as after a restart; returns the sessions that had one."""
+        rows = await self._db.fetch_all(
+            "UPDATE sessions SET stuck = NULL WHERE stuck IS NOT NULL RETURNING id"
+        )
+        return [row["id"] for row in rows]
+
+    async def with_prs(self, repo: str | None = None) -> list[Session]:
+        """Sessions with a pull request, newest first, optionally of one repo."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE pr_url IS NOT NULL AND (? IS NULL OR repo = ?)"
+            " ORDER BY created_at DESC, rowid DESC",
+            (repo, repo),
+        )
+        return [_session(row) for row in rows]
+
     async def delete(self, session_id: str) -> None:
-        """Delete the session with everything stored for it: approvals, attachments, events."""
+        """Delete the session with everything stored for it: approvals, attachments, events,
+        queued messages and its command list.
+        """
         async with self._db.transaction() as tx:
-            for table in ("approvals", "attachments", "events"):
+            for table in ("approvals", "attachments", "events", "queued_messages"):
                 await tx.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))  # noqa: S608
+            await tx.execute(
+                "DELETE FROM command_catalogs WHERE scope = 'session' AND key = ?", (session_id,)
+            )
             await tx.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
     async def interrupt_in_flight(self) -> list[str]:
@@ -91,10 +145,14 @@ def _column(value: object) -> object:
         return value.isoformat()
     if isinstance(value, list):
         return json.dumps(value)
+    if isinstance(value, BaseModel):
+        return value.model_dump_json()
     return value
 
 
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
+    for column in ("context", "pr", "stuck"):
+        data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)

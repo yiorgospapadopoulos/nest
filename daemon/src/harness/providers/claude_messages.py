@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from claude_agent_sdk import (
     TERMINAL_TASK_STATUSES,
@@ -26,6 +26,7 @@ from claude_agent_sdk import (
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from harness.providers import base
+from harness.providers.claude_commands import described_catalog, init_catalog
 
 
 async def translate(message: Message, sink: base.ProviderEventSink) -> None:
@@ -33,6 +34,9 @@ async def translate(message: Message, sink: base.ProviderEventSink) -> None:
         case SystemMessage(subtype="init"):
             await sink.provider_session_id(str(message.data["session_id"]))
             await sink.connectors(mcp_servers(message.data.get("mcp_servers")))
+            await _report_commands(init_catalog(message.data), sink)
+        case SystemMessage(subtype="commands_changed"):
+            await _report_commands(described_catalog(message.data), sink)
         case AssistantMessage() | UserMessage():
             # Plain-text user content is the engine echoing input the session already recorded.
             content = message.content if isinstance(message.content, list) else []
@@ -43,9 +47,12 @@ async def translate(message: Message, sink: base.ProviderEventSink) -> None:
             if text is not None:
                 await sink.text_delta(text)
         case RateLimitEvent():
-            usage = _usage(message.rate_limit_info.raw)
+            usage = usage_info(message.rate_limit_info.raw)
             if usage is not None:
                 await sink.usage(usage)
+        case TaskStartedMessage() | TaskUpdatedMessage() | TaskNotificationMessage():
+            for update in task_updates(message):
+                await sink.task(update)
         case ResultMessage():
             await sink.provider_session_id(message.session_id)
             await sink.result(
@@ -56,11 +63,59 @@ async def translate(message: Message, sink: base.ProviderEventSink) -> None:
                     num_turns=message.num_turns,
                     cost_usd=message.total_cost_usd,
                     errors=message.errors or [],
-                    tokens=_tokens(message.usage or {}),
+                    tokens=token_usage(message.usage or {}),
                 )
             )
         case _:
             pass
+
+
+async def _report_commands(
+    catalog: base.CommandCatalog | None, sink: base.ProviderEventSink
+) -> None:
+    if catalog is not None:
+        await sink.commands(catalog)
+
+
+_FINISHED: dict[str, Literal["completed", "failed", "stopped"]] = {
+    "completed": "completed",
+    "failed": "failed",
+    "stopped": "stopped",
+    "killed": "stopped",  # task_updated's raw form of stopped
+}
+
+
+def task_updates(
+    message: TaskStartedMessage | TaskUpdatedMessage | TaskNotificationMessage,
+) -> list[base.AgentTask]:
+    """What a task lifecycle message says; a task_updated patch can say two things at once."""
+    if isinstance(message, TaskStartedMessage):
+        return [
+            base.AgentTask(
+                task_id=message.task_id,
+                phase="started",
+                tool_use_id=message.tool_use_id,
+                task_type=message.task_type,
+                description=message.description,
+                background=message.data.get("is_backgrounded") is True,
+            )
+        ]
+    if isinstance(message, TaskNotificationMessage):
+        return [
+            base.AgentTask(
+                task_id=message.task_id,
+                phase="finished",
+                tool_use_id=message.tool_use_id,
+                status=_FINISHED[message.status],
+            )
+        ]
+    updates: list[base.AgentTask] = []
+    if message.patch.get("is_backgrounded") is True:
+        updates.append(base.AgentTask(task_id=message.task_id, phase="backgrounded"))
+    status = _FINISHED.get(message.status or "")
+    if status is not None:
+        updates.append(base.AgentTask(task_id=message.task_id, phase="finished", status=status))
+    return updates
 
 
 class BackgroundTasks:
@@ -68,6 +123,15 @@ class BackgroundTasks:
 
     def __init__(self) -> None:
         self._running: set[str] = set()
+
+    def abandon(self) -> list[base.AgentTask]:
+        """The run ended: every task still running is stopped with it."""
+        stopped = [
+            base.AgentTask(task_id=task_id, phase="finished", status="stopped")
+            for task_id in sorted(self._running)
+        ]
+        self._running.clear()
+        return stopped
 
     def update(self, message: Message) -> int | None:
         """The new number of running tasks, or None if `message` did not change it."""
@@ -128,7 +192,7 @@ def mcp_servers(raw: object) -> list[base.McpServer]:
     return servers
 
 
-def _tokens(usage: dict[str, Any]) -> base.TokenUsage:
+def token_usage(usage: dict[str, Any]) -> base.TokenUsage:
     """The four token counts; missing or non-integer values count as zero."""
     counts = {
         name: value
@@ -158,7 +222,7 @@ class _Windows(BaseModel):
     seven_day: _Window | None = None
 
 
-def _usage(raw: dict[str, Any]) -> base.UsageInfo | None:
+def usage_info(raw: dict[str, Any]) -> base.UsageInfo | None:
     """Five-hour and seven-day windows from the CLI's `unifiedWindows`, when present."""
     try:
         windows = _Windows.model_validate(raw.get("unifiedWindows"))

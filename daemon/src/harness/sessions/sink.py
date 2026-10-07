@@ -4,7 +4,15 @@ from typing import Protocol
 
 from harness.events import types
 from harness.events.bus import EventBus
-from harness.providers.base import McpServer, MessageBlock, ResultInfo, UsageInfo
+from harness.providers.base import (
+    AgentTask,
+    CommandCatalog,
+    EngineDetails,
+    McpServer,
+    MessageBlock,
+    ResultInfo,
+    UsageInfo,
+)
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import LiveSession
 from harness.sessions.store import SessionStore
@@ -70,6 +78,12 @@ class SessionSink:
     async def connectors(self, servers: list[McpServer]) -> None:
         await self._hooks.connectors_reported(self._session_id, servers)
 
+    async def commands(self, catalog: CommandCatalog) -> None:
+        await self._hooks.commands_reported(self._session_id, catalog)
+
+    async def engine_details(self, details: EngineDetails) -> None:
+        await self._hooks.engine_reported(details)
+
     async def provider_session_id(self, session_id: str) -> None:
         if session_id != self._provider_session_id:
             self._provider_session_id = session_id
@@ -77,6 +91,13 @@ class SessionSink:
 
     async def background_tasks(self, running: int) -> None:
         await self._turns.background_tasks(self._live, running)
+
+    async def task(self, update: AgentTask) -> None:
+        # Not agent output: a background task can finish while the session is idle.
+        await self._bus.publish(
+            types.SESSION_AGENT_TASK, update.model_dump(mode="json"), self._session_id
+        )
+        await self._hooks.message(self._session_id)
 
     async def stopped(self, error: str) -> None:
         await self._turns.run_stopped(self._live, error)

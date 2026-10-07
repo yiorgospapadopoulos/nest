@@ -7,6 +7,7 @@ import pytest
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.providers.base import (
+    AgentTask,
     McpServer,
     ResultInfo,
     TextBlock,
@@ -133,6 +134,36 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
             None,
             '{"five_hour": {"utilization": 0.5, "resets_at": "2026-01-01T00:00:00Z"},'
             ' "seven_day": null}',
+        )
+    ]
+
+
+async def test_task_updates_are_stored_without_starting_a_turn(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns()
+    hooks = RecordingHooks()
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, hooks, None)
+
+    await sink.task(AgentTask(task_id="t1", phase="finished", tool_use_id="a1", status="failed"))
+
+    assert turns.calls == []
+    assert hooks.messages == [session.id]
+    events = await bus.session_events(session.id)
+    assert [(e.type, e.payload) for e in events] == [
+        (
+            types.SESSION_AGENT_TASK,
+            {
+                "task_id": "t1",
+                "phase": "finished",
+                "tool_use_id": "a1",
+                "task_type": None,
+                "description": None,
+                "background": False,
+                "status": "failed",
+            },
         )
     ]
 

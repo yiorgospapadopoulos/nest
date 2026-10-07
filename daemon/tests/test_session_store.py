@@ -7,6 +7,7 @@ from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.models import NewSession, SessionState
 from harness.sessions.store import SessionStore
 from harness.storage.db import Database
+from harness.stuck.models import StuckFlag
 from tests.fakes import FakeClock
 
 
@@ -164,3 +165,23 @@ async def test_in_flight_sessions_become_interrupted(store: SessionStore) -> Non
     for session, state in zip(sessions, states, strict=True):
         expected = SessionState.INTERRUPTED if state in in_flight else state
         assert after[session.id] is expected
+
+
+async def test_stuck_flags_are_stored_without_reordering_and_cleared_together(
+    store: SessionStore, clock: FakeClock
+) -> None:
+    first = await store.create(new_session())
+    second = await store.create(new_session())
+    clock.advance(timedelta(minutes=5))
+    flag = StuckFlag(reason="silent", since=clock.now(), details="No new output for 10 minutes")
+
+    flagged = await store.set_stuck(first.id, flag)
+    await store.set_stuck(second.id, flag)
+    cleared = await store.set_stuck(second.id, None)
+
+    assert flagged.stuck == flag
+    assert flagged.updated_at == first.updated_at
+    assert cleared.stuck is None
+    assert await store.clear_stuck() == [first.id]
+    assert (await store.get(first.id)).stuck is None
+    assert await store.clear_stuck() == []

@@ -33,6 +33,15 @@ def require_cwd(session: Session) -> Path:
     return session.cwd
 
 
+def require_workspace(session: Session) -> Path:
+    """The session's working directory, which must still exist on disk."""
+    cwd = require_cwd(session)
+    if not cwd.is_dir():
+        msg = f"the working directory of session {session.id!r} no longer exists"
+        raise NoWorkspaceError(msg)
+    return cwd
+
+
 def worktree_of(session: Session) -> Worktree | None:
     if session.worktree_path is None or session.branch is None:
         return None

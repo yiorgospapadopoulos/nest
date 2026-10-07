@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from harness.config.models import Effort
 from harness.providers.base import AgentRun
 from harness.sessions.errors import SessionBusyError
 
@@ -20,11 +21,15 @@ class LiveSession:
     run: AgentRun | None = None
     # Extra directories the run was opened with; new ones need a fresh run.
     run_dirs: tuple[Path, ...] = ()
+    # The thinking effort the run opened with; a different one needs a new run.
+    run_effort: Effort | None = None
     # Setup, opening the run and submitting a message. At most one at a time.
     task: asyncio.Task[None] | None = None
     # The agent is working, after a user message or on its own, until the turn's result.
     turn_active: bool = False
     interrupted: bool = False
+    # The turn was interrupted to deliver a queued message (a nudge) right after it.
+    resume_queue: bool = False
     # Background tasks the agent reports running; the run is kept open while there are any.
     background_tasks: int = 0
     # Refs at the start of the current turn, for the post-turn audit (D013 layer 4).
@@ -60,6 +65,7 @@ class LiveSession:
     def end_turn(self, idle_close: timedelta) -> None:
         self.turn_active = False
         self.interrupted = False
+        self.resume_queue = False
         self.schedule_idle_close(idle_close)
 
     def schedule_idle_close(self, idle_close: timedelta) -> None:

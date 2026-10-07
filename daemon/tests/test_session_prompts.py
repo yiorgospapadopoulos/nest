@@ -5,11 +5,14 @@ import pytest
 from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
 from harness.approvals.queue import ApprovalQueue
 from harness.approvals.store import ApprovalStore
+from harness.config.models import PermissionMode
 from harness.events.bus import EventBus
 from harness.notifications.notifier import Notifier
 from harness.providers.base import (
     PermissionDecision,
     PermissionRequest,
+    PlanDecision,
+    PlanRequest,
     Question,
     QuestionAnswer,
     QuestionOption,
@@ -41,13 +44,17 @@ class Env:
         self.store = SessionStore(db, clock)
         self.queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
         self.waiting: list[tuple[str, bool]] = []
+        self.modes: list[tuple[str, PermissionMode]] = []
 
     async def prompts(self) -> SessionPrompts:
         session = await self.store.create(new_session())
-        return SessionPrompts(session.id, self.queue, self.store, self.on_waiting)
+        return SessionPrompts(session.id, self.queue, self.store, self.on_waiting, self.on_mode)
 
     async def on_waiting(self, session_id: str, waiting: bool) -> None:
         self.waiting.append((session_id, waiting))
+
+    async def on_mode(self, session_id: str, mode: PermissionMode) -> None:
+        self.modes.append((session_id, mode))
 
     async def pending(self) -> Approval:
         async def created() -> bool:
@@ -174,3 +181,44 @@ async def test_parallel_always_answers_add_the_rule_once(env: Env) -> None:
     await asyncio.gather(first, second)
 
     assert (await env.store.get(items[0].session_id)).allowed_tools == ["Edit"]
+
+
+async def test_an_approved_plan_continues_with_edits_allowed(env: Env) -> None:
+    prompts = await env.prompts()
+
+    reviewing = asyncio.ensure_future(prompts.review_plan(PlanRequest("# Plan\n- a", "toolu_p")))
+    item = await env.pending()
+    await env.queue.resolve(item.id, {"decision": "approve"})
+
+    assert await reviewing == PlanDecision(approved=True, mode="acceptEdits")
+    assert item.kind is ApprovalKind.PLAN
+    assert item.payload == {"plan": "# Plan\n- a", "tool_use_id": "toolu_p"}
+    assert env.modes == [(item.session_id, "acceptEdits")]
+    assert env.waiting == [(item.session_id, True), (item.session_id, False)]
+
+
+@pytest.mark.parametrize(
+    ("note", "message"),
+    [("split step 2", "Keep planning: split step 2"), (None, "Keep planning.")],
+)
+async def test_keep_planning_tells_the_agent_with_the_note(
+    env: Env, note: str | None, message: str
+) -> None:
+    prompts = await env.prompts()
+
+    reviewing = asyncio.ensure_future(prompts.review_plan(PlanRequest("plan")))
+    item = await env.pending()
+    await env.queue.resolve(item.id, {"decision": "keep_planning", "message": note})
+
+    assert await reviewing == PlanDecision(approved=False, message=message)
+    assert env.modes == []
+
+
+async def test_an_expired_plan_tells_the_agent_why(env: Env) -> None:
+    prompts = await env.prompts()
+
+    reviewing = asyncio.ensure_future(prompts.review_plan(PlanRequest("plan")))
+    item = await env.pending()
+    await env.queue.expire(item.session_id, (ApprovalKind.PLAN,), "interrupted by the user")
+
+    assert await reviewing == PlanDecision(approved=False, message="interrupted by the user")

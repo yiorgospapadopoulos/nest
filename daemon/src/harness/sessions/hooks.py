@@ -2,7 +2,13 @@
 
 from typing import Protocol
 
-from harness.providers.base import McpServer, ResultInfo, UsageInfo
+from harness.providers.base import (
+    CommandCatalog,
+    EngineDetails,
+    McpServer,
+    ResultInfo,
+    UsageInfo,
+)
 from harness.sessions.models import Session
 
 
@@ -12,7 +18,7 @@ class SessionHooks(Protocol):
         ...
 
     async def message(self, session_id: str) -> None:
-        """The agent's transcript grew by a message event."""
+        """The agent's transcript grew by a message or task event."""
         ...
 
     async def turn_result(self, session_id: str, info: ResultInfo) -> None:
@@ -27,4 +33,12 @@ class SessionHooks(Protocol):
         """The session's agent reported its MCP servers and connectors: when it starts
         (mostly still pending) and after each turn (settled).
         """
+        ...
+
+    async def commands_reported(self, session_id: str, catalog: CommandCatalog) -> None:
+        """The session's agent reported its slash commands and agents."""
+        ...
+
+    async def engine_reported(self, details: EngineDetails) -> None:
+        """A session's agent reported the engine's models and account (D038)."""
         ...

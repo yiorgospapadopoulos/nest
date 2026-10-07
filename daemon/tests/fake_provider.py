@@ -9,11 +9,17 @@ from pathlib import Path
 
 from harness.config.models import PermissionMode
 from harness.providers.base import (
+    AgentTask,
     ApprovalHandler,
+    CommandCatalog,
+    ContextUsage,
+    EngineDetails,
     McpServer,
     MessageBlock,
     PermissionDecision,
     PermissionRequest,
+    PlanDecision,
+    PlanRequest,
     ProviderEventSink,
     QuestionAnswer,
     QuestionRequest,
@@ -50,6 +56,7 @@ class FakeRun:
         self.status_calls = 0
         self.decisions: list[PermissionDecision] = []
         self.answers: list[QuestionAnswer] = []
+        self.plans: list[PlanDecision] = []
         self.interrupted = asyncio.Event()
         self.closed = False
         self._turns: asyncio.Queue[Turn] = asyncio.Queue()
@@ -58,6 +65,9 @@ class FakeRun:
     async def send(self, user_input: UserInput) -> None:
         self.inputs.append(user_input)
         self._turns.put_nowait(self.provider.turns.popleft())
+        if self.provider.send_gate is not None:
+            # The turn runs before send returns, as a fast reply could in the real engine.
+            await self.provider.send_gate.wait()
 
     def emit(self, turn: Turn) -> None:
         """A turn the agent starts without a user message."""
@@ -78,6 +88,11 @@ class FakeRun:
 
     async def set_permission_mode(self, mode: PermissionMode) -> None:
         self.calls.append(("set_permission_mode", mode))
+
+    async def context_usage(self) -> ContextUsage | None:
+        if self.provider.context_error is not None:
+            raise self.provider.context_error
+        return self.provider.context
 
     async def close(self) -> None:
         self._reader.cancel()
@@ -114,6 +129,11 @@ class FakeProvider:
         self.exit_hook = False
         # When set, open() waits for it, so a test can act while a run is opening.
         self.open_gate: asyncio.Event | None = None
+        # When set, send() waits for it after the turn is queued.
+        self.send_gate: asyncio.Event | None = None
+        # What the run reports as its context usage after each turn.
+        self.context: ContextUsage | None = None
+        self.context_error: Exception | None = None
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
@@ -252,6 +272,18 @@ def background(running: int, then: Turn | None = None) -> Turn:
     return turn
 
 
+def tasks(*updates: AgentTask, then: Turn | None = None) -> Turn:
+    """Reports task lifecycle updates, then optionally continues."""
+
+    async def turn(run: FakeRun) -> None:
+        for update in updates:
+            await run.sink.task(update)
+        if then is not None:
+            await then(run)
+
+    return turn
+
+
 def crash(message: str) -> Turn:
     async def turn(_run: FakeRun) -> None:
         raise AgentCrashedError(message)
@@ -264,6 +296,36 @@ def commit(then: Turn) -> Turn:
 
     async def turn(run: FakeRun) -> None:
         commit_file(Path(run.spec.cwd), "sneaky.txt")
+        await then(run)
+
+    return turn
+
+
+def plan(text: str, then: Turn) -> Turn:
+    """The agent presents a plan in plan mode and waits for the user's decision."""
+
+    async def turn(run: FakeRun) -> None:
+        run.plans.append(await run.handler.review_plan(PlanRequest(text, "toolu_plan")))
+        await then(run)
+
+    return turn
+
+
+def catalog(reported: CommandCatalog, then: Turn) -> Turn:
+    """The engine reports its slash commands and agents."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.commands(reported)
+        await then(run)
+
+    return turn
+
+
+def engine(details: EngineDetails, then: Turn) -> Turn:
+    """The engine reports its models and account, as it does when a run opens."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.engine_details(details)
         await then(run)
 
     return turn

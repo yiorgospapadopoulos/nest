@@ -1,5 +1,6 @@
 """A session's background work: setup, turns on the agent run, and the post-turn git audit."""
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import timedelta
@@ -14,7 +15,8 @@ from harness.providers.base import AgentProvider, AgentRun, ApprovalHandler, Ses
 from harness.sessions.git_audit import changed_refs, snapshot_refs
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import LiveSession
-from harness.sessions.models import Session, SessionState
+from harness.sessions.models import QueuedMessage, Session, SessionState
+from harness.sessions.queue import MessageQueue
 from harness.sessions.rules import attachment_summary, require_cwd, user_input
 from harness.sessions.sink import SessionSink
 from harness.sessions.states import StateWriter
@@ -49,7 +51,9 @@ class TurnRunner:
         provider: AgentProvider,
         handler_for: Callable[[str], ApprovalHandler],
         idle_close: timedelta,
+        queue: MessageQueue,
     ) -> None:
+        self._queue = queue
         self._store = store
         self._bus = bus
         self._states = states
@@ -72,7 +76,9 @@ class TurnRunner:
             await live.close_run()
             outcome = (SessionState.FAILED, str(exc))
         finally:
-            live.task = None
+            # A queued message may already have started the next task; that one stays.
+            if live.task is asyncio.current_task():
+                live.task = None
             if outcome is not None:
                 await self._end_turn(live, *outcome)
 
@@ -111,8 +117,20 @@ class TurnRunner:
     async def turn_finished(self, live: LiveSession) -> None:
         await self._audit(live)
         run = live.run
-        done = SessionState.INTERRUPTED if live.interrupted else SessionState.IDLE
-        await self._end_turn(live, done, None)
+        if run is not None:
+            await self._report_context(live.session_id, run)
+        # An interrupted turn keeps the queue: the user stopped the agent on purpose,
+        # unless they did so to send a message (a nudge) right away.
+        hold = live.interrupted and not live.resume_queue
+        queued = None if hold else await self._queue.pop(live.session_id)
+        if queued is None:
+            done = SessionState.INTERRUPTED if live.interrupted else SessionState.IDLE
+            await self._end_turn(live, done, None)
+        else:
+            live.interrupted = live.resume_queue = False
+            # The next message starts at once, so the session never goes idle in between.
+            previous = live.task
+            live.task = asyncio.create_task(self.guard(live, self._deliver(live, queued, previous)))
         if run is not None:
             await self._report_connectors(live.session_id, run)
 
@@ -125,6 +143,32 @@ class TurnRunner:
     async def background_tasks(self, live: LiveSession, running: int) -> None:
         live.background_tasks = running
         live.schedule_idle_close(self._idle_close)
+
+    async def _deliver(
+        self, live: LiveSession, queued: QueuedMessage, previous: asyncio.Task[None] | None
+    ) -> None:
+        if previous is not None:
+            # The task that submitted the turn just ended may still be finishing.
+            await asyncio.gather(previous, return_exceptions=True)
+        ids = [attachment.id for attachment in queued.attachments]
+        attachments = await self._attachments.for_session(ids, live.session_id)
+        await self.submit(live, queued.text, attachments)
+
+    async def _report_context(self, session_id: str, run: AgentRun) -> None:
+        """How full the context window is after the turn, for the session's meter."""
+        try:
+            usage = await run.context_usage()
+        except Exception:
+            logger.warning(
+                "reading the context usage of session %s failed", session_id, exc_info=True
+            )
+            return
+        if usage is None:
+            return
+        await self._store.update(session_id, context=usage)
+        await self._bus.publish(
+            types.SESSION_CONTEXT, {"context": usage.model_dump(mode="json")}, session_id
+        )
 
     async def _end_turn(self, live: LiveSession, state: SessionState, error: str | None) -> None:
         # Free the session before announcing the outcome, so a client reacting to the
@@ -146,7 +190,9 @@ class TurnRunner:
     async def _ensure_run(self, live: LiveSession, session: Session, cwd: Path) -> AgentRun:
         """The live run, or a new one resuming the agent's last session."""
         dirs = await self._attachments.file_dirs(session.id)
-        if live.run is not None and set(dirs) <= set(live.run_dirs):
+        # A new effort waits while background tasks run: closing would stop them.
+        current_effort = live.run_effort == session.effort or live.background_tasks > 0
+        if live.run is not None and set(dirs) <= set(live.run_dirs) and current_effort:
             return live.run
         await live.close_run()
         spec = SessionSpec(
@@ -163,6 +209,7 @@ class TurnRunner:
         )
         live.run = await self._provider.open(spec, self._handler_for(session.id), sink)
         live.run_dirs = dirs
+        live.run_effort = session.effort
         return live.run
 
     async def _audit(self, live: LiveSession) -> None:

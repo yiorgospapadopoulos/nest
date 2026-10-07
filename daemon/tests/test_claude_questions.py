@@ -6,6 +6,8 @@ from claude_agent_sdk.types import HookInput
 from harness.providers.base import (
     PermissionDecision,
     PermissionRequest,
+    PlanDecision,
+    PlanRequest,
     Question,
     QuestionAnswer,
     QuestionOption,
@@ -40,6 +42,9 @@ class AnsweringHandler:
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
         self.requests.append(request)
         return self.answer
+
+    async def review_plan(self, request: PlanRequest) -> PlanDecision:
+        raise AssertionError("questions must not become plans")
 
 
 def pre_tool_use(tool_input: dict[str, Any], tool_use_id: str = "toolu_q") -> HookInput:

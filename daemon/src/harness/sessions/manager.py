@@ -1,41 +1,60 @@
 """Session lifecycle commands: create, send, interrupt, update, close, purge.
 
 Each session has at most one background task (setup plus the first turn, or a later turn),
-so turns are serialized: a message sent while one runs is rejected, not queued.
+so turns are serialized: a message sent while one runs is queued and starts the next turn
+once this one ends (D032).
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import timedelta
 
 from harness.approvals.models import BLOCKING, ApprovalKind
 from harness.approvals.queue import ApprovalQueue
 from harness.attachments.store import AttachmentStore
+from harness.claude_sessions.errors import ChatOpenElsewhereError
+from harness.claude_sessions.live import LiveChats
 from harness.clock import Clock
-from harness.config.models import AgentDefaults
+from harness.config.models import AgentDefaults, Effort, PermissionMode, RepoConfig, SessionMode
+from harness.engine.service import effort_problem
 from harness.errors import InvalidInputError
 from harness.events import types
 from harness.events.bus import EventBus
-from harness.providers.base import AgentProvider, ApprovalHandler
-from harness.repos.service import RepoNotFoundError, RepoService
-from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError
+from harness.providers.base import AgentProvider, ApprovalHandler, ModelOption
+from harness.repos.service import RepoNotFoundError, RepoService, require_folder
+from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError, NoWorkspaceError
+from harness.sessions.files import FileIndex
 from harness.sessions.git_audit import snapshot_refs
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import LiveSession
 from harness.sessions.models import (
+    ChatImport,
     CreateSession,
     NewSession,
+    QueuedMessage,
+    SendResult,
     Session,
     SessionState,
     UpdateSession,
 )
 from harness.sessions.prompts import SessionPrompts
-from harness.sessions.rules import require_cwd, require_open, session_changes, worktree_of
+from harness.sessions.queue import MessageQueue
+from harness.sessions.rules import (
+    require_cwd,
+    require_open,
+    require_workspace,
+    session_changes,
+    worktree_of,
+)
 from harness.sessions.states import StateWriter
 from harness.sessions.store import SessionStore
 from harness.sessions.titles import short_title
 from harness.sessions.turns import TurnRunner
 from harness.worktrees.manager import WorktreeManager
+
+# The engine's entry for a model (None is Claude Code's default), or None when unknown.
+type ModelLookup = Callable[[str | None], Awaitable[ModelOption | None]]
 
 
 class SessionManager:
@@ -50,11 +69,22 @@ class SessionManager:
         provider: AgentProvider,
         approvals: ApprovalQueue,
         hooks: SessionHooks,
-        defaults: AgentDefaults,
+        defaults: Callable[[], AgentDefaults],
         idle_close: timedelta,
         clock: Clock,
+        live_chats: LiveChats,
+        queue: MessageQueue,
+        files: FileIndex | None = None,
+        models: ModelLookup | None = None,
     ) -> None:
+        """`defaults` is read for each new session, so edits apply at once; `models`
+        checks a new session's effort against its model (D038).
+        """
+        self._models = models
+        self._queue = queue
+        self._files = files or FileIndex(clock)
         self._clock = clock
+        self._live_chats = live_chats
         self._store = store
         self._bus = bus
         self._repos = repos
@@ -74,6 +104,7 @@ class SessionManager:
             provider=provider,
             handler_for=self._handler_for,
             idle_close=idle_close,
+            queue=queue,
         )
         self._live: dict[str, LiveSession] = {}
 
@@ -82,6 +113,9 @@ class SessionManager:
 
     async def get(self, session_id: str) -> Session:
         return await self._store.get(session_id)
+
+    async def find_by_provider_session(self, provider_session_id: str) -> Session | None:
+        return await self._store.find_by_provider_session(provider_session_id)
 
     def busy(self, session_id: str) -> bool:
         """Whether a turn or the session's start is in progress in this process."""
@@ -98,7 +132,11 @@ class SessionManager:
             repo = self._repos.get(request.repo)
         except RepoNotFoundError as error:
             raise InvalidInputError(str(error)) from error
-        mode = request.mode or ("worktree" if repo.worktree.default else "in_place")
+        require_folder(repo)
+        defaults = self._defaults()
+        model = request.model or defaults.model
+        effort = await self._effort(model, request.effort, defaults.effort)
+        mode = request.mode or _repo_mode(repo) or defaults.default_mode
         if mode == "in_place" and not request.allow_dirty:
             dirty = await self._worktrees.dirty_files(repo)
             if dirty:
@@ -111,9 +149,9 @@ class SessionManager:
                 prompt=request.prompt,
                 mode=mode,
                 cwd=repo.path if mode == "in_place" else None,
-                model=request.model or self._defaults.model,
-                effort=request.effort or self._defaults.effort,
-                permission_mode=request.permission_mode or self._defaults.permission_mode,
+                model=model,
+                effort=effort,
+                permission_mode=request.permission_mode or defaults.permission_mode,
                 provider=self._provider.name,
                 # Worktree sessions get their base when the worktree is created.
                 base_ref=await self._worktrees.head(repo) if mode == "in_place" else None,
@@ -131,20 +169,89 @@ class SessionManager:
         )
         return session
 
-    async def send(self, session_id: str, text: str, attachment_ids: list[str]) -> Session:
-        """Start a turn. Without a live run, the agent is resumed from its last session.
+    async def adopt(self, chat: ChatImport) -> Session:
+        """Continue a Claude Code chat as an idle in-place session in the chat's own folder.
 
+        Its history is copied into the session's events; the next message resumes the
+        chat through the engine. Harness never removes that folder (no worktree is set).
+        """
+        try:
+            repo = self._repos.get(chat.repo)
+        except RepoNotFoundError as error:
+            raise InvalidInputError(str(error)) from error
+        require_folder(repo)
+        if not await asyncio.to_thread(chat.cwd.is_dir):
+            msg = f"the folder of this chat no longer exists: {chat.cwd}"
+            raise NoWorkspaceError(msg)
+        defaults = self._defaults()
+        created = await self._store.create(
+            NewSession(
+                repo=repo.name,
+                title=chat.title,
+                prompt=chat.prompt,
+                mode="in_place",
+                cwd=chat.cwd,
+                model=defaults.model,
+                effort=defaults.effort,
+                permission_mode=defaults.permission_mode,
+                provider=self._provider.name,
+                base_ref=await self._worktrees.head_at(chat.cwd),
+            )
+        )
+        session = await self._store.update(
+            created.id,
+            state=SessionState.IDLE,
+            provider_session_id=chat.provider_session_id,
+        )
+        await self._bus.publish(
+            types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
+        )
+        await self._bus.publish(
+            types.SESSION_STATE, {"state": session.state, "error": None}, session.id
+        )
+        for event_type, payload in chat.history:
+            await self._bus.publish(event_type, payload, session.id)
+        return session
+
+    async def send(
+        self, session_id: str, text: str, attachment_ids: list[str], interrupt: bool = False
+    ) -> SendResult:
+        """Start a turn, or queue the message while one runs. Without a live run, the agent
+        is resumed from its last session. With `interrupt`, a running turn is stopped and
+        the message starts as soon as it ends, ahead of the rest of the queue.
+
+        Refused while Claude Code has the chat open elsewhere, since both would write it.
         A pending review of the session's work is superseded: the work is changing.
         """
         session = await self._store.get(session_id)
         require_open(session)
+        await self._require_not_open_elsewhere(session)
         live = self._live.setdefault(session_id, LiveSession(session_id))
-        live.require_idle()
-        require_cwd(session)
         attachments = await self._attachments.for_session(attachment_ids, session_id)
+        if live.busy:
+            queued = await self._queue.add(session_id, text, attachments, urgent=interrupt)
+            if interrupt:
+                live.resume_queue = True
+                await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
+                await live.interrupt()
+            return SendResult(**session.model_dump(), queued_message=queued)
+        require_cwd(session)
         await self._approvals.supersede(session_id, ApprovalKind.REVIEW)
         live.start(lambda: self._turns.guard(live, self._turns.submit(live, text, attachments)))
-        return session
+        return SendResult(**session.model_dump())
+
+    async def queued(self, session_id: str) -> list[QueuedMessage]:
+        await self._store.get(session_id)
+        return await self._queue.messages(session_id)
+
+    async def cancel_queued(self, session_id: str, message_id: str) -> None:
+        await self._store.get(session_id)
+        await self._queue.cancel(session_id, message_id)
+
+    async def files(self, session_id: str, query: str) -> list[str]:
+        """Files in the session's working directory matching `query`, for @ mentions."""
+        cwd = require_workspace(await self._store.get(session_id))
+        return await self._files.search(cwd, query)
 
     async def interrupt(self, session_id: str) -> None:
         await self._store.get(session_id)
@@ -160,22 +267,14 @@ class SessionManager:
         Archiving closes the agent run but keeps the worktree; a new message resumes it.
         """
         session = await self._store.get(session_id)
-        if request.model is not None or request.permission_mode is not None:
+        if (request.model, request.permission_mode, request.effort) != (None, None, None):
             require_open(session)
         changes = session_changes(session, request, self._clock.now())
         if not changes:
             return session
         if changes.get("archived_at") is not None:
             await self._release(session_id, "the session was archived")
-        session = await self._store.update(session_id, **changes)
-        await self._bus.publish(
-            types.SESSION_UPDATED,
-            {
-                "changes": session.model_dump(mode="json", include=set(changes)),
-                "session": session.model_dump(mode="json"),
-            },
-            session_id,
-        )
+        session = await self._save_changes(session_id, changes)
         live = self._live.get(session_id)
         run = live.run if live is not None else None
         if run is not None:
@@ -188,6 +287,7 @@ class SessionManager:
     async def close(self, session_id: str, remove_worktree: bool) -> Session:
         require_open(await self._store.get(session_id))
         session = await self._stop(session_id, "the session was closed")
+        await self._queue.clear(session_id)
         worktree = worktree_of(session)
         if remove_worktree and worktree is not None:
             await self._worktrees.remove(
@@ -231,6 +331,17 @@ class SessionManager:
         self._live.clear()
         await asyncio.gather(*(self._shut_down(live, "the daemon stopped") for live in lives))
 
+    async def _require_not_open_elsewhere(self, session: Session) -> None:
+        if session.provider_session_id is None:
+            return
+        elsewhere = await asyncio.to_thread(
+            self._live_chats.open_elsewhere,
+            session.provider_session_id,
+            self.has_run(session.id),
+        )
+        if elsewhere:
+            raise ChatOpenElsewhereError
+
     async def _stop(self, session_id: str, reason: str) -> Session:
         """Expire everything pending and stop the agent; returns the session as it is now."""
         await self._approvals.expire(session_id, tuple(ApprovalKind), reason)
@@ -252,8 +363,43 @@ class SessionManager:
             live.turn_active = False
             await self._states.set(live.session_id, SessionState.INTERRUPTED)
 
+    async def _save_changes(self, session_id: str, changes: dict[str, object]) -> Session:
+        session = await self._store.update(session_id, **changes)
+        await self._bus.publish(
+            types.SESSION_UPDATED,
+            {
+                "changes": session.model_dump(mode="json", include=set(changes)),
+                "session": session.model_dump(mode="json"),
+            },
+            session_id,
+        )
+        return session
+
+    async def _effort(
+        self, model: str | None, chosen: Effort | None, default: Effort | None
+    ) -> Effort | None:
+        """The chosen effort, refused (422) when the model does not take it; the default
+        effort only when the model takes it. Unchecked while the model list is unknown.
+        """
+        option = None if self._models is None else await self._models(model)
+        if option is None:
+            return chosen or default
+        if chosen is not None:
+            problem = effort_problem(option, chosen)
+            if problem is not None:
+                raise InvalidInputError(problem)
+            return chosen
+        return default if effort_problem(option, default) is None else None
+
     def _handler_for(self, session_id: str) -> ApprovalHandler:
-        return SessionPrompts(session_id, self._approvals, self._store, self._on_waiting)
+        return SessionPrompts(
+            session_id, self._approvals, self._store, self._on_waiting, self._on_mode
+        )
+
+    async def _on_mode(self, session_id: str, mode: PermissionMode) -> None:
+        """The agent's engine switched mode itself (an approved plan); record it."""
+        if (await self._store.get(session_id)).permission_mode != mode:
+            await self._save_changes(session_id, {"permission_mode": mode})
 
     async def _on_waiting(self, session_id: str, waiting: bool) -> None:
         if session_id not in self._live:
@@ -262,3 +408,10 @@ class SessionManager:
         target = SessionState.WAITING if waiting else SessionState.RUNNING
         if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
             await self._states.set(session_id, target)
+
+
+def _repo_mode(repo: RepoConfig) -> SessionMode | None:
+    """The repo's own choice, when its config sets `[worktree] default`."""
+    if repo.worktree.default is None:
+        return None
+    return "worktree" if repo.worktree.default else "in_place"

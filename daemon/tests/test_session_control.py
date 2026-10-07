@@ -17,7 +17,6 @@ from harness.providers.base import (
 )
 from harness.sessions.errors import (
     NoTurnInProgressError,
-    SessionBusyError,
     SessionClosedError,
     SessionNotFoundError,
 )
@@ -174,6 +173,41 @@ async def test_update_persists_and_applies_to_a_live_run(env: Env) -> None:
     ]
 
 
+async def test_a_new_effort_reopens_the_run_at_the_next_message(env: Env) -> None:
+    """The engine takes effort only when a run opens (I-006)."""
+    env.provider.script(reply("one"), reply("two"), reply("three"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    updated = await env.manager.update(created.id, UpdateSession(effort="high"))
+
+    assert updated.effort == "high"
+    assert env.provider.runs[0].closed is False
+    assert env.provider.runs[0].calls == []
+    await env.manager.send(created.id, "think harder", [])
+    await until_results(env, created.id, 2)
+    assert env.provider.runs[0].closed is True
+    assert env.provider.runs[1].spec.effort == "high"
+    assert env.provider.runs[1].spec.resume_id == "sdk-1"
+    await env.manager.send(created.id, "again", [])
+    await until_results(env, created.id, 3)
+    assert len(env.provider.runs) == 2
+
+
+async def test_a_new_effort_waits_while_background_tasks_run(env: Env) -> None:
+    """Reopening would stop the agent's background work; the effort applies at a later open."""
+    env.provider.script(background(1, reply("started")), reply("two"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    await env.manager.update(created.id, UpdateSession(effort="low"))
+    await env.manager.send(created.id, "how is it going?", [])
+    await until_results(env, created.id, 2)
+
+    assert len(env.provider.runs) == 1
+    assert env.provider.runs[0].closed is False
+
+
 async def test_update_without_a_live_run_only_persists(env: Env) -> None:
     env.provider.script(reply("ok"))
     created = await env.create()
@@ -203,6 +237,8 @@ async def test_close_removes_the_worktree_and_branch(env: Env) -> None:
         await env.manager.close(created.id, remove_worktree=False)
     with pytest.raises(SessionClosedError):
         await env.manager.update(created.id, UpdateSession(model="x"))
+    with pytest.raises(SessionClosedError):
+        await env.manager.update(created.id, UpdateSession(effort="high"))
 
 
 async def test_close_keeps_the_worktree_by_default_and_stops_a_running_turn(env: Env) -> None:
@@ -383,7 +419,7 @@ async def until_results(env: Env, session_id: str, count: int) -> None:
     await until(done)
 
 
-async def test_a_message_is_rejected_while_the_agent_works_on_its_own(env: Env) -> None:
+async def test_a_message_is_queued_while_the_agent_works_on_its_own(env: Env) -> None:
     env.provider.script(reply("ok"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)
@@ -391,9 +427,10 @@ async def test_a_message_is_rejected_while_the_agent_works_on_its_own(env: Env) 
     env.provider.runs[0].emit(hang())
     await env.reach(created.id, SessionState.RUNNING)
 
-    with pytest.raises(SessionBusyError):
-        await env.manager.send(created.id, "hello?", [])
+    sent = await env.manager.send(created.id, "hello?", [])
     await env.manager.interrupt(created.id)
+    assert sent.queued_message is not None
+    assert [m.text for m in await env.manager.queued(created.id)] == ["hello?"]
     assert env.provider.runs[0].calls == [("interrupt", None)]
 
 

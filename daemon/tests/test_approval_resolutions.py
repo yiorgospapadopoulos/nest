@@ -51,7 +51,12 @@ def test_permission_resolutions() -> None:
 
 @pytest.mark.parametrize(
     "fields",
-    [{}, {"behavior": "allow", "answers": {}}, {"behavior": "allow", "dismiss": True}],
+    [
+        {},
+        {"behavior": "allow", "answers": {}},
+        {"behavior": "allow", "dismiss": True},
+        {"behavior": "allow", "decision": "approve"},
+    ],
 )
 def test_invalid_permission_resolutions(fields: dict[str, object]) -> None:
     with pytest.raises(InvalidInputError, match="permission"):
@@ -111,3 +116,60 @@ def test_reviews_use_the_review_actions() -> None:
 def test_unknown_fields_are_rejected() -> None:
     with pytest.raises(ValidationError):
         body(surprise=True)
+
+
+def test_plan_resolutions() -> None:
+    item = approval(ApprovalKind.PLAN, {"plan": "# Plan"})
+
+    assert resolution_for(item, body(decision="approve")) == {"decision": "approve"}
+    assert resolution_for(item, body(decision="keep_planning", message="  more tests ")) == {
+        "decision": "keep_planning",
+        "message": "more tests",
+    }
+    assert resolution_for(item, body(decision="keep_planning", message=" ")) == {
+        "decision": "keep_planning",
+        "message": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {},
+        {"behavior": "allow"},
+        {"decision": "approve", "behavior": "allow"},
+        {"decision": "approve", "answers": {}},
+        {"decision": "approve", "dismiss": True},
+        {"decision": "approve", "always": True},
+    ],
+)
+def test_invalid_plan_resolutions(fields: dict[str, object]) -> None:
+    with pytest.raises(InvalidInputError, match="plan"):
+        resolution_for(approval(ApprovalKind.PLAN), body(**fields))
+
+
+def test_a_question_takes_no_decision() -> None:
+    with pytest.raises(InvalidInputError, match="question"):
+        resolution_for(approval(ApprovalKind.QUESTION, QUESTIONS), body(decision="approve"))
+
+
+def test_a_merge_approval_can_only_be_dismissed() -> None:
+    item = approval(ApprovalKind.MERGE, {"number": 7})
+
+    assert resolution_for(item, body(dismiss=True)) == {"dismissed": True}
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {},
+        {"behavior": "allow"},
+        {"decision": "approve"},
+        {"dismiss": True, "behavior": "allow"},
+        {"dismiss": True, "answers": {}},
+        {"dismiss": True, "decision": "approve"},
+    ],
+)
+def test_a_merge_is_not_resolved_through_the_queue(fields: dict[str, object]) -> None:
+    with pytest.raises(InvalidInputError, match="merge action"):
+        resolution_for(approval(ApprovalKind.MERGE), body(**fields))

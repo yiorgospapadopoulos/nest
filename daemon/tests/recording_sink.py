@@ -1,4 +1,12 @@
-from harness.providers.base import McpServer, MessageBlock, ResultInfo, UsageInfo
+from harness.providers.base import (
+    AgentTask,
+    CommandCatalog,
+    EngineDetails,
+    McpServer,
+    MessageBlock,
+    ResultInfo,
+    UsageInfo,
+)
 
 
 class RecordingSink:
@@ -23,8 +31,17 @@ class RecordingSink:
     async def background_tasks(self, running: int) -> None:
         self.calls.append(("background_tasks", running))
 
+    async def task(self, update: AgentTask) -> None:
+        self.calls.append(("task", update))
+
     async def connectors(self, servers: list[McpServer]) -> None:
         self.calls.append(("connectors", servers))
+
+    async def commands(self, catalog: CommandCatalog) -> None:
+        self.calls.append(("commands", catalog))
+
+    async def engine_details(self, details: EngineDetails) -> None:
+        self.calls.append(("engine_details", details))
 
     async def stopped(self, error: str) -> None:
         self.calls.append(("stopped", error))

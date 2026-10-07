@@ -22,7 +22,10 @@ type WaitingCallback = Callable[[bool], Awaitable[None]]
 _NOTICE: dict[ApprovalKind, NotifyKind] = {
     ApprovalKind.PERMISSION: "needs_approval",
     ApprovalKind.QUESTION: "question",
+    # A plan blocks the agent like a question does.
+    ApprovalKind.PLAN: "question",
     ApprovalKind.REVIEW: "review_ready",
+    ApprovalKind.MERGE: "ready_to_merge",
 }
 
 

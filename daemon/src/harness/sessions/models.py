@@ -1,13 +1,15 @@
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
-from harness.config.models import Effort, PermissionMode
-
-type SessionMode = Literal["worktree", "in_place"]
+from harness.config.models import Effort, PermissionMode, SessionMode
+from harness.providers.base import ContextUsage
+from harness.prs.models import PrStatus
+from harness.stuck.models import StuckFlag
 
 
 class SessionState(StrEnum):
@@ -55,6 +57,13 @@ class Session(NewSession):
     allowed_tools: list[str] = Field(default_factory=list[str])
     pinned: bool = False
     archived_at: datetime | None = None
+    # How full the agent's context window was after its last turn (D032).
+    context: ContextUsage | None = None
+    # The pull request's last known status on GitHub, and a short summary of it (D034).
+    pr: PrStatus | None = None
+    pr_summary: str | None = None
+    # Why the session looks stuck right now, if it does (D036).
+    stuck: StuckFlag | None = None
 
 
 type Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -67,7 +76,7 @@ class CreateSession(BaseModel):
     prompt: Text
     # Defaults to a short title derived from the prompt.
     title: Annotated[Text, StringConstraints(max_length=200)] | None = None
-    # Defaults to the repo's `worktree.default`.
+    # Defaults to the repo's `worktree.default` when set, else `[agents] default_mode`.
     mode: SessionMode | None = None
     # Defaults come from the `agents` settings.
     model: str | None = None
@@ -83,6 +92,31 @@ class SendMessage(BaseModel):
 
     text: Text
     attachment_ids: list[str] = Field(default_factory=list[str])
+    # While a turn runs: stop it and start this message right after, ahead of the queue
+    # (a nudge to a stuck agent, D036). Ignored when the session is idle.
+    interrupt: bool = False
+
+
+class AttachmentSummary(BaseModel):
+    id: str
+    filename: str
+    media_type: str
+    size: int
+
+
+class QueuedMessage(BaseModel):
+    """A message sent while a turn ran, waiting to start the next one (D032)."""
+
+    id: str
+    text: str
+    attachments: list[AttachmentSummary]
+    created_at: datetime
+
+
+class SendResult(Session):
+    """The session a message went to; `queued_message` is set when it waits for the turn."""
+
+    queued_message: QueuedMessage | None = None
 
 
 class UpdateSession(BaseModel):
@@ -92,7 +126,22 @@ class UpdateSession(BaseModel):
 
     model: str | None = None
     permission_mode: PermissionMode | None = None
+    # Applies when the agent run next opens: the next message reopens an idle run (I-006).
+    effort: Effort | None = None
     title: Annotated[Text, StringConstraints(max_length=120)] | None = None
     pinned: bool | None = None
     # True archives the session and closes its agent run; false restores it.
     archived: bool | None = None
+
+
+@dataclass(frozen=True)
+class ChatImport:
+    """A Claude Code chat to continue as a harness session (D028)."""
+
+    repo: str
+    title: str
+    prompt: str
+    cwd: Path
+    provider_session_id: str
+    # Its messages as session events (type and payload), oldest first.
+    history: list[tuple[str, dict[str, JsonValue]]]

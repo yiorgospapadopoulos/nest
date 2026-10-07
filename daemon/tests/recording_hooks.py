@@ -1,4 +1,10 @@
-from harness.providers.base import McpServer, ResultInfo, UsageInfo
+from harness.providers.base import (
+    CommandCatalog,
+    EngineDetails,
+    McpServer,
+    ResultInfo,
+    UsageInfo,
+)
 from harness.sessions.models import Session, SessionState
 
 
@@ -9,6 +15,8 @@ class RecordingHooks:
         self.results: list[tuple[str, ResultInfo]] = []
         self.usages: list[UsageInfo] = []
         self.connectors: list[tuple[str, list[McpServer]]] = []
+        self.commands: list[tuple[str, CommandCatalog]] = []
+        self.engine: list[EngineDetails] = []
 
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))
@@ -24,3 +32,9 @@ class RecordingHooks:
 
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
         self.connectors.append((session_id, servers))
+
+    async def commands_reported(self, session_id: str, catalog: CommandCatalog) -> None:
+        self.commands.append((session_id, catalog))
+
+    async def engine_reported(self, details: EngineDetails) -> None:
+        self.engine.append(details)

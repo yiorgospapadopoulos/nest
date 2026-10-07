@@ -6,23 +6,33 @@ from pathlib import Path
 from harness.approvals.queue import ApprovalQueue
 from harness.approvals.store import ApprovalStore
 from harness.attachments.store import AttachmentStore
+from harness.claude_sessions.live import LiveChats
 from harness.config.models import AgentDefaults, WorktreeConfig
 from harness.events.bus import EventBus
 from harness.notifications.notifier import Notifier
 from harness.paths import AppPaths
+from harness.providers.base import ModelOption
 from harness.repos.service import RepoService
 from harness.sessions.manager import SessionManager
 from harness.sessions.models import CreateSession, Session, SessionState
+from harness.sessions.queue import MessageQueue
 from harness.sessions.store import SessionStore
 from harness.storage.db import Database
 from harness.worktrees.manager import WorktreeManager
 from tests.async_support import until
+from tests.claude_support import ClaudeHome
 from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 from tests.recording_hooks import RecordingHooks
 
-DEFAULTS = AgentDefaults(model="claude-sonnet-5", effort="medium", permission_mode="acceptEdits")
+# Worktree by default, so most tests exercise the full worktree flow.
+DEFAULTS = AgentDefaults(
+    model="claude-sonnet-5",
+    effort="medium",
+    permission_mode="acceptEdits",
+    default_mode="worktree",
+)
 
 
 class Env:
@@ -39,7 +49,14 @@ class Env:
         self.approvals = ApprovalQueue(ApprovalStore(db, clock), self.bus, Notifier(self.bus))
         self.hooks = RecordingHooks()
         self.provider = FakeProvider()
+        self.queue = MessageQueue(db, clock, self.bus)
         self.repo_path = init_repo(tmp_path / "repo")
+        self.claude = ClaudeHome(tmp_path / "claude")
+        # Process ids the fake system reports alive.
+        self.alive: set[int] = set()
+        self.defaults = DEFAULTS
+        # The engine's model list; None while unknown, so effort is not checked.
+        self.models: list[ModelOption] | None = None
         self.manager = self.build(timedelta(hours=1))
 
     def build(self, idle_close: timedelta) -> SessionManager:
@@ -52,10 +69,17 @@ class Env:
             provider=self.provider,
             approvals=self.approvals,
             hooks=self.hooks,
-            defaults=DEFAULTS,
+            defaults=lambda: self.defaults,
             idle_close=idle_close,
             clock=self.clock,
+            live_chats=LiveChats(self.claude.root, alive=lambda pid: pid in self.alive),
+            queue=self.queue,
+            models=self.find_model,
         )
+
+    async def find_model(self, model: str | None) -> ModelOption | None:
+        value = model or "default"
+        return next((m for m in self.models or [] if m.value == value), None)
 
     async def register(self, worktree: WorktreeConfig | None = None) -> None:
         await self.repos.register(self.repo_path)

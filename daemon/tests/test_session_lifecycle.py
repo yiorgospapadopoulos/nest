@@ -7,11 +7,10 @@ import pytest
 from harness.config.models import WorktreeConfig
 from harness.errors import InvalidInputError
 from harness.events import types
-from harness.providers.base import ImageInput, UserInput
+from harness.providers.base import ImageInput, ModelOption, UserInput
 from harness.sessions.errors import (
     DirtyCheckoutError,
     NoWorkspaceError,
-    SessionBusyError,
     SessionClosedError,
     SessionNotFoundError,
 )
@@ -22,7 +21,7 @@ from tests.async_support import until
 from tests.fake_provider import crash, reply
 from tests.fakes import FakeClock
 from tests.git_support import git
-from tests.session_support import Env
+from tests.session_support import DEFAULTS, Env
 
 
 @pytest.fixture
@@ -48,7 +47,9 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
         "medium",
         "acceptEdits",
     )
-    assert session.worktree_path == env.paths.worktrees_dir / "repo" / created.id[:8]
+    assert session.worktree_path == (
+        env.repo_path.resolve() / ".claude" / "worktrees" / f"harness-{created.id[:8]}"
+    )
     assert session.cwd == session.worktree_path
     assert session.branch is not None
     assert session.branch.startswith("agent/fix-the-bug-")
@@ -99,6 +100,84 @@ async def test_request_overrides_defaults_and_title(env: Env) -> None:
     assert created.title == "Custom"
     spec = env.provider.runs[0].spec
     assert (spec.model, spec.effort, spec.permission_mode) == ("claude-opus-5", "max", "plan")
+
+
+async def test_new_sessions_follow_the_global_mode_unless_the_repo_sets_one(env: Env) -> None:
+    await env.register()
+    env.provider.script(reply("ok"), reply("ok"), reply("ok"))
+    env.defaults = DEFAULTS.model_copy(update={"default_mode": "in_place"})
+
+    global_default = await env.create()
+    env.repos.update_worktree_config("repo", WorktreeConfig(default=True))
+    repo_override = await env.create()
+    explicit = await env.create(mode="in_place", allow_dirty=True)
+
+    assert global_default.mode == "in_place"
+    assert repo_override.mode == "worktree"
+    assert explicit.mode == "in_place"
+
+
+async def test_defaults_are_read_for_each_new_session(env: Env) -> None:
+    await env.register()
+    env.provider.script(reply("ok"))
+    env.defaults = DEFAULTS.model_copy(
+        update={"model": "opus", "effort": "xhigh", "permission_mode": "plan"}
+    )
+
+    created = await env.create()
+
+    assert (created.model, created.effort, created.permission_mode) == ("opus", "xhigh", "plan")
+
+
+def models(*entries: tuple[str, list[str]]) -> list[ModelOption]:
+    return [
+        ModelOption(
+            value=value,
+            display_name=value.capitalize(),
+            description="",
+            effort_levels=levels,
+            supports_effort=bool(levels),
+        )
+        for value, levels in entries
+    ]
+
+
+async def test_an_effort_the_model_does_not_take_is_refused(env: Env) -> None:
+    await env.register()
+    env.models = models(("haiku", []), ("claude-opus-4-6", ["low", "high", "max"]))
+
+    with pytest.raises(InvalidInputError, match="Haiku does not take a thinking level"):
+        await env.create(model="haiku", effort="low")
+    with pytest.raises(InvalidInputError, match="low, high, max"):
+        await env.create(model="claude-opus-4-6", effort="xhigh")
+
+    assert await env.store.list_sessions() == []
+
+
+async def test_a_default_effort_the_model_does_not_take_is_left_out(env: Env) -> None:
+    await env.register()
+    env.provider.script(reply("ok"), reply("ok"), reply("ok"))
+    env.models = models(("haiku", []), ("opus", ["low", "medium"]))
+
+    haiku = await env.create(model="haiku")
+    opus = await env.create(model="opus", effort="low")
+    unknown = await env.create(model="claude-opus-4-1")
+
+    assert (haiku.model, haiku.effort) == ("haiku", None)
+    assert (opus.model, opus.effort) == ("opus", "low")
+    # Models the engine does not list are not checked.
+    assert (unknown.model, unknown.effort) == ("claude-opus-4-1", "medium")
+
+
+async def test_the_default_model_is_checked_as_claude_codes_default(env: Env) -> None:
+    await env.register()
+    env.provider.script(reply("ok"))
+    env.defaults = DEFAULTS.model_copy(update={"model": None, "effort": "max"})
+    env.models = models(("default", ["low", "high"]))
+
+    created = await env.create()
+
+    assert (created.model, created.effort) == (None, None)
 
 
 async def test_long_prompts_get_a_short_title(env: Env) -> None:
@@ -268,13 +347,15 @@ async def test_attachments_reach_the_agent_and_reopen_the_run_for_new_dirs(env: 
     }
 
 
-async def test_send_rejects_busy_closed_and_unknown_sessions(env: Env) -> None:
+async def test_send_queues_during_setup_and_rejects_closed_and_unknown_sessions(env: Env) -> None:
     await env.register(WorktreeConfig(setup=["sleep 30"]))
     created = await env.create()
 
-    with pytest.raises(SessionBusyError, match="busy"):
-        await env.manager.send(created.id, "hi", [])
+    queued = await env.manager.send(created.id, "hi", [])
     await env.manager.close(created.id, remove_worktree=True)
+
+    assert queued.queued_message is not None
+    assert await env.manager.queued(created.id) == []
     with pytest.raises(SessionClosedError, match="closed"):
         await env.manager.send(created.id, "hi", [])
     with pytest.raises(SessionNotFoundError):

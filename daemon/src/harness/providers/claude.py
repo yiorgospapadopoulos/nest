@@ -9,12 +9,14 @@ from typing import Any, Protocol
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ContextUsageResponse,
     HookMatcher,
     McpStatusResponse,
     Message,
     PermissionResult,
     PermissionResultAllow,
     PermissionResultDeny,
+    PermissionUpdate,
     ToolPermissionContext,
 )
 from claude_agent_sdk.types import PermissionMode as SdkPermissionMode
@@ -24,12 +26,16 @@ from pydantic import JsonValue
 from harness.config.models import PermissionMode
 from harness.providers.base import (
     ApprovalHandler,
+    ContextUsage,
     McpServer,
     PermissionRequest,
+    PlanRequest,
     ProviderEventSink,
     SessionSpec,
     UserInput,
 )
+from harness.providers.claude_commands import context_usage, described_catalog
+from harness.providers.claude_engine import engine_details
 from harness.providers.claude_messages import BackgroundTasks, mcp_servers, translate
 from harness.providers.claude_questions import (
     ASK_USER_QUESTION,
@@ -39,6 +45,9 @@ from harness.providers.claude_questions import (
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
+# The tool Claude calls in plan mode to present its plan and ask to start working (D032).
+EXIT_PLAN_MODE = "ExitPlanMode"
+KEEP_PLANNING_MESSAGE = "Keep planning."
 
 
 class SdkClient(Protocol):
@@ -59,6 +68,10 @@ class SdkClient(Protocol):
     async def set_permission_mode(self, mode: SdkPermissionMode) -> None: ...
 
     async def get_mcp_status(self) -> McpStatusResponse: ...
+
+    async def get_context_usage(self) -> ContextUsageResponse: ...
+
+    async def get_server_info(self) -> dict[str, Any] | None: ...
 
     async def disconnect(self) -> None: ...
 
@@ -92,6 +105,8 @@ def build_options(
     ) -> PermissionResult:
         if tool_name == ASK_USER_QUESTION:
             return questions.permission(tool_input, context.tool_use_id)
+        if tool_name == EXIT_PLAN_MODE:
+            return await _review_plan(handler, tool_input, context.tool_use_id)
         decision = await handler.decide(PermissionRequest(tool_name, tool_input, context.title))
         if decision.behavior == "allow":
             return PermissionResultAllow()
@@ -154,11 +169,15 @@ class ClaudeRun:
         status = await self._client.get_mcp_status()
         return mcp_servers(status.get("mcpServers"))
 
+    async def context_usage(self) -> ContextUsage | None:
+        return context_usage(await self._client.get_context_usage())
+
     async def close(self) -> None:
         self._reader.cancel()
         await asyncio.gather(self._reader, return_exceptions=True)
         # Closes stdin and waits for the CLI to exit, so its SessionEnd hooks have run.
         await self._client.disconnect()
+        await self._abandon_tasks()
 
     async def _read(self) -> None:
         error = "the agent process ended"
@@ -172,7 +191,13 @@ class ClaudeRun:
             error = str(exc)
         with suppress(Exception):
             await self._client.disconnect()
+        await self._abandon_tasks()
         await self._sink.stopped(error)
+
+    async def _abandon_tasks(self) -> None:
+        """Background tasks live in the agent process and end with it."""
+        for update in self._tasks.abandon():
+            await self._sink.task(update)
 
 
 class ClaudeProvider:
@@ -189,7 +214,33 @@ class ClaudeProvider:
     ) -> ClaudeRun:
         client = self._client_factory(build_options(spec, handler, self._gh_config_dir))
         await client.connect()
+        info = await client.get_server_info()
+        catalog = described_catalog(info)
+        if catalog is not None:
+            await sink.commands(catalog)
+        details = engine_details(info)
+        if details is not None:
+            await sink.engine_details(details)
         return ClaudeRun(client, sink)
+
+
+async def _review_plan(
+    handler: ApprovalHandler, tool_input: dict[str, JsonValue], tool_use_id: str | None
+) -> PermissionResult:
+    """The plan goes to the user as a plan to approve; an approval may switch the mode."""
+    plan = tool_input.get("plan")
+    decision = await handler.review_plan(
+        PlanRequest(plan if isinstance(plan, str) else "", tool_use_id)
+    )
+    if not decision.approved:
+        return PermissionResultDeny(message=decision.message or KEEP_PLANNING_MESSAGE)
+    if decision.mode is None:
+        return PermissionResultAllow()
+    return PermissionResultAllow(
+        updated_permissions=[
+            PermissionUpdate(type="setMode", mode=decision.mode, destination="session")
+        ]
+    )
 
 
 def _user_message(user_input: UserInput) -> dict[str, Any]:

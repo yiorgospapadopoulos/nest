@@ -7,6 +7,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     PermissionResultAllow,
     PermissionResultDeny,
+    PermissionUpdate,
     ProcessError,
     ResultMessage,
     SystemMessage,
@@ -18,13 +19,22 @@ from claude_agent_sdk import (
 )
 
 from harness.providers.base import (
+    AccountInfo,
+    AgentTask,
+    CommandCatalog,
+    ContextUsage,
+    EngineDetails,
     ImageInput,
     McpServer,
+    ModelOption,
     PermissionDecision,
     PermissionRequest,
+    PlanDecision,
+    PlanRequest,
     QuestionAnswer,
     QuestionRequest,
     SessionSpec,
+    SlashCommand,
     UserInput,
 )
 from harness.providers.claude import ClaudeProvider, ClaudeRun
@@ -44,10 +54,15 @@ RESULT = ResultMessage(
 )
 
 
+NOT_APPROVED = PlanDecision(approved=False)
+
+
 class ScriptedHandler:
-    def __init__(self, decision: PermissionDecision) -> None:
+    def __init__(self, decision: PermissionDecision, plan: PlanDecision = NOT_APPROVED) -> None:
         self.decision = decision
+        self.plan = plan
         self.requests: list[PermissionRequest] = []
+        self.plans: list[PlanRequest] = []
 
     async def decide(self, request: PermissionRequest) -> PermissionDecision:
         self.requests.append(request)
@@ -55,6 +70,10 @@ class ScriptedHandler:
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
         return QuestionAnswer({"Which?": "A"})
+
+    async def review_plan(self, request: PlanRequest) -> PlanDecision:
+        self.plans.append(request)
+        return self.plan
 
 
 class Opened:
@@ -320,10 +339,14 @@ async def test_background_tasks_are_counted(tmp_path: Path) -> None:
             subtype="task_updated", data={}, task_id="t2", patch={}, status="killed"
         ),
     )
-    await until(lambda: len(opened.sink.calls) == 4)
+
+    def counts() -> list[tuple[str, object]]:
+        return [call for call in opened.sink.calls if call[0] == "background_tasks"]
+
+    await until(lambda: len(counts()) == 4)
     await run.close()
 
-    assert opened.sink.calls == [
+    assert counts() == [
         ("background_tasks", 1),
         ("background_tasks", 2),
         ("background_tasks", 1),
@@ -331,14 +354,127 @@ async def test_background_tasks_are_counted(tmp_path: Path) -> None:
     ]
 
 
-def task_started(task_id: str) -> TaskStartedMessage:
+def task_started(
+    task_id: str,
+    tool_use_id: str | None = None,
+    task_type: str | None = None,
+    background: bool | None = None,
+) -> TaskStartedMessage:
     return TaskStartedMessage(
         subtype="task_started",
-        data={},
+        data={} if background is None else {"is_backgrounded": background},
         task_id=task_id,
         description="sleep 40",
         uuid="u",
         session_id="sdk-1",
+        tool_use_id=tool_use_id,
+        task_type=task_type,
+    )
+
+
+def task_updated(task_id: str, **patch: object) -> TaskUpdatedMessage:
+    status = patch.get("status")
+    return TaskUpdatedMessage(
+        subtype="task_updated",
+        data={},
+        task_id=task_id,
+        patch=dict(patch),
+        status=status if isinstance(status, str) else None,  # pyright: ignore[reportArgumentType]
+    )
+
+
+def task_done(task_id: str, status: str, tool_use_id: str | None = None) -> TaskNotificationMessage:
+    return TaskNotificationMessage(
+        subtype="task_notification",
+        data={},
+        task_id=task_id,
+        status=status,  # pyright: ignore[reportArgumentType]
+        output_file="/o",
+        summary="done",
+        uuid="u",
+        session_id="sdk-1",
+        tool_use_id=tool_use_id,
+    )
+
+
+def tasks_reported(sink: RecordingSink) -> list[object]:
+    return [value for name, value in sink.calls if name == "task"]
+
+
+async def test_task_lifecycles_are_reported(tmp_path: Path) -> None:
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+
+    client.push(
+        task_started("t1", "toolu_1", "local_agent", background=True),
+        task_started("t2", "toolu_2", "local_bash", background=False),
+        task_started("t3"),
+        task_updated("t2", is_backgrounded=True),
+        task_updated("t2", status="running", end_time=3),
+        task_updated("t3", is_backgrounded=True, status="failed"),
+        task_updated("t2", status="killed"),
+        task_done("t1", "completed", "toolu_1"),
+        task_done("t9", "stopped"),
+    )
+    await until(lambda: len(tasks_reported(opened.sink)) == 9)
+    await run.close()
+
+    assert tasks_reported(opened.sink) == [
+        AgentTask(
+            task_id="t1",
+            phase="started",
+            tool_use_id="toolu_1",
+            task_type="local_agent",
+            description="sleep 40",
+            background=True,
+        ),
+        AgentTask(
+            task_id="t2",
+            phase="started",
+            tool_use_id="toolu_2",
+            task_type="local_bash",
+            description="sleep 40",
+        ),
+        AgentTask(task_id="t3", phase="started", description="sleep 40"),
+        AgentTask(task_id="t2", phase="backgrounded"),
+        AgentTask(task_id="t3", phase="backgrounded"),
+        AgentTask(task_id="t3", phase="finished", status="failed"),
+        AgentTask(task_id="t2", phase="finished", status="stopped"),
+        AgentTask(task_id="t1", phase="finished", tool_use_id="toolu_1", status="completed"),
+        AgentTask(task_id="t9", phase="finished", status="stopped"),
+    ]
+
+
+async def test_tasks_still_running_when_the_run_closes_are_stopped(tmp_path: Path) -> None:
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+    client.push(task_started("t1"), task_started("t2"), task_done("t1", "completed"))
+    await until(lambda: len(tasks_reported(opened.sink)) == 3)
+
+    await run.close()
+
+    assert tasks_reported(opened.sink)[3:] == [
+        AgentTask(task_id="t2", phase="finished", status="stopped")
+    ]
+
+
+async def test_tasks_still_running_when_the_agent_process_ends_are_stopped(
+    tmp_path: Path,
+) -> None:
+    opened = Opened(tmp_path)
+    _, client = await opened.open(SessionSpec(tmp_path, "default"))
+
+    client.push(task_started("t1"), None)
+    await until(lambda: ("stopped", "the agent process ended") in opened.sink.calls)
+
+    assert [name for name, _ in opened.sink.calls] == [
+        "background_tasks",
+        "task",
+        "task",
+        "stopped",
+    ]
+    assert tasks_reported(opened.sink)[1] == AgentTask(
+        task_id="t1", phase="finished", status="stopped"
     )
 
 
@@ -386,3 +522,111 @@ async def test_connector_statuses_come_from_the_live_mcp_status(tmp_path: Path) 
         McpServer("claude.ai Gmail", "connected"),
         McpServer("local-db", "failed", "spawn ENOENT"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("plan", "result"),
+    [
+        (
+            PlanDecision(approved=True, mode="acceptEdits"),
+            PermissionResultAllow(
+                updated_permissions=[
+                    PermissionUpdate(type="setMode", mode="acceptEdits", destination="session")
+                ]
+            ),
+        ),
+        (PlanDecision(approved=True), PermissionResultAllow()),
+        (
+            PlanDecision(approved=False, message="Keep planning: add tests"),
+            PermissionResultDeny(message="Keep planning: add tests"),
+        ),
+        (PlanDecision(approved=False), PermissionResultDeny(message="Keep planning.")),
+    ],
+)
+async def test_plans_go_to_the_handler_as_plans(
+    tmp_path: Path, plan: PlanDecision, result: object
+) -> None:
+    handler = ScriptedHandler(PermissionDecision("deny"), plan)
+    _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "plan"), handler)
+    assert client.options.can_use_tool is not None
+
+    decided = await client.options.can_use_tool(
+        "ExitPlanMode", {"plan": "# Plan\n1. Do it"}, ToolPermissionContext(tool_use_id="t9")
+    )
+
+    assert decided == result
+    assert handler.plans == [PlanRequest("# Plan\n1. Do it", "t9")]
+    assert handler.requests == []
+
+
+async def test_a_plan_without_text_is_still_a_plan(tmp_path: Path) -> None:
+    handler = ScriptedHandler(PermissionDecision("deny"))
+    _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "plan"), handler)
+    assert client.options.can_use_tool is not None
+
+    await client.options.can_use_tool("ExitPlanMode", {"plan": 3}, ToolPermissionContext())
+
+    assert handler.plans == [PlanRequest("", None)]
+
+
+async def test_open_reports_the_commands_of_the_initialize_response(tmp_path: Path) -> None:
+    opened = Opened(tmp_path)
+
+    def described(options: ClaudeAgentOptions) -> FakeSdkClient:
+        client = opened.factory(options)
+        client.server_info = {"commands": [{"name": "compact", "description": "Compact"}]}
+        return client
+
+    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+
+    run, _ = await opened.open(SessionSpec(tmp_path, "default"))
+    await run.close()
+
+    assert opened.sink.calls == [
+        (
+            "commands",
+            CommandCatalog(commands=[SlashCommand(name="compact", description="Compact")]),
+        )
+    ]
+
+
+async def test_open_reports_the_models_and_account_of_the_initialize_response(
+    tmp_path: Path,
+) -> None:
+    opened = Opened(tmp_path)
+
+    def described(options: ClaudeAgentOptions) -> FakeSdkClient:
+        client = opened.factory(options)
+        client.server_info = {
+            "models": [{"value": "haiku", "displayName": "Haiku 4.5", "description": "Fast"}],
+            "account": {"subscriptionType": "pro"},
+        }
+        return client
+
+    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+
+    run, _ = await opened.open(SessionSpec(tmp_path, "default"))
+    await run.close()
+
+    assert opened.sink.calls == [
+        (
+            "engine_details",
+            EngineDetails(
+                models=[ModelOption(value="haiku", display_name="Haiku 4.5", description="Fast")],
+                account=AccountInfo(plan="Claude Pro"),
+            ),
+        )
+    ]
+
+
+async def test_context_usage_comes_from_the_engine(tmp_path: Path) -> None:
+    run, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "default"))
+    client.context = {"percentage": 6, "totalTokens": 12994, "maxTokens": 200000}
+
+    usage = await run.context_usage()
+    client.context = {"categories": []}
+    missing = await run.context_usage()
+    await run.close()
+
+    assert usage == ContextUsage(percent=6, used=12994, limit=200000)
+    assert missing is None

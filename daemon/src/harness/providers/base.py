@@ -70,6 +70,88 @@ class UsageInfo(BaseModel):
     seven_day: UsageWindow | None
 
 
+class AgentTask(BaseModel):
+    """A step in the life of a task the engine runs beside the turn: a subagent or a command.
+
+    A background task's tool call returns at once; its real end arrives later as `finished`.
+    """
+
+    task_id: str
+    # started; backgrounded (a foreground task moved to the background); finished.
+    phase: Literal["started", "backgrounded", "finished"]
+    # The tool call that started it (an Agent or Bash call), when the engine says.
+    tool_use_id: str | None = None
+    # The engine's kind of task, such as `local_agent` or `local_bash`.
+    task_type: str | None = None
+    description: str | None = None
+    # Started in the background rather than blocking its tool call.
+    background: bool = False
+    # How a finished task ended.
+    status: Literal["completed", "failed", "stopped"] | None = None
+
+
+class SlashCommand(BaseModel):
+    """A command the user can type as "/name": built in, from the user's setup, or a skill."""
+
+    name: str
+    description: str | None = None
+    argument_hint: str | None = None
+
+
+class AgentInfo(BaseModel):
+    """A subagent type the engine offers."""
+
+    name: str
+    description: str | None = None
+
+
+class CommandCatalog(BaseModel):
+    """The slash commands and agents of a run, sorted by name."""
+
+    commands: list[SlashCommand] = Field(default_factory=list[SlashCommand])
+    agents: list[AgentInfo] = Field(default_factory=list[AgentInfo])
+    # Names only, completing the known list rather than replacing it.
+    partial: bool = False
+
+
+class ContextUsage(BaseModel):
+    """How full the agent's context window is."""
+
+    # Percent of the limit used, 0 to 100.
+    percent: float
+    used: int
+    limit: int
+
+
+class ModelOption(BaseModel):
+    """A model the engine offers, in the engine's own order (D038)."""
+
+    # What a session's `model` is set to, such as "default", "opus" or "claude-opus-4-8".
+    value: str
+    display_name: str
+    description: str
+    # The thinking levels the model takes; empty when it takes none (Haiku).
+    effort_levels: list[str] = Field(default_factory=list[str])
+    supports_effort: bool = False
+
+
+class AccountInfo(BaseModel):
+    """Who the engine is signed in as. The email is shown only when the user asks."""
+
+    display_name: str | None = None
+    email: str | None = None
+    # A readable plan name, such as "Claude Max".
+    plan: str | None = None
+    organization: str | None = None
+
+
+class EngineDetails(BaseModel):
+    """What the engine reports about itself when it starts; a part it left out is None."""
+
+    models: list[ModelOption] | None = None
+    account: AccountInfo | None = None
+
+
 @dataclass(frozen=True)
 class McpServer:
     """An MCP server (or claude.ai connector) the agent's engine loaded, with its status."""
@@ -151,12 +233,31 @@ class QuestionAnswer:
     message: str | None = None
 
 
+@dataclass(frozen=True)
+class PlanRequest:
+    """The agent finished a plan in plan mode and asks to start working on it."""
+
+    plan: str
+    tool_use_id: str | None = None
+
+
+@dataclass(frozen=True)
+class PlanDecision:
+    approved: bool
+    # The permission mode the agent continues in after an approval.
+    mode: PermissionMode | None = None
+    # What the agent is told when the plan is not approved.
+    message: str | None = None
+
+
 class ApprovalHandler(Protocol):
-    """Where an agent run takes what needs the user: tool permissions and questions."""
+    """Where an agent run takes what needs the user: tool permissions, questions and plans."""
 
     async def decide(self, request: PermissionRequest) -> PermissionDecision: ...
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer: ...
+
+    async def review_plan(self, request: PlanRequest) -> PlanDecision: ...
 
 
 class ProviderEventSink(Protocol):
@@ -183,8 +284,23 @@ class ProviderEventSink(Protocol):
         """
         ...
 
+    async def commands(self, catalog: CommandCatalog) -> None:
+        """The slash commands and agents the run offers, reported when it starts."""
+        ...
+
+    async def engine_details(self, details: EngineDetails) -> None:
+        """The models and account the engine reported when the run started (D038)."""
+        ...
+
     async def background_tasks(self, running: int) -> None:
         """How many background tasks the agent has running, reported when it changes."""
+        ...
+
+    async def task(self, update: AgentTask) -> None:
+        """A task started, moved to the background or finished, even between turns.
+
+        Tasks still running when the run ends are reported finished as `stopped`.
+        """
         ...
 
     async def stopped(self, error: str) -> None:
@@ -207,6 +323,10 @@ class AgentRun(Protocol):
 
     async def connector_statuses(self) -> list[McpServer]:
         """The live status of the run's MCP servers and connectors."""
+        ...
+
+    async def context_usage(self) -> ContextUsage | None:
+        """How full the context window is now; None when the engine does not say."""
         ...
 
     async def close(self) -> None:
