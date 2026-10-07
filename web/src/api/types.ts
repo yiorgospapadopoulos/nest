@@ -117,6 +117,8 @@ export interface ClaudeChat {
   entrypoint: string | null;
   // Started by a program through an Agent SDK; listed only on request.
   automated: boolean;
+  // Archived in harness only (D040); listed with the archived chats.
+  archived: boolean;
 }
 
 export interface TrackedTask {
@@ -241,7 +243,10 @@ export interface WorktreeConfig {
 export interface RepoConfig {
   name: string;
   path: string;
-  default_branch: string;
+  // False for a plain folder outside git (D041): its chats work in place, nothing to review.
+  git: boolean;
+  // Null for a plain folder.
+  default_branch: string | null;
   worktree: WorktreeConfig;
 }
 

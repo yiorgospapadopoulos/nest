@@ -31,6 +31,7 @@ export function repo(name: string): RepoConfig {
   return {
     name,
     path: `/Users/me/${name}`,
+    git: true,
     default_branch: "main",
     worktree: { default: true, link: [], setup: [], setup_timeout_seconds: 900 },
   };
@@ -83,6 +84,7 @@ export function claudeChat(overrides: Partial<ClaudeChat> = {}): ClaudeChat {
     open_in_claude_code: false,
     entrypoint: "claude-desktop",
     automated: false,
+    archived: false,
     ...overrides,
   };
 }

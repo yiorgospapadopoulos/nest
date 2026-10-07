@@ -1,7 +1,9 @@
+import { useId, useState } from "react";
 import type { Connector } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import type { Tone } from "../../store/selectors.ts";
 import { Pill } from "../../ui/bits.tsx";
+import { Icon } from "../../ui/Icon.tsx";
 
 const STATUS: Record<string, { tone: Tone; label: string }> = {
   connected: { tone: "rev", label: "Connected" },
@@ -35,19 +37,48 @@ export function ConnectorsCard() {
         </div>
       )}
       {groups.map(
-        ({ title, items }) =>
-          items.length > 0 && (
-            <div key={title}>
-              <h3 className="pg-h">{title}</h3>
-              <div className="lgrp gl">
-                {items.map((c) => (
-                  <ConnectorRow key={c.name} connector={c} />
-                ))}
-              </div>
-            </div>
-          ),
+        ({ title, items }) => items.length > 0 && <Group key={title} title={title} items={items} />,
       )}
     </section>
+  );
+}
+
+/** A disclosure, closed by default: the group's name, what needs the user and a count. */
+function Group({ title, items }: { title: string; items: Connector[] }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const attention = items.filter((c) => c.status === "needs-auth" || c.status === "failed");
+  const tone: Tone = attention.some((c) => c.status === "failed") ? "fail" : "wait";
+  const count = attention.length;
+  return (
+    <div>
+      <button
+        id={`${id}-h`}
+        className="pg-h pgb"
+        aria-expanded={open}
+        aria-controls={open ? `${id}-list` : undefined}
+        onClick={() => {
+          setOpen(!open);
+        }}
+      >
+        <Icon name="chev" className="cv" />
+        {title}
+        {count > 0 && (
+          <Pill
+            tone={tone}
+            label={`${String(count)} ${count === 1 ? "needs" : "need"} attention`}
+          />
+        )}
+        <span className="gc">{items.length}</span>
+      </button>
+      {open && (
+        <div id={`${id}-list`} className="lgrp gl" role="region" aria-labelledby={`${id}-h`}>
+          {items.map((c) => (
+            <ConnectorRow key={c.name} connector={c} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

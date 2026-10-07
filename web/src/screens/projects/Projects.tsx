@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Session } from "../../api/types.ts";
+import type { ClaudeChat, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
   chatLists,
@@ -12,6 +12,7 @@ import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "./ChatActions.tsx";
 import { ChatRow } from "./ChatRow.tsx";
+import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
 
@@ -32,6 +33,7 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
   const { state, actions } = useStore();
   const [showArchived, setShowArchived] = useState(false);
   const [acting, setActing] = useState<Session | null>(null);
+  const [actingChat, setActingChat] = useState<ClaudeChat | null>(null);
   const [query, setQuery] = useState("");
   const lists = project === null ? null : chatLists(state, project);
   const empty = lists !== null && lists.groups.length === 0 && lists.archived.length === 0;
@@ -43,6 +45,9 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
         chat={chat}
         onOpen={() => {
           onOpenClaudeChat(chat.id);
+        }}
+        onActions={() => {
+          setActingChat(chat);
         }}
       />
     ) : (
@@ -168,6 +173,14 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
           session={acting}
           onClose={() => {
             setActing(null);
+          }}
+        />
+      )}
+      {actingChat !== null && (
+        <ClaudeChatActions
+          chat={actingChat}
+          onClose={() => {
+            setActingChat(null);
           }}
         />
       )}

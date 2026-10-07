@@ -47,6 +47,7 @@ describe("reduce", () => {
     state = reduce(state, { type: "transcriptOpened", id: "s1" });
     state = reduce(state, { type: "queued", id: "s1", queued: [queuedMessage()] });
     state = apply(state, event({ id: null, type: "session.delta", payload: { text: "Hi" } }));
+    state = apply(state, event({ id: null, type: "session.thinking", payload: { active: true } }));
     expect(state.sessions.s1?.title).toBe("Renamed");
 
     state = reduce(state, { type: "sessionRemoved", id: "s1" });
@@ -56,6 +57,7 @@ describe("reduce", () => {
     expect(state.tracking).toEqual({});
     expect(state.transcripts).toEqual({});
     expect(state.live).toEqual({});
+    expect(state.thinking).toEqual({});
     expect(state.queued).toEqual({});
     expect(state.sessions.s2).toBeDefined();
   });
@@ -204,6 +206,23 @@ describe("live events", () => {
     expect(apply(state, event({ type: "session.tasks", session_id: null }))).toBe(state);
   });
 
+  it("marks when the agent started thinking until the thinking or the turn ends", () => {
+    const thinking = (active: boolean, ts = "2026-01-01T12:00:05Z") =>
+      event({ id: null, type: "session.thinking", ts, payload: { active } });
+    let state = apply(loaded(), thinking(true));
+    expect(state.thinking).toEqual({ s1: "2026-01-01T12:00:05Z" });
+    expect(apply(state, thinking(false)).thinking).toEqual({});
+    expect(apply(state, event({ type: "session.message" })).thinking).toEqual({});
+    expect(apply(state, event({ type: "session.result" })).thinking).toEqual({});
+    expect(
+      apply(state, event({ type: "session.state", payload: { state: "idle" } })).thinking,
+    ).toEqual({});
+    expect(apply(state, { ...thinking(true), session_id: null })).toBe(state);
+
+    state = apply(state, thinking(false));
+    expect(apply(state, thinking(false))).toBe(state);
+  });
+
   it("stream text deltas until the message or result arrives", () => {
     let state = apply(
       loaded(),
@@ -243,6 +262,37 @@ describe("live events", () => {
       five_hour: { utilization: 0.5, resets_at: NOW, updated_at: NOW },
       seven_day: null,
     });
+  });
+
+  it("replace a repo that changed, such as a plain folder that became a git repo", () => {
+    const plain = { ...repo("notes"), git: false, default_branch: null };
+    let state = reduce(loaded(), {
+      type: "loaded",
+      repos: [repo("todo-ui"), plain],
+      sessions: [],
+      approvals: [],
+    });
+    const now = { ...repo("notes"), git: true, default_branch: "main" };
+
+    state = apply(
+      state,
+      event({
+        type: "repo.updated",
+        session_id: null,
+        payload: { name: "notes", repo: now as unknown as JsonValue },
+      }),
+    );
+    const unknown = apply(
+      state,
+      event({
+        type: "repo.updated",
+        session_id: null,
+        payload: { name: "gone", repo: repo("gone") as unknown as JsonValue },
+      }),
+    );
+
+    expect(state.repos).toEqual([repo("todo-ui"), now]);
+    expect(unknown.repos).toEqual(state.repos);
   });
 
   it("keep a usage window the event leaves out, as the daemon does", () => {

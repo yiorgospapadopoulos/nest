@@ -6,7 +6,7 @@ import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { approval, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
-import { LONG_PRESS_MS } from "./ChatRow.tsx";
+import { LONG_PRESS_MS } from "./rowGestures.ts";
 
 function withChats(sessions: Session[], repos = ["todo-ui", "narwhal"]) {
   const api = fakeApi();

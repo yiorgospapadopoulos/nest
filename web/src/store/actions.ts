@@ -283,6 +283,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return session;
     },
 
+    /** Archives or restores a Claude Code chat in harness; Claude Code never sees it (D040). */
+    async archiveClaudeChat(chat: ClaudeChat, archived: boolean): Promise<boolean> {
+      const updated = await attempt(() => api.setClaudeChatArchived(chat.id, archived));
+      if (updated === null) return false;
+      dispatch({ type: "claudeChat", chat: updated });
+      toast(`${archived ? "Archived" : "Unarchived"} ${chat.title}`);
+      return true;
+    },
+
     async interrupt(id: string): Promise<boolean> {
       const done = await attempt(async () => {
         await api.interrupt(id);

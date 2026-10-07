@@ -49,6 +49,7 @@ export function fakeApi(): FakeApi {
     claudeChats: vi.fn<Api["claudeChats"]>().mockResolvedValue([]),
     claudeChatEvents: vi.fn<Api["claudeChatEvents"]>().mockResolvedValue([]),
     adoptClaudeChat: vi.fn<Api["adoptClaudeChat"]>(),
+    setClaudeChatArchived: vi.fn<Api["setClaudeChatArchived"]>(),
     approvals: vi.fn<Api["approvals"]>().mockResolvedValue([]),
     resolveApproval: vi.fn<Api["resolveApproval"]>(),
     diff: vi.fn<Api["diff"]>().mockResolvedValue(diff()),

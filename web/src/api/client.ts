@@ -72,6 +72,7 @@ export interface Api {
   claudeChats(includeAutomated?: boolean): Promise<ClaudeChat[]>;
   claudeChatEvents(id: string): Promise<HarnessEvent[]>;
   adoptClaudeChat(id: string): Promise<Session>;
+  setClaudeChatArchived(id: string, archived: boolean): Promise<ClaudeChat>;
   approvals(): Promise<Approval[]>;
   resolveApproval(id: string, body: ResolveBody): Promise<Approval>;
   diff(sessionId: string): Promise<SessionDiff>;
@@ -199,6 +200,10 @@ export class HttpApi implements Api {
 
   adoptClaudeChat(id: string) {
     return this.json<Session>("POST", `${claudeChat(id)}/adopt`);
+  }
+
+  setClaudeChatArchived(id: string, archived: boolean) {
+    return this.json<ClaudeChat>("PUT", `${claudeChat(id)}/archived`, { archived });
   }
 
   approvals() {

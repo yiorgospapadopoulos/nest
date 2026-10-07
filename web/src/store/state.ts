@@ -47,6 +47,8 @@ export interface State {
   transcripts: Record<string, HarnessEvent[]>;
   // Assistant text streaming in before its message is complete.
   live: Record<string, string>;
+  // When the agent started the thinking it is doing now (D045); live only.
+  thinking: Record<string, string>;
   // Messages waiting for the running turn to end, oldest first.
   queued: Record<string, QueuedMessage[]>;
   connectors: Connector[] | null;
@@ -70,6 +72,7 @@ export const initialState: State = {
   tracking: {},
   transcripts: {},
   live: {},
+  thinking: {},
   queued: {},
   connectors: null,
   limits: null,
@@ -86,6 +89,7 @@ export type Action =
   | { type: "session"; session: Session }
   | { type: "sessionRemoved"; id: string }
   | { type: "claudeChats"; chats: ClaudeChat[] }
+  | { type: "claudeChat"; chat: ClaudeChat }
   | { type: "claudeChatRemoved"; id: string }
   | { type: "showAutomated"; on: boolean }
   | { type: "approval"; approval: Approval }

@@ -7,6 +7,7 @@ import type {
   JsonObject,
   JsonValue,
   LimitWindow,
+  RepoConfig,
   Session,
   TrackedAgent,
   TrackedTask,
@@ -37,6 +38,8 @@ export function reduce(state: State, action: Action): State {
         ...state,
         claudeChats: Object.fromEntries(action.chats.map((chat) => [chat.id, chat])),
       };
+    case "claudeChat":
+      return { ...state, claudeChats: { ...state.claudeChats, [action.chat.id]: action.chat } };
     case "claudeChatRemoved":
       return {
         ...state,
@@ -98,11 +101,18 @@ export function applyEvent(state: State, event: HarnessEvent): State {
   const id = event.session_id;
   const p = event.payload;
   switch (event.type) {
+    case "repo.updated": {
+      const changed = p.repo as unknown as RepoConfig;
+      return {
+        ...next,
+        repos: next.repos.map((r) => (r.name === changed.name ? changed : r)),
+      };
+    }
     case "session.created":
     case "session.updated":
       return upsertSession(next, p.session as unknown as Session);
     case "session.state":
-      return patchSession(next, id, {
+      return patchSession(clearThinking(next, id), id, {
         state: p.state as Session["state"],
         last_error: str(p.error),
       });
@@ -140,9 +150,13 @@ export function applyEvent(state: State, event: HarnessEvent): State {
       return id === null
         ? next
         : { ...next, live: { ...next.live, [id]: (next.live[id] ?? "") + (str(p.text) ?? "") } };
+    case "session.thinking":
+      return id === null || p.active !== true
+        ? clearThinking(next, id)
+        : { ...next, thinking: { ...next.thinking, [id]: event.ts } };
     case "session.message":
     case "session.result":
-      return clearLive(next, id);
+      return clearThinking(clearLive(next, id), id);
     case "connectors.updated":
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
@@ -187,6 +201,7 @@ function removeSession(state: State, id: string): State {
     tracking: without(state.tracking),
     transcripts: without(state.transcripts),
     live: without(state.live),
+    thinking: without(state.thinking),
     queued: without(state.queued),
   };
 }
@@ -206,10 +221,16 @@ function patchTracking(state: State, id: string | null, patch: Partial<Tracking>
 
 function clearLive(state: State, id: string | null): State {
   if (id === null || !(id in state.live)) return state;
-  return {
-    ...state,
-    live: Object.fromEntries(Object.entries(state.live).filter(([key]) => key !== id)),
-  };
+  return { ...state, live: omit(state.live, id) };
+}
+
+function clearThinking(state: State, id: string | null): State {
+  if (id === null || !(id in state.thinking)) return state;
+  return { ...state, thinking: omit(state.thinking, id) };
+}
+
+function omit(record: Record<string, string>, id: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== id));
 }
 
 /** The reported windows; one the event leaves out keeps its last report, as on the daemon. */

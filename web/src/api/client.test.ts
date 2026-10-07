@@ -105,6 +105,13 @@ const calls: Call[] = [
     undefined,
   ],
   ["adopt", (a) => a.adoptClaudeChat("c1"), "POST", "/api/claude-chats/c1/adopt", undefined],
+  [
+    "archive a claude chat",
+    (a) => a.setClaudeChatArchived("c/1", true),
+    "PUT",
+    "/api/claude-chats/c%2F1/archived",
+    { archived: true },
+  ],
   ["approvals", (a) => a.approvals(), "GET", "/api/approvals?status=pending", undefined],
   [
     "resolve",
