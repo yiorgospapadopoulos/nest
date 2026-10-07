@@ -27,6 +27,7 @@ def test_event_type_names() -> None:
     assert types.SESSION_USER_MESSAGE == "session.user_message"
     assert types.SESSION_MESSAGE == "session.message"
     assert types.SESSION_DELTA == "session.delta"
+    assert types.SESSION_THINKING == "session.thinking"
     assert types.SESSION_RESULT == "session.result"
     assert types.SESSION_GIT_VIOLATION == "session.git_violation"
     assert types.SESSION_TASKS == "session.tasks"

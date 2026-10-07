@@ -17,7 +17,10 @@ class TextBlock(BaseModel):
 
 class ThinkingBlock(BaseModel):
     type: Literal["thinking"] = "thinking"
+    # Empty when the engine left the thinking out (redacted or omitted).
     text: str
+    # From the block's start to its end in the engine's stream; None when unknown (D045).
+    duration_ms: int | None = None
 
 
 class ToolUseBlock(BaseModel):
@@ -270,6 +273,10 @@ class ProviderEventSink(Protocol):
     async def message(self, blocks: list[MessageBlock], parent_tool_use_id: str | None) -> None: ...
 
     async def text_delta(self, text: str) -> None: ...
+
+    async def thinking(self, active: bool) -> None:
+        """The main agent started (True) or finished (False) a thinking block (D045)."""
+        ...
 
     async def result(self, info: ResultInfo) -> None: ...
 

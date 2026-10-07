@@ -186,8 +186,9 @@ def test_tools_thinking_and_results() -> None:
     assert history(entries) == [
         prompt("Search it"),
         message(
-            {"type": "thinking", "text": "Hmm"},
-            {"type": "thinking", "text": ""},
+            # Claude Code's transcripts do not say how long the agent thought (D045).
+            {"type": "thinking", "text": "Hmm", "duration_ms": None},
+            {"type": "thinking", "text": "", "duration_ms": None},
             {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/a"}},
             {"type": "tool_use", "id": "t2", "name": "web_search", "input": {}},
             {

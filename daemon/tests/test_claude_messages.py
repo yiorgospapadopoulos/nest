@@ -23,12 +23,16 @@ from claude_agent_sdk import (
 
 from harness.providers import base
 from harness.providers.claude_messages import translate
+from harness.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
+from tests.test_claude_thinking import Ticker, start, stop
 
 
-async def translated(message: Message) -> list[tuple[str, object]]:
+async def translated(
+    message: Message, thinking: ThinkingTimer | None = None
+) -> list[tuple[str, object]]:
     sink = RecordingSink()
-    await translate(message, sink)
+    await translate(message, sink, thinking or ThinkingTimer())
     return sink.calls
 
 
@@ -147,6 +151,63 @@ TEXT_DELTA = {
 
 async def test_text_deltas_are_streamed() -> None:
     assert await translated(stream(TEXT_DELTA)) == [("text_delta", "He")]
+
+
+async def test_the_main_agent_thinking_is_reported_as_it_starts_and_ends() -> None:
+    timer = ThinkingTimer(Ticker())
+
+    assert await translated(stream(start(0)), timer) == [("thinking", True)]
+    assert await translated(stream(stop(0)), timer) == [("thinking", False)]
+    assert await translated(stream(start(1), parent="subagent"), timer) == []
+
+
+async def test_main_agent_thinking_blocks_carry_how_long_they_took() -> None:
+    time = Ticker()
+    timer = ThinkingTimer(time)
+    await translated(stream(start(0)), timer)
+    time.now += 8
+    await translated(stream(stop(0)), timer)
+    thought = ThinkingBlock(thinking="hmm", signature="sig")
+
+    main = await translated(AssistantMessage(content=[thought, TextBlock("Hi")], model="m"), timer)
+    time.now += 3
+    # A block without stream timing counts from the content before it.
+    again = await translated(AssistantMessage(content=[thought], model="m"), timer)
+    sub = await translated(
+        AssistantMessage(content=[thought], model="m", parent_tool_use_id="p"), timer
+    )
+
+    assert main == [
+        (
+            "message",
+            ([base.ThinkingBlock(text="hmm", duration_ms=8000), base.TextBlock(text="Hi")], None),
+        )
+    ]
+    assert again == [("message", ([base.ThinkingBlock(text="hmm", duration_ms=3000)], None))]
+    assert sub == [("message", ([base.ThinkingBlock(text="hmm")], "p"))]
+
+
+async def test_a_result_ends_the_turns_thinking_timings() -> None:
+    time = Ticker()
+    timer = ThinkingTimer(time)
+    timer.mark()
+    await translated(
+        ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="sdk-1",
+        ),
+        timer,
+    )
+    time.now += 5
+    thought = ThinkingBlock(thinking="", signature="sig")
+
+    calls = await translated(AssistantMessage(content=[thought], model="m"), timer)
+
+    assert calls == [("message", ([base.ThinkingBlock(text="")], None))]
 
 
 @pytest.mark.parametrize(

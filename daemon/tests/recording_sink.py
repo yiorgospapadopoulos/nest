@@ -19,6 +19,9 @@ class RecordingSink:
     async def text_delta(self, text: str) -> None:
         self.calls.append(("text_delta", text))
 
+    async def thinking(self, active: bool) -> None:
+        self.calls.append(("thinking", active))
+
     async def result(self, info: ResultInfo) -> None:
         self.calls.append(("result", info))
 

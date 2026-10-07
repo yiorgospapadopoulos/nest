@@ -64,6 +64,12 @@ class SessionSink:
         await self._turns.agent_active(self._live)
         await self._bus.publish_ephemeral(types.SESSION_DELTA, {"text": text}, self._session_id)
 
+    async def thinking(self, active: bool) -> None:
+        await self._turns.agent_active(self._live)
+        await self._bus.publish_ephemeral(
+            types.SESSION_THINKING, {"active": active}, self._session_id
+        )
+
     async def result(self, info: ResultInfo) -> None:
         await self._bus.publish(
             types.SESSION_RESULT, info.model_dump(mode="json"), self._session_id

@@ -5,6 +5,7 @@ from claude_agent_sdk import SystemMessage
 from harness.providers.base import AgentInfo, CommandCatalog, ContextUsage, SlashCommand
 from harness.providers.claude_commands import context_usage, described_catalog, init_catalog
 from harness.providers.claude_messages import translate
+from harness.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 
 SERVER_INFO: dict[str, Any] = {
@@ -74,12 +75,15 @@ def test_context_usage_reads_percent_tokens_and_limit() -> None:
 
 async def test_the_init_message_and_command_changes_report_catalogs() -> None:
     sink = RecordingSink()
+    timer = ThinkingTimer()
 
     await translate(
-        SystemMessage(subtype="init", data={"session_id": "s", "slash_commands": ["compact"]}), sink
+        SystemMessage(subtype="init", data={"session_id": "s", "slash_commands": ["compact"]}),
+        sink,
+        timer,
     )
-    await translate(SystemMessage(subtype="commands_changed", data=SERVER_INFO), sink)
-    await translate(SystemMessage(subtype="commands_changed", data={"commands": []}), sink)
+    await translate(SystemMessage(subtype="commands_changed", data=SERVER_INFO), sink, timer)
+    await translate(SystemMessage(subtype="commands_changed", data={"commands": []}), sink, timer)
 
     reported = [value for name, value in sink.calls if name == "commands"]
     assert reported == [

@@ -8,6 +8,9 @@ DEVICE_REVOKED: Final = "device.revoked"
 
 # A repo was unregistered (its config deleted); global, the payload names it.
 REPO_REMOVED: Final = "repo.removed"
+# A repo's config changed on its own, such as a plain folder that became a git repository
+# (D041); global, `{name, repo}` with the whole repo. Clients replace their copy.
+REPO_UPDATED: Final = "repo.updated"
 
 # Agent sessions; all carry the session id. SESSION_DELTA is ephemeral (never stored).
 SESSION_CREATED: Final = "session.created"
@@ -19,6 +22,8 @@ SESSION_SETUP_FAILED: Final = "session.setup_failed"
 SESSION_USER_MESSAGE: Final = "session.user_message"
 SESSION_MESSAGE: Final = "session.message"
 SESSION_DELTA: Final = "session.delta"
+# The main agent started (`{active: true}`) or finished a thinking block; ephemeral (D045).
+SESSION_THINKING: Final = "session.thinking"
 SESSION_RESULT: Final = "session.result"
 SESSION_GIT_VIOLATION: Final = "session.git_violation"
 # Not a session event (its events are deleted with it): the payload names the session.
@@ -58,8 +63,9 @@ NOTIFY: Final = "notify"
 # The connectors list (MCP servers and claude.ai connectors) after a status changed; global.
 CONNECTORS_UPDATED: Final = "connectors.updated"
 
-# The Claude Code chats of some repos changed (new, updated, adopted, opened or closed in
-# Claude Code); ephemeral and global, the payload names the repos. Clients list them again.
+# The Claude Code chats of some repos changed (new, updated, adopted, archived, opened or
+# closed in Claude Code); ephemeral and global, the payload names the repos. Clients list
+# them again.
 CLAUDE_CHATS_UPDATED: Final = "claude_chats.updated"
 
 # Subscription usage windows reported by the agent engine; global, not per session.

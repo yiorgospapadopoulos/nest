@@ -27,9 +27,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from harness.providers import base
 from harness.providers.claude_commands import described_catalog, init_catalog
+from harness.providers.claude_thinking import ThinkingTimer
 
 
-async def translate(message: Message, sink: base.ProviderEventSink) -> None:
+async def translate(
+    message: Message, sink: base.ProviderEventSink, thinking: ThinkingTimer
+) -> None:
     match message:
         case SystemMessage(subtype="init"):
             await sink.provider_session_id(str(message.data["session_id"]))
@@ -41,8 +44,15 @@ async def translate(message: Message, sink: base.ProviderEventSink) -> None:
             # Plain-text user content is the engine echoing input the session already recorded.
             content = message.content if isinstance(message.content, list) else []
             if content:
-                await sink.message([_block(block) for block in content], message.parent_tool_use_id)
+                blocks = [_block(block) for block in content]
+                if message.parent_tool_use_id is None:
+                    _time_thinking(blocks, thinking)
+                await sink.message(blocks, message.parent_tool_use_id)
         case StreamEvent():
+            if message.parent_tool_use_id is None:
+                active = thinking.stream(message.event)
+                if active is not None:
+                    await sink.thinking(active)
             text = _text_delta(message)
             if text is not None:
                 await sink.text_delta(text)
@@ -54,6 +64,7 @@ async def translate(message: Message, sink: base.ProviderEventSink) -> None:
             for update in task_updates(message):
                 await sink.task(update)
         case ResultMessage():
+            thinking.reset()
             await sink.provider_session_id(message.session_id)
             await sink.result(
                 base.ResultInfo(
@@ -143,6 +154,14 @@ class BackgroundTasks:
         ):
             self._running.discard(message.task_id)
         return len(self._running) if len(self._running) != before else None
+
+
+def _time_thinking(blocks: list[base.MessageBlock], thinking: ThinkingTimer) -> None:
+    """Give the main agent's thinking blocks their durations; later content counts from here."""
+    for block in blocks:
+        if isinstance(block, base.ThinkingBlock):
+            block.duration_ms = thinking.took()
+    thinking.mark()
 
 
 def _block(block: ContentBlock) -> base.MessageBlock:

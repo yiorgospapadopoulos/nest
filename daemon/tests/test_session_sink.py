@@ -168,6 +168,31 @@ async def test_task_updates_are_stored_without_starting_a_turn(
     ]
 
 
+async def test_thinking_is_announced_live_and_never_stored(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns()
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
+
+    async with aclosing(bus.subscribe()) as live:
+        pending = asyncio.ensure_future(anext(live))
+        await asyncio.sleep(0)
+        await sink.thinking(True)
+        started = await pending
+        pending = asyncio.ensure_future(anext(live))
+        await sink.thinking(False)
+        ended = await pending
+
+    assert turns.calls == [("active", session.id), ("active", session.id)]
+    assert [(e.type, e.id, e.session_id, e.payload) for e in (started, ended)] == [
+        (types.SESSION_THINKING, None, session.id, {"active": True}),
+        (types.SESSION_THINKING, None, session.id, {"active": False}),
+    ]
+    assert await bus.session_events(session.id) == []
+
+
 async def test_provider_session_id_is_stored_once_per_change(
     db: Database, clock: FakeClock, bus: EventBus
 ) -> None:
