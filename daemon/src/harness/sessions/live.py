@@ -4,15 +4,22 @@ import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from harness.config.models import Effort
+from harness.config.models import Effort, PermissionMode
 from harness.providers.base import AgentRun
 from harness.sessions.errors import SessionBusyError
 
 logger = logging.getLogger(__name__)
+
+BYPASS: PermissionMode = "bypassPermissions"
+
+
+def live_bypass(live: "LiveSession | None") -> bool:
+    """Whether the session's live run opened in bypass, so it may switch into it (D046)."""
+    return live is not None and live.run_bypass
 
 
 @dataclass(eq=False)
@@ -23,10 +30,14 @@ class LiveSession:
     run_dirs: tuple[Path, ...] = ()
     # The thinking effort the run opened with; a different one needs a new run.
     run_effort: Effort | None = None
+    # Whether the run opened in bypass: only such a run may switch into it live (D046).
+    run_bypass: bool = False
     # Setup, opening the run and submitting a message. At most one at a time.
     task: asyncio.Task[None] | None = None
     # The agent is working, after a user message or on its own, until the turn's result.
     turn_active: bool = False
+    # When the agent was given the current turn's message or started one on its own (D045).
+    turn_started: datetime | None = None
     interrupted: bool = False
     # The turn was interrupted to deliver a queued message (a nudge) right after it.
     resume_queue: bool = False
@@ -62,8 +73,15 @@ class LiveSession:
             return True
         return False
 
+    def turn_ms(self, now: datetime) -> int | None:
+        """How long the current turn has run; None if the agent never got its message."""
+        if self.turn_started is None:
+            return None
+        return round((now - self.turn_started).total_seconds() * 1000)
+
     def end_turn(self, idle_close: timedelta) -> None:
         self.turn_active = False
+        self.turn_started = None
         self.interrupted = False
         self.resume_queue = False
         self.schedule_idle_close(idle_close)

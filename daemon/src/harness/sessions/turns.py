@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from harness.attachments.store import Attachment, AttachmentStore
+from harness.clock import Clock
 from harness.config.models import RepoConfig
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.providers.base import AgentProvider, AgentRun, ApprovalHandler, SessionSpec
 from harness.sessions.git_audit import changed_refs, snapshot_refs
 from harness.sessions.hooks import SessionHooks
-from harness.sessions.live import LiveSession
+from harness.sessions.live import BYPASS, LiveSession
 from harness.sessions.models import QueuedMessage, Session, SessionState
 from harness.sessions.queue import MessageQueue
 from harness.sessions.rules import attachment_summary, require_cwd, user_input
@@ -29,7 +30,8 @@ logger = logging.getLogger(__name__)
 HARNESS_PROMPT = (
     "You are running inside harness. Do not run git commit, git push, gh pr create or "
     "gh pr merge: harness commits, pushes and opens pull requests after the user approves "
-    "your work."
+    "your work. Mention MCP servers that need authorization or failed to connect only when "
+    "the user asks about them or the task needs one of them."
 )
 
 # The state a background task ends in, and the error that caused it, if any.
@@ -52,8 +54,10 @@ class TurnRunner:
         handler_for: Callable[[str], ApprovalHandler],
         idle_close: timedelta,
         queue: MessageQueue,
+        clock: Clock,
     ) -> None:
         self._queue = queue
+        self._clock = clock
         self._store = store
         self._bus = bus
         self._states = states
@@ -99,7 +103,7 @@ class TurnRunner:
             {"text": text, "attachments": [attachment_summary(a) for a in attachments]},
             session_id,
         )
-        session = await self._states.set(session_id, SessionState.RUNNING)
+        session = await self._start_turn(live)
         cwd = require_cwd(session)
         run = await self._ensure_run(live, session, cwd)
         live.baseline = await snapshot_refs(cwd)
@@ -112,7 +116,14 @@ class TurnRunner:
         # The agent started a turn on its own, e.g. after a background task finished.
         live.turn_active = True
         live.cancel_idle_close()
-        await self._states.set(live.session_id, SessionState.RUNNING)
+        await self._start_turn(live)
+
+    async def _start_turn(self, live: LiveSession) -> Session:
+        """The agent gets a message or starts on its own; clients time the turn from here."""
+        live.turn_started = self._clock.now()
+        return await self._states.set(
+            live.session_id, SessionState.RUNNING, turn={"turn_start": True}
+        )
 
     async def turn_finished(self, live: LiveSession) -> None:
         await self._audit(live)
@@ -173,8 +184,9 @@ class TurnRunner:
     async def _end_turn(self, live: LiveSession, state: SessionState, error: str | None) -> None:
         # Free the session before announcing the outcome, so a client reacting to the
         # new state can send the next message straight away.
+        duration = live.turn_ms(self._clock.now())
         live.end_turn(self._idle_close)
-        await self._states.set(live.session_id, state, error)
+        await self._states.set(live.session_id, state, error, turn={"duration_ms": duration})
 
     async def _report_connectors(self, session_id: str, run: AgentRun) -> None:
         """MCP connections have settled by the end of a turn, unlike at the run's start."""
@@ -191,8 +203,11 @@ class TurnRunner:
         """The live run, or a new one resuming the agent's last session."""
         dirs = await self._attachments.file_dirs(session.id)
         # A new effort waits while background tasks run: closing would stop them.
-        current_effort = live.run_effort == session.effort or live.background_tasks > 0
-        if live.run is not None and set(dirs) <= set(live.run_dirs) and current_effort:
+        needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
+        current = (
+            live.run_effort == session.effort and not needs_bypass
+        ) or live.background_tasks > 0
+        if live.run is not None and set(dirs) <= set(live.run_dirs) and current:
             return live.run
         await live.close_run()
         spec = SessionSpec(
@@ -210,6 +225,7 @@ class TurnRunner:
         live.run = await self._provider.open(spec, self._handler_for(session.id), sink)
         live.run_dirs = dirs
         live.run_effort = session.effort
+        live.run_bypass = session.permission_mode == BYPASS
         return live.run
 
     async def _audit(self, live: LiveSession) -> None:

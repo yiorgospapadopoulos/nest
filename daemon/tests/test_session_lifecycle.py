@@ -63,6 +63,10 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     assert run.spec.resume_id is None
     assert run.spec.extra_dirs == ()
     assert run.spec.system_prompt_append == HARNESS_PROMPT
+    # Claude Code tells SDK hosts which MCP servers need sign-in; replies should still
+    # read like the Claude app's, which does not list them unprompted.
+    assert "MCP servers" in HARNESS_PROMPT
+    assert "only when the user asks" in HARNESS_PROMPT
     assert run.inputs == [UserInput(text="Fix the bug\nDetails here")]
     assert await env.event_types(created.id) == [
         types.SESSION_CREATED,

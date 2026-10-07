@@ -42,6 +42,7 @@ from harness.providers.claude_questions import (
     QUESTION_TIMEOUT_SECONDS,
     QuestionBridge,
 )
+from harness.providers.claude_thinking import ThinkingTimer
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
@@ -95,6 +96,16 @@ def agent_env(gh_config_dir: Path) -> dict[str, str]:
     }
 
 
+# How the Claude app runs Claude Code, so a harness chat starts and behaves the same (D047):
+# answer before slow MCP servers finish connecting, connect them in batches, and keep old
+# tool results in context instead of trimming them early.
+CLAUDE_APP_ENV = {
+    "MCP_CONNECTION_NONBLOCKING": "true",
+    "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
+    "DISABLE_MICROCOMPACT": "1",
+}
+
+
 def build_options(
     spec: SessionSpec, handler: ApprovalHandler, gh_config_dir: Path
 ) -> ClaudeAgentOptions:
@@ -138,7 +149,7 @@ def build_options(
                 ),
             ]
         },
-        env=agent_env(gh_config_dir),
+        env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
     )
 
 
@@ -151,9 +162,11 @@ class ClaudeRun:
         self._client = client
         self._sink = sink
         self._tasks = BackgroundTasks()
+        self._thinking = ThinkingTimer()
         self._reader = asyncio.create_task(self._read())
 
     async def send(self, user_input: UserInput) -> None:
+        self._thinking.mark()
         await self._client.query(_single(_user_message(user_input)))
 
     async def interrupt(self) -> None:
@@ -186,7 +199,7 @@ class ClaudeRun:
                 running = self._tasks.update(message)
                 if running is not None:
                     await self._sink.background_tasks(running)
-                await translate(message, self._sink)
+                await translate(message, self._sink, self._thinking)
         except Exception as exc:
             error = str(exc)
         with suppress(Exception):

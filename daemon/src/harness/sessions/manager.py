@@ -27,7 +27,7 @@ from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError, N
 from harness.sessions.files import FileIndex
 from harness.sessions.git_audit import snapshot_refs
 from harness.sessions.hooks import SessionHooks
-from harness.sessions.live import LiveSession
+from harness.sessions.live import BYPASS, LiveSession, live_bypass
 from harness.sessions.models import (
     ChatImport,
     CreateSession,
@@ -105,6 +105,7 @@ class SessionManager:
             handler_for=self._handler_for,
             idle_close=idle_close,
             queue=queue,
+            clock=clock,
         )
         self._live: dict[str, LiveSession] = {}
 
@@ -129,15 +130,18 @@ class SessionManager:
 
     async def create(self, request: CreateSession) -> Session:
         try:
-            repo = self._repos.get(request.repo)
+            repo = await self._repos.current(request.repo)
         except RepoNotFoundError as error:
             raise InvalidInputError(str(error)) from error
         require_folder(repo)
         defaults = self._defaults()
         model = request.model or defaults.model
         effort = await self._effort(model, request.effort, defaults.effort)
-        mode = request.mode or _repo_mode(repo) or defaults.default_mode
-        if mode == "in_place" and not request.allow_dirty:
+        # A plain folder has no worktrees or branches: its chats always work in place (D041).
+        mode = (
+            (request.mode or _repo_mode(repo) or defaults.default_mode) if repo.git else "in_place"
+        )
+        if mode == "in_place" and repo.git and not request.allow_dirty:
             dirty = await self._worktrees.dirty_files(repo)
             if dirty:
                 raise DirtyCheckoutError(dirty)
@@ -250,7 +254,10 @@ class SessionManager:
 
     async def files(self, session_id: str, query: str) -> list[str]:
         """Files in the session's working directory matching `query`, for @ mentions."""
-        cwd = require_workspace(await self._store.get(session_id))
+        session = await self._store.get(session_id)
+        cwd = require_workspace(session)
+        if not await self._repos.has_git(session.repo):
+            return []  # the listing comes from git (D041)
         return await self._files.search(cwd, query)
 
     async def interrupt(self, session_id: str) -> None:
@@ -280,7 +287,10 @@ class SessionManager:
         if run is not None:
             if "model" in changes:
                 await run.set_model(session.model)
-            if "permission_mode" in changes:
+            # A run that did not open in bypass cannot enter it live; the next message
+            # reopens it in bypass instead (D046).
+            entering_bypass = session.permission_mode == BYPASS and not live_bypass(live)
+            if "permission_mode" in changes and not entering_bypass:
                 await run.set_permission_mode(session.permission_mode)
         return session
 
@@ -361,7 +371,10 @@ class SessionManager:
         await live.stop()
         if live.turn_active:
             live.turn_active = False
-            await self._states.set(live.session_id, SessionState.INTERRUPTED)
+            duration = live.turn_ms(self._clock.now())
+            await self._states.set(
+                live.session_id, SessionState.INTERRUPTED, turn={"duration_ms": duration}
+            )
 
     async def _save_changes(self, session_id: str, changes: dict[str, object]) -> Session:
         session = await self._store.update(session_id, **changes)

@@ -129,6 +129,8 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     }
     assert options.setting_sources == ["user", "project", "local"]
     assert options.include_partial_messages is True
+    # Bypass is never offered to a run that did not start in it (D046).
+    assert "allow-dangerously-skip-permissions" not in options.extra_args
     assert options.disallowed_tools == list(GIT_WRITE_RULES)
     assert options.hooks is not None
     git_matcher, question_matcher = options.hooks["PreToolUse"]
@@ -145,6 +147,11 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
         "GH_CONFIG_DIR": str(tmp_path / "agent-gh"),
         "GH_TOKEN": "",
         "GITHUB_TOKEN": "",
+        # As the Claude app runs Claude Code (D047): answer without waiting for slow MCP
+        # servers, connect them in batches, and keep old tool results in context.
+        "MCP_CONNECTION_NONBLOCKING": "true",
+        "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
+        "DISABLE_MICROCOMPACT": "1",
     }
 
 

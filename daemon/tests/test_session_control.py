@@ -194,6 +194,49 @@ async def test_a_new_effort_reopens_the_run_at_the_next_message(env: Env) -> Non
     assert len(env.provider.runs) == 2
 
 
+async def test_switching_to_bypass_reopens_the_run_in_bypass(env: Env) -> None:
+    """Claude Code refuses a live switch into bypass unless launched with a flag that offers
+    it to every run (D046); harness reopens the run in bypass at the next message instead."""
+    env.provider.script(reply("one"), reply("two"), reply("three"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    updated = await env.manager.update(
+        created.id, UpdateSession(permission_mode="bypassPermissions")
+    )
+
+    assert updated.permission_mode == "bypassPermissions"
+    assert env.provider.runs[0].calls == []
+    await env.manager.send(created.id, "go on", [])
+    await until_results(env, created.id, 2)
+    assert env.provider.runs[0].closed is True
+    assert env.provider.runs[1].spec.permission_mode == "bypassPermissions"
+    assert env.provider.runs[1].spec.resume_id == "sdk-1"
+    # A run opened in bypass can leave it and come back live.
+    await env.manager.update(created.id, UpdateSession(permission_mode="default"))
+    await env.manager.update(created.id, UpdateSession(permission_mode="bypassPermissions"))
+    assert env.provider.runs[1].calls == [
+        ("set_permission_mode", "default"),
+        ("set_permission_mode", "bypassPermissions"),
+    ]
+    await env.manager.send(created.id, "again", [])
+    await until_results(env, created.id, 3)
+    assert len(env.provider.runs) == 2
+
+
+async def test_bypass_waits_while_background_tasks_run(env: Env) -> None:
+    env.provider.script(background(1, reply("started")), reply("two"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    await env.manager.update(created.id, UpdateSession(permission_mode="bypassPermissions"))
+    await env.manager.send(created.id, "how is it going?", [])
+    await until_results(env, created.id, 2)
+
+    assert len(env.provider.runs) == 1
+    assert env.provider.runs[0].calls == []
+
+
 async def test_a_new_effort_waits_while_background_tasks_run(env: Env) -> None:
     """Reopening would stop the agent's background work; the effort applies at a later open."""
     env.provider.script(background(1, reply("started")), reply("two"))
