@@ -5,7 +5,13 @@ import pytest
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.gitops.runner import CommandError
-from harness.review.errors import GitActionError, NothingToCommitError
+from harness.review.errors import (
+    GitActionError,
+    NothingToCommitError,
+    RemoteChangedError,
+    RemoteNotConfirmedError,
+    UnsafeRepoConfigError,
+)
 from harness.review.publish import GitPublisher, PublishPlan, PullRequest
 from harness.sessions.models import Session
 from harness.sessions.store import SessionStore
@@ -43,6 +49,9 @@ class Env:
             new_session(mode="in_place", cwd=self.repo, base_ref=self.base)
         )
 
+    def plan(self, **fields: object) -> PublishPlan:
+        return plan(**{"remote_url": str(self.origin), **fields})
+
     async def events(self, session_id: str) -> list[tuple[str, object]]:
         return [(e.type, e.payload) for e in await self.bus.session_events(session_id)]
 
@@ -68,7 +77,7 @@ async def test_a_worktree_is_committed_pushed_and_opened_as_a_pull_request(env: 
     (env.worktree / "README.md").write_text("better\n", encoding="utf-8")
     (env.worktree / "new.txt").write_text("new\n", encoding="utf-8")
 
-    published = await env.publisher.publish(session, plan())
+    published = await env.publisher.publish(session, env.plan())
 
     sha = git(env.worktree, "rev-parse", "HEAD").strip()
     assert published.commit_sha == sha
@@ -111,10 +120,10 @@ async def test_a_failed_step_is_reported_and_a_retry_skips_what_is_done(env: Env
     env.runner.failures["git push"] = CommandError(["git", "push"], 128, "remote hung up\n")
 
     with pytest.raises(GitActionError) as caught:
-        await env.publisher.publish(session, plan())
+        await env.publisher.publish(session, env.plan())
     failed = await env.store.get(session.id)
-    retried = await env.publisher.publish(failed, plan())
-    again = await env.publisher.publish(retried, plan())
+    retried = await env.publisher.publish(failed, env.plan())
+    again = await env.publisher.publish(retried, env.plan())
 
     assert caught.value.status_code == 502
     assert caught.value.payload() == {
@@ -148,7 +157,7 @@ async def test_in_place_commits_only_the_chosen_files(env: Env) -> None:
 
     published = await env.publisher.publish(
         session,
-        plan(
+        env.plan(
             paths=["agent.txt", "doomed.txt", "old.txt", "renamed.txt"],
             pull_request=None,
         ),
@@ -171,7 +180,7 @@ async def test_in_place_with_only_staged_removals(env: Env) -> None:
     session = await env.in_place_session()
     git(env.repo, "rm", "-q", "old.txt")
 
-    published = await env.publisher.publish(session, plan(paths=["old.txt"], pull_request=None))
+    published = await env.publisher.publish(session, env.plan(paths=["old.txt"], pull_request=None))
 
     assert git(env.repo, "show", "--name-status", "--format=", "HEAD").strip() == "D\told.txt"
     assert published.commit_sha == git(env.repo, "rev-parse", "HEAD").strip()
@@ -181,7 +190,7 @@ async def test_without_push_only_a_commit_is_made(env: Env) -> None:
     session = await env.worktree_session()
     (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
 
-    published = await env.publisher.publish(session, plan(push=False, pull_request=None))
+    published = await env.publisher.publish(session, env.plan(push=False, pull_request=None))
 
     assert published.commit_sha is not None
     assert [t for t, _ in await env.events(session.id)] == [types.GIT_COMMITTED]
@@ -191,32 +200,202 @@ async def test_nothing_to_commit(env: Env) -> None:
     session = await env.worktree_session()
 
     with pytest.raises(NothingToCommitError, match="no changes to commit"):
-        await env.publisher.publish(session, plan())
+        await env.publisher.publish(session, env.plan())
 
 
 async def test_work_the_agent_committed_itself_is_published_as_is(env: Env) -> None:
     session = await env.worktree_session()
     sha = commit_file(env.worktree, "sneaky.txt")
 
-    published = await env.publisher.publish(session, plan(pull_request=None))
+    published = await env.publisher.publish(session, env.plan(pull_request=None))
 
     assert published.commit_sha == sha
     assert git(env.origin, "rev-parse", "agent/fix").strip() == sha
 
 
-async def test_commit_hooks_run_and_can_stop_the_commit(env: Env) -> None:
+HOOKS = (
+    *("pre-commit", "prepare-commit-msg", "commit-msg", "post-commit", "pre-push"),
+    *("reference-transaction", "post-checkout", "pre-auto-gc", "post-index-change"),
+)
+
+
+def plant_hooks(hooks_dir: Path, marker: Path) -> None:
+    """Hooks that record that they ran and fail, as an agent could plant them."""
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    for name in HOOKS:
+        hook = hooks_dir / name
+        hook.write_text(f"#!/bin/sh\necho {name} >> '{marker}'\nexit 1\n", encoding="utf-8")
+        hook.chmod(0o755)
+
+
+async def test_planted_hooks_never_run_when_publishing(env: Env, tmp_path: Path) -> None:
+    """D050: hooks run with the user's credentials, so the daemon runs none."""
+    marker = tmp_path / "hooks-ran"
     session = await env.worktree_session()
-    hook = env.repo / ".git" / "hooks" / "pre-commit"
-    hook.write_text("#!/bin/sh\necho 'lint failed' >&2\nexit 1\n", encoding="utf-8")
-    hook.chmod(0o755)
+    plant_hooks(env.repo / ".git" / "hooks", marker)
+    plant_hooks(tmp_path / "planted", marker)
+    git(env.repo, "config", "core.hooksPath", str(tmp_path / "planted"))
     (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
 
-    with pytest.raises(GitActionError) as caught:
-        await env.publisher.publish(session, plan())
+    published = await env.publisher.publish(session, env.plan())
 
-    assert caught.value.step == "commit"
-    assert "lint failed" in caught.value.stderr
-    assert (await env.store.get(session.id)).commit_sha is None
+    assert not marker.exists()
+    assert git(env.origin, "rev-parse", "agent/fix").strip() == published.commit_sha
+
+
+UNSAFE_SETTINGS = [
+    ("core.sshCommand", "ssh -o ProxyCommand=evil", "core.sshcommand (runs a program)"),
+    ("core.gitProxy", "evil", "core.gitproxy (runs a program)"),
+    ("core.fsmonitor", "watch-changes", "core.fsmonitor (runs a program)"),
+    ("credential.helper", "!cat >> stolen", "credential.helper (handles your credentials)"),
+    (
+        "url.https://evil.example/.insteadOf",
+        "https://github.com/",
+        "url.https://evil.example/.insteadof (rewrites remote URLs)",
+    ),
+    ("http.proxy", "http://evil:8080", "http.proxy (changes where or how data is sent)"),
+    ("remote.origin.receivepack", "evil", "remote.origin.receivepack (runs a program)"),
+    ("filter.evil.clean", "evil", "filter.evil.clean (runs a program on your files)"),
+    ("gpg.program", "evil", "gpg.program (runs a program)"),
+    ("hook.audit.command", "evil", "hook.audit.command (runs a program)"),
+    ("protocol.file.allow", "always", "protocol.file.allow (allows other transports)"),
+]
+
+
+@pytest.mark.parametrize(("key", "value", "reported"), UNSAFE_SETTINGS)
+async def test_repository_settings_that_run_programs_stop_publishing(
+    env: Env, key: str, value: str, reported: str
+) -> None:
+    """D050: nothing is staged, committed or pushed while such a setting is there."""
+    session = await env.worktree_session()
+    git(env.repo, "config", key, value)
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    with pytest.raises(UnsafeRepoConfigError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    assert caught.value.status_code == 409
+    assert caught.value.payload() == {
+        "detail": str(caught.value),
+        "code": "unsafe_repo_config",
+        "settings": [reported],
+    }
+    assert reported in str(caught.value)
+    assert git(env.worktree, "rev-parse", "HEAD").strip() == env.base
+    assert git(env.worktree, "diff", "--cached", "--name-only") == ""
+    assert (await env.events(session.id)) == [
+        (types.GIT_FAILED, {"step": "commit", "stderr": str(caught.value)})
+    ]
+
+
+async def test_included_and_per_worktree_settings_are_checked_too(env: Env, tmp_path: Path) -> None:
+    session = await env.worktree_session()
+    included = tmp_path / "included.gitconfig"
+    included.write_text("[credential]\n\thelper = evil\n", encoding="utf-8")
+    git(env.repo, "config", "include.path", str(included))
+    git(env.repo, "config", "extensions.worktreeConfig", "true")
+    git(env.worktree, "config", "--worktree", "core.sshCommand", "evil")
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    with pytest.raises(UnsafeRepoConfigError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    assert caught.value.settings == [
+        "credential.helper (handles your credentials)",
+        "core.sshcommand (runs a program)",
+    ]
+
+
+async def test_ordinary_repository_settings_are_published(env: Env) -> None:
+    session = await env.worktree_session()
+    for key, value in (
+        ("http.postBuffer", "524288000"),
+        ("protocol.version", "2"),
+        ("core.fsmonitor", "false"),
+        ("filter.lfs.clean", "git-lfs clean -- %f"),
+        ("filter.lfs.smudge", "git-lfs smudge -- %f"),
+        ("filter.lfs.process", "git-lfs filter-process"),
+        ("filter.lfs.required", "true"),
+        ("pull.rebase", "true"),
+    ):
+        git(env.repo, "config", key, value)
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    published = await env.publisher.publish(session, env.plan())
+
+    assert git(env.origin, "rev-parse", "agent/fix").strip() == published.commit_sha
+
+
+async def test_pushing_needs_a_confirmed_remote_url(env: Env) -> None:
+    session = await env.worktree_session()
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    with pytest.raises(RemoteNotConfirmedError) as caught:
+        await env.publisher.publish(session, env.plan(remote_url=None))
+
+    assert caught.value.status_code == 409
+    assert caught.value.payload() == {
+        "detail": str(caught.value),
+        "code": "remote_not_confirmed",
+        "remote_urls": [str(env.origin)],
+        "confirmed_url": None,
+    }
+    assert git(env.worktree, "rev-parse", "HEAD").strip() == env.base
+    assert (await env.events(session.id)) == [
+        (types.GIT_FAILED, {"step": "push", "stderr": str(caught.value)})
+    ]
+
+
+def bare(path: Path) -> Path:
+    path.mkdir(parents=True)
+    git(path, "init", "-q", "--bare")
+    return path
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("remote", "set-url", "origin", "{evil}"),
+        ("remote", "set-url", "--push", "origin", "{evil}"),
+        ("config", "--add", "remote.origin.pushurl", "{evil}"),
+        ("remote", "remove", "origin"),
+    ],
+)
+async def test_a_changed_remote_url_is_refused(
+    env: Env, tmp_path: Path, change: tuple[str, ...]
+) -> None:
+    """D050: the agent cannot send the work to another URL by editing the git config."""
+    evil = bare(tmp_path / "evil.git")
+    session = await env.worktree_session()
+    git(env.repo, *(arg.format(evil=evil) for arg in change))
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    with pytest.raises(RemoteChangedError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    payload = caught.value.payload()
+    assert payload["code"] == "remote_changed"
+    assert payload["confirmed_url"] == str(env.origin)
+    assert payload["remote_urls"] != [str(env.origin)]
+    assert str(env.origin) in str(caught.value)
+    assert git(evil, "for-each-ref") == ""
+    assert git(env.origin, "for-each-ref", "refs/heads/agent") == ""
+
+
+async def test_pull_requests_name_the_github_repository_of_the_confirmed_remote(
+    env: Env,
+) -> None:
+    url = "git@github.com:me/repo.git"
+    session = await env.worktree_session()
+    git(env.repo, "remote", "set-url", "origin", url)
+    env.runner.outputs["git push"] = ""  # GitHub is not reached in tests
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    await env.publisher.publish(session, env.plan(remote_url=url))
+
+    assert [call[:5] for call in env.runner.gh_calls()] == [
+        ("gh", "pr", "create", "--repo", "me/repo")
+    ]
 
 
 async def test_a_missing_gh_fails_the_pull_request_step(env: Env) -> None:
@@ -225,7 +404,7 @@ async def test_a_missing_gh_fails_the_pull_request_step(env: Env) -> None:
     env.runner.failures["gh pr"] = FileNotFoundError("No such file or directory: 'gh'")
 
     with pytest.raises(GitActionError) as caught:
-        await env.publisher.publish(session, plan())
+        await env.publisher.publish(session, env.plan())
 
     assert caught.value.step == "pr"
     assert "No such file" in caught.value.stderr

@@ -158,6 +158,66 @@ async def test_a_failed_push_keeps_the_review_and_a_retry_finishes(api: Api) -> 
     assert await approvals(api, status="pending") == []
 
 
+def bare_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    git(path, "init", "-q", "--bare")
+    return path
+
+
+async def test_a_push_goes_only_to_the_remote_url_recorded_at_registration(
+    api: Api, tmp_path: Path
+) -> None:
+    """D050: origin changed after registration is refused until the user confirms it."""
+    session_id = await finished_with_changes(api)
+    repo = api.ctx.repos.get("repo")
+    elsewhere = bare_repo(tmp_path / "elsewhere.git")
+    git(repo.path, "remote", "set-url", "origin", str(elsewhere))
+    url = f"/api/sessions/{session_id}/approve"
+
+    refused = await api.http.post(url, json=APPROVE)
+    wrong = await api.http.post(
+        url, json={**APPROVE, "confirm_remote_url": str(tmp_path / "other.git")}
+    )
+    confirmed = await api.http.post(url, json={**APPROVE, "confirm_remote_url": str(elsewhere)})
+
+    assert repo.remote_url == str(tmp_path / "origin.git")
+    assert refused.status_code == 409
+    assert refused.json() == {
+        "detail": refused.json()["detail"],
+        "code": "remote_changed",
+        "remote_urls": [str(elsewhere)],
+        "confirmed_url": repo.remote_url,
+    }
+    assert (wrong.status_code, wrong.json()["code"]) == (409, "remote_changed")
+    assert confirmed.status_code == 200, confirmed.text
+    assert (await api.http.get("/api/repos/repo")).json()["remote_url"] == str(elsewhere)
+    branch = confirmed.json()["branch"]
+    assert git(elsewhere, "rev-parse", branch).strip() == confirmed.json()["commit_sha"]
+
+
+async def test_a_remote_added_after_registration_needs_confirmation(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    async with running_api(tmp_path, clock, secrets) as api:
+        await api.http.post("/api/repos", json={"path": str(repo)})
+        origin = with_origin(repo, tmp_path / "origin.git")
+        session_id = await finished_with_changes(api)
+        url = f"/api/sessions/{session_id}/approve"
+
+        refused = await api.http.post(url, json=APPROVE)
+        committed = await api.http.post(url, json={**APPROVE, "push": False, "open_pr": False})
+        confirmed = await api.http.post(url, json={**APPROVE, "confirm_remote_url": str(origin)})
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "remote_not_confirmed"
+    assert refused.json()["remote_urls"] == [str(origin)]
+    assert refused.json()["confirmed_url"] is None
+    assert committed.status_code == 200, committed.text
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["pr_url"] == PR_URL
+
+
 async def test_after_approval_the_daemons_own_refs_are_not_a_violation(api: Api) -> None:
     session_id = await finished_with_changes(api)
     await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)

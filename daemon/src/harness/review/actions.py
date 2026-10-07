@@ -5,12 +5,14 @@ pending review is resolved only when every step succeeded, so a failure can be r
 """
 
 import asyncio
+from dataclasses import replace
 
 from pydantic import JsonValue
 
 from harness.approvals.models import ApprovalKind
 from harness.approvals.queue import ApprovalQueue
 from harness.errors import ConflictError, InvalidInputError
+from harness.gitops.remotes import scrub_url
 from harness.prs.monitor import PrMonitor
 from harness.prs.summary import pr_summary
 from harness.repos.service import FALLBACK_BRANCH, RepoService
@@ -61,6 +63,8 @@ class ReviewActions:
                 )
                 raise GitViolationError(msg)
             plan = await self._plan(session, request)
+            if plan.push:
+                plan = replace(plan, remote_url=await self._remote_url(session, request))
             try:
                 session = await self._publisher.publish(session, plan)
             finally:
@@ -120,6 +124,16 @@ class ReviewActions:
                 summary=await self._pr_summary(session),
             )
         return PublishPlan(request.commit_message, None, request.push, pull_request)
+
+    async def _remote_url(self, session: Session, request: ApproveRequest) -> str | None:
+        """The URL origin may push to; one the user confirms now is checked and kept."""
+        confirmed = request.confirm_remote_url
+        if confirmed is None:
+            return self._repos.get(session.repo).remote_url
+        confirmed = scrub_url(confirmed)
+        await self._publisher.require_remote(session, confirmed)
+        self._repos.confirm_remote_url(session.repo, confirmed)
+        return confirmed
 
     async def _chosen_paths(self, session: Session, files: list[str] | None) -> list[str]:
         if not files:

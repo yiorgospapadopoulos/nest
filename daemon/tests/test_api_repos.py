@@ -55,6 +55,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "path": str(repo.resolve()),
         "git": True,
         "default_branch": "main",
+        # No origin when it was registered, so a push needs the user's confirmation (D050).
+        "remote_url": None,
         # No override: new sessions follow `[agents] default_mode` (D038).
         "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
     }

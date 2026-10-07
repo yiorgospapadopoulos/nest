@@ -23,7 +23,7 @@ from harness.repos.service import (
 )
 from harness.storage.db import Database
 from tests.fakes import FakeClock
-from tests.git_support import commit_file, git, init_repo
+from tests.git_support import commit_file, git, init_repo, with_origin
 
 
 @pytest.fixture
@@ -68,6 +68,47 @@ async def test_register_prefers_origin_head_and_explicit_name(
 
     assert registered.name == "app"
     assert registered.default_branch == "develop"
+
+
+async def test_register_records_the_origin_push_url(service: RepoService, tmp_path: Path) -> None:
+    """D050: the URL harness pushes to, recorded before any agent ran in the repo."""
+    repo = init_repo(tmp_path / "repo")
+    origin = with_origin(repo, tmp_path / "origin.git")
+
+    assert (await service.register(repo)).remote_url == str(origin)
+
+
+async def test_register_leaves_credentials_out_of_the_remote_url(
+    service: RepoService, tmp_path: Path
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    git(repo, "remote", "add", "origin", "https://me:secret@example.com/me/repo.git")
+
+    assert (await service.register(repo)).remote_url == "https://example.com/me/repo.git"
+
+
+async def test_register_records_no_remote_url_without_exactly_one(
+    service: RepoService, tmp_path: Path
+) -> None:
+    alone = init_repo(tmp_path / "alone")
+    mirrored = init_repo(tmp_path / "mirrored")
+    git(mirrored, "remote", "add", "origin", "https://example.com/a.git")
+    git(mirrored, "config", "--add", "remote.origin.pushurl", "https://example.com/a.git")
+    git(mirrored, "config", "--add", "remote.origin.pushurl", "https://example.com/b.git")
+
+    assert (await service.register(alone)).remote_url is None
+    assert (await service.register(mirrored)).remote_url is None
+
+
+async def test_a_confirmed_remote_url_is_saved(
+    service: RepoService, paths: AppPaths, tmp_path: Path
+) -> None:
+    await service.register(init_repo(tmp_path / "repo"))
+
+    confirmed = service.confirm_remote_url("repo", "https://example.com/me/repo.git")
+
+    assert confirmed.remote_url == "https://example.com/me/repo.git"
+    assert load_repos(paths) == [confirmed]
 
 
 async def test_register_falls_back_to_main_on_detached_head(

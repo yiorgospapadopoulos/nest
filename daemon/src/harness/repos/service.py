@@ -12,7 +12,8 @@ from harness.config.models import RepoConfig, WorktreeConfig
 from harness.errors import ConflictError, InvalidInputError, NotFoundError
 from harness.events import types
 from harness.events.bus import EventBus
-from harness.gitops.runner import GitError, run_git
+from harness.gitops.remotes import push_urls
+from harness.gitops.runner import GitError, run_command, run_git
 from harness.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
@@ -114,6 +115,7 @@ class RepoService:
                 path=root,
                 git=not plain,
                 default_branch=None if plain else await _default_branch(root),
+                remote_url=None if plain else await _origin_push_url(root),
             )
         except ValidationError as error:
             msg = f"invalid repo name {name!r}"
@@ -130,6 +132,12 @@ class RepoService:
 
     def update_worktree_config(self, name: str, config: WorktreeConfig) -> RepoConfig:
         repo = self.get(name).model_copy(update={"worktree": config})
+        save_repo(self._paths, repo)
+        return repo
+
+    def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
+        """The user confirmed that origin may push to `url` (D050)."""
+        repo = self.get(name).model_copy(update={"remote_url": url})
         save_repo(self._paths, repo)
         return repo
 
@@ -198,6 +206,12 @@ async def _work_tree_root(path: Path) -> Path | None:
         msg = f"{path} is not the root of a git work tree (the root is {toplevel})"
         raise InvalidRepoError(msg)
     return Path(toplevel)
+
+
+async def _origin_push_url(root: Path) -> str | None:
+    """origin's push URL when there is exactly one; otherwise the user confirms one later."""
+    urls = await push_urls(root, run_command)
+    return urls[0] if len(urls) == 1 else None
 
 
 async def _default_branch(root: Path) -> str:

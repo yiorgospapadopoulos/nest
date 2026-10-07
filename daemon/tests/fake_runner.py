@@ -41,18 +41,25 @@ class FakeRunner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
         # One-off failures keyed by the first three words of the command, such as
-        # "gh pr merge", or by the first two, such as "git push".
+        # "gh pr merge", or by the first two, such as "git push" (git's leading `-c`
+        # overrides left out).
         self.failures: dict[str, Exception] = {}
+        # One-off canned outputs, keyed the same way, for commands that would reach out.
+        self.outputs: dict[str, str] = {}
         # What `gh pr view` prints; None fails it, as if GitHub were unreachable.
         self.pr_view: str | None = None
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         self.calls.append(tuple(argv))
-        failure = self.failures.pop(" ".join(argv[:3]), None) or self.failures.pop(
-            " ".join(argv[:2]), None
+        words = _without_overrides(argv)
+        failure = self.failures.pop(" ".join(words[:3]), None) or self.failures.pop(
+            " ".join(words[:2]), None
         )
         if failure is not None:
             raise failure
+        output = self.outputs.pop(" ".join(words[:2]), None)
+        if output is not None:
+            return output
         if tuple(argv[:3]) == ("gh", "pr", "view"):
             if self.pr_view is None:
                 raise CommandError(argv, 1, "could not reach GitHub\n")
@@ -70,3 +77,10 @@ class FakeRunner:
             for call in self.calls
             if call[0] == "gh" and (subcommand is None or call[1:3] == ("pr", subcommand))
         ]
+
+
+def _without_overrides(argv: Sequence[str]) -> list[str]:
+    words = list(argv)
+    while len(words) > 2 and words[0] == "git" and words[1] == "-c":
+        del words[1:3]
+    return words

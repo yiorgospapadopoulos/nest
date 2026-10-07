@@ -180,3 +180,34 @@ async def test_a_clean_tree_has_no_files(repo: Path) -> None:
 async def test_an_unknown_base_is_a_git_error(repo: Path) -> None:
     with pytest.raises(GitError):
         await session_diff(repo, "0" * 40)
+
+
+async def test_planted_filters_textconv_and_fsmonitor_never_run_for_a_diff(
+    repo: Path, tmp_path: Path
+) -> None:
+    """D050: the diff runs with the user's credentials after every turn and on approval."""
+    marker = tmp_path / "ran"
+    program = f"sh -c 'echo ran >> {marker}; cat'"
+    commit_file(repo, "notes.txt", "one\n")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "config", "filter.Evil.Driver.clean", program)
+    git(repo, "config", "filter.Evil.Driver.smudge", program)
+    git(repo, "config", "filter.Evil.Driver.required", "true")
+    git(repo, "config", "diff.evil.textconv", program)
+    git(repo, "config", "core.fsmonitor", program)
+    (repo / ".gitattributes").write_text("*.txt filter=Evil.Driver diff=evil\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("one\ntwo\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    assert not marker.exists()
+    notes = next(f for f in diff.files if f.path == "notes.txt")
+    assert (notes.additions, notes.deletions) == (1, 0)
+
+
+async def test_a_filter_driver_that_cannot_be_switched_off_stops_the_diff(repo: Path) -> None:
+    base = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "config", "filter.a=b.clean", "evil")
+
+    with pytest.raises(GitError, match="cannot be switched off"):
+        await session_diff(repo, base)

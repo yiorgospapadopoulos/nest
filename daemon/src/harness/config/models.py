@@ -172,6 +172,9 @@ class RepoConfig(_Strict):
     git: bool = True
     # None for a plain folder.
     default_branch: str | None = "main"
+    # The only URL harness pushes origin to: recorded at registration or confirmed by the
+    # user, so an agent cannot redirect an approved push by editing the git config (D050).
+    remote_url: str | None = None
     worktree: WorktreeConfig = Field(default_factory=WorktreeConfig)
 
     @model_validator(mode="after")

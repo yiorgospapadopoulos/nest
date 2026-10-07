@@ -66,6 +66,9 @@ class ApproveRequest(BaseModel):
     pr_body: str | None = None
     # Publish even though the agent changed git refs itself (D013 layer 4).
     acknowledge_violation: bool = False
+    # Push to origin's current URL and remember it, after the user saw that it is not the
+    # URL harness recorded (D050); it must match origin's push URL exactly.
+    confirm_remote_url: str | None = None
 
 
 class FeedbackRequest(BaseModel):
