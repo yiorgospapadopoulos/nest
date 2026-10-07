@@ -1,0 +1,64 @@
+import AppKit
+import HarnessKit
+import UserNotifications
+
+/// Turns the daemon's notices into macOS notifications, and a click on one into the chat
+/// it is about. Only the bundled app can use the notification center.
+@MainActor
+final class Notifier: NSObject, UNUserNotificationCenterDelegate {
+    private let shell: Shell
+
+    init(shell: Shell) {
+        self.shell = shell
+    }
+
+    /// Asks for permission once and starts listening for notices.
+    func start() {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        // The async form: a completion closure written here would be main actor isolated
+        // but called on a background queue, which traps.
+        Task { _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge]) }
+        shell.model.live.onNotice = { [weak self] notice in self?.post(notice) }
+    }
+
+    private func post(_ notice: Notice) {
+        let focused = NSApp.isActive && NSApp.keyWindow != nil
+        let visible = NotificationPolicy.visibleChats(app: shell.app, windowFocused: focused)
+        guard
+            let content = NotificationPolicy.content(
+                for: notice, preferences: shell.settings.notifications, visibleChats: visible)
+        else { return }
+        let message = UNMutableNotificationContent()
+        message.title = content.title
+        message.body = content.body
+        message.userInfo = ["session": content.sessionID, "project": content.project]
+        message.threadIdentifier = content.sessionID
+        if content.playsSound {
+            message.sound = .default
+        }
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString, content: message, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
+        let info = response.notification.request.content.userInfo
+        guard let session = info["session"] as? String, let project = info["project"] as? String
+        else { return }
+        await MainActor.run {
+            NSApp.activate()
+            NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            shell.reveal(chat: session, in: project)
+        }
+    }
+}
