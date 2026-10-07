@@ -4,7 +4,6 @@ import type {
   AgentDefaults,
   Approval,
   ApproveBody,
-  Attachment,
   ClaudeChat,
   CommandList,
   CreateSessionBody,
@@ -25,6 +24,8 @@ export type Dispatch = (action: Action) => void;
 
 export type Actions = ReturnType<typeof createActions>;
 
+const WORKING = new Set<Session["state"]>(["starting", "running"]);
+
 // "elsewhere": refused because Claude Code has the chat open right now.
 export type SendResult = "sent" | "failed" | "elsewhere";
 
@@ -37,6 +38,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let showAutomated = loadShowAutomated(storage);
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
   let loaded = false;
+  // The chats on screen, kept complete across a reconnect that cannot resume.
+  const onScreen = new Set<string>();
 
   const toast = (text: string, tone: Toast["tone"] = "ok") => {
     toastId += 1;
@@ -75,6 +78,21 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
+  }
+
+  // `stale`: streamed text and thinking may have missed their end, so a chat that is no
+  // longer working drops them.
+  async function fetchChat(id: string, stale = false): Promise<void> {
+    await attempt(async () => {
+      const [found, events] = await Promise.all([api.session(id), api.sessionEvents(id)]);
+      // The detail is a session too; its task list and agents go to tracking.
+      dispatch({ type: "session", session: found });
+      const { tasks, agents, background } = found;
+      dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
+      dispatch({ type: "queued", id, queued: found.queued });
+      dispatch({ type: "transcriptLoaded", id, events });
+      if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
+    });
   }
 
   async function load(): Promise<void> {
@@ -130,16 +148,21 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     async openChat(id: string): Promise<void> {
+      onScreen.add(id);
       dispatch({ type: "transcriptOpened", id });
-      await attempt(async () => {
-        const [found, events] = await Promise.all([api.session(id), api.sessionEvents(id)]);
-        // The detail is a session too; its task list and agents go to tracking.
-        dispatch({ type: "session", session: found });
-        const { tasks, agents, background } = found;
-        dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
-        dispatch({ type: "queued", id, queued: found.queued });
-        dispatch({ type: "transcriptLoaded", id, events });
-      });
+      await fetchChat(id);
+    },
+
+    closeChat(id: string): void {
+      onScreen.delete(id);
+    },
+
+    /**
+     * After a reconnect that could not resume from a cursor, events may have been missed:
+     * reload the snapshots and the chats on screen. Stored events merge without duplicates.
+     */
+    async resync(): Promise<void> {
+      await Promise.all([load(), ...[...onScreen].map((id) => fetchChat(id, true))]);
     },
 
     async resolve(approval: Approval, body: ResolveBody, done: string): Promise<boolean> {
@@ -320,8 +343,22 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
-    upload(file: File): Promise<Attachment | null> {
-      return attempt(() => api.uploadAttachment(file));
+    setDraftText(key: string, text: string): void {
+      dispatch({ type: "draftText", key, text });
+    },
+
+    removeDraftFile(key: string, fileId: string): void {
+      dispatch({ type: "draftFileRemoved", key, fileId });
+    },
+
+    clearDraft(key: string): void {
+      dispatch({ type: "draftCleared", key });
+    },
+
+    /** Uploads a file into the draft it was chosen for, even if another chat is open by then. */
+    async attachToDraft(key: string, file: File): Promise<void> {
+      const uploaded = await attempt(() => api.uploadAttachment(file));
+      if (uploaded !== null) dispatch({ type: "draftFileAdded", key, file: uploaded });
     },
 
     diff(sessionId: string): Promise<SessionDiff | null> {

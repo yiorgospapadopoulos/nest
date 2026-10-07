@@ -13,7 +13,15 @@ import type {
   TrackedTask,
   UsageLimits,
 } from "../api/types.ts";
-import { NO_BACKGROUND, type Action, type State, type Tracking } from "./state.ts";
+import {
+  draftKey,
+  NO_BACKGROUND,
+  NO_DRAFT,
+  type Action,
+  type Draft,
+  type State,
+  type Tracking,
+} from "./state.ts";
 
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
@@ -78,6 +86,18 @@ export function reduce(state: State, action: Action): State {
       };
     case "event":
       return applyEvent(state, action.event);
+    case "liveCleared":
+      return clearThinking(clearLive(state, action.id), action.id);
+    case "draftText":
+      return patchDraft(state, action.key, () => ({ text: action.text }));
+    case "draftFileAdded":
+      return patchDraft(state, action.key, (d) => ({ files: [...d.files, action.file] }));
+    case "draftFileRemoved":
+      return patchDraft(state, action.key, (d) => ({
+        files: d.files.filter((f) => f.id !== action.fileId),
+      }));
+    case "draftCleared":
+      return { ...state, drafts: omit(state.drafts, action.key) };
     case "connectors":
       return { ...state, connectors: action.connectors };
     case "limits":
@@ -203,6 +223,7 @@ function removeSession(state: State, id: string): State {
     live: without(state.live),
     thinking: without(state.thinking),
     queued: without(state.queued),
+    drafts: omit(state.drafts, draftKey({ session: id })),
   };
 }
 
@@ -229,7 +250,12 @@ function clearThinking(state: State, id: string | null): State {
   return { ...state, thinking: omit(state.thinking, id) };
 }
 
-function omit(record: Record<string, string>, id: string): Record<string, string> {
+function patchDraft(state: State, key: string, patch: (draft: Draft) => Partial<Draft>): State {
+  const current = state.drafts[key] ?? NO_DRAFT;
+  return { ...state, drafts: { ...state.drafts, [key]: { ...current, ...patch(current) } } };
+}
+
+function omit<T>(record: Record<string, T>, id: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([key]) => key !== id));
 }
 

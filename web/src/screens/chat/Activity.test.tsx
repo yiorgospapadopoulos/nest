@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BackgroundSummary, HarnessEvent, JsonObject, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { detail, event, repo, session } from "../../test/fixtures.ts";
+import { approval, detail, event, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 import { BackgroundBar } from "./BackgroundBar.tsx";
 
@@ -92,7 +92,8 @@ describe("a running turn", () => {
       payload: { state: "idle", duration_ms: 72_000 },
     });
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
-    expect(screen.getByText("Worked for 1m 12s")).toHaveClass("m-turn");
+    // Also announced, in the chat's status region.
+    expect(screen.getByText("Worked for 1m 12s", { selector: ".tx *" })).toHaveClass("m-turn");
   });
 
   it("works without a time until the agent gets the message", async () => {
@@ -161,6 +162,90 @@ describe("a running turn", () => {
     expect(screen.getByText("Running 3 agents, 1 done")).toHaveClass("glow");
     expect(screen.getByRole("button", { name: "1 running task" })).toBeInTheDocument();
     expect(screen.getByText("1 running task")).toHaveClass("glow");
+  });
+});
+
+describe("screen reader announcements", () => {
+  // Whatever an assistive technology reads out as it changes.
+  const liveRegion = (node: Element) =>
+    node.closest(
+      '[aria-live]:not([aria-live="off"]), [role="status"], [role="log"], [role="alert"]',
+    );
+
+  it("leave the ticking timer and streamed text out, and announce finished items only", async () => {
+    fakeClock(12);
+    const { push } = await openChat(session({ state: "running" }), [
+      ...turnStarted,
+      blocks(3, [{ type: "text", text: "Earlier answer" }]),
+    ]);
+    const chat = screen.getByRole("region", { name: "Validate contact form" });
+    const announcer = within(chat).getByRole("status");
+    // The history already on screen is not read out again.
+    expect(announcer).toBeEmptyDOMElement();
+    expect(liveRegion(screen.getByText("Working... 12s"))).toBeNull();
+    expect(liveRegion(screen.getByText("Earlier answer"))).toBeNull();
+
+    push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "Strea" } });
+    expect(liveRegion(screen.getByText("Strea"))).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(announcer).toBeEmptyDOMElement();
+
+    push({
+      id: 4,
+      session_id: "s1",
+      type: "session.message",
+      ts: START,
+      payload: { blocks: [{ type: "text", text: "Streamed answer" }] },
+    });
+    expect(announcer).toHaveTextContent("Streamed answer");
+    // A tool call after it is not worth reading out.
+    push({
+      id: 5,
+      session_id: "s1",
+      type: "session.message",
+      ts: START,
+      payload: { blocks: [call("t1", "Read")] },
+    });
+    expect(announcer).toHaveTextContent("Streamed answer");
+
+    push({
+      id: 6,
+      session_id: "s1",
+      type: "session.state",
+      ts: START,
+      payload: { state: "idle", duration_ms: 72_000 },
+    });
+    expect(announcer).toHaveTextContent("Worked for 1m 12s");
+  });
+
+  it("say when a chat needs approval, and not again what came before it", async () => {
+    const { push } = await openChat(session({ state: "running" }), [
+      ...turnStarted,
+      blocks(3, [{ type: "text", text: "Asking first" }]),
+    ]);
+    const announcer = within(
+      screen.getByRole("region", { name: "Validate contact form" }),
+    ).getByRole("status");
+
+    push({
+      id: 4,
+      session_id: "s1",
+      type: "approval.created",
+      payload: { approval: { ...approval() } },
+    });
+    expect(announcer).toHaveTextContent("Needs your approval");
+
+    // Superseded: the request leaves the transcript, and the older answer is last again.
+    push({
+      id: 5,
+      session_id: "s1",
+      type: "approval.resolved",
+      payload: { approval: { ...approval(), status: "superseded" } },
+    });
+    expect(screen.queryByText("npm install zod")).not.toBeInTheDocument();
+    expect(announcer).toHaveTextContent("Needs your approval");
   });
 });
 

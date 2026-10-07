@@ -2,6 +2,7 @@ import type {
   AccountInfo,
   AgentDefaults,
   Approval,
+  Attachment,
   BackgroundSummary,
   ClaudeChat,
   Connector,
@@ -25,6 +26,20 @@ export interface Tracking {
 }
 
 export const NO_BACKGROUND: BackgroundSummary = { running: 0, completed: 0, items: [] };
+
+// A message being written: kept per chat (by session id) or per project for a new chat
+// (see draftKey), so switching chats never carries it along.
+export interface Draft {
+  text: string;
+  files: Attachment[];
+}
+
+export const NO_DRAFT: Draft = { text: "", files: [] };
+
+/** Where a composer keeps its draft. */
+export function draftKey(target: { session: string } | { repo: string }): string {
+  return "session" in target ? `session:${target.session}` : `new:${target.repo}`;
+}
 
 export interface Toast {
   id: number;
@@ -51,6 +66,7 @@ export interface State {
   thinking: Record<string, string>;
   // Messages waiting for the running turn to end, oldest first.
   queued: Record<string, QueuedMessage[]>;
+  drafts: Record<string, Draft>;
   connectors: Connector[] | null;
   limits: UsageLimits | null;
   // The daemon's notification rules, once the Account tab asked for them.
@@ -74,6 +90,7 @@ export const initialState: State = {
   live: {},
   thinking: {},
   queued: {},
+  drafts: {},
   connectors: null,
   limits: null,
   notifications: null,
@@ -99,6 +116,12 @@ export type Action =
   | { type: "queued"; id: string; queued: QueuedMessage[] }
   | { type: "queuedRemoved"; id: string; queuedId: string }
   | { type: "event"; event: HarnessEvent }
+  // Ephemeral output (streamed text, thinking) that a refetch made stale.
+  | { type: "liveCleared"; id: string }
+  | { type: "draftText"; key: string; text: string }
+  | { type: "draftFileAdded"; key: string; file: Attachment }
+  | { type: "draftFileRemoved"; key: string; fileId: string }
+  | { type: "draftCleared"; key: string }
   | { type: "connectors"; connectors: Connector[] }
   | { type: "limits"; limits: UsageLimits }
   | { type: "notifications"; notifications: NotificationSettings }

@@ -125,7 +125,8 @@ describe("chat view", () => {
       type: "session.message",
       payload: { blocks: [{ type: "text", text: "Hello there" }] },
     });
-    expect(screen.getByText("Hello there")).toBeInTheDocument();
+    // Also announced, in the chat's status region.
+    expect(screen.getByText("Hello there", { selector: ".tx *" })).toBeInTheDocument();
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
     push({
       id: 6,

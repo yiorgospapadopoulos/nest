@@ -6,14 +6,9 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import type {
-  Attachment,
-  Effort,
-  PermissionMode,
-  Session,
-  UpdateSessionBody,
-} from "../../api/types.ts";
+import type { Effort, PermissionMode, Session, UpdateSessionBody } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
 import {
@@ -52,8 +47,12 @@ type Props =
  */
 export function Composer({ session, repo, onCreated }: Props) {
   const { state, actions } = useStore();
-  const [text, setText] = useState("");
-  const [files, setFiles] = useState<Attachment[]>([]);
+  // The message lives in the store, per chat, so it waits there while another chat is open.
+  const key = draftKey(session === undefined ? { repo } : { session: session.id });
+  const { text, files } = state.drafts[key] ?? NO_DRAFT;
+  const setText = (next: string) => {
+    actions.setDraftText(key, next);
+  };
   const [uploads, setUploads] = useState(0);
   const [sending, setSending] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
@@ -135,10 +134,8 @@ export function Composer({ session, repo, onCreated }: Props) {
       ok = await deliver(session.id, prompt, ids);
     }
     setSending(false);
-    if (ok) {
-      setText("");
-      setFiles([]);
-    }
+    // Cleared by key: the user may have moved on to another chat meanwhile.
+    if (ok) actions.clearDraft(key);
   };
 
   const attach = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -147,8 +144,7 @@ export function Composer({ session, repo, onCreated }: Props) {
     setUploads((n) => n + chosen.length);
     await Promise.all(
       chosen.map(async (file) => {
-        const uploaded = await actions.upload(file);
-        if (uploaded !== null) setFiles((current) => [...current, uploaded]);
+        await actions.attachToDraft(key, file);
         setUploads((n) => n - 1);
       }),
     );
@@ -250,7 +246,7 @@ export function Composer({ session, repo, onCreated }: Props) {
                 <button
                   aria-label={`Remove ${file.filename}`}
                   onClick={() => {
-                    setFiles(files.filter((f) => f.id !== file.id));
+                    actions.removeDraftFile(key, file.id);
                   }}
                 >
                   <Icon name="x" />

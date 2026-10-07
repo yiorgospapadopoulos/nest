@@ -28,9 +28,11 @@ interface Props {
   background: BackgroundSummary;
   // An event to scroll to and highlight once it is loaded, such as a search hit.
   focus?: number | null;
+  // Whether the chat's history has been fetched; what was there by then is not announced.
+  loaded: boolean;
 }
 
-export function Transcript({ session, background, focus = null }: Props) {
+export function Transcript({ session, background, focus = null, loaded }: Props) {
   const { state, actions } = useStore();
   const events = state.transcripts[session.id];
   const live = state.live[session.id] ?? "";
@@ -47,6 +49,7 @@ export function Transcript({ session, background, focus = null }: Props) {
   const thinking = session.id in state.thinking;
   const running = new Set(background.items.filter((i) => i.status === "running").map((i) => i.id));
   const focused = useRef<number | null>(null);
+  const spoken = useAnnouncement(items, loaded);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -96,7 +99,8 @@ export function Transcript({ session, background, focus = null }: Props) {
             <b>No messages yet</b>
           </div>
         )}
-        <div className="tx" aria-live="polite">
+        {/* Not a live region: it holds the ticking timer and streamed text. */}
+        <div className="tx">
           {items.map((item) => (
             <Item key={item.key} item={item} session={session} running={running} />
           ))}
@@ -118,6 +122,9 @@ export function Transcript({ session, background, focus = null }: Props) {
           ))}
         </div>
       </div>
+      <p className="sr" role="status">
+        {spoken}
+      </p>
       {away && (
         <button className="jump gl" onClick={jump}>
           <Icon name="chev" />
@@ -126,6 +133,58 @@ export function Transcript({ session, background, focus = null }: Props) {
       )}
     </div>
   );
+}
+
+interface News {
+  // Which item it is, and the event it came from, to tell new items from removed ones.
+  id: string;
+  event: number;
+  text: string;
+}
+
+/** What a screen reader should hear about a finished item; null for the routine ones. */
+function newsOf(item: TranscriptItem): string | null {
+  switch (item.kind) {
+    case "assistant":
+    case "system":
+    case "turn":
+      return item.text;
+    case "approval":
+      return "Needs your approval";
+    default:
+      return null;
+  }
+}
+
+function latestNews(items: TranscriptItem[]): News | null {
+  for (const item of [...items].reverse()) {
+    const text = newsOf(item);
+    if (text !== null) {
+      return { id: `${item.kind}:${item.key}`, event: Number.parseInt(item.key, 10), text };
+    }
+  }
+  return null;
+}
+
+/**
+ * The text for the chat's status region: the newest finished message, note, turn end or
+ * approval once it arrives. Never the history, nor an older item that shows again as last
+ * because a newer one went away.
+ */
+function useAnnouncement(items: TranscriptItem[], loaded: boolean): string {
+  const [said, setSaid] = useState<News | null>(null);
+  const latest = latestNews(items);
+  if (loaded && said === null) {
+    setSaid(latest === null ? { id: "", event: 0, text: "" } : { ...latest, text: "" });
+  } else if (
+    said !== null &&
+    latest !== null &&
+    latest.id !== said.id &&
+    latest.event >= said.event
+  ) {
+    setSaid(latest);
+  }
+  return said?.text ?? "";
 }
 
 /** The time, ticking every second while `ticking`. */

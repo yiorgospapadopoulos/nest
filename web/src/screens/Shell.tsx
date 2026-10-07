@@ -75,6 +75,8 @@ export function Shell() {
         <TabBar tab={tab} onTab={setTab} badge={needsCount(state)} />
       ) : (
         <ChatView
+          // A different chat is a fresh view: no state of the last one is carried over.
+          key={chatKey(chat)}
           target={chat}
           onBack={() => {
             setChat(null);
@@ -84,4 +86,10 @@ export function Shell() {
       )}
     </>
   );
+}
+
+/** Which chat a target is, ignoring the event it opens at. */
+function chatKey(target: ChatTarget): string {
+  if ("claude" in target) return `claude:${target.claude}`;
+  return "draft" in target ? `new:${target.draft}` : `session:${target.id}`;
 }

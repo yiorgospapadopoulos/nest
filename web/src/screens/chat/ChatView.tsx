@@ -63,9 +63,15 @@ function SessionChat({
   const { state, actions } = useStore();
   const session = state.sessions[id];
   const [sheet, setSheet] = useState<"agents" | "actions" | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    void actions.openChat(id);
+    void actions.openChat(id).then(() => {
+      setLoaded(true);
+    });
+    return () => {
+      actions.closeChat(id);
+    };
   }, [actions, id]);
 
   useEffect(() => {
@@ -111,7 +117,12 @@ function SessionChat({
       details={<Details session={session} label={status.label} tone={status.tone} />}
     >
       <GoalsStrip tasks={tracking.tasks} />
-      <Transcript session={session} background={tracking.background} focus={focus} />
+      <Transcript
+        session={session}
+        background={tracking.background}
+        focus={focus}
+        loaded={loaded}
+      />
       <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
       <Composer session={session} />
       {sheet === "agents" && (

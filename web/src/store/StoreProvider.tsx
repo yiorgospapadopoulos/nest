@@ -45,8 +45,9 @@ export function StoreProvider({
         if (event.type === "claude_chats.updated") void actions.loadClaudeChats();
       },
       onOpen: (resumed) => {
-        // Without a cursor, events between the snapshot and the socket may be missing.
-        if (!resumed) void actions.load();
+        // Without a cursor, events between the snapshot and the socket may be missing,
+        // including those of the chat on screen.
+        if (!resumed) void actions.resync();
       },
       onClosed: (reason) => {
         dispatch({ type: "auth", auth: reason === "unauthorized" ? "unpaired" : "forbidden" });
