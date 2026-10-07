@@ -4,9 +4,10 @@ import { defineConfig } from "vitest/config";
 import { pwa } from "./build/pwa.ts";
 
 const tokens = fileURLToPath(new URL("./src/generated/tokens.css", import.meta.url));
+const icons = fileURLToPath(new URL("./build/icons", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), pwa(tokens)],
+  plugins: [react(), pwa(tokens, icons)],
   build: {
     rolldownOptions: {
       input: {
