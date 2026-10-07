@@ -15,6 +15,13 @@ from harness.worktrees.setup import LinkResult, SetupResult, link_files, run_com
 BRANCH_PREFIX = "agent/"
 MAX_SLUG_LENGTH = 40
 SHORT_ID_LENGTH = 8
+# New worktrees live where Claude Code keeps its own (D028), named so they are told apart.
+WORKTREE_PREFIX = "harness-"
+EXCLUDE_LINE = "/.claude/worktrees/"
+
+
+def claude_worktrees_dir(repo_path: Path) -> Path:
+    return repo_path / ".claude" / "worktrees"
 
 
 @dataclass(frozen=True)
@@ -38,7 +45,14 @@ class WorktreeManager:
         self._paths = paths
 
     async def create(self, repo: RepoConfig, session_id: str, title: str) -> Worktree:
-        path = self._paths.worktrees_dir / repo.name / session_id[:SHORT_ID_LENGTH]
+        """A new branch checked out in `<repo>/.claude/worktrees/harness-<short id>`.
+
+        The worktrees folder is added to the repo's local exclude file first, so neither
+        `git status` in the checkout nor a commit picks the worktrees up.
+        """
+        await _exclude_worktrees(repo)
+        name = f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        path = claude_worktrees_dir(repo.path) / name
         path.parent.mkdir(parents=True, exist_ok=True)
         base = await _base_commit(repo)
         branch = branch_name(title)
@@ -62,25 +76,40 @@ class WorktreeManager:
         """Remove the worktree; close its agent first, so exit hooks cannot recreate files.
 
         What is already gone (the directory, the branch) is skipped, so removing twice is fine.
+        Without the repo folder git cannot run; only the leftover directory is deleted.
         """
-        if await asyncio.to_thread(_is_worktree, worktree.path):
+        has_repo = await asyncio.to_thread(repo.path.is_dir)
+        if has_repo and await asyncio.to_thread(_is_worktree, worktree.path):
             await run_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
-        await asyncio.to_thread(self._delete_leftovers, worktree.path)
+        await asyncio.to_thread(self._delete_leftovers, repo, worktree.path)
+        if not has_repo:
+            return
         await run_git(["worktree", "prune"], repo.path)
         if delete_branch and await _has_branch(repo, worktree.branch):
             await run_git(["branch", "-D", worktree.branch], repo.path)
 
-    def _delete_leftovers(self, path: Path) -> None:
-        """Delete what remains at a removed worktree's path, only inside the worktrees dir."""
-        root = self._paths.worktrees_dir.resolve()
+    def _delete_leftovers(self, repo: RepoConfig, path: Path) -> None:
+        """Delete what remains at a removed worktree's path, only where harness puts them:
+        `<repo>/.claude/worktrees/harness-*`, or the data dir's worktrees of earlier versions.
+        Claude Code's own worktrees next to them are never touched.
+        """
         target = path.resolve()
-        if target.exists() and target.is_relative_to(root) and target != root:
+        legacy = self._paths.worktrees_dir.resolve()
+        owned = (target.is_relative_to(legacy) and target != legacy) or (
+            target.parent == claude_worktrees_dir(repo.path.resolve())
+            and target.name.startswith(WORKTREE_PREFIX)
+        )
+        if owned and target.exists():
             shutil.rmtree(target)
 
     async def head(self, repo: RepoConfig) -> str | None:
         """The checkout's current commit; None in a repository without commits."""
+        return await self.head_at(repo.path)
+
+    async def head_at(self, path: Path) -> str | None:
+        """The current commit of the checkout or worktree at `path`."""
         try:
-            output = await run_git(["rev-parse", "--verify", "--quiet", "HEAD"], repo.path)
+            output = await run_git(["rev-parse", "--verify", "--quiet", "HEAD"], path)
         except GitError:
             return None
         return output.strip()
@@ -97,6 +126,22 @@ class WorktreeManager:
             if entry[0] in "RC":
                 next(entries)  # the original path of a rename or copy
         return sorted(files)
+
+
+async def _exclude_worktrees(repo: RepoConfig) -> None:
+    """Add EXCLUDE_LINE to the repo's local exclude file unless it is there already."""
+    output = await run_git(["rev-parse", "--git-path", "info/exclude"], repo.path)
+    await asyncio.to_thread(_add_exclude_line, repo.path / output.strip())
+
+
+def _add_exclude_line(exclude: Path) -> None:
+    text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    if EXCLUDE_LINE in (line.strip() for line in text.splitlines()):
+        return
+    if text and not text.endswith("\n"):
+        text += "\n"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    exclude.write_text(f"{text}{EXCLUDE_LINE}\n", encoding="utf-8")
 
 
 def _is_worktree(path: Path) -> bool:

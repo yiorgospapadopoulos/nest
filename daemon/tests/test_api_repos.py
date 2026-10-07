@@ -1,12 +1,16 @@
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 
 from harness.attachments.store import MAX_ATTACHMENT_BYTES
+from harness.events import types
 from tests.api_client import Api, running_api
+from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
+from tests.test_api_sessions import reach
 
 
 @pytest.fixture
@@ -23,6 +27,7 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("GET", "/api/repos/x"),
         ("GET", "/api/repos/x/link-suggestions"),
         ("PUT", "/api/repos/x/worktree"),
+        ("DELETE", "/api/repos/x"),
         ("POST", "/api/attachments"),
     ],
 )
@@ -49,7 +54,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "name": "project",
         "path": str(repo.resolve()),
         "default_branch": "main",
-        "worktree": {"default": True, "link": [], "setup": [], "setup_timeout_seconds": 900},
+        # No override: new sessions follow `[agents] default_mode` (D038).
+        "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
     }
     assert registered.status_code == 201
     assert registered.json() == expected
@@ -75,6 +81,7 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
     missing_links = await api.http.get("/api/repos/nope/link-suggestions")
     bad_link = await api.http.put("/api/repos/project/worktree", json={"link": ["../x"]})
     missing_config = await api.http.put("/api/repos/nope/worktree", json={})
+    missing_removal = await api.http.delete("/api/repos/nope")
 
     assert duplicate.status_code == 409
     assert "already registered" in duplicate.json()["detail"]
@@ -84,6 +91,88 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
     assert missing_links.status_code == 404
     assert bad_link.status_code == 422
     assert missing_config.status_code == 404
+    assert missing_removal.status_code == 404
+
+
+async def removed_events(api: Api) -> list[object]:
+    rows = await api.ctx.db.fetch_all(
+        "SELECT session_id, payload FROM events WHERE type = ?", (types.REPO_REMOVED,)
+    )
+    return [(row["session_id"], row["payload"]) for row in rows]
+
+
+async def idle_session(api: Api, repo: str = "project") -> str:
+    api.provider.script(reply("ok"))
+    response = await api.http.post(
+        "/api/sessions", json={"repo": repo, "prompt": "Do it", "mode": "worktree"}
+    )
+    session_id = str(response.json()["id"])
+    await reach(api, session_id, "idle")
+    return session_id
+
+
+async def test_remove_a_repo_without_sessions(api: Api, tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+
+    removed = await api.http.delete("/api/repos/project")
+    fetched = await api.http.get("/api/repos/project")
+    again = await api.http.delete("/api/repos/project")
+
+    assert removed.status_code == 204
+    assert fetched.status_code == 404
+    assert again.status_code == 404
+    assert not (api.ctx.paths.repos_dir / "project.toml").exists()
+    assert (repo / "README.md").is_file()
+    assert await removed_events(api) == [(None, '{"name": "project"}')]
+
+
+async def test_removing_a_repo_with_sessions_needs_purge_sessions(api: Api, tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    active = await idle_session(api)
+    archived = await idle_session(api)
+    await api.http.patch(f"/api/sessions/{archived}", json={"archived": True})
+
+    refused = await api.http.delete("/api/repos/project")
+
+    assert refused.status_code == 409
+    assert refused.json() == {
+        "detail": "repo 'project' still has 2 session(s); "
+        "delete them first or set purge_sessions=true"
+    }
+    assert (await api.http.get("/api/repos/project")).status_code == 200
+    for session_id in (active, archived):
+        assert (await api.http.get(f"/api/sessions/{session_id}")).status_code == 200
+    assert await removed_events(api) == []
+
+
+async def test_purge_sessions_removes_them_even_when_the_repo_folder_is_gone(
+    api: Api, tmp_path: Path
+) -> None:
+    other = init_repo(tmp_path / "other")
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(other)})
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    first = await idle_session(api)
+    archived = await idle_session(api)
+    await api.http.patch(f"/api/sessions/{archived}", json={"archived": True})
+    kept = await idle_session(api, "other")
+    worktrees = [
+        Path((await api.http.get(f"/api/sessions/{s}")).json()["worktree_path"])
+        for s in (first, archived)
+    ]
+    shutil.rmtree(repo)
+
+    removed = await api.http.delete("/api/repos/project", params={"purge_sessions": True})
+
+    assert removed.status_code == 204, removed.text
+    for session_id in (first, archived):
+        assert (await api.http.get(f"/api/sessions/{session_id}")).status_code == 404
+    assert (await api.http.get(f"/api/sessions/{kept}")).status_code == 200
+    assert not any(path.exists() for path in worktrees)
+    assert [r["name"] for r in (await api.http.get("/api/repos")).json()] == ["other"]
+    assert await removed_events(api) == [(None, '{"name": "project"}')]
 
 
 async def test_upload_attachments(api: Api) -> None:

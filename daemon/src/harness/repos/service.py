@@ -1,12 +1,13 @@
 """Register existing checkouts and manage their per-repo config."""
 
+import asyncio
 import re
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from pydantic import ValidationError
 
-from harness.config.loader import load_repos, save_repo
+from harness.config.loader import delete_repo, load_repos, save_repo
 from harness.config.models import RepoConfig, WorktreeConfig
 from harness.errors import ConflictError, InvalidInputError, NotFoundError
 from harness.gitops.runner import GitError, run_git
@@ -27,6 +28,21 @@ class RepoExistsError(ConflictError):
 
 class InvalidRepoError(InvalidInputError):
     pass
+
+
+class RepoFolderMissingError(ConflictError):
+    pass
+
+
+class RepoInUseError(ConflictError):
+    pass
+
+
+def require_folder(repo: RepoConfig) -> None:
+    """Git, and so worktrees and sessions, need the repo's folder on disk."""
+    if not repo.path.is_dir():
+        msg = f"the folder of repo {repo.name!r} no longer exists: {repo.path}"
+        raise RepoFolderMissingError(msg)
 
 
 def is_link_candidate(path: str) -> bool:
@@ -79,8 +95,13 @@ class RepoService:
         save_repo(self._paths, repo)
         return repo
 
+    def unregister(self, name: str) -> None:
+        """Delete the repo's config; its folder is never touched."""
+        delete_repo(self._paths, self.get(name).name)
+
     async def suggest_links(self, name: str) -> list[str]:
         repo = self.get(name)
+        require_folder(repo)
         # --directory lists wholly ignored directories (node_modules/) as one entry.
         output = await run_git(
             ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
@@ -94,11 +115,11 @@ async def _work_tree_root(path: Path) -> Path:
     if not path.is_absolute():
         msg = f"{path} is not an absolute path"
         raise InvalidRepoError(msg)
+    if not await asyncio.to_thread(path.is_dir):
+        msg = f"{path} is not a directory"
+        raise InvalidRepoError(msg)
     try:
         output = await run_git(["rev-parse", "--show-toplevel", "--show-prefix"], path)
-    except OSError as error:
-        msg = f"{path} is not a directory"
-        raise InvalidRepoError(msg) from error
     except GitError as error:
         msg = f"{path} is not a git repository"
         raise InvalidRepoError(msg) from error

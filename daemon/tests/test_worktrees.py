@@ -36,8 +36,8 @@ def branches(repo: RepoConfig) -> list[str]:
     return git(repo.path, "branch", "--format=%(refname:short)").split()
 
 
-async def test_create_branches_from_the_default_branch_into_the_data_dir(
-    manager: WorktreeManager, paths: AppPaths, tmp_path: Path
+async def test_create_branches_from_the_default_branch_into_the_repos_claude_worktrees(
+    manager: WorktreeManager, tmp_path: Path
 ) -> None:
     repo = make_repo(tmp_path)
     main_sha = git(repo.path, "rev-parse", "main").strip()
@@ -46,13 +46,51 @@ async def test_create_branches_from_the_default_branch_into_the_data_dir(
 
     worktree = await manager.create(repo, "0123456789abcdef", "Fix the login bug!")
 
-    assert worktree.path == paths.worktrees_dir / "repo" / "01234567"
+    assert worktree.path == repo.path / ".claude" / "worktrees" / "harness-01234567"
     assert re.fullmatch(r"agent/fix-the-login-bug-[0-9a-f]{6}", worktree.branch)
     assert worktree.base_ref == main_sha
     assert (worktree.path / "README.md").is_file()
     assert not (worktree.path / "other.txt").exists()
     assert git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").strip() == worktree.branch
     assert worktree.branch in branches(repo)
+
+
+async def test_create_excludes_the_worktrees_from_git_once(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    exclude = repo.path / ".git" / "info" / "exclude"
+    exclude.write_text("# mine\n*.log", encoding="utf-8")
+
+    await manager.create(repo, "aaaaaaaa", "one")
+    await manager.create(repo, "bbbbbbbb", "two")
+
+    assert exclude.read_text(encoding="utf-8") == "# mine\n*.log\n/.claude/worktrees/\n"
+    assert git(repo.path, "status", "--porcelain") == ""
+
+
+async def test_create_writes_a_missing_exclude_file(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    shutil.rmtree(repo.path / ".git" / "info")
+
+    await manager.create(repo, "aaaaaaaa", "one")
+
+    exclude = repo.path / ".git" / "info" / "exclude"
+    assert exclude.read_text(encoding="utf-8") == "/.claude/worktrees/\n"
+
+
+async def test_create_keeps_an_exclude_line_that_is_already_there(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    exclude = repo.path / ".git" / "info" / "exclude"
+    exclude.write_text("  /.claude/worktrees/  \n", encoding="utf-8")
+
+    await manager.create(repo, "aaaaaaaa", "one")
+
+    assert exclude.read_text(encoding="utf-8") == "  /.claude/worktrees/  \n"
 
 
 async def test_create_falls_back_to_head_without_the_default_branch(
@@ -264,8 +302,18 @@ async def test_remove_deletes_files_written_after_git_removed_the_worktree(
     assert worktree.branch not in branches(repo)
 
 
-@pytest.mark.parametrize("where", ["elsewhere", "data/worktrees/../escaped"])
-async def test_remove_never_deletes_directories_outside_the_worktrees_dir(
+@pytest.mark.parametrize(
+    "where",
+    [
+        "elsewhere",
+        "data/worktrees/../escaped",
+        "repo/.claude/worktrees/agent-claude",
+        "repo/.claude/worktrees/harness-x/../agent-escaped",
+        "repo/.claude/harness-misplaced",
+        "repo/src",
+    ],
+)
+async def test_remove_never_deletes_directories_outside_harness_worktrees(
     manager: WorktreeManager, tmp_path: Path, where: str
 ) -> None:
     repo = make_repo(tmp_path)
@@ -276,3 +324,36 @@ async def test_remove_never_deletes_directories_outside_the_worktrees_dir(
     await manager.remove(repo, Worktree(outside, "agent/none", ""), delete_branch=False)
 
     assert (outside / "keep.txt").exists()
+
+
+async def test_remove_still_deletes_a_worktree_in_the_data_dir(
+    manager: WorktreeManager, paths: AppPaths, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    legacy = paths.worktrees_dir / "repo" / "0123abcd"
+    git(repo.path, "worktree", "add", "-q", "-b", "agent/legacy", str(legacy))
+
+    await manager.remove(repo, Worktree(legacy, "agent/legacy", ""), delete_branch=True)
+
+    assert not legacy.exists()
+    assert "agent/legacy" not in branches(repo)
+
+
+async def test_remove_without_the_repo_folder_only_deletes_the_leftover_directory(
+    manager: WorktreeManager, paths: AppPaths, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    leftover = paths.worktrees_dir / "repo" / "0123abcd"
+    git(repo.path, "worktree", "add", "-q", "-b", "agent/orphan", str(leftover))
+    worktree = await manager.create(repo, "session-3", "orphan")
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    shutil.rmtree(repo.path)
+
+    await manager.remove(repo, Worktree(leftover, "agent/orphan", ""), delete_branch=True)
+    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, Worktree(outside, "agent/none", ""), delete_branch=True)
+
+    assert not leftover.exists()
+    assert not worktree.path.exists()
+    assert outside.is_dir()

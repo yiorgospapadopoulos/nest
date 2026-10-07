@@ -10,25 +10,30 @@ type CommandRunner = Callable[[Sequence[str], Path], Awaitable[str]]
 
 
 class CommandError(Exception):
-    """A command exited with a non-zero status."""
+    """A command exited with a non-zero status, or never started (returncode None)."""
 
-    def __init__(self, argv: Sequence[str], returncode: int, stderr: str) -> None:
-        super().__init__(f"{' '.join(argv)} failed ({returncode}): {stderr.strip()}")
+    def __init__(self, argv: Sequence[str], returncode: int | None, stderr: str) -> None:
+        status = "" if returncode is None else f" ({returncode})"
+        super().__init__(f"{' '.join(argv)} failed{status}: {stderr.strip()}")
         self.argv = tuple(argv)
         self.returncode = returncode
         self.stderr = stderr
 
 
 class GitError(CommandError):
-    """A git command exited with a non-zero status."""
+    """A git command exited with a non-zero status, or never started (returncode None)."""
 
-    def __init__(self, args: Sequence[str], returncode: int, stderr: str) -> None:
+    def __init__(self, args: Sequence[str], returncode: int | None, stderr: str) -> None:
         super().__init__(["git", *args], returncode, stderr)
         self.args_ = tuple(args)
 
 
 async def run_command(argv: Sequence[str], cwd: Path) -> str:
     """Run `argv` in `cwd` and return its stdout."""
+    # Otherwise the subprocess fails with a bare OSError that callers do not expect.
+    problem = await asyncio.to_thread(_cwd_problem, cwd)
+    if problem is not None:
+        raise CommandError(argv, None, f"the working directory {cwd} {problem}")
     running = asyncio.ensure_future(_run(argv, cwd))
     try:
         returncode, stdout, stderr = await asyncio.shield(running)
@@ -39,6 +44,12 @@ async def run_command(argv: Sequence[str], cwd: Path) -> str:
     if returncode:
         raise CommandError(argv, returncode, stderr.decode(errors="replace"))
     return stdout.decode(errors="replace")
+
+
+def _cwd_problem(cwd: Path) -> str | None:
+    if cwd.is_dir():
+        return None
+    return "is not a directory" if cwd.exists() else "does not exist"
 
 
 async def _run(argv: Sequence[str], cwd: Path) -> tuple[int | None, bytes, bytes]:

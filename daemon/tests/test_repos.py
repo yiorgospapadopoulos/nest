@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from harness.paths import AppPaths
 from harness.repos.service import (
     InvalidRepoError,
     RepoExistsError,
+    RepoFolderMissingError,
     RepoNotFoundError,
     RepoService,
     is_link_candidate,
@@ -165,6 +167,31 @@ async def test_suggest_links_lists_ignored_env_and_local_files(
         "settings.local.json",
         "web/.env.local",
     ]
+
+
+async def test_suggest_links_needs_the_repo_folder(service: RepoService, tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    await service.register(repo)
+    shutil.rmtree(repo)
+
+    with pytest.raises(RepoFolderMissingError, match="the folder of repo 'repo' no longer exists"):
+        await service.suggest_links("repo")
+
+
+async def test_unregister_deletes_only_the_config_file(
+    service: RepoService, paths: AppPaths, tmp_path: Path
+) -> None:
+    kept = await service.register(init_repo(tmp_path / "kept"))
+    repo = init_repo(tmp_path / "repo")
+    await service.register(repo)
+
+    service.unregister("repo")
+
+    assert service.list_repos() == [kept]
+    assert not (paths.repos_dir / "repo.toml").exists()
+    assert (repo / "README.md").is_file()
+    with pytest.raises(RepoNotFoundError):
+        service.unregister("repo")
 
 
 @pytest.mark.parametrize(

@@ -55,3 +55,28 @@ async def test_cancelling_lets_the_git_command_finish(tmp_path: Path) -> None:
         await slow
 
     assert marker.exists()
+
+
+async def test_run_git_in_a_missing_directory_raises_a_git_error(tmp_path: Path) -> None:
+    missing = tmp_path / "gone"
+
+    with pytest.raises(GitError) as caught:
+        await run_git(["worktree", "prune"], missing)
+
+    assert caught.value.returncode is None
+    assert caught.value.args_ == ("worktree", "prune")
+    assert str(caught.value) == (
+        f"git worktree prune failed: the working directory {missing} does not exist"
+    )
+
+
+async def test_run_command_in_a_file_instead_of_a_directory(tmp_path: Path) -> None:
+    file = tmp_path / "file.txt"
+    file.write_text("x", encoding="utf-8")
+
+    with pytest.raises(CommandError) as caught:
+        await run_command(["/bin/echo", "hi"], file)
+
+    assert not isinstance(caught.value, GitError)
+    assert caught.value.returncode is None
+    assert caught.value.stderr == f"the working directory {file} is not a directory"

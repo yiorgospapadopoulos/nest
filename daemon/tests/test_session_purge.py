@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -108,6 +109,27 @@ async def test_purge_of_a_session_whose_repo_is_no_longer_registered(env: Env) -
     # Without the repo's config, git cannot clean up; the worktree directory stays.
     assert session.worktree_path is not None
     assert session.worktree_path.is_dir()
+
+
+async def test_purge_after_the_repo_folder_was_deleted(env: Env) -> None:
+    env.provider.script(reply("ok"))
+    attachment = await env.attachments.save("notes.txt", b"x", "text/plain")
+    created = await env.create(attachment_ids=[attachment.id])
+    session = await env.reach(created.id, SessionState.IDLE)
+    await env.approvals.add(created.id, ApprovalKind.REVIEW, {}, "review")
+    shutil.rmtree(env.repo_path)
+
+    await env.manager.purge(created.id)
+
+    with pytest.raises(SessionNotFoundError):
+        await env.manager.get(created.id)
+    for table in ("approvals", "attachments", "events"):
+        assert await rows(env, table, created.id) == 0
+    assert not attachment.path.parent.exists()
+    # Git cannot clean up without the repo; the leftover worktree directory is deleted.
+    assert session.worktree_path is not None
+    assert not session.worktree_path.exists()
+    assert await deleted_events(env) == [(None, f'{{"session_id": "{created.id}"}}')]
 
 
 async def test_purge_of_a_starting_session(env: Env) -> None:
