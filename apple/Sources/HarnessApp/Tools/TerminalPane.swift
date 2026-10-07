@@ -199,7 +199,7 @@ private struct ExitedBar: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 38)
-        .capsuleGlass()
+        .controlGlass()
         .padding(.bottom, 12)
     }
 }
@@ -229,12 +229,7 @@ struct ToolPaneHeader<Content: View>: View {
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { shell.toggleMaximize(pane) }
         }
-        .onDrag {
-            shell.dragging = .pane(pane)
-            return NSItemProvider(object: pane as NSString)
-        } preview: {
-            DragGhost(title: title, tone: .done)
-        }
+        .modifier(PaneDragHandle(pane: pane, title: title, tone: .done))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
     }

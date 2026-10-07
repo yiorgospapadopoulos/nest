@@ -37,7 +37,7 @@ private func fourPanes() -> WorkspaceLayout {
         #expect(layout.leaves == ["a"])
     }
 
-    @Test func eachNewChatSplitsTheLargestPaneAlongItsLongerSide() {
+    @Test func eachNewChatSplitsTheLargestPaneBesideItWhenTwoColumnsFit() {
         var layout = WorkspaceLayout()
         layout.open("a", in: wide)
         layout.open("b", in: wide)
@@ -53,6 +53,23 @@ private func fourPanes() -> WorkspaceLayout {
             layout.root == row(1, column(2, leaf("a"), leaf("c")), column(3, leaf("b"), leaf("d"))))
         #expect(layout.leaves == ["a", "c", "b", "d"])
         #expect(layout.focused == "d")
+    }
+
+    /// Regression: a MacBook window with both side panels open leaves a nearly square
+    /// middle, which used to stack the second chat although two columns fit easily.
+    @Test func aNearlySquareWorkspacePutsTheSecondChatBesideTheFirst() {
+        var layout = WorkspaceLayout()
+        layout.open("a", in: CGSize(width: 860, height: 820))
+        layout.open("b", in: CGSize(width: 860, height: 820))
+        #expect(layout.root == row(1, leaf("a"), leaf("b")))
+    }
+
+    @Test func aPaneTooNarrowForTwoColumnsIsSplitBelow() {
+        var layout = WorkspaceLayout()
+        let size = CGSize(width: 2 * WorkspaceLayout.minimumSideBySideWidth + 8, height: 300)
+        layout.open("a", in: size)
+        layout.open("b", in: size)
+        #expect(layout.root == column(1, leaf("a"), leaf("b")))
     }
 
     @Test func aTallWorkspaceStacksTheSecondChat() {

@@ -126,7 +126,7 @@ private struct WebHost: NSViewRepresentable {
     let focus: () -> Void
 
     func makeNSView(context: Context) -> PaneContentView {
-        let container = PaneContentView(bottomRadius: DesignTokens.Radius.pane)
+        let container = PaneContentView(bottomRadius: context.environment.glass.radius.pane)
         container.onClick = focus
         container.show(session.view)
         return container
@@ -136,6 +136,7 @@ private struct WebHost: NSViewRepresentable {
         container.onClick = focus
         container.show(session.view)
         container.isHidden = context.environment.paneHidden
+        container.layer?.cornerRadius = context.environment.glass.radius.pane
     }
 
     func sizeThatFits(
@@ -150,6 +151,7 @@ private struct WebHost: NSViewRepresentable {
 struct BrowserPaneView: View {
     let pane: ToolPane
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let id = pane.id
@@ -174,8 +176,8 @@ struct BrowserPaneView: View {
             }
             .clipShape(
                 UnevenRoundedRectangle(
-                    bottomLeadingRadius: DesignTokens.Radius.pane,
-                    bottomTrailingRadius: DesignTokens.Radius.pane, style: .continuous))
+                    bottomLeadingRadius: glass.radius.pane,
+                    bottomTrailingRadius: glass.radius.pane, style: .continuous))
         }
         .modifier(PaneChrome(pane: pane.id))
     }
@@ -301,7 +303,7 @@ struct LocalServerList: View {
                         .frame(height: 28)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(RowHoverStyle(radius: 8))
+                    .buttonStyle(RowHoverStyle())
                 }
             } else {
                 HStack(spacing: 8) {
@@ -321,6 +323,7 @@ struct LocalServerList: View {
 private struct StartPage: View {
     let session: BrowserSession
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 14) {
@@ -328,7 +331,7 @@ private struct StartPage: View {
                 .font(.system(size: 24))
                 .foregroundStyle(accent.accent)
                 .frame(width: 56, height: 56)
-                .panelGlass(radius: 18)
+                .panelGlass(radius: glass.radius.pane)
             Text("Type an address, a localhost port such as 3000, or pick a local server")
                 .font(.ui(TypeSize.callout))
                 .foregroundStyle(Palette.t2)
@@ -336,7 +339,7 @@ private struct StartPage: View {
             LocalServerList(session: session) {}
                 .frame(maxWidth: 300)
                 .padding(8)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14))
+                .background(Palette.fill, in: glass.rounded(glass.radius.card))
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

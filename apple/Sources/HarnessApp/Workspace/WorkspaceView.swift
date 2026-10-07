@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 /// are keyed by chat, so closing, opening or swapping one keeps the others' views (and
 /// their transcripts) alive instead of rebuilding the split tree.
 struct WorkspaceView: View {
+    /// The coordinate space of pane placements, where pane drags are followed.
+    static let space = "workspace"
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -29,6 +31,8 @@ struct WorkspaceView: View {
                         .allowsHitTesting(!hidden)
                         .accessibilityHidden(hidden)
                         .environment(\.paneHidden, hidden)
+                        .environment(\.paneSize, frame.size)
+                        .environment(\.paneFit, PaneFit(width: frame.width))
                         .zIndex(hidden ? 0 : 1)
                 }
                 if maximized == nil {
@@ -39,7 +43,9 @@ struct WorkspaceView: View {
                             .zIndex(2)
                     }
                 }
+                PaneDragGhost().zIndex(3)
             }
+            .coordinateSpace(.named(Self.space))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGSize.self) {
@@ -67,6 +73,20 @@ private struct PaneContent: View {
                     BrowserPaneView(pane: tool)
                 }
             }
+        }
+    }
+}
+
+/// The dragged pane's title, following the pointer.
+private struct PaneDragGhost: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if let drag = shell.paneDrag {
+            DragGhost(title: drag.title, tone: drag.tone)
+                .fixedSize()
+                .position(drag.location)
+                .allowsHitTesting(false)
         }
     }
 }
@@ -127,16 +147,17 @@ private struct Gutter: View {
 private struct EmptyWorkspace: View {
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let targeted = shell.dropHighlight != nil && shell.dropHighlight?.pane == nil
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let shape = glass.rounded(glass.radius.panel + 2)
         VStack(spacing: 8) {
             Image(systemName: Icon.workspace)
                 .font(.system(size: 24))
                 .foregroundStyle(accent.accent)
                 .frame(width: 56, height: 56)
-                .panelGlass(radius: 18)
+                .panelGlass(radius: glass.radius.panel - 2)
             Text("Drag chats here to work on them side by side")
                 .font(.ui(16, .semibold))
                 .foregroundStyle(Palette.t1)
@@ -148,7 +169,7 @@ private struct EmptyWorkspace: View {
             .buttonStyle(.harness(.primary))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(shape.fill(Palette.glassClear))
+        .background(shape.fill(glass.subtle))
         .overlay(
             shape.strokeBorder(
                 targeted ? accent.line : Palette.hair2,
@@ -163,7 +184,9 @@ private struct EmptyWorkspace: View {
     }
 }
 
-/// Decides and shows where a dragged chat or pane lands on a pane.
+/// Decides and shows where a chat dragged from the sidebar lands on a pane. A drop on
+/// the chat's own pane is accepted and does nothing, so the system drag ends at once
+/// instead of sliding back.
 struct PaneDropDelegate: DropDelegate {
     let pane: String?
     let shell: Shell
@@ -178,8 +201,7 @@ struct PaneDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         update(info)
-        return DropProposal(
-            operation: shell.dropHighlight?.zone == DropZone.none ? .forbidden : .move)
+        return DropProposal(operation: .move)
     }
 
     func dropExited(info: DropInfo) {
@@ -192,7 +214,7 @@ struct PaneDropDelegate: DropDelegate {
         guard let item = shell.dragging else { return false }
         let zone = zone(for: item, at: info.location)
         shell.perform(item, onto: pane, zone: zone)
-        return zone != .none
+        return true
     }
 
     private func update(_ info: DropInfo) {
@@ -225,29 +247,35 @@ struct DropHighlightView: View {
     /// The pane's size; nil fills the whole space.
     let size: CGSize?
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
 
     var body: some View {
         GeometryReader { geometry in
-            let rect = zone.highlight(in: size ?? geometry.size).insetBy(dx: 4, dy: 4)
-            let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-            ZStack {
-                shape.fill(accent.soft)
-                shape.strokeBorder(accent.accent, lineWidth: 2)
-                HStack(spacing: 6) {
-                    Image(systemName: zone == .replace ? Icon.open : Icon.workspace)
-                        .foregroundStyle(accent.accent)
-                    Text(zone.label)
-                }
-                .font(.ui(TypeSize.callout, .semibold))
-                .foregroundStyle(Palette.t1)
-                .padding(.horizontal, 14)
-                .frame(height: 30)
-                .capsuleGlass()
+            if let rect = zone.shownHighlight(in: size ?? geometry.size) {
+                highlight(rect)
             }
-            .frame(width: max(0, rect.width), height: max(0, rect.height))
-            .offset(x: rect.minX, y: rect.minY)
         }
         .allowsHitTesting(false)
         .transition(.opacity)
+    }
+
+    private func highlight(_ rect: CGRect) -> some View {
+        let shape = glass.rounded(glass.radius.card)
+        return ZStack {
+            shape.fill(accent.soft)
+            shape.strokeBorder(accent.accent, lineWidth: 2)
+            HStack(spacing: 6) {
+                Image(systemName: zone == .replace ? Icon.open : Icon.workspace)
+                    .foregroundStyle(accent.accent)
+                Text(zone.label)
+            }
+            .font(.ui(TypeSize.callout, .semibold))
+            .foregroundStyle(Palette.t1)
+            .padding(.horizontal, 14)
+            .frame(height: 30)
+            .controlGlass()
+        }
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: rect.minY)
     }
 }

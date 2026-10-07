@@ -26,6 +26,16 @@ struct DropHighlight: Equatable {
     var zone: DropZone
 }
 
+/// A pane dragged by its header. It is followed inside the window rather than handed to
+/// a system drag, so every release (or Escape) ends it.
+struct PaneDrag: Equatable {
+    let pane: String
+    let title: String
+    let tone: StatusTone
+    /// The pointer, in the workspace's coordinates.
+    var location: CGPoint
+}
+
 struct Toast: Identifiable, Equatable {
     enum Kind {
         case done, failed, info
@@ -66,11 +76,14 @@ final class Shell {
     var deleting: String?
     /// Projects whose Archived group is unfolded.
     var archivedOpen: Set<String> = []
+    /// The Connectors sheet's unfolded groups; all are folded at first.
+    var connectorGroupsOpen: Set<ConnectorSectionKind> = []
     /// Expanded tool calls and thinking blocks, by transcript item id.
     var expandedItems: Set<String> = []
     var toast: Toast?
     var dragging: DragItem?
     var dropHighlight: DropHighlight?
+    var paneDrag: PaneDrag?
     let dictation = Dictation()
     /// The live terminals and web views of the tool panes.
     let tools = ToolSessions()
@@ -84,6 +97,9 @@ final class Shell {
     @ObservationIgnored private var drafts: [String: ComposerDraft] = [:]
     @ObservationIgnored private var draftCount = 0
     @ObservationIgnored private var toastTask: Task<Void, Never>?
+    /// Escape ended the pane drag in progress; its later moves are ignored until release.
+    @ObservationIgnored private var paneDragCancelled = false
+    @ObservationIgnored private var dragMonitor: Any?
 
     init(model: AppModel, userName: String = NSFullUserName()) {
         self.model = model
@@ -188,6 +204,17 @@ final class Shell {
         }
     }
 
+    /// Archives a Claude Code chat or brings it back; archiving closes its pane, as it
+    /// does for a harness chat.
+    func setArchived(_ chat: ClaudeChat, _ archived: Bool) {
+        if archived {
+            update { $0.closePane(chat.paneID) }
+        }
+        run(archived ? "Could not archive" : "Could not unarchive") {
+            try await self.claudeChats.setArchived(chat.id, archived)
+        }
+    }
+
     func setShowAutomatedChats(_ show: Bool) {
         run("Could not list Claude Code chats") {
             try await self.claudeChats.setShowAutomated(show)
@@ -204,7 +231,8 @@ final class Shell {
     }
 
     /// Opens an empty composer pane; the chat is created with its first message.
-    func newChat() {
+    @discardableResult
+    func newChat() -> ComposerDraft {
         draftCount += 1
         let id = "\(Self.draftPrefix)\(draftCount)"
         let draft = draft(for: id)
@@ -212,8 +240,17 @@ final class Shell {
         draft.model = defaults.model
         draft.effort = defaults.effort
         draft.permission = defaults.permissionMode
-        draft.mode = defaults.mode
+        draft.mode = repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode
         openChat(id)
+        return draft
+    }
+
+    /// A plain folder's Init: a new chat with the git setup request written, not sent.
+    func setUpGit() {
+        let draft = newChat()
+        draft.text = GitInit.prompt
+        draft.selection = TextSelection(insertionPoint: draft.text.endIndex)
+        draft.wantsFocus = true
     }
 
     /// Cmd-W: closes the open sheet, else the focused pane, else the window.
@@ -269,6 +306,89 @@ final class Shell {
         dropHighlight = nil
     }
 
+    // MARK: Pane drags
+
+    /// The pointer moved while `pane` is dragged by its header: shows where it would land.
+    func movePaneDrag(_ pane: String, title: String, tone: StatusTone, to location: CGPoint) {
+        guard !paneDragCancelled else { return }
+        dragging = .pane(pane)
+        paneDrag = PaneDrag(pane: pane, title: title, tone: tone, location: location)
+        let highlight = paneDropHit(pane, at: location).map {
+            DropHighlight(pane: $0.pane, zone: $0.zone)
+        }
+        if dropHighlight != highlight {
+            withAnimation(.easeOut(duration: 0.14)) { dropHighlight = highlight }
+        }
+    }
+
+    /// The header was released: swaps with the pane under the pointer, if any, and always
+    /// ends the drag.
+    func endPaneDrag(_ pane: String, at location: CGPoint) {
+        if !paneDragCancelled, let hit = paneDropHit(pane, at: location) {
+            perform(.pane(pane), onto: hit.pane, zone: hit.zone)
+        }
+        paneDragCancelled = false
+        clearDrag()
+    }
+
+    /// Hit-tested against the visible panes; a maximized pane has nothing to swap with.
+    private func paneDropHit(_ pane: String, at location: CGPoint) -> DropHit? {
+        let layout = projectState.layout
+        guard layout.maximized == nil else { return nil }
+        return DropZone.hit(
+            at: location, placements: layout.placements(in: workspaceSize), dragged: pane,
+            kind: .pane)
+    }
+
+    private func clearDrag() {
+        if dragging != nil || dropHighlight != nil || paneDrag != nil {
+            dragging = nil
+            dropHighlight = nil
+            paneDrag = nil
+        }
+    }
+
+    /// Watches the window's events while it shows. Escape cancels a pane drag. A chat
+    /// dragged from the sidebar is a system drag, which reports no end when it is
+    /// cancelled or refused; local monitors see no events while one runs, so a click, or
+    /// a move with no button down, means any drag still recorded is over.
+    func startWatchingDrags() {
+        guard dragMonitor == nil else { return }
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [
+            .keyDown, .leftMouseDown, .mouseMoved, .mouseEntered, .mouseExited,
+        ]) { [weak self] event in
+            let passes = MainActor.assumeIsolated { self?.watch(event) ?? true }
+            return passes ? event : nil
+        }
+    }
+
+    func stopWatchingDrags() {
+        if let dragMonitor {
+            NSEvent.removeMonitor(dragMonitor)
+        }
+        dragMonitor = nil
+    }
+
+    /// Whether the event goes on to the window.
+    private func watch(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .keyDown:
+            // Escape (key code 53) is swallowed only when it cancels a pane drag.
+            guard event.keyCode == 53, paneDrag != nil else { return true }
+            paneDragCancelled = true
+            clearDrag()
+            return false
+        case .leftMouseDown:
+            paneDragCancelled = false
+            clearDrag()
+        default:
+            if NSEvent.pressedMouseButtons == 0 {
+                clearDrag()
+            }
+        }
+        return true
+    }
+
     // MARK: Composer
 
     func draft(for id: String) -> ComposerDraft {
@@ -317,8 +437,9 @@ final class Shell {
         from draftID: String, draft: ComposerDraft, prompt: String, attachments: [String]
     ) async throws -> String {
         guard let repo = project else { return draftID }
+        let mode = app.repo(repo).map { $0.mode(for: draft.mode) } ?? draft.mode
         let request = CreateSessionRequest(
-            repo: repo, prompt: prompt, mode: draft.mode, model: draft.model,
+            repo: repo, prompt: prompt, mode: mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments)
         let session = try await sessions.create(request)
         app.update(repo) { $0.replaceChat(draftID, with: session.id) }
@@ -827,6 +948,8 @@ final class ComposerDraft {
     var mode: SessionMode?
     /// The caret and selection in the field.
     var selection: TextSelection?
+    /// Focus the field when its pane appears, as for Init's prefilled chat.
+    var wantsFocus = false
     /// The highlighted suggestion, and whether Esc closed the list.
     var completion = CompletionSelection()
 

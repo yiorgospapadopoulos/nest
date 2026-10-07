@@ -140,6 +140,88 @@ import Testing
         #expect(DropZone.none.label == "")
         #expect(DropZone.none.highlight(in: size) == .zero)
     }
+
+    /// Regression: dragging a pane over itself gave an empty highlight, and insetting an
+    /// empty rect yields CGRect.null with an infinite origin, which crashed the app when
+    /// SwiftUI set it as a layer position.
+    @Test func theShownHighlightIsInsetAndNeverEmptyOrInfinite() {
+        let size = CGSize(width: 400, height: 300)
+        #expect(
+            DropZone.split(.left).shownHighlight(in: size)
+                == CGRect(x: 4, y: 4, width: 192, height: 292))
+        #expect(DropZone.none.shownHighlight(in: size) == nil)
+        #expect(DropZone.open.shownHighlight(in: CGSize(width: 6, height: 300)) == nil)
+        #expect(DropZone.open.shownHighlight(in: .zero) == nil)
+    }
+}
+
+/// Hit-testing a drag over the workspace by pane placements: two panes side by side
+/// with a 10 pt gutter, the right one offset so points are made local to it.
+@Suite struct DropHitTests {
+    private let left = PanePlacement(chat: "a", frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+    private let right = PanePlacement(
+        chat: "b", frame: CGRect(x: 410, y: 0, width: 400, height: 300))
+    private var placements: [PanePlacement] { [left, right] }
+
+    @Test func aPaneDroppedOnItselfIsANoOp() {
+        let hit = DropZone.hit(
+            at: CGPoint(x: 100, y: 150), placements: placements, dragged: "a", kind: .pane)
+        #expect(hit == DropHit(pane: "a", zone: .none))
+    }
+
+    @Test func aPaneDroppedOnAnotherSwaps() {
+        let hit = DropZone.hit(
+            at: CGPoint(x: 700, y: 20), placements: placements, dragged: "a", kind: .pane)
+        #expect(hit == DropHit(pane: "b", zone: .swap))
+    }
+
+    @Test func outsideEveryPaneIsNoTarget() {
+        #expect(
+            DropZone.hit(
+                at: CGPoint(x: 405, y: 150), placements: placements, dragged: "a", kind: .pane)
+                == nil)
+        #expect(
+            DropZone.hit(
+                at: CGPoint(x: 100, y: 320), placements: placements, dragged: "a", kind: .pane)
+                == nil)
+        #expect(
+            DropZone.hit(
+                at: CGPoint(x: -1, y: 10), placements: placements, dragged: "a", kind: .pane)
+                == nil)
+        #expect(
+            DropZone.hit(at: CGPoint(x: 10, y: 10), placements: [], dragged: "a", kind: .pane)
+                == nil)
+    }
+
+    @Test func aChatSplitsTheSideOfThePaneUnderThePointer() {
+        func zone(_ x: Double, _ y: Double) -> DropZone? {
+            DropZone.hit(
+                at: CGPoint(x: x, y: y), placements: placements, dragged: "new", kind: .chat)?
+                .zone
+        }
+        #expect(zone(610, 20) == .split(.top))
+        #expect(zone(610, 290) == .split(.bottom))
+        #expect(zone(450, 150) == .split(.left))
+        #expect(zone(790, 150) == .split(.right))
+        #expect(zone(390, 150) == .split(.right))
+    }
+
+    @Test func aNewChatReplacesThePaneWhenFourAreOpen() {
+        let size = CGSize(width: 200, height: 150)
+        let full = ["a", "b", "c", "d"].enumerated().map { index, chat in
+            PanePlacement(
+                chat: chat,
+                frame: CGRect(
+                    origin: CGPoint(x: Double(index % 2) * 210, y: Double(index / 2) * 160),
+                    size: size))
+        }
+        let hit = DropZone.hit(
+            at: CGPoint(x: 300, y: 200), placements: full, dragged: "new", kind: .chat)
+        #expect(hit == DropHit(pane: "d", zone: .replace))
+        let open = DropZone.hit(
+            at: CGPoint(x: 300, y: 230), placements: full, dragged: "a", kind: .chat)
+        #expect(open == DropHit(pane: "d", zone: .split(.left)))
+    }
 }
 
 @Suite struct MarkdownBlockTests {

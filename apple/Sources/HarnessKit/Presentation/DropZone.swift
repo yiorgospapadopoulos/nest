@@ -71,6 +71,15 @@ public enum DropZone: Sendable, Hashable {
         }
     }
 
+    /// The highlight as drawn, inset from the pane's edges; nil when there is nothing to
+    /// draw (no zone, or a size too small for the inset, where `insetBy` would return
+    /// `CGRect.null` with an infinite origin).
+    public func shownHighlight(in size: CGSize, inset: Double = 4) -> CGRect? {
+        let rect = highlight(in: size)
+        guard rect.width > 2 * inset, rect.height > 2 * inset else { return nil }
+        return rect.insetBy(dx: inset, dy: inset)
+    }
+
     /// The part of the pane the drop highlight covers.
     public func highlight(in size: CGSize) -> CGRect {
         let whole = CGRect(origin: .zero, size: size)
@@ -87,5 +96,37 @@ public enum DropZone: Sendable, Hashable {
                 return CGRect(x: 0, y: half.height, width: size.width, height: half.height)
             }
         }
+    }
+}
+
+/// The pane under a dragged chat or pane, and what dropping it there does.
+public struct DropHit: Sendable, Hashable {
+    public let pane: String
+    public let zone: DropZone
+
+    public init(pane: String, zone: DropZone) {
+        self.pane = pane
+        self.zone = zone
+    }
+}
+
+extension DropZone {
+    /// The pane at `point` of the workspace, in the placements' coordinates, and the zone
+    /// a drop of `dragged` takes there; nil outside every pane, as over a gutter. Dropped
+    /// on its own pane, the zone is `.none`: nothing happens.
+    public static func hit(
+        at point: CGPoint, placements: [PanePlacement], dragged: String, kind: Kind
+    ) -> DropHit? {
+        guard let placement = placements.first(where: { $0.frame.contains(point) }) else {
+            return nil
+        }
+        let target = Target(
+            isDraggedChat: placement.chat == dragged,
+            draggedIsOpen: placements.contains { $0.chat == dragged },
+            openCount: placements.count)
+        let local = CGPoint(
+            x: point.x - placement.frame.minX, y: point.y - placement.frame.minY)
+        let zone = zone(at: local, in: placement.frame.size, kind: kind, target: target)
+        return DropHit(pane: placement.chat, zone: zone)
     }
 }

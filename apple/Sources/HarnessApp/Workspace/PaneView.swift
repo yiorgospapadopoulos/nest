@@ -1,3 +1,4 @@
+import AppKit
 import HarnessKit
 import SwiftUI
 
@@ -6,11 +7,10 @@ import SwiftUI
 struct PaneView: View {
     let chat: String
     @Environment(Shell.self) private var shell
-    @State private var width = 600.0
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHeader(chat: chat, width: width)
+            PaneHeader(chat: chat)
             Rectangle().fill(Palette.hair).frame(height: 1)
             if shell.isDraft(chat) {
                 NewChatPlaceholder()
@@ -31,28 +31,28 @@ struct PaneView: View {
             }
         }
         .modifier(PaneChrome(pane: chat))
-        .onGeometryChange(for: Double.self) {
-            $0.size.width
-        } action: {
-            width = $0
-        }
     }
 }
 
 /// What every pane shares, whatever it shows: the glass, the focus ring, the drop
-/// targets and highlights while something is dragged, and focus on click.
+/// targets and highlights while something is dragged, and focus on click. The content
+/// lays out to the pane's slot and is clipped to it, so nothing spills into a neighbour.
 struct PaneChrome: ViewModifier {
     let pane: String
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
+    @Environment(\.paneSize) private var size
 
     func body(content: Content) -> some View {
         let layout = shell.projectState.layout
         let focused = layout.focused == pane
-        let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.pane, style: .continuous)
+        let shape = glass.rounded(glass.radius.pane)
         content
+            .frame(width: size?.width, height: size?.height)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .panelGlass(radius: DesignTokens.Radius.pane, tint: .reading)
+            .clipShape(shape)
+            .panelGlass(radius: glass.radius.pane, tint: .reading)
             .overlay {
                 if focused && layout.leaves.count > 1 {
                     shape.strokeBorder(accent.line, lineWidth: 1.5).allowsHitTesting(false)
@@ -87,8 +87,9 @@ struct PaneChrome: ViewModifier {
 /// Grip, status, title, branch, elapsed, maximize and close; drag it to swap panes.
 private struct PaneHeader: View {
     let chat: String
-    let width: Double
     @Environment(Shell.self) private var shell
+    @Environment(\.paneFit) private var fit
+    @Environment(\.paneSize) private var size
 
     var body: some View {
         let session = shell.sessions.session(chat)
@@ -98,6 +99,7 @@ private struct PaneHeader: View {
             ?? (shell.isClaudeChatPane(chat) ? "Claude Code chat" : "New chat")
         let tone = session.map(shell.tone(of:)) ?? .done
         let lastActivity = session?.updatedAt ?? claudeChat?.lastActivityAt
+        let width = size?.width ?? 600
         HStack(spacing: 7) {
             GripDots()
                 .foregroundStyle(Palette.t3)
@@ -107,7 +109,7 @@ private struct PaneHeader: View {
             if let session {
                 StatusPill(
                     tone: tone, label: shell.statusLabel(of: session),
-                    hollow: shell.isHollow(session), showsLabel: width >= 380
+                    hollow: shell.isHollow(session), showsLabel: fit.showsStatusLabel
                 )
                 .allowsHitTesting(false)
                 if let stuck = session.stuck {
@@ -121,16 +123,20 @@ private struct PaneHeader: View {
                 .font(.ui(13.5, .semibold))
                 .foregroundStyle(Palette.t1)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(minWidth: 24, alignment: .leading)
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)
             Spacer(minLength: 0)
-            if let branch = session?.branch ?? claudeChat?.worktree, width >= 420 {
+            if let branch = session?.branch ?? claudeChat?.worktree, fit.showsBranch,
+                shell.repo?.git != false
+            {
                 Chip(icon: Icon.branch, text: branch, mono: true)
                     .frame(maxWidth: width * 0.4, alignment: .trailing)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minWidth: min(110, width * 0.25))
             }
-            if let lastActivity, width >= 470 {
+            if let lastActivity, fit.showsElapsed {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     Text(Elapsed.short(from: lastActivity, to: context.date))
                         .font(.ui(TypeSize.caption))
@@ -140,7 +146,7 @@ private struct PaneHeader: View {
                 .fixedSize()
                 .layoutPriority(1)
             }
-            if let pr = session?.pr, width >= 330 {
+            if let pr = session?.pr, fit.showsPullRequest {
                 PRChip(session: chat, pr: pr)
             }
             if let folder = shell.folder(ofPane: chat) {
@@ -170,14 +176,32 @@ private struct PaneHeader: View {
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { shell.toggleMaximize(chat) }
         }
-        .onDrag {
-            shell.dragging = .pane(chat)
-            return NSItemProvider(object: chat as NSString)
-        } preview: {
-            DragGhost(title: title, tone: tone)
-        }
+        .modifier(PaneDragHandle(pane: chat, title: title, tone: tone))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
+    }
+}
+
+/// Makes a pane's header drag the pane to swap it with another. The drag stays inside
+/// the window: it starts only past a few points of movement, so clicks, the double click
+/// that maximizes and the header's buttons keep working, and its release always ends it.
+struct PaneDragHandle: ViewModifier {
+    let pane: String
+    let title: String
+    let tone: StatusTone
+    @Environment(Shell.self) private var shell
+
+    func body(content: Content) -> some View {
+        content
+            .gesture(
+                DragGesture(minimumDistance: 6, coordinateSpace: .named(WorkspaceView.space))
+                    .onChanged { value in
+                        NSCursor.closedHand.set()
+                        shell.movePaneDrag(pane, title: title, tone: tone, to: value.location)
+                    }
+                    .onEnded { value in shell.endPaneDrag(pane, at: value.location) }
+            )
+            .pointerStyle(shell.dragging == .pane(pane) ? .grabActive : .grabIdle)
     }
 }
 
@@ -265,11 +289,12 @@ private struct NewChatPlaceholder: View {
 private struct ContinueBar: View {
     let pane: String
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let chat = shell.claudeChat(inPane: pane)
         let adopting = chat.map { shell.adopting.contains($0.id) } ?? false
-        let shape = RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+        let shape = glass.rounded(glass.radius.card)
         VStack(alignment: .leading, spacing: 8) {
             if chat?.openInClaudeCode == true {
                 Label {
@@ -308,9 +333,9 @@ private struct ContinueBar: View {
             }
         }
         .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 10))
-        .background(shape.fill(Palette.glassRegular))
-        .overlay(shape.stroke(Palette.glassBorder, lineWidth: 1))
-        .shadow(color: Palette.glassShadow.opacity(0.4), radius: 10, y: 6)
+        .background(shape.fill(glass.reading))
+        .overlay(GlassEdges(shape: shape))
+        .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
         .padding(.horizontal, 10)
         .padding(.bottom, 10)
     }

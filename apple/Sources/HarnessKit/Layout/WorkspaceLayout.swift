@@ -182,6 +182,8 @@ public struct WorkspaceLayout: Sendable, Hashable {
     public static let minimumPaneWidth = 280.0
     public static let minimumPaneHeight = 180.0
     public static let gutter = 10.0
+    /// A new chat goes beside a pane when both halves keep at least this width.
+    public static let minimumSideBySideWidth = 360.0
 
     public private(set) var root: LayoutNode?
     /// The chat shown alone, if any.
@@ -216,7 +218,7 @@ public struct WorkspaceLayout: Sendable, Hashable {
     }
 
     /// Opens a chat by click: focus it if open; otherwise add it next to the largest pane
-    /// (to its right when that pane is wide, below it when tall); when four are open,
+    /// (to its right when both halves stay wide enough to read, else below it); when four are open,
     /// the last pane in reading order shows it instead.
     @discardableResult
     public mutating func open(_ chat: String, in size: CGSize) -> OpenOutcome {
@@ -245,7 +247,8 @@ public struct WorkspaceLayout: Sendable, Hashable {
         let target =
             maximized.flatMap { id in frames.first { $0.chat == id } }
             ?? frames.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }!
-        let wide = maximized != nil || target.frame.width >= target.frame.height * 1.1
+        let halfWidth = (target.frame.width - Self.gutter) / 2
+        let wide = maximized != nil || halfWidth >= Self.minimumSideBySideWidth
         insert(chat, at: target.chat, side: wide ? .right : .bottom)
         return .added
     }
