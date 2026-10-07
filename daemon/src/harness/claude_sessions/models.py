@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ClaudeChat(BaseModel):
@@ -26,3 +26,11 @@ class ClaudeChat(BaseModel):
     entrypoint: str | None
     # Started by a program through an Agent SDK (entrypoint `sdk-*`), not typed by the user.
     automated: bool
+    # Archived in harness (D040); clients show it in their Archived group.
+    archived: bool = False
+
+
+class SetChatArchived(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archived: bool

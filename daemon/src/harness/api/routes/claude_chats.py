@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Response, status
 
 from harness.api.deps import Context, RequireDevice
-from harness.claude_sessions.models import ClaudeChat
+from harness.claude_sessions.models import ClaudeChat, SetChatArchived
 from harness.events.models import Event
 from harness.sessions.models import Session
 
@@ -22,6 +22,14 @@ async def list_claude_chats(
 @router.get("/{chat_id}")
 async def get_claude_chat(chat_id: str, ctx: Context) -> ClaudeChat:
     return await ctx.claude_chats.get(chat_id)
+
+
+@router.put("/{chat_id}/archived")
+async def set_claude_chat_archived(
+    chat_id: str, request: SetChatArchived, ctx: Context
+) -> ClaudeChat:
+    """Archive or restore the chat in harness only (D040); it stays listed, marked."""
+    return await ctx.claude_chats.set_archived(chat_id, archived=request.archived)
 
 
 @router.get("/{chat_id}/events")

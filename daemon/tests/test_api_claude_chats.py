@@ -37,6 +37,7 @@ def root(tmp_path: Path) -> Path:
         ("GET", "/api/claude-chats/x"),
         ("GET", "/api/claude-chats/x/events"),
         ("POST", "/api/claude-chats/x/adopt"),
+        ("PUT", "/api/claude-chats/x/archived"),
     ],
 )
 async def test_claude_chat_routes_require_a_device_token(api: Api, method: str, path: str) -> None:
@@ -119,4 +120,56 @@ async def test_unknown_chats_and_repos(api: Api, claude: ClaudeHome, tmp_path: P
     assert (await api.http.get(f"/api/claude-chats/{CHAT_B}")).status_code == 404
     assert (await api.http.get(f"/api/claude-chats/{CHAT_B}/events")).status_code == 404
     assert (await api.http.post(f"/api/claude-chats/{CHAT_B}/adopt")).status_code == 404
+    archived = await api.http.put(f"/api/claude-chats/{CHAT_B}/archived", json={"archived": True})
+    assert archived.status_code == 404
+    assert archived.json() == {"detail": f"unknown Claude Code chat {CHAT_B!r}"}
     assert (await api.http.get("/api/claude-chats", params={"repo": "nope"})).status_code == 404
+
+
+async def test_archive_and_restore_a_claude_code_chat(
+    api: Api, claude: ClaudeHome, root: Path
+) -> None:
+    claude.write_chat(root, CHAT_A, simple_chat())
+    claude.write_chat(root, CHAT_B, simple_chat("Second"))
+    path = f"/api/claude-chats/{CHAT_A}/archived"
+
+    archived = await api.http.put(path, json={"archived": True})
+    twice = await api.http.put(path, json={"archived": True})
+    listed = (await api.http.get("/api/claude-chats", params={"repo": "repo"})).json()
+
+    assert archived.status_code == 200
+    assert archived.json()["id"] == CHAT_A
+    assert archived.json()["archived"] is True
+    assert twice.json() == archived.json()
+    assert sorted((c["id"], c["archived"]) for c in listed) == [(CHAT_A, True), (CHAT_B, False)]
+    assert (await api.http.get(f"/api/claude-chats/{CHAT_A}")).json()["archived"] is True
+
+    restored = await api.http.put(path, json={"archived": False})
+
+    assert restored.status_code == 200
+    assert restored.json()["archived"] is False
+
+
+@pytest.mark.parametrize("body", [{}, {"archived": "maybe"}, {"archived": True, "extra": 1}])
+async def test_archive_needs_a_boolean(
+    api: Api, claude: ClaudeHome, root: Path, body: dict[str, object]
+) -> None:
+    claude.write_chat(root, CHAT_A, simple_chat())
+
+    response = await api.http.put(f"/api/claude-chats/{CHAT_A}/archived", json=body)
+
+    assert response.status_code == 422
+
+
+async def test_an_archived_chat_can_still_be_continued_in_harness(
+    api: Api, claude: ClaudeHome, root: Path
+) -> None:
+    claude.write_chat(root, CHAT_A, simple_chat())
+    await api.http.put(f"/api/claude-chats/{CHAT_A}/archived", json={"archived": True})
+
+    adopted = await api.http.post(f"/api/claude-chats/{CHAT_A}/adopt")
+
+    assert adopted.status_code == 201
+    # It is a harness session now, in the default (unarchived) list.
+    assert adopted.json()["archived_at"] is None
+    assert (await api.http.get("/api/claude-chats")).json() == []

@@ -3,6 +3,7 @@
 A repo's chats are those Claude Code ran in the repo folder or in one of its own worktrees
 (`<repo>/.claude/worktrees/<name>`). Chats harness owns are left out: those it runs or
 adopted (by session id) and those in its own worktrees (`harness-*`), even once deleted.
+Archived chats stay in the list, marked; the archive is harness's own state (D040).
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
+from harness.claude_sessions.archive import ChatArchive
 from harness.claude_sessions.errors import ClaudeChatNotFoundError
 from harness.claude_sessions.live import LiveChats
 from harness.claude_sessions.location import candidate_dirs
@@ -38,7 +40,7 @@ POLL_INTERVAL = timedelta(seconds=10)
 AUTOMATED_PREFIX = "sdk"
 _SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 
-type _Signature = tuple[tuple[str, str, datetime, int, bool], ...]
+type _Signature = tuple[tuple[str, str, datetime, int, bool, bool], ...]
 # Told the whole list after every scan, such as to index the chats' titles.
 type ChatsListener = Callable[[list[ClaudeChat]], Awaitable[None]]
 
@@ -78,6 +80,7 @@ class ClaudeChats:
         claude_dir: Path | None,
         repos: RepoService,
         store: SessionStore,
+        archive: ChatArchive,
         bus: EventBus,
         live: LiveChats,
         interval: timedelta = POLL_INTERVAL,
@@ -87,6 +90,7 @@ class ClaudeChats:
         self._projects = None if claude_dir is None else claude_dir / "projects"
         self._repos = repos
         self._store = store
+        self._archive = archive
         self._bus = bus
         self._live = live
         self._interval = interval
@@ -114,6 +118,12 @@ class ClaudeChats:
                 return chat
         msg = f"unknown Claude Code chat {chat_id!r}"
         raise ClaudeChatNotFoundError(msg)
+
+    async def set_archived(self, chat_id: str, *, archived: bool) -> ClaudeChat:
+        """Archive or restore the chat in harness; a change is announced like any other."""
+        await self.get(chat_id)
+        await self._archive.set(chat_id, archived=archived)
+        return await self.get(chat_id)
 
     async def history(self, chat_id: str) -> list[Event]:
         """The transcript as harness session events, numbered from 1."""
@@ -148,6 +158,7 @@ class ClaudeChats:
             found = await asyncio.to_thread(self._scan, repos)
             owned = await self._store.provider_session_ids()
             running = await asyncio.to_thread(self._live.running)
+            archived = await self._archive.archived_ids()
             newest: dict[str, _Found] = {}
             for item in found:
                 if item.chat_id in owned:
@@ -157,7 +168,10 @@ class ClaudeChats:
                     newest[item.chat_id] = item
             self._files = {chat_id: item.path for chat_id, item in newest.items()}
             chats = sorted(
-                (_chat(item, item.chat_id in running) for item in newest.values()),
+                (
+                    _chat(item, running=item.chat_id in running, archived=item.chat_id in archived)
+                    for item in newest.values()
+                ),
                 key=lambda chat: (chat.last_activity_at, chat.id),
                 reverse=True,
             )
@@ -199,7 +213,14 @@ class ClaudeChats:
     def _note_changes(self, repos: list[RepoConfig], chats: list[ClaudeChat]) -> list[str]:
         signatures = {
             repo.name: tuple(
-                (c.id, c.title, c.last_activity_at, c.message_count, c.open_in_claude_code)
+                (
+                    c.id,
+                    c.title,
+                    c.last_activity_at,
+                    c.message_count,
+                    c.open_in_claude_code,
+                    c.archived,
+                )
                 for c in chats
                 if c.repo == repo.name
             )
@@ -271,7 +292,7 @@ def _belongs(root: Path, cwd: Path) -> bool:
     )
 
 
-def _chat(item: _Found, running: bool) -> ClaudeChat:
+def _chat(item: _Found, *, running: bool, archived: bool) -> ClaudeChat:
     info = item.info
     return ClaudeChat(
         id=item.chat_id,
@@ -285,6 +306,7 @@ def _chat(item: _Found, running: bool) -> ClaudeChat:
         open_in_claude_code=running,
         entrypoint=info.entrypoint,
         automated=info.entrypoint is not None and info.entrypoint.startswith(AUTOMATED_PREFIX),
+        archived=archived,
     )
 
 

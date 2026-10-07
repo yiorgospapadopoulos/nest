@@ -8,6 +8,7 @@ import pytest
 from pydantic import JsonValue
 
 from harness.claude_sessions import catalog as catalog_module
+from harness.claude_sessions.archive import ChatArchive
 from harness.claude_sessions.catalog import ClaudeChats
 from harness.claude_sessions.errors import ClaudeChatNotFoundError
 from harness.claude_sessions.live import LiveChats
@@ -46,6 +47,7 @@ class Setup:
         self.repos = RepoService(self.paths)
         self.store = SessionStore(db, clock)
         self.bus = EventBus(db, clock)
+        self.archive = ChatArchive(db, clock)
         self.alive: set[int] = set()
         self.published: list[tuple[str, Mapping[str, JsonValue]]] = []
         self.root = init_repo(tmp_path / "repo").resolve()
@@ -58,6 +60,7 @@ class Setup:
             claude_dir=claude_dir,
             repos=self.repos,
             store=self.store,
+            archive=self.archive,
             bus=self.bus,
             live=LiveChats(self.claude.root, alive=lambda pid: pid in self.alive),
             interval=interval,
@@ -112,6 +115,7 @@ async def test_lists_chats_of_the_repo_and_its_claude_worktrees(setup: Setup) ->
             "open_in_claude_code": True,
             "entrypoint": None,
             "automated": False,
+            "archived": False,
         },
         {
             "id": CHAT_A,
@@ -125,6 +129,7 @@ async def test_lists_chats_of_the_repo_and_its_claude_worktrees(setup: Setup) ->
             "open_in_claude_code": False,
             "entrypoint": None,
             "automated": False,
+            "archived": False,
         },
     ]
 
@@ -326,3 +331,51 @@ async def test_polling_announces_new_chats_and_survives_errors(
     assert "reading Claude Code chats failed" in caplog.text
     await asyncio.sleep(0.02)
     assert len(setup.published) == 1
+
+
+async def test_archiving_marks_the_chat_and_announces_its_repo(
+    setup: Setup, clock: FakeClock, db: Database
+) -> None:
+    setup.claude.write_chat(setup.root, CHAT_A, simple_chat(), modified=T2)
+    setup.claude.write_chat(setup.root, CHAT_B, simple_chat("Second"), modified=T1)
+    await setup.chats.refresh()
+    setup.published.clear()
+
+    archived = await setup.chats.set_archived(CHAT_A, archived=True)
+    clock.advance(timedelta(hours=1))
+    again = await setup.chats.set_archived(CHAT_A, archived=True)
+    listed = await setup.chats.list_chats("repo")
+    row = await db.fetch_one(
+        "SELECT archived_at FROM claude_chat_archive WHERE chat_id = ?", (CHAT_A,)
+    )
+
+    assert (archived.id, archived.archived, again.archived) == (CHAT_A, True, True)
+    # Archived chats stay in the list, marked, for clients to group.
+    assert [(chat.id, chat.archived) for chat in listed] == [(CHAT_A, True), (CHAT_B, False)]
+    # Archiving again changes nothing: no second event, the first archive time stays.
+    assert setup.published == [(types.CLAUDE_CHATS_UPDATED, {"repos": ["repo"]})]
+    assert row is not None
+    assert datetime.fromisoformat(row["archived_at"]) == clock.now() - timedelta(hours=1)
+
+    restored = await setup.chats.set_archived(CHAT_A, archived=False)
+    await setup.chats.set_archived(CHAT_A, archived=False)
+
+    assert restored.archived is False
+    assert setup.published == [(types.CLAUDE_CHATS_UPDATED, {"repos": ["repo"]})] * 2
+    assert await db.fetch_all("SELECT * FROM claude_chat_archive") == []
+
+
+async def test_archive_state_outlives_the_catalog(setup: Setup) -> None:
+    setup.claude.write_chat(setup.root, CHAT_A, simple_chat())
+    await setup.chats.set_archived(CHAT_A, archived=True)
+
+    (chat,) = await setup.build(setup.claude.root).list_chats()
+
+    assert chat.archived is True
+
+
+async def test_archiving_an_unknown_chat_is_not_found(setup: Setup) -> None:
+    with pytest.raises(ClaudeChatNotFoundError, match="unknown Claude Code chat"):
+        await setup.chats.set_archived(CHAT_A, archived=True)
+
+    assert await setup.archive.archived_ids() == set()
