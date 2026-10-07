@@ -36,12 +36,6 @@
   --st-int: var(--status-interrupted-fill);
   --int-t: var(--status-interrupted-text);
   --int-soft: var(--status-interrupted-soft);
-  --g1: var(--glass-tint-regular);
-  --g2: var(--glass-tint-strong);
-  --g3: var(--glass-tint-clear);
-  --g-brd: var(--glass-border);
-  --spec: var(--glass-specular);
-  --gsh: var(--glass-shadow);
   --accent: var(--accent-fill);
   --on-accent: var(--accent-on);
   --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -49,6 +43,44 @@
   --on-bubble: var(--on-accent);
   --sat: max(env(safe-area-inset-top), 12px);
   --sab: max(env(safe-area-inset-bottom), 12px);
+}
+/* The glass theme (data-glass on <html>, or on any element for a small preview). Declared on
+   [data-glass] too, so the aliases resolve again inside a preview. Phone radii follow the
+   theme's radii with the phone's larger sizes; Clear keeps the original phone values. */
+:root,
+[data-glass] {
+  --g1: var(--glass-tint);
+  --g2: var(--glass-surface);
+  --g3: var(--glass-surface-subtle);
+  --g-brd: var(--glass-stroke);
+  --g-edge: var(--glass-edge);
+  --spec: var(--glass-highlight);
+  --rim: var(--glass-rim);
+  --gsh: var(--glass-shadow-color);
+  --shell: var(--glass-shell);
+  --blur: var(--glass-backdrop-blur);
+  --gsat: var(--glass-backdrop-saturation);
+  --gfilter: blur(var(--blur)) saturate(var(--gsat));
+  --gl-sh:
+    inset 0 1px 0 var(--spec), inset 0 -1px 0 var(--rim),
+    0 var(--glass-shadow-panel-y) var(--glass-shadow-panel-blur) var(--glass-shadow-panel-spread)
+      var(--gsh);
+  --sheet-sh:
+    inset 0 1px 0 var(--spec), 0 0 0 0.5px var(--g-edge),
+    0 calc(var(--glass-shadow-window-near-y) * -1) var(--glass-shadow-window-near-blur)
+      var(--glass-shadow-window-near-spread) var(--gsh);
+  --r-sheet: calc(var(--glass-radius-window) + 6px);
+  --r-big: calc(var(--glass-radius-panel) + 6px);
+  --r-card: calc(var(--glass-radius-panel) + 2px);
+  --r-pane: var(--glass-radius-pane);
+  --r-inner: var(--glass-radius-card);
+  --r-tab: var(--glass-radius-tab);
+  --r-item: var(--glass-radius-item);
+  --r-sm: var(--glass-radius-small);
+  /* Pills in most themes, rounded rectangles in Smoke. */
+  --r-ctl: var(--glass-radius-control);
+  --r-ctl-lg: calc(var(--glass-radius-control) + 4px);
+  --gap: var(--glass-spacing-gap);
 }
 :root[data-bubble="neutral"] {
   --bubble: var(--surface-neutral-bubble);
@@ -108,6 +140,13 @@ code {
   inset: 0;
   z-index: -1;
 }
+/* The theme's shell tint over the wallpaper, as the window body tints the Mac desktop. */
+.wall::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--shell);
+}
 .app {
   position: fixed;
   inset: 0;
@@ -133,12 +172,10 @@ code {
 
 .gl {
   background: var(--g1);
-  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--gfilter);
+  backdrop-filter: var(--gfilter);
   border: 1px solid var(--g-brd);
-  box-shadow:
-    inset 0 1px 0 var(--spec),
-    0 12px 32px -16px var(--gsh);
+  box-shadow: var(--gl-sh);
 }
 .gl2 {
   background: var(--g2);
@@ -217,7 +254,7 @@ code {
   gap: 6px;
   height: 22px;
   padding: 0 9px 0 8px;
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -231,7 +268,7 @@ code {
   gap: 5px;
   height: 22px;
   padding: 0 8px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   background: var(--fill);
   font-size: 11.5px;
   color: var(--t2);
@@ -258,7 +295,7 @@ a.chip {
   gap: 6px;
   height: 28px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
@@ -388,7 +425,7 @@ a.chip {
 .mseg {
   display: inline-flex;
   padding: 2px;
-  border-radius: 9px;
+  border-radius: calc(var(--r-sm) + 2px);
   background: var(--fill);
   flex: none;
 }
@@ -397,7 +434,7 @@ a.chip {
   background: transparent;
   height: 32px;
   padding: 0 12px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   font-size: 13.5px;
   font-weight: 600;
   color: var(--t2);
@@ -416,7 +453,7 @@ a.chip {
   transform: translateX(-50%);
   z-index: 90;
   padding: 10px 16px;
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
   font-size: 14px;
   font-weight: 600;
   display: flex;

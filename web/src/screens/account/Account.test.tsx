@@ -6,7 +6,6 @@ import { STORAGE_KEY } from "../../appearance/appearance.ts";
 import { StoreProvider } from "../../store/StoreProvider.tsx";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
-import { defined } from "../../test/defined.ts";
 import { connector, month } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 import { UsageCalendar } from "./UsageCalendar.tsx";
@@ -252,25 +251,57 @@ describe("connectors", () => {
         manage_hint: "claude_code",
       }),
     ]);
-    const { push } = await openAccount(api);
+    const { push, user } = await openAccount(api);
 
-    const ai = defined((await screen.findByText("claude.ai connectors")).parentElement);
+    const aiToggle = await screen.findByRole("button", { name: /claude\.ai connectors/ });
+    const localToggle = screen.getByRole("button", { name: /Plugins and local servers/ });
+    // Closed by default, with a count and what needs the user.
+    expect(aiToggle).toHaveAttribute("aria-expanded", "false");
+    expect(localToggle).toHaveAttribute("aria-expanded", "false");
+    expect(aiToggle).toHaveTextContent("claude.ai connectors1 needs attention2");
+    expect(localToggle).toHaveTextContent("Plugins and local servers2 need attention4");
+    expect(within(aiToggle).getByText("1 needs attention").parentElement).toHaveClass("s-wait");
+    expect(within(localToggle).getByText("2 need attention").parentElement).toHaveClass("s-fail");
+    expect(screen.queryByText("Gmail")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /claude\.ai connectors/ })).toBeNull();
+
+    await user.click(aiToggle);
+    expect(aiToggle).toHaveAttribute("aria-expanded", "true");
+    const ai = screen.getByRole("region", { name: /claude\.ai connectors/ });
+    expect(aiToggle).toHaveAttribute("aria-controls", ai.id);
     expect(within(ai).getByText("Gmail")).toBeInTheDocument();
     expect(within(ai).getByText("Sign in on claude.ai")).toBeInTheDocument();
-    const local = defined(screen.getByText("Plugins and local servers").parentElement);
+    expect(screen.queryByText("spawn ENOENT")).not.toBeInTheDocument();
+
+    await user.click(localToggle);
+    const local = screen.getByRole("region", { name: /Plugins and local servers/ });
     expect(within(local).getAllByText("Set up with /mcp in Claude Code")).toHaveLength(3);
     expect(within(local).getByText("spawn ENOENT")).toBeInTheDocument();
     expect(within(local).getByText("disabled")).toBeInTheDocument();
     expect(within(local).getByText("Connecting")).toBeInTheDocument();
 
+    await user.click(aiToggle);
+    expect(aiToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Gmail")).not.toBeInTheDocument();
+
     push({ id: 3, type: "connectors.updated", payload: { connectors: [] } });
     expect(screen.getByText(/None reported yet/)).toBeInTheDocument();
+  });
+
+  it("shows no attention hint when every connector in a group is fine", async () => {
+    const api = fakeApi();
+    api.connectors.mockResolvedValue([connector()]);
+    await openAccount(api);
+
+    const toggle = await screen.findByRole("button", { name: /claude\.ai connectors/ });
+    expect(toggle).toHaveTextContent(/^claude\.ai connectors1$/);
+    expect(screen.queryByRole("button", { name: /Plugins and local servers/ })).toBeNull();
   });
 });
 
 describe("appearance", () => {
   afterEach(() => {
-    for (const name of ["data-theme", "data-accent", "data-bubble"]) {
+    for (const name of ["data-theme", "data-accent", "data-bubble", "data-glass"]) {
       document.documentElement.removeAttribute(name);
     }
   });
@@ -295,6 +326,7 @@ describe("appearance", () => {
       accent: "ocean",
       bubble: "neutral",
       wallpaper: "sky",
+      glass: "clear",
     });
 
     await user.click(screen.getByRole("button", { name: "Auto" }));
@@ -303,5 +335,52 @@ describe("appearance", () => {
     expect(root).not.toHaveAttribute("data-theme");
     expect(root).not.toHaveAttribute("data-accent");
     expect(root).not.toHaveAttribute("data-bubble");
+  });
+
+  it("switches the glass theme at once, previews every theme and describes the chosen one", async () => {
+    const storage = memoryStorage();
+    const { user } = await openAccount(fakeApi(), storage);
+    const root = document.documentElement;
+    const group = screen.getByRole("group", { name: "Glass" });
+    const choices = within(group).getAllByRole("button");
+
+    expect(choices.map((choice) => choice.textContent)).toEqual([
+      "Clear",
+      "Frosted",
+      "Smoke",
+      "Blue Grey",
+      "Deep",
+    ]);
+    expect(
+      choices.map((choice) => choice.querySelector("[data-glass]")?.getAttribute("data-glass")),
+    ).toEqual(["clear", "frosted", "smoke", "bluegrey", "deep"]);
+    expect(root).not.toHaveAttribute("data-glass");
+    expect(group).toHaveAccessibleDescription(/barely tinted/i);
+
+    await user.click(within(group).getByRole("button", { name: "Smoke" }));
+
+    expect(root).toHaveAttribute("data-glass", "smoke");
+    expect(within(group).getByRole("button", { name: "Smoke" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(group).getByRole("button", { name: "Clear" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(group).toHaveAccessibleDescription(/smoked glass/i);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toMatchObject({ glass: "smoke" });
+
+    await user.click(within(group).getByRole("button", { name: "Clear" }));
+    expect(root).not.toHaveAttribute("data-glass");
+  });
+
+  it("restores the saved glass theme on start", async () => {
+    const storage = memoryStorage();
+    storage.setItem(STORAGE_KEY, JSON.stringify({ glass: "frosted" }));
+
+    await renderApp({ storage });
+
+    expect(document.documentElement).toHaveAttribute("data-glass", "frosted");
   });
 });

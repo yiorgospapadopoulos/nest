@@ -96,7 +96,7 @@
   transform: none;
 }
 .lgrp {
-  border-radius: 22px;
+  border-radius: var(--r-card);
   overflow: hidden;
 }
 .lgrp.pad {
@@ -109,7 +109,7 @@
   right: 14px;
   bottom: calc(var(--sab) - 8px);
   height: 64px;
-  border-radius: 32px;
+  border-radius: calc(var(--r-ctl) + 6px);
   display: flex;
   padding: 6px;
   z-index: 30;
@@ -121,7 +121,7 @@
   min-height: 52px;
   border: 0;
   background: transparent;
-  border-radius: 26px;
+  border-radius: var(--r-ctl);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -159,13 +159,13 @@
 /* inbox */
 .swr {
   position: relative;
-  border-radius: 22px;
-  margin-bottom: 10px;
+  border-radius: var(--r-card);
+  margin-bottom: var(--gap);
 }
 .swbg {
   position: absolute;
   inset: 0;
-  border-radius: 22px;
+  border-radius: var(--r-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -203,7 +203,7 @@
 }
 .card {
   position: relative;
-  border-radius: 22px;
+  border-radius: var(--r-card);
   padding: 14px 14px 12px;
   touch-action: pan-y;
   transition: transform 0.28s var(--motion-easing-glide);
@@ -273,7 +273,7 @@ a.b {
 .cmdbox {
   font: 600 14px/1.4 var(--mono);
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
   background: var(--code-bg);
   box-shadow: inset 0 0 0 1px var(--hair);
   word-break: break-all;
@@ -289,7 +289,7 @@ a.b {
   height: 44px;
   font-size: 14px;
   flex: 1 1 auto;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   min-width: 0;
   padding: 0 10px;
 }
@@ -331,7 +331,7 @@ a.b {
   width: 100%;
   min-height: 52px;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   border: 1px solid var(--hair);
   background: var(--g3);
   text-align: left;
@@ -376,7 +376,7 @@ a.b {
   font-weight: 700;
   color: var(--rev-t);
   background: var(--rev-soft);
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
   padding: 1px 7px;
 }
 .fin {
@@ -384,7 +384,7 @@ a.b {
   width: 100%;
   height: 44px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
   background: var(--g3);
   box-shadow: inset 0 0 0 1px var(--hair);
   padding: 0 12px;
@@ -407,7 +407,7 @@ a.b {
   margin-top: 4px;
 }
 .allclear {
-  border-radius: 26px;
+  border-radius: var(--r-big);
   padding: 44px 20px;
   display: grid;
   justify-items: center;
@@ -445,11 +445,11 @@ a.b {
   gap: 8px;
   height: 44px;
   padding: 0 14px 0 10px;
-  border-radius: 22px;
+  border-radius: var(--r-ctl-lg);
   border: 1px solid var(--g-brd);
   background: var(--g1);
-  -webkit-backdrop-filter: blur(var(--glass-blur-normal)) saturate(170%);
-  backdrop-filter: blur(var(--glass-blur-normal)) saturate(170%);
+  -webkit-backdrop-filter: var(--gfilter);
+  backdrop-filter: var(--gfilter);
   font-size: 14px;
   font-weight: 600;
   color: var(--t2);
@@ -630,7 +630,7 @@ a.b {
 .cico {
   width: 30px;
   height: 30px;
-  border-radius: 9px;
+  border-radius: calc(var(--r-sm) + 2px);
   display: grid;
   place-items: center;
   background: var(--fill2);
@@ -700,7 +700,7 @@ a.b {
   color: var(--t1);
   background: var(--fill);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 6px 8px;
 }
 /* The agent defaults' choices; the native list opens on iPhone. */
@@ -710,7 +710,7 @@ a.b {
   color: var(--t1);
   background: var(--fill);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 6px 8px;
   min-width: 0;
   max-width: 60%;
@@ -758,7 +758,7 @@ a.b {
   margin: 6px 0 12px;
 }
 .utot div {
-  border-radius: 10px;
+  border-radius: var(--r-item);
   background: var(--fill);
   padding: 8px 10px;
 }
@@ -801,7 +801,7 @@ a.b {
   position: relative;
   height: 44px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--fill);
   padding: 4px 5px;
   text-align: left;
@@ -921,13 +921,13 @@ a.b {
   cursor: pointer;
   font-size: 11px;
   color: var(--t2);
-  border-radius: 10px;
+  border-radius: var(--r-item);
 }
 .wpt i {
   display: block;
   width: 70px;
   height: 46px;
-  border-radius: 9px;
+  border-radius: calc(var(--r-item) - 1px);
   box-shadow: inset 0 0 0 1px var(--hair);
 }
 .wpt[aria-pressed="true"] {
@@ -940,6 +940,56 @@ a.b {
     0 0 0 3.5px var(--t1);
 }
 
+/* The glass themes, each previewed in its own glass over the chosen wallpaper. */
+.gpl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.gpt {
+  min-width: 0;
+  text-align: center;
+  line-height: 1.2;
+}
+.gpt i {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+.gpt i::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--shell);
+}
+.gpt span {
+  position: absolute;
+  inset: 7px 7px 7px 9px;
+  border-radius: min(var(--r-pane), 9px);
+  background: var(--g1);
+  border: 1px solid var(--g-brd);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    inset 0 -1px 0 var(--rim),
+    0 4px 9px -4px var(--gsh);
+  -webkit-backdrop-filter: var(--gfilter);
+  backdrop-filter: var(--gfilter);
+}
+.gpt b {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  width: 20px;
+  height: 10px;
+  /* A pill, or a rounded rectangle in Smoke, at a quarter of the phone size. */
+  border-radius: calc(min(var(--r-ctl), 20px) / 4);
+  background: var(--accent);
+}
+.gdesc {
+  margin: 0 2px;
+  min-height: 2.9em;
+}
+
 /* pairing and notices */
 .center {
   min-height: 100%;
@@ -950,7 +1000,7 @@ a.b {
 .pair {
   width: 100%;
   max-width: 380px;
-  border-radius: 26px;
+  border-radius: var(--r-big);
   padding: 24px 20px 20px;
   display: grid;
   gap: 6px;
@@ -976,7 +1026,7 @@ a.b {
 .pair .b {
   height: 48px;
   font-size: 15px;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   margin-top: 12px;
 }
 .err {
@@ -1014,7 +1064,7 @@ a.b {
 /* The per-device "Show automated chats" switch under a project's chats. */
 .pauto {
   margin-top: 18px;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   min-height: 46px;
   font-size: 14px;
   color: var(--t2);
@@ -1028,7 +1078,7 @@ a.b {
   height: 44px;
   padding: 0 6px 0 14px;
   margin: 0 0 12px;
-  border-radius: 22px;
+  border-radius: var(--r-ctl-lg);
   color: var(--t3);
 }
 .sfield > .ic {
@@ -1055,7 +1105,7 @@ a.b {
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 16px;
+  border-radius: var(--r-ctl);
   background: var(--fill);
   color: var(--t2);
   display: grid;
@@ -1069,7 +1119,7 @@ a.b {
 }
 .sres {
   display: grid;
-  gap: 12px;
+  gap: var(--gap);
 }
 .sres > .note {
   margin: 0 6px;
@@ -1141,7 +1191,7 @@ a.b {
   font-weight: 700;
   color: var(--wait-t);
   background: var(--wait-soft);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 2px 7px;
 }
 .ck-k.st {

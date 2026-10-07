@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
-import { ACCENTS, THEMES, WALLPAPERS } from "../../appearance/appearance.ts";
+import { ACCENTS, GLASSES, THEMES, WALLPAPERS } from "../../appearance/appearance.ts";
 import { useAppearance } from "../../appearance/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
 
 const title = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
-/** Theme, accent, message bubble and wallpaper, kept on this device. */
+/** Theme, glass, accent, message bubble and wallpaper, kept on this device. */
 export function AppearanceCard() {
   const { appearance, change } = useAppearance();
   return (
@@ -29,6 +29,43 @@ export function AppearanceCard() {
               </button>
             ))}
           </div>
+        </div>
+        <div className="srow col">
+          <span id="glass-label">Glass</span>
+          <div
+            className="gpl"
+            role="group"
+            aria-labelledby="glass-label"
+            aria-describedby="glass-description"
+          >
+            {GLASSES.map((glass) => (
+              <button
+                key={glass.id}
+                className="wpt gpt"
+                aria-pressed={appearance.glass === glass.id}
+                onClick={() => {
+                  change({ glass: glass.id });
+                }}
+              >
+                {/* A small pane and control in this theme's own glass, over the wallpaper. */}
+                <i
+                  className={`wallpaper-${appearance.wallpaper}`}
+                  data-glass={glass.id}
+                  aria-hidden="true"
+                >
+                  <span>
+                    <b />
+                  </span>
+                </i>
+                {glass.label}
+              </button>
+            ))}
+          </div>
+          {GLASSES.filter((glass) => glass.id === appearance.glass).map((glass) => (
+            <p key={glass.id} className="note gdesc" id="glass-description">
+              {glass.description}
+            </p>
+          ))}
         </div>
         <div className="srow col">
           <span id="accent-label">Accent</span>

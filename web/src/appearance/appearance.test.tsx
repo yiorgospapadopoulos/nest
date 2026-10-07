@@ -5,6 +5,7 @@ import { memoryStorage } from "../test/render.tsx";
 import {
   applyAppearance,
   DEFAULT_APPEARANCE,
+  GLASSES,
   loadAppearance,
   saveAppearance,
   STORAGE_KEY,
@@ -34,6 +35,36 @@ describe("appearance", () => {
     expect(loadAppearance(broken)).toEqual(DEFAULT_APPEARANCE);
   });
 
+  it("loads the saved glass theme and falls back to Clear for an unknown one", () => {
+    const storage = memoryStorage();
+
+    storage.setItem(STORAGE_KEY, JSON.stringify({ glass: "smoke" }));
+    expect(loadAppearance(() => storage).glass).toBe("smoke");
+    for (const glass of ["sand", 3, null]) {
+      storage.setItem(STORAGE_KEY, JSON.stringify({ glass }));
+      expect(loadAppearance(() => storage).glass).toBe("clear");
+    }
+    expect(DEFAULT_APPEARANCE.glass).toBe("clear");
+  });
+
+  it("offers the five approved glass themes, Clear first, each described", () => {
+    expect(GLASSES.map((glass) => glass.id)).toEqual([
+      "clear",
+      "frosted",
+      "smoke",
+      "bluegrey",
+      "deep",
+    ]);
+    expect(GLASSES.map((glass) => glass.label)).toEqual([
+      "Clear",
+      "Frosted",
+      "Smoke",
+      "Blue Grey",
+      "Deep",
+    ]);
+    for (const glass of GLASSES) expect(glass.description).toMatch(/^[A-Z].+\.$/);
+  });
+
   it("saves quietly even when storage is unavailable", () => {
     const storage = memoryStorage();
 
@@ -46,12 +77,19 @@ describe("appearance", () => {
   it("sets and clears the token data attributes", () => {
     const root = document.createElement("div");
 
-    applyAppearance(root, { theme: "light", accent: "teal", bubble: "neutral", wallpaper: "sage" });
-    expect([root.dataset.theme, root.dataset.accent, root.dataset.bubble]).toEqual([
-      "light",
-      "teal",
-      "neutral",
-    ]);
+    applyAppearance(root, {
+      theme: "light",
+      accent: "teal",
+      bubble: "neutral",
+      wallpaper: "sage",
+      glass: "deep",
+    });
+    expect([
+      root.dataset.theme,
+      root.dataset.accent,
+      root.dataset.bubble,
+      root.dataset.glass,
+    ]).toEqual(["light", "teal", "neutral", "deep"]);
     applyAppearance(root, DEFAULT_APPEARANCE);
     expect(root.attributes).toHaveLength(0);
   });
@@ -62,5 +100,6 @@ describe("appearance", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dark" }));
 
     expect(screen.getByRole("button", { name: "Auto" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Clear" })).toHaveAttribute("aria-pressed", "true");
   });
 });
