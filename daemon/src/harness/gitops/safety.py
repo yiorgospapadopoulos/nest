@@ -43,6 +43,13 @@ UNSAFE_REASONS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"hook\.", "runs a program"),
         (r"protocol\.", "allows other transports"),
         (r"core\.fsmonitor$", "runs a program"),
+        (r"diff\.external$", "runs a program"),
+        (r"diff\..*\.(?:command|textconv)$", "runs a program"),
+        (r"merge\..*\.driver$", "runs a program"),
+        (r"(?:core|sequence)\.editor$", "runs a program"),
+        (r"core\.pager$", "runs a program"),
+        (r"pager\.", "runs a program"),
+        (r"interactive\.difffilter$", "runs a program"),
     )
 )
 

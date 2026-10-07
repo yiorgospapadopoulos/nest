@@ -128,3 +128,24 @@ async def test_push_urls_are_empty_without_an_origin(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
 
     assert await push_urls(repo, run_command) == []
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        local("diff.external", "/opt/evil"),
+        local("diff.secret.command", "/opt/evil"),
+        local("diff.secret.textconv", "/opt/evil"),
+        local("merge.secret.driver", "/opt/evil %O %A %B"),
+        local("core.editor", "/opt/evil"),
+        local("sequence.editor", "/opt/evil"),
+        local("core.pager", "/opt/evil"),
+        local("pager.log", "/opt/evil"),
+        local("interactive.difffilter", "/opt/evil"),
+    ],
+)
+def test_settings_that_run_diff_merge_editor_or_pager_programs_are_unsafe(
+    setting: RepoSetting,
+) -> None:
+    """A security review flagged programs git can run from these keys during diffs and commits."""
+    assert unsafe_settings([setting]) == [f"{setting.key} (runs a program)"]

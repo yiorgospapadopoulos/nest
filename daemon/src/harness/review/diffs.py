@@ -22,7 +22,10 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
     ref = base or EMPTY_TREE
     safe = await _safe_options(cwd)
     # The same rename detection for both, so git lists the files in the same order.
-    statuses = await run_git([*safe, "diff", "-z", "--name-status", "-M", ref, "--"], cwd)
+    statuses = await run_git(
+        [*safe, "diff", "--no-ext-diff", "--no-textconv", "-z", "--name-status", "-M", ref, "--"],
+        cwd,
+    )
     patch = await run_git(
         [*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M", ref, "--"], cwd
     )
