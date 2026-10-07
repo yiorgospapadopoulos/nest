@@ -9,6 +9,7 @@ struct UsagePopover: View {
     static let trailingInset = 190.0
 
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let usage = shell.model.usage
@@ -45,8 +46,8 @@ struct UsagePopover: View {
         .foregroundStyle(Palette.t1)
         .padding(14)
         .frame(width: 360)
-        .sheetGlass(radius: 18)
-        .shadow(color: Palette.glassShadow, radius: 24, y: 14)
+        .sheetGlass(radius: glass.radius.panel)
+        .shadow(color: glass.shadow, radius: 24, y: 14)
         .task { try? await usage.loadMonth() }
     }
 
@@ -293,6 +294,7 @@ private struct DayCell: View {
 
 private struct DayTip: View {
     let detail: (title: String, detail: String)
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -301,6 +303,6 @@ private struct DayTip: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .sheetGlass(radius: 9)
+        .sheetGlass(radius: min(glass.radius.item, 9))
     }
 }

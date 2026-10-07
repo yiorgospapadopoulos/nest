@@ -1,11 +1,14 @@
 import AppKit
 import CoreImage
+import HarnessKit
 import SwiftUI
 
 /// Makes the window see-through: non-opaque with a clear background and its content
 /// under a transparent title bar, with the system's behind-window blur beneath
 /// everything. The blur turns opaque by itself with Reduce Transparency.
 struct SeeThroughWindow: NSViewRepresentable {
+    /// The theme's material, lighter to denser (see `WindowGlass`).
+    let material: WindowGlass.Material
     @Environment(\.flatGlass) private var flat
 
     func makeNSView(context: Context) -> NSView {
@@ -13,12 +16,27 @@ struct SeeThroughWindow: NSViewRepresentable {
         guard !flat else { return NSView() }
         let view = SeeThroughEffectView()
         view.blendingMode = .behindWindow
-        view.material = .underWindowBackground
         view.state = .active
+        updateNSView(view, context: context)
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let effect = view as? NSVisualEffectView else { return }
+        // Clear has no window blur: the view stays (it keeps the window see-through) but
+        // draws nothing.
+        effect.alphaValue = material == .none ? 0 : 1
+        effect.material = Self.material(material)
+    }
+
+    /// The system materials for the theme's blur. macOS fixes the blur radius; the
+    /// materials differ in how much they frost and tint what is behind.
+    static func material(_ material: WindowGlass.Material) -> NSVisualEffectView.Material {
+        switch material {
+        case .none, .medium: .sidebar
+        case .heavy: .popover
+        }
+    }
 }
 
 private final class SeeThroughEffectView: NSVisualEffectView {

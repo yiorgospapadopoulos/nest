@@ -14,38 +14,6 @@ public enum BubbleStyle: String, Sendable, CaseIterable {
     case accent, neutral
 }
 
-/// What shows behind the window's glass: the desktop itself, or a painted wallpaper.
-public enum WallpaperName: String, Sendable, CaseIterable {
-    /// See-through: the desktop and windows behind, blurred by the system.
-    case desktop
-    case stone, sage, sky, slate
-
-    /// The Settings label.
-    public var label: String {
-        self == .desktop ? "Desktop" : rawValue.capitalized
-    }
-}
-
-/// How the window's background is drawn.
-public enum WindowBackdrop: Sendable, Hashable {
-    /// Non-opaque, with the system's behind-window blur.
-    case desktop
-    /// A wallpaper painted behind the glass.
-    case painted(WallpaperName)
-    /// Reduce Transparency with the see-through choice: an opaque page color.
-    case opaque
-
-    /// Reduce Transparency turns the see-through window opaque; painted wallpapers are
-    /// opaque already.
-    public static func of(_ wallpaper: WallpaperName, reduceTransparency: Bool) -> Self {
-        guard wallpaper == .desktop else { return .painted(wallpaper) }
-        return reduceTransparency ? .opaque : .desktop
-    }
-
-    /// Reading surfaces (the transcript and composer) take a denser tint over the desktop.
-    public var isSeeThrough: Bool { self == .desktop }
-}
-
 /// The app's appearance, Claude Code chat listing and notifications, kept between
 /// launches. The defaults for new chats live on the daemon (`AgentsStore`).
 @MainActor @Observable
@@ -54,7 +22,7 @@ public final class SettingsStore {
         static let theme = "appearance.theme"
         static let accent = "appearance.accent"
         static let bubble = "appearance.bubble"
-        static let wallpaper = "appearance.wallpaper"
+        static let glass = "appearance.glass"
         static let notifications = "notifications."
         static let automatedChats = "claudeChats.showAutomated"
     }
@@ -68,8 +36,10 @@ public final class SettingsStore {
     public var bubble: BubbleStyle {
         didSet { save(bubble.rawValue, Key.bubble) }
     }
-    public var wallpaper: WallpaperName {
-        didSet { save(wallpaper.rawValue, Key.wallpaper) }
+    /// The glass theme; a value saved by an older version under `appearance.wallpaper`
+    /// stays in the store, unread.
+    public var glass: GlassStyle {
+        didSet { save(glass.name, Key.glass) }
     }
     /// List Claude Code chats that scripts and tools started, not only the user's own.
     public var showAutomatedChats: Bool {
@@ -93,7 +63,7 @@ public final class SettingsStore {
         theme = store.string(forKey: Key.theme).flatMap(ThemeMode.init) ?? .auto
         accent = store.string(forKey: Key.accent).flatMap(AccentName.init) ?? .graphite
         bubble = store.string(forKey: Key.bubble).flatMap(BubbleStyle.init) ?? .accent
-        wallpaper = store.string(forKey: Key.wallpaper).flatMap(WallpaperName.init) ?? .desktop
+        glass = Theme.glass(named: store.string(forKey: Key.glass) ?? "")
         showAutomatedChats = store.string(forKey: Key.automatedChats) == "on"
         var notifications = NotificationPreferences()
         for (name, path) in NotificationPreferences.fields {

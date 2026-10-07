@@ -55,17 +55,23 @@ private struct AppearanceSection: View {
     var body: some View {
         let settings = shell.settings
         SheetSection(title: "Appearance") {
-            SheetRow(label: "Theme", first: true) {
+            SheetRow(label: "Mode", first: true) {
                 Segmented(
                     options: [(ThemeMode.auto, "Auto"), (.light, "Light"), (.dark, "Dark")],
                     selection: settings.theme
                 ) { settings.theme = $0 }
             }
-            Text("Color palette")
-                .font(.ui(TypeSize.label, .semibold))
-                .foregroundStyle(Palette.t2)
-                .padding(.top, 10)
-            SheetRow(label: "Accent", first: true) {
+            SheetRow(label: "Glass") {
+                HStack(spacing: 8) {
+                    ForEach(DesignTokens.GlassTheme.all, id: \.name) { style in
+                        GlassChoice(style: style, selected: settings.glass == style) {
+                            settings.glass = style
+                        }
+                    }
+                }
+                .fixedSize()
+            }
+            SheetRow(label: "Accent") {
                 HStack(spacing: 8) {
                     ForEach(AccentName.allCases, id: \.self) { name in
                         Swatch(name: name, selected: settings.accent == name) {
@@ -79,15 +85,6 @@ private struct AppearanceSection: View {
                     options: [(BubbleStyle.accent, "Accent"), (.neutral, "Neutral")],
                     selection: settings.bubble
                 ) { settings.bubble = $0 }
-            }
-            SheetRow(label: "Wallpaper") {
-                HStack(spacing: 8) {
-                    ForEach(WallpaperName.allCases, id: \.self) { name in
-                        WallpaperChoice(name: name, selected: settings.wallpaper == name) {
-                            settings.wallpaper = name
-                        }
-                    }
-                }
             }
         }
     }
@@ -120,21 +117,25 @@ private struct Swatch: View {
                 }
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .help(name.rawValue.capitalized)
         .accessibilityLabel(name.rawValue.capitalized)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-private struct WallpaperChoice: View {
-    let name: WallpaperName
+/// A glass theme's preview: a small pane of that glass over a bit of desktop, with the
+/// theme's name under it.
+private struct GlassChoice: View {
+    let style: GlassStyle
     let selected: Bool
     let pick: () -> Void
 
     var body: some View {
         Button(action: pick) {
             VStack(spacing: 4) {
-                preview
+                GlassSample()
+                    .environment(\.glass, GlassPalette.of(style))
                     .frame(width: 62, height: 38)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .overlay(
@@ -148,29 +149,50 @@ private struct WallpaperChoice: View {
                                 .strokeBorder(Palette.t1, lineWidth: 1.5)
                         }
                     }
-                Text(name.label)
+                Text(style.displayName)
                     .font(.ui(TypeSize.caption, selected ? .semibold : .regular))
+                    .lineLimit(1)
                     .foregroundStyle(selected ? Palette.t1 : Palette.t2)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(name == .desktop ? "See-through: the desktop shows behind the glass" : name.label)
-        .accessibilityLabel(name == .desktop ? "Desktop, see-through" : name.label)
+        .pointerStyle(.link)
+        .help(style.summary)
+        .accessibilityLabel("\(style.displayName) glass")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
+}
 
-    /// The desktop choice shows a window over a blurred desktop; the others their paint.
-    @ViewBuilder private var preview: some View {
-        if name == .desktop {
-            ZStack {
-                Palette.fill
-                Image(systemName: "macwindow.on.rectangle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Palette.t2)
-            }
-        } else {
-            Wallpaper(name: name)
+/// The mockup's `.wpt` preview: a cool desktop with a warm spot, under a pane of glass
+/// drawn flat with the theme's tint, edges and shadow.
+private struct GlassSample: View {
+    @Environment(\.glass) private var glass
+    @Environment(\.colorScheme) private var scheme
+
+    private static let sky = Color(red: 0.77, green: 0.83, blue: 0.88)
+    private static let moss = Color(red: 0.62, green: 0.70, blue: 0.61)
+    private static let sun = Color(red: 0.95, green: 0.62, blue: 0.35)
+    private static let night = Color(red: 0.07, green: 0.10, blue: 0.15)
+    private static let nightMoss = Color(red: 0.14, green: 0.20, blue: 0.16)
+    private static let ember = Color(red: 0.55, green: 0.35, blue: 0.22)
+
+    var body: some View {
+        let dark = scheme == .dark
+        let shape = glass.rounded(min(glass.radius.pane, 7))
+        ZStack {
+            LinearGradient(
+                colors: dark ? [Self.night, Self.nightMoss] : [Self.sky, Self.moss],
+                startPoint: .top, endPoint: .bottom)
+            Circle()
+                .fill(dark ? Self.ember : Self.sun)
+                .frame(width: 22, height: 22)
+                .offset(x: 14, y: -6)
+            shape
+                .fill(glass.tint)
+                .overlay(GlassEdges(shape: shape))
+                .shadow(color: glass.shadow, radius: 3, y: 3)
+                .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
         }
     }
 }
@@ -261,6 +283,7 @@ struct DropdownMenu<Items: View>: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }

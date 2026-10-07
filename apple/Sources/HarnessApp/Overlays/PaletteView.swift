@@ -6,6 +6,7 @@ import SwiftUI
 struct PaletteView: View {
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -85,8 +86,8 @@ struct PaletteView: View {
             }
         }
         .frame(width: 620)
-        .sheetGlass(radius: 22)
-        .shadow(color: Palette.glassShadow, radius: 30, y: 18)
+        .sheetGlass(radius: glass.paletteRadius)
+        .shadow(color: glass.shadow, radius: 30, y: 18)
         .onAppear { focused = true }
     }
 
@@ -139,6 +140,7 @@ private struct PaletteRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .onHover { inside in
             if inside {
                 shell.palette.select(item)

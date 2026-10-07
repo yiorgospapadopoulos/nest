@@ -4,14 +4,17 @@ import SwiftUI
 /// The bar over the project: name menu, branch, view switch and activity panel toggle.
 struct ProjectToolbar: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         let state = shell.projectState
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 ProjectMenu()
-                if let repo = shell.repo {
-                    Chip(icon: Icon.branch, text: repo.defaultBranch)
+                switch shell.repo?.badge {
+                case .branch(let branch): Chip(icon: Icon.branch, text: branch)
+                case .initGit: InitGitButton()
+                case nil: EmptyView()
                 }
             }
             ViewSwitch(view: state.view) { view in shell.update { $0.view = view } }
@@ -37,7 +40,37 @@ struct ProjectToolbar: View {
         }
         .padding(.leading, 6)
         .padding(.trailing, 2)
-        .frame(height: 48)
+        .frame(height: glass.spacing.toolbarHeight)
+    }
+}
+
+/// A plain folder's place for the branch: starts a chat that sets it up with git.
+private struct InitGitButton: View {
+    @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
+
+    var body: some View {
+        Button {
+            shell.setUpGit()
+        } label: {
+            HoverReader { hovering in
+                HStack(spacing: 5) {
+                    Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+                    Text("Init").font(.ui(TypeSize.label))
+                }
+                .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
+                .padding(.horizontal, 8)
+                .frame(height: 22)
+                .background(
+                    hovering ? Palette.fill2 : Palette.fill, in: glass.rounded(glass.radius.small)
+                )
+                .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help("Set this folder up as a git repository")
+        .accessibilityLabel("Init: set this folder up as a git repository")
     }
 }
 
@@ -97,6 +130,7 @@ private struct ProjectMenu: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }
@@ -109,6 +143,7 @@ private struct ProjectMenu: View {
 private struct ViewSwitch: View {
     let view: ProjectView
     let select: (ProjectView) -> Void
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 0) {
@@ -116,7 +151,7 @@ private struct ViewSwitch: View {
             segment(.board, "Board", Icon.board)
         }
         .padding(2)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(Palette.fill, in: glass.rounded(glass.radius.small + 2))
     }
 
     private func segment(_ value: ProjectView, _ title: String, _ icon: String) -> some View {
@@ -134,14 +169,15 @@ private struct ViewSwitch: View {
             .frame(height: 26)
             .background {
                 if selected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Palette.glassStrong)
-                        .shadow(color: Palette.glassShadow, radius: 1.5, y: 1)
+                    glass.rounded(glass.radius.small)
+                        .fill(glass.surface)
+                        .shadow(color: glass.shadow, radius: 1.5, y: 1)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

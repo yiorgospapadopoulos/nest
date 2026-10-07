@@ -4,12 +4,14 @@ import SwiftUI
 
 /// The project tabs across the top of the window, with the usage meter and search.
 struct TabStrip: View {
-    static let height = 46.0
     /// Room for the window's traffic lights.
     static let leadingInset = 86.0
 
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
     @State private var addingProject = false
+    /// Add folder was picked: the panel opens once the popover has gone.
+    @State private var choosingFolder = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 4) {
@@ -22,12 +24,12 @@ struct TabStrip: View {
                 UsageButton()
                 SearchButton()
             }
-            .frame(height: Self.height)
+            .frame(height: glass.spacing.stripHeight)
         }
         .padding(.leading, Self.leadingInset)
         .padding(.trailing, 12)
-        .frame(height: Self.height)
-        .background(Palette.strip)
+        .frame(height: glass.spacing.stripHeight)
+        .background(glass.strip)
         .background(WindowDragArea())
     }
 
@@ -38,12 +40,26 @@ struct TabStrip: View {
             Image(systemName: Icon.plus).font(.system(size: 13, weight: .medium))
         }
         .buttonStyle(StripIconStyle())
-        .padding(.bottom, 5)
+        .padding(.bottom, max(0, (glass.spacing.stripHeight - 30) / 2 - 3))
         .help("Open another project")
         .accessibilityLabel("Open another project")
         .popover(isPresented: $addingProject, arrowEdge: .bottom) {
-            AddProjectPopover { addingProject = false }
-                .environment(shell)
+            AddProjectPopover {
+                addingProject = false
+            } chooseFolder: {
+                choosingFolder = true
+                addingProject = false
+            }
+            .environment(shell)
+            .onDisappear {
+                guard choosingFolder else { return }
+                choosingFolder = false
+                // The next turn of the run loop, so the sheet slides down from the window
+                // instead of racing the popover's close.
+                DispatchQueue.main.async {
+                    FolderPicker.present { shell.addProject(at: $0) }
+                }
+            }
         }
     }
 }
@@ -53,10 +69,12 @@ private struct ProjectTab: View {
     let name: String
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
+    @Environment(\.glass) private var glass
     @State private var hovering = false
 
     var body: some View {
         let isCurrent = shell.project == name
+        let strip = glass.spacing.stripHeight
         let attention = shell.app.attention(of: name)
         let running = shell.sessions.sessions(in: name).contains {
             $0.state == .running || $0.state == .starting
@@ -80,14 +98,15 @@ private struct ProjectTab: View {
         .padding(.leading, 10)
         .padding(.trailing, 30)
         .frame(minWidth: 118, maxWidth: 196)
-        .frame(height: isCurrent ? 37 : 30)
+        .frame(height: isCurrent ? strip - 9 : strip - 16)
         .background {
             if isCurrent {
-                TabShape().fill(Palette.shell).padding(.horizontal, -12)
+                TabShape(radius: glass.radius.tab).fill(glass.shell)
+                    .padding(.horizontal, -glass.radius.tab)
             } else if glowing {
-                AttentionGlow(reduceMotion: reduceMotion)
+                AttentionGlow(reduceMotion: reduceMotion, radius: glass.radius.item)
             } else if hovering {
-                RoundedRectangle(cornerRadius: 10).fill(Palette.fill)
+                glass.rounded(glass.radius.item).fill(Palette.fill)
             }
         }
         .overlay(alignment: .trailing) {
@@ -104,6 +123,7 @@ private struct ProjectTab: View {
             }
         }
         .contentShape(Rectangle())
+        .pointerStyle(.link)
         .onTapGesture { shell.app.selectProject(name) }
         .onHover { hovering = $0 }
         .padding(.bottom, isCurrent ? 0 : 5)
@@ -144,9 +164,10 @@ struct TabShape: Shape {
 /// The amber glow of a background tab that needs the user; steady with Reduce Motion.
 private struct AttentionGlow: View {
     let reduceMotion: Bool
+    let radius: Double
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if reduceMotion {
             glow(shape, strong: true)
         } else {
@@ -246,6 +267,7 @@ private struct SearchButton: View {
 /// Open repos to pick from, or a folder to add.
 private struct AddProjectPopover: View {
     let dismiss: () -> Void
+    let chooseFolder: () -> Void
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -262,24 +284,35 @@ private struct AddProjectPopover: View {
             if !shell.app.closedRepos.isEmpty {
                 Divider().padding(.vertical, 4)
             }
-            MenuRow(icon: Icon.folder, title: "Add folder…", detail: nil) {
-                dismiss()
-                chooseFolder()
-            }
+            MenuRow(icon: Icon.folder, title: "Add folder…", detail: nil, action: chooseFolder)
         }
         .padding(10)
         .frame(width: 280)
     }
+}
 
-    private func chooseFolder() {
+/// The folder panel, as a sheet on the window; a window of its own only when there is none.
+@MainActor
+enum FolderPicker {
+    static func present(then open: @escaping @MainActor (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
         panel.prompt = "Open"
-        panel.message = "Choose a git repository to open as a project"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        shell.addProject(at: url)
+        panel.message = "Choose a folder to open as a project"
+        guard let window = NSApp.mainWindow ?? NSApp.keyWindow else {
+            if panel.runModal() == .OK, let url = panel.url {
+                open(url)
+            }
+            return
+        }
+        panel.beginSheetModal(for: window) { response in
+            if response == .OK, let url = panel.url {
+                open(url)
+            }
+        }
     }
 }
 
@@ -314,37 +347,40 @@ struct MenuRow: View {
             .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
-        .buttonStyle(RowHoverStyle(radius: 10))
+        .buttonStyle(RowHoverStyle())
     }
 }
 
 /// Fill-backed buttons of the strip (usage, search).
 struct StripFieldStyle: ButtonStyle {
+    @Environment(\.glass) private var glass
+
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
                 .frame(height: 30)
                 .background(
                     hovering || configuration.isPressed ? Palette.fill2 : Palette.fill,
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    in: glass.rounded(glass.radius.item)
                 )
                 .contentShape(Rectangle())
+                .pointerStyle(.link)
         }
     }
 }
 
 /// The strip's square icon buttons, such as add project.
 struct StripIconStyle: ButtonStyle {
+    @Environment(\.glass) private var glass
+
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
                 .foregroundStyle(Palette.t2)
                 .frame(width: 30, height: 30)
-                .background(
-                    hovering ? Palette.fill : .clear,
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                )
+                .background(hovering ? Palette.fill : .clear, in: glass.rounded(glass.radius.item))
                 .contentShape(Rectangle())
+                .pointerStyle(.link)
         }
     }
 }
@@ -360,13 +396,15 @@ struct SmallSquareStyle: ButtonStyle {
                     hovering ? Palette.fill2 : .clear, in: RoundedRectangle(cornerRadius: 5)
                 )
                 .contentShape(Rectangle())
+                .pointerStyle(.link)
         }
     }
 }
 
-/// List rows that highlight on hover.
+/// List rows that highlight on hover, in the theme's item corners unless given others.
 struct RowHoverStyle: ButtonStyle {
-    var radius = 10.0
+    var radius: Double?
+    @Environment(\.glass) private var glass
 
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
@@ -374,7 +412,9 @@ struct RowHoverStyle: ButtonStyle {
                 .foregroundStyle(Palette.t1)
                 .background(
                     hovering || configuration.isPressed ? Palette.fill : .clear,
-                    in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                    in: glass.rounded(radius ?? glass.radius.item)
+                )
+                .pointerStyle(.link)
         }
     }
 }

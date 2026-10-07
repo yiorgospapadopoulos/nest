@@ -10,16 +10,6 @@ extension ThemedColor {
     }
 }
 
-/// A wallpaper glow with its color resolved.
-public struct ResolvedWallpaperStop: Sendable, Equatable {
-    public let color: RGBA
-    public let centerX: Double
-    public let centerY: Double
-    public let radiusX: Double
-    public let radiusY: Double
-    public let fade: Double
-}
-
 /// The colors the settings pick, for one appearance.
 public struct ResolvedTheme: Sendable, Equatable {
     public let appearance: Appearance
@@ -28,9 +18,7 @@ public struct ResolvedTheme: Sendable, Equatable {
     public let onAccent: RGBA
     public let bubble: RGBA
     public let bubbleText: RGBA
-    /// Nil for the see-through desktop.
-    public let wallpaperBase: RGBA?
-    public let wallpaperStops: [ResolvedWallpaperStop]
+    public let glass: GlassStyle
 }
 
 /// The fixed status colors: running blue, needs you amber, review green, failed red,
@@ -92,23 +80,10 @@ public enum Theme {
         }
     }
 
-    /// The painted wallpaper's style; nil for the see-through desktop.
-    public static func wallpaper(_ name: WallpaperName) -> WallpaperStyle? {
-        switch name {
-        case .desktop: nil
-        case .stone: DesignTokens.Wallpaper.stone
-        case .sage: DesignTokens.Wallpaper.sage
-        case .sky: DesignTokens.Wallpaper.sky
-        case .slate: DesignTokens.Wallpaper.slate
-        }
-    }
-
     public static func resolve(
-        accent name: AccentName, bubble: BubbleStyle, wallpaper wallpaperName: WallpaperName,
-        appearance: Appearance
+        accent name: AccentName, bubble: BubbleStyle, glass: GlassStyle, appearance: Appearance
     ) -> ResolvedTheme {
         let accent = accent(name)
-        let wallpaper = wallpaper(wallpaperName)
         let neutral = bubble == .neutral
         return ResolvedTheme(
             appearance: appearance,
@@ -118,20 +93,14 @@ public enum Theme {
                 .resolved(appearance),
             bubbleText: (neutral ? DesignTokens.Colors.Text.primary : accent.on).resolved(
                 appearance),
-            wallpaperBase: wallpaper?.base.resolved(appearance),
-            wallpaperStops: (wallpaper?.stops ?? []).map { stop in
-                ResolvedWallpaperStop(
-                    color: stop.color.resolved(appearance), centerX: stop.centerX,
-                    centerY: stop.centerY, radiusX: stop.radiusX, radiusY: stop.radiusY,
-                    fade: stop.fade)
-            })
+            glass: glass)
     }
 
     /// The theme for the current settings and system appearance.
     @MainActor
     public static func resolve(_ settings: SettingsStore, system: Appearance) -> ResolvedTheme {
         resolve(
-            accent: settings.accent, bubble: settings.bubble, wallpaper: settings.wallpaper,
+            accent: settings.accent, bubble: settings.bubble, glass: settings.glass,
             appearance: appearance(for: settings.theme, system: system))
     }
 }

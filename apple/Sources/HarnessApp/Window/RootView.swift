@@ -27,22 +27,32 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 1000, minHeight: 640)
-        .background { SeeThroughWindow() }
+        // Under the title bar too, so the top band matches the rest of the window.
+        .background { SeeThroughWindow(material: glass.window.material).ignoresSafeArea() }
+        .environment(\.glass, glass)
+    }
+
+    /// The theme from Settings; the default until the shell is ready.
+    private var glass: GlassPalette {
+        GlassPalette.of(controller.shell?.settings.glass ?? DesignTokens.GlassTheme.default)
     }
 }
 
-/// The window shell: wallpaper, project tabs and the current project.
+/// The window shell: the theme's frost over the desktop, project tabs and the current
+/// project.
 struct ShellView: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
     @Environment(AppController.self) private var controller
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.flatGlass) private var snapshot
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var fullScreen = false
 
     var body: some View {
         let settings = shell.settings
         let backdrop = WindowBackdrop.of(
-            settings.wallpaper, reduceTransparency: reduceTransparency)
+            reduceTransparency: reduceTransparency, fullScreen: fullScreen)
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop)
             VStack(spacing: 0) {
@@ -56,7 +66,7 @@ struct ShellView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .padding(.top, TabStrip.height + 12)
+            .padding(.top, glass.spacing.stripHeight + 12)
             OverlayLayer()
         }
         .ignoresSafeArea()
@@ -64,6 +74,14 @@ struct ShellView: View {
         .environment(\.reducedMotion, systemReduceMotion || snapshot)
         .environment(\.seeThrough, backdrop.isSeeThrough)
         .preferredColorScheme(colorScheme(settings.theme))
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)
+        ) { _ in fullScreen = true }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)
+        ) { _ in fullScreen = false }
+        .onAppear { shell.startWatchingDrags() }
+        .onDisappear { shell.stopWatchingDrags() }
         .onChange(of: shell.app.connection) { _, connection in
             if connection == .connected {
                 controller.service.reset()
@@ -88,6 +106,7 @@ struct ShellView: View {
 /// The current project's toolbar, sidebar, workspace or board, and activity panel.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Group {
@@ -96,7 +115,7 @@ private struct ProjectBody: View {
             } else {
                 VStack(spacing: 0) {
                     ProjectToolbar()
-                    HStack(spacing: 10) {
+                    HStack(spacing: glass.spacing.gap) {
                         Sidebar()
                         Group {
                             if shell.projectState.view == .board {
@@ -109,11 +128,14 @@ private struct ProjectBody: View {
                         RightPanel()
                     }
                 }
-                .padding(EdgeInsets(top: 0, leading: 10, bottom: 10, trailing: 10))
+                .padding(
+                    EdgeInsets(
+                        top: 0, leading: glass.spacing.gap, bottom: glass.spacing.gap,
+                        trailing: glass.spacing.gap))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.shell)
+        .background(glass.shell)
     }
 }
 
@@ -167,7 +189,7 @@ private struct ConnectionBanner: View {
                 .padding(.leading, 16)
                 .padding(.trailing, 6)
                 .frame(height: 36)
-                .capsuleGlass()
+                .controlGlass()
                 if unreachable {
                     ServiceNote(state: service.state)
                 }
@@ -217,6 +239,7 @@ private struct ConnectionBanner: View {
 private struct ServiceNote: View {
     let state: ServiceStartState
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         switch state {
@@ -268,7 +291,7 @@ private struct ServiceNote: View {
         VStack(alignment: .leading, spacing: 8, content: content)
             .padding(14)
             .frame(width: 560, alignment: .leading)
-            .sheetGlass(radius: DesignTokens.Radius.card)
+            .sheetGlass(radius: glass.radius.card)
             .transition(.opacity)
     }
 }
@@ -285,7 +308,7 @@ private struct ToastView: View {
         .foregroundStyle(Palette.t1)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .capsuleGlass()
+        .controlGlass()
         .allowsHitTesting(false)
     }
 
@@ -310,10 +333,12 @@ private struct StartupView: View {
     let title: String
     let message: String?
     let retry: (() -> Void)?
+    @Environment(\.glass) private var glass
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ZStack {
-            Wallpaper(name: .stone)
+            WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency))
             VStack(spacing: 10) {
                 if retry == nil {
                     ProgressView().controlSize(.small)
@@ -331,7 +356,7 @@ private struct StartupView: View {
                 }
             }
             .padding(28)
-            .panelGlass(radius: DesignTokens.Radius.sheet)
+            .panelGlass(radius: glass.sheetRadius)
         }
     }
 }

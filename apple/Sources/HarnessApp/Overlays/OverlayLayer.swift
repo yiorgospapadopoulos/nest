@@ -5,6 +5,7 @@ import SwiftUI
 /// or the usage popover under its button. Esc or a click outside closes them.
 struct OverlayLayer: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         if let overlay = shell.overlay {
@@ -16,7 +17,7 @@ struct OverlayLayer: View {
                     UsagePopover()
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, UsagePopover.trailingInset)
-                        .padding(.top, TabStrip.height + 8)
+                        .padding(.top, glass.spacing.stripHeight + 8)
                         .transition(.opacity.combined(with: .offset(y: -6)))
                 } else {
                     Palette.scrim
@@ -63,6 +64,7 @@ struct SheetFrame<Content: View>: View {
     var scrollTarget: String?
     @ViewBuilder let content: () -> Content
     @Environment(Shell.self) private var shell
+    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
@@ -100,8 +102,8 @@ struct SheetFrame<Content: View>: View {
         .frame(width: width)
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .sheetGlass(radius: DesignTokens.Radius.sheet)
-        .shadow(color: Palette.glassShadow, radius: 30, y: 18)
+        .sheetGlass(radius: glass.sheetRadius)
+        .shadow(color: glass.shadow, radius: 30, y: 18)
     }
 }
 
@@ -150,6 +152,7 @@ struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selection: Value
     let select: (Value) -> Void
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 0) {
@@ -165,18 +168,19 @@ struct Segmented<Value: Hashable>: View {
                         .frame(height: 26)
                         .background {
                             if on {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(Palette.glassStrong)
-                                    .shadow(color: Palette.glassShadow, radius: 1.5, y: 1)
+                                glass.rounded(glass.radius.small)
+                                    .fill(glass.surface)
+                                    .shadow(color: glass.shadow, radius: 1.5, y: 1)
                             }
                         }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
         .padding(2)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(Palette.fill, in: glass.rounded(glass.radius.small + 2))
     }
 }

@@ -143,6 +143,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             store.sections[1].connectors.map(\.name)
                 == ["plugin:engineering:github", "serena", "mystery"])
         #expect(store.needingAttention == 3)
+        #expect(store.sections.map(\.attention) == ["1 needs sign-in", "2 failed"])
         #expect(ConnectorsStore.claudeAISettings.absoluteString.hasSuffix("/settings/connectors"))
 
         store.apply(
@@ -154,6 +155,24 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(store.needingAttention == 0)
         store.apply(Fixture.event("daemon.started", "{}"))
         #expect(store.connectors.count == 1)
+    }
+}
+
+@Suite struct ConnectorSectionTests {
+    func connector(_ status: String) -> Connector {
+        var connector = Fixture.connectors[1]
+        connector.status = status
+        return connector
+    }
+
+    @Test func attentionNamesSignInsAndFailuresOnly() {
+        func attention(_ statuses: [String]) -> String? {
+            ConnectorSection(kind: .claudeCode, connectors: statuses.map(connector)).attention
+        }
+        #expect(attention(["connected", "pending", "disabled"]) == nil)
+        #expect(attention(["needs-auth", "needs_auth", "connected"]) == "2 need sign-in")
+        #expect(attention(["failed", "needs-auth"]) == "1 needs sign-in, 1 failed")
+        #expect(attention(["failed", "failed"]) == "2 failed")
     }
 }
 
@@ -266,7 +285,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(settings.theme == .auto)
         #expect(settings.accent == .graphite)
         #expect(settings.bubble == .accent)
-        #expect(settings.wallpaper == .desktop)
+        #expect(settings.glass == DesignTokens.GlassTheme.clear)
         #expect(settings.notifications == NotificationPreferences())
     }
 
@@ -291,28 +310,46 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         settings.theme = .dark
         settings.accent = .teal
         settings.bubble = .neutral
-        settings.wallpaper = .sky
+        settings.glass = DesignTokens.GlassTheme.smoke
 
         #expect(
             memory.values == [
                 "appearance.theme": "dark", "appearance.accent": "teal",
-                "appearance.bubble": "neutral",
-                "appearance.wallpaper": "sky",
+                "appearance.bubble": "neutral", "appearance.glass": "smoke",
             ])
         let reloaded = SettingsStore(store: memory)
         #expect(reloaded.theme == .dark)
         #expect(reloaded.accent == .teal)
         #expect(reloaded.bubble == .neutral)
-        #expect(reloaded.wallpaper == .sky)
+        #expect(reloaded.glass == DesignTokens.GlassTheme.smoke)
+    }
+
+    @Test func everyGlassThemeRoundTrips() {
+        let memory = MemoryStore()
+        let settings = SettingsStore(store: memory)
+        for style in DesignTokens.GlassTheme.all {
+            settings.glass = style
+            #expect(SettingsStore(store: memory).glass == style)
+        }
+    }
+
+    @Test func aLeftoverWallpaperIsIgnored() {
+        let memory = MemoryStore(["appearance.wallpaper": "sky"])
+        let settings = SettingsStore(store: memory)
+        settings.glass = DesignTokens.GlassTheme.deep
+        #expect(settings.glass == DesignTokens.GlassTheme.deep)
+        #expect(memory.values["appearance.wallpaper"] == "sky")
     }
 
     @Test func invalidStoredValuesFallBack() {
         let settings = SettingsStore(
             store: MemoryStore([
                 "appearance.theme": "sepia", "appearance.accent": "purple",
+                "appearance.glass": "sand",
             ]))
         #expect(settings.theme == .auto)
         #expect(settings.accent == .graphite)
+        #expect(settings.glass == DesignTokens.GlassTheme.clear)
     }
 
     @Test func defaultsToUserDefaults() {
@@ -328,56 +365,30 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(Theme.appearance(for: .dark, system: .light) == .dark)
     }
 
-    @Test func everyAccentAndWallpaperMapsToItsToken() {
+    @Test func everyAccentMapsToItsToken() {
         #expect(
             AccentName.allCases.map { Theme.accent($0).name } == AccentName.allCases.map(\.rawValue)
         )
         #expect(DesignTokens.Accent.all.map(\.name) == AccentName.allCases.map(\.rawValue))
-        let painted = WallpaperName.allCases.dropFirst()
-        #expect(painted.map { Theme.wallpaper($0)?.name } == painted.map(\.rawValue))
-        #expect(Theme.wallpaper(.desktop) == nil)
-    }
-
-    @Test func theDesktopIsSeeThroughUnlessTransparencyIsReduced() {
-        #expect(WindowBackdrop.of(.desktop, reduceTransparency: false) == .desktop)
-        #expect(WindowBackdrop.of(.desktop, reduceTransparency: true) == .opaque)
-        #expect(WindowBackdrop.of(.sky, reduceTransparency: true) == .painted(.sky))
-        #expect(WindowBackdrop.of(.stone, reduceTransparency: false) == .painted(.stone))
-        #expect(WindowBackdrop.desktop.isSeeThrough)
-        #expect(!WindowBackdrop.opaque.isSeeThrough)
-        #expect(!WindowBackdrop.painted(.sage).isSeeThrough)
-        #expect(
-            WallpaperName.allCases.map(\.label) == ["Desktop", "Stone", "Sage", "Sky", "Slate"])
-        let theme = Theme.resolve(
-            accent: .ocean, bubble: .accent, wallpaper: .desktop, appearance: .light)
-        #expect(theme.wallpaperBase == nil)
-        #expect(theme.wallpaperStops.isEmpty)
     }
 
     @Test func accentBubblesUseTheAccent() {
         let theme = Theme.resolve(
-            accent: .ocean, bubble: .accent, wallpaper: .sage, appearance: .dark)
+            accent: .ocean, bubble: .accent, glass: DesignTokens.GlassTheme.frosted,
+            appearance: .dark)
         let ocean = DesignTokens.Accent.ocean
         #expect(theme.appearance == .dark)
         #expect(theme.accent == ocean.fill.dark)
         #expect(theme.onAccent == ocean.on.dark)
         #expect(theme.bubble == ocean.fill.dark)
         #expect(theme.bubbleText == ocean.on.dark)
-        #expect(theme.wallpaperBase == DesignTokens.Wallpaper.sage.base.dark)
-        #expect(
-            theme.wallpaperStops.map(\.color) == DesignTokens.Wallpaper.sage.stops.map(\.color.dark)
-        )
-        let stop = DesignTokens.Wallpaper.sage.stops[0]
-        #expect(
-            theme.wallpaperStops[0]
-                == ResolvedWallpaperStop(
-                    color: stop.color.dark, centerX: stop.centerX, centerY: stop.centerY,
-                    radiusX: stop.radiusX, radiusY: stop.radiusY, fade: stop.fade))
+        #expect(theme.glass == DesignTokens.GlassTheme.frosted)
     }
 
     @Test func neutralBubblesUseGlassAndPrimaryText() {
         let theme = Theme.resolve(
-            accent: .rose, bubble: .neutral, wallpaper: .stone, appearance: .light)
+            accent: .rose, bubble: .neutral, glass: DesignTokens.GlassTheme.clear,
+            appearance: .light)
         #expect(theme.bubble == DesignTokens.Colors.Surface.neutralBubble.light)
         #expect(theme.bubbleText == DesignTokens.Colors.Text.primary.light)
         #expect(theme.accent == DesignTokens.Accent.rose.fill.light)
@@ -388,12 +399,13 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         let settings = SettingsStore(store: MemoryStore())
         settings.theme = .light
         settings.accent = .clay
-        settings.wallpaper = .slate
+        settings.glass = DesignTokens.GlassTheme.bluegrey
         let theme = Theme.resolve(settings, system: .dark)
         #expect(
             theme
                 == Theme.resolve(
-                    accent: .clay, bubble: .accent, wallpaper: .slate, appearance: .light))
+                    accent: .clay, bubble: .accent, glass: DesignTokens.GlassTheme.bluegrey,
+                    appearance: .light))
     }
 
     @Test func statusTonesFollowTheSessionState() {

@@ -111,6 +111,7 @@ struct StatusPill: View {
     let label: String
     var hollow = false
     var showsLabel = true
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 6) {
@@ -124,7 +125,7 @@ struct StatusPill: View {
         .padding(.leading, 8)
         .padding(.trailing, showsLabel ? 9 : 7)
         .frame(height: 22)
-        .background(tone.soft, in: Capsule())
+        .background(tone.soft, in: glass.control)
         .fixedSize()
     }
 }
@@ -151,6 +152,7 @@ struct Chip: View {
     let icon: String
     let text: String
     var mono = false
+    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 5) {
@@ -163,7 +165,7 @@ struct Chip: View {
         .foregroundStyle(Palette.t2)
         .padding(.horizontal, 8)
         .frame(height: 22)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.chip))
+        .background(Palette.fill, in: glass.rounded(glass.radius.small))
         .help(text)
     }
 }
@@ -293,7 +295,8 @@ struct ProgressRing: View {
     }
 }
 
-/// Buttons of the mockup: `.b` capsules in ghost, plain, primary and destructive variants.
+/// Buttons of the mockup: `.b` in ghost, plain, primary and destructive variants, in the
+/// theme's control shape (pills, or Smoke's rounded rectangles).
 struct HarnessButtonStyle: ButtonStyle {
     enum Kind {
         case ghost, plain, primary, approve, danger, destructive
@@ -305,6 +308,7 @@ struct HarnessButtonStyle: ButtonStyle {
     var fontSize: Double = TypeSize.callout
     @Environment(\.accentColors) private var accent
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.glass) private var glass
 
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
@@ -314,10 +318,11 @@ struct HarnessButtonStyle: ButtonStyle {
                 .foregroundStyle(foreground)
                 .padding(.horizontal, iconOnly ? 0 : (height < 28 ? 10 : 12))
                 .frame(width: iconOnly ? height : nil, height: height)
-                .background(background(hovering: hovering), in: Capsule())
-                .contentShape(Capsule())
+                .background(background(hovering: hovering), in: glass.control)
+                .contentShape(glass.control)
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .opacity(isEnabled ? 1 : 0.35)
+                .pointerStyle(isEnabled ? .link : nil)
         }
     }
 

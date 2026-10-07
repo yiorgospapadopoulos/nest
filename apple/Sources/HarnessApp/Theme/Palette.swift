@@ -26,7 +26,8 @@ extension Color {
     }
 }
 
-/// The design tokens as SwiftUI colors, named after the mockup's variables.
+/// The design tokens as SwiftUI colors, named after the mockup's variables. The glass
+/// colors follow the theme: see `GlassPalette`.
 enum Palette {
     typealias Tokens = DesignTokens.Colors
 
@@ -38,8 +39,6 @@ enum Palette {
     static let fill = Color(Tokens.Fill.subtle)
     static let fill2 = Color(Tokens.Fill.strong)
     static let codeBackground = Color(Tokens.Surface.code)
-    static let strip = Color(Tokens.Surface.strip)
-    static let shell = Color(Tokens.Surface.shell)
     static let scrim = Color(Tokens.Surface.scrim)
     static let page = Color(Tokens.Page.base)
     static let approve = Color(Tokens.Signal.approve)
@@ -49,14 +48,6 @@ enum Palette {
     static let removedText = Color(Tokens.Diff.removedText)
     static let addedFill = Color(Tokens.Diff.addedFill)
     static let removedFill = Color(Tokens.Diff.removedFill)
-
-    static let glassRegular = Color(DesignTokens.Glass.Tint.regular)
-    static let glassStrong = Color(DesignTokens.Glass.Tint.strong)
-    static let glassClear = Color(DesignTokens.Glass.Tint.clear)
-    static let glassBorder = Color(DesignTokens.Glass.border)
-    static let specular = Color(DesignTokens.Glass.specular)
-    static let glassOutline = Color(DesignTokens.Glass.outline)
-    static let glassShadow = Color(DesignTokens.Glass.shadow)
 
     /// Text on the amber badge.
     static let onWaiting = Color(red: 0.169, green: 0.09, blue: 0)
@@ -111,6 +102,10 @@ extension EnvironmentValues {
     /// The pane sits under a maximized one: its AppKit content (a web view or terminal)
     /// must hide, since transparency alone neither hides it reliably nor stops its clicks.
     @Entry var paneHidden = false
+    /// The pane's slot in the workspace: its content lays out to it and never past it.
+    @Entry var paneSize: CGSize?
+    /// What the pane's header and composer show at the slot's width.
+    @Entry var paneFit = PaneFit(width: 600)
     /// Reduce Motion, or a snapshot that must hold still.
     @Entry var reducedMotion = false
     /// Snapshots show controls that otherwise appear on hover, such as Copy.
