@@ -8,6 +8,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from harness.api.app import create_app
+from harness.api.routes.events import origin_allowed
 from harness.context import AppContext
 from harness.events import types
 from harness.events.bus import EventBus, SubscriptionOverflowError
@@ -85,12 +86,14 @@ def test_disconnect_releases_the_subscription(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:
     auth = {"Authorization": f"Bearer {local_token(secrets)}"}
+    # The notification delivery follows the bus too.
+    before = ctx.bus.subscriber_count
     with client.websocket_connect("/api/events", headers=auth):
         pass
 
     assert client.portal is not None
     client.portal.call(asyncio.sleep, 0)
-    assert ctx.bus.subscriber_count == 0
+    assert ctx.bus.subscriber_count == before
 
 
 def test_overflow_closes_the_socket_with_try_again_later(
@@ -112,3 +115,73 @@ def test_invalid_after_is_rejected(client: TestClient, secrets: FakeSecretStore)
         pass
 
     assert closed.value.code == 1008
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://testserver", "HTTPS://TestServer", "http://testserver"],
+)
+def test_same_origin_browsers_are_accepted(
+    client: TestClient, ctx: AppContext, secrets: FakeSecretStore, origin: str
+) -> None:
+    headers = {"Authorization": f"Bearer {local_token(secrets)}", "Origin": origin}
+    with client.websocket_connect("/api/events", headers=headers) as ws:
+        live = publish(client, ctx, "same.origin")
+        assert ws.receive_json()["id"] == live.id
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://evil.example", "https://testserver.evil.example", "null", "file://testserver", ""],
+)
+def test_cross_origin_sockets_are_closed_with_4403(
+    client: TestClient, secrets: FakeSecretStore, origin: str
+) -> None:
+    headers = {"Authorization": f"Bearer {local_token(secrets)}", "Origin": origin}
+
+    expect_close(client, "/api/events", 4403, headers=headers)
+
+
+def test_cross_origin_check_runs_before_authentication(client: TestClient) -> None:
+    expect_close(client, "/api/events", 4403, headers={"Origin": "https://evil.example"})
+
+
+def test_allowed_origins_from_settings_are_accepted(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
+) -> None:
+    settings = tmp_path / "config" / "settings.toml"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        '[server]\nallowed_origins = ["https://mac.example.ts.net"]\n', encoding="utf-8"
+    )
+    context = asyncio.run(build_context(tmp_path, clock, secrets))
+    try:
+        with TestClient(create_app(context)) as test_client:
+            headers = {
+                "Authorization": f"Bearer {local_token(secrets)}",
+                "Origin": "https://mac.example.ts.net",
+            }
+            with test_client.websocket_connect("/api/events", headers=headers) as ws:
+                live = publish(test_client, context, "allowed.origin")
+                assert ws.receive_json()["id"] == live.id
+            other = {**headers, "Origin": "https://x.y"}
+            expect_close(test_client, "/api/events", 4403, other)
+    finally:
+        asyncio.run(context.close())
+
+
+@pytest.mark.parametrize(
+    ("origin", "host", "allowed", "expected"),
+    [
+        (None, None, [], True),
+        ("https://mac.example.ts.net", None, [], False),
+        ("https://mac.example.ts.net/", None, ["HTTPS://Mac.Example.ts.net/"], True),
+        ("http://127.0.0.1:18766", "127.0.0.1:18766", [], True),
+        ("http://127.0.0.1:18766", "127.0.0.1:8765", [], False),
+        ("ws://127.0.0.1:8765", "127.0.0.1:8765", [], False),
+    ],
+)
+def test_origin_rules(
+    origin: str | None, host: str | None, allowed: list[str], expected: bool
+) -> None:
+    assert origin_allowed(origin, host, allowed) is expected

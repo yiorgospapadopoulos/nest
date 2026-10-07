@@ -16,5 +16,7 @@ async def list_devices(ctx: Context) -> list[Device]:
 async def revoke_device(device_id: str, ctx: Context) -> Response:
     if not await ctx.devices.revoke(device_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
+    # A revoked phone must not keep receiving notifications.
+    await ctx.notifications.subscriptions.forget_device(device_id)
     await ctx.bus.publish(types.DEVICE_REVOKED, {"device_id": device_id})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

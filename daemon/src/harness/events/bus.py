@@ -17,6 +17,11 @@ from harness.events.models import Event
 from harness.storage.db import Database
 
 DEFAULT_QUEUE_SIZE = 1000
+_SESSION_EVENTS = (
+    "SELECT id, type, ts, session_id, payload FROM events"
+    " WHERE session_id = ? AND id > ? AND (? IS NULL OR id < ?) ORDER BY id LIMIT ?"
+)
+_SESSION_EVENTS_DESC = _SESSION_EVENTS.replace("ORDER BY id", "ORDER BY id DESC")
 
 
 class SubscriptionOverflowError(Exception):
@@ -78,14 +83,29 @@ class EventBus:
                 self._deliver(subscriber, event)
         return event
 
-    async def session_events(self, session_id: str, after_id: int = 0) -> list[Event]:
-        """One session's persisted events with id > after_id, oldest first."""
+    async def last_id(self) -> int:
+        """The id of the newest stored event, 0 if there is none."""
+        rows = await self._db.fetch_all("SELECT COALESCE(MAX(id), 0) AS id FROM events")
+        return rows[0]["id"]
+
+    async def session_events(
+        self,
+        session_id: str,
+        after_id: int = 0,
+        before_id: int | None = None,
+        limit: int | None = None,
+    ) -> list[Event]:
+        """One session's persisted events with after_id < id < before_id, oldest first.
+
+        With a limit, the events nearest `before_id` when it is set, else nearest `after_id`.
+        """
+        newest_first = before_id is not None and limit is not None
         rows = await self._db.fetch_all(
-            "SELECT id, type, ts, session_id, payload FROM events"
-            " WHERE session_id = ? AND id > ? ORDER BY id",
-            (session_id, after_id),
+            _SESSION_EVENTS_DESC if newest_first else _SESSION_EVENTS,
+            (session_id, after_id, before_id, before_id, -1 if limit is None else limit),
         )
-        return [_from_row(row) for row in rows]
+        events = [_from_row(row) for row in rows]
+        return events[::-1] if newest_first else events
 
     async def subscribe(self, after_id: int | None = None) -> AsyncGenerator[Event]:
         """Yield persisted events with id > after_id (none if None), then live events."""

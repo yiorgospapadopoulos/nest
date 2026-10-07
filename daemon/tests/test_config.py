@@ -196,3 +196,13 @@ def test_idle_close_must_be_positive(data: dict[str, dict[str, int]]) -> None:
 def test_setup_timeout_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         WorktreeConfig(setup_timeout_seconds=0)
+
+
+def test_allowed_origins_default_to_empty_and_are_read(paths: AppPaths) -> None:
+    assert load_settings(paths).server.allowed_origins == []
+
+    paths.settings_file.write_text(
+        '[server]\nallowed_origins = ["https://mac.example.ts.net"]\n', encoding="utf-8"
+    )
+
+    assert load_settings(paths).server.allowed_origins == ["https://mac.example.ts.net"]

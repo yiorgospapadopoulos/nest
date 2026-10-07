@@ -29,6 +29,27 @@ def test_paths_honour_environment_overrides(tmp_path: Path) -> None:
     assert paths.data_dir == tmp_path / "dat"
 
 
+def test_web_dist_defaults_to_the_repository_build(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+
+    assert AppPaths.from_env({}, home=tmp_path).web_dist == repo_root / "web" / "dist"
+    assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).web_dist == repo_root / "web" / "dist"
+
+
+def test_web_dist_honours_its_environment_override(tmp_path: Path) -> None:
+    paths = AppPaths.from_env({"HARNESS_WEB_DIST": str(tmp_path / "build")}, home=tmp_path)
+
+    assert paths.web_dist == tmp_path / "build"
+
+
+def test_claude_dir_follows_claude_codes_own_setting(tmp_path: Path) -> None:
+    overridden = AppPaths.from_env({"CLAUDE_CONFIG_DIR": str(tmp_path / "cc")}, home=tmp_path)
+
+    assert AppPaths.from_env({}, home=tmp_path).claude_dir == tmp_path / ".claude"
+    assert overridden.claude_dir == tmp_path / "cc"
+    assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).claude_dir is None
+
+
 def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     paths = AppPaths(config_dir=tmp_path / "c", data_dir=tmp_path / "d")
 
@@ -41,6 +62,7 @@ def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     assert paths.worktrees_dir == tmp_path / "d" / "worktrees"
     assert paths.agent_gh_dir == tmp_path / "d" / "agent-gh"
     assert paths.launchers_dir == tmp_path / "d" / "launchers"
+    assert paths.probe_dir == tmp_path / "d" / "probe"
 
 
 def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> None:
@@ -59,5 +81,6 @@ def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> Non
         paths.worktrees_dir,
         paths.agent_gh_dir,
         paths.launchers_dir,
+        paths.probe_dir,
     ):
         assert directory.is_dir()

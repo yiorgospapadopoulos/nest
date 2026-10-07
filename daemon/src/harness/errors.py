@@ -9,6 +9,9 @@ class HarnessError(Exception):
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self)}
 
+    def headers(self) -> dict[str, str] | None:
+        return None
+
 
 class NotFoundError(HarnessError):
     status_code = 404

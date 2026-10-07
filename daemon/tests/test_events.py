@@ -174,3 +174,14 @@ async def test_session_events_returns_one_sessions_persisted_events(
     assert await bus.session_events("s1") == [first, second]
     assert await bus.session_events("s1", after_id=first.id or 0) == [second]
     assert await bus.session_events("missing") == []
+
+
+async def test_last_id_is_the_newest_stored_event(db: Database, clock: FakeClock) -> None:
+    bus = EventBus(db, clock)
+    assert await bus.last_id() == 0
+
+    await bus.publish("one", {})
+    stored = await bus.publish("two", {})
+    await bus.publish_ephemeral("live", {})
+
+    assert await bus.last_id() == stored.id

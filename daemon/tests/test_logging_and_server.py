@@ -33,6 +33,30 @@ def test_logging_goes_to_the_given_stream_in_a_concise_format() -> None:
     assert "hidden" not in line
 
 
+@pytest.fixture
+def restore_http_client_loggers() -> Iterator[None]:
+    loggers = [logging.getLogger(name) for name in ("httpx", "httpcore")]
+    levels = [logger.level for logger in loggers]
+    yield
+    for logger, level in zip(loggers, levels, strict=True):
+        logger.setLevel(level)
+
+
+@pytest.mark.usefixtures("restore_logging", "restore_http_client_loggers")
+def test_http_client_request_lines_are_not_logged_because_urls_carry_secrets() -> None:
+    stream = io.StringIO()
+
+    configure_logging(stream)
+    logging.getLogger("httpx").info("HTTP Request: POST https://web.push.apple.com/secret-token")
+    logging.getLogger("httpcore.connection").info("connect_tcp.started host='web.push.apple.com'")
+    logging.getLogger("httpx").warning("kept")
+
+    output = stream.getvalue()
+    assert "secret-token" not in output
+    assert "connect_tcp" not in output
+    assert output.endswith(" WARNING httpx: kept\n")
+
+
 class FakeServer:
     instances: ClassVar[list["FakeServer"]] = []
 

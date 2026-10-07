@@ -1,11 +1,19 @@
 """What follows a session's progress: task and agent tracking, reviews, notifications,
-token usage and connector status.
+token usage, connector status, slash command lists and the engine's models and account.
 """
 
 from harness.connectors.registry import ConnectorRegistry
+from harness.engine.service import EngineInfo
 from harness.notifications.notifier import Notifier, NotifyKind
-from harness.providers.base import McpServer, ResultInfo, UsageInfo
+from harness.providers.base import (
+    CommandCatalog,
+    EngineDetails,
+    McpServer,
+    ResultInfo,
+    UsageInfo,
+)
 from harness.review.watch import ReviewWatcher
+from harness.sessions.commands import CommandStore
 from harness.sessions.models import Session, SessionState
 from harness.tracking.service import Tracking
 from harness.tracking.steps import one_line
@@ -24,7 +32,11 @@ class SessionReactions:
         notifier: Notifier,
         usage: UsageStore,
         connectors: ConnectorRegistry,
+        commands: CommandStore,
+        engine: EngineInfo,
     ) -> None:
+        self._commands = commands
+        self._engine = engine
         self._tracking = tracking
         self._reviews = reviews
         self._notifier = notifier
@@ -51,6 +63,12 @@ class SessionReactions:
 
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
         await self._connectors.report(session_id, servers)
+
+    async def commands_reported(self, session_id: str, catalog: CommandCatalog) -> None:
+        await self._commands.report(session_id, catalog)
+
+    async def engine_reported(self, details: EngineDetails) -> None:
+        await self._engine.report(details)
 
     async def _notify(self, session: Session, kind: NotifyKind, text: str) -> None:
         await self._notifier.notify(

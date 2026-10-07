@@ -1,3 +1,4 @@
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -45,8 +46,9 @@ async def notified(api: Api, session_id: str, kind: str, count: int = 1) -> None
 
 
 async def create(api: Api, **fields: object) -> dict[str, object]:
+    """A new session, in a worktree unless `mode` says otherwise."""
     response = await api.http.post(
-        "/api/sessions", json={"repo": "repo", "prompt": "Do it", **fields}
+        "/api/sessions", json={"repo": "repo", "prompt": "Do it", "mode": "worktree", **fields}
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -133,14 +135,16 @@ async def test_interrupt_update_and_close(api: Api) -> None:
     closed = await api.http.delete(f"/api/sessions/{session_id}", params={"remove_worktree": True})
     again = await api.http.delete(f"/api/sessions/{session_id}")
 
-    assert busy.status_code == 409
-    assert "busy" in busy.json()["detail"]
+    assert busy.status_code == 202
+    assert busy.json()["queued_message"]["text"] == "x"
     assert patched.json()["permission_mode"] == "plan"
     assert api.provider.runs[0].calls[0] == ("set_permission_mode", "plan")
     assert interrupted.status_code == 202
     assert idle_interrupt.status_code == 409
     assert closed.status_code == 200
     assert closed.json()["state"] == "closed"
+    # The interrupt kept the queued message; closing drops it.
+    assert (await api.http.get(f"/api/sessions/{session_id}")).json()["queued"] == []
     assert again.status_code == 409
 
 
@@ -153,6 +157,40 @@ async def test_dirty_in_place_sessions_report_the_files(api: Api, tmp_path: Path
 
     assert response.status_code == 409
     assert response.json()["files"] == ["README.md"]
+
+
+@pytest.mark.parametrize("mode", ["worktree", "in_place"])
+async def test_sessions_cannot_start_in_a_repo_whose_folder_is_gone(
+    api: Api, tmp_path: Path, mode: str
+) -> None:
+    shutil.rmtree(tmp_path / "repo")
+
+    response = await api.http.post(
+        "/api/sessions", json={"repo": "repo", "prompt": "x", "mode": mode}
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": f"the folder of repo 'repo' no longer exists: {(tmp_path / 'repo').resolve()}"
+    }
+    assert (await api.http.get("/api/sessions")).json() == []
+
+
+async def test_a_message_to_a_session_whose_folder_is_gone_fails_the_session(
+    api: Api, tmp_path: Path
+) -> None:
+    api.provider.script(reply("ok"))
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "idle")
+    shutil.rmtree(tmp_path / "repo")
+    shutil.rmtree(api.ctx.paths.worktrees_dir)
+
+    sent = await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "more"})
+    await reach(api, session_id, "failed")
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+
+    assert sent.status_code == 202
+    assert "does not exist" in session["last_error"]
 
 
 @pytest.mark.parametrize(

@@ -3,14 +3,19 @@
 from datetime import UTC
 from pathlib import Path
 
+import httpx
+
 from harness.auth.devices import LOCAL_DEVICE_ACCOUNT
 from harness.context import AppContext
 from harness.gitops.runner import CommandRunner, run_command
 from harness.paths import AppPaths
 from harness.providers.base import AgentProvider
+from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
+from tests.fake_probe import FakeProbeFactory
 from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock, FakeSecretStore
+from tests.push_support import no_network
 
 
 class RecordingModule:
@@ -27,7 +32,13 @@ class RecordingModule:
 
 
 def make_paths(tmp_path: Path, modules: list[str] | None = None) -> AppPaths:
-    paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
+    # No web build, so API tests never depend on whether web/dist exists in the checkout.
+    paths = AppPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        web_dist=tmp_path / "web",
+        claude_dir=tmp_path / "claude",
+    )
     if modules is not None:
         paths.config_dir.mkdir(parents=True)
         enabled = ", ".join(f'"{name}"' for name in modules)
@@ -43,6 +54,9 @@ async def build_context(
     provider: AgentProvider | None = None,
     runner: CommandRunner = run_command,
     opener: CommandRunner | None = None,
+    push_transport: httpx.AsyncBaseTransport | None = None,
+    probe_factory: FakeProbeFactory | None = None,
+    engine_factory: FakeInfoFactory | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
@@ -55,6 +69,11 @@ async def build_context(
         # Never the real `open`; usage days by UTC, so tests do not depend on the machine.
         opener=opener or FakeOpener(),
         zone=UTC,
+        push_transport=push_transport or no_network(),
+        # Never a real Claude probe; without scripted replies every probe fails.
+        probe_factory=probe_factory or FakeProbeFactory(),
+        # Never a real Claude Code process for the model list.
+        engine_factory=engine_factory or FakeInfoFactory(),
     )
 
 

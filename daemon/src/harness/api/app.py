@@ -6,19 +6,29 @@ from fastapi import FastAPI
 from harness import __version__
 from harness.api.errors import install_error_handlers
 from harness.api.routes import (
+    agents,
     approvals,
     attachments,
+    claude_chats,
+    clients,
     connectors,
     devices,
+    engine,
     events,
     health,
     local_apps,
+    notifications,
     pairing,
+    prs,
+    push,
     repos,
     review,
+    search,
     sessions,
+    stuck,
     usage,
 )
+from harness.api.static import install_static
 from harness.context import AppContext
 from harness.events import types
 
@@ -31,10 +41,24 @@ def create_app(ctx: AppContext) -> FastAPI:
         await ctx.sessions.recover()
         try:
             await ctx.modules.start_enabled(ctx.settings.modules.enabled, ctx)
+            await ctx.notifications.start()
+            await ctx.claude_chats.start()
+            await ctx.usage_refresher.start()
+            await ctx.prs.monitor.start()
+            await ctx.search.start()
+            await ctx.stuck.start()
+            await ctx.engine.start()
             await ctx.bus.publish(types.DAEMON_STARTED, {"version": __version__})
             yield
         finally:
+            await ctx.engine.stop()
+            await ctx.stuck.stop()
+            await ctx.search.stop()
+            await ctx.prs.monitor.stop()
+            await ctx.usage_refresher.stop()
+            await ctx.claude_chats.stop()
             await ctx.sessions.shutdown()
+            await ctx.notifications.stop()
             await ctx.modules.stop_all()
 
     app = FastAPI(
@@ -55,11 +79,22 @@ def create_app(ctx: AppContext) -> FastAPI:
         repos,
         attachments,
         sessions,
+        claude_chats,
+        search,
         review,
+        prs,
         approvals,
         connectors,
         usage,
+        stuck,
+        engine,
+        agents,
+        clients,
         local_apps,
+        push,
+        notifications,
     ):
         app.include_router(module.router)
+    # Last, so every /api route matches first.
+    install_static(app, ctx.paths.web_dist)
     return app

@@ -13,9 +13,8 @@ from harness.errors import ConflictError
 from harness.gitops.runner import CommandError, CommandRunner
 from harness.local_apps.errors import AppNotInstalledError, LocalAppError
 from harness.local_apps.launchers import write_launcher
-from harness.sessions.errors import NoWorkspaceError
 from harness.sessions.models import Session
-from harness.sessions.rules import require_cwd
+from harness.sessions.rules import require_workspace
 
 type RepoApp = Literal["vscode", "finder", "terminal"]
 
@@ -49,10 +48,7 @@ class LocalApps:
         if session.provider_session_id is None:
             msg = f"session {session.id!r} has no Claude Code conversation to resume yet"
             raise ConflictError(msg)
-        cwd = require_cwd(session)
-        if not cwd.is_dir():
-            msg = f"the working directory of session {session.id!r} no longer exists"
-            raise NoWorkspaceError(msg)
+        cwd = require_workspace(session)
         launcher = self._launchers_dir / f"{session.id}.command"
         await asyncio.to_thread(write_launcher, launcher, cwd, session.provider_session_id)
         await self._open("Terminal", [str(launcher)])

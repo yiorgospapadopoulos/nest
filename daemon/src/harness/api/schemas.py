@@ -4,8 +4,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, StringConstraints
 
 from harness.auth.models import Device
-from harness.sessions.models import Session
-from harness.tracking.models import TrackedAgent, TrackedTask
+from harness.sessions.models import QueuedMessage, Session
+from harness.tracking.models import BackgroundSummary, TrackedAgent, TrackedTask
 
 
 class Health(BaseModel):
@@ -35,3 +35,13 @@ class SessionDetail(Session):
 
     tasks: list[TrackedTask]
     agents: list[TrackedAgent]
+    # Subagents and background commands with running and finished counts.
+    background: BackgroundSummary
+    # Messages waiting for the current turn to end, oldest first (D032).
+    queued: list[QueuedMessage]
+
+
+class FileList(BaseModel):
+    """Paths relative to the session's working directory, best match first."""
+
+    files: list[str]

@@ -7,7 +7,7 @@ from harness.design.loader import TOKENS_FILE, load_tokens
 from harness.design.swift import render_swift
 
 CSS_OUTPUT = Path("web/src/generated/tokens.css")
-SWIFT_OUTPUT = Path("apple/HarnessKit/Sources/HarnessKit/Generated/DesignTokens.swift")
+SWIFT_OUTPUT = Path("apple/Sources/HarnessKit/Generated/DesignTokens.swift")
 
 
 def render_outputs(root: Path) -> dict[Path, str]:
