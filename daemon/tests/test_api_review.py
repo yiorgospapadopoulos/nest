@@ -1,3 +1,4 @@
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -7,10 +8,10 @@ from pydantic import TypeAdapter
 
 from harness.events import types
 from harness.gitops.runner import CommandError
-from harness.providers.base import MessageBlock
+from harness.providers.base import AgentTask, MessageBlock
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import commit, crash, edit, hang, messages, reply
+from tests.fake_provider import commit, crash, edit, hang, messages, reply, tasks
 from tests.fake_runner import PR_URL
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import git, init_repo, with_origin
@@ -91,7 +92,7 @@ async def test_a_finished_task_is_reviewed_and_opened_as_a_pull_request(api: Api
     assert session["pr_url"] == PR_URL
     assert session["commit_sha"] == git(Path(session["cwd"]), "rev-parse", "HEAD").strip()
     assert again.json() == approved.json()
-    (gh,) = api.runner.gh_calls()
+    (gh,) = api.runner.gh_calls("create")
     assert gh[gh.index("--title") + 1] == "Do it"
     assert gh[gh.index("--body") + 1] == "Do it\n\nFixed the bug."
     assert after.json()["status"] == "resolved"
@@ -134,7 +135,7 @@ async def test_the_pull_request_title_and_body_can_be_given(api: Api) -> None:
         json={**APPROVE, "pr_title": "Better title", "pr_body": "Custom body"},
     )
 
-    (gh,) = api.runner.gh_calls()
+    (gh,) = api.runner.gh_calls("create")
     assert gh[-4:] == ("--title", "Better title", "--body", "Custom body")
 
 
@@ -192,6 +193,22 @@ async def test_invalid_approvals_of_worktree_sessions(
     if detail is not None:
         assert detail in response.json()["detail"]
     assert api.runner.calls == []
+
+
+async def test_approval_and_diff_need_the_working_directory(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+    shutil.rmtree(session["cwd"])
+
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+    diff = await api.http.get(f"/api/sessions/{session_id}/diff")
+
+    expected = f"the working directory of session {session_id!r} no longer exists"
+    assert (approved.status_code, approved.json()) == (409, {"detail": expected})
+    assert (diff.status_code, diff.json()) == (409, {"detail": expected})
+    assert api.runner.calls == []
+    (review,) = await approvals(api)
+    assert review["status"] == "pending"
 
 
 async def test_without_changes_there_is_no_review_and_nothing_to_commit(api: Api) -> None:
@@ -330,6 +347,44 @@ async def test_session_detail_exposes_tasks_and_agents(api: Api) -> None:
     ]
     assert types.SESSION_TASKS in seen
     assert types.SESSION_AGENTS in seen
+
+
+async def test_background_work_is_followed_while_the_session_is_idle(api: Api) -> None:
+    started = AgentTask(task_id="t1", phase="started", tool_use_id="a1", background=True)
+    api.provider.script(
+        messages(
+            (blocks_of(start_agent_message("a1", run_in_background=True)), None),
+            then=tasks(started, then=reply("Working in the background.")),
+        )
+    )
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "idle")
+    url = f"/api/sessions/{session_id}"
+
+    running = (await api.http.get(url)).json()
+    agents_events = len(
+        [t for t in await event_types(api, session_id) if t == types.SESSION_AGENTS]
+    )
+    finished = AgentTask(task_id="t1", phase="finished", status="completed")
+    api.provider.runs[0].emit(tasks(finished))
+
+    async def done() -> bool:
+        detail = (await api.http.get(url)).json()
+        return detail["background"]["completed"] == 1
+
+    await until(done)
+    stored = (await api.http.get(f"{url}/events")).json()
+    agents = [e["payload"] for e in stored if e["type"] == types.SESSION_AGENTS]
+
+    assert running["state"] == "idle"
+    assert [(a["id"], a["status"]) for a in running["agents"]] == [
+        ("main", "done"),
+        ("a1", "running"),
+    ]
+    assert (running["background"]["running"], running["background"]["completed"]) == (1, 0)
+    assert len(agents) == agents_events + 1
+    assert agents[-1]["background"]["items"][0]["status"] == "done"
+    assert [e["type"] for e in stored[-2:]] == [types.SESSION_AGENT_TASK, types.SESSION_AGENTS]
 
 
 async def test_a_failed_session_notifies(api: Api) -> None:

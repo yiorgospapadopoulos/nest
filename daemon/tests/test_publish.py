@@ -15,7 +15,9 @@ from tests.fakes import FakeClock
 from tests.git_support import commit_file, git, init_repo, with_origin
 from tests.test_session_store import new_session
 
-PR = PullRequest(base="main", title="Fix the bug", body="Fix the bug\n\nDone.")
+PR = PullRequest(
+    base="main", title="Fix the bug", body="Fix the bug\n\nDone.", summary="Done.\n1 file changed"
+)
 
 
 class Env:
@@ -71,6 +73,7 @@ async def test_a_worktree_is_committed_pushed_and_opened_as_a_pull_request(env: 
     sha = git(env.worktree, "rev-parse", "HEAD").strip()
     assert published.commit_sha == sha
     assert published.pr_url == PR_URL
+    assert published.pr_summary == "Done.\n1 file changed"
     assert git(env.worktree, "log", "-1", "--format=%s%n%an").split("\n")[:2] == [
         "Fix the bug",
         "Test",

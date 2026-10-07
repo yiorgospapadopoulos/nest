@@ -11,15 +11,17 @@ from pydantic import JsonValue
 from harness.approvals.models import ApprovalKind
 from harness.approvals.queue import ApprovalQueue
 from harness.errors import ConflictError, InvalidInputError
+from harness.prs.monitor import PrMonitor
+from harness.prs.summary import pr_summary
 from harness.repos.service import RepoService
 from harness.review.diffs import session_diff
 from harness.review.errors import GitViolationError
 from harness.review.models import ApproveRequest, SessionDiff
 from harness.review.publish import GitPublisher, PublishPlan, PullRequest
-from harness.sessions.errors import NoWorkspaceError, SessionBusyError
+from harness.sessions.errors import SessionBusyError
 from harness.sessions.manager import SessionManager
 from harness.sessions.models import IN_FLIGHT, Session
-from harness.sessions.rules import require_cwd, require_open
+from harness.sessions.rules import require_cwd, require_open, require_workspace
 from harness.tracking.service import Tracking
 
 
@@ -32,25 +34,24 @@ class ReviewActions:
         approvals: ApprovalQueue,
         tracking: Tracking,
         publisher: GitPublisher,
+        prs: PrMonitor,
     ) -> None:
         self._sessions = sessions
         self._repos = repos
         self._approvals = approvals
         self._tracking = tracking
         self._publisher = publisher
+        self._prs = prs
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def diff(self, session_id: str) -> SessionDiff:
         session = await self._sessions.get(session_id)
-        cwd = require_cwd(session)
-        if not cwd.is_dir():
-            msg = f"the working directory of session {session_id!r} no longer exists"
-            raise NoWorkspaceError(msg)
-        return await session_diff(cwd, session.base_ref)
+        return await session_diff(require_workspace(session), session.base_ref)
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
         async with self._lock(session_id):
             session = await self._idle(session_id)
+            require_workspace(session)
             if session.git_violation and not request.acknowledge_violation:
                 msg = (
                     "the agent changed git refs itself; check them and set "
@@ -62,6 +63,9 @@ class ReviewActions:
                 session = await self._publisher.publish(session, plan)
             finally:
                 await self._sessions.refresh_refs(session_id)
+            if plan.push and session.pr_url is not None:
+                # A new pull request, or new commits on one: read it without waiting.
+                self._prs.check_soon(session_id)
             await self._resolve_review(
                 session_id,
                 {
@@ -111,6 +115,7 @@ class ReviewActions:
                 base=self._repos.get(session.repo).default_branch,
                 title=request.pr_title or session.title,
                 body=request.pr_body or await self._default_body(session),
+                summary=await self._pr_summary(session),
             )
         return PublishPlan(request.commit_message, None, request.push, pull_request)
 
@@ -126,6 +131,15 @@ class ReviewActions:
             raise InvalidInputError(msg)
         # A renamed file's old path goes with it, so the whole rename is committed.
         return sorted({path for f in files for path in (f, changed[f].old_path) if path})
+
+    async def _pr_summary(self, session: Session) -> str:
+        """The pending review's summary text and the whole work's diff stats."""
+        review = await self._approvals.pending(session.id, ApprovalKind.REVIEW)
+        text = None if review is None else review.payload.get("summary")
+        if not isinstance(text, str):
+            text = await self._tracking.summary(session.id)
+        diff = await session_diff(require_cwd(session), session.base_ref)
+        return pr_summary(text, diff.stats)
 
     async def _default_body(self, session: Session) -> str:
         summary = await self._tracking.summary(session.id)

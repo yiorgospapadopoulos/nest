@@ -25,6 +25,8 @@ class PullRequest:
     base: str
     title: str
     body: str
+    # Up to three lines kept on the session for dashboards (D034).
+    summary: str
 
 
 @dataclass(frozen=True)
@@ -63,7 +65,7 @@ class GitPublisher:
             cwd,
         )
         url = output.strip().splitlines()[-1]
-        session = await self._store.update(session.id, pr_url=url)
+        session = await self._store.update(session.id, pr_url=url, pr_summary=pr.summary)
         await self._bus.publish(types.PR_OPENED, {"url": url}, session.id)
         return session
 
