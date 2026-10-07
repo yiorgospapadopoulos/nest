@@ -10,9 +10,11 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "claude-agent-sdk>=0.2.163",
     "fastapi>=0.142.2",
+    "httpx>=0.28.1",
     "keyring>=25.7.0",
     "pydantic>=2.13.5",
     "python-multipart>=0.0.32",
+    "pywebpush>=2.5.0",
     "tomli-w>=1.2.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -22,7 +24,7 @@ harness = "harness.cli:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "httpx2>=2.13.1",
     "pip-audit>=2.10.1",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
@@ -63,6 +65,9 @@ addopts = [
     "--cov-fail-under=100",
     "--strict-markers",
 ]
+# Starlette's TestClient falls back to httpx with a deprecation warning when httpx2 is missing
+# (I-004); httpx2 is a dev dependency, and the fallback fails the run instead of warning.
+filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]
 
 [tool.coverage.run]
 branch = true

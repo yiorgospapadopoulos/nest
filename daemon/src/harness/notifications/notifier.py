@@ -5,7 +5,16 @@ from typing import Literal
 from harness.events import types
 from harness.events.bus import EventBus
 
-type NotifyKind = Literal["needs_approval", "question", "review_ready", "failed", "finished"]
+type NotifyKind = Literal[
+    "needs_approval",
+    "question",
+    "review_ready",
+    "failed",
+    "finished",
+    "ci_failed",
+    "ready_to_merge",
+    "stuck",
+]
 
 
 class Notifier:
