@@ -55,6 +55,16 @@ import Testing
             Fixture.event(EventType.sessionDelta, #"{"text": "Hel"}"#, id: nil).body
                 == .delta("Hel"))
         #expect(
+            Fixture.event(EventType.sessionThinking, #"{"active": true}"#, id: nil).body
+                == .thinking(active: true))
+        #expect(
+            Fixture.event(EventType.sessionThinking, #"{"active": false}"#, id: nil).body
+                == .thinking(active: false))
+        // Anything but true ends it, as in the PWA.
+        #expect(
+            Fixture.event(EventType.sessionThinking, #"{}"#, id: nil).body
+                == .thinking(active: false))
+        #expect(
             Fixture.event(EventType.sessionState, #"{"state": "failed", "error": "boom"}"#).body
                 == .sessionState(.failed, error: "boom"))
         #expect(

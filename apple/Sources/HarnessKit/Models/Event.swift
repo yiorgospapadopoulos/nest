@@ -26,6 +26,11 @@ public struct Event: Decodable, Sendable, Hashable {
         payload = try container.decode(JSONValue.self, forKey: .payload)
         body = (try? EventBody(type: type, payload: payload)) ?? .other
     }
+
+    /// A message the user sent.
+    var isUserMessage: Bool {
+        if case .userMessage = body { true } else { false }
+    }
 }
 
 /// Event type names; a wire contract with the daemon.
@@ -36,6 +41,8 @@ public enum EventType {
     public static let sessionUserMessage = "session.user_message"
     public static let sessionMessage = "session.message"
     public static let sessionDelta = "session.delta"
+    /// Ephemeral: a main-agent thinking block started (`active` true) or ended.
+    public static let sessionThinking = "session.thinking"
     public static let sessionResult = "session.result"
     public static let sessionDeleted = "session.deleted"
     public static let sessionTasks = "session.tasks"
@@ -67,6 +74,8 @@ public enum EventBody: Sendable, Hashable {
     case userMessage(UserMessage)
     case message(AgentMessage)
     case delta(String)
+    /// A main-agent thinking block started or ended (D045).
+    case thinking(active: Bool)
     case result(TurnResult)
     case sessionDeleted(sessionID: String)
     case tasks([TrackedTask])
@@ -115,6 +124,8 @@ public enum EventBody: Sendable, Hashable {
         case EventType.sessionUserMessage: self = .userMessage(try payload.decode(UserMessage.self))
         case EventType.sessionMessage: self = .message(try payload.decode(AgentMessage.self))
         case EventType.sessionDelta: self = .delta(try field("text", as: String.self))
+        case EventType.sessionThinking:
+            self = .thinking(active: payload["active"]?.boolValue == true)
         case EventType.sessionResult: self = .result(try payload.decode(TurnResult.self))
         case EventType.sessionDeleted:
             self = .sessionDeleted(sessionID: try field("session_id", as: String.self))

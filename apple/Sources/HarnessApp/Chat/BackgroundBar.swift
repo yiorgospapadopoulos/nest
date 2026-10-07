@@ -14,8 +14,8 @@ struct BackgroundBar: View {
     @Environment(\.glass) private var glass
 
     var body: some View {
-        let summary = shell.activity.background(session: chat)
-            .exchange(since: shell.model.transcripts.existing(chat)?.exchangeStartedAt)
+        let all = shell.activity.background(session: chat)
+        let summary = shell.model.transcripts.existing(chat)?.exchange(of: all) ?? all
         if !summary.isEmpty {
             let expanded = shell.projectState.expandedBackground.contains(chat)
             let shape = glass.rounded(glass.radius.card)

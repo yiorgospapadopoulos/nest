@@ -82,8 +82,16 @@ public final class TranscriptStore {
     /// When the open turn started; nil between turns.
     public private(set) var turnStartedAt: Date?
     /// When the user's latest message was sent: the current exchange, whose background
-    /// tasks the bar counts, began then. Turns the agent starts by itself stay in it.
+    /// tasks the bar counts, began then. Turns the agent starts by itself stay in it. Kept
+    /// apart from the loaded page, so a search hit's page does not move it back.
     public private(set) var exchangeStartedAt: Date?
+    /// The latest user message is known: a load reached the newest events or looked it up,
+    /// or one arrived live (nothing newer can come any other way).
+    private var knowsExchange = false
+    /// A main-agent thinking block runs, as the daemon's `session.thinking` reports.
+    private var thinkingLive = false
+    /// The daemon sends `session.thinking`; older daemons do not.
+    private var reportsThinking = false
     /// The end of the last turn, while no other turn started since: an interruption or
     /// failure reported after the result marks it stopped.
     private var lastTurnEnd: String?
@@ -117,6 +125,7 @@ public final class TranscriptStore {
             // Claude Code may have rewound or compacted it since, so start over.
             events = try await api.claudeChatEvents(sessionID)
             reset()
+            exchangeStartedAt = nil
         }
         events.forEach(apply)
         finishLoading()
@@ -135,10 +144,20 @@ public final class TranscriptStore {
         }
     }
 
-    /// The open turn's latest content is thinking.
+    /// A thinking block runs: as the daemon reports, or for daemons that do not, the open
+    /// turn's latest content is thinking.
     public var isThinking: Bool {
+        if reportsThinking {
+            return thinkingLive
+        }
         guard turnStartedAt != nil, case .thinking = items.last?.content else { return false }
         return true
+    }
+
+    /// The background bar's tasks (see `BackgroundSummary.exchange(since:)`); until the
+    /// latest user message is known, only those still at work.
+    public func exchange(of summary: BackgroundSummary) -> BackgroundSummary {
+        summary.exchange(since: knowsExchange ? exchangeStartedAt : .distantFuture)
     }
 
     // MARK: Focus and pages
@@ -202,11 +221,30 @@ public final class TranscriptStore {
         hasOlder = older.count == Self.pageSize
         hasNewer = newer.count == Self.pageSize
         rebuild(older + newer)
+        if hasNewer && !knowsExchange {
+            try await findExchange(after: lastEventID)
+        }
         finishLoading()
+    }
+
+    /// Reads back from the newest events, a page at a time, to the latest user message
+    /// after `event`; without one there, the page's own latest message starts the exchange.
+    private func findExchange(after event: Int) async throws {
+        var before: Int? = .max
+        while let end = before {
+            let events = try await api.sessionEvents(
+                sessionID, after: event, before: end, limit: Self.pageSize)
+            if let message = events.last(where: \.isUserMessage) {
+                noteUserMessage(at: message.ts)
+                return
+            }
+            before = events.count == Self.pageSize ? events.first?.id : nil
+        }
     }
 
     private func finishLoading() {
         isLoaded = true
+        knowsExchange = true
         // Text deltas from before the history are already in its final messages, and
         // events past a page that stops short of the newest are loaded with it later.
         if !hasNewer {
@@ -230,13 +268,21 @@ public final class TranscriptStore {
         history = []
         lastEventID = 0
         turnStartedAt = nil
-        exchangeStartedAt = nil
         lastTurnEnd = nil
     }
 
     // MARK: Events
 
     public func receive(_ event: Event) {
+        if case .thinking(let active) = event.body {
+            reportsThinking = true
+            thinkingLive = active
+            return
+        }
+        if event.isUserMessage {
+            noteUserMessage(at: event.ts)
+            knowsExchange = true
+        }
         if !isLoaded {
             early.append(event)
         } else if !hasNewer {
@@ -253,9 +299,17 @@ public final class TranscriptStore {
         let key = event.id.map { "e\($0)" } ?? UUID().uuidString
         let eventID = event.id
         switch event.body {
+        case .message, .result, .sessionState:
+            // A thinking block's end may never come; the next message, result or state
+            // ends it, as in the PWA.
+            thinkingLive = false
+        default:
+            break
+        }
+        switch event.body {
         case .userMessage(let message):
             startTurn(at: event.ts)
-            exchangeStartedAt = event.ts
+            noteUserMessage(at: event.ts)
             append(key, .user(text: message.text, attachments: message.attachments), eventID)
         case .message(let message) where message.parentToolUseID == nil:
             endStreaming()
@@ -323,6 +377,11 @@ public final class TranscriptStore {
         } else {
             append(Self.streamingID, .assistant(text, streaming: true), nil)
         }
+    }
+
+    /// User messages come in order, so the latest one seen anywhere starts the exchange.
+    private func noteUserMessage(at date: Date) {
+        exchangeStartedAt = max(exchangeStartedAt ?? date, date)
     }
 
     // MARK: Turns

@@ -309,6 +309,8 @@ import Testing
             api.calls == [
                 "sessionEvents p after=0 before=121 limit=100",
                 "sessionEvents p after=120 limit=100",
+                // The latest user message, for the background bar.
+                "sessionEvents p after=220 before=\(Int.max) limit=100",
             ])
         #expect(transcript.isLoaded)
         #expect(transcript.hasOlder)
@@ -319,7 +321,7 @@ import Testing
         #expect(try await transcript.resolveFocus() == "e120")
         #expect(transcript.focus == nil)
         #expect(try await transcript.resolveFocus() == nil)
-        #expect(api.calls.count == 2)
+        #expect(api.calls.count == 3)
     }
 
     @Test func earlierAndNewerPagesLoadOnRequest() async throws {
@@ -333,7 +335,7 @@ import Testing
         #expect(ids(transcript).first == "e1")
         #expect(transcript.items.count == 220)
         try await transcript.loadOlder()
-        #expect(api.calls.count == 3)
+        #expect(api.calls.count == 4)
 
         try await transcript.loadNewer()
         #expect(api.calls.last == "sessionEvents p after=220 limit=100")
@@ -341,7 +343,7 @@ import Testing
         #expect(ids(transcript).last == "e250")
         #expect(transcript.lastEventID == 250)
         try await transcript.loadNewer()
-        #expect(api.calls.count == 4)
+        #expect(api.calls.count == 5)
     }
 
     @Test func liveEventsWaitWhileNewerOnesAreNotLoaded() async throws {
@@ -402,7 +404,7 @@ import Testing
 
         transcript.requestFocus(event: 200)
         #expect(try await transcript.resolveFocus() == "e200")
-        #expect(api.calls.count == 6)
+        #expect(api.calls.count == 7)
     }
 }
 
