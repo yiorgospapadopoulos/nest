@@ -53,6 +53,7 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
     expected: dict[str, object] = {
         "name": "project",
         "path": str(repo.resolve()),
+        "git": True,
         "default_branch": "main",
         # No override: new sessions follow `[agents] default_mode` (D038).
         "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
@@ -76,7 +77,8 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
     await api.http.post("/api/repos", json={"path": str(repo)})
 
     duplicate = await api.http.post("/api/repos", json={"path": str(repo), "name": "other"})
-    not_a_repo = await api.http.post("/api/repos", json={"path": str(tmp_path)})
+    (repo / "src").mkdir()
+    not_a_root = await api.http.post("/api/repos", json={"path": str(repo / "src")})
     missing = await api.http.get("/api/repos/nope")
     missing_links = await api.http.get("/api/repos/nope/link-suggestions")
     bad_link = await api.http.put("/api/repos/project/worktree", json={"link": ["../x"]})
@@ -85,7 +87,8 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
 
     assert duplicate.status_code == 409
     assert "already registered" in duplicate.json()["detail"]
-    assert not_a_repo.status_code == 422
+    assert not_a_root.status_code == 422
+    assert "not the root of a git work tree" in not_a_root.json()["detail"]
     assert missing.status_code == 404
     assert missing.json() == {"detail": "unknown repo 'nope'"}
     assert missing_links.status_code == 404

@@ -39,7 +39,10 @@ def load_templates(paths: AppPaths) -> list[TaskTemplate]:
 
 
 def save_repo(paths: AppPaths, repo: RepoConfig) -> None:
-    _write_toml(paths.repos_dir / f"{repo.name}.toml", _dump(repo))
+    data = _dump(repo)
+    if repo.git:
+        del data["git"]  # only plain folders write `git = false` (D041)
+    _write_toml(paths.repos_dir / f"{repo.name}.toml", data)
 
 
 def delete_repo(paths: AppPaths, name: str) -> None:

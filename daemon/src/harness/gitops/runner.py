@@ -27,6 +27,11 @@ class GitError(CommandError):
         super().__init__(["git", *args], returncode, stderr)
         self.args_ = tuple(args)
 
+    @property
+    def not_a_repository(self) -> bool:
+        """The directory is not inside any git work tree (a plain folder, D041)."""
+        return "not a git repository" in self.stderr
+
 
 async def run_command(argv: Sequence[str], cwd: Path) -> str:
     """Run `argv` in `cwd` and return its stdout."""

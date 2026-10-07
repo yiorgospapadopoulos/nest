@@ -13,7 +13,7 @@ from harness.approvals.queue import ApprovalQueue
 from harness.errors import ConflictError, InvalidInputError
 from harness.prs.monitor import PrMonitor
 from harness.prs.summary import pr_summary
-from harness.repos.service import RepoService
+from harness.repos.service import FALLBACK_BRANCH, RepoService
 from harness.review.diffs import session_diff
 from harness.review.errors import GitViolationError
 from harness.review.models import ApproveRequest, SessionDiff
@@ -46,12 +46,14 @@ class ReviewActions:
 
     async def diff(self, session_id: str) -> SessionDiff:
         session = await self._sessions.get(session_id)
+        await self._repos.require_git(session.repo)
         return await session_diff(require_workspace(session), session.base_ref)
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
         async with self._lock(session_id):
             session = await self._idle(session_id)
             require_workspace(session)
+            await self._repos.require_git(session.repo)
             if session.git_violation and not request.acknowledge_violation:
                 msg = (
                     "the agent changed git refs itself; check them and set "
@@ -112,7 +114,7 @@ class ReviewActions:
         pull_request = None
         if request.open_pr:
             pull_request = PullRequest(
-                base=self._repos.get(session.repo).default_branch,
+                base=self._repos.get(session.repo).default_branch or FALLBACK_BRANCH,
                 title=request.pr_title or session.title,
                 body=request.pr_body or await self._default_body(session),
                 summary=await self._pr_summary(session),

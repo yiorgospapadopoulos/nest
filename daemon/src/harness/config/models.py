@@ -168,8 +168,17 @@ class RepoConfig(_Strict):
     # The name doubles as the config file name, so it must be a safe file name.
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     path: Path
-    default_branch: str = "main"
+    # False for a plain folder outside any git work tree (D041); files without it are repos.
+    git: bool = True
+    # None for a plain folder.
+    default_branch: str | None = "main"
     worktree: WorktreeConfig = Field(default_factory=WorktreeConfig)
+
+    @model_validator(mode="after")
+    def _plain_folders_have_no_branch(self) -> "RepoConfig":
+        if not self.git:
+            self.default_branch = None
+        return self
 
 
 class TaskTemplate(_Strict):

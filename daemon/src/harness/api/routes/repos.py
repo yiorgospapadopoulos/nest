@@ -21,7 +21,8 @@ class RegisterRepo(BaseModel):
 
 @router.get("")
 async def list_repos(ctx: Context) -> list[RepoConfig]:
-    return ctx.repos.list_repos()
+    """Plain folders that became git repositories are updated on the way (D041)."""
+    return await ctx.repos.list_current()
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -31,7 +32,7 @@ async def register_repo(body: RegisterRepo, ctx: Context) -> RepoConfig:
 
 @router.get("/{name}")
 async def get_repo(name: str, ctx: Context) -> RepoConfig:
-    return ctx.repos.get(name)
+    return await ctx.repos.current(name)
 
 
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)

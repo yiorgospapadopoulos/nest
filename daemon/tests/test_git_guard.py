@@ -47,6 +47,10 @@ ALLOWED = [
     "gh pr list",
     "gh issue create",
     "npm run commit-lint",
+    # Claude initializes a plain folder project (D041).
+    "git init",
+    "git init -b main",
+    "cd notes && git init && git add -A",
     "",
 ]
 

@@ -13,7 +13,15 @@ from harness.gitops.runner import GitError, run_git
 
 
 async def snapshot_refs(cwd: Path) -> dict[str, str]:
-    output = await run_git(["for-each-ref", "--format=%(objectname) %(refname)"], cwd)
+    """Empty for a plain folder (D041): if the agent makes it a repository, the commits it
+    makes there are new refs at the end of the turn.
+    """
+    try:
+        output = await run_git(["for-each-ref", "--format=%(objectname) %(refname)"], cwd)
+    except GitError as error:
+        if error.not_a_repository:
+            return {}
+        raise
     refs = {ref: sha for sha, ref in (line.split(" ", 1) for line in output.splitlines())}
     with suppress(GitError):  # no commits yet
         refs["HEAD"] = (await run_git(["rev-parse", "--verify", "HEAD"], cwd)).strip()

@@ -12,6 +12,7 @@ from harness.providers.base import (
     ResultInfo,
     UsageInfo,
 )
+from harness.repos.service import RepoService
 from harness.review.watch import ReviewWatcher
 from harness.sessions.commands import CommandStore
 from harness.sessions.models import Session, SessionState
@@ -34,7 +35,9 @@ class SessionReactions:
         connectors: ConnectorRegistry,
         commands: CommandStore,
         engine: EngineInfo,
+        repos: RepoService,
     ) -> None:
+        self._repos = repos
         self._commands = commands
         self._engine = engine
         self._tracking = tracking
@@ -46,8 +49,11 @@ class SessionReactions:
     async def state_changed(self, session: Session) -> None:
         tracker = await self._tracking.sync(session.id)
         if session.state is SessionState.IDLE:
+            # The agent may have made a plain folder a git repository (D041); a plain
+            # folder has nothing to review.
+            git = await self._repos.has_git(session.repo)
             # A review announces itself; otherwise the user hears the turn finished.
-            if await self._reviews.turn_ended(session) is None:
+            if not git or await self._reviews.turn_ended(session) is None:
                 await self._notify(session, "finished", tracker.summary or "The turn finished.")
         elif session.state is SessionState.FAILED:
             await self._notify(session, "failed", session.last_error or "The session failed.")
