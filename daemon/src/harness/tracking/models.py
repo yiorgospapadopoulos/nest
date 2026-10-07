@@ -38,3 +38,24 @@ class TrackedAgent(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     steps: list[AgentStep]
+
+
+class BackgroundItem(BaseModel):
+    """A subagent or a background command, for the "N running · M completed" bar."""
+
+    # The Agent or Bash tool use id.
+    id: str
+    kind: Literal["agent", "bash"]
+    # The subagent's type, or the command (shortened to one line).
+    name: str
+    description: str | None
+    status: AgentStatus
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class BackgroundSummary(BaseModel):
+    running: int
+    # Finished, whether done or failed.
+    completed: int
+    items: list[BackgroundItem]

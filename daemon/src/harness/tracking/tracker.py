@@ -4,7 +4,13 @@ from pydantic import TypeAdapter
 
 from harness.events import types
 from harness.events.models import Event
-from harness.providers.base import MessageBlock, TextBlock, ToolResultBlock, ToolUseBlock
+from harness.providers.base import (
+    AgentTask,
+    MessageBlock,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from harness.tracking.agents import AgentBoard, Change
 from harness.tracking.tasks import TaskList
 
@@ -31,6 +37,8 @@ class SessionTracker:
                 self.agents.started(event.ts)
             case types.SESSION_WORKSPACE:
                 self.agents.root = str(payload["path"])
+            case types.SESSION_AGENT_TASK:
+                return False, self.agents.task(AgentTask.model_validate(payload), event.ts)
             case types.SESSION_STATE:
                 return False, self.agents.state(str(payload["state"]), event.ts)
             case types.SESSION_MESSAGE:

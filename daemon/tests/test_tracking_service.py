@@ -79,7 +79,11 @@ async def test_sync_loads_history_quietly_then_publishes_changes(
     agents = published[-1].payload["agents"]
     assert isinstance(agents, list)
     assert [a["id"] for a in agents] == ["main", "a1"]  # pyright: ignore[reportIndexIssue, reportArgumentType, reportCallIssue, reportOptionalSubscript]
+    summary = published[-1].payload["background"]
+    assert isinstance(summary, dict)
+    assert (summary["running"], summary["completed"]) == (1, 0)
     snapshot = await tracking.snapshot("s1")
+    assert [item.id for item in snapshot.background.items] == ["a1"]
     assert [t.id for t in snapshot.tasks] == ["1"]
     assert [a.id for a in snapshot.agents] == ["main", "a1"]
     assert await tracking.summary("s1") == "All done."
@@ -90,3 +94,4 @@ async def test_an_unknown_session_has_only_the_main_agent(db: Database, clock: F
 
     assert snapshot.tasks == []
     assert [a.id for a in snapshot.agents] == ["main"]
+    assert snapshot.background.model_dump() == {"running": 0, "completed": 0, "items": []}

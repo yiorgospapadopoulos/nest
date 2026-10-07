@@ -2,8 +2,9 @@
 
 A tracker is built from the session's persisted events the first time it is needed (after
 a restart too) without publishing, then catches up on new events, publishing what changed:
-`session.tasks` when the task list changes, `session.agents` stored when an agent starts or
-finishes and ephemeral for activity.
+`session.tasks` when the task list changes, `session.agents` (agents and the background
+summary) stored when an agent or background command starts or finishes and ephemeral for
+activity.
 """
 
 import asyncio
@@ -13,13 +14,14 @@ from pydantic import BaseModel, JsonValue
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.tracking.agents import Change
-from harness.tracking.models import TrackedAgent, TrackedTask
+from harness.tracking.models import BackgroundSummary, TrackedAgent, TrackedTask
 from harness.tracking.tracker import SessionTracker
 
 
 class TrackingSnapshot(BaseModel):
     tasks: list[TrackedTask]
     agents: list[TrackedAgent]
+    background: BackgroundSummary
 
 
 class Tracking:
@@ -46,7 +48,11 @@ class Tracking:
 
     async def snapshot(self, session_id: str) -> TrackingSnapshot:
         tracker = await self.sync(session_id)
-        return TrackingSnapshot(tasks=tracker.tasks.snapshot(), agents=tracker.agents.snapshot())
+        return TrackingSnapshot(
+            tasks=tracker.tasks.snapshot(),
+            agents=tracker.agents.snapshot(),
+            background=tracker.agents.background(),
+        )
 
     async def summary(self, session_id: str) -> str | None:
         return (await self.sync(session_id)).summary
@@ -60,7 +66,10 @@ class Tracking:
         if change is Change.NONE:
             return
         snapshot: list[JsonValue] = [a.model_dump(mode="json") for a in tracker.agents.snapshot()]
-        agents: dict[str, JsonValue] = {"agents": snapshot}
+        agents: dict[str, JsonValue] = {
+            "agents": snapshot,
+            "background": tracker.agents.background().model_dump(mode="json"),
+        }
         if change is Change.LIFECYCLE:
             await self._bus.publish(types.SESSION_AGENTS, agents, session_id)
         else:
