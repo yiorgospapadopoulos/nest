@@ -1,23 +1,43 @@
 import { list, obj, str, toolArg } from "../api/payloads.ts";
-import type { Approval, HarnessEvent, JsonObject } from "../api/types.ts";
+import type { Approval, HarnessEvent, JsonObject, JsonValue } from "../api/types.ts";
 import { permissionOf } from "../api/payloads.ts";
+import { turnLabel } from "./activity.ts";
+
+export interface ToolItem {
+  kind: "tool";
+  key: string;
+  // The tool use id, which background tasks are tracked by.
+  id: string;
+  name: string;
+  arg: string;
+  result: string | null;
+  detail: string | null;
+  failed: boolean;
+}
+
+export interface ThinkingItem {
+  kind: "thinking";
+  key: string;
+  // Empty when the engine left the thinking out.
+  text: string;
+  // Null when unknown, as in Claude Code's own transcripts.
+  ms: number | null;
+}
 
 export type TranscriptItem =
   | { kind: "user"; key: string; text: string; attachments: string[] }
   | { kind: "assistant"; key: string; text: string }
-  | {
-      kind: "tool";
-      key: string;
-      name: string;
-      arg: string;
-      result: string | null;
-      detail: string | null;
-      failed: boolean;
-    }
+  | ToolItem
+  | ThinkingItem
+  // Consecutive tool calls (two or more) with the thinking between them (D045).
+  | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
   | { kind: "approval"; key: string; approval: Approval }
-  | { kind: "system"; key: string; text: string };
+  | { kind: "system"; key: string; text: string }
+  // "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn.
+  | { kind: "turn"; key: string; text: string };
 
-type ToolItem = Extract<TranscriptItem, { kind: "tool" }>;
+// States that end a turn; the others continue it or have nothing to do with turns.
+const TURN_ENDS = new Set<JsonValue | undefined>(["idle", "interrupted", "failed"]);
 
 const DETAIL_LIMIT = 4000;
 // Task list bookkeeping shows in the Goals strip instead.
@@ -43,11 +63,17 @@ export function buildTranscript(
   }
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolItem>();
+  // The open turn's result: a turn a queued message ends has no other end (D045).
+  let result: { ms: number | null; key: string } | null = null;
   for (const e of events) {
     const key = String(e.id);
     const p = e.payload;
     switch (e.type) {
       case "session.user_message":
+        if (result !== null && result.ms !== null) {
+          items.push({ kind: "turn", key: `${result.key}.end`, text: turnLabel(result.ms, false) });
+        }
+        result = null;
         items.push({
           kind: "user",
           key,
@@ -70,11 +96,82 @@ export function buildTranscript(
         }
         break;
       }
+      case "session.result":
+        result = { ms: num(p.duration_ms), key };
+        note(items, key, p.is_error === true ? "The turn ended with an error" : null);
+        break;
+      case "session.state":
+        if (TURN_ENDS.has(p.state)) {
+          endTurn(items, key, p, num(p.duration_ms) ?? result?.ms ?? null);
+          result = null;
+        }
+        break;
       default:
         note(items, key, systemText(e));
     }
   }
-  return items;
+  return groupTools(items);
+}
+
+/** The end of a turn: how long it worked, or ran before it was stopped or failed. */
+function endTurn(items: TranscriptItem[], key: string, p: JsonObject, ms: number | null): void {
+  if (p.state === "failed") note(items, key, failure(str(p.error)));
+  if (ms !== null) {
+    items.push({ kind: "turn", key: `${key}.end`, text: turnLabel(ms, p.state !== "idle") });
+  } else if (p.state === "interrupted") {
+    note(items, key, "Interrupted");
+  }
+}
+
+/**
+ * When the running turn started, for its live timer: its `turn_start` mark, or its user
+ * message in history from before the mark existed. Null when no turn runs.
+ */
+export function turnStart(events: HarnessEvent[]): string | null {
+  for (const e of [...events].reverse()) {
+    if (e.type === "session.user_message") return e.ts;
+    if (e.type !== "session.state") continue;
+    if (e.payload.turn_start === true) return e.ts;
+    if (TURN_ENDS.has(e.payload.state) || e.payload.state === "closed") return null;
+  }
+  return null;
+}
+
+/** Runs of two or more tool calls become one group; thinking between them joins it. */
+function groupTools(items: TranscriptItem[]): TranscriptItem[] {
+  const grouped: TranscriptItem[] = [];
+  // The run so far, from its first call to its last, and thinking since its last call.
+  let run: (ToolItem | ThinkingItem)[] = [];
+  let tail: ThinkingItem[] = [];
+  let key = "";
+  const flush = () => {
+    if (run.filter((item) => item.kind === "tool").length > 1) {
+      grouped.push({ kind: "tools", key, items: run });
+    } else {
+      grouped.push(...run);
+    }
+    grouped.push(...tail);
+    run = [];
+    tail = [];
+  };
+  for (const item of items) {
+    if (item.kind === "tool") {
+      if (run.length === 0) key = item.key;
+      run = [...run, ...tail, item];
+      tail = [];
+    } else if (item.kind === "thinking" && run.length > 0) {
+      tail.push(item);
+    } else {
+      flush();
+      grouped.push(item);
+    }
+  }
+  flush();
+  return grouped;
+}
+
+function num(value: JsonValue | undefined): number | null {
+  return typeof value === "number" ? value : null;
 }
 
 function addBlocks(
@@ -89,17 +186,25 @@ function addBlocks(
     if (block.type === "text") {
       const text = str(block.text) ?? "";
       if (text.trim()) items.push({ kind: "assistant", key: blockKey, text });
+    } else if (block.type === "thinking") {
+      items.push({
+        kind: "thinking",
+        key: blockKey,
+        text: str(block.text) ?? "",
+        ms: num(block.duration_ms),
+      });
     } else if (block.type === "tool_use") {
       const tool: ToolItem = {
         kind: "tool",
         key: blockKey,
+        id: str(block.id) ?? blockKey,
         name: str(block.name) ?? "Tool",
         arg: toolArg(obj(block.input), root),
         result: null,
         detail: null,
         failed: false,
       };
-      tools.set(str(block.id) ?? blockKey, tool);
+      tools.set(tool.id, tool);
       if (!HIDDEN_TOOLS.has(tool.name)) items.push(tool);
     } else if (block.type === "tool_result") {
       const tool = tools.get(str(block.tool_use_id) ?? "");
@@ -160,12 +265,6 @@ function failure(error: string | null): string {
 function systemText(e: HarnessEvent): string | null {
   const p = e.payload;
   switch (e.type) {
-    case "session.state":
-      if (p.state === "interrupted") return "Interrupted";
-      if (p.state === "failed") return failure(str(p.error));
-      return null;
-    case "session.result":
-      return p.is_error === true ? "The turn ended with an error" : null;
     case "session.setup_failed":
       return `Setup failed: ${str(p.command) ?? ""}`;
     case "session.git_violation":

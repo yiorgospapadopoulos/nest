@@ -1,7 +1,14 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import type { QueuedMessage, Session, TrackedAgent } from "../../api/types.ts";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { BackgroundSummary, QueuedMessage, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts";
+import { elapsed, summarizeTools, thoughtLabel } from "../../transcript/activity.ts";
+import {
+  buildTranscript,
+  turnStart,
+  type ThinkingItem,
+  type ToolItem,
+  type TranscriptItem,
+} from "../../transcript/build.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { toolIcon } from "../../ui/toolIcon.ts";
 import { workRoot } from "../approvals/hooks.ts";
@@ -13,14 +20,17 @@ const FOLLOW_DISTANCE = 40;
 
 const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
+const NO_TASKS: ReadonlySet<string> = new Set();
+
 interface Props {
   session: Session;
-  agents: TrackedAgent[];
+  // Background tasks, so a group knows which of its calls still run.
+  background: BackgroundSummary;
   // An event to scroll to and highlight once it is loaded, such as a search hit.
   focus?: number | null;
 }
 
-export function Transcript({ session, agents, focus = null }: Props) {
+export function Transcript({ session, background, focus = null }: Props) {
   const { state, actions } = useStore();
   const events = state.transcripts[session.id];
   const live = state.live[session.id] ?? "";
@@ -32,7 +42,10 @@ export function Transcript({ session, agents, focus = null }: Props) {
   // Bumped by "Jump to latest" to scroll down once more.
   const [jumps, setJumps] = useState(0);
   const working = WORKING.has(session.state);
-  const main = agents.find((a) => a.name === "main");
+  const now = useNow(working);
+  const start = turnStart(events ?? []);
+  const thinking = session.id in state.thinking;
+  const running = new Set(background.items.filter((i) => i.status === "running").map((i) => i.id));
   const focused = useRef<number | null>(null);
 
   useLayoutEffect(() => {
@@ -85,17 +98,15 @@ export function Transcript({ session, agents, focus = null }: Props) {
         )}
         <div className="tx" aria-live="polite">
           {items.map((item) => (
-            <Item key={item.key} item={item} session={session} />
+            <Item key={item.key} item={item} session={session} running={running} />
           ))}
           {live && <div className="m-a">{live}</div>}
           {working && (
             <div className="m-live">
-              <span className="dots" aria-hidden="true">
-                <i />
-                <i />
-                <i />
+              <span className="glow">
+                {thinking ? "Thinking..." : "Working..."}
+                {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
               </span>
-              <span className="mono">{main?.activity ?? "Thinking"}</span>
             </div>
           )}
           {queued.map((message) => (
@@ -117,6 +128,21 @@ export function Transcript({ session, agents, focus = null }: Props) {
   );
 }
 
+/** The time, ticking every second while `ticking`. */
+function useNow(ticking: boolean): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [ticking]);
+  return now;
+}
+
 /**
  * The item shown for an event: the last one at or before it, since a tool result shows
  * with its call.
@@ -130,11 +156,17 @@ function nearestItem(box: HTMLElement, eventId: number): HTMLElement | null {
   return found;
 }
 
-function Item({ item, session }: { item: TranscriptItem; session: Session }) {
+interface ItemProps {
+  item: TranscriptItem;
+  session: Session;
+  running: ReadonlySet<string>;
+}
+
+function Item({ item, session, running }: ItemProps) {
   return item.kind === "approval" ? (
     <InlineApproval approval={item.approval} session={session} />
   ) : (
-    <MessageItem item={item} ev={item.key.replace(/\..*$/, "")} />
+    <MessageItem item={item} ev={item.key.replace(/\..*$/, "")} running={running} />
   );
 }
 
@@ -158,8 +190,15 @@ function Queued({ message, onCancel }: { message: QueuedMessage; onCancel: () =>
 
 export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" }>;
 
+interface EntryProps {
+  item: MessageEntry;
+  ev?: string;
+  // Calls whose background task still runs.
+  running?: ReadonlySet<string>;
+}
+
 /** A message, tool call or note; read-only transcripts show only these. */
-export function MessageItem({ item, ev }: { item: MessageEntry; ev?: string }) {
+export function MessageItem({ item, ev, running = NO_TASKS }: EntryProps) {
   switch (item.kind) {
     case "user":
       return (
@@ -180,31 +219,92 @@ export function MessageItem({ item, ev }: { item: MessageEntry; ev?: string }) {
           {item.text}
         </div>
       );
-    case "tool": {
-      const summary = (
-        <>
-          <Icon name={toolIcon(item.name)} />
-          <span className="tn">{item.name}</span>
-          <span className="ta">{item.arg}</span>
-          <span className={item.failed ? "tr bad" : "tr"}>{item.result ?? "running"}</span>
-        </>
-      );
-      if (item.detail === null) {
-        return (
-          <div className="tool" data-ev={ev}>
-            <div className="tsum">{summary}</div>
-          </div>
-        );
-      }
+    case "turn":
       return (
-        <details className="tool" data-ev={ev}>
-          <summary>
-            {summary}
-            <Icon name="chev" className="cv" />
-          </summary>
-          <pre>{item.detail}</pre>
-        </details>
+        <div className="m-turn" data-ev={ev}>
+          {item.text}
+        </div>
       );
-    }
+    case "thinking":
+      return <Thinking item={item} ev={ev} />;
+    case "tool":
+      return <Tool item={item} ev={ev} />;
+    case "tools":
+      return <ToolGroup items={item.items} ev={ev} running={running} />;
   }
+}
+
+/** "Thought for 8s", opening to the thinking; nothing to open when the engine left it out. */
+function Thinking({ item, ev }: { item: ThinkingItem; ev?: string | undefined }) {
+  const label = thoughtLabel(item.ms);
+  if (!item.text.trim()) {
+    return (
+      <div className="think" data-ev={ev}>
+        <span className="thl">{label}</span>
+      </div>
+    );
+  }
+  return (
+    <details className="think" data-ev={ev}>
+      <summary>
+        <span className="thl">{label}</span>
+        <Icon name="chev" className="cv" />
+      </summary>
+      <div className="tht">{item.text}</div>
+    </details>
+  );
+}
+
+function Tool({ item, ev }: { item: ToolItem; ev?: string | undefined }) {
+  const summary = (
+    <>
+      <Icon name={toolIcon(item.name)} />
+      <span className="tn">{item.name}</span>
+      <span className="ta">{item.arg}</span>
+      <span className={item.failed ? "tr bad" : "tr"}>{item.result ?? "running"}</span>
+    </>
+  );
+  if (item.detail === null) {
+    return (
+      <div className="tool" data-ev={ev}>
+        <div className="tsum">{summary}</div>
+      </div>
+    );
+  }
+  return (
+    <details className="tool" data-ev={ev}>
+      <summary>
+        {summary}
+        <Icon name="chev" className="cv" />
+      </summary>
+      <pre>{item.detail}</pre>
+    </details>
+  );
+}
+
+interface GroupProps {
+  items: (ToolItem | ThinkingItem)[];
+  ev?: string | undefined;
+  running: ReadonlySet<string>;
+}
+
+/** "Ran 3 commands, read 2 files", opening to the calls as they show on their own. */
+function ToolGroup({ items, ev, running }: GroupProps) {
+  const tools = items.filter((item): item is ToolItem => item.kind === "tool");
+  const summary = summarizeTools(tools, running);
+  return (
+    <details className="tool tgroup" data-ev={ev}>
+      <summary>
+        <Icon name="list" />
+        <span className={summary.running ? "tg glow" : "tg"}>{summary.text}</span>
+        {summary.failed > 0 && <span className="tr bad">{`${String(summary.failed)} failed`}</span>}
+        <Icon name="chev" className="cv" />
+      </summary>
+      <div className="tgl">
+        {items.map((item) => (
+          <MessageItem key={item.key} item={item} />
+        ))}
+      </div>
+    </details>
+  );
 }

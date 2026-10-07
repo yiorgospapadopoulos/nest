@@ -111,7 +111,7 @@ function SessionChat({
       details={<Details session={session} label={status.label} tone={status.tone} />}
     >
       <GoalsStrip tasks={tracking.tasks} />
-      <Transcript session={session} agents={tracking.agents} focus={focus} />
+      <Transcript session={session} background={tracking.background} focus={focus} />
       <BackgroundBar summary={tracking.background} />
       <Composer session={session} />
       {sheet === "agents" && (

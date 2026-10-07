@@ -113,7 +113,7 @@ describe("chat view", () => {
     expect(screen.getByText("failed")).toHaveClass("tr bad");
     expect(screen.queryByText("Hidden task")).not.toBeInTheDocument();
     expect(screen.getByText("Interrupted")).toBeInTheDocument();
-    expect(screen.getByText("Edit src/a.ts")).toBeInTheDocument();
+    expect(screen.getByText("Reading 1 file, searching 1 pattern, fetching 1 page")).toBeVisible();
     expect(screen.getByRole("button", { name: "Agents, 1 active" })).toHaveTextContent("1");
 
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "Hel" } });
@@ -134,10 +134,10 @@ describe("chat view", () => {
       payload: { state: "idle", error: null },
     });
     expect(chat.getByText("Idle")).toBeInTheDocument();
-    expect(screen.queryByText("Edit src/a.ts")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Working/)).not.toBeInTheDocument();
   });
 
-  it("shows an empty transcript, then thinking while it starts", async () => {
+  it("shows an empty transcript, then working while it starts", async () => {
     const { push } = await openChat({ chat: session({ branch: null }) });
 
     expect(screen.getByText("No messages yet")).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe("chat view", () => {
       type: "session.state",
       payload: { state: "starting", error: null },
     });
-    expect(screen.getByText("Thinking", { selector: ".mono" })).toBeInTheDocument();
+    expect(screen.getByText("Working...")).toBeInTheDocument();
   });
 
   it("follows new content only at the bottom, with a way back to it", async () => {

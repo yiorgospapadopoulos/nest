@@ -19,7 +19,7 @@
 }
 .ch-h {
   padding: calc(var(--sat) - 2px) 6px 10px;
-  border-radius: 0 0 22px 22px;
+  border-radius: 0 0 var(--r-card) var(--r-card);
   border-top: 0;
   flex: none;
   z-index: 2;
@@ -71,7 +71,7 @@
 }
 .gs {
   margin: 8px 10px 0;
-  border-radius: 18px;
+  border-radius: var(--r-pane);
   flex: none;
   z-index: 1;
   overflow: hidden;
@@ -138,7 +138,7 @@
   align-items: start;
   padding: 5px 2px;
   font-size: 13.5px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 .ck li.act {
   background: var(--run-soft);
@@ -180,7 +180,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 14px 16px 10px;
+  padding: var(--glass-spacing-transcript-padding-top) var(--glass-spacing-transcript-padding-x)
+    var(--glass-spacing-transcript-padding-bottom);
   scrollbar-width: none;
 }
 .ch-tx.from-end {
@@ -193,7 +194,7 @@
 .tx {
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: var(--glass-spacing-transcript-gap);
 }
 .m-u {
   align-self: flex-end;
@@ -202,7 +203,8 @@
   color: var(--on-bubble);
   box-shadow: inset 0 0 0 1px var(--hair);
   padding: 8px 12px;
-  border-radius: 16px 16px 6px 16px;
+  border-radius: calc(var(--r-inner) + 2px) calc(var(--r-inner) + 2px) 6px
+    calc(var(--r-inner) + 2px);
   font-size: 15px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -226,55 +228,90 @@
   font-size: 11px;
   color: var(--t3);
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
   background: var(--fill);
   text-align: center;
 }
+/* "Working... 12s" at the end of a running turn (D045). */
 .m-live {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
-  color: var(--t2);
 }
-.m-live .mono {
-  font: 11px var(--mono);
+/* "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn. */
+.m-turn {
+  font-size: 11px;
   color: var(--t3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
-.dots {
+/* Running activity: a soft light sweeps across the text; a static highlight with
+   reduced motion. */
+.glow {
+  background: linear-gradient(
+      100deg,
+      var(--t3) 0%,
+      var(--t3) 40%,
+      var(--t1) 50%,
+      var(--t3) 60%,
+      var(--t3) 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: glow 2.2s linear infinite;
+}
+@keyframes glow {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glow {
+    animation: none;
+    background: none;
+    color: var(--t1);
+  }
+}
+/* "Thought for 8s", opening to the thinking in muted text. */
+.think {
+  align-self: flex-start;
+  max-width: 96%;
+  font-size: 13px;
+  color: var(--t3);
+}
+.think summary {
+  list-style: none;
   display: inline-flex;
-  gap: 3px;
-  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  cursor: pointer;
 }
-.dots i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: blink 1.2s infinite;
+.think summary::-webkit-details-marker {
+  display: none;
 }
-.dots i:nth-child(2) {
-  animation-delay: 0.2s;
+.think .cv {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
 }
-.dots i:nth-child(3) {
-  animation-delay: 0.4s;
+.think[open] .cv {
+  transform: none;
 }
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
+.tht {
+  margin: 2px 0 4px 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--hair);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .tool {
   max-width: 100%;
-  border-radius: 11px;
+  border-radius: calc(var(--r-item) + 1px);
   background: var(--fill);
   font-size: 13px;
   overflow: hidden;
@@ -326,8 +363,33 @@
   transition: transform 0.2s;
   transform: rotate(-90deg);
 }
-.tool[open] .cv {
+.tool[open] > summary .cv {
   transform: none;
+}
+/* A run of tool calls: one summary row opening to the calls themselves. */
+.tg {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg:not(.glow) {
+  color: var(--t2);
+}
+.tgl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 6px 6px;
+  border-top: 1px solid var(--hair);
+}
+.tgl .tool {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.tgl .think {
+  padding: 0 4px;
 }
 .tool pre {
   margin: 0;
@@ -341,7 +403,7 @@
   overflow: auto;
 }
 .ask {
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   padding: 11px 12px;
   background: var(--wait-soft);
   max-width: 100%;
@@ -371,7 +433,7 @@
 .ask .acts .b {
   height: 40px;
   font-size: 14px;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
 }
 .tx-empty {
   display: grid;
@@ -389,13 +451,13 @@
 }
 .comp {
   margin: 0 10px calc(var(--sab) + 2px);
-  border-radius: 24px;
+  border-radius: min(calc(var(--r-pane) + 6px), var(--r-ctl-lg));
   padding: 4px 6px 2px 14px;
   flex: none;
 }
 .comp:focus-within {
   box-shadow:
-    inset 0 1px 0 var(--spec),
+    var(--gl-sh),
     0 0 0 2px var(--accent);
 }
 .comp textarea {
@@ -442,7 +504,7 @@
   width: 36px;
   height: 44px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
   background: transparent;
   color: var(--t3);
   display: grid;
@@ -458,7 +520,7 @@
 .qt {
   height: 44px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
   background: transparent;
   color: var(--t2);
   font-size: 13px;
@@ -482,7 +544,7 @@
 .send {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--r-ctl);
   border: 0;
   background: var(--accent);
   color: var(--on-accent);
@@ -530,19 +592,20 @@
   right: 0;
   bottom: 0;
   z-index: 81;
-  border-radius: 30px 30px 0 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   max-height: 80%;
   display: flex;
   flex-direction: column;
   padding-bottom: var(--sab);
   background: var(--g2);
   border-bottom: 0;
+  box-shadow: var(--sheet-sh);
   animation: sheetup 0.34s var(--motion-easing-glide);
 }
 .sheet.full {
   top: calc(var(--sat) + 4px);
   max-height: none;
-  border-radius: 16px 16px 0 0;
+  border-radius: calc(var(--r-inner) + 2px) calc(var(--r-inner) + 2px) 0 0;
 }
 .sheet.full .sh-b {
   flex: 1;
@@ -602,7 +665,7 @@
   font-size: 16px;
   padding: 0 12px;
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: var(--r-tab);
 }
 .done.l {
   font-weight: 500;
@@ -623,14 +686,17 @@
   height: 48px;
   flex: 1;
   font-size: 15px;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
 }
 .asg {
-  border-radius: 16px;
+  border-radius: calc(var(--r-inner) + 2px);
   overflow: hidden;
   background: var(--g2);
-  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: var(--gfilter);
+  backdrop-filter: var(--gfilter);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    0 0 0 0.5px var(--g-edge);
 }
 .ast {
   padding: 12px 16px 10px;
@@ -705,7 +771,7 @@
   gap: 8px;
 }
 .agc {
-  border-radius: 16px;
+  border-radius: calc(var(--r-inner) + 2px);
   background: var(--fill);
 }
 .agr {
@@ -773,7 +839,7 @@
   width: 100%;
   height: 48px;
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   background: var(--fill);
   padding: 0 14px;
   font-size: 17px;
@@ -795,7 +861,7 @@
   color: var(--t3);
 }
 .dfile {
-  border-radius: 14px;
+  border-radius: var(--r-inner);
   overflow: hidden;
   margin-bottom: 12px;
   background: var(--code-bg);
@@ -894,7 +960,8 @@
   align-items: center;
   gap: 6px;
   padding: 7px 14px 7px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-ctl);
+  background: var(--g2);
   font-size: 13px;
   font-weight: 600;
   color: var(--t1);
@@ -912,7 +979,7 @@
   margin: 0 10px 6px;
 }
 .bgbar {
-  border-radius: 18px;
+  border-radius: var(--r-pane);
   overflow: hidden;
 }
 .bgsum {
@@ -929,7 +996,7 @@
   text-align: left;
   cursor: pointer;
 }
-.bgsum span {
+.bgsum span:not(.dot) {
   flex: 1;
 }
 .bgsum .cv {
@@ -1001,7 +1068,7 @@
 .sug {
   flex: none;
   margin: 0 10px 6px;
-  border-radius: 18px;
+  border-radius: var(--r-pane);
   max-height: 352px;
   overflow: auto;
   scrollbar-width: none;
@@ -1173,7 +1240,7 @@
   animation: hit-glow 2.4s ease-out;
 }
 .m-a.hit {
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 @keyframes hit-glow {
   0%,

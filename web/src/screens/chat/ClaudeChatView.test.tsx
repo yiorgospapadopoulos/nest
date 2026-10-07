@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { ClaudeChat, HarnessEvent, JsonObject, Session } from "../../api/types.ts";
@@ -152,7 +152,9 @@ describe("Claude Code chats", () => {
     push({ type: "claude_chats.updated", payload: { repos: ["todo-ui"] } });
 
     expect(await screen.findByText("listing failed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Tune the hero section/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Tune the hero section, Claude Code/ }),
+    ).toBeInTheDocument();
   });
 
   it("hide automated chats unless this device asks for them", async () => {
@@ -226,5 +228,60 @@ describe("Claude Code chats", () => {
     push({ type: "claude_chats.updated", payload: { repos: ["todo-ui"] } });
 
     expect(await screen.findByRole("region", { name: "Continued" })).toBeInTheDocument();
+  });
+
+  it("archive and unarchive from the list, folding into Archived", async () => {
+    const shelved = claudeChat({ id: "c2", title: "Old idea", archived: true });
+    const { user, api } = await setup([claudeChat(), shelved]);
+    api.setClaudeChatArchived.mockImplementation((id, archived) =>
+      Promise.resolve(
+        claudeChat({ id, title: id === "c1" ? "Tune the hero section" : "Old idea", archived }),
+      ),
+    );
+    const folder = screen.getByRole("button", { name: /Archived/ });
+    expect(folder).toHaveAttribute("aria-expanded", "false");
+    expect(folder).toHaveTextContent("Archived1");
+    expect(screen.queryByText("Old idea")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Actions for Tune the hero section" }));
+    const sheet = screen.getByRole("dialog", { name: "Actions for Tune the hero section" });
+    await user.click(within(sheet).getByRole("menuitem", { name: "Archive" }));
+
+    expect(api.setClaudeChatArchived).toHaveBeenLastCalledWith("c1", true);
+    expect(await screen.findByText("Archived Tune the hero section")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Idle/ })).not.toBeInTheDocument();
+    expect(folder).toHaveTextContent("Archived2");
+
+    await user.click(folder);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Old idea, Claude Code chat/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Unarchive" }));
+
+    expect(api.setClaudeChatArchived).toHaveBeenLastCalledWith("c2", false);
+    expect(await screen.findByText("Unarchived Old idea")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Idle/ })).toHaveTextContent("Idle1");
+  });
+
+  it("keep the actions open when archiving fails", async () => {
+    const { user, api } = await setup();
+    api.setClaudeChatArchived.mockRejectedValue(new ApiError(404, "unknown Claude Code chat"));
+
+    await user.click(screen.getByRole("button", { name: "Actions for Tune the hero section" }));
+    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
+
+    expect(await screen.findByText("unknown Claude Code chat")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("move to Archived when another device archives one", async () => {
+    const { api, push } = await setup();
+    api.claudeChats.mockResolvedValue([claudeChat({ archived: true })]);
+
+    push({ type: "claude_chats.updated", payload: { repos: ["todo-ui"] } });
+
+    expect(await screen.findByRole("button", { name: /Archived/ })).toHaveTextContent("Archived1");
+    expect(screen.queryByText("Tune the hero section")).not.toBeInTheDocument();
   });
 });

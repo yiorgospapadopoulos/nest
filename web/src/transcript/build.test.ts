@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Approval, JsonObject } from "../api/types.ts";
 import { approval, event, mergeApproval, plan, question, review } from "../test/fixtures.ts";
-import { buildTranscript, resultSummary } from "./build.ts";
+import { buildTranscript, resultSummary, turnStart } from "./build.ts";
 
 const json = (a: Approval) => ({ ...a }) as unknown as JsonObject;
 
@@ -52,33 +52,43 @@ describe("buildTranscript", () => {
 
     expect(items).toEqual([
       { kind: "user", key: "1", text: "Fix it", attachments: ["a.png", "file"] },
+      { kind: "thinking", key: "2.0", text: "hmm", ms: null },
       { kind: "assistant", key: "2.1", text: "Reading." },
       {
-        kind: "tool",
+        kind: "tools",
         key: "2.3",
-        name: "Read",
-        arg: "a.ts",
-        result: "2 lines",
-        detail: "line 1\nline 2",
-        failed: false,
-      },
-      {
-        kind: "tool",
-        key: "2.4",
-        name: "Bash",
-        arg: "npm test",
-        result: null,
-        detail: null,
-        failed: false,
-      },
-      {
-        kind: "tool",
-        key: "2.5",
-        name: "Tool",
-        arg: "",
-        result: "failed",
-        detail: "boom",
-        failed: true,
+        items: [
+          {
+            kind: "tool",
+            key: "2.3",
+            id: "t1",
+            name: "Read",
+            arg: "a.ts",
+            result: "2 lines",
+            detail: "line 1\nline 2",
+            failed: false,
+          },
+          {
+            kind: "tool",
+            key: "2.4",
+            id: "2.4",
+            name: "Bash",
+            arg: "npm test",
+            result: null,
+            detail: null,
+            failed: false,
+          },
+          {
+            kind: "tool",
+            key: "2.5",
+            id: "t3",
+            name: "Tool",
+            arg: "",
+            result: "failed",
+            detail: "boom",
+            failed: true,
+          },
+        ],
       },
     ]);
   });
@@ -265,6 +275,11 @@ describe("buildTranscript", () => {
           },
         }),
         event({ id: 5, type: "session.message", payload: { blocks: [{ type: "tool_result" }] } }),
+        event({
+          id: 6,
+          type: "session.message",
+          payload: { blocks: [{ type: "image" }, { type: "thinking" }] },
+        }),
       ],
       {},
       null,
@@ -275,13 +290,209 @@ describe("buildTranscript", () => {
       {
         kind: "tool",
         key: "4.0",
+        id: "t",
         name: "Tool",
         arg: "",
         result: "done",
         detail: null,
         failed: false,
       },
+      { kind: "thinking", key: "6.1", text: "", ms: null },
     ]);
+  });
+});
+
+const blocks = (id: number, ...list: JsonObject[]) =>
+  event({ id, type: "session.message", payload: { parent_tool_use_id: null, blocks: list } });
+const call = (id: string, name = "Bash") => ({ type: "tool_use", id, name, input: {} });
+const done = (id: string) => ({ type: "tool_result", tool_use_id: id, content: "ok" });
+const shape = (items: ReturnType<typeof buildTranscript>) =>
+  items.map((i) =>
+    i.kind === "tools" ? `group:${i.items.map((c) => c.key).join(",")}` : `${i.kind}:${i.key}`,
+  );
+
+describe("thinking", () => {
+  it("shows the main agent's thinking with how long it took", () => {
+    const items = buildTranscript(
+      [
+        blocks(1, { type: "thinking", text: "Plan the fix", duration_ms: 8200 }),
+        blocks(2, { type: "thinking", text: "" }),
+        event({
+          id: 3,
+          type: "session.message",
+          payload: { parent_tool_use_id: "a1", blocks: [{ type: "thinking", text: "sub" }] },
+        }),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "thinking", key: "1.0", text: "Plan the fix", ms: 8200 },
+      { kind: "thinking", key: "2.0", text: "", ms: null },
+    ]);
+  });
+});
+
+describe("tool groups", () => {
+  it("groups consecutive calls, with the thinking between them, until text breaks the run", () => {
+    const thought = { type: "thinking", text: "next" };
+    const items = buildTranscript(
+      [
+        blocks(1, thought, call("a"), thought, call("b"), done("a")),
+        blocks(2, done("b"), thought),
+        blocks(3, { type: "text", text: "Now the edit." }, call("c", "Edit")),
+        blocks(4, { type: "tool_use", id: "x", name: "TaskCreate", input: {} }, call("d")),
+        blocks(5, { type: "text", text: "Done." }),
+      ],
+      {},
+      null,
+    );
+
+    expect(shape(items)).toEqual([
+      "thinking:1.0",
+      "group:1.1,1.2,1.3",
+      "thinking:2.1",
+      "assistant:3.0",
+      // Hidden task list calls do not show, so they do not split a group either.
+      "group:3.1,4.1",
+      "assistant:5.0",
+    ]);
+  });
+
+  it("leaves a single call as a plain row", () => {
+    const items = buildTranscript([blocks(1, call("a"), { type: "text", text: "ok" })], {}, null);
+
+    expect(shape(items)).toEqual(["tool:1.0", "assistant:1.1"]);
+  });
+});
+
+describe("turn lines", () => {
+  const user = (id: number) => event({ id, type: "session.user_message", payload: { text: "go" } });
+  const state = (id: number, payload: JsonObject) => event({ id, type: "session.state", payload });
+  const result = (id: number, ms?: number) =>
+    event({
+      id,
+      type: "session.result",
+      payload: ms === undefined ? { is_error: false } : { is_error: false, duration_ms: ms },
+    });
+  const texts = (items: ReturnType<typeof buildTranscript>) =>
+    items.map((i) => (i.kind === "turn" || i.kind === "system" ? `${i.kind}:${i.text}` : i.kind));
+
+  it("ends each turn with how long it worked, or ran before it stopped", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        state(2, { state: "running", turn_start: true }),
+        result(3, 70_000),
+        state(4, { state: "idle", error: null, duration_ms: 72_400 }),
+        user(5),
+        state(6, { state: "interrupted", error: null, duration_ms: 40_000 }),
+        user(7),
+        state(8, { state: "failed", error: "boom", duration_ms: 5_000 }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual([
+      "user",
+      "turn:Worked for 1m 12s",
+      "user",
+      "turn:Stopped after 40s",
+      "user",
+      "system:Failed: boom",
+      "turn:Stopped after 5s",
+    ]);
+    expect(items.filter((i) => i.kind === "turn").map((i) => i.key)).toEqual([
+      "4.end",
+      "6.end",
+      "8.end",
+    ]);
+  });
+
+  it("times a turn a queued message ends, and older turns, by the engine's result", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        result(2, 3_000),
+        user(3),
+        state(4, { state: "running", turn_start: true }),
+        result(5, 9_000),
+        state(6, { state: "interrupted" }),
+        user(7),
+        result(8, 1_000),
+        state(9, { state: "idle", duration_ms: null }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual([
+      "user",
+      "turn:Worked for 3s",
+      "user",
+      "turn:Stopped after 9s",
+      "user",
+      "turn:Worked for 1s",
+    ]);
+    expect(items[1]?.key).toBe("2.end");
+  });
+
+  it("keeps the plain notes when nothing says how long a turn took", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        result(2),
+        state(3, { state: "interrupted", error: null }),
+        user(4),
+        state(5, { state: "failed", error: null, duration_ms: null }),
+        state(6, { state: "idle" }),
+        user(7),
+        result(8),
+        user(9),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual([
+      "user",
+      "system:Interrupted",
+      "user",
+      "system:Failed",
+      "user",
+      "user",
+    ]);
+  });
+});
+
+describe("turnStart", () => {
+  const at = (id: number, type: string, payload: JsonObject = {}) =>
+    event({ id, type, payload, ts: `2026-01-01T12:00:0${String(id)}Z` });
+
+  it("is when the running turn started, by its mark or else its message", () => {
+    expect(turnStart([])).toBeNull();
+    expect(turnStart([at(1, "session.state", { state: "starting" })])).toBeNull();
+    expect(turnStart([at(1, "session.user_message"), at(2, "session.message")])).toBe(
+      "2026-01-01T12:00:01Z",
+    );
+    expect(
+      turnStart([
+        at(1, "session.user_message"),
+        at(2, "session.state", { state: "running", turn_start: true }),
+        at(3, "session.state", { state: "waiting" }),
+        at(4, "session.state", { state: "running" }),
+      ]),
+    ).toBe("2026-01-01T12:00:02Z");
+  });
+
+  it("is null once the turn ended", () => {
+    for (const state of ["idle", "interrupted", "failed", "closed"]) {
+      expect(
+        turnStart([at(1, "session.user_message"), at(2, "session.state", { state })]),
+      ).toBeNull();
+    }
   });
 });
 
