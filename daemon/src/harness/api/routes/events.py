@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Query, WebSocket
 
 from harness.api.deps import Context, authenticated_device
+from harness.events import types
 from harness.events.bus import EventBus, SubscriptionOverflowError
 
 UNAUTHENTICATED_CLOSE_CODE = 4401
@@ -39,7 +40,7 @@ async def events(
         return
     # Whichever finishes first (stream ended or client gone) cancels the other.
     async with asyncio.TaskGroup() as group:
-        stream = group.create_task(_forward(websocket, ctx.bus, after))
+        stream = group.create_task(_forward(websocket, ctx.bus, after, device.id))
         disconnect = group.create_task(_wait_for_disconnect(websocket))
         stream.add_done_callback(lambda _: disconnect.cancel())
         disconnect.add_done_callback(lambda _: stream.cancel())
@@ -56,11 +57,18 @@ def origin_allowed(origin: str | None, host: str | None, allowed: Sequence[str])
     return parts.scheme in ("http", "https") and host is not None and parts.netloc == host.lower()
 
 
-async def _forward(websocket: WebSocket, bus: EventBus, after: int | None) -> None:
+async def _forward(websocket: WebSocket, bus: EventBus, after: int | None, device_id: str) -> None:
     async with aclosing(bus.subscribe(after)) as subscription:
         try:
             while True:
                 event = await anext(subscription)
+                # The socket was authenticated when it opened; a revoked device stops at
+                # once instead of when it next reconnects (D051).
+                if event.type == types.DEVICE_REVOKED and (
+                    event.payload.get("device_id") == device_id
+                ):
+                    await websocket.close(UNAUTHENTICATED_CLOSE_CODE, "device revoked")
+                    return
                 await websocket.send_text(event.model_dump_json())
         except SubscriptionOverflowError as error:
             await websocket.close(OVERFLOW_CLOSE_CODE, str(error))

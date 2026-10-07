@@ -96,6 +96,37 @@ def test_disconnect_releases_the_subscription(
     assert ctx.bus.subscriber_count == before
 
 
+def paired_phone(client: TestClient, local: dict[str, str]) -> tuple[str, str]:
+    code = client.post("/api/pairing/codes", headers=local).json()["code"]
+    redeemed = client.post("/api/pairing/redeem", json={"code": code, "device_name": "Phone"})
+    body = redeemed.json()
+    return body["device"]["id"], body["token"]
+
+
+def test_revoking_a_device_closes_its_open_sockets_only(
+    client: TestClient, secrets: FakeSecretStore
+) -> None:
+    """D051: a revoked phone stops receiving events at once, the Mac's socket goes on."""
+    local = {"Authorization": f"Bearer {local_token(secrets)}"}
+    phone_id, phone_token = paired_phone(client, local)
+    phone = {"Authorization": f"Bearer {phone_token}"}
+
+    with (
+        client.websocket_connect("/api/events", headers=phone) as phone_ws,
+        client.websocket_connect("/api/events", headers=local) as mac_ws,
+    ):
+        assert client.delete(f"/api/devices/{phone_id}", headers=local).status_code == 204
+        with pytest.raises(WebSocketDisconnect) as closed:
+            phone_ws.receive_json()
+        revoked = mac_ws.receive_json()
+
+    assert closed.value.code == 4401
+    assert (revoked["type"], revoked["payload"]) == (
+        types.DEVICE_REVOKED,
+        {"device_id": phone_id},
+    )
+
+
 def test_overflow_closes_the_socket_with_try_again_later(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:

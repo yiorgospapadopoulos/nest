@@ -1,5 +1,6 @@
 """Per-device tokens and one-time pairing codes. Only SHA-256 hashes are stored."""
 
+import asyncio
 import hashlib
 import sqlite3
 from collections import deque
@@ -39,6 +40,9 @@ class DeviceService:
         self._secrets = secrets
         # Failed redemption times inside the current window, oldest first.
         self._failures: deque[datetime] = deque()
+        # Redemptions run one at a time, so each failure counts before the next lockout
+        # check; otherwise concurrent guesses all pass the check (D051).
+        self._redeeming = asyncio.Lock()
 
     async def ensure_local_device(self) -> str:
         """Return a valid token for this Mac, creating or rotating it as needed."""
@@ -79,6 +83,10 @@ class DeviceService:
         return PairingCode(code=code, expires_at=expires_at)
 
     async def redeem_pairing_code(self, code: str, device_name: str) -> tuple[Device, str]:
+        async with self._redeeming:
+            return await self._redeem(code, device_name)
+
+    async def _redeem(self, code: str, device_name: str) -> tuple[Device, str]:
         now = self._clock.now()
         self._check_lockout(now)
         code_hash = _hash(code.strip().upper())

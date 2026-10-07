@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import re
 from datetime import timedelta
@@ -155,6 +156,24 @@ async def test_five_failures_lock_out_redemption_until_the_window_passes(
     clock.advance(timedelta(seconds=1))
     device, _ = await service.redeem_pairing_code(code.code, "owner")
     assert device.name == "owner"
+
+
+async def test_concurrent_wrong_codes_cannot_slip_past_the_lockout(
+    service: DeviceService,
+) -> None:
+    """D051: every redemption counts before the next one is checked."""
+    code = await service.create_pairing_code()
+
+    results = await asyncio.gather(
+        *(service.redeem_pairing_code("WRONGONE", "guess") for _ in range(50)),
+        return_exceptions=True,
+    )
+
+    invalid = [r for r in results if isinstance(r, InvalidPairingCodeError)]
+    locked = [r for r in results if isinstance(r, PairingLockedError)]
+    assert (len(invalid), len(locked)) == (5, 45)
+    with pytest.raises(PairingLockedError):
+        await service.redeem_pairing_code(code.code, "owner")
 
 
 async def test_failures_outside_the_window_do_not_lock(
