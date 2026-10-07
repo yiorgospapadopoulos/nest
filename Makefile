@@ -55,4 +55,7 @@ run-app: app
 install-app: app
 	rm -rf /Applications/Harness.app
 	ditto apple/build/Harness.app /Applications/Harness.app
+	# Leave one Harness for Spotlight and Launchpad: the installed copy.
+	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u apple/build/Harness.app
+	rm -rf apple/build/Harness.app
 	@echo "Installed /Applications/Harness.app"
