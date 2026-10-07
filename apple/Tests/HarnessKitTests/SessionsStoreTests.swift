@@ -1,0 +1,213 @@
+import Foundation
+import Testing
+
+@testable import HarnessKit
+
+@MainActor
+@Suite struct SessionsStoreTests {
+    let api = FakeAPI()
+    let approvals: ApprovalsStore
+    let store: SessionsStore
+
+    init() {
+        approvals = ApprovalsStore(api: api)
+        store = SessionsStore(api: api, approvals: approvals)
+    }
+
+    func seed(_ sessions: [Session]) async throws {
+        api.set { $0.sessions = sessions }
+        try await store.load()
+    }
+
+    @Test func loadsOpenAndArchivedSessions() async throws {
+        try await seed(Fixture.sessions + Fixture.archivedSessions)
+        #expect(store.sessions.count == 3)
+        #expect(api.calls == ["sessions archived=false", "sessions archived=true"])
+        #expect(store.session("ffff0000ffff0000ffff0000ffff0000")?.isArchived == true)
+        #expect(store.session("missing") == nil)
+    }
+
+    @Test func groupsFollowTheSidebarOrder() async throws {
+        try await seed([
+            Fixture.session("done", state: .closed, updatedAt: .init(timeIntervalSince1970: 1)),
+            Fixture.session("idle", state: .idle, updatedAt: .init(timeIntervalSince1970: 2)),
+            Fixture.session("broken", state: .failed, updatedAt: .init(timeIntervalSince1970: 3)),
+            Fixture.session("run", state: .running, updatedAt: .init(timeIntervalSince1970: 4)),
+            Fixture.session("setup", state: .starting, updatedAt: .init(timeIntervalSince1970: 5)),
+            Fixture.session("wait", state: .waiting, updatedAt: .init(timeIntervalSince1970: 6)),
+            Fixture.session("pinned", state: .waiting, pinned: true),
+            Fixture.session("old", state: .closed, pinned: true, archived: true),
+            Fixture.session("other-repo", repo: "map-viewer"),
+        ])
+
+        let groups = store.groups(in: "todo-ui")
+
+        #expect(groups.map(\.kind) == [.pinned, .needsYou, .running, .idle, .done, .archived])
+        #expect(
+            groups.map { $0.sessions.map(\.id) } == [
+                ["pinned"], ["wait"], ["setup", "run"], ["broken", "idle"], ["done"], ["old"],
+            ])
+        #expect(groups.map(\.id) == groups.map(\.kind))
+        #expect(
+            SessionGroupKind.allCases.map(\.title) == [
+                "Pinned", "Needs you", "Running", "Idle", "Done", "Archived",
+            ])
+    }
+
+    @Test func aPendingReviewPutsAnIdleSessionUnderNeedsYou() async throws {
+        let reviewed = Fixture.approval("ap-review")
+        try await seed([Fixture.session(reviewed.sessionID, state: .idle)])
+        #expect(store.groups(in: "todo-ui").map(\.kind) == [.idle])
+
+        approvals.apply(.approvalCreated(reviewed))
+
+        #expect(store.groups(in: "todo-ui").map(\.kind) == [.needsYou])
+        #expect(store.board(in: "todo-ui")[.review]?.map(\.id) == [reviewed.sessionID])
+    }
+
+    @Test func boardColumnsLeaveArchivedOut() async throws {
+        try await seed([
+            Fixture.session("run", state: .running), Fixture.session("wait", state: .waiting),
+            Fixture.session("idle", state: .idle), Fixture.session("closed", state: .closed),
+            Fixture.session("gone", state: .idle, archived: true),
+        ])
+        let board = store.board(in: "todo-ui")
+        #expect(board[.running]?.map(\.id) == ["run"])
+        #expect(board[.waiting]?.map(\.id) == ["wait"])
+        #expect(Set(board[.done]?.map(\.id) ?? []) == ["idle", "closed"])
+        #expect(board[.review] == nil)
+        #expect(
+            BoardColumn.allCases.map(\.title) == [
+                "Running", "Waiting on you", "Ready for review", "Done",
+            ])
+    }
+
+    @Test func createsAndSendsMessages() async throws {
+        let created = try await store.create(
+            CreateSessionRequest(repo: "todo-ui", prompt: "Add dark mode", model: "opus"))
+        #expect(store.session(created.id)?.state == .starting)
+        #expect(created.model == "opus")
+
+        try await store.send(created.id, text: "Also the footer", attachmentIDs: ["a1"])
+        try await store.interrupt(created.id)
+
+        #expect(store.session(created.id)?.state == .running)
+        #expect(
+            api.calls == [
+                "createSession Add dark mode", "sendMessage new-0 Also the footer [\"a1\"]",
+                "interrupt new-0",
+            ])
+    }
+
+    @Test func organizesSessions() async throws {
+        try await seed([Fixture.session("s1", title: "Old title")])
+
+        try await store.setPinned("s1", true)
+        #expect(store.session("s1")?.pinned == true)
+        try await store.rename("s1", to: "  New title ")
+        #expect(store.session("s1")?.title == "New title")
+        try await store.archive("s1")
+        #expect(store.session("s1")?.isArchived == true)
+        try await store.unarchive("s1")
+        #expect(store.session("s1")?.isArchived == false)
+        try await store.setModel("s1", "haiku")
+        #expect(store.session("s1")?.model == "haiku")
+        try await store.setPermissionMode("s1", .plan)
+        #expect(store.session("s1")?.permissionMode == .plan)
+        try await store.setEffort("s1", .max)
+        #expect(store.session("s1")?.effort == .max)
+        #expect(try await store.openInClaudeCode("s1").launcher == "/tmp/s1.command")
+        try await store.delete("s1")
+        #expect(store.session("s1") == nil)
+        #expect(api.calls.filter { $0.hasPrefix("updateSession") }.count == 7)
+    }
+
+    @Test func renamingToBlankOrTheSameTitleDoesNothing() async throws {
+        try await seed([Fixture.session("s1", title: "Same")])
+        try await store.rename("s1", to: "   ")
+        try await store.rename("s1", to: "Same")
+        #expect(!api.calls.contains { $0.hasPrefix("updateSession") })
+    }
+
+    @Test func failedActionsThrowTheDaemonsError() async throws {
+        try await seed([Fixture.session("s1")])
+        api.fail("updateSession", with: APIError.conflict("session 's1' is closed", files: []))
+        await #expect(throws: APIError.conflict("session 's1' is closed", files: [])) {
+            try await store.setModel("s1", "opus")
+        }
+        #expect(store.session("s1")?.model == "sonnet")
+    }
+
+    @Test func liveEventsUpdateSessions() async throws {
+        try await seed([
+            Fixture.session("s1", state: .running, updatedAt: .init(timeIntervalSince1970: 0))
+        ])
+
+        store.apply(
+            Fixture.event(EventType.sessionState, #"{"state": "failed", "error": "agent crashed"}"#)
+        )
+        #expect(store.session("s1")?.state == .failed)
+        #expect(store.session("s1")?.lastError == "agent crashed")
+        #expect(store.session("s1")?.updatedAt == Fixture.event("x", "{}").ts)
+
+        store.apply(Fixture.event(EventType.sessionState, #"{"state": "idle", "error": null}"#))
+        #expect(store.session("s1")?.lastError == "agent crashed")
+
+        store.apply(Fixture.event(EventType.prOpened, #"{"url": "https://example.com/pr/9"}"#))
+        #expect(store.session("s1")?.prURL == "https://example.com/pr/9")
+
+        var renamed = Fixture.session("s1", title: "Renamed")
+        renamed.pinned = true
+        store.apply(
+            Fixture.event(
+                EventType.sessionUpdated, #"{"changes": {}, "session": \#(Fixture.json(renamed))}"#)
+        )
+        #expect(store.session("s1")?.title == "Renamed")
+
+        store.apply(
+            Fixture.event(
+                EventType.sessionCreated, #"{"session": \#(Fixture.json(Fixture.session("s2")))}"#))
+        #expect(store.session("s2") != nil)
+
+        store.apply(Fixture.event(EventType.sessionDeleted, #"{"session_id": "s2"}"#, session: nil))
+        #expect(store.session("s2") == nil)
+    }
+
+    @Test func eventsForUnknownSessionsAreIgnored() async throws {
+        try await seed([Fixture.session("s1")])
+        let before = store.sessions
+        store.apply(
+            Fixture.event(
+                EventType.sessionState, #"{"state": "running", "error": null}"#, session: "zzz"))
+        store.apply(
+            Fixture.event(
+                EventType.sessionState, #"{"state": "running", "error": null}"#, session: nil))
+        store.apply(Fixture.event(EventType.prOpened, #"{"url": "u"}"#, session: nil))
+        store.apply(Fixture.event("daemon.started", "{}"))
+        #expect(store.sessions == before)
+    }
+
+    @Test func statusLabelsAndTones() async throws {
+        var question = Fixture.approval("ap-question")
+        question.sessionID = "ask"
+        var permission = Fixture.approval("ap-perm")
+        permission.sessionID = "perm"
+        var review = Fixture.approval("ap-review")
+        review.sessionID = "review"
+        api.set { $0.approvals = [question, permission, review] }
+        try await approvals.load()
+        let states: [(String, SessionState)] = [
+            ("setup", .starting), ("run", .running), ("ask", .waiting), ("perm", .waiting),
+            ("stop", .interrupted), ("broken", .failed), ("done", .closed), ("idle", .idle),
+            ("review", .idle), ("odd", .unknown),
+        ]
+        let labels = states.map { store.statusLabel(of: Fixture.session($0.0, state: $0.1)) }
+        #expect(
+            labels == [
+                "Starting", "Running", "Question", "Needs approval", "Interrupted", "Failed",
+                "Done", "Idle", "Ready for review", "Idle",
+            ])
+        #expect(store.tone(of: Fixture.session("review", state: .idle)) == .review)
+        #expect(store.tone(of: Fixture.session("run", state: .running)) == .running)
+    }
+}
