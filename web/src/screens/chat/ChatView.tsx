@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { chatStatus, pendingFor } from "../../store/selectors.ts";
+import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
 import { Pill } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "../projects/ChatActions.tsx";
@@ -112,7 +112,7 @@ function SessionChat({
     >
       <GoalsStrip tasks={tracking.tasks} />
       <Transcript session={session} background={tracking.background} focus={focus} />
-      <BackgroundBar summary={tracking.background} />
+      <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
       <Composer session={session} />
       {sheet === "agents" && (
         <AgentsSheet

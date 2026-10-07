@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Session } from "../api/types.ts";
+import type { BackgroundItem, Session } from "../api/types.ts";
 import {
   approval,
   check,
+  event,
   claudeChat,
   mergeApproval,
   plan,
@@ -18,6 +19,7 @@ import {
   chatLists,
   chatStatus,
   ciFailure,
+  exchangeBackground,
   inboxGroups,
   isRunning,
   needsCount,
@@ -100,6 +102,21 @@ describe("chatLists", () => {
       ["idle", ["cc:new", "s1", "cc:old"]],
     ]);
     expect(lists.groups[0]?.chats[0]?.status).toEqual({ tone: "idle", label: "Claude Code" });
+  });
+
+  it("files archived Claude Code chats with the archived chats", () => {
+    const s: State = {
+      ...state([session({ id: "s1", updated_at: "2026-10-05T00:00:00Z", archived_at: "x" })], []),
+      claudeChats: {
+        done: claudeChat({ id: "done", archived: true, last_activity_at: "2026-10-06T00:00:00Z" }),
+        live: claudeChat({ id: "live" }),
+      },
+    };
+
+    const lists = chatLists(s, "todo-ui");
+
+    expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([["idle", ["cc:live"]]]);
+    expect(lists.archived.map(idOf)).toEqual(["cc:done", "s1"]);
   });
 });
 
@@ -250,5 +267,53 @@ describe("stuck chats", () => {
       "You seem stuck: called Bash 5 times in a row with the same input. " +
         "Step back and try a different approach.",
     );
+  });
+});
+
+describe("the background bar's exchange", () => {
+  const item = (id: string, status: BackgroundItem["status"], started: string | null) => ({
+    id,
+    kind: "agent" as const,
+    name: "Explore",
+    description: null,
+    status,
+    started_at: started,
+    finished_at: null,
+  });
+  // An earlier turn's task, then three of the turn the latest message opened.
+  const summary = {
+    running: 3,
+    completed: 3,
+    items: [
+      item("old", "done", "2026-10-06T09:00:10Z"),
+      item("still", "running", "2026-10-06T09:00:20Z"),
+      item("unknown", "failed", null),
+      item("a", "done", "2026-10-06T10:00:00+00:00"),
+      item("b", "running", "2026-10-06T10:00:05Z"),
+      item("c", "running", "2026-10-06T10:00:06Z"),
+    ],
+  };
+  const message = (id: number, ts: string) =>
+    event({ id, type: "session.user_message", ts, payload: { text: "go" } });
+
+  it("keeps the tasks started since the user's latest message and any still running", () => {
+    const events = [
+      message(1, "2026-10-06T09:00:00Z"),
+      message(2, "2026-10-06T10:00:00.000Z"),
+      // The agent going on by itself stays in the exchange.
+      event({ id: 3, type: "session.state", payload: { state: "running", turn_start: true } }),
+    ];
+    const current = exchangeBackground(summary, events);
+    expect(current.items.map((i) => i.id)).toEqual(["still", "a", "b", "c"]);
+    expect([current.running, current.completed]).toEqual([3, 1]);
+  });
+
+  it("starts from zero after the next message, and keeps everything without one", () => {
+    const next = exchangeBackground(summary, [message(4, "2026-10-06T11:00:00Z")]);
+    expect(next.items.map((i) => i.id)).toEqual(["still", "b", "c"]);
+    expect([next.running, next.completed]).toEqual([3, 0]);
+
+    expect(exchangeBackground(summary, undefined)).toBe(summary);
+    expect(exchangeBackground(summary, [event({ type: "session.state" })])).toBe(summary);
   });
 });

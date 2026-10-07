@@ -1,4 +1,12 @@
-import type { Approval, ClaudeChat, PrStatus, Session, StuckFlag } from "../api/types.ts";
+import type {
+  Approval,
+  BackgroundSummary,
+  ClaudeChat,
+  HarnessEvent,
+  PrStatus,
+  Session,
+  StuckFlag,
+} from "../api/types.ts";
 import type { State } from "./state.ts";
 
 export type Tone = "run" | "wait" | "rev" | "fail" | "done" | "idle" | "int";
@@ -71,7 +79,7 @@ function entryTime(entry: ChatEntry): string {
 }
 
 function archived(entry: ChatEntry): boolean {
-  return (entry.session?.archived_at ?? null) !== null;
+  return entry.session === undefined ? entry.chat.archived : entry.session.archived_at !== null;
 }
 
 export interface ChatLists {
@@ -81,7 +89,7 @@ export interface ChatLists {
 
 /**
  * A project's chats: pinned first, then by what they need, newest first in each group.
- * Claude Code chats join the idle group.
+ * Claude Code chats join the idle group; archived ones of both kinds are listed apart.
  */
 export function chatLists(state: State, repo: string): ChatLists {
   const sessions: ChatEntry[] = Object.values(state.sessions)
@@ -198,4 +206,25 @@ export function isRunning(state: State, repo: string): boolean {
   return Object.values(state.sessions).some(
     (s) => s.repo === repo && (s.state === "running" || s.state === "starting"),
   );
+}
+
+/**
+ * The background bar's tasks: those of the exchange the user's latest message opened,
+ * plus any earlier one still at work. Turns the agent starts by itself stay in the
+ * exchange. Without a user message in the transcript, every task counts.
+ */
+export function exchangeBackground(
+  summary: BackgroundSummary,
+  events: HarnessEvent[] | undefined,
+): BackgroundSummary {
+  const message = (events ?? []).findLast((e) => e.type === "session.user_message");
+  if (message === undefined) return summary;
+  const start = Date.parse(message.ts);
+  const items = summary.items.filter(
+    (item) =>
+      item.status === "running" ||
+      (item.started_at !== null && Date.parse(item.started_at) >= start),
+  );
+  const running = items.filter((item) => item.status === "running").length;
+  return { running, completed: items.length - running, items };
 }

@@ -12,8 +12,11 @@ const TONES: Record<BackgroundItem["status"], Tone> = {
 };
 
 /**
- * "N running · M completed" just above the composer, like Claude Code: subagents and
- * background commands, which can outlive the turn that started them. Expands to the list.
+ * "N running · M completed" just above the composer, like Claude Code: the subagents and
+ * background commands of the current exchange (`exchangeBackground`), which can outlive
+ * the turn that started them. Expands to the list. Before any completes it reads "1 running
+ * task" or "N running tasks", as on the Mac;
+ * running work glows (D045).
  */
 export function BackgroundBar({ summary }: { summary: BackgroundSummary }) {
   const [open, setOpen] = useState(false);
@@ -37,14 +40,17 @@ export function BackgroundBar({ summary }: { summary: BackgroundSummary }) {
           }}
         >
           <Dot tone={summary.running > 0 ? "run" : "done"} />
-          <span>
-            {summary.running} running · {summary.completed} completed
-          </span>
+          <span className={summary.running > 0 ? "glow" : undefined}>{label(summary)}</span>
           <Icon name="chev" className="cv" />
         </button>
       </div>
     </div>
   );
+}
+
+function label({ running, completed }: BackgroundSummary): string {
+  if (completed === 0) return running === 1 ? "1 running task" : `${String(running)} running tasks`;
+  return `${String(running)} running · ${String(completed)} completed`;
 }
 
 function Group({ label, items }: { label: string; items: BackgroundItem[] }) {
