@@ -1,0 +1,461 @@
+/* Short aliases for the generated design tokens, then primitives shared by every screen. */
+:root {
+  --sf: var(--typography-family-system);
+  --mono: var(--typography-family-mono);
+  --bg: var(--page-base);
+  --t1: var(--text-primary);
+  --t2: var(--text-secondary);
+  --t3: var(--text-tertiary);
+  --hair: var(--line-hairline);
+  --hair2: var(--line-strong);
+  --fill: var(--fill-subtle);
+  --fill2: var(--fill-strong);
+  --code-bg: var(--surface-code);
+  --add-bg: var(--diff-added-fill);
+  --add-fg: var(--diff-added-text);
+  --del-bg: var(--diff-removed-fill);
+  --del-fg: var(--diff-removed-text);
+  --ok-bg: var(--signal-approve);
+  --run-ring: var(--signal-running-ring);
+  --wait-glow: var(--signal-attention-glow);
+  --st-run: var(--status-running-fill);
+  --run-t: var(--status-running-text);
+  --run-soft: var(--status-running-soft);
+  --st-wait: var(--status-waiting-fill);
+  --wait-t: var(--status-waiting-text);
+  --wait-soft: var(--status-waiting-soft);
+  --st-review: var(--status-review-fill);
+  --rev-t: var(--status-review-text);
+  --rev-soft: var(--status-review-soft);
+  --st-fail: var(--status-failed-fill);
+  --fail-t: var(--status-failed-text);
+  --fail-soft: var(--status-failed-soft);
+  --st-done: var(--status-done-fill);
+  --done-t: var(--status-done-text);
+  --done-soft: var(--status-done-soft);
+  --st-int: var(--status-interrupted-fill);
+  --int-t: var(--status-interrupted-text);
+  --int-soft: var(--status-interrupted-soft);
+  --g1: var(--glass-tint-regular);
+  --g2: var(--glass-tint-strong);
+  --g3: var(--glass-tint-clear);
+  --g-brd: var(--glass-border);
+  --spec: var(--glass-specular);
+  --gsh: var(--glass-shadow);
+  --accent: var(--accent-fill);
+  --on-accent: var(--accent-on);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --bubble: var(--accent);
+  --on-bubble: var(--on-accent);
+  --sat: max(env(safe-area-inset-top), 12px);
+  --sab: max(env(safe-area-inset-bottom), 12px);
+}
+:root[data-bubble="neutral"] {
+  --bubble: var(--surface-neutral-bubble);
+  --on-bubble: var(--t1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  height: 100%;
+}
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg);
+  color: var(--t1);
+  font: 15px/1.35 var(--sf);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+#root {
+  height: 100%;
+}
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+[hidden] {
+  display: none !important;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.wall {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+.app {
+  position: fixed;
+  inset: 0;
+  isolation: isolate;
+}
+.topfade {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(var(--sat) + 4px);
+  z-index: 31;
+  pointer-events: none;
+  background: linear-gradient(
+    color-mix(in srgb, var(--bg) 80%, transparent),
+    color-mix(in srgb, var(--bg) 0%, transparent)
+  );
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  -webkit-mask: linear-gradient(#000 55%, transparent);
+  mask: linear-gradient(#000 55%, transparent);
+}
+
+.gl {
+  background: var(--g1);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  border: 1px solid var(--g-brd);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    0 12px 32px -16px var(--gsh);
+}
+.gl2 {
+  background: var(--g2);
+}
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.flex {
+  flex: 1;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+  background: var(--c);
+}
+.s-run {
+  --c: var(--st-run);
+  --ct: var(--run-t);
+  --cs: var(--run-soft);
+}
+.s-wait {
+  --c: var(--st-wait);
+  --ct: var(--wait-t);
+  --cs: var(--wait-soft);
+}
+.s-rev {
+  --c: var(--st-review);
+  --ct: var(--rev-t);
+  --cs: var(--rev-soft);
+}
+.s-fail {
+  --c: var(--st-fail);
+  --ct: var(--fail-t);
+  --cs: var(--fail-soft);
+}
+.s-done,
+.s-idle {
+  --c: var(--st-done);
+  --ct: var(--done-t);
+  --cs: var(--done-soft);
+}
+.s-int {
+  --c: var(--st-int);
+  --ct: var(--int-t);
+  --cs: var(--int-soft);
+}
+.dot.s-idle {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--st-done);
+}
+.dot.s-run {
+  animation: pulse 1.8s ease-out infinite;
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--run-ring);
+  }
+  80%,
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.sp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--ct);
+  background: var(--cs);
+  flex: none;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--fill);
+  font-size: 11.5px;
+  color: var(--t2);
+  white-space: nowrap;
+  min-width: 0;
+}
+a.chip {
+  text-decoration: none;
+}
+.chip .ic {
+  width: 13px;
+  height: 13px;
+}
+.chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.b {
+  appearance: none;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--t1);
+  background: var(--fill2);
+  white-space: nowrap;
+  transition:
+    transform 0.15s,
+    filter 0.15s,
+    background 0.2s;
+}
+.b:active {
+  transform: scale(0.97);
+}
+.b .ic {
+  width: 14px;
+  height: 14px;
+}
+.b-pri {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.b:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+.b-ok {
+  background: var(--ok-bg);
+  color: #fff;
+}
+.b-no {
+  background: var(--fail-soft);
+  color: var(--fail-t);
+}
+.meter {
+  height: 7px;
+  border-radius: 3px;
+  background: var(--fill2);
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.5s ease;
+}
+.meter.sm {
+  height: 4px;
+}
+.note {
+  font-size: 11.5px;
+  color: var(--t3);
+  line-height: 1.45;
+}
+.spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  border: 2px solid var(--run-soft);
+  border-top-color: var(--st-run);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pico {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.pi-0 {
+  background: #8c7b67;
+}
+.pi-1 {
+  background: #6e8a6b;
+}
+.pi-2 {
+  background: #5d7f9b;
+}
+.pi-3 {
+  background: #69737f;
+}
+.ds {
+  font: 600 11.5px/1 var(--mono);
+  white-space: nowrap;
+}
+.ds .a {
+  color: var(--add-fg);
+}
+.ds .d {
+  color: var(--del-fg);
+}
+.ds .f {
+  color: var(--t3);
+  font-family: var(--sf);
+  font-weight: 500;
+}
+.dbar {
+  display: inline-flex;
+  gap: 1.5px;
+  flex: none;
+}
+.dbar i {
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  background: var(--fill2);
+}
+.dbar i.a {
+  background: var(--st-review);
+}
+.dbar i.d {
+  background: var(--st-fail);
+}
+.mseg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--fill);
+  flex: none;
+}
+.mseg button {
+  border: 0;
+  background: transparent;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--t2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mseg button[aria-pressed="true"] {
+  background: var(--g2);
+  color: var(--t1);
+  box-shadow: 0 1px 3px var(--gsh);
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--sat) + 6px);
+  transform: translateX(-50%);
+  z-index: 90;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  line-height: 1.3;
+  animation: toast-in 0.3s ease;
+}
+.toast .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--rev-t);
+}
+.toast.error .ic {
+  color: var(--fail-t);
+}
+.toast.info .ic {
+  color: var(--wait-t);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin {
+    border-right-color: var(--st-run);
+  }
+}
