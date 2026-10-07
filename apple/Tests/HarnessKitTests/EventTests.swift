@@ -23,7 +23,8 @@ import Testing
         guard case .message(let agentMessage) = bodies[4] else { throw Unexpected(bodies[4]) }
         #expect(
             agentMessage.blocks == [
-                .thinking("The route posts JSON."), .text("I'll read the route first."),
+                .thinking("The route posts JSON.", durationMS: nil),
+                .text("I'll read the route first."),
                 .toolUse(
                     id: "toolu_01", name: "Read",
                     input: .object(["file_path": .string("app/api/contact/route.ts")])),

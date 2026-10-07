@@ -23,7 +23,12 @@ public enum Elapsed {
 
     /// A run time with seconds while short: "8s", "3m 4s", then as `short`, "1h 12m".
     public static func duration(from start: Date, to end: Date) -> String {
-        let seconds = Int(max(0, end.timeIntervalSince(start)))
+        duration(seconds: end.timeIntervalSince(start))
+    }
+
+    /// As `duration(from:to:)`, for a number of seconds.
+    public static func duration(seconds interval: TimeInterval) -> String {
+        let seconds = Int(max(0, interval))
         if seconds < 60 {
             return "\(seconds)s"
         }

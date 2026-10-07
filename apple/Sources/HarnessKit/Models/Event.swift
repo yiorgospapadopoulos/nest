@@ -56,6 +56,8 @@ public enum EventType {
     public static let connectorsUpdated = "connectors.updated"
     public static let usageUpdated = "usage.updated"
     public static let claudeChatsUpdated = "claude_chats.updated"
+    /// A repo's registration changed, such as a plain folder that git now tracks.
+    public static let repoUpdated = "repo.updated"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -93,6 +95,8 @@ public enum EventBody: Sendable, Hashable {
     case usageUpdated(UsageLimits)
     /// The Claude Code chats of these repos changed; list them again.
     case claudeChatsUpdated(repos: [String])
+    /// A repo changed; the list is read again, whatever the payload holds.
+    case repoUpdated
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -144,6 +148,7 @@ public enum EventBody: Sendable, Hashable {
         case EventType.usageUpdated: self = .usageUpdated(try payload.decode(UsageLimits.self))
         case EventType.claudeChatsUpdated:
             self = .claudeChatsUpdated(repos: try field("repos", as: [String].self))
+        case EventType.repoUpdated: self = .repoUpdated
         default: self = .other
         }
     }
@@ -167,13 +172,15 @@ public struct AgentMessage: Decodable, Sendable, Hashable {
 
 public enum MessageBlock: Decodable, Sendable, Hashable {
     case text(String)
-    case thinking(String)
+    /// Thinking text, with how long it took when the daemon timed it.
+    case thinking(String, durationMS: Int?)
     case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseID: String, content: String, isError: Bool)
     case unknown
 
     enum CodingKeys: String, CodingKey {
         case type, text, id, name, input, content
+        case durationMS = "duration_ms"
         case toolUseID = "tool_use_id"
         case isError = "is_error"
     }
@@ -182,7 +189,10 @@ public enum MessageBlock: Decodable, Sendable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(String.self, forKey: .type) {
         case "text": self = .text(try container.decode(String.self, forKey: .text))
-        case "thinking": self = .thinking(try container.decode(String.self, forKey: .text))
+        case "thinking":
+            self = .thinking(
+                try container.decode(String.self, forKey: .text),
+                durationMS: try container.decodeIfPresent(Int.self, forKey: .durationMS))
         case "tool_use":
             self = .toolUse(
                 id: try container.decode(String.self, forKey: .id),
@@ -202,7 +212,8 @@ public enum MessageBlock: Decodable, Sendable, Hashable {
 public struct TurnResult: Decodable, Sendable, Hashable {
     public var isError: Bool
     public var subtype: String
-    public var durationMS: Int
+    /// How long the turn took; older events may lack it.
+    public var durationMS: Int?
     public var numTurns: Int
     public var costUSD: Double?
     public var errors: [String]

@@ -22,6 +22,7 @@ struct TranscriptView: View {
         let working = session.map { $0.state == .running || $0.state == .starting } ?? false
         let streaming = items.last?.id == "streaming"
         let hasNewer = store?.hasNewer == true
+        let entries = TranscriptGrouping.entries(items, live: working)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 11) {
@@ -30,20 +31,26 @@ struct TranscriptView: View {
                             try await store?.loadOlder()
                         }
                     }
-                    ForEach(items) { item in
-                        TranscriptRow(item: item, chat: chat)
-                            .background {
-                                if highlighted == item.id {
-                                    Highlight(accent: accent)
+                    ForEach(entries) { entry in
+                        switch entry {
+                        case .item(let item):
+                            TranscriptRow(item: item, chat: chat)
+                                .background {
+                                    if highlighted == item.id {
+                                        Highlight(accent: accent)
+                                    }
                                 }
-                            }
+                        case .tools(let group):
+                            ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
+                        }
                     }
                     if hasNewer {
                         PageButton(title: "Load newer messages") {
                             try await store?.loadNewer()
                         }
                     } else if working && !streaming {
-                        LiveLine(text: shell.liveActivity(of: chat))
+                        WorkingLine(
+                            since: store?.turnStartedAt, thinking: store?.isThinking == true)
                     }
                     ForEach(shell.activity.queued(session: chat)) { message in
                         QueuedBubble(message: message) { shell.cancelQueued(message, in: chat) }
@@ -132,6 +139,11 @@ struct TranscriptView: View {
     private func reveal() async {
         guard let store, let target = try? await store.resolveFocus() else { return }
         follow.hold()
+        // A hit inside a collapsed group of tool calls opens the group first.
+        let entries = TranscriptGrouping.entries(store.visibleItems, live: false)
+        if let group = TranscriptGrouping.group(containing: target, in: entries) {
+            shell.expandedItems.insert(group)
+        }
         scrollTarget = nil
         // The loaded items lay out first, and the same target can be shown again.
         try? await Task.sleep(for: .milliseconds(60))
@@ -164,8 +176,8 @@ private struct TranscriptRow: View {
             UserBubble(text: text, attachments: attachments)
         case .assistant(let text, _):
             AssistantText(text: text, chat: chat)
-        case .thinking(let text):
-            ThinkingRow(id: item.id, text: text)
+        case .thinking(let text, let duration):
+            ThinkingRow(id: item.id, text: text, durationMS: duration)
         case .tool(let call):
             ToolRow(id: item.id, call: call)
         case .approval(let id, let kind, let status):
@@ -176,6 +188,8 @@ private struct TranscriptRow: View {
         case .notice(let text):
             SystemLine(text: text)
                 .frame(maxWidth: .infinity)
+        case .turnEnd(let end):
+            TurnEndLine(end: end)
         }
     }
 }
@@ -395,23 +409,75 @@ extension View {
     }
 }
 
+/// "Thought for 8s", opening to the thinking text in muted italics; thinking with no
+/// text (redacted) cannot open.
 private struct ThinkingRow: View {
     static let font = NSFontManager.shared.convert(
         TextStyling.ui(TypeSize.small), toHaveTrait: .italicFontMask)
 
     let id: String
     let text: String
+    let durationMS: Int?
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let expanded = shell.expandedItems.contains(id)
+        let expandable = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         VStack(alignment: .leading, spacing: 6) {
             Button {
                 toggle(id, in: shell)
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "brain").font(.system(size: 11))
-                    Text("Thinking")
+                    Text(TurnText.thought(durationMS: durationMS))
+                    if expandable {
+                        Image(systemName: Icon.chevron)
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(expanded ? 0 : -90))
+                    }
+                }
+                .font(.ui(TypeSize.small, .medium))
+                .foregroundStyle(Palette.t3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(expandable ? .link : nil)
+            .disabled(!expandable)
+            .accessibilityValue(expandable ? (expanded ? "Expanded" : "Collapsed") : "")
+            if expanded && expandable {
+                SelectableText(key: text) {
+                    TextStyling.plain(
+                        text, font: Self.font, color: TextStyling.secondary)
+                }
+                .padding(.leading, 17)
+            }
+        }
+    }
+}
+
+/// Tool calls in a row as one line, "Ran 3 commands, read 2 files", shimmering while
+/// any runs; opens to the calls and the thinking between them.
+private struct ToolGroupRow: View {
+    let group: ToolGroup
+    let chat: String
+    let highlighted: String?
+    @Environment(Shell.self) private var shell
+    @Environment(\.accentColors) private var accent
+
+    var body: some View {
+        let expanded = shell.expandedItems.contains(group.id)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                toggle(group.id, in: shell)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: Icon.tool(dominantKind))
+                        .font(.system(size: 11))
+                        .frame(width: 14)
+                    Text(group.summary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .shimmer(group.isRunning)
                     Image(systemName: Icon.chevron)
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 0 : -90))
@@ -421,13 +487,31 @@ private struct ThinkingRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .accessibilityLabel(group.summary)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             if expanded {
-                SelectableText(key: text) {
-                    TextStyling.plain(
-                        text, font: Self.font, color: TextStyling.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(group.items) { item in
+                        TranscriptRow(item: item, chat: chat)
+                            .background {
+                                if highlighted == item.id {
+                                    Highlight(accent: accent)
+                                }
+                            }
+                    }
+                }
+                .padding(.leading, 10)
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(Palette.hair).frame(width: 1).padding(.leading, 6)
                 }
             }
         }
+    }
+
+    /// The icon of the group's first kind of call.
+    private var dominantKind: ToolSummary.Kind {
+        group.calls.first.map { ToolSummary.kind(of: $0.name) } ?? .other
     }
 }
 
@@ -474,6 +558,7 @@ private struct ToolRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .contentShape(Rectangle())
+            .pointerStyle(expandable ? .link : nil)
             .onTapGesture {
                 if expandable {
                     toggle(id, in: shell)
@@ -577,20 +662,34 @@ struct SystemLine: View {
     }
 }
 
-/// Three blinking dots and what the agent is doing.
-private struct LiveLine: View {
-    let text: String
+/// Three blinking dots and how long the turn has been running: "Working... 12s".
+private struct WorkingLine: View {
+    let since: Date?
+    let thinking: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             BlinkingDots()
-            Text(text)
-                .font(.mono(TypeSize.caption))
-                .foregroundStyle(Palette.t3)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(TurnText.working(since: since, at: context.date, thinking: thinking))
+                    .font(.ui(TypeSize.caption))
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.t3)
+            }
         }
         .foregroundStyle(Palette.t2)
+    }
+}
+
+/// "Worked for 1m 12s" under a finished turn.
+private struct TurnEndLine: View {
+    let end: TurnEnd
+
+    var body: some View {
+        Text(TurnText.ended(end))
+            .font(.ui(TypeSize.caption))
+            .monospacedDigit()
+            .foregroundStyle(Palette.t3)
     }
 }
 
@@ -654,6 +753,7 @@ private struct PageButton: View {
 /// Scrolls back to the newest content and resumes following it.
 private struct JumpToLatest: View {
     let action: () -> Void
+    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: action) {
@@ -661,11 +761,12 @@ private struct JumpToLatest: View {
                 .font(.ui(TypeSize.small, .medium))
                 .padding(.horizontal, 12)
                 .frame(height: 28)
-                .capsuleGlass()
+                .controlGlass()
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .foregroundStyle(Palette.t1)
-        .shadow(color: Palette.glassShadow.opacity(0.5), radius: 8, y: 4)
+        .shadow(color: glass.shadow.opacity(0.5), radius: 8, y: 4)
     }
 }
 

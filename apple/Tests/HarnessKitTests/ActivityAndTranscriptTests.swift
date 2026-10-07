@@ -104,13 +104,13 @@ import Testing
         #expect(transcript.isLoaded)
         #expect(transcript.lastEventID == 21)
         let contents = transcript.items.map(\.content)
-        #expect(contents.count == 7)
+        #expect(contents.count == 8)
         guard case .user(let text, let attachments) = contents[0] else {
             throw Unexpected(contents[0])
         }
         #expect(text.hasPrefix("Validate the contact form"))
         #expect(attachments.map(\.filename) == ["form.png"])
-        #expect(contents[1] == .thinking("The route posts JSON."))
+        #expect(contents[1] == .thinking("The route posts JSON.", durationMS: nil))
         #expect(contents[2] == .assistant("I'll read the route first.", streaming: false))
         #expect(
             contents[3]
@@ -121,11 +121,12 @@ import Testing
                         result: "export async function POST() {}", isError: false)))
         #expect(contents[4] == .approval(id: "ap-perm", kind: .permission, status: .resolved))
         #expect(contents[5] == .assistant("Validation added.", streaming: false))
-        guard case .result(let result) = contents[6] else { throw Unexpected(contents[6]) }
+        #expect(contents[6] == .turnEnd(TurnEnd(durationMS: 41_250, stopped: false)))
+        guard case .result(let result) = contents[7] else { throw Unexpected(contents[7]) }
         #expect(result.durationMS == 41_250)
         #expect(
             transcript.items.map(\.id) == [
-                "e12", "e14-0", "e14-1", "toolu_01", "ap-perm", "e19-0", "e20",
+                "e12", "e14-0", "e14-1", "toolu_01", "ap-perm", "e19-0", "e20-end", "e20",
             ])
         #expect(api.calls == ["sessionEvents \(sessionID) after=0"])
     }
@@ -151,8 +152,9 @@ import Testing
                 EventType.sessionResult,
                 #"{"is_error": true, "subtype": "error_during_execution", "duration_ms": 5, "num_turns": 1, "cost_usd": 0.01, "errors": ["x"]}"#,
                 id: 31))
-        #expect(transcript.items.count == 2)
-        guard case .result(let result) = transcript.items[1].content else {
+        #expect(transcript.items.count == 3)
+        #expect(transcript.items[1].content == .turnEnd(TurnEnd(durationMS: 5, stopped: true)))
+        guard case .result(let result) = transcript.items[2].content else {
             throw Unexpected(transcript.items)
         }
         #expect(result.isError)
@@ -237,10 +239,10 @@ import Testing
 
         try await transcript.load()
 
-        #expect(transcript.items.count == 8)
+        #expect(transcript.items.count == 9)
         #expect(transcript.items.last?.content == .assistant("Anything else?", streaming: false))
         transcript.receive(newer)
-        #expect(transcript.items.count == 8)
+        #expect(transcript.items.count == 9)
         #expect(transcript.lastEventID == 22)
     }
 
@@ -249,7 +251,7 @@ import Testing
         try await transcript.load()
         try await transcript.load()
         #expect(api.calls.last == "sessionEvents \(sessionID) after=21")
-        #expect(transcript.items.count == 7)
+        #expect(transcript.items.count == 8)
     }
 
     @Test func transcriptsAreSharedAndFedByEvents() async throws {
@@ -419,10 +421,10 @@ import Testing
         let transcript = TranscriptStore(sessionID: sessionID, api: api)
         try await transcript.load()
         #expect(
-            transcript.items.map(\.eventID) == [12, 14, 14, 14, 17, 19, 20])
+            transcript.items.map(\.eventID) == [12, 14, 14, 14, 17, 19, 20, 20])
         #expect(
             transcript.visibleItems.map(\.id) == [
-                "e12", "e14-0", "e14-1", "toolu_01", "ap-perm", "e19-0",
+                "e12", "e14-0", "e14-1", "toolu_01", "ap-perm", "e19-0", "e20-end",
             ])
         #expect(!transcript.hasOlder)
         #expect(!transcript.hasNewer)
@@ -437,7 +439,7 @@ import Testing
                 EventType.sessionResult,
                 #"{"is_error": true, "subtype": "error_max_turns", "duration_ms": 5, "num_turns": 1, "cost_usd": null, "errors": []}"#,
                 id: 31, session: sessionID))
-        #expect(transcript.items.count == 9)
+        #expect(transcript.items.count == 11)
         #expect(transcript.visibleItems.last?.id == "e31")
     }
 
@@ -448,7 +450,7 @@ import Testing
 
         // A tool result shows with its call; a subagent message and a hidden result
         // land on what is shown before them; an event before the first item on it.
-        let expected = [15: "toolu_01", 16: "toolu_01", 19: "e19-0", 21: "e19-0", 1: "e12"]
+        let expected = [15: "toolu_01", 16: "toolu_01", 19: "e19-0", 21: "e20-end", 1: "e12"]
         for (event, item) in expected {
             transcript.requestFocus(event: event)
             #expect(transcript.focus?.eventID == event)
