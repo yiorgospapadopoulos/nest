@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, type ReactNode } from "react";
 import type { Api } from "../api/client.ts";
 import { EventStream, eventsUrl, type SocketFactory } from "../api/events.ts";
+import { browserPushEnv } from "../pwa/push.ts";
 import { reportVisibility } from "../pwa/visibility.ts";
 import { createActions } from "./actions.ts";
 import { loadShowAutomated } from "./devicePrefs.ts";
@@ -41,20 +42,34 @@ export function StoreProvider({
     if (!ready) return;
     const stream = new EventStream(connect, (after) => eventsUrl(location, after), {
       onEvent: (event) => {
-        dispatch({ type: "event", event });
+        actions.receive(event);
         if (event.type === "claude_chats.updated") void actions.loadClaudeChats();
       },
       onOpen: (resumed) => {
+        dispatch({ type: "reconnecting", on: false });
         // Without a cursor, events between the snapshot and the socket may be missing,
-        // including those of the chat on screen.
-        if (!resumed) void actions.resync();
+        // including those of the chat on screen. The Claude Code chat list changes with
+        // ephemeral events only, so it reloads either way.
+        if (resumed) void actions.loadClaudeChats();
+        else void actions.resync();
+      },
+      onLost: () => {
+        dispatch({ type: "reconnecting", on: true });
       },
       onClosed: (reason) => {
         dispatch({ type: "auth", auth: reason === "unauthorized" ? "unpaired" : "forbidden" });
       },
     });
+    // Back on screen or online again: no need to wait out the back-off.
+    const wake = () => {
+      if (document.visibilityState === "visible") stream.wake();
+    };
     stream.start();
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
     return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
       stream.stop();
     };
   }, [ready, connect, location, actions]);
@@ -63,6 +78,11 @@ export function StoreProvider({
     if (!ready) return;
     return reportVisibility({ document, report: (visible) => api.reportVisibility(visible) });
   }, [ready, api]);
+
+  // On launch and after pairing, so the daemon has this device's subscription.
+  useEffect(() => {
+    if (ready) void actions.refreshPush(browserPushEnv(window));
+  }, [ready, actions]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);
   return <StoreContext value={value}>{children}</StoreContext>;

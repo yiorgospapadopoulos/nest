@@ -37,6 +37,13 @@ describe("reduce", () => {
     expect(reduce(state, { type: "auth", auth: "unpaired" }).auth).toBe("unpaired");
   });
 
+  it("tracks a reconnect until the socket opens or the device has to pair again", () => {
+    const lost = reduce(loaded(), { type: "reconnecting", on: true });
+    expect(lost.reconnecting).toBe(true);
+    expect(reduce(lost, { type: "reconnecting", on: false }).reconnecting).toBe(false);
+    expect(reduce(lost, { type: "auth", auth: "unpaired" }).reconnecting).toBe(false);
+  });
+
   it("upserts and removes sessions with everything that belongs to them", () => {
     let state = reduce(loaded(), { type: "session", session: session({ title: "Renamed" }) });
     state = reduce(state, {
@@ -98,6 +105,29 @@ describe("reduce", () => {
     expect(reduce(state, { type: "transcriptOpened", id: "s1" }).transcripts.s1).toHaveLength(2);
     const fresh = reduce(loaded(), { type: "transcriptLoaded", id: "s9", events: [] });
     expect(fresh.transcripts.s9).toEqual([]);
+  });
+
+  it("takes only what was sent out of a draft", () => {
+    const file = (id: string) => ({
+      id,
+      filename: id,
+      media_type: "text/plain",
+      size: 1,
+      created_at: NOW,
+    });
+    let state = reduce(initialState, { type: "draftText", key: "k", text: "Sent part and more" });
+    state = reduce(state, { type: "draftFileAdded", key: "k", file: file("a") });
+    state = reduce(state, { type: "draftFileAdded", key: "k", file: file("b") });
+
+    state = reduce(state, { type: "draftSent", key: "k", text: "Sent part", fileIds: ["a"] });
+    expect(state.drafts.k).toEqual({ text: "and more", files: [file("b")] });
+    // A sent part edited while it went out: all the text stays.
+    const edited = reduce(state, { type: "draftSent", key: "k", text: "Other", fileIds: [] });
+    expect(edited.drafts.k?.text).toBe("and more");
+    const all = reduce(state, { type: "draftSent", key: "k", text: "and more", fileIds: ["b"] });
+    expect(all.drafts).toEqual({});
+    // The chat went away while its message was sent: nothing to take out.
+    expect(reduce(all, { type: "draftSent", key: "k", text: "x", fileIds: [] }).drafts).toEqual({});
   });
 
   it("stores connectors, limits and toasts", () => {
@@ -293,6 +323,25 @@ describe("live events", () => {
 
     expect(state.repos).toEqual([repo("todo-ui"), now]);
     expect(unknown.repos).toEqual(state.repos);
+  });
+
+  it("add a registered project and remove an unregistered one", () => {
+    const repoEvent = (type: string, payload: Record<string, JsonValue>) =>
+      event({ type, session_id: null, payload });
+    let state = apply(
+      loaded(),
+      repoEvent("repo.added", { name: "notes", repo: repo("notes") as unknown as JsonValue }),
+    );
+    expect(state.repos.map((r) => r.name)).toEqual(["todo-ui", "notes"]);
+    // Added again, as a replay after a snapshot that already had it: still one, in place.
+    const again = apply(
+      state,
+      repoEvent("repo.added", { name: "todo-ui", repo: repo("todo-ui") as unknown as JsonValue }),
+    );
+    expect(again.repos.map((r) => r.name)).toEqual(["todo-ui", "notes"]);
+
+    state = apply(state, repoEvent("repo.removed", { name: "todo-ui" }));
+    expect(state.repos.map((r) => r.name)).toEqual(["notes"]);
   });
 
   it("keep a usage window the event leaves out, as the daemon does", () => {

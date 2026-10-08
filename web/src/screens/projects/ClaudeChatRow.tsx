@@ -16,7 +16,12 @@ export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
   const open = chat.open_in_claude_code ? ", open in Claude Code" : "";
   return (
     <div className="lrow">
-      <button className="row" aria-label={`${chat.title}, Claude Code chat${open}`} {...gestures}>
+      <button
+        className="row"
+        aria-label={`${chat.title}, Claude Code chat${open}`}
+        data-chat={chat.id}
+        {...gestures}
+      >
         <Dot tone={chat.open_in_claude_code ? "run" : "idle"} />
         <span className="rt">{chat.title}</span>
         <span className="rm">

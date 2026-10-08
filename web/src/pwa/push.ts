@@ -82,8 +82,31 @@ export async function enablePush(env: PushEnv, server: PushServer): Promise<Push
   if (manager === undefined) {
     throw new Error("harness is still setting up on this device. Reopen it and try again.");
   }
+  await register(manager, await manager.getSubscription(), server);
+  return "on";
+}
+
+/**
+ * Sends the subscription to the daemon again, on launch and after pairing, while
+ * notifications are on here: a new pairing or a new daemon key would otherwise leave this
+ * device without notifications. Turning them on stays the user's choice.
+ */
+export async function refreshPush(env: PushEnv, server: PushServer): Promise<void> {
+  if (env.notification?.permission !== "granted") return;
+  const manager = await pushManager(env);
+  const subscription = await manager?.getSubscription();
+  if (manager === undefined || subscription == null) return;
+  await register(manager, subscription, server);
+}
+
+/** Subscribes with the daemon's key, renewing a subscription made with another one. */
+async function register(
+  manager: PushManagerLike,
+  current: SubscriptionLike | null,
+  server: PushServer,
+): Promise<void> {
   const key = base64UrlToBytes((await server.vapidKey()).public_key);
-  let subscription = await manager.getSubscription();
+  let subscription = current;
   if (subscription !== null && !sameKey(subscription.options.applicationServerKey, key)) {
     // Made for another daemon key; the push service would refuse every message.
     await subscription.unsubscribe();
@@ -91,7 +114,6 @@ export async function enablePush(env: PushEnv, server: PushServer): Promise<Push
   }
   subscription ??= await manager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   await server.subscribePush(subscriptionBody(subscription));
-  return "on";
 }
 
 export async function disablePush(env: PushEnv, server: PushServer): Promise<PushStatus> {

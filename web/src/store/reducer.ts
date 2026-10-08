@@ -26,7 +26,10 @@ import {
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "auth":
-      return { ...state, auth: action.auth };
+      // Signed out, refused or reloading: no live connection to restore.
+      return { ...state, auth: action.auth, reconnecting: false };
+    case "reconnecting":
+      return { ...state, reconnecting: action.on };
     case "loaded":
       return {
         ...state,
@@ -74,6 +77,8 @@ export function reduce(state: State, action: Action): State {
           [action.id]: merge(state.transcripts[action.id] ?? [], action.events),
         },
       };
+    case "transcriptClosed":
+      return { ...state, transcripts: omit(state.transcripts, action.id) };
     case "queued":
       return { ...state, queued: { ...state.queued, [action.id]: action.queued } };
     case "queuedRemoved":
@@ -86,6 +91,11 @@ export function reduce(state: State, action: Action): State {
       };
     case "event":
       return applyEvent(state, action.event);
+    case "replayed": {
+      // Streamed text and thinking already followed these events when they arrived.
+      const next = action.events.reduce(applyEvent, state);
+      return { ...next, live: state.live, thinking: state.thinking };
+    }
     case "liveCleared":
       return clearThinking(clearLive(state, action.id), action.id);
     case "draftText":
@@ -96,8 +106,8 @@ export function reduce(state: State, action: Action): State {
       return patchDraft(state, action.key, (d) => ({
         files: d.files.filter((f) => f.id !== action.fileId),
       }));
-    case "draftCleared":
-      return { ...state, drafts: omit(state.drafts, action.key) };
+    case "draftSent":
+      return draftSent(state, action.key, action.text, action.fileIds);
     case "connectors":
       return { ...state, connectors: action.connectors };
     case "limits":
@@ -128,6 +138,18 @@ export function applyEvent(state: State, event: HarnessEvent): State {
         repos: next.repos.map((r) => (r.name === changed.name ? changed : r)),
       };
     }
+    case "repo.added": {
+      const added = p.repo as unknown as RepoConfig;
+      const known = next.repos.some((r) => r.name === added.name);
+      return {
+        ...next,
+        repos: known
+          ? next.repos.map((r) => (r.name === added.name ? added : r))
+          : [...next.repos, added],
+      };
+    }
+    case "repo.removed":
+      return { ...next, repos: next.repos.filter((r) => r.name !== str(p.name)) };
     case "session.created":
     case "session.updated":
       return upsertSession(next, p.session as unknown as Session);
@@ -253,6 +275,18 @@ function clearThinking(state: State, id: string | null): State {
 function patchDraft(state: State, key: string, patch: (draft: Draft) => Partial<Draft>): State {
   const current = state.drafts[key] ?? NO_DRAFT;
   return { ...state, drafts: { ...state.drafts, [key]: { ...current, ...patch(current) } } };
+}
+
+/** The draft without the text and files that were sent, gone once nothing is left. */
+function draftSent(state: State, key: string, text: string, fileIds: string[]): State {
+  const current = state.drafts[key] ?? NO_DRAFT;
+  // Text typed after the sent text stays; a sent part edited meanwhile keeps it all.
+  const rest = current.text.startsWith(text)
+    ? current.text.slice(text.length).trimStart()
+    : current.text;
+  const files = current.files.filter((f) => !fileIds.includes(f.id));
+  if (rest === "" && files.length === 0) return { ...state, drafts: omit(state.drafts, key) };
+  return { ...state, drafts: { ...state.drafts, [key]: { text: rest, files } } };
 }
 
 function omit<T>(record: Record<string, T>, id: string): Record<string, T> {

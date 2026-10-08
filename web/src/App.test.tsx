@@ -1,7 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "./api/client.ts";
 import { App } from "./App.tsx";
+import { fakeSubscription, installBrowserPush, uninstallBrowserPush } from "./test/fakePush.ts";
 import { socketFactory } from "./test/fakeSocket.ts";
 import { fakeApi } from "./test/fakeApi.ts";
 import { approval, repo } from "./test/fixtures.ts";
@@ -68,6 +69,48 @@ describe("App", () => {
 
     expect(await screen.findByText("All clear")).toBeInTheDocument();
     expect(api.redeem).toHaveBeenCalledWith("ABCDE2F3", "Phone");
+  });
+
+  it("sends this device's push subscription again on launch and after pairing", async () => {
+    installBrowserPush({ permission: "granted", subscription: fakeSubscription() });
+    try {
+      const launched = await renderApp();
+      await waitFor(() => {
+        expect(launched.api.subscribePush).toHaveBeenCalledTimes(1);
+      });
+      launched.unmount();
+
+      const api = unpaired();
+      const { user } = await renderApp({ api, ready: false });
+      await user.type(await screen.findByLabelText("Pairing code"), "ABCDE2F3");
+      await user.click(screen.getByRole("button", { name: "Pair" }));
+      await screen.findByText("All clear");
+
+      await waitFor(() => {
+        expect(api.subscribePush).toHaveBeenCalledWith({
+          endpoint: "https://push/1",
+          keys: { p256dh: "p", auth: "a" },
+        });
+      });
+    } finally {
+      uninstallBrowserPush();
+    }
+  });
+
+  it("stays quiet when sending the push subscription again fails", async () => {
+    installBrowserPush({ permission: "granted", subscription: fakeSubscription() });
+    try {
+      const api = fakeApi();
+      api.subscribePush.mockRejectedValueOnce(new ApiError(500, "daemon broke"));
+      await renderApp({ api });
+
+      await waitFor(() => {
+        expect(api.subscribePush).toHaveBeenCalled();
+      });
+      expect(screen.queryByText("daemon broke")).not.toBeInTheDocument();
+    } finally {
+      uninstallBrowserPush();
+    }
   });
 
   it("uses the page's own location and storage by default", async () => {
@@ -183,6 +226,54 @@ describe("App", () => {
     });
     expect(sockets.last().url).toBe("wss://mac.ts.net/api/events?after=3");
     expect(api.repos).toHaveBeenCalledTimes(2);
+    // The Claude Code chat list changes without stored events, so it reloads on every open.
+    await waitFor(() => {
+      expect(api.claudeChats).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it("says it is reconnecting, and reconnects at once on waking or going online", async () => {
+    const { sockets } = await renderApp();
+    act(() => {
+      sockets.last().open();
+    });
+    expect(screen.queryByText("Reconnecting...")).not.toBeInTheDocument();
+
+    act(() => {
+      sockets.last().drop(1006);
+    });
+    expect(screen.getByText("Reconnecting...")).toHaveAttribute("role", "status");
+    // The phone comes back to the app: no wait for the back-off.
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(sockets.sockets).toHaveLength(2);
+    act(() => {
+      sockets.last().drop(1006);
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(sockets.sockets).toHaveLength(3);
+    act(() => {
+      sockets.last().open();
+    });
+
+    expect(screen.queryByText("Reconnecting...")).not.toBeInTheDocument();
+  });
+
+  it("does not reconnect early while hidden", async () => {
+    const { sockets } = await renderApp();
+    act(() => {
+      sockets.last().drop(1006);
+    });
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    try {
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(sockets.sockets).toHaveLength(1);
+    } finally {
+      hidden.mockRestore();
+    }
   });
 
   it("toasts when a refresh fails and pairs again on 401", async () => {

@@ -1,5 +1,11 @@
 import { ApiError, OPEN_ELSEWHERE, type Api } from "../api/client.ts";
-import { disablePush, enablePush, type PushEnv, type PushStatus } from "../pwa/push.ts";
+import {
+  disablePush,
+  enablePush,
+  refreshPush,
+  type PushEnv,
+  type PushStatus,
+} from "../pwa/push.ts";
 import type {
   AgentDefaults,
   Approval,
@@ -40,6 +46,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
   const onScreen = new Set<string>();
+  // The stored events that arrived during each snapshot request in flight.
+  const arriving = new Set<HarnessEvent[]>();
 
   const toast = (text: string, tone: Toast["tone"] = "ok") => {
     toastId += 1;
@@ -75,6 +83,21 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     }
   }
 
+  /**
+   * Applies a snapshot, then again the stored events that arrived while it loaded: the
+   * snapshot may be older than they are. Transcripts already hold them without duplicates.
+   */
+  async function snapshot<T>(fetch: () => Promise<T>, apply: (loaded: T) => void): Promise<void> {
+    const arrived: HarnessEvent[] = [];
+    arriving.add(arrived);
+    try {
+      apply(await fetch());
+      if (arrived.length > 0) dispatch({ type: "replayed", events: arrived });
+    } finally {
+      arriving.delete(arrived);
+    }
+  }
+
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
@@ -83,29 +106,39 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // `stale`: streamed text and thinking may have missed their end, so a chat that is no
   // longer working drops them.
   async function fetchChat(id: string, stale = false): Promise<void> {
-    await attempt(async () => {
-      const [found, events] = await Promise.all([api.session(id), api.sessionEvents(id)]);
-      // The detail is a session too; its task list and agents go to tracking.
-      dispatch({ type: "session", session: found });
-      const { tasks, agents, background } = found;
-      dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
-      dispatch({ type: "queued", id, queued: found.queued });
-      dispatch({ type: "transcriptLoaded", id, events });
-      if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
-    });
+    await attempt(() =>
+      snapshot(
+        () => Promise.all([api.session(id), api.sessionEvents(id)]),
+        ([found, events]) => {
+          // The detail is a session too; its task list and agents go to tracking.
+          dispatch({ type: "session", session: found });
+          const { tasks, agents, background } = found;
+          dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
+          dispatch({ type: "queued", id, queued: found.queued });
+          // A chat closed meanwhile keeps no transcript.
+          if (onScreen.has(id)) dispatch({ type: "transcriptLoaded", id, events });
+          if (stale && !WORKING.has(found.state)) dispatch({ type: "liveCleared", id });
+        },
+      ),
+    );
   }
 
   async function load(): Promise<void> {
     try {
-      const [repos, open, archived, approvals, chats] = await Promise.all([
-        api.repos(),
-        api.sessions(false),
-        api.sessions(true),
-        api.approvals(),
-        api.claudeChats(showAutomated),
-      ]);
-      dispatch({ type: "loaded", repos, sessions: [...open, ...archived], approvals });
-      dispatch({ type: "claudeChats", chats });
+      await snapshot(
+        () =>
+          Promise.all([
+            api.repos(),
+            api.sessions(false),
+            api.sessions(true),
+            api.approvals(),
+            api.claudeChats(showAutomated),
+          ]),
+        ([repos, open, archived, approvals, chats]) => {
+          dispatch({ type: "loaded", repos, sessions: [...open, ...archived], approvals });
+          dispatch({ type: "claudeChats", chats });
+        },
+      );
       loaded = true;
     } catch (error) {
       if (error instanceof ApiError && error.unauthorized) {
@@ -124,6 +157,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "toast", toast: null });
     },
     load,
+
+    /** A live event from the socket. */
+    receive(event: HarnessEvent): void {
+      if (event.id !== null) {
+        for (const arrived of arriving) arrived.push(event);
+      }
+      dispatch({ type: "event", event });
+    },
+
     retry: () => {
       dispatch({ type: "auth", auth: "loading" });
       return load();
@@ -153,8 +195,10 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       await fetchChat(id);
     },
 
+    /** The chat left the screen; its transcript is fetched again when it opens. */
     closeChat(id: string): void {
       onScreen.delete(id);
+      dispatch({ type: "transcriptClosed", id });
     },
 
     /**
@@ -211,9 +255,14 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
-    /** Asks the agent to fix the failing checks, in the same chat. */
+    /**
+     * Asks the agent to fix the failing checks, in the same chat. The agent has no GitHub
+     * login (the git rules keep it off GitHub), so the message says how to go about it.
+     */
     async sendCiFailure(session: Session, names: string[]): Promise<boolean> {
-      const text = `CI failed: ${names.join(", ")}. Please fix.`;
+      const text =
+        `CI failed: ${names.join(", ")}. Please fix. You can't use gh or reach GitHub from ` +
+        "here, so work from the code and the check names, and ask me for the logs if you need them.";
       const sent = await attempt(() => api.sendMessage(session.id, text, []));
       if (sent === null) return false;
       // The session's events show the agent starting on it.
@@ -351,8 +400,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "draftFileRemoved", key, fileId });
     },
 
-    clearDraft(key: string): void {
-      dispatch({ type: "draftCleared", key });
+    /** Takes what was sent out of the draft, keeping anything added while it was sending. */
+    draftSent(key: string, text: string, fileIds: string[]): void {
+      dispatch({ type: "draftSent", key, text, fileIds });
     },
 
     /** Uploads a file into the draft it was chosen for, even if another chat is open by then. */
@@ -389,6 +439,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const status = await attempt(() => enablePush(env, api));
       if (status === "on") toast("Notifications are on");
       return status;
+    },
+
+    /** Quiet, as nobody asked for it: a failure only means the next launch tries again. */
+    async refreshPush(env: PushEnv): Promise<void> {
+      await quietly(() => refreshPush(env, api));
     },
 
     async disablePush(env: PushEnv): Promise<PushStatus | null> {

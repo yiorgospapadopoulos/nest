@@ -17,6 +17,8 @@ export interface StreamHandlers {
   onEvent(event: HarnessEvent): void;
   // `resumed` is false when events may have been missed, so snapshots should be reloaded.
   onOpen(resumed: boolean): void;
+  // The socket closed and a reconnect is on its way.
+  onLost(): void;
   onClosed(reason: "unauthorized" | "forbidden"): void;
 }
 
@@ -44,7 +46,8 @@ export function eventsUrl(location: { protocol: string; host: string }, after: n
 /**
  * The live event socket. Stored events move the cursor, so a reconnect replays what was
  * missed with `after`; ephemeral events (id null) never do. Reconnects back off up to
- * MAX_DELAY_MS, and stop for good when the daemon rejects the device or the origin.
+ * MAX_DELAY_MS, or come at once on `wake`, and stop for good when the daemon rejects the
+ * device or the origin.
  */
 export class EventStream {
   private socket: SocketLike | null = null;
@@ -69,6 +72,15 @@ export class EventStream {
   }
 
   start(): void {
+    this.open();
+  }
+
+  /** Reconnects now if a reconnect is waiting, as when the phone wakes or goes online. */
+  wake(): void {
+    if (this.timer === null) return;
+    this.timers.clear(this.timer);
+    this.timer = null;
+    this.attempts = 0;
     this.open();
   }
 
@@ -119,6 +131,7 @@ export class EventStream {
       this.handlers.onClosed(code === UNAUTHENTICATED ? "unauthorized" : "forbidden");
       return;
     }
+    this.handlers.onLost();
     const delay = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** this.attempts);
     this.attempts += 1;
     this.timer = this.timers.set(() => {

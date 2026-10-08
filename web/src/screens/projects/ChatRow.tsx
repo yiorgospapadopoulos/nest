@@ -20,7 +20,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
     `${session.stuck !== null ? ", stuck" : ""}${session.pinned ? ", pinned" : ""}`;
   return (
     <div className="lrow">
-      <button className="row" aria-label={label} {...gestures}>
+      <button className="row" aria-label={label} data-chat={session.id} {...gestures}>
         <Dot tone={status.tone} />
         <span className="rt">{session.title}</span>
         <span className="rm">

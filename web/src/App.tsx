@@ -27,6 +27,7 @@ export function App({ api, connect, storage, location }: Props) {
         <div className="app">
           <Root />
           <div className="topfade" aria-hidden="true" />
+          <Reconnecting />
         </div>
         <Toast />
       </StoreProvider>
@@ -59,6 +60,17 @@ function Root() {
     case "ready":
       return <Shell />;
   }
+}
+
+/** A small note while the live connection to the Mac is being restored. */
+function Reconnecting() {
+  const { state } = useStore();
+  if (!state.reconnecting) return null;
+  return (
+    <p className="reconn gl" role="status">
+      Reconnecting...
+    </p>
+  );
 }
 
 function Notice({ title, children }: { title: string; children: ReactNode }) {

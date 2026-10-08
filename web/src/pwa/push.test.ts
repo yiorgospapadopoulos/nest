@@ -7,6 +7,7 @@ import {
   disablePush,
   enablePush,
   pushStatus,
+  refreshPush,
   subscriptionBody,
 } from "./push.ts";
 
@@ -135,6 +136,51 @@ describe("enablePush", () => {
     await expect(enablePush(fakePushEnv({ registered: false }).env, fakeApi())).rejects.toThrow(
       "still setting up",
     );
+  });
+});
+
+describe("refreshPush", () => {
+  it("sends this device's subscription again when notifications are on here", async () => {
+    const subscription = fakeSubscription();
+    const { env, manager, requestPermission } = fakePushEnv({
+      permission: "granted",
+      subscription,
+    });
+    const api = fakeApi();
+
+    await refreshPush(env, api);
+
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(api.subscribePush).toHaveBeenCalledWith(subscriptionBody(subscription));
+  });
+
+  it("renews a subscription made with the daemon's old key", async () => {
+    const subscription = fakeSubscription([9, 9, 9]);
+    const { env, manager } = fakePushEnv({ permission: "granted", subscription });
+    const api = fakeApi();
+
+    await refreshPush(env, api);
+
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+    expect(manager.subscribe).toHaveBeenCalled();
+    expect(api.subscribePush).toHaveBeenCalledWith({
+      endpoint: "https://push/new",
+      keys: { p256dh: "p", auth: "a" },
+    });
+  });
+
+  it("leaves turning notifications on to the user", async () => {
+    const api = fakeApi();
+    const subscription = fakeSubscription();
+
+    await refreshPush(fakePushEnv({ subscription }).env, api);
+    await refreshPush(fakePushEnv({ permission: "granted" }).env, api);
+    await refreshPush(fakePushEnv({ permission: "granted", registered: false }).env, api);
+    await refreshPush(fakePushEnv({ notification: false }).env, api);
+
+    expect(api.vapidKey).not.toHaveBeenCalled();
+    expect(api.subscribePush).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NAVIGATE, type NavigateMessage } from "../pwa/navigate.ts";
 import { parseRoute, routePath, type Route, type Tab } from "../routes.ts";
 import { useStore } from "../store/context.ts";
@@ -18,7 +18,8 @@ export function Shell() {
   const [chat, setChat] = useState<ChatTarget | null>(
     initial.chat === null ? null : { id: initial.chat },
   );
-  const current = project ?? state.repos[0]?.name ?? null;
+  // The chosen project while it is still registered, else the first one.
+  const current = state.repos.find((r) => r.name === project)?.name ?? state.repos[0]?.name ?? null;
 
   useEffect(() => {
     const path = routePath({ tab, chat: chat !== null && "id" in chat ? chat.id : null });
@@ -41,6 +42,16 @@ export function Shell() {
       worker.removeEventListener("message", onMessage);
     };
   }, []);
+
+  // The chat that just closed: its row (data-chat) gets focus back once the tabs show again.
+  const closed = useRef<string | null>(null);
+  useEffect(() => {
+    const id = closed.current;
+    if (chat !== null || id === null) return;
+    closed.current = null;
+    const rows = document.querySelectorAll<HTMLElement>("[data-chat]");
+    [...rows].find((row) => row.dataset.chat === id)?.focus();
+  }, [chat]);
 
   const openChat = (id: string, event?: number) => {
     setChat(event === undefined ? { id } : { id, event });
@@ -79,6 +90,7 @@ export function Shell() {
           key={chatKey(chat)}
           target={chat}
           onBack={() => {
+            closed.current = chatId(chat);
             setChat(null);
           }}
           onOpen={openChat}
@@ -86,6 +98,12 @@ export function Shell() {
       )}
     </>
   );
+}
+
+/** The session or Claude Code chat a target shows; null for a new chat. */
+function chatId(target: ChatTarget): string | null {
+  if ("claude" in target) return target.claude;
+  return "draft" in target ? null : target.id;
 }
 
 /** Which chat a target is, ignoring the event it opens at. */

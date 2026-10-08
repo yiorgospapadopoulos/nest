@@ -49,6 +49,8 @@ export interface Toast {
 
 export interface State {
   auth: AuthState;
+  // The event socket dropped and is reconnecting.
+  reconnecting: boolean;
   repos: RepoConfig[];
   sessions: Record<string, Session>;
   // Claude Code chats of the projects that harness does not own, by Claude Code session id.
@@ -80,6 +82,7 @@ export interface State {
 
 export const initialState: State = {
   auth: "loading",
+  reconnecting: false,
   repos: [],
   sessions: {},
   claudeChats: {},
@@ -102,6 +105,7 @@ export const initialState: State = {
 
 export type Action =
   | { type: "auth"; auth: AuthState }
+  | { type: "reconnecting"; on: boolean }
   | { type: "loaded"; repos: RepoConfig[]; sessions: Session[]; approvals: Approval[] }
   | { type: "session"; session: Session }
   | { type: "sessionRemoved"; id: string }
@@ -113,15 +117,19 @@ export type Action =
   | { type: "tracking"; id: string; tracking: Tracking }
   | { type: "transcriptOpened"; id: string }
   | { type: "transcriptLoaded"; id: string; events: HarnessEvent[] }
+  | { type: "transcriptClosed"; id: string }
   | { type: "queued"; id: string; queued: QueuedMessage[] }
   | { type: "queuedRemoved"; id: string; queuedId: string }
   | { type: "event"; event: HarnessEvent }
+  // Stored events applied again after a snapshot that may predate them.
+  | { type: "replayed"; events: HarnessEvent[] }
   // Ephemeral output (streamed text, thinking) that a refetch made stale.
   | { type: "liveCleared"; id: string }
   | { type: "draftText"; key: string; text: string }
   | { type: "draftFileAdded"; key: string; file: Attachment }
   | { type: "draftFileRemoved"; key: string; fileId: string }
-  | { type: "draftCleared"; key: string }
+  // A message from the draft went out: what was typed or attached since stays.
+  | { type: "draftSent"; key: string; text: string; fileIds: string[] }
   | { type: "connectors"; connectors: Connector[] }
   | { type: "limits"; limits: UsageLimits }
   | { type: "notifications"; notifications: NotificationSettings }

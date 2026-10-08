@@ -24,7 +24,7 @@ function fakeTimers() {
 
 function setup() {
   const factory = socketFactory();
-  const handlers = { onEvent: vi.fn(), onOpen: vi.fn(), onClosed: vi.fn() };
+  const handlers = { onEvent: vi.fn(), onOpen: vi.fn(), onLost: vi.fn(), onClosed: vi.fn() };
   const clock = fakeTimers();
   const stream = new EventStream(
     factory.connect,
@@ -88,6 +88,29 @@ describe("EventStream", () => {
     expect(clock.fire()).toBe(1000);
   });
 
+  it("says when the connection is lost and reconnects at once when woken", () => {
+    const { factory, handlers, clock, stream } = setup();
+    stream.start();
+    factory.last().open();
+    // Connected: nothing to wake.
+    stream.wake();
+    expect(factory.sockets).toHaveLength(1);
+
+    factory.last().drop(1006);
+    factory.last().drop(1006);
+    expect(handlers.onLost).toHaveBeenCalledTimes(1);
+    clock.fire();
+    factory.last().drop(1006);
+    expect(handlers.onLost).toHaveBeenCalledTimes(2);
+    stream.wake();
+
+    expect(factory.sockets).toHaveLength(3);
+    expect(clock.pending.size).toBe(0);
+    // Back off from the start after the wake.
+    factory.last().drop(1006);
+    expect(clock.fire()).toBe(1000);
+  });
+
   it.each([
     [4401, "unauthorized"],
     [4403, "forbidden"],
@@ -98,7 +121,10 @@ describe("EventStream", () => {
     factory.last().drop(code);
 
     expect(handlers.onClosed).toHaveBeenCalledWith(reason);
+    expect(handlers.onLost).not.toHaveBeenCalled();
     expect(clock.pending.size).toBe(0);
+    stream.wake();
+    expect(factory.sockets).toHaveLength(1);
   });
 
   it("stop closes the socket and cancels a pending reconnect", () => {
@@ -136,6 +162,7 @@ describe("EventStream", () => {
     const stream = new EventStream(factory.connect, () => "ws://x", {
       onEvent: vi.fn(),
       onOpen: vi.fn(),
+      onLost: vi.fn(),
       onClosed: vi.fn(),
     });
     stream.start();
