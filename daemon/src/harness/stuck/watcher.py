@@ -99,12 +99,18 @@ class StuckWatcher:
         self._tick = tick
         self._turns: dict[str, _Turn] = {}
         self._tasks: list[asyncio.Task[None]] = []
+        # One check at a time: a turn that ends during a tick is never flagged after (PL-02).
+        self._checking = asyncio.Lock()
 
     async def start(self) -> None:
         """Clear flags a previous process left (its turns are over), then follow events."""
         for session_id in await self._store.clear_stuck():
             await self._bus.publish(types.SESSION_UNSTUCK, {"reason": None}, session_id)
-        self._tasks = [asyncio.create_task(self._listen()), asyncio.create_task(self._ticks())]
+        after = await self._bus.last_id()
+        self._tasks = [
+            asyncio.create_task(self._listen(after)),
+            asyncio.create_task(self._ticks()),
+        ]
 
     async def stop(self) -> None:
         tasks, self._tasks = self._tasks, []
@@ -116,6 +122,19 @@ class StuckWatcher:
 
     async def observe(self, event: Event) -> None:
         """Follow one event; a condition that started or ended with it shows at once."""
+        async with self._checking:
+            await self._observe(event)
+
+    async def tick(self) -> None:
+        """Check every turn in progress, for conditions that grow with time."""
+        async with self._checking:
+            for session_id, turn in list(self._turns.items()):
+                try:
+                    await self._evaluate(session_id, turn)
+                except SessionNotFoundError:
+                    self._turns.pop(session_id, None)
+
+    async def _observe(self, event: Event) -> None:
         if event.type == types.SESSION_DELETED:
             self._turns.pop(str(event.payload.get("session_id")), None)
             return
@@ -142,14 +161,6 @@ class StuckWatcher:
         elif event.type == types.SESSION_MESSAGE:
             _note_calls(turn, event)
         await self._evaluate(session_id, turn)
-
-    async def tick(self) -> None:
-        """Check every turn in progress, for conditions that grow with time."""
-        for session_id, turn in list(self._turns.items()):
-            try:
-                await self._evaluate(session_id, turn)
-            except SessionNotFoundError:
-                self._turns.pop(session_id, None)
 
     async def _end(self, session_id: str) -> None:
         turn = self._turns.pop(session_id, None)
@@ -179,11 +190,15 @@ class StuckWatcher:
         await self._store.set_stuck(session_id, None)
         await self._bus.publish(types.SESSION_UNSTUCK, {"reason": old.reason}, session_id)
 
-    async def _listen(self) -> None:
+    async def _listen(self, after: int) -> None:
+        """Follow events stored after `after`; following again after falling behind starts
+        after the last event seen, so none is missed (BUG-21).
+        """
         while True:
             try:
-                async with aclosing(self._bus.subscribe()) as events:
+                async with aclosing(self._bus.subscribe(after)) as events:
                     async for event in events:
+                        after = event.id or after
                         try:
                             await self.observe(event)
                         except Exception as error:

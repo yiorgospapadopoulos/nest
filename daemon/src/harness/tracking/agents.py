@@ -116,6 +116,20 @@ class AgentBoard:
     def started(self, at: datetime) -> None:
         self._agents[MAIN].started_at = at
 
+    def stale(self) -> list[AgentTask]:
+        """Background work still running reported stopped, as when its process is gone."""
+        task_ids = {task.tool_use_id or task.task_id: task.task_id for task in self._tasks.values()}
+        return [
+            AgentTask(
+                task_id=task_ids.get(agent.id, agent.id),
+                phase="finished",
+                tool_use_id=agent.id,
+                status="stopped",
+            )
+            for agent in [*self._agents.values(), *self._commands.values()]
+            if agent.background and agent.status == "running"
+        ]
+
     def message(self, blocks: list[MessageBlock], parent: str | None, at: datetime) -> Change:
         agent = self._agents.get(parent or MAIN)
         if agent is None:

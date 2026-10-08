@@ -416,3 +416,32 @@ async def test_failures_and_falling_behind_are_logged_and_survived(
             await watcher.stop()
     assert "stuck check failed (RuntimeError)" in caplog.text
     assert "stuck check failed (ValueError)" in caplog.text
+    # Following again picks up after the last event seen, so none is missed (BUG-21).
+    assert seen == ["boom", "first", "second", "third", "fourth", "again"]
+
+
+async def test_a_turn_that_ends_during_a_check_keeps_no_flag(env: Env) -> None:
+    """PL-02: a check that was already under way does not flag a turn that has ended."""
+    first, second = await env.running(), await env.running()
+    env.clock.advance(timedelta(minutes=10))
+    real_set_stuck = env.store.set_stuck
+    entered, gate = asyncio.Event(), asyncio.Event()
+
+    async def slow_set_stuck(session_id: str, flag: StuckFlag | None) -> Session:
+        if session_id == first.id and flag is not None:
+            entered.set()
+            await gate.wait()  # the database is busy for a moment
+        return await real_set_stuck(session_id, flag)
+
+    env.store.set_stuck = slow_set_stuck  # type: ignore[method-assign]
+    ticking = asyncio.ensure_future(env.watcher.tick())
+    await asyncio.wait_for(entered.wait(), 5)
+    ending = asyncio.ensure_future(env.state(second, "idle"))
+    await asyncio.sleep(0.01)
+    gate.set()
+    await asyncio.gather(ticking, ending)
+    await env.state(second, "running")
+    await env.state(second, "idle")
+
+    assert await env.stuck(second) is None
+    assert (await env.flags(second))[-1:] in ([], [("unstuck", None)])

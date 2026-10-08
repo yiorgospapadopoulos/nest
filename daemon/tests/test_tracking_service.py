@@ -5,6 +5,7 @@ from pydantic import JsonValue
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.events.models import Event
+from harness.providers.base import AgentTask
 from harness.storage.db import Database
 from harness.tracking.service import Tracking
 from tests.async_support import until
@@ -95,3 +96,52 @@ async def test_an_unknown_session_has_only_the_main_agent(db: Database, clock: F
     assert snapshot.tasks == []
     assert [a.id for a in snapshot.agents] == ["main"]
     assert snapshot.background.model_dump() == {"running": 0, "completed": 0, "items": []}
+
+
+async def test_work_left_running_by_a_previous_process_is_stopped_and_announced(
+    db: Database, clock: FakeClock
+) -> None:
+    """B-19: the agent process is gone after a restart, and what it ran with it."""
+    bus = EventBus(db, clock)
+    before = Tracking(bus)  # the previous daemon process
+    started = AgentTask(task_id="t1", phase="started", tool_use_id="a1", background=True)
+    command = AgentTask(task_id="t2", phase="started", tool_use_id="b1", background=True)
+    for session_id in ("s1", "s2"):
+        await bus.publish(types.SESSION_CREATED, {"session": {"cwd": None}}, session_id)
+        await before.sync(session_id)
+    for event_type, payload in [
+        (types.SESSION_STATE, {"state": "running", "error": None}),
+        (types.SESSION_MESSAGE, start_agent_message("a1", run_in_background=True)),
+        (types.SESSION_AGENT_TASK, started.model_dump(mode="json")),
+        (
+            types.SESSION_MESSAGE,
+            message(tool_use("b1", "Bash", {"command": "make watch", "run_in_background": True})),
+        ),
+        (types.SESSION_AGENT_TASK, command.model_dump(mode="json")),
+        (types.SESSION_STATE, {"state": "idle", "error": None}),
+    ]:
+        for session_id in ("s1", "s2"):
+            await bus.publish(event_type, payload, session_id)
+            await before.sync(session_id)
+    # s2's work finished before the restart.
+    for task_id in ("t1", "t2"):
+        finished = AgentTask(task_id=task_id, phase="finished", status="completed")
+        await bus.publish(types.SESSION_AGENT_TASK, finished.model_dump(mode="json"), "s2")
+    await before.sync("s2")
+    last = await bus.last_id()
+
+    after = Tracking(bus)
+    await after.stop_stale()
+    await after.stop_stale()
+
+    new = [e for e in await bus.session_events("s1") if e.id is not None and e.id > last]
+    assert [(e.type, e.payload.get("task_id"), e.payload.get("status")) for e in new] == [
+        (types.SESSION_AGENT_TASK, "t1", "stopped"),
+        (types.SESSION_AGENT_TASK, "t2", "stopped"),
+        (types.SESSION_AGENTS, None, None),
+    ]
+    summary = new[-1].payload["background"]
+    assert isinstance(summary, dict)
+    assert (summary["running"], summary["completed"]) == (0, 2)
+    assert [e.id for e in await bus.session_events("s2") if e.id and e.id > last] == []
+    assert (await after.snapshot("s1")).background.running == 0

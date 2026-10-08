@@ -57,6 +57,26 @@ class Tracking:
     async def summary(self, session_id: str) -> str | None:
         return (await self.sync(session_id)).summary
 
+    async def stop_stale(self) -> None:
+        """On start: background work a previous process left running ended with it (B-19).
+        It is reported stopped, as when a run ends, and the agents are announced again.
+        """
+        for event in await self._bus.latest_of_each_session(types.SESSION_AGENTS):
+            background = event.payload.get("background")
+            if isinstance(background, dict) and background.get("running"):
+                await self._stop_stale(str(event.session_id))
+
+    async def _stop_stale(self, session_id: str) -> None:
+        tracker = await self.sync(session_id)
+        for update in tracker.agents.stale():
+            await self._bus.publish(
+                types.SESSION_AGENT_TASK, update.model_dump(mode="json"), session_id
+            )
+        async with self._lock:
+            for event in await self._bus.session_events(session_id, tracker.last_event_id):
+                tracker.apply(event)
+            await self._publish(session_id, tracker, False, Change.LIFECYCLE)
+
     async def _publish(
         self, session_id: str, tracker: SessionTracker, tasks_changed: bool, change: Change
     ) -> None:

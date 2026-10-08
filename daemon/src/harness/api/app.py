@@ -39,6 +39,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         await ctx.devices.ensure_local_device()
         await ctx.approvals.expire_stale()
         await ctx.sessions.recover()
+        await ctx.tracking.stop_stale()
         try:
             await ctx.modules.start_enabled(ctx.settings.modules.enabled, ctx)
             await ctx.notifications.start()
