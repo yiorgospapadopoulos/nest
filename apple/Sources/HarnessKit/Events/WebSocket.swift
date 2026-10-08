@@ -59,15 +59,20 @@ public struct URLSessionWebSocketConnector: WebSocketConnector {
         let connection = TaskConnection(task: makeTask(request))
         connection.task.resume()
         do {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, any Error>) in
-                connection.task.sendPing { error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
+            // The pong may never come; cancelling closes the socket, which calls the handler.
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, any Error>) in
+                    connection.task.sendPing { error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume()
+                        }
                     }
                 }
+            } onCancel: {
+                connection.close()
             }
         } catch {
             throw connection.closedError(or: error)

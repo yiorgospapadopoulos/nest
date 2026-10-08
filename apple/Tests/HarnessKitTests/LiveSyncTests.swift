@@ -23,7 +23,7 @@ import Testing
         let run = Task { await model.live.run() }
         #expect(model.app.connection == .disconnected || model.app.connection == .connecting)
 
-        source.continuation.yield(.connected)
+        source.continuation.yield(.connected(resumed: false))
         try await waitFor { model.usage.limits != nil }
         #expect(model.app.connection == .connected)
         #expect(model.app.openProjects == ["todo-ui"])
@@ -80,6 +80,41 @@ import Testing
         #expect(model.app.connection == .disconnected)
     }
 
+    @Test func aConnectThatDidNotResumeCatchesUpTranscriptsAndFailedLoadsRetry() async throws {
+        func message(_ id: Int, _ session: String) -> Event {
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "m\#(id)", "attachments": []}"#,
+                id: id, session: session)
+        }
+        api.set { $0.events = ["s1": [message(1, "s1")], "s2": [message(1, "s2")]] }
+        let open = model.transcripts.transcript(for: "s1")
+        try await open.load()
+        let chat = model.transcripts.transcript(for: ClaudeChat.panePrefix + "c1")
+        try await chat.load()
+        let failed = model.transcripts.transcript(for: "s2")
+        api.fail("sessionEvents")
+        await #expect(throws: APIError.self) { try await failed.load() }
+        api.set {
+            $0.failures = [:]
+            $0.events["s1"]?.append(message(2, "s1"))
+        }
+        let run = Task { await model.live.run() }
+
+        // A resumed stream replays what it missed; only the failed load runs again.
+        source.continuation.yield(.connected(resumed: true))
+        try await waitFor { failed.isLoaded }
+        #expect(failed.lastEventID == 1)
+        #expect(open.lastEventID == 1)
+
+        // Otherwise events published meanwhile never arrive, so loaded session transcripts
+        // fetch the ones after their newest; Claude Code chats reload on their own.
+        source.continuation.yield(.connected(resumed: false))
+        try await waitFor { open.lastEventID == 2 }
+        #expect(api.calls.filter { $0.hasPrefix("claudeChatEvents") }.count == 1)
+        source.continuation.finish()
+        await run.value
+    }
+
     @Test func aRejectedTokenShowsUnauthorized() async {
         let run = Task { await model.live.run() }
         source.continuation.finish(throwing: EventStreamError.unauthorized)
@@ -120,6 +155,34 @@ import Testing
                 EventType.notify,
                 #"{"kind": "failed", "session_id": "s1", "repo": "r", "title": "t", "text": "x"}"#))
         #expect(model.sessions.sessions.isEmpty)
+    }
+
+    @Test func aRetryAfterTheTokenWasRefusedReadsTheKeychainAgain() throws {
+        let keychain = ChangingTokens("old")
+        let model = try #require(try AppModel.local(tokens: keychain))
+        let client = try #require(model.api as? APIClient)
+        let stream = try #require(model.live.source as? EventStream)
+        keychain.token.withLock { $0 = "new" }
+
+        // Only a refused token is read again.
+        try model.rereadTokenIfRefused()
+        #expect(client.token == "old")
+
+        model.app.connection = .unauthorized
+        try model.rereadTokenIfRefused()
+        #expect(client.token == "new")
+        #expect(stream.request().value(forHTTPHeaderField: "Authorization") == "Bearer new")
+
+        // A token gone from the Keychain leaves the last one in use.
+        keychain.token.withLock { $0 = nil }
+        try model.rereadTokenIfRefused()
+        #expect(stream.token == "new")
+    }
+
+    @Test func aModelWithoutTheKeychainKeepsItsToken() throws {
+        model.app.connection = .unauthorized
+        try model.rereadTokenIfRefused()
+        #expect(model.app.connection == .unauthorized)
     }
 
     @Test func theLocalModelReadsTheKeychainToken() throws {

@@ -42,12 +42,13 @@ extension EventStreamUpdate {
 
         let updates = try await collect(events.updates(), count: 8)
 
-        #expect(updates[0] == .connected)
+        #expect(updates[0] == .connected(resumed: false))
         #expect(
             updates[1...4].map { $0.event?.type } == Array(repeating: "session.state", count: 4))
         #expect(updates[1...4].map { $0.event?.id } == [5, nil, 6, nil])
         #expect(updates[5] == .reconnecting(attempt: 1, delay: 0.5))
-        #expect(updates[6] == .connected)
+        // The second connect resumes after the cursor, so nothing was missed.
+        #expect(updates[6] == .connected(resumed: true))
         #expect(updates[7].event?.id == 7)
         #expect(events.lastEventID == 7)
         let requests = connector.requests.withLock { $0 }
@@ -56,15 +57,16 @@ extension EventStreamUpdate {
                 "ws://127.0.0.1:8765/api/events", "ws://127.0.0.1:8765/api/events?after=6",
             ])
         #expect(requests[0].value(forHTTPHeaderField: "Authorization") == "Bearer tok")
-        #expect(first.closed.withLock { $0 })
+        #expect(first.isClosed)
     }
 
     @Test func startsFromAGivenCursorOverTLS() async throws {
         let connector = FakeConnector([FakeConnection([], then: .hang)])
         let events = stream(connector, after: 41, base: "https://mac.tailnet.ts.net")
 
-        _ = try await collect(events.updates(), count: 1)
+        let updates = try await collect(events.updates(), count: 1)
 
+        #expect(updates == [.connected(resumed: true)])
         #expect(events.lastEventID == 41)
         #expect(
             connector.requests.withLock { $0 }.first?.url?.absoluteString
@@ -102,7 +104,11 @@ extension EventStreamUpdate {
 
         let updates = try await collect(stream(connector).updates(), count: 3)
 
-        #expect(updates == [.connected, .reconnecting(attempt: 1, delay: 0.5), .connected])
+        #expect(
+            updates == [
+                .connected(resumed: false), .reconnecting(attempt: 1, delay: 0.5),
+                .connected(resumed: false),
+            ])
     }
 
     @Test func backoffGrowsWhileRefusedAndResetsOnConnect() async throws {
@@ -113,7 +119,7 @@ extension EventStreamUpdate {
         #expect(
             updates == [
                 .reconnecting(attempt: 1, delay: 0.5), .reconnecting(attempt: 2, delay: 1),
-                .reconnecting(attempt: 3, delay: 2), .connected,
+                .reconnecting(attempt: 3, delay: 2), .connected(resumed: false),
                 .reconnecting(attempt: 1, delay: 0.5),
                 .reconnecting(attempt: 2, delay: 1),
             ])
@@ -125,14 +131,14 @@ extension EventStreamUpdate {
             FakeConnection(["not json", #"{"type": "x"}"#, eventFrame(id: 1)], then: .hang)
         ])
         let updates = try await collect(stream(connector).updates(), count: 2)
-        #expect(updates[0] == .connected)
+        #expect(updates[0] == .connected(resumed: false))
         #expect(updates[1].event?.id == 1)
     }
 
     @Test func cancellingClosesTheSocket() async throws {
         let connection = FakeConnection([eventFrame(id: 1)], then: .hang)
         _ = try await collect(stream(FakeConnector([connection])).updates(), count: 2)
-        try await waitUntil { connection.closed.withLock { $0 } }
+        try await waitUntil { connection.isClosed }
     }
 
     @Test func backoffIsCapped() {
@@ -199,6 +205,43 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
     @Test func aFailedPingWithoutACloseCodeRethrows() async {
         task.state.withLock { $0.pingError = URLError(.cannotConnectToHost) }
         await #expect(throws: URLError.self) { _ = try await connector.connect(request) }
+    }
+
+    @Test func cancellingWhileWaitingForThePongClosesTheSocket() async throws {
+        task.state.withLock { $0.pingHangs = true }
+        let connector = connector
+        let request = request
+        let connecting = Task { try await connector.connect(request) }
+        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+
+        connecting.cancel()
+
+        try await waitUntil { task.state.withLock { $0.cancelledWith } != nil }
+        #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
+        try await expectConnectFails(connecting)
+    }
+
+    @Test func aConnectCancelledBeforeThePingClosesTheSocketAtOnce() async throws {
+        task.state.withLock { $0.pingHangs = true }
+        let connector = connector
+        let request = request
+        let connecting = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await connector.connect(request)
+        }
+        try await waitUntil {
+            task.state.withLock { $0.cancelledWith != nil || $0.pendingPing != nil }
+        }
+        #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
+        try await expectConnectFails(connecting)
+    }
+
+    /// Releases a ping still waiting (only without the fix), so a failure cannot hang.
+    private func expectConnectFails(_ connecting: Task<any WebSocketConnection, any Error>)
+        async throws
+    {
+        task.cancel(with: .goingAway, reason: nil)
+        await #expect(throws: URLError.self) { _ = try await connecting.value }
     }
 
     @Test func aServerCloseWhileReadingReportsTheCode() async throws {

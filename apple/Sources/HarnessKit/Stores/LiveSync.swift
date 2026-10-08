@@ -1,7 +1,7 @@
 import Foundation
 
 /// Feeds the daemon's live events into the stores, and reloads them on each connect so
-/// nothing missed while disconnected is lost.
+/// nothing missed while disconnected is lost; open transcripts catch up too.
 @MainActor
 public final class LiveSync {
     let source: any EventSource
@@ -42,9 +42,10 @@ public final class LiveSync {
         do {
             for try await update in source.updates() {
                 switch update {
-                case .connected:
+                case .connected(let resumed):
                     app.connection = .connected
                     await refresh()
+                    await transcripts.catchUp(missed: !resumed)
                     onConnected?()
                 case .reconnecting(let attempt, let delay):
                     app.connection = .reconnecting(attempt: attempt, delay: delay)
@@ -92,7 +93,7 @@ public final class LiveSync {
             app.forgetChat(id)
         case .notify(let notice):
             onNotice?(notice)
-        case .repoUpdated:
+        case .reposChanged:
             app.reloadRepos()
         case .result:
             // A turn in a plain folder may have run git init; the repo update event, when
@@ -128,6 +129,8 @@ public final class AppModel {
     public let stuck: StuckSettingsStore
     public let agents: AgentsStore
     public let live: LiveSync
+    /// Where `local()` read the device token, to read it again.
+    private var keychain: (store: any TokenStore, token: DeviceToken)?
 
     public init(
         api: any HarnessAPI, events: any EventSource,
@@ -136,7 +139,7 @@ public final class AppModel {
     ) {
         self.api = api
         approvals = ApprovalsStore(api: api)
-        app = AppStore(api: api, approvals: approvals, store: preferences)
+        app = AppStore(api: api, store: preferences)
         sessions = SessionsStore(api: api, approvals: approvals)
         activity = ActivityStore(api: api)
         transcripts = Transcripts(api: api)
@@ -158,14 +161,27 @@ public final class AppModel {
         live.onConnected = { [visibility] in visibility.resend() }
     }
 
+    /// Before a retry: after the daemon refused the device token, reads it from the
+    /// Keychain again, since the daemon may have stored a new one. Models not built by
+    /// `local()` keep theirs.
+    public func rereadTokenIfRefused() throws {
+        guard app.connection == .unauthorized, let keychain,
+            let token = try keychain.store.deviceToken()
+        else { return }
+        keychain.token.replace(with: token)
+    }
+
     /// The model for the daemon on this Mac, with the device token from the Keychain;
     /// nil when the daemon has not stored a token yet.
     public static func local(
         tokens: any TokenStore = KeychainTokenStore(), baseURL: URL = APIClient.defaultBaseURL
     ) throws -> AppModel? {
-        guard let token = try tokens.deviceToken() else { return nil }
-        return AppModel(
+        guard let value = try tokens.deviceToken() else { return nil }
+        let token = DeviceToken(value)
+        let model = AppModel(
             api: APIClient(token: token, baseURL: baseURL),
             events: EventStream(token: token, baseURL: baseURL))
+        model.keychain = (tokens, token)
+        return model
     }
 }

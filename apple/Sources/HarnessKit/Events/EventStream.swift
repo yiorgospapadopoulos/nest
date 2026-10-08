@@ -31,7 +31,9 @@ public struct Backoff: Sendable, Equatable {
 }
 
 public enum EventStreamUpdate: Sendable, Equatable {
-    case connected
+    /// Connected; `resumed` when the daemon replays what was missed since the last stored
+    /// event seen. Without it, events published while disconnected never arrive.
+    case connected(resumed: Bool)
     case event(Event)
     /// The socket dropped; the stream reconnects after `delay` seconds.
     case reconnecting(attempt: Int, delay: Double)
@@ -55,27 +57,38 @@ public protocol EventSource: Sendable {
 public final class EventStream: EventSource {
     public static let unauthenticatedCloseCode = 4401
     public static let forbiddenOriginCloseCode = 4403
-    public static let tryAgainLaterCloseCode = 1013
 
     let baseURL: URL
-    let token: String
+    let deviceToken: DeviceToken
     let connector: any WebSocketConnector
     let sleeper: any Sleeper
     let backoff: Backoff
     private let cursor: Cursor
 
-    public init(
+    public convenience init(
         token: String, baseURL: URL = APIClient.defaultBaseURL,
         connector: any WebSocketConnector = URLSessionWebSocketConnector(),
         sleeper: any Sleeper = TaskSleeper(), backoff: Backoff = Backoff(), after: Int? = nil
     ) {
-        self.token = token
+        self.init(
+            token: DeviceToken(token), baseURL: baseURL, connector: connector, sleeper: sleeper,
+            backoff: backoff, after: after)
+    }
+
+    init(
+        token: DeviceToken, baseURL: URL,
+        connector: any WebSocketConnector = URLSessionWebSocketConnector(),
+        sleeper: any Sleeper = TaskSleeper(), backoff: Backoff = Backoff(), after: Int? = nil
+    ) {
+        deviceToken = token
         self.baseURL = baseURL
         self.connector = connector
         self.sleeper = sleeper
         self.backoff = backoff
         self.cursor = Cursor(after)
     }
+
+    var token: String { deviceToken.current }
 
     /// The id of the last stored event received; reconnects replay from there.
     public var lastEventID: Int? { cursor.value }
@@ -113,12 +126,19 @@ public final class EventStream: EventSource {
         var attempt = 0
         while !Task.isCancelled {
             do {
+                let resumed = cursor.value != nil
                 let connection = try await connector.connect(request())
                 defer { connection.close() }
                 attempt = 0
-                continuation.yield(.connected)
+                continuation.yield(.connected(resumed: resumed))
                 while true {
-                    let text = try await connection.receive()
+                    // URLSessionWebSocketTask.receive() ignores task cancellation; closing
+                    // the socket ends it.
+                    let text = try await withTaskCancellationHandler {
+                        try await connection.receive()
+                    } onCancel: {
+                        connection.close()
+                    }
                     if let event = read(text) {
                         continuation.yield(.event(event))
                     }

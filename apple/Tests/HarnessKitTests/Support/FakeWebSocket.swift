@@ -10,6 +10,9 @@ final class FakeWebSocketTask: WebSocketTask {
         var closeCode: URLSessionWebSocketTask.CloseCode = .invalid
         var closeReason: Data?
         var pingError: URLError?
+        /// The pong never comes; like the real task, only cancelling it calls the handler.
+        var pingHangs = false
+        var pendingPing: (@Sendable ((any Error)?) -> Void)?
         var resumed = false
         var cancelledWith: URLSessionWebSocketTask.CloseCode?
     }
@@ -31,11 +34,26 @@ final class FakeWebSocketTask: WebSocketTask {
     }
 
     func sendPing(pongReceiveHandler: @escaping @Sendable ((any Error)?) -> Void) {
-        pongReceiveHandler(state.withLock { $0.pingError })
+        let (answered, error): (Bool, (any Error)?) = state.withLock { state in
+            guard state.pingHangs else { return (true, state.pingError) }
+            if state.cancelledWith != nil {
+                return (true, URLError(.cancelled))
+            }
+            state.pendingPing = pongReceiveHandler
+            return (false, nil)
+        }
+        if answered {
+            pongReceiveHandler(error)
+        }
     }
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        state.withLock { $0.cancelledWith = closeCode }
+        let pending = state.withLock { state in
+            state.cancelledWith = closeCode
+            defer { state.pendingPing = nil }
+            return state.pendingPing
+        }
+        pending?(URLError(.cancelled))
     }
 }
 
@@ -44,34 +62,56 @@ final class FakeConnection: WebSocketConnection {
     enum Ending: Sendable {
         case closed(Int)
         case dropped
-        /// Waits until the stream is cancelled.
+        /// Waits until the socket is closed. Like `URLSessionWebSocketTask.receive()`, it
+        /// ignores task cancellation.
         case hang
     }
 
-    private let frames: Mutex<[String]>
+    private struct State {
+        var frames: [String]
+        var closed = false
+        var waiter: CheckedContinuation<Void, Never>?
+    }
+
+    private let state: Mutex<State>
     let ending: Ending
-    let closed = Mutex(false)
 
     init(_ frames: [String], then ending: Ending) {
-        self.frames = Mutex(frames)
+        state = Mutex(State(frames: frames))
         self.ending = ending
     }
 
+    var isClosed: Bool { state.withLock { $0.closed } }
+
     func receive() async throws -> String {
-        if let frame = frames.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) {
+        if let frame = state.withLock({ $0.frames.isEmpty ? nil : $0.frames.removeFirst() }) {
             return frame
         }
         switch ending {
         case .closed(let code): throw WebSocketClosed(code: code, reason: nil)
         case .dropped: throw URLError(.networkConnectionLost)
         case .hang:
-            try await Task.sleep(for: .seconds(3600))
-            return ""
+            await withCheckedContinuation { continuation in
+                let closed = state.withLock { state in
+                    if !state.closed {
+                        state.waiter = continuation
+                    }
+                    return state.closed
+                }
+                if closed {
+                    continuation.resume()
+                }
+            }
+            throw URLError(.cancelled)
         }
     }
 
     func close() {
-        closed.withLock { $0 = true }
+        state.withLock { state in
+            state.closed = true
+            defer { state.waiter = nil }
+            return state.waiter
+        }?.resume()
     }
 }
 
