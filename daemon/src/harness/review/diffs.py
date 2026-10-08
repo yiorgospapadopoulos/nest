@@ -9,8 +9,8 @@ from pathlib import Path
 
 from harness.gitops.runner import GitError, run_git
 from harness.gitops.safety import GIT_CONFIG_LIST, HARDENED, filter_overrides, repo_settings
-from harness.review.diff_parser import parse_name_status, parse_patch
-from harness.review.models import DiffStats, FileDiff, SessionDiff
+from harness.review.diff_parser import PatchFile, by_path, parse_name_status, parse_patch
+from harness.review.models import DiffStats, FileDiff, FileStatus, SessionDiff
 from harness.review.untracked import untracked_diff
 
 MAX_LINES_PER_FILE = 2000
@@ -30,20 +30,12 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
         [*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M", ref, "--"], cwd
     )
     untracked = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
+    # By path, not position: a typechange is one status but two patch sections, and the
+    # agent may still change the tree between the two commands.
+    parts = by_path(parse_patch(patch, MAX_LINES_PER_FILE))
     files = [
-        FileDiff(
-            path=path,
-            old_path=old_path,
-            status=status,
-            additions=part.additions,
-            deletions=part.deletions,
-            binary=part.binary,
-            truncated=part.truncated,
-            hunks=part.hunks,
-        )
-        for (status, old_path, path), part in zip(
-            parse_name_status(statuses), parse_patch(patch, MAX_LINES_PER_FILE), strict=True
-        )
+        _file(path, old_path, status, parts.get(path) or PatchFile(path))
+        for status, old_path, path in parse_name_status(statuses)
     ]
     for path in filter(None, untracked.split("\0")):
         files.append(await untracked_diff(cwd, path, MAX_LINES_PER_FILE))
@@ -56,6 +48,19 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
             additions=sum(f.additions for f in files),
             deletions=sum(f.deletions for f in files),
         ),
+    )
+
+
+def _file(path: str, old_path: str | None, status: FileStatus, part: PatchFile) -> FileDiff:
+    return FileDiff(
+        path=path,
+        old_path=old_path,
+        status=status,
+        additions=part.additions,
+        deletions=part.deletions,
+        binary=part.binary,
+        truncated=part.truncated,
+        hunks=part.hunks,
     )
 
 

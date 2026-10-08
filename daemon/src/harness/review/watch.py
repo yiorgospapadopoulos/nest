@@ -4,7 +4,6 @@ import logging
 
 from harness.approvals.models import Approval, ApprovalKind
 from harness.approvals.queue import ApprovalQueue
-from harness.gitops.runner import GitError
 from harness.review.diffs import session_diff
 from harness.sessions.models import Session
 from harness.sessions.rules import require_cwd
@@ -25,7 +24,8 @@ class ReviewWatcher:
         since = session.commit_sha or session.base_ref
         try:
             diff = await session_diff(require_cwd(session), since)
-        except GitError:
+        except Exception:
+            # Whatever the tree holds, the turn still ends with its "finished" notice.
             logger.exception("could not diff session %s for review", session.id)
             return None
         if not diff.files:

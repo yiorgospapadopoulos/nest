@@ -10,7 +10,10 @@ _BINARY_PROBE = 8000
 
 
 async def untracked_diff(root: Path, path: str, max_lines: int) -> FileDiff:
-    content = await asyncio.to_thread(_read, root / path)
+    """An untracked file; git lists an untracked nested repository as its folder, `lib/`,
+    which shows as added with no content.
+    """
+    content = b"" if path.endswith("/") else await asyncio.to_thread(_read, root / path)
     binary = b"\0" in content[:_BINARY_PROBE]
     lines = [] if binary else content.decode(errors="replace").splitlines()
     kept = [

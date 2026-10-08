@@ -211,3 +211,64 @@ async def test_a_filter_driver_that_cannot_be_switched_off_stops_the_diff(repo: 
 
     with pytest.raises(GitError, match="cannot be switched off"):
         await session_diff(repo, base)
+
+
+async def test_a_file_replaced_by_a_symlink_is_one_change(repo: Path) -> None:
+    """BUG-01: git lists a typechange once but patches it as a deletion and an addition."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    (repo / "keep.txt").unlink()
+    (repo / "keep.txt").symlink_to("old.txt")
+    (repo / "gone.txt").write_text("bye\nfor now\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    gone, keep = diff.files
+    assert (keep.path, keep.status, keep.additions, keep.deletions) == (
+        "keep.txt",
+        "modified",
+        1,
+        3,
+    )
+    assert [line.text for hunk in keep.hunks for line in hunk.lines] == ["a", "b", "c", "old.txt"]
+    assert (gone.path, gone.additions, gone.deletions) == ("gone.txt", 1, 0)
+
+
+async def test_an_untracked_nested_repository_is_listed_as_a_folder(repo: Path) -> None:
+    """BUG-01: an agent may clone a repository into the tree."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    init_repo(repo / "lib")
+    (repo / "fresh.txt").write_text("one\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    fresh, nested = diff.files
+    assert (nested.path, nested.status, nested.additions, nested.hunks) == ("lib/", "added", 0, [])
+    assert (fresh.path, fresh.additions) == ("fresh.txt", 1)
+
+
+async def test_unusual_paths_get_their_own_changes(repo: Path) -> None:
+    """Patch sections are matched to files by path, also where git quotes the path."""
+    tabbed, cafe, spaced = "tab\there.txt", 'caf\u00e9 "q".txt', "x b/y.txt"
+    (repo / "x b").mkdir()
+    rows = "".join(f"{n}\n" for n in range(10))
+    for name in (tabbed, cafe, spaced):
+        (repo / name).write_text(rows, encoding="utf-8")
+        git(repo, "add", name)
+    git(repo, "commit", "-q", "-m", "unusual names")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    (repo / spaced).write_text(f"{rows}more\n", encoding="utf-8")
+    (repo / cafe).write_text(rows[2:], encoding="utf-8")
+    (repo / "\u00fcber").mkdir()
+    moved = "\u00fcber/tab\there.txt"
+    git(repo, "mv", tabbed, moved)
+    (repo / moved).write_text(f"{rows}more\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    by_path = {f.path: f for f in diff.files}
+    assert set(by_path) == {spaced, cafe, moved}
+    assert (by_path[spaced].additions, by_path[spaced].deletions) == (1, 0)
+    assert (by_path[cafe].additions, by_path[cafe].deletions) == (0, 1)
+    renamed = by_path[moved]
+    assert (renamed.status, renamed.old_path) == ("renamed", tabbed)
+    assert (renamed.additions, renamed.deletions) == (1, 0)
