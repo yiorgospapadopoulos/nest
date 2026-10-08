@@ -64,11 +64,13 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
     }
 
     /// The bar's tasks: those of the exchange the user's latest message (at `start`)
-    /// opened, and any earlier one still at work. Without that message, all of them.
+    /// opened, and any earlier one still at work or finished since, which counts as
+    /// completed. Without that message, all of them.
     public func exchange(since start: Date?) -> BackgroundSummary {
         guard let start else { return self }
         let kept = items.filter { item in
             item.isRunning || item.startedAt.map { $0 >= start } == true
+                || item.finishedAt.map { $0 >= start } == true
         }
         let running = kept.count(where: \.isRunning)
         return BackgroundSummary(running: running, completed: kept.count - running, items: kept)

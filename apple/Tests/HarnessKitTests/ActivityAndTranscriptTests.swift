@@ -200,10 +200,45 @@ import Testing
 
         #expect(
             transcript.items.map(\.content) == [
-                .notice("Interrupted"), .notice("setup command failed: npm ci"), .notice("Failed"),
-                .notice("git push failed: denied"),
+                .notice("Interrupted"), .notice("Failed: setup command failed: npm ci"),
+                .notice("Failed"), .notice("git push failed: denied"),
                 .notice("Opened pull request https://example.com/pr/2"),
             ])
+    }
+
+    @Test func claudeCodeNoticesShowTheirText() async throws {
+        let transcript = TranscriptStore(sessionID: "s1", api: api)
+        try await transcript.load()
+        let notice = Fixture.event(
+            EventType.sessionNotice, #"{"kind": "compacted", "text": "Conversation compacted"}"#,
+            id: 1)
+        #expect(notice.body == .sessionNotice(text: "Conversation compacted"))
+        transcript.receive(notice)
+        #expect(transcript.items.map(\.content) == [.notice("Conversation compacted")])
+    }
+
+    @Test func taskListCallsAreLeftOut() async throws {
+        let transcript = TranscriptStore(sessionID: "s1", api: api)
+        try await transcript.load()
+        let uses = ["TaskCreate", "Bash", "TaskUpdate", "TaskList", "TaskGet", "Read"]
+            .enumerated().map { index, name in
+                #"{"type": "tool_use", "id": "t\#(index)", "name": "\#(name)", "input": {}}"#
+            }
+        let results = (0..<uses.count).map { index in
+            #"{"type": "tool_result", "tool_use_id": "t\#(index)", "content": "ok"}"#
+        }
+        for (id, blocks) in [(1, uses), (2, results)] {
+            transcript.receive(
+                Fixture.event(
+                    EventType.sessionMessage,
+                    #"{"blocks": [\#(blocks.joined(separator: ", "))], "parent_tool_use_id": null}"#,
+                    id: id))
+        }
+
+        #expect(transcript.items.map(\.id) == ["t1", "t5"])
+        let entries = TranscriptGrouping.entries(transcript.visibleItems, live: false)
+        guard case .tools(let group) = entries.first else { throw Unexpected(entries) }
+        #expect(group.summary == "Ran 1 command, read 1 file")
     }
 
     @Test func approvalMarkersUpdateInPlace() async throws {
@@ -381,6 +416,78 @@ import Testing
         #expect(ids(transcript).first == "e31")
         #expect(ids(transcript).suffix(2) == ["e251", "streaming"])
         #expect(transcript.items.last?.eventID == nil)
+    }
+
+    @Test func liveEventsDuringTheLastNewerPageApplyAfterIt() async throws {
+        let transcript = TranscriptStore(sessionID: "p", api: api)
+        transcript.requestFocus(event: 120)
+        try await transcript.load()
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["sessionEvents"] = gate }
+
+        let paging = Task { try await transcript.loadNewer() }
+        try await waitFor { api.calls.count == 4 }
+        // Published after the daemon read the page: only the live copies bring them.
+        transcript.receive(Self.message(251))
+        transcript.receive(Self.message(252))
+        open.finish()
+        try await paging.value
+
+        #expect(!transcript.hasNewer)
+        #expect(ids(transcript).suffix(3) == ["e250", "e251", "e252"])
+        #expect(transcript.lastEventID == 252)
+    }
+
+    @Test func liveEventsDuringAPageLoadSurviveItsRebuild() async throws {
+        let transcript = TranscriptStore(sessionID: "p", api: api)
+        transcript.requestFocus(event: 120)
+        try await transcript.load()
+        _ = try await transcript.resolveFocus()
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["sessionEvents"] = gate }
+
+        // The page around 240 reaches the newest event, so live ones apply after it.
+        transcript.requestFocus(event: 240)
+        let jumping = Task { try await transcript.resolveFocus() }
+        try await waitFor { api.calls.count == 4 }
+        transcript.receive(Self.message(251))
+        open.finish()
+        #expect(try await jumping.value == "e240")
+
+        #expect(!transcript.hasNewer)
+        #expect(ids(transcript).last == "e251")
+    }
+
+    @Test func aReloadAppliesLiveEventsAfterTheFetchedOnes() async throws {
+        let transcript = TranscriptStore(sessionID: "p", api: api)
+        try await transcript.load()
+        api.set { $0.events["p"]! += [Self.message(251)] }
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["sessionEvents"] = gate }
+
+        let reloading = Task { try await transcript.load() }
+        try await waitFor { api.calls.count == 2 }
+        // Arrives live while the reload's answer (event 251) is on its way.
+        transcript.receive(Self.message(252))
+        transcript.receive(Fixture.event(EventType.sessionDelta, #"{"text": "Hi"}"#, id: nil))
+        open.finish()
+        try await reloading.value
+
+        #expect(ids(transcript).suffix(2) == ["e251", "e252"])
+        transcript.receive(Self.message(253))
+        #expect(ids(transcript).last == "e253")
+    }
+
+    @Test func catchingUpSkipsWhatNeedsNoLoad() async throws {
+        let transcript = TranscriptStore(sessionID: "p", api: api)
+        transcript.requestFocus(event: 120)
+        try await transcript.load()
+        let calls = api.calls.count
+
+        // Newer events still wait for their pages, and a resumed stream missed nothing.
+        await transcript.catchUp(missed: true)
+        await transcript.catchUp(missed: false)
+        #expect(api.calls.count == calls)
     }
 
     @Test func aFocusOutsideTheLoadedPageLoadsItsOwnPage() async throws {

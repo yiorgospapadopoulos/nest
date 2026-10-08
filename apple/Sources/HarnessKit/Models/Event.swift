@@ -53,6 +53,8 @@ public enum EventType {
     public static let sessionPR = "session.pr"
     public static let sessionStuck = "session.stuck"
     public static let sessionUnstuck = "session.unstuck"
+    /// A line from Claude Code for the transcript, such as "Conversation compacted".
+    public static let sessionNotice = "session.notice"
     public static let approvalCreated = "approval.created"
     public static let approvalResolved = "approval.resolved"
     public static let gitCommitted = "git.committed"
@@ -63,8 +65,10 @@ public enum EventType {
     public static let connectorsUpdated = "connectors.updated"
     public static let usageUpdated = "usage.updated"
     public static let claudeChatsUpdated = "claude_chats.updated"
+    public static let repoAdded = "repo.added"
     /// A repo's registration changed, such as a plain folder that git now tracks.
     public static let repoUpdated = "repo.updated"
+    public static let repoRemoved = "repo.removed"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -104,8 +108,11 @@ public enum EventBody: Sendable, Hashable {
     case usageUpdated(UsageLimits)
     /// The Claude Code chats of these repos changed; list them again.
     case claudeChatsUpdated(repos: [String])
-    /// A repo changed; the list is read again, whatever the payload holds.
-    case repoUpdated
+    /// A repo was registered, changed or removed; the list is read again, whatever the
+    /// payload holds.
+    case reposChanged
+    /// A muted line for the transcript.
+    case sessionNotice(text: String)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -159,7 +166,10 @@ public enum EventBody: Sendable, Hashable {
         case EventType.usageUpdated: self = .usageUpdated(try payload.decode(UsageLimits.self))
         case EventType.claudeChatsUpdated:
             self = .claudeChatsUpdated(repos: try field("repos", as: [String].self))
-        case EventType.repoUpdated: self = .repoUpdated
+        case EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved:
+            self = .reposChanged
+        case EventType.sessionNotice:
+            self = .sessionNotice(text: try field("text", as: String.self))
         default: self = .other
         }
     }
@@ -236,6 +246,10 @@ public struct TurnResult: Decodable, Sendable, Hashable {
         case numTurns = "num_turns"
         case costUSD = "cost_usd"
     }
+
+    /// The line for a turn that ended in an error: its first error, else its subtype, as
+    /// the daemon words the failed state (D045).
+    public var failure: String { "Failed: \(errors.first ?? subtype)" }
 }
 
 public enum NoticeKind: String, UnknownSafeEnum {
@@ -244,6 +258,10 @@ public enum NoticeKind: String, UnknownSafeEnum {
     case reviewReady = "review_ready"
     case failed
     case finished
+    /// A chat's pull request failed its checks.
+    case ciFailed = "ci_failed"
+    /// A chat's pull request is green and mergeable.
+    case readyToMerge = "ready_to_merge"
     case stuck
     case unknown
 }

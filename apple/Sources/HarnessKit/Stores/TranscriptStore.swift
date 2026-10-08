@@ -34,7 +34,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         case result(TurnResult)
         /// The end of a turn whose length is known: "Worked for 1m 12s".
         case turnEnd(TurnEnd)
-        /// A short line such as an interruption, a failure or an opened pull request.
+        /// A short line such as an interruption, a failure, an opened pull request or a
+        /// notice from Claude Code.
         case notice(String)
     }
 
@@ -65,6 +66,8 @@ public final class TranscriptStore {
 
     /// Events loaded on each side of a focused event, and per Load earlier or newer.
     public static let pageSize = 100
+    /// Task list bookkeeping, which the Goals card shows instead.
+    static let hiddenTools: Set<String> = ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]
 
     /// The session id, or the Claude Code chat id.
     public let sessionID: String
@@ -95,8 +98,13 @@ public final class TranscriptStore {
     /// The end of the last turn, while no other turn started since: an interruption or
     /// failure reported after the result marks it stopped.
     private var lastTurnEnd: String?
-    /// Live events that arrived before the history.
-    private var early: [Event] = []
+    /// The last turn's error result, while no other turn started since: the failed state
+    /// that follows says why in its place.
+    private var lastErrorResult: String?
+    /// Live events that arrived before the history, or while a load runs.
+    private var held: [Event] = []
+    /// Loads in flight; live events wait for them (see `holdingLiveEvents`).
+    private var loads = 0
     /// The stored events applied, oldest first, to rebuild the items with older ones.
     private var history: [Event] = []
     private var focusSerial = 0
@@ -112,23 +120,35 @@ public final class TranscriptStore {
     /// Loads the history: all of it, newer events after a reload, or the page around a
     /// focus requested before the first load.
     public func load() async throws {
-        let events: [Event]
-        switch source {
-        case .session:
-            if !isLoaded, let focus {
-                try await loadPage(around: focus.eventID)
-                return
+        try await holdingLiveEvents {
+            let events: [Event]
+            switch source {
+            case .session:
+                if !isLoaded, let focus {
+                    try await loadPage(around: focus.eventID)
+                    return
+                }
+                events = try await api.sessionEvents(sessionID, after: lastEventID)
+                hasNewer = false
+            case .claudeChat:
+                // Claude Code may have rewound or compacted it since, so start over.
+                events = try await api.claudeChatEvents(sessionID)
+                reset()
+                exchangeStartedAt = nil
             }
-            events = try await api.sessionEvents(sessionID, after: lastEventID)
-            hasNewer = false
-        case .claudeChat:
-            // Claude Code may have rewound or compacted it since, so start over.
-            events = try await api.claudeChatEvents(sessionID)
-            reset()
-            exchangeStartedAt = nil
+            events.forEach(apply)
+            finishLoading()
         }
-        events.forEach(apply)
-        finishLoading()
+    }
+
+    /// Loads again after a connect: when the last load failed, and, when the connection
+    /// may have missed events (`missed`), the ones after the newest loaded. A transcript
+    /// with newer pages still to load gets them with those pages.
+    public func catchUp(missed: Bool) async {
+        guard loads == 0, !isLoaded || (missed && source == .session && !hasNewer) else {
+            return
+        }
+        try? await load()
     }
 
     /// The items the transcript shows: successful turn results and empty (redacted)
@@ -200,10 +220,12 @@ public final class TranscriptStore {
     /// Loads the page of events after the newest loaded one.
     public func loadNewer() async throws {
         guard hasNewer else { return }
-        let newer = try await api.sessionEvents(
-            sessionID, after: lastEventID, before: nil, limit: Self.pageSize)
-        hasNewer = newer.count == Self.pageSize
-        newer.forEach(apply)
+        try await holdingLiveEvents {
+            let newer = try await api.sessionEvents(
+                sessionID, after: lastEventID, before: nil, limit: Self.pageSize)
+            hasNewer = newer.count == Self.pageSize
+            newer.forEach(apply)
+        }
     }
 
     /// Whether the event is among the loaded ones, or would arrive live.
@@ -214,17 +236,19 @@ public final class TranscriptStore {
 
     /// Replaces the items with the events on each side of `event`, itself included.
     private func loadPage(around event: Int) async throws {
-        let older = try await api.sessionEvents(
-            sessionID, after: 0, before: event + 1, limit: Self.pageSize)
-        let newer = try await api.sessionEvents(
-            sessionID, after: event, before: nil, limit: Self.pageSize)
-        hasOlder = older.count == Self.pageSize
-        hasNewer = newer.count == Self.pageSize
-        rebuild(older + newer)
-        if hasNewer && !knowsExchange {
-            try await findExchange(after: lastEventID)
+        try await holdingLiveEvents {
+            let older = try await api.sessionEvents(
+                sessionID, after: 0, before: event + 1, limit: Self.pageSize)
+            let newer = try await api.sessionEvents(
+                sessionID, after: event, before: nil, limit: Self.pageSize)
+            hasOlder = older.count == Self.pageSize
+            hasNewer = newer.count == Self.pageSize
+            rebuild(older + newer)
+            if hasNewer && !knowsExchange {
+                try await findExchange(after: lastEventID)
+            }
+            finishLoading()
         }
-        finishLoading()
     }
 
     /// Reads back from the newest events, a page at a time, to the latest user message
@@ -245,12 +269,25 @@ public final class TranscriptStore {
     private func finishLoading() {
         isLoaded = true
         knowsExchange = true
-        // Text deltas from before the history are already in its final messages, and
-        // events past a page that stops short of the newest are loaded with it later.
-        if !hasNewer {
-            early.filter { $0.id != nil }.forEach(apply)
+    }
+
+    /// Runs a load while live events wait, so that none is lost meanwhile and none is
+    /// applied ahead of the loaded events (which would then be skipped as already seen).
+    /// Once loaded, the stored ones that waited apply; text deltas are dropped, as their
+    /// final messages are stored too, and events past a page that stops short of the newest
+    /// are loaded with it later.
+    private func holdingLiveEvents(_ load: () async throws -> Void) async rethrows {
+        loads += 1
+        defer {
+            loads -= 1
+            if loads == 0 && isLoaded {
+                if !hasNewer {
+                    held.filter { $0.id != nil }.forEach(apply)
+                }
+                held = []
+            }
         }
-        early = []
+        try await load()
     }
 
     /// Builds the items again from these stored events, keeping text that streams.
@@ -269,6 +306,7 @@ public final class TranscriptStore {
         lastEventID = 0
         turnStartedAt = nil
         lastTurnEnd = nil
+        lastErrorResult = nil
     }
 
     // MARK: Events
@@ -283,8 +321,8 @@ public final class TranscriptStore {
             noteUserMessage(at: event.ts)
             knowsExchange = true
         }
-        if !isLoaded {
-            early.append(event)
+        if !isLoaded || loads > 0 {
+            held.append(event)
         } else if !hasNewer {
             apply(event)
         }
@@ -323,6 +361,7 @@ public final class TranscriptStore {
             endTurn(
                 key, eventID, at: event.ts, durationMS: result.durationMS, stopped: result.isError)
             append(key, .result(result), eventID)
+            lastErrorResult = result.isError ? key : nil
         case .sessionState(.running, _):
             startTurn(at: event.ts, marked: event.payload["turn_start"]?.boolValue == true)
         case .sessionState(.idle, _):
@@ -331,16 +370,23 @@ public final class TranscriptStore {
             mark(approval, eventID)
         case .sessionState(.interrupted, _):
             endStreaming()
-            settleTurn(key, eventID, event, stopped: true)
-            append(key, .notice("Interrupted"), eventID)
+            if !settleTurn(key, eventID, event, stopped: true) {
+                append(key, .notice("Interrupted"), eventID)
+            }
         case .sessionState(.failed, let error):
             endStreaming()
             settleTurn(key, eventID, event, stopped: true)
-            append(key, .notice(error ?? "Failed"), eventID)
+            if let result = lastErrorResult {
+                items.removeAll { $0.id == result }
+                lastErrorResult = nil
+            }
+            append(key, .notice(error.map { "Failed: \($0)" } ?? "Failed"), eventID)
         case .gitFailed(let step, let stderr):
             append(key, .notice("git \(step) failed: \(stderr)"), eventID)
         case .prOpened(let url):
             append(key, .notice("Opened pull request \(url)"), eventID)
+        case .sessionNotice(let text):
+            append(key, .notice(text), eventID)
         default:
             break
         }
@@ -352,6 +398,8 @@ public final class TranscriptStore {
             append(id, .assistant(text, streaming: false), eventID)
         case .thinking(let text, let duration):
             append(id, .thinking(text, durationMS: duration), eventID)
+        case .toolUse(_, let name, _) where Self.hiddenTools.contains(name):
+            break
         case .toolUse(let toolID, let name, let input):
             append(
                 toolID,
@@ -392,36 +440,44 @@ public final class TranscriptStore {
         guard turnStartedAt == nil || marked else { return }
         turnStartedAt = date
         lastTurnEnd = nil
+        lastErrorResult = nil
     }
 
     /// Ends the open turn with a line saying how long it took, preferring the engine's
-    /// duration; a turn of unknown start and length gets no line.
+    /// duration; a turn of unknown start and length gets no line. Whether it got one.
+    @discardableResult
     private func endTurn(
         _ key: String, _ eventID: Int?, at date: Date, durationMS: Int?, stopped: Bool
-    ) {
+    ) -> Bool {
         let measured = turnStartedAt.map { Int(date.timeIntervalSince($0) * 1000) }
         turnStartedAt = nil
         lastTurnEnd = nil
-        guard let duration = durationMS ?? measured else { return }
+        guard let duration = durationMS ?? measured else { return false }
         let id = "\(key)-end"
         append(id, .turnEnd(TurnEnd(durationMS: duration, stopped: stopped)), eventID)
         lastTurnEnd = id
+        return true
     }
 
     /// The session left the turn (idle, interrupted or failed), with the daemon's measure
     /// of the turn when it sends one: the open turn ends, or the turn its result just
-    /// ended takes that measure and, when stopped, says so.
-    private func settleTurn(_ key: String, _ eventID: Int?, _ event: Event, stopped: Bool) {
+    /// ended takes that measure and, when stopped, says so. Whether the turn has a line
+    /// with its length.
+    @discardableResult
+    private func settleTurn(_ key: String, _ eventID: Int?, _ event: Event, stopped: Bool)
+        -> Bool
+    {
         let duration = event.payload["duration_ms"]?.numberValue.map { Int($0) }
         if turnStartedAt != nil {
-            endTurn(key, eventID, at: event.ts, durationMS: duration, stopped: stopped)
-        } else if let id = lastTurnEnd, let index = items.firstIndex(where: { $0.id == id }),
-            case .turnEnd(var end) = items[index].content
-        {
-            end.durationMS = duration ?? end.durationMS
-            end.stopped = end.stopped || stopped
-            items[index].content = .turnEnd(end)
+            return endTurn(key, eventID, at: event.ts, durationMS: duration, stopped: stopped)
         }
+        guard let id = lastTurnEnd, let index = items.firstIndex(where: { $0.id == id }),
+            case .turnEnd(var end) = items[index].content
+        else { return false }
+        end.durationMS = duration ?? end.durationMS
+        end.stopped = end.stopped || stopped
+        items[index].content = .turnEnd(end)
+        return true
     }
 
     /// The final message replaces the streamed text.
@@ -484,5 +540,13 @@ public final class Transcripts {
 
     public func close(_ sessionID: String) {
         stores[sessionID] = nil
+    }
+
+    /// After a connect: transcripts whose load failed load again, and when the connection
+    /// did not resume (`missed`), loaded ones fetch the events they missed.
+    public func catchUp(missed: Bool) async {
+        for store in Array(stores.values) {
+            await store.catchUp(missed: missed)
+        }
     }
 }

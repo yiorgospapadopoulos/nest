@@ -22,7 +22,8 @@ struct TranscriptView: View {
         let working = session.map { $0.state == .running || $0.state == .starting } ?? false
         let streaming = items.last?.id == "streaming"
         let hasNewer = store?.hasNewer == true
-        let entries = TranscriptGrouping.entries(items, live: working)
+        let background = Set(shell.activity.background(session: chat).runningItems.map(\.id))
+        let entries = TranscriptGrouping.entries(items, live: working, background: background)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 11) {
@@ -101,6 +102,12 @@ struct TranscriptView: View {
         }
         .animation(.smooth(duration: 0.2), value: follow.showsJump)
         .task(id: chat) { await load() }
+        // A load that failed while the daemon was down is retried when it connects again.
+        .onChange(of: store?.isLoaded) { _, loaded in
+            if loaded == true {
+                loadError = nil
+            }
+        }
         .onChange(of: store?.focus) { _, focus in
             if focus != nil {
                 Task { await reveal() }
@@ -183,7 +190,7 @@ private struct TranscriptRow: View {
         case .approval(let id, let kind, let status):
             ApprovalPlaceholder(id: id, kind: kind, status: status)
         case .result(let result):
-            SystemLine(text: result.errors.first.map { "Turn failed: \($0)" } ?? "Turn failed")
+            SystemLine(text: result.failure)
                 .frame(maxWidth: .infinity)
         case .notice(let text):
             SystemLine(text: text)
@@ -282,7 +289,8 @@ extension MessageSegment {
     }
 }
 
-/// A shell command from the transcript in mono, with Copy and Run in terminal.
+/// A shell command from the transcript in mono, with Copy and, for one line, Run in
+/// terminal.
 private struct CommandBlock: View {
     let command: String
     let chat: String
@@ -304,12 +312,15 @@ private struct CommandBlock: View {
                     Label("Copy", systemImage: Icon.copy)
                 }
                 .help("Copy the command")
-                Button {
-                    shell.runInTerminal(command: command, from: chat)
-                } label: {
-                    Label("Run in terminal", systemImage: Icon.terminal)
+                // A command of several lines would run line by line; Copy still offers it.
+                if TerminalInput.line(for: command) != nil {
+                    Button {
+                        shell.runInTerminal(command: command, from: chat)
+                    } label: {
+                        Label("Run in terminal", systemImage: Icon.terminal)
+                    }
+                    .help("Run the command in a terminal pane in the chat's folder")
                 }
-                .help("Run the command in a terminal pane in the chat's folder")
             }
             .buttonStyle(HarnessButtonStyle(kind: .ghost, height: 22, fontSize: TypeSize.caption))
             .fixedSize()

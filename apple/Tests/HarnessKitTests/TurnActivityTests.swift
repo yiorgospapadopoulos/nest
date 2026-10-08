@@ -117,6 +117,13 @@ private func end(_ id: String) -> TranscriptItem {
                 [call("Agent", "1"), call("Bash", "2", result: nil)], running: true)
                 == "Running 1 agent, 1 done, running 1 command")
     }
+
+    @Test func agentsStillWorkingInTheBackgroundAreNotDone() {
+        let agents = [call("Agent", "1"), call("Agent", "2"), call("Agent", "3")]
+        #expect(
+            ToolActivity.summary(agents, running: true, background: ["2", "3"])
+                == "Running 3 agents, 1 done")
+    }
 }
 
 @Suite struct TranscriptGroupingTests {
@@ -180,6 +187,27 @@ private func end(_ id: String) -> TranscriptItem {
             throw Unexpected(items)
         }
         #expect(!idle.isRunning)
+    }
+
+    @Test func aCallWhoseBackgroundTaskStillRunsKeepsItsGroupRunning() throws {
+        // Background agents return at once; their tasks run on after the turn ends.
+        let items = [
+            tool("Agent", "a1"), tool("Agent", "a2"), tool("Agent", "a3"), end("end"),
+            tool("Bash", "b1"), tool("Read", "r1"),
+        ]
+        let entries = TranscriptGrouping.entries(
+            items, live: false, background: ["a2", "a3", "elsewhere"])
+        guard case .tools(let agents) = entries[0], case .tools(let later) = entries[2] else {
+            throw Unexpected(entries)
+        }
+        #expect(agents.isRunning)
+        #expect(agents.summary == "Running 3 agents, 1 done")
+        #expect(!later.isRunning)
+
+        guard case .tools(let finished) = TranscriptGrouping.entries(items, live: false)[0]
+        else { throw Unexpected(items) }
+        #expect(!finished.isRunning)
+        #expect(finished.summary == "Ran 3 agents")
     }
 
     @Test func findsTheGroupHoldingAnItem() {
@@ -283,7 +311,53 @@ private func end(_ id: String) -> TranscriptItem {
         transcript.receive(state("interrupted", 2, at: 7))
         #expect(transcript.turnStartedAt == nil)
         #expect(ends(transcript) == [TurnEnd(durationMS: 7_000, stopped: true)])
-        #expect(transcript.items.map(\.id) == ["e1", "e2-end", "e2"])
+        // "Stopped after 7s" says it all; "Interrupted" is only for an unknown length.
+        #expect(transcript.items.map(\.id) == ["e1", "e2-end"])
+    }
+
+    @Test func aTurnThatEndsInAnErrorFailsWithItsReason() async throws {
+        let transcript = try await loaded()
+        transcript.receive(user(1, at: 0))
+        transcript.receive(
+            event(
+                EventType.sessionResult,
+                #"{"is_error": true, "subtype": "error_during_execution", "duration_ms": 5000, "num_turns": 1, "cost_usd": null, "errors": ["Usage limit reached"]}"#,
+                id: 2, at: 5))
+        transcript.receive(
+            event(
+                EventType.sessionState,
+                #"{"state": "failed", "error": "Usage limit reached", "duration_ms": 5200}"#,
+                id: 3, at: 6))
+
+        #expect(
+            transcript.visibleItems.map(\.content) == [
+                .user(text: "go", attachments: []),
+                .turnEnd(TurnEnd(durationMS: 5_200, stopped: true)),
+                .notice("Failed: Usage limit reached"),
+            ])
+
+        // The next turn's failure leaves this one's lines alone.
+        transcript.receive(user(4, at: 10))
+        transcript.receive(state("failed", 5, at: 12))
+        #expect(transcript.visibleItems.count == 6)
+        #expect(transcript.visibleItems.last?.content == .notice("Failed"))
+    }
+
+    @Test func anOlderErrorTurnKeepsItsResultLine() async throws {
+        let transcript = try await loaded()
+        transcript.receive(user(1, at: 0))
+        for (id, errors) in [(2, #"["API Error: 529"]"#), (3, "[]")] {
+            transcript.receive(
+                event(
+                    EventType.sessionResult,
+                    #"{"is_error": true, "subtype": "error_max_turns", "duration_ms": 4000, "num_turns": 1, "cost_usd": null, "errors": \#(errors)}"#,
+                    id: id, at: 4))
+        }
+        transcript.receive(state("idle", 4, at: 5))
+        let failures = transcript.visibleItems.compactMap { item in
+            if case .result(let result) = item.content { result.failure } else { nil }
+        }
+        #expect(failures == ["Failed: API Error: 529", "Failed: error_max_turns"])
     }
 
     @Test func anInterruptionAfterTheResultMarksThatTurnStopped() async throws {
@@ -557,7 +631,7 @@ private func end(_ id: String) -> TranscriptItem {
         transcript.receive(
             Fixture.event(
                 EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: 1,
-                session: "x", ts: "2026-10-06T09:13:05Z"))
+                session: "x", ts: "2026-10-06T09:13:06Z"))
         #expect(transcript.exchange(of: summary).items.map(\.id) == ["toolu_10", "toolu_11"])
     }
 }

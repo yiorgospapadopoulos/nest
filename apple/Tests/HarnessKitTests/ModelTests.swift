@@ -158,6 +158,17 @@ import Testing
         #expect(approval.review == nil)
     }
 
+    @Test func permissionPayloadCarriesTheEnginesReason() throws {
+        var approval = Fixture.approval("ap-perm")
+        #expect(approval.permission?.reason == nil)
+        approval.payload = Fixture.decode(
+            JSONValue.self,
+            json:
+                #"{"tool": "Bash", "input": {"command": "rm -r build"}, "title": null, "reason": "No allow rule matches rm"}"#
+        )
+        #expect(approval.permission?.reason == "No allow rule matches rm")
+    }
+
     @Test func questionPayloadKeepsRecommendedFlags() throws {
         let approval = Fixture.approval("ap-question")
         let question = try #require(approval.question)
@@ -217,7 +228,6 @@ import Testing
         #expect(value["c"]?.numberValue == 2.5)
         #expect(value["d"]?.stringValue == "x")
         #expect(value["e"]?.arrayValue == [.number(1), .string("y")])
-        #expect(value["f"]?.objectValue == ["g": .bool(false)])
         #expect(value["missing"] == nil)
     }
 
@@ -227,7 +237,6 @@ import Testing
         #expect(value.boolValue == nil)
         #expect(value.numberValue == nil)
         #expect(value.arrayValue == nil)
-        #expect(value.objectValue == nil)
         #expect(JSONValue.null.stringValue == nil)
     }
 
@@ -241,8 +250,10 @@ import Testing
     }
 
     @Test func decodesIntoTypedModels() throws {
-        let value = JSONValue.object(["status": .string("ok"), "version": .string("0.1.0")])
-        #expect(try value.decode(Health.self) == Health(status: "ok", version: "0.1.0"))
-        #expect(throws: DecodingError.self) { try JSONValue.null.decode(Health.self) }
+        let value = JSONValue.object(["launcher": .string("/tmp/a.command"), "warning": .null])
+        #expect(
+            try value.decode(ClaudeCodeLaunch.self)
+                == ClaudeCodeLaunch(launcher: "/tmp/a.command", warning: nil))
+        #expect(throws: DecodingError.self) { try JSONValue.null.decode(ClaudeCodeLaunch.self) }
     }
 }

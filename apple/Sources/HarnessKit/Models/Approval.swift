@@ -66,6 +66,8 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
     public var input: JSONValue
     /// The engine's own sentence for the prompt, when it gives one.
     public var title: String?
+    /// Why Claude Code asks, when it says, such as the rule or path involved.
+    public var reason: String?
 }
 
 public struct QuestionRequest: Decodable, Sendable, Hashable {

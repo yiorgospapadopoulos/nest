@@ -67,7 +67,10 @@ public enum ToolActivity {
         }
     }
 
-    public static func summary(_ calls: [ToolCall], running: Bool) -> String {
+    /// `background` holds the calls whose background task still runs: they are not done.
+    public static func summary(
+        _ calls: [ToolCall], running: Bool, background: Set<String> = []
+    ) -> String {
         var order: [Part] = []
         var counts: [Part: (count: Int, done: Int)] = [:]
         for call in calls {
@@ -76,7 +79,7 @@ public enum ToolActivity {
                 order.append(part)
             }
             counts[part, default: (0, 0)].count += 1
-            counts[part]!.done += call.result == nil ? 0 : 1
+            counts[part]!.done += call.result == nil || background.contains(call.id) ? 0 : 1
         }
         var phrases = order.map { part in
             part.phrase(counts[part]!.count, done: counts[part]!.done, running: running)
@@ -95,14 +98,19 @@ public struct ToolGroup: Sendable, Hashable, Identifiable {
     public let id: String
     /// The tool calls and the thinking between them, in order.
     public let items: [TranscriptItem]
-    /// A call still runs: it has no result and its turn is open.
+    /// A call still runs: it has no result and its turn is open, or its background task
+    /// runs.
     public let isRunning: Bool
+    /// The calls whose background task still runs.
+    public let background: Set<String>
 
     public var calls: [ToolCall] {
         items.compactMap { if case .tool(let call) = $0.content { call } else { nil } }
     }
 
-    public var summary: String { ToolActivity.summary(calls, running: isRunning) }
+    public var summary: String {
+        ToolActivity.summary(calls, running: isRunning, background: background)
+    }
 }
 
 /// A transcript row: an item, or a group of tool calls.
@@ -122,7 +130,11 @@ public enum TranscriptGrouping {
     /// The rows for these items: two or more tool calls with nothing but thinking between
     /// them become a group; anything else, assistant text above all, ends it. `live` says
     /// the session's turn is running, so calls after the last turn end can still run.
-    public static func entries(_ items: [TranscriptItem], live: Bool) -> [TranscriptEntry] {
+    /// `background` holds the tool use ids of background tasks still running: a call that
+    /// started one runs until it ends (D045).
+    public static func entries(
+        _ items: [TranscriptItem], live: Bool, background: Set<String> = []
+    ) -> [TranscriptEntry] {
         let lastEnd = items.lastIndex { if case .turnEnd = $0.content { true } else { false } }
         var entries: [TranscriptEntry] = []
         var run: [TranscriptItem] = []
@@ -133,12 +145,15 @@ public enum TranscriptGrouping {
             let grouped = run.dropLast(tail)
             if grouped.count(where: \.isTool) > 1 {
                 let open = runIsOpen && live
-                let running = open && grouped.contains { $0.isTool && $0.toolResult == nil }
+                let working = Set(grouped.map(\.id)).intersection(background)
+                let running =
+                    !working.isEmpty
+                    || open && grouped.contains { $0.isTool && $0.toolResult == nil }
                 entries.append(
                     .tools(
                         ToolGroup(
                             id: "tools-\(grouped[grouped.startIndex].id)", items: Array(grouped),
-                            isRunning: running)))
+                            isRunning: running, background: working)))
             } else {
                 entries += grouped.map(TranscriptEntry.item)
             }
