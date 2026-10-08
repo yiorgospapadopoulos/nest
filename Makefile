@@ -44,7 +44,7 @@ test:
 tokens:
 	cd daemon && uv run harness design generate
 
-# The Mac app as an ad-hoc signed bundle in apple/build/Harness.app.
+# The Mac app bundle in apple/build/Harness.app, signed with "Harness Local Signing" when present, ad hoc otherwise (D042).
 app:
 	apple/scripts/bundle-app.sh
 
