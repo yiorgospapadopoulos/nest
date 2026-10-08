@@ -3,7 +3,6 @@
 from typing import Protocol
 
 import keyring
-import keyring.errors
 
 SERVICE_NAME = "harness"
 
@@ -13,8 +12,6 @@ class SecretStore(Protocol):
 
     def set(self, account: str, value: str) -> None: ...
 
-    def delete(self, account: str) -> None: ...
-
 
 class KeychainSecretStore:
     def get(self, account: str) -> str | None:
@@ -22,9 +19,3 @@ class KeychainSecretStore:
 
     def set(self, account: str, value: str) -> None:
         keyring.set_password(SERVICE_NAME, account, value)
-
-    def delete(self, account: str) -> None:
-        try:
-            keyring.delete_password(SERVICE_NAME, account)
-        except keyring.errors.PasswordDeleteError:
-            return

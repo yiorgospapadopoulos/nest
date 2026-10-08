@@ -46,7 +46,7 @@ async def test_missing_local_token_is_rotated(
     service: DeviceService, secrets: FakeSecretStore
 ) -> None:
     old = await service.ensure_local_device()
-    secrets.delete(LOCAL_DEVICE_ACCOUNT)
+    del secrets.values[LOCAL_DEVICE_ACCOUNT]  # the Keychain item went missing
 
     new = await service.ensure_local_device()
 

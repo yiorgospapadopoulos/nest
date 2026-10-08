@@ -43,7 +43,8 @@ async def test_a_probe_reports_the_windows_and_its_tokens(tmp_path: Path) -> Non
     assert outcome.tokens == TokenUsage(input_tokens=450, output_tokens=2)
     assert factory.clients[0].prompts == [PROBE_PROMPT]
     assert factory.clients[0].options.cwd == tmp_path
-    assert probe.is_open
+    # Kept open for the next probe.
+    assert factory.clients[0].disconnects == 0
 
 
 async def test_one_client_serves_many_probes(tmp_path: Path) -> None:
@@ -68,7 +69,6 @@ async def test_the_client_is_replaced_after_many_probes(tmp_path: Path) -> None:
     for _ in range(MAX_PROBES_PER_CLIENT):
         await probe.run()
 
-    assert not probe.is_open
     assert factory.clients[0].disconnects == 1
     await probe.run()
     assert len(factory.clients) == 2
@@ -83,7 +83,6 @@ async def test_a_turn_without_windows_closes_the_client(tmp_path: Path) -> None:
 
     assert outcome.limits is None
     assert outcome.tokens.input_tokens == 450
-    assert not probe.is_open
     assert factory.clients[0].disconnects == 1
 
 
@@ -103,7 +102,6 @@ async def test_a_failed_probe_raises_and_closes_the_client(
     with pytest.raises(ProbeError, match=message):
         await probe.run()
 
-    assert not probe.is_open
     assert factory.clients[0].disconnects == 1
 
 
@@ -114,7 +112,7 @@ async def test_a_hanging_probe_times_out(tmp_path: Path) -> None:
     with pytest.raises(ProbeError, match="timed out"):
         await probe.run()
 
-    assert not probe.is_open
+    assert factory.clients[0].disconnects == 1
 
 
 async def test_closing_survives_a_failing_disconnect(tmp_path: Path) -> None:
@@ -125,4 +123,5 @@ async def test_closing_survives_a_failing_disconnect(tmp_path: Path) -> None:
     await probe.close()
     await probe.close()
 
-    assert not probe.is_open
+    # The failed close still let the client go: the second close has nothing to close.
+    assert factory.clients[0].disconnects == 1

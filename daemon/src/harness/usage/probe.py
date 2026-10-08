@@ -80,10 +80,6 @@ class UsageProbe:
         self._client: ProbeClient | None = None
         self._probes = 0
 
-    @property
-    def is_open(self) -> bool:
-        return self._client is not None
-
     async def run(self) -> ProbeOutcome:
         """One exchange on the long-lived client, which opens on demand.
 
