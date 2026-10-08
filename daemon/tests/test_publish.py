@@ -10,6 +10,7 @@ from harness.review.errors import (
     NothingToCommitError,
     RemoteChangedError,
     RemoteNotConfirmedError,
+    UnsafeBranchError,
     UnsafeRepoConfigError,
 )
 from harness.review.publish import GitPublisher, PublishPlan, PullRequest
@@ -92,6 +93,7 @@ async def test_a_worktree_is_committed_pushed_and_opened_as_a_pull_request(env: 
     assert git(env.worktree, "rev-parse", "--abbrev-ref", "agent/fix@{upstream}").strip() == (
         "origin/agent/fix"
     )
+    assert push_calls(env.runner)[0][-1] == "refs/heads/agent/fix:refs/heads/agent/fix"
     assert env.runner.gh_calls() == [
         (
             "gh",
@@ -140,6 +142,25 @@ async def test_a_failed_step_is_reported_and_a_retry_skips_what_is_done(env: Env
     assert (types.GIT_FAILED, {"step": "push", "stderr": "remote hung up\n"}) in await env.events(
         session.id
     )
+
+
+async def test_credentials_in_git_output_never_reach_clients(env: Env) -> None:
+    """H-06: the failure is published and returned without the URL's user name and token."""
+    session = await env.worktree_session()
+    (env.worktree / "README.md").write_text("better\n", encoding="utf-8")
+    stderr = "fatal: unable to access 'https://me:ghp_secret@github.com/me/repo.git/': 403\n"
+    env.runner.failures["git push"] = CommandError(["git", "push"], 128, stderr)
+
+    with pytest.raises(GitActionError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    scrubbed = "fatal: unable to access 'https://github.com/me/repo.git/': 403\n"
+    assert caught.value.payload() == {
+        "detail": f"git push failed: {scrubbed.strip()}",
+        "step": "push",
+        "stderr": scrubbed,
+    }
+    assert (types.GIT_FAILED, {"step": "push", "stderr": scrubbed}) in await env.events(session.id)
 
 
 async def test_in_place_commits_only_the_chosen_files(env: Env) -> None:
@@ -396,6 +417,88 @@ async def test_pull_requests_name_the_github_repository_of_the_confirmed_remote(
     assert [call[:5] for call in env.runner.gh_calls()] == [
         ("gh", "pr", "create", "--repo", "me/repo")
     ]
+
+
+def remote_refs(origin: Path) -> str:
+    return git(origin, "for-each-ref", "--format=%(objectname) %(refname)")
+
+
+def push_calls(runner: FakeRunner) -> list[tuple[str, ...]]:
+    return [call[call.index("push") :] for call in runner.calls if "push" in call]
+
+
+@pytest.mark.parametrize("name", ["--mirror", "--delete", "--force", "-u"])
+async def test_a_branch_named_like_a_push_option_is_never_pushed(env: Env, name: str) -> None:
+    """SEC-01: the agent can point HEAD at such a branch with commands the git guard allows;
+    pushed as `git push ... origin --mirror` it would delete and overwrite refs on origin.
+    """
+    git(env.repo, "push", "-q", "origin", "main:refs/heads/secret")
+    git(env.repo, "update-ref", "refs/remotes/origin/elsewhere", "HEAD")
+    session = await env.in_place_session()
+    git(env.repo, "update-ref", f"refs/heads/{name}", "HEAD")
+    git(env.repo, "symbolic-ref", "HEAD", f"refs/heads/{name}")
+    (env.repo / "agent.txt").write_text("from the agent\n", encoding="utf-8")
+    before = remote_refs(env.origin)
+
+    with pytest.raises(UnsafeBranchError) as caught:
+        await env.publisher.publish(session, env.plan(paths=["agent.txt"], pull_request=None))
+
+    assert caught.value.status_code == 409
+    assert caught.value.payload() == {
+        "detail": str(caught.value),
+        "code": "unsafe_branch",
+        "branch": name,
+    }
+    assert repr(name) in str(caught.value)
+    assert remote_refs(env.origin) == before
+    assert push_calls(env.runner) == []
+    # Refused before anything is committed.
+    assert git(env.repo, "rev-parse", "HEAD").strip() == env.base
+    assert await env.events(session.id) == [
+        (types.GIT_FAILED, {"step": "push", "stderr": str(caught.value)})
+    ]
+
+
+@pytest.mark.parametrize(
+    ("head", "reported"),
+    [("refs/notes/x", "refs/notes/x"), ("refs/heads/HEAD", "HEAD")],
+)
+async def test_a_checkout_on_anything_but_a_plain_branch_is_not_pushed(
+    env: Env, head: str, reported: str
+) -> None:
+    git(env.repo, "update-ref", head, "HEAD")
+    session = await env.in_place_session()
+    git(env.repo, "symbolic-ref", "HEAD", head)
+    (env.repo / "agent.txt").write_text("from the agent\n", encoding="utf-8")
+    before = remote_refs(env.origin)
+
+    with pytest.raises(UnsafeBranchError) as caught:
+        await env.publisher.publish(session, env.plan(paths=["agent.txt"], pull_request=None))
+
+    assert caught.value.branch == reported
+    assert remote_refs(env.origin) == before
+    assert push_calls(env.runner) == []
+
+
+async def test_pushes_name_the_branch_in_an_explicit_refspec(env: Env) -> None:
+    session = await env.in_place_session()
+    (env.repo / "agent.txt").write_text("from the agent\n", encoding="utf-8")
+
+    published = await env.publisher.publish(
+        session, env.plan(paths=["agent.txt"], pull_request=None)
+    )
+
+    assert push_calls(env.runner) == [
+        (
+            *("push", "--no-verify", "--recurse-submodules=no", "-u", "origin"),
+            "refs/heads/main:refs/heads/main",
+        )
+    ]
+    assert git(env.origin, "rev-parse", "main").strip() == published.commit_sha
+    assert git(env.repo, "rev-parse", "--abbrev-ref", "main@{upstream}").strip() == "origin/main"
+    assert (types.GIT_PUSHED, {"remote": "origin", "branch": "main"}) in await env.events(
+        session.id
+    )
 
 
 async def test_a_missing_gh_fails_the_pull_request_step(env: Env) -> None:

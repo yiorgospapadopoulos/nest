@@ -7,7 +7,9 @@ request is opened once.
 The tree and its git config may hold what the agent planted, so (D050): every git command
 runs with `HARDENED` overrides (no hooks, no fsmonitor program), nothing starts while the
 repository's own config sets something that runs a program or sends data elsewhere, and a
-push goes only to the origin URL the user confirmed.
+push goes only to the origin URL the user confirmed. The branch is pushed by an explicit
+refspec, and only when its name is a plain branch name: the agent can name a branch
+`--mirror` and check it out (SEC-01).
 """
 
 from collections.abc import Sequence
@@ -25,6 +27,7 @@ from harness.review.errors import (
     NothingToCommitError,
     RemoteChangedError,
     RemoteNotConfirmedError,
+    UnsafeBranchError,
     UnsafeRepoConfigError,
 )
 from harness.sessions.models import Session
@@ -61,13 +64,15 @@ class GitPublisher:
     async def publish(self, session: Session, plan: PublishPlan) -> Session:
         cwd = require_cwd(session)
         await self.require_safe_config(session)
+        branch = None
         if plan.push:
             await self.require_remote(session, plan.remote_url)
+            branch = await self._branch(session, cwd)
         session = await self._commit(session, cwd, plan)
-        if not plan.push:
+        if branch is None:
             return session
-        branch = await self._branch(session, cwd)
-        push = ["push", "--no-verify", "--recurse-submodules=no", "-u", REMOTE, branch]
+        ref = f"refs/heads/{branch}"
+        push = ["push", "--no-verify", "--recurse-submodules=no", "-u", REMOTE, f"{ref}:{ref}"]
         await self._step(session, "push", _git(*push), cwd)
         await self._bus.publish(types.GIT_PUSHED, {"remote": REMOTE, "branch": branch}, session.id)
         if plan.pull_request is None or session.pr_url is not None:
@@ -110,11 +115,20 @@ class GitPublisher:
         raise error
 
     async def _branch(self, session: Session, cwd: Path) -> str:
-        """The worktree's branch, or the checkout's current branch for in-place sessions."""
+        """The worktree's branch, or the checkout's current branch for in-place sessions,
+        which must be a plain branch name.
+        """
         if session.branch is not None:
             return session.branch
-        argv = _git("symbolic-ref", "--short", "HEAD")
-        return (await self._step(session, "push", argv, cwd)).strip()
+        head = (await self._step(session, "push", _git("symbolic-ref", "HEAD"), cwd)).strip()
+        branch = head.removeprefix("refs/heads/")
+        if branch == head or branch.startswith("-"):
+            await self._refuse(session, "push", UnsafeBranchError(branch))
+        try:
+            await self._run(_git("check-ref-format", "--branch", branch), cwd)
+        except CommandError:
+            await self._refuse(session, "push", UnsafeBranchError(branch))
+        return branch
 
     async def _commit(self, session: Session, cwd: Path, plan: PublishPlan) -> Session:
         # With paths, `git commit -- <paths>` leaves anything else the user staged alone.
@@ -168,8 +182,11 @@ class GitPublisher:
             stderr = error.stderr
         except OSError as error:  # the tool is not installed
             stderr = str(error)
-        await self._bus.publish(types.GIT_FAILED, {"step": step, "stderr": stderr}, session.id)
-        raise GitActionError(step, stderr)
+        failure = GitActionError(step, stderr)
+        await self._bus.publish(
+            types.GIT_FAILED, {"step": step, "stderr": failure.stderr}, session.id
+        )
+        raise failure
 
 
 def _git(*args: str) -> list[str]:

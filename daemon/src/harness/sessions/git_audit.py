@@ -28,6 +28,39 @@ async def snapshot_refs(cwd: Path) -> dict[str, str]:
     return refs
 
 
+async def with_own_changes(
+    cwd: Path, baseline: dict[str, str] | None, remote: str
+) -> dict[str, str]:
+    """`baseline` updated with what the daemon's own commit and push change: HEAD, its
+    branch and that branch's remote-tracking ref. Anything else that changed stays out, so
+    the next audit still reports it. Without a baseline, the refs as they are now.
+    """
+    after = await snapshot_refs(cwd)
+    if baseline is None:
+        return after
+    own = {"HEAD"}
+    with suppress(GitError):  # a detached HEAD, or no repository
+        branch = (await run_git(["symbolic-ref", "-q", "HEAD"], cwd)).strip()
+        own |= {branch, f"refs/remotes/{remote}/{branch.removeprefix('refs/heads/')}"}
+    refs = {ref: sha for ref, sha in baseline.items() if ref not in own}
+    refs.update({ref: sha for ref, sha in after.items() if ref in own})
+    return refs
+
+
+def with_branches(baseline: dict[str, str], after: dict[str, str]) -> dict[str, str]:
+    """`baseline` with HEAD and the local branches as they are in `after`: what decides a
+    publish. Other refs (remote-tracking, tags) keep their baseline values, so the next
+    turn-end audit still reports a change to them.
+    """
+    refs = {ref: sha for ref, sha in baseline.items() if not _decides_publish(ref)}
+    refs.update({ref: sha for ref, sha in after.items() if _decides_publish(ref)})
+    return refs
+
+
+def _decides_publish(ref: str) -> bool:
+    return ref == "HEAD" or ref.startswith("refs/heads/")
+
+
 def changed_refs(before: dict[str, str], after: dict[str, str]) -> list[JsonValue]:
     return [
         {"ref": ref, "before": before.get(ref), "after": after.get(ref)}

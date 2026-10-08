@@ -1,7 +1,8 @@
 """A command runner that fakes `gh` and runs everything else (git) for real."""
 
+import inspect
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from harness.gitops.runner import CommandError, run_command
@@ -46,12 +47,20 @@ class FakeRunner:
         self.failures: dict[str, Exception] = {}
         # One-off canned outputs, keyed the same way, for commands that would reach out.
         self.outputs: dict[str, str] = {}
+        # One-off actions run just before a command, keyed by its first two words, such as
+        # a background command of the agent changing refs while the daemon publishes. An
+        # action may return an awaitable, which is awaited.
+        self.before: dict[str, Callable[[], object]] = {}
         # What `gh pr view` prints; None fails it, as if GitHub were unreachable.
         self.pr_view: str | None = None
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         self.calls.append(tuple(argv))
         words = _without_overrides(argv)
+        action = self.before.pop(" ".join(words[:2]), None)
+        result = None if action is None else action()
+        if inspect.isawaitable(result):
+            await result
         failure = self.failures.pop(" ".join(words[:3]), None) or self.failures.pop(
             " ".join(words[:2]), None
         )

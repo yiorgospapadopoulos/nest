@@ -1,14 +1,18 @@
 from pydantic import JsonValue
 
 from harness.errors import ConflictError, HarnessError
+from harness.gitops.remotes import scrub_credentials
 
 
 class GitActionError(HarnessError):
-    """A git or gh command of the approve flow failed; the review stays pending."""
+    """A git or gh command of the approve flow failed; the review stays pending. Its
+    output reaches clients without the credentials a remote URL may carry (H-06).
+    """
 
     status_code = 502
 
     def __init__(self, step: str, stderr: str) -> None:
+        stderr = scrub_credentials(stderr)
         super().__init__(f"git {step} failed: {stderr.strip()}")
         self.step = step
         self.stderr = stderr
@@ -40,6 +44,22 @@ class UnsafeRepoConfigError(ConflictError):
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code, "settings": list(self.settings)}
+
+
+class UnsafeBranchError(ConflictError):
+    """The checkout is on something a push could read as an option, not a plain branch."""
+
+    code = "unsafe_branch"
+
+    def __init__(self, branch: str) -> None:
+        super().__init__(
+            f"harness will not push {branch!r}: it is not a plain branch name and could be "
+            "read as a push option; switch to a normal branch, or publish by hand"
+        )
+        self.branch = branch
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code, "branch": self.branch}
 
 
 class RemoteNotConfirmedError(ConflictError):
