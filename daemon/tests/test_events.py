@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import AsyncIterator
+import sqlite3
+from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from datetime import timedelta
 
@@ -30,6 +31,8 @@ def test_event_type_names() -> None:
     assert types.SESSION_THINKING == "session.thinking"
     assert types.SESSION_RESULT == "session.result"
     assert types.SESSION_GIT_VIOLATION == "session.git_violation"
+    assert types.SESSION_NOTICE == "session.notice"
+    assert types.REPO_ADDED == "repo.added"
     assert types.SESSION_TASKS == "session.tasks"
     assert types.SESSION_AGENTS == "session.agents"
     assert types.APPROVAL_CREATED == "approval.created"
@@ -186,3 +189,37 @@ async def test_last_id_is_the_newest_stored_event(db: Database, clock: FakeClock
     await bus.publish_ephemeral("live", {})
 
     assert await bus.last_id() == stored.id
+
+
+async def test_an_event_stored_while_its_publisher_is_cancelled_is_still_delivered(
+    db: Database, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PL-03: the database finishes a write on its own thread even when the coroutine that
+    asked for it is cancelled (a session's task stopped right then); live subscribers must
+    see what is stored, in order.
+    """
+    bus = EventBus(db, clock)
+    real_fetch_all = db.fetch_all
+    writing = asyncio.Event()
+
+    async def slow_fetch_all(sql: str, params: Sequence[object] = ()) -> list[sqlite3.Row]:
+        running = asyncio.ensure_future(real_fetch_all(sql, params))
+        writing.set()
+        await asyncio.sleep(0.05)
+        return await running
+
+    async with aclosing(bus.subscribe()) as events:
+        receiving = asyncio.ensure_future(take(events, 2))
+        await asyncio.sleep(0)
+        monkeypatch.setattr(db, "fetch_all", slow_fetch_all)
+        publishing = asyncio.ensure_future(bus.publish("session.user_message", {}, "s1"))
+        await writing.wait()
+        publishing.cancel()
+        await asyncio.gather(publishing, return_exceptions=True)
+        monkeypatch.setattr(db, "fetch_all", real_fetch_all)
+        await bus.publish("session.state", {}, "s1")
+        received = await asyncio.wait_for(receiving, 5)
+
+    stored = [event.type for event in await bus.session_events("s1")]
+    assert stored == ["session.user_message", "session.state"]
+    assert [event.type for event in received] == stored

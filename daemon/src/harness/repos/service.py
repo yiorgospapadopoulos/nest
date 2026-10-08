@@ -128,6 +128,7 @@ class RepoService:
                 msg = f"{root} is already registered as {existing.name!r}"
                 raise RepoExistsError(msg)
         save_repo(self._paths, repo)
+        await self._announce(types.REPO_ADDED, repo)
         return repo
 
     def update_worktree_config(self, name: str, config: WorktreeConfig) -> RepoConfig:
@@ -177,11 +178,14 @@ class RepoService:
             }
         )
         save_repo(self._paths, updated)
+        await self._announce(types.REPO_UPDATED, updated)
+        return updated
+
+    async def _announce(self, event_type: str, repo: RepoConfig) -> None:
         if self._bus is not None:
             await self._bus.publish(
-                types.REPO_UPDATED, {"name": updated.name, "repo": updated.model_dump(mode="json")}
+                event_type, {"name": repo.name, "repo": repo.model_dump(mode="json")}
             )
-        return updated
 
 
 async def _work_tree_root(path: Path) -> Path | None:

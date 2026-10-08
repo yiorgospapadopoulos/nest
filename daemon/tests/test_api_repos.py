@@ -1,3 +1,4 @@
+import json
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -97,6 +98,22 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
     assert bad_link.status_code == 422
     assert missing_config.status_code == 404
     assert missing_removal.status_code == 404
+
+
+async def test_registering_a_repo_announces_it(api: Api, tmp_path: Path) -> None:
+    """BUG-32: other devices add it without reloading; the payload is that of repo.updated."""
+    repo = init_repo(tmp_path / "project")
+
+    registered = await api.http.post("/api/repos", json={"path": str(repo)})
+    refused = await api.http.post("/api/repos", json={"path": str(repo)})
+
+    rows = await api.ctx.db.fetch_all(
+        "SELECT session_id, payload FROM events WHERE type = ?", (types.REPO_ADDED,)
+    )
+    assert refused.status_code == 409
+    assert [(row["session_id"], json.loads(row["payload"])) for row in rows] == [
+        (None, {"name": "project", "repo": registered.json()})
+    ]
 
 
 async def removed_events(api: Api) -> list[object]:

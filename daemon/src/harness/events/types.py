@@ -6,6 +6,8 @@ DAEMON_STARTED: Final = "daemon.started"
 DEVICE_PAIRED: Final = "device.paired"
 DEVICE_REVOKED: Final = "device.revoked"
 
+# A repo was registered; global, `{name, repo}` as in REPO_UPDATED. Clients add it.
+REPO_ADDED: Final = "repo.added"
 # A repo was unregistered (its config deleted); global, the payload names it.
 REPO_REMOVED: Final = "repo.removed"
 # A repo's config changed on its own, such as a plain folder that became a git repository
@@ -26,6 +28,9 @@ SESSION_DELTA: Final = "session.delta"
 SESSION_THINKING: Final = "session.thinking"
 SESSION_RESULT: Final = "session.result"
 SESSION_GIT_VIOLATION: Final = "session.git_violation"
+# A note for the transcript, `{kind, text}`: compacted, cleared, model_fallback or
+# api_retry (the first of a turn). Clients show the text as a muted line.
+SESSION_NOTICE: Final = "session.notice"
 # Not a session event (its events are deleted with it): the payload names the session.
 SESSION_DELETED: Final = "session.deleted"
 # Snapshots of the agent's task list and of its agents (main and subagents).

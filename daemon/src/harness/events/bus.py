@@ -50,6 +50,13 @@ class EventBus:
     async def publish(
         self, event_type: str, payload: Mapping[str, JsonValue], session_id: str | None = None
     ) -> Event:
+        # The database finishes a write even if this caller is cancelled meanwhile, so the
+        # event is fanned out too: live subscribers see everything stored, in order.
+        return await asyncio.shield(self._publish(event_type, payload, session_id))
+
+    async def _publish(
+        self, event_type: str, payload: Mapping[str, JsonValue], session_id: str | None
+    ) -> Event:
         async with self._publish_lock:
             ts = self._clock.now()
             rows = await self._db.fetch_all(
@@ -106,6 +113,16 @@ class EventBus:
         )
         events = [_from_row(row) for row in rows]
         return events[::-1] if newest_first else events
+
+    async def latest_of_each_session(self, event_type: str) -> list[Event]:
+        """The newest stored event of `event_type` of each session that has one."""
+        rows = await self._db.fetch_all(
+            "SELECT id, type, ts, session_id, payload FROM events WHERE id IN"
+            " (SELECT MAX(id) FROM events WHERE type = ? AND session_id IS NOT NULL"
+            " GROUP BY session_id) ORDER BY id",
+            (event_type,),
+        )
+        return [_from_row(row) for row in rows]
 
     async def subscribe(self, after_id: int | None = None) -> AsyncGenerator[Event]:
         """Yield persisted events with id > after_id (none if None), then live events."""
