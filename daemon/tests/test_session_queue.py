@@ -14,7 +14,15 @@ from harness.sessions.models import QueuedMessage, SessionState
 from harness.sessions.queue import QueuedMessageNotFoundError
 from harness.storage.db import Database
 from tests.async_support import until
-from tests.fake_provider import FakeRun, ask, crash, hang, reply, until_interrupted
+from tests.fake_provider import (
+    FakeRun,
+    ask,
+    crash,
+    engine_error,
+    hang,
+    reply,
+    until_interrupted,
+)
 from tests.fakes import FakeClock
 from tests.session_support import Env
 
@@ -202,6 +210,44 @@ async def test_a_failed_turn_keeps_the_queue(env: Env) -> None:
     assert [m.text for m in await env.manager.queued(created.id)] == ["after the crash"]
 
 
+async def test_a_turn_ended_by_an_engine_error_keeps_the_queue(env: Env) -> None:
+    gate = asyncio.Event()
+
+    async def error_later(run: FakeRun) -> None:
+        await gate.wait()
+        await engine_error("API Error: 500")(run)
+
+    env.provider.script(error_later)
+    created = await env.create()
+    await env.reach(created.id, SessionState.RUNNING)
+
+    await env.manager.send(created.id, "after the error", [])
+    gate.set()
+    failed = await env.reach(created.id, SessionState.FAILED)
+
+    assert failed.last_error == "API Error: 500"
+    assert [m.text for m in await env.manager.queued(created.id)] == ["after the error"]
+
+
+async def test_an_interrupted_turn_is_interrupted_even_when_its_result_is_an_error(
+    env: Env,
+) -> None:
+    async def aborted(run: FakeRun) -> None:
+        await run.sink.text_delta("working")
+        await run.interrupted.wait()
+        await engine_error("Request was aborted")(run)
+
+    env.provider.script(aborted)
+    created = await env.create()
+    await env.reach(created.id, SessionState.RUNNING)
+    await until(lambda: bool(env.provider.runs) and bool(env.provider.runs[0].inputs))
+
+    await env.manager.interrupt(created.id)
+    interrupted = await env.reach(created.id, SessionState.INTERRUPTED)
+
+    assert interrupted.last_error is None
+
+
 async def test_queued_messages_can_be_cancelled(env: Env) -> None:
     env.provider.script(hang())
     created = await env.create()
@@ -237,13 +283,13 @@ async def test_a_turn_that_ends_before_send_returns_still_delivers_the_queue(
     await env.manager.send(created.id, "three", [])
     # The turn ends while the message that started it is still being sent.
     turn_gate.set()
-    # The end of a turn reads the connectors last, after it took "three" off the queue and
-    # started its delivery. Waiting for that read, not for the queue to empty, keeps the
-    # sending task blocked until the task delivering "three" exists and waits for it.
+    # The end of a turn reads the connectors last, after it started the delivery of
+    # "three". Waiting for that read keeps the sending task blocked until the task
+    # delivering "three" exists and waits for it; "three" stays queued until then.
     run = env.provider.runs[0]
     await until(lambda: run.status_calls == 2)
 
-    assert await env.manager.queued(created.id) == []
+    assert [m.text for m in await env.manager.queued(created.id)] == ["three"]
     assert len(run.inputs) == 2
     env.provider.send_gate.set()
     await results(env, created.id, 3)
@@ -258,6 +304,35 @@ async def test_a_turn_that_ends_before_send_returns_still_delivers_the_queue(
         "running",
         "idle",
     ]
+
+
+async def test_a_message_taken_off_the_queue_before_it_starts_is_not_sent(env: Env) -> None:
+    turn_gate = asyncio.Event()
+
+    async def quick(run: FakeRun) -> None:
+        await turn_gate.wait()
+        await reply("two")(run)
+
+    env.provider.script(reply("one"), quick)
+    created = await env.create(prompt="one")
+    await env.reach(created.id, SessionState.IDLE)
+    env.provider.send_gate = asyncio.Event()
+    await env.manager.send(created.id, "two", [])
+    await until(lambda: len(env.provider.runs[0].inputs) == 2)
+    queued = await env.manager.send(created.id, "three", [])
+    assert queued.queued_message is not None
+    # The turn ends while "two" is still being sent; "three" waits for that send.
+    turn_gate.set()
+    run = env.provider.runs[0]
+    await until(lambda: run.status_calls == 2)
+
+    await env.manager.cancel_queued(created.id, queued.queued_message.id)
+    env.provider.send_gate.set()
+    await env.reach(created.id, SessionState.IDLE)
+
+    assert await user_messages(env, created.id) == ["one", "two"]
+    assert [i.text for i in run.inputs] == ["one", "two"]
+    assert not env.manager.busy(created.id)
 
 
 async def test_closing_drops_the_queue_and_purging_deletes_it(env: Env) -> None:

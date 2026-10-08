@@ -125,3 +125,18 @@ async def test_a_folder_claude_initializes_becomes_a_git_project(api: Api, folde
     assert [a["payload"]["paths"] for a in review] == [["todo.md"]]
     assert diff.status_code == 200
     assert git(folder, "rev-list", "--all") == ""
+
+
+async def test_the_agent_is_promised_no_review_commit_or_pull_request(api: Api) -> None:
+    """BUG-46: a plain folder's work never goes up for review (D041)."""
+    api.provider.script(reply("Done"))
+    session = await chat(api)
+    await reach(api, session["id"], "idle", results=1)
+
+    prompt = api.provider.runs[0].spec.system_prompt_append
+
+    assert prompt is not None
+    assert prompt.startswith("You are running inside harness")
+    for promise in ("approve", "commits", "pull request"):
+        assert promise not in prompt
+    assert "only when the user asks" in prompt

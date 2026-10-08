@@ -72,7 +72,9 @@ def env(db: Database, clock: FakeClock) -> Env:
 
 async def test_a_permission_becomes_an_approval_item(env: Env) -> None:
     prompts = await env.prompts()
-    request = PermissionRequest("Bash", {"command": "ls"}, "Claude wants to run ls")
+    request = PermissionRequest(
+        "Bash", {"command": "ls"}, "Claude wants to run ls", "A hook asks first"
+    )
 
     deciding = asyncio.ensure_future(prompts.decide(request))
     item = await env.pending()
@@ -84,6 +86,7 @@ async def test_a_permission_becomes_an_approval_item(env: Env) -> None:
         "tool": "Bash",
         "input": {"command": "ls"},
         "title": "Claude wants to run ls",
+        "reason": "A hook asks first",
     }
     session_id = item.session_id
     assert env.waiting == [(session_id, True), (session_id, False)]
@@ -113,6 +116,7 @@ async def test_a_permission_without_a_title_gets_a_notice(env: Env) -> None:
 
     assert await deciding == PermissionDecision("deny", "interrupted")
     assert item.payload["title"] is None
+    assert item.payload["reason"] is None
 
 
 async def test_a_question_becomes_an_approval_item(env: Env) -> None:
@@ -181,6 +185,25 @@ async def test_parallel_always_answers_add_the_rule_once(env: Env) -> None:
     await asyncio.gather(first, second)
 
     assert (await env.store.get(items[0].session_id)).allowed_tools == ["Edit"]
+
+
+async def test_two_tools_always_allowed_at_once_are_both_kept(env: Env) -> None:
+    """PL-04: the read and write of the session's rules happen together."""
+    prompts = await env.prompts()
+    first = asyncio.ensure_future(prompts.decide(PermissionRequest("Edit", {"file": "a"})))
+    second = asyncio.ensure_future(prompts.decide(PermissionRequest("Bash", {"command": "ls"})))
+
+    async def both() -> bool:
+        return len(await env.queue.list_approvals(ApprovalStatus.PENDING)) == 2
+
+    await until(both)
+    items = await env.queue.list_approvals(ApprovalStatus.PENDING)
+    await asyncio.gather(
+        *(env.queue.resolve(item.id, {"behavior": "allow", "always": True}) for item in items)
+    )
+    await asyncio.gather(first, second)
+
+    assert sorted((await env.store.get(items[0].session_id)).allowed_tools) == ["Bash", "Edit"]
 
 
 async def test_an_approved_plan_continues_with_edits_allowed(env: Env) -> None:

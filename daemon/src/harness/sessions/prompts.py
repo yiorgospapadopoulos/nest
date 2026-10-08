@@ -1,5 +1,6 @@
 """An agent run's permission prompts and questions, held in the approval queue."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 from pydantic import JsonValue
@@ -51,6 +52,8 @@ class SessionPrompts:
         self._store = store
         self._on_waiting = on_waiting
         self._on_mode = on_mode
+        # Two answers at once must not both read the old rules and keep only one (PL-04).
+        self._rules = asyncio.Lock()
 
     async def decide(self, request: PermissionRequest) -> PermissionDecision:
         session = await self._store.get(self._session_id)
@@ -58,7 +61,12 @@ class SessionPrompts:
             return PermissionDecision("allow")
         approval = await self._wait(
             ApprovalKind.PERMISSION,
-            {"tool": request.tool_name, "input": request.tool_input, "title": request.title},
+            {
+                "tool": request.tool_name,
+                "input": request.tool_input,
+                "title": request.title,
+                "reason": request.reason,
+            },
             request.title or f"Allow {request.tool_name}?",
         )
         resolution = approval.resolution or {}
@@ -112,11 +120,12 @@ class SessionPrompts:
         return await self._queue.wait(self._session_id, kind, payload, notice, on_waiting)
 
     async def _allow_always(self, tool_name: str) -> None:
-        session = await self._store.get(self._session_id)
-        if tool_name not in session.allowed_tools:
-            await self._store.update(
-                self._session_id, allowed_tools=[*session.allowed_tools, tool_name]
-            )
+        async with self._rules:
+            session = await self._store.get(self._session_id)
+            if tool_name not in session.allowed_tools:
+                await self._store.update(
+                    self._session_id, allowed_tools=[*session.allowed_tools, tool_name]
+                )
 
 
 def _question(question: Question) -> JsonValue:

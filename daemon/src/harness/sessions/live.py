@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 BYPASS: PermissionMode = "bypassPermissions"
 
 
+def _set_event() -> asyncio.Event:
+    event = asyncio.Event()
+    event.set()
+    return event
+
+
 @dataclass(eq=False)
 class LiveSession:
     session_id: str
@@ -32,6 +38,9 @@ class LiveSession:
     run_mode: PermissionMode | None = None
     # Held while the saved model and mode are read and sent to the run, so the last saved win.
     controls: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Held while the state moves between running and waiting, so two prompts opening at
+    # once announce the change once.
+    prompts: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Setup, opening the run and submitting a message. At most one at a time.
     task: asyncio.Task[None] | None = None
     # The agent is working, after a user message or on its own, until the turn's result.
@@ -43,13 +52,26 @@ class LiveSession:
     resume_queue: bool = False
     # Background tasks the agent reports running; the run is kept open while there are any.
     background_tasks: int = 0
-    # Refs at the start of the current turn, for the post-turn audit (D013 layer 4).
-    baseline: dict[str, str] = field(default_factory=dict[str, str])
+    # Refs as the last audit saw them, for the next one (D013 layer 4); None before the
+    # first turn of this process.
+    baseline: dict[str, str] | None = None
     idle_task: asyncio.Task[None] | None = None
+    # Cleared while a turn's end is announced, which makes its review: a message sent
+    # then waits, so it supersedes that review instead of running beside it (BUG-18).
+    settled: asyncio.Event = field(default_factory=_set_event)
+    # Cleared while the daemon commits, pushes or merges the session's work: messages
+    # sent meanwhile are queued and a turn the agent starts on its own waits (BUG-14).
+    published: asyncio.Event = field(default_factory=_set_event)
+    # Cleared while a closing run's process exits; a new run waits for it (BUG-16).
+    run_closed: asyncio.Event = field(default_factory=_set_event)
 
     @property
     def busy(self) -> bool:
         return self.task is not None or self.turn_active
+
+    @property
+    def publishing(self) -> bool:
+        return not self.published.is_set()
 
     def require_idle(self) -> None:
         if self.busy:
@@ -98,18 +120,25 @@ class LiveSession:
             self.idle_task = None
 
     async def close_run(self) -> None:
+        """Close the run and wait for its process to exit, or for a close in progress."""
         run, self.run = self.run, None
         # Background tasks live in the agent process and end with it.
         self.background_tasks = 0
         if run is None:
+            await self.run_closed.wait()
             return
+        self.run_closed.clear()
         try:
             await run.close()
         except Exception:
             logger.exception("closing the agent run of session %s failed", self.session_id)
+        finally:
+            self.run_closed.set()
 
     async def stop(self) -> None:
         """Cancel the current task, then close the run and wait for the agent to exit."""
+        # Stopping for good: no queued message starts after the cancelled task.
+        self.resume_queue = False
         task = self.task
         if task is not None:
             task.cancel()

@@ -8,7 +8,7 @@ from harness.events import types
 from harness.storage.db import Database
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import ask, hang, reply, until_interrupted
+from tests.fake_provider import ask, engine_error, hang, reply, until_interrupted
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 
@@ -96,6 +96,39 @@ async def test_a_full_conversation(api: Api) -> None:
     assert types_seen.count(types.SESSION_RESULT) == 2
     assert types.SESSION_DELTA not in types_seen
     assert later.json() == events.json()[-1:]
+
+
+async def test_a_turn_ended_by_an_engine_error_fails_and_the_chat_goes_on(api: Api) -> None:
+    """BUG-03: usage limits and API errors end the turn as failed, with the reason."""
+    limit = "Claude usage limit reached"
+    api.provider.script(
+        engine_error(limit, "and more"), engine_error(subtype="error_max_turns"), reply("Back")
+    )
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "failed")
+    await notified(api, session_id, "failed")
+    first = (await api.http.get(f"/api/sessions/{session_id}")).json()
+
+    again = await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "retry"})
+    await reach(api, session_id, "failed", results=2)
+    await notified(api, session_id, "failed", 2)
+    last = await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "go on"})
+    await reach(api, session_id, "idle", results=3)
+    await notified(api, session_id, "finished")
+
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    ended = [
+        (e["payload"]["state"], e["payload"]["error"])
+        for e in events
+        if e["type"] == types.SESSION_STATE and "duration_ms" in e["payload"]
+    ]
+    notices = [e["payload"]["text"] for e in events if e["type"] == types.NOTIFY]
+    assert (first["state"], first["last_error"]) == ("failed", limit)
+    assert ended == [("failed", limit), ("failed", "error_max_turns"), ("idle", None)]
+    assert notices[:2] == [limit, "error_max_turns"]
+    assert (again.status_code, last.status_code) == (202, 202)
+    (run,) = api.provider.runs
+    assert not run.closed
 
 
 async def test_permission_prompts_are_answered_through_the_approval_queue(api: Api) -> None:

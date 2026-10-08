@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -9,6 +10,9 @@ from pydantic import TypeAdapter
 from harness.events import types
 from harness.gitops.runner import CommandError
 from harness.providers.base import AgentTask, MessageBlock
+from harness.review import watch
+from harness.review.models import SessionDiff
+from harness.sessions.models import SendResult
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import commit, crash, edit, hang, messages, reply, tasks
@@ -302,6 +306,221 @@ async def test_a_git_violation_blocks_approval_until_acknowledged(api: Api) -> N
     assert accepted.json()["commit_sha"] is not None
 
 
+async def violations(api: Api, session_id: str) -> list[list[dict[str, Any]]]:
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    return [e["payload"]["changes"] for e in events if e["type"] == types.SESSION_GIT_VIOLATION]
+
+
+async def test_refs_changed_after_the_turn_are_caught_before_publishing(api: Api) -> None:
+    """SEC-01: a background command can change refs after the turn's audit (D013 layer 4)."""
+    session_id = await finished_with_changes(api)
+    repo = api.ctx.repos.get("repo").path
+    origin = repo.parent / "origin.git"
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "update-ref", "refs/heads/sneaky", "HEAD")
+    url = f"/api/sessions/{session_id}/approve"
+
+    refused = await api.http.post(url, json=APPROVE)
+    flagged = (await api.http.get(f"/api/sessions/{session_id}")).json()
+    pushed_before = git(origin, "for-each-ref")
+    again = await api.http.post(url, json=APPROVE)
+    accepted = await api.http.post(url, json={**APPROVE, "acknowledge_violation": True})
+
+    assert refused.status_code == 409
+    assert "acknowledge_violation" in refused.json()["detail"]
+    assert flagged["git_violation"] is True
+    assert "agent/" not in pushed_before
+    assert again.status_code == 409
+    # Reported once: the second check compares with the refs the first one saw.
+    assert await violations(api, session_id) == [
+        [{"ref": "refs/heads/sneaky", "before": None, "after": sha}]
+    ]
+    assert accepted.status_code == 200, accepted.text
+
+
+async def test_a_moved_head_is_caught_before_publishing(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    worktree = Path(str((await api.http.get(f"/api/sessions/{session_id}")).json()["cwd"]))
+    elsewhere = git(worktree, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "x").strip()
+    git(worktree, "update-ref", "--no-deref", "HEAD", elsewhere)
+
+    refused = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+
+    assert refused.status_code == 409
+    assert [change["ref"] for (change,) in await violations(api, session_id)] == ["HEAD"]
+
+
+async def test_a_fetch_between_the_turn_and_approve_waits_for_the_next_turn_end(
+    api: Api,
+) -> None:
+    """Only HEAD and local branches decide what is pushed; a fetch (yours, or an editor's)
+    does not block approve, and the next turn-end audit still reports it (D013 layer 4).
+    """
+    session_id = await finished_with_changes(api)
+    repo = api.ctx.repos.get("repo").path
+    fetched = git(repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "upstream").strip()
+    before = git(repo, "rev-parse", "refs/remotes/origin/main").strip()
+    git(repo, "update-ref", "refs/remotes/origin/main", fetched)
+    git(repo, "tag", "fetched-tag", fetched)
+
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["git_violation"] is False
+    assert await violations(api, session_id) == []
+    api.provider.runs[0].emit(reply("background job done"))
+    await reach(api, session_id, "idle", results=2)
+    await notified(api, session_id, "finished")
+    assert await violations(api, session_id) == [
+        [
+            {"ref": "refs/remotes/origin/main", "before": before, "after": fetched},
+            {"ref": "refs/tags/fetched-tag", "before": None, "after": fetched},
+        ]
+    ]
+
+
+async def test_an_agent_cannot_turn_an_approved_push_into_a_mirror_push(api: Api) -> None:
+    """SEC-01 end to end: the agent switches the checkout to a branch named `--mirror`
+    after its turn; approving reports that and, even when acknowledged, pushes nothing.
+    """
+    repo = api.ctx.repos.get("repo").path
+    origin = repo.parent / "origin.git"
+    git(repo, "push", "-q", "origin", "main:refs/heads/secret")
+    api.provider.script(edit({"agent.txt": "agent\n"}, reply("Done.")))
+    session_id = str((await create(api, mode="in_place"))["id"])
+    await reach(api, session_id, "idle")
+    await notified(api, session_id, "review_ready")
+    git(repo, "update-ref", "refs/heads/--mirror", "HEAD")
+    git(repo, "symbolic-ref", "HEAD", "refs/heads/--mirror")
+    before = git(origin, "for-each-ref")
+    body = {**APPROVE, "open_pr": False, "files": ["agent.txt"]}
+    url = f"/api/sessions/{session_id}/approve"
+
+    refused = await api.http.post(url, json=body)
+    acknowledged = await api.http.post(url, json={**body, "acknowledge_violation": True})
+
+    assert refused.status_code == 409
+    assert "acknowledge_violation" in refused.json()["detail"]
+    assert [change["ref"] for (change,) in await violations(api, session_id)] == [
+        "refs/heads/--mirror"
+    ]
+    assert acknowledged.status_code == 409
+    assert acknowledged.json()["code"] == "unsafe_branch"
+    assert git(origin, "for-each-ref") == before
+    (review,) = await approvals(api)
+    assert review["status"] == "pending"
+
+
+async def test_refs_changed_while_publishing_are_reported_after_the_next_turn(api: Api) -> None:
+    """Only the daemon's own commit and push are taken into the audit's baseline."""
+    session_id = await finished_with_changes(api)
+    repo = api.ctx.repos.get("repo").path
+    api.runner.before["git push"] = lambda: git(repo, "update-ref", "refs/heads/sneaky", "HEAD")
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+
+    api.provider.runs[0].emit(reply("background job done"))
+    await reach(api, session_id, "idle", results=2)
+    await notified(api, session_id, "finished")
+
+    assert approved.status_code == 200, approved.text
+    assert [change["ref"] for (change,) in await violations(api, session_id)] == [
+        "refs/heads/sneaky"
+    ]
+
+
+async def test_work_of_an_agent_that_never_started_is_published_without_a_violation(
+    api: Api,
+) -> None:
+    """No audit ran before, so the refs as they are now become the baseline."""
+    api.provider.open_error = RuntimeError("the agent could not start")
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "failed")
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+    (Path(session["cwd"]) / "fix.txt").write_text("by hand\n", encoding="utf-8")
+
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["git_violation"] is False
+    assert await violations(api, session_id) == []
+
+
+async def test_a_message_sent_while_the_work_is_published_runs_after_it(api: Api) -> None:
+    """BUG-14: nothing edits the tree between the commit and the push."""
+    session_id = await finished_with_changes(api)
+    (run,) = api.provider.runs
+    api.provider.script(reply("Sent after the push."))
+    sent: list[SendResult] = []
+
+    async def meanwhile() -> None:
+        sent.append(await api.ctx.sessions.send(session_id, "while pushing", []))
+        await asyncio.sleep(0.05)
+        assert len(run.inputs) == 1
+
+    api.runner.before["git push"] = meanwhile
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+    await reach(api, session_id, "idle", results=2)
+
+    assert approved.status_code == 200, approved.text
+    (result,) = sent
+    assert result.queued_message is not None
+    assert [i.text for i in run.inputs] == ["Do it", "while pushing"]
+    assert await api.ctx.sessions.queued(session_id) == []
+
+
+async def test_a_turn_the_agent_starts_while_the_work_is_published_waits(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    (run,) = api.provider.runs
+
+    async def meanwhile() -> None:
+        run.emit(reply("Started on my own."))
+        await asyncio.sleep(0.05)
+
+    api.runner.before["git push"] = meanwhile
+    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+    await reach(api, session_id, "idle", results=2)
+
+    assert approved.status_code == 200, approved.text
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    kinds = [
+        e["payload"]["state"] if e["type"] == types.SESSION_STATE else e["type"]
+        for e in events
+        if e["type"] in (types.SESSION_STATE, types.GIT_PUSHED)
+    ]
+    assert kinds[-4:] == ["idle", types.GIT_PUSHED, "running", "idle"]
+
+
+async def test_a_message_sent_as_a_turn_ends_supersedes_its_review(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-18: the review is made before the next message starts, never during its turn."""
+    entered, release = asyncio.Event(), asyncio.Event()
+    real_diff = watch.session_diff
+
+    async def slow_diff(cwd: Path, base: str | None) -> SessionDiff:
+        entered.set()
+        await release.wait()
+        return await real_diff(cwd, base)
+
+    monkeypatch.setattr(watch, "session_diff", slow_diff)
+    api.provider.script(edit({"fix.txt": "fixed\n"}, reply("Fixed the bug.")), hang())
+    session_id = str((await create(api))["id"])
+    await asyncio.wait_for(entered.wait(), 5)
+
+    sending = asyncio.create_task(
+        api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "and more"})
+    )
+    await asyncio.sleep(0.05)
+    started_early = len(api.provider.runs[0].inputs) > 1
+    release.set()
+    sent = await sending
+    await until(lambda: len(api.provider.runs[0].inputs) == 2)
+
+    assert sent.status_code == 202
+    assert not started_early
+    assert [a["status"] for a in await approvals(api)] == ["superseded"]
+
+
 async def test_approval_waits_for_a_running_turn(api: Api) -> None:
     api.provider.script(hang())
     session_id = str((await create(api))["id"])
@@ -445,6 +664,36 @@ async def test_background_work_is_followed_while_the_session_is_idle(api: Api) -
     assert len(agents) == agents_events + 1
     assert agents[-1]["background"]["items"][0]["status"] == "done"
     assert [e["type"] for e in stored[-2:]] == [types.SESSION_AGENT_TASK, types.SESSION_AGENTS]
+
+
+async def test_background_work_a_killed_daemon_left_running_is_stopped_on_start(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
+) -> None:
+    """B-19: the agent's process ended with the daemon, so nothing it ran still runs."""
+    repo = init_repo(tmp_path / "repo")
+    started = AgentTask(task_id="t1", phase="started", tool_use_id="a1", background=True)
+    async with running_api(tmp_path, clock, secrets) as first:
+        await first.http.post("/api/repos", json={"path": str(repo)})
+        first.provider.script(
+            messages(
+                (blocks_of(start_agent_message("a1", run_in_background=True)), None),
+                then=tasks(started, then=reply("Working in the background.")),
+            )
+        )
+        session_id = str((await create(first))["id"])
+        await reach(first, session_id, "idle")
+        before = (await first.http.get(f"/api/sessions/{session_id}")).json()
+
+    async with running_api(tmp_path, clock, secrets) as second:
+        after = (await second.http.get(f"/api/sessions/{session_id}")).json()
+        events = (await second.http.get(f"/api/sessions/{session_id}/events")).json()
+
+    assert before["background"]["running"] == 1
+    assert after["background"]["running"] == 0
+    assert [i["status"] for i in after["background"]["items"]] == ["failed"]
+    assert [e["type"] for e in events[-2:]] == [types.SESSION_AGENT_TASK, types.SESSION_AGENTS]
+    assert events[-2]["payload"]["status"] == "stopped"
+    assert events[-1]["payload"]["background"]["running"] == 0
 
 
 async def test_a_failed_session_notifies(api: Api) -> None:

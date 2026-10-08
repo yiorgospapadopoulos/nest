@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from harness.config.models import PermissionMode
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.providers.base import (
@@ -31,19 +32,22 @@ from tests.test_session_store import new_session
 
 class RecordingTurns:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, object]] = []
+        self.calls: list[tuple[object, ...]] = []
 
     async def agent_active(self, live: LiveSession) -> None:
         self.calls.append(("active", live.session_id))
 
-    async def turn_finished(self, live: LiveSession) -> None:
-        self.calls.append(("finished", live.session_id))
+    async def turn_finished(self, live: LiveSession, error: str | None) -> None:
+        self.calls.append(("finished", live.session_id, error))
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         self.calls.append(("stopped", error))
 
     async def background_tasks(self, live: LiveSession, running: int) -> None:
         self.calls.append(("background", running))
+
+    async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
+        self.calls.append(("mode", mode))
 
 
 @pytest.fixture
@@ -88,7 +92,7 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
     assert turns.calls == [
         ("active", session.id),
         ("active", session.id),
-        ("finished", session.id),
+        ("finished", session.id, None),
         ("background", 2),
         ("stopped", "process ended"),
     ]
@@ -220,14 +224,53 @@ async def test_provider_session_id_is_stored_once_per_change(
     assert unchanged.provider_session_id is None
     assert stored.provider_session_id == "new"
     assert stored.updated_at == written_at
+    # The conversation before a /clear stays this session's (BUG-41).
+    assert await store.provider_session_ids() == {"old", "new"}
+    assert await store.find_by_provider_session("old") == stored
+
+
+async def notices(bus: EventBus, session_id: str) -> list[object]:
+    return [e.payload for e in await bus.session_events(session_id) if e.type == "session.notice"]
+
+
+async def test_notices_are_stored_and_a_retry_only_once_a_turn(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    """BUG-41, BUG-44: transcript notes; a turn may retry many times, one note says so."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns()
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
+    result = ResultInfo(
+        is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=0.1, errors=[]
+    )
+
+    await sink.notice("api_retry", "API error, retrying")
+    await sink.notice("api_retry", "API error (overloaded), retrying")
+    await sink.notice("model_fallback", "Switched to claude-sonnet-5")
+    await sink.result(result)
+    await sink.notice("api_retry", "API error, retrying")
+    await sink.notice("compacted", "Conversation compacted")
+    await sink.permission_mode("plan")
+
+    assert await notices(bus, session.id) == [
+        {"kind": "api_retry", "text": "API error, retrying"},
+        {"kind": "model_fallback", "text": "Switched to claude-sonnet-5"},
+        {"kind": "api_retry", "text": "API error, retrying"},
+        {"kind": "compacted", "text": "Conversation compacted"},
+    ]
+    assert turns.calls[-1] == ("mode", "plan")
 
 
 class BrokenTurns:
     async def agent_active(self, live: LiveSession) -> None:
         raise RuntimeError("active")
 
-    async def turn_finished(self, live: LiveSession) -> None:
+    async def turn_finished(self, live: LiveSession, error: str | None) -> None:
         raise RuntimeError("finished")
+
+    async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
+        raise RuntimeError("mode")
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         raise RuntimeError("stopped")
@@ -283,6 +326,8 @@ async def test_no_error_reaches_the_agent_run(
         await sink.provider_session_id("sdk-1")
         await sink.background_tasks(1)
         await sink.task(AgentTask(task_id="t1", phase="started"))
+        await sink.notice("compacted", "Conversation compacted")
+        await sink.permission_mode("plan")
         await sink.stopped("process ended")
 
     kinds = [record.getMessage().split(" of session ")[0] for record in caplog.records]
@@ -304,5 +349,7 @@ async def test_no_error_reaches_the_agent_run(
         "the background task count",
         "the task event",
         "the message hooks",
+        "the notice event",
+        "the mode change",
         "the run's end",
     ]

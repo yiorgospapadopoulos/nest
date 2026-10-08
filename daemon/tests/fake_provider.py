@@ -165,6 +165,28 @@ def reply(text: str, provider_session_id: str = "sdk-1", tokens: TokenUsage | No
     return turn
 
 
+def engine_error(*errors: str, subtype: str = "error_during_execution") -> Turn:
+    """A turn the engine ends with an error result, such as a usage limit or an API error."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.provider_session_id("sdk-1")
+        await run.sink.result(
+            RESULT.model_copy(update={"is_error": True, "subtype": subtype, "errors": [*errors]})
+        )
+
+    return turn
+
+
+def switched(mode: PermissionMode, then: Turn) -> Turn:
+    """The engine changes its permission mode itself and says so."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.permission_mode(mode)
+        await then(run)
+
+    return turn
+
+
 def loaded(servers: list[McpServer], then: Turn) -> Turn:
     """The engine reports the MCP servers it loaded, as the CLI does when it starts."""
 

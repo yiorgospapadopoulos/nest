@@ -131,3 +131,23 @@ async def test_a_failing_git_audit_still_ends_the_turn_and_keeps_the_run(
     (run,) = env.provider.runs
     assert run.closed is False
     assert f"the git audit of session {created.id} failed (OSError: refs unreadable)" in caplog.text
+
+
+async def test_an_unreadable_queue_still_ends_the_turn(
+    env: Env, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PL-05: a database error while looking for queued messages never leaves it running."""
+
+    async def broken(session_id: str) -> object:
+        raise OSError("database is locked")
+
+    env.provider.script(reply("one"))
+    monkeypatch.setattr(env.queue, "messages", broken)
+
+    with caplog.at_level(logging.WARNING):
+        created = await env.create()
+        idle = await env.reach(created.id, SessionState.IDLE)
+
+    assert idle.state is SessionState.IDLE
+    assert not env.manager.busy(created.id)
+    assert f"reading the queue of session {created.id} failed (database is locked)" in caplog.text

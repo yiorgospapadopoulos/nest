@@ -120,13 +120,15 @@ def gate_worktree_add(
     started, release = asyncio.Event(), asyncio.Event()
     run = runner._run  # pyright: ignore[reportPrivateUsage]
 
-    async def gated(argv: Sequence[str], cwd: Path) -> tuple[int | None, bytes, bytes]:
+    async def gated(
+        argv: Sequence[str], cwd: Path, time_limit: float
+    ) -> tuple[int | None, bytes, bytes]:
         if list(argv[1:3]) == ["worktree", "add"]:
             started.set()
             await release.wait()
             if fail:
                 return 128, b"", b"fatal: no space left"
-        return await run(argv, cwd)
+        return await run(argv, cwd, time_limit)
 
     monkeypatch.setattr(runner, "_run", gated)
     return started, release

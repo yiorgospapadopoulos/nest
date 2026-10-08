@@ -185,6 +185,10 @@ async def test_after_a_merge_an_unreadable_status_is_marked_merged(api: Api) -> 
             "Pull request is not mergeable\n",
         ),
         (FileNotFoundError("No such file: 'gh'"), "No such file: 'gh'"),
+        (
+            CommandError(["gh"], 1, "failed to reach https://me:ghp_secret@github.com/me/r\n"),
+            "failed to reach https://github.com/me/r\n",
+        ),
     ],
 )
 async def test_a_failed_merge_changes_nothing(api: Api, failure: Exception, stderr: str) -> None:
@@ -204,7 +208,10 @@ async def test_a_failed_merge_changes_nothing(api: Api, failure: Exception, stde
     assert exists(session["worktree_path"])
     (merge,) = [a for a in await approvals(api) if a["kind"] == "merge"]
     assert merge["status"] == "pending"
-    assert types.GIT_FAILED in await event_types(api, session_id)
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    assert {"step": "merge", "stderr": stderr} in [
+        e["payload"] for e in events if e["type"] == types.GIT_FAILED
+    ]
     # A retry works.
     retried = await api.http.post(f"/api/sessions/{session_id}/merge")
     assert retried.json()["state"] == "closed"

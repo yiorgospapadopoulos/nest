@@ -52,10 +52,12 @@ class ReviewActions:
         return await session_diff(require_workspace(session), session.base_ref)
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
-        async with self._lock(session_id):
+        async with self._lock(session_id), self._sessions.publishing(session_id):
             session = await self._idle(session_id)
             require_workspace(session)
             await self._repos.require_git(session.repo)
+            await self._sessions.audit_refs(session_id)
+            session = await self._sessions.get(session_id)
             if session.git_violation and not request.acknowledge_violation:
                 msg = (
                     "the agent changed git refs itself; check them and set "

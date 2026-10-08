@@ -80,7 +80,10 @@ class PullRequests:
         A failed merge changes nothing and can be retried; a merge that worked but whose
         worktree could not be removed leaves the session open to close again.
         """
-        async with self._locks.setdefault(session_id, asyncio.Lock()):
+        async with (
+            self._locks.setdefault(session_id, asyncio.Lock()),
+            self._sessions.publishing(session_id),
+        ):
             session = await self._sessions.get(session_id)
             url = _require_pr(session)
             if session.pr is not None and session.pr.state != "open":
@@ -136,8 +139,11 @@ class PullRequests:
             stderr = error.stderr
         except OSError as error:  # gh is not installed
             stderr = str(error)
-        await self._bus.publish(types.GIT_FAILED, {"step": "merge", "stderr": stderr}, session.id)
-        raise GitActionError("merge", stderr)
+        failure = GitActionError("merge", stderr)
+        await self._bus.publish(
+            types.GIT_FAILED, {"step": "merge", "stderr": failure.stderr}, session.id
+        )
+        raise failure
 
 
 def _require_pr(session: Session) -> str:

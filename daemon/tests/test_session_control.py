@@ -32,6 +32,7 @@ from tests.fake_provider import (
     hang,
     question,
     reply,
+    switched,
     until_interrupted,
 )
 from tests.fakes import FakeClock
@@ -68,7 +69,7 @@ async def test_permission_prompt_waits_for_the_queue(env: Env) -> None:
     await env.reach(created.id, SessionState.IDLE)
 
     assert item.kind is ApprovalKind.PERMISSION
-    assert item.payload == {"tool": "Bash", "input": {"x": 1}, "title": None}
+    assert item.payload == {"tool": "Bash", "input": {"x": 1}, "title": None, "reason": None}
     assert env.provider.runs[0].decisions == [PermissionDecision("allow")]
     assert await env.states(created.id) == ["starting", "running", "waiting", "running", "idle"]
     # The hooks follow every change after the initial state.
@@ -171,6 +172,26 @@ async def test_update_persists_and_applies_to_a_live_run(env: Env) -> None:
         ("set_model", "claude-opus-5"),
         ("set_permission_mode", "plan"),
     ]
+
+
+async def test_a_mode_the_engine_switched_to_is_saved_and_announced(env: Env) -> None:
+    """BUG-43: the clients and the next control change follow the engine's own switch."""
+    env.provider.script(switched("plan", reply("Planning now.")))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+
+    switched_to = await env.store.get(created.id)
+    back = await env.manager.update(created.id, UpdateSession(permission_mode="acceptEdits"))
+
+    assert switched_to.permission_mode == "plan"
+    updates = [
+        e.payload["changes"]
+        for e in await env.bus.session_events(created.id)
+        if e.type == types.SESSION_UPDATED
+    ]
+    assert updates == [{"permission_mode": "plan"}, {"permission_mode": "acceptEdits"}]
+    assert back.permission_mode == "acceptEdits"
+    assert env.provider.runs[0].calls == [("set_permission_mode", "acceptEdits")]
 
 
 async def test_a_new_effort_reopens_the_run_at_the_next_message(env: Env) -> None:

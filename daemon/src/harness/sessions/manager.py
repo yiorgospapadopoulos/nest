@@ -6,13 +6,13 @@ once this one ends (D032).
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 
 from harness.approvals.models import BLOCKING, ApprovalKind
 from harness.approvals.queue import ApprovalQueue
-from harness.attachments.store import AttachmentStore
+from harness.attachments.store import Attachment, AttachmentStore
 from harness.claude_sessions.errors import ChatOpenElsewhereError
 from harness.claude_sessions.live import LiveChats
 from harness.clock import Clock
@@ -21,11 +21,12 @@ from harness.engine.service import effort_problem
 from harness.errors import InvalidInputError
 from harness.events import types
 from harness.events.bus import EventBus
+from harness.gitops.remotes import REMOTE
 from harness.providers.base import AgentProvider, ApprovalHandler, ModelOption
 from harness.repos.service import RepoNotFoundError, RepoService, require_folder
 from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError, NoWorkspaceError
 from harness.sessions.files import FileIndex
-from harness.sessions.git_audit import snapshot_refs
+from harness.sessions.git_audit import with_own_changes
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import LiveSession
 from harness.sessions.models import (
@@ -100,9 +101,11 @@ class SessionManager:
             states=self._states,
             hooks=hooks,
             worktrees=worktrees,
+            repos=repos,
             attachments=attachments,
             provider=provider,
             handler_for=self._handler_for,
+            on_mode=self._engine_mode,
             idle_close=idle_close,
             queue=queue,
             clock=clock,
@@ -124,9 +127,11 @@ class SessionManager:
         return live is not None and live.busy
 
     def has_run(self, session_id: str) -> bool:
-        """Whether this process runs (or is starting) the session's agent."""
+        """Whether this process runs (or is starting, or still closing) the session's agent."""
         live = self._live.get(session_id)
-        return live is not None and (live.run is not None or live.busy)
+        return live is not None and (
+            live.run is not None or live.busy or not live.run_closed.is_set()
+        )
 
     async def create(self, request: CreateSession) -> Session:
         try:
@@ -225,24 +230,41 @@ class SessionManager:
         the message starts as soon as it ends, ahead of the rest of the queue.
 
         Refused while Claude Code has the chat open elsewhere, since both would write it.
-        A pending review of the session's work is superseded: the work is changing.
+        A pending review of the session's work is superseded: the work is changing. While
+        the daemon publishes the work, the message is queued and starts once that is done.
         """
         session = await self._store.get(session_id)
         require_open(session)
         await self._require_not_open_elsewhere(session)
         live = self._live.setdefault(session_id, LiveSession(session_id))
         attachments = await self._attachments.for_session(attachment_ids, session_id)
-        if live.busy:
-            queued = await self._queue.add(session_id, text, attachments, urgent=interrupt)
-            if interrupt:
-                live.resume_queue = True
-                await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
-                await live.interrupt()
-            return SendResult(**session.model_dump(), queued_message=queued)
+        await live.settled.wait()
+        # Nothing is awaited from here until the turn starts, so of two messages sent at
+        # once the second is queued (D032).
+        if live.busy or live.publishing:
+            return await self._enqueue(live, session, text, attachments, interrupt)
         require_cwd(session)
-        await self._approvals.supersede(session_id, ApprovalKind.REVIEW)
-        live.start(lambda: self._turns.guard(live, self._turns.submit(live, text, attachments)))
+        live.start(lambda: self._turns.guard(live, self._send_turn(live, text, attachments)))
         return SendResult(**session.model_dump())
+
+    async def _enqueue(
+        self,
+        live: LiveSession,
+        session: Session,
+        text: str,
+        attachments: list[Attachment],
+        interrupt: bool,
+    ) -> SendResult:
+        queued = await self._queue.add(session.id, text, attachments, urgent=interrupt)
+        if interrupt and live.busy:
+            live.resume_queue = True
+            await self._approvals.expire(session.id, BLOCKING, "interrupted by the user")
+            await live.interrupt()
+        return SendResult(**session.model_dump(), queued_message=queued)
+
+    async def _send_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
+        await self._approvals.supersede(live.session_id, ApprovalKind.REVIEW)
+        await self._turns.submit(live, text, attachments)
 
     async def queued(self, session_id: str) -> list[QueuedMessage]:
         await self._store.get(session_id)
@@ -314,13 +336,41 @@ class SessionManager:
         # Not a session event: the session's events are gone with it.
         await self._bus.publish(types.SESSION_DELETED, {"session_id": session_id})
 
+    @asynccontextmanager
+    async def publishing(self, session_id: str) -> AsyncGenerator[None]:
+        """Hold new turns off while the daemon commits, pushes or merges the session's work
+        (BUG-14): a message sent meanwhile is queued and starts afterwards, and a turn the
+        agent starts on its own waits.
+        """
+        await self._store.get(session_id)
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        live.published.clear()
+        try:
+            yield
+        finally:
+            live.published.set()
+            if self._live.get(session_id) is live:
+                await self._turns.deliver_queued(live)
+
+    async def audit_refs(self, session_id: str) -> None:
+        """Check HEAD and the local branches right before the daemon publishes: a
+        background command of the agent may have changed them after the last turn's audit
+        (D013 layer 4). A change sets `git_violation`. Other refs, such as those a fetch
+        moves, are left to the next turn-end audit. Without an audit in this process
+        (after a restart) there is nothing to compare with, and the refs as they are
+        become the baseline.
+        """
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        await self._turns.audit(live, publishing=True)
+
     async def refresh_refs(self, session_id: str) -> None:
         """The daemon changed the session's refs itself (commit, push); the next turn's
-        ref audit (D013 layer 4) must not report that as the agent's doing.
+        ref audit (D013 layer 4) must not report that as the agent's doing, but still
+        reports any other change.
         """
-        live = self._live.get(session_id)
-        if live is not None:
-            live.baseline = await snapshot_refs(require_cwd(await self._store.get(session_id)))
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        cwd = require_cwd(await self._store.get(session_id))
+        live.baseline = await with_own_changes(cwd, live.baseline, REMOTE)
 
     async def recover(self) -> None:
         """On startup, turns cut off by the previous process can only be resumed."""
@@ -399,26 +449,30 @@ class SessionManager:
         return default if effort_problem(option, default) is None else None
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:
-        async def on_mode(session_id: str, mode: PermissionMode) -> None:
-            live.run_mode = mode
-            await self._on_mode(session_id, mode)
+        async def on_mode(_session_id: str, mode: PermissionMode) -> None:
+            await self._engine_mode(live, mode)
 
         return SessionPrompts(
             live.session_id, self._approvals, self._store, self._on_waiting, on_mode
         )
 
-    async def _on_mode(self, session_id: str, mode: PermissionMode) -> None:
-        """The agent's engine switched mode itself (an approved plan); record it."""
-        if (await self._store.get(session_id)).permission_mode != mode:
-            await self._save_changes(session_id, {"permission_mode": mode})
+    async def _engine_mode(self, live: LiveSession, mode: PermissionMode) -> None:
+        """The agent's engine switched mode itself (an approved plan, or a switch it
+        reported); the run has it now, and the session records and announces it.
+        """
+        live.run_mode = mode
+        if (await self._store.get(live.session_id)).permission_mode != mode:
+            await self._save_changes(live.session_id, {"permission_mode": mode})
 
     async def _on_waiting(self, session_id: str, waiting: bool) -> None:
-        if session_id not in self._live:
+        live = self._live.get(session_id)
+        if live is None:
             return  # closing or shutting down; that sets the final state
-        current = (await self._store.get(session_id)).state
-        target = SessionState.WAITING if waiting else SessionState.RUNNING
-        if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
-            await self._states.set(session_id, target)
+        async with live.prompts:
+            current = (await self._store.get(session_id)).state
+            target = SessionState.WAITING if waiting else SessionState.RUNNING
+            if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
+                await self._states.set(session_id, target)
 
 
 def _repo_mode(repo: RepoConfig) -> SessionMode | None:
