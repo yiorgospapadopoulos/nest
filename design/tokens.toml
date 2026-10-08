@@ -14,7 +14,7 @@ glow_end = { light = "rgba(205,190,165,0.18)", dark = "rgba(160,140,110,0.07)" }
 [colors.text]
 primary = { light = "#1a1b20", dark = "#f2f3f7" }
 secondary = { light = "rgba(26,27,32,0.68)", dark = "rgba(242,243,247,0.7)" }
-tertiary = { light = "rgba(26,27,32,0.47)", dark = "rgba(242,243,247,0.47)" }
+tertiary = { light = "rgba(26,27,32,0.64)", dark = "rgba(242,243,247,0.47)" }
 
 [colors.line]
 hairline = { light = "rgba(0,0,0,0.08)", dark = "rgba(255,255,255,0.09)" }

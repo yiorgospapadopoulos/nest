@@ -132,7 +132,7 @@ public enum DesignTokens {
         public enum Text {
             public static let primary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 1), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 1))
             public static let secondary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.68), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.7))
-            public static let tertiary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.47), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.47))
+            public static let tertiary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.64), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.47))
         }
         public enum Line {
             public static let hairline = ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.09))
