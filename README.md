@@ -38,7 +38,7 @@ make tokens    # regenerate design token outputs
 
 ## Mac app
 
-Approvals, questions and reviews are answered in the Needs you card or inline in the chat; reviews open a side-by-side diff and an approve sheet (commit message, push, pull request). Keyboard: Cmd-N new chat, Cmd-W close the focused pane, Cmd-1 to Cmd-9 project tabs, Cmd-Shift-[ and ] previous and next project, Cmd-K search and commands, Cmd-, settings, Cmd-Return send, Esc closes sheets. macOS notifications follow Settings > Notifications and are skipped for a chat that is on screen; the Dock badge counts pending approvals.
+Approvals, questions and reviews are answered in the Needs you card or inline in the chat; reviews open a side-by-side diff and an approve sheet (commit message, push, pull request). Keyboard: Cmd-N new chat, Cmd-W close the focused pane, Cmd-1 to Cmd-9 project tabs, Cmd-Shift-[ and ] previous and next project, Cmd-K search and commands, Cmd-, settings, Cmd-Return send, Esc closes sheets. macOS notifications follow Settings > Notifications (the same kinds and names as on the iPhone) and are skipped for a chat that is on screen; the Dock badge and the project tabs count approvals, failed pull request checks and stuck chats.
 
 To add a project, pick a folder. The root folder of a git repository works as before. Any other folder (outside git, even a new empty one) opens as a plain folder project: chats work in place in it, with no worktrees, branches, reviews, commits or pull requests, and git actions on it answer 409 `not_a_git_repository`. Ask Claude to initialize a repository there (`git init` is allowed; commits and pushes stay blocked) and the project turns into a normal git project at the end of that turn, or the next time projects are listed. See D041.
 
@@ -48,7 +48,7 @@ To stop the Keychain asking again after every rebuild, create a self-signed code
 
 Settings > Appearance picks the glass theme (Clear, Frosted, Smoke, Blue Grey, Deep) and the accent; the iPhone has the same choice in Account > Appearance. See D039.
 
-The window is see-through: it sits on the system's behind-window blur, so your real desktop shows through the glass (with Reduce Transparency on, macOS makes it opaque). See D038.
+The window is see-through, so your real desktop shows through the glass: Clear, the default theme, adds no window-wide blur and lets the panels' own Liquid Glass blur, while the heavier themes sit on the system's behind-window blur (with Reduce Transparency on, macOS makes the window opaque). See D038 and D039.
 
 For visual review, a debug build renders the window offscreen without showing it: `cd apple && swift build && "$(swift build --show-bin-path)/HarnessApp" --render-snapshots <folder>` (sample data) or `--render-live <folder>` (the local daemon, read-only).
 
@@ -79,6 +79,8 @@ Tailscale must have Serve and HTTPS certificates enabled for the tailnet (it pri
 
 To install the phone app: run `uv run harness pair` in `daemon/` (or Settings > Devices > Pair a device in the Mac app), open the tailnet address in Safari on the iPhone, enter the code, then Share > Add to Home Screen. The daemon serves the built PWA from `web/dist` (override with `HARNESS_WEB_DIST`); run `cd web && npm run build` after changing it. Browser websocket connections must come from the same origin or from `server.allowed_origins` in `settings.toml`.
 
+On the iPhone, Return adds a line and the Send button sends (with a mouse or trackpad attached, Enter sends). When the connection drops, a "Reconnecting..." note shows, and the app reconnects as soon as it is back on screen or online. It sends this device's push subscription to the daemon again on every launch and after pairing. When the Mac cannot answer (asleep, or the daemon stopped), the installed app falls back to its cached shell after 4 seconds, or at once on a server error, and says it cannot reach the Mac.
+
 ## Notifications
 
 The phone is notified when an agent needs approval, asks a question, has work ready for review, fails or finishes a turn. Tapping a notification opens the inbox (approvals, questions, reviews) or the chat (failures, finished turns).
@@ -90,7 +92,7 @@ The phone is notified when an agent needs approval, asks a question, has work re
 [notifications]
 vapid_subject = "mailto:you@example.org"   # contact the push services see; Apple rejects localhost
 
-[notifications.kinds]           # true by default, except the two pull request kinds
+[notifications.kinds]           # true by default, except the two pull request kinds and stuck
 finished = false
 ci_failed = true                # pull request checks failed (inbox always shows it)
 ready_to_merge = true           # checks passed and GitHub can merge (inbox always shows it)
@@ -102,15 +104,19 @@ end = "07:00"
 [notifications.ntfy]            # optional, off by default
 enabled = true
 server = "https://ntfy.sh"
-topic = "harness-<long random string>"
+topic = "harness-<long random string>"     # 16 to 64 characters
 click_base_url = "https://<mac-name>.<tailnet>.ts.net"   # makes a tapped ntfy message open the item
 ```
 
-- **ntfy** is an optional second channel through the ntfy app. On a public server such as ntfy.sh, anyone who knows a topic can read its messages, so use a long random topic or a self-hosted server.
+- **ntfy** is an optional second channel through the ntfy app. On a public server such as ntfy.sh, anyone who knows a topic can read its messages, so use a long random topic (16 to 64 characters) or a self-hosted server.
+
+## Reviewing and publishing
+
+When a turn leaves changes, a review waits in the inbox and in the chat. **Approve** on a worktree chat commits all its work, pushes its branch and opens a pull request; on an in-place chat it commits only the reviewed files and pushes the checked-out branch, without a pull request. The push names the branch explicitly (`refs/heads/<branch>:refs/heads/<branch>`), and a checkout on a branch whose name starts with `-`, or that git does not accept as a branch name, is refused (409 `unsafe_branch`). Right before publishing, harness checks HEAD and the local branches again: a change since the last turn's audit (for example by an agent's background command) needs the same acknowledgement as any other git change the agent made, and both the Mac and the iPhone show that notice with an "I checked, publish anyway" switch. A message sent while harness approves or merges waits in the queue and starts afterwards. git and gh commands are stopped after 5 minutes. **Reject** asks first: a worktree chat closes and its worktree and branch are removed; an in-place chat closes and its changes stay in your folder. See D050 and D053.
 
 ## Pull requests
 
-After harness opens a pull request it follows it through your `gh` login: every minute, every five minutes once nothing changed for an hour, and no longer once it is merged or closed. The chat header shows a chip with the number and a dot for the checks (amber running, green passed, red failed). When checks fail, the inbox shows the failing check names with **Send to agent**, which sends "CI failed: <names>. Please fix." into the chat. When the checks pass (or there are none) and GitHub can merge it, a merge approval appears with **Merge (squash)** and **Open on GitHub**; merging also closes the chat and removes its worktree and branch. Agents can still never merge. Each pull request keeps a short summary from the agent's final summary and the diff stats, without a model call. See D034.
+After harness opens a pull request it follows it through your `gh` login: every minute, every five minutes once nothing changed for an hour, and no longer once it is merged or closed. The chat header shows a chip with the number and a dot for the checks (amber running, green passed, red failed). When checks fail, the inbox shows the failing check names with **Send to agent**, which sends "CI failed: <names>. Please fix. You can't use gh or reach GitHub from here, so work from the code and the check names, and ask me for the logs if you need them." into the chat (agents have no GitHub login, D013 layer 3). When the checks pass (or there are none) and GitHub can merge it, a merge approval appears with **Merge (squash)** and **Open on GitHub**; merging also closes the chat and removes its worktree and branch. Agents can still never merge. Each pull request keeps a short summary from the agent's final summary and the diff stats, without a model call. See D034.
 
 ## Search
 
@@ -128,6 +134,7 @@ model = "opus"               # a value from the model list; leave out for Claude
 effort = "high"              # low, medium, high, xhigh or max; leave out for the model's default
 permission_mode = "default"  # default, acceptEdits, plan or bypassPermissions
 default_mode = "in_place"    # or "worktree"
+idle_close_minutes = 60      # close an idle agent run after this long; the next message resumes it
 ```
 
 ## Stuck chats
@@ -167,6 +174,8 @@ Dictation uses Apple's on-device `SpeechAnalyzer` (macOS 26 and later), download
 
 While a turn runs, the end of the transcript shows a live "Working... 12s" (or "Thinking... 4s" while the agent thinks), timed from the turn's start; when the turn ends, a small line says "Worked for 1m 12s", or "Stopped after 40s" for an interrupted or failed turn. Each thinking block is a collapsed "Thought for 8s" row that opens to the thinking (without a chevron when the model left the text out; "Thought" when the time is unknown, as in Claude Code's own transcripts). Two or more tool calls in a row collapse into one row such as "Running 2 commands, reading 1 file", which glows while any call runs, reads "Ran 3 commands, read 2 files, edited 1 file" when all are done, shows a failed count, and opens to the calls as they show on their own. Agents read "Running 3 agents, 2 done" then "Ran 3 agents"; the background bar glows while tasks run ("1 running task" for one). With reduced motion the glow is a static highlight. See D045.
 
+A turn that ends with an error from Claude (a usage limit, an API error) ends as failed, with "Failed: <reason>" and a "failed" notification; queued messages then wait, as after an interruption. Tool calls cut off when a turn ends show as stopped, unless their background task still runs. Claude Code's own notices show as muted lines: "Conversation compacted", "Context cleared" (after `/clear`), a model fallback and the first API retry of a turn. A permission prompt shows Claude Code's reason when it gives one. The background bar counts the current exchange: what started since your latest message, anything still running, and earlier tasks that finish during it. The Mac and the iPhone follow the same rules. See D052 and D054.
+
 ## Claude Code conveniences
 
 In a chat, typing `/` at the start of the message suggests the session's slash commands and skills, and `@` suggests files of the working directory (inserted as `@path`); Claude Code expands both when the message arrives. A plan Claude finishes in plan mode appears as a plan card with **Approve plan** (the chat continues in Accept edits) and **Keep planning** (with an optional note). A quiet "context N%" next to the composer selectors shows how full the context window is, with **Compact** (sends `/compact`). A message sent while Claude works is queued, shown under the transcript with a cancel button, and sent when the turn ends. See D032.
@@ -175,7 +184,7 @@ The Mac app reports itself as visible (client `mac`) while its window is on scre
 
 ## Terminal and browser panes
 
-The Mac workspace can hold terminals and browsers next to chats (still up to four panes). New terminal: project menu, palette or Cmd+Shift+T; "Terminal here" opens one in a chat's folder. New browser: project menu, palette or Cmd+Shift+B; the address field accepts a bare port (`3000`), `localhost:3000` or a URL, and "Local servers" lists dev servers listening on this Mac. Shell code blocks in chats offer Copy and **Run in terminal**, which runs the command in the chat folder's terminal.
+The Mac workspace can hold terminals and browsers next to chats (still up to four panes). New terminal: project menu, palette or Cmd+Shift+T; "Terminal here" opens one in a chat's folder. New browser: project menu, palette or Cmd+Shift+B; the address field accepts a bare port (`3000`), `localhost:3000` or a URL, and "Local servers" lists dev servers listening on this Mac. Shell code blocks in chats offer Copy and **Run in terminal**, which runs the command in the chat folder's terminal after removing control and text-direction characters; a command of several lines offers Copy only. Closing a project tab keeps its terminals and browsers; removing the project ends them.
 
 ## Pull requests in the Mac app
 
@@ -190,11 +199,11 @@ All routes need a device token (`Authorization: Bearer <token>` or the `harness_
 | Area | Routes |
 |---|---|
 | Devices | `POST /api/pairing/codes`, `POST /api/pairing/redeem`, `GET /api/devices`, `DELETE /api/devices/{id}` |
-| Repos | `GET/POST /api/repos` (POST body `{path, name?}`: a git work tree root, or any folder outside git as a plain folder; each repo has `git` and `default_branch`, null for plain folders, and `remote_url`, the push URL of `origin` recorded at registration and the only URL an approved push goes to (null for plain folders, or when origin had no single push URL then); a `repo.updated` event `{name, repo}` follows when a plain folder becomes a repository), `GET/DELETE /api/repos/{name}` (`?purge_sessions=true` also deletes its sessions; the folder is never touched), `GET /api/repos/{name}/link-suggestions`, `PUT /api/repos/{name}/worktree` (`default` true or false overrides the agent default mode for the repo; null follows it), `GET /api/repos/{name}/commands` (slash commands of the repo's latest agent run, for new chats) |
+| Repos | `GET/POST /api/repos` (POST body `{path, name?}`: a git work tree root, or any folder outside git as a plain folder; each repo has `git` and `default_branch`, null for plain folders, and `remote_url`, the push URL of `origin` recorded at registration and the only URL an approved push goes to (null for plain folders, or when origin had no single push URL then); registering publishes `repo.added` `{name, repo}`, a `repo.updated` event `{name, repo}` follows when a plain folder becomes a repository, and removing one publishes `repo.removed` `{name}`), `GET/DELETE /api/repos/{name}` (`?purge_sessions=true` also deletes its sessions; the folder is never touched), `GET /api/repos/{name}/link-suggestions`, `PUT /api/repos/{name}/worktree` (`default` true or false overrides the agent default mode for the repo; null follows it), `GET /api/repos/{name}/commands` (slash commands of the repo's latest agent run, for new chats) |
 | Sessions | `GET/POST /api/sessions`, `GET/PATCH/DELETE /api/sessions/{id}` (the detail adds `tasks`, `agents` and `background`, the running and completed subagents and background commands, and `queued`, the follow-ups waiting for the turn; every session has `context`, how full the context window is, and `stuck`, `{reason, since, details}` or null), `GET /api/sessions/{id}/events?after=&before=&limit=` (oldest first; with `limit`, the events nearest `before` when given, else nearest `after`, for paging around a search hit), `POST /api/sessions/{id}/messages` (202; while a turn runs the message is queued and `queued_message` is set, and with `interrupt: true` the turn is stopped and the message runs next, ahead of the queue; 409 with `code: "open_in_claude_code"` while Claude Code has the chat open), `DELETE /api/sessions/{id}/queue/{queued_id}`, `POST /api/sessions/{id}/interrupt`, `GET /api/sessions/{id}/commands` (slash commands and agents), `GET /api/sessions/{id}/files?q=` (up to 50 files for @ mentions) |
 | Claude Code chats | `GET /api/claude-chats?repo=&include_automated=` (chats of registered repos that harness does not own; automated ones only with `include_automated=true`, each with `entrypoint` and `automated`), `GET /api/claude-chats/{id}`, `GET /api/claude-chats/{id}/events` (read-only history as session events), `POST /api/claude-chats/{id}/adopt` (continue in harness: 201 with the new session, 200 with the existing one), `PUT /api/claude-chats/{id}/archived` (`{archived}`; harness-only, returns the chat; archived chats stay in the list with `archived: true`) |
-| Review | `GET /api/sessions/{id}/diff`, `POST /api/sessions/{id}/approve`, `POST /api/sessions/{id}/reject`, `POST /api/sessions/{id}/feedback`. Approve runs git with no hooks; it answers 409 with `code: "unsafe_repo_config"` and `settings` while the repository's own git config sets something that runs a program or sends data elsewhere, and with `code: "remote_not_confirmed"` or `"remote_changed"`, `remote_urls` and `confirmed_url` when origin does not push to the repo's `remote_url` alone; approving again with `confirm_remote_url` (origin's current URL) pushes there and records it (D050) |
-| Approvals | `GET /api/approvals`, `GET /api/approvals/{id}`, `POST /api/approvals/{id}/resolve` (kinds `permission`, `question`, `plan` with `decision` `approve` or `keep_planning`, `review`, and `merge`, which only takes `{"dismiss": true}`) |
+| Review | `GET /api/sessions/{id}/diff`, `POST /api/sessions/{id}/approve`, `POST /api/sessions/{id}/reject`, `POST /api/sessions/{id}/feedback`. Approve runs git with no hooks; it answers 409 with `code: "unsafe_repo_config"` and `settings` while the repository's own git config sets something that runs a program or sends data elsewhere, and with `code: "remote_not_confirmed"` or `"remote_changed"`, `remote_urls` and `confirmed_url` when origin does not push to the repo's `remote_url` alone; approving again with `confirm_remote_url` (origin's current URL) pushes there and records it (D050); 409 with `code: "unsafe_branch"` and `branch` when an in-place checkout's branch cannot be pushed safely, and 409 when HEAD or a local branch changed since the last audit until `acknowledge_violation` is set (D053); messages sent while approving or merging are queued (202) |
+| Approvals | `GET /api/approvals`, `GET /api/approvals/{id}`, `POST /api/approvals/{id}/resolve` (kinds `permission` (payload `{tool, input, title, reason}`, `reason` being Claude Code's reason or null), `question`, `plan` with `decision` `approve` or `keep_planning`, `review`, and `merge`, which only takes `{"dismiss": true}`) |
 | Pull requests | `GET /api/prs?repo=&state=open\|merged\|closed\|all` (default open; pull requests harness opened, each `{session_id, repo, session_title, session_state, url, summary, pr}`), `POST /api/sessions/{id}/merge` (`{method: squash\|merge\|rebase, delete_branch}`, defaults squash and true; closes the session and removes its worktree; 502 with `step` and `stderr` when gh fails, 409 without an open pull request or while the agent works), `POST /api/sessions/{id}/pr/refresh` (read it from GitHub now; 502 when gh fails). Every session has `pr` (last known status or null) and `pr_summary` |
 | Search | `GET /api/search?q=&repo=&limit=` (`q` 1 to 200 characters, `limit` 1 to 100, default 20): `{hits: [{session_id, repo, title, event_id, ts, kind, snippet}], indexing}`, best match first; `kind` is `title`, `user`, `assistant`, `tool`, `tool_result` or `claude_chat` (then `session_id` is the Claude Code chat id); `event_id` is null for titles; matches in `snippet` are wrapped in `[[` and `]]` |
 | Stuck | `GET/PUT /api/stuck/settings` (`{waiting_minutes, silent_minutes, repeated_calls, turn_minutes}`); events `session.stuck` `{reason: waiting\|silent\|repeating\|long_turn, since, details}` and `session.unstuck` `{reason}`; `notify` kind `stuck` |
@@ -204,6 +213,6 @@ All routes need a device token (`Authorization: Bearer <token>` or the `harness_
 | Notifications | `GET /api/push/vapid-key`, `POST/DELETE /api/push/subscribe` (the caller's own subscriptions), `POST /api/push/test`, `GET/PUT /api/notifications/settings` |
 | Connectors and usage | `GET /api/connectors`, `GET /api/usage/month?year=&month=` (probe tokens apart in `probes`), `GET /api/usage/limits`, `POST /api/usage/refresh` (429 with `Retry-After` within 20 s of the last probe, 502 when Claude reports nothing), `GET/PUT /api/usage/settings`, `POST /api/clients/visibility` |
 | Local apps | `POST /api/sessions/{id}/open-in-claude-code`, `POST /api/repos/{name}/open` (`vscode`, `finder`, `terminal`) |
-| Events | `WS /api/events?after=<id>` (replay, then live; text deltas, `session.thinking` and `claude_chats.updated` arrive with `id: null`; revoking a device closes its sockets with 4401) |
+| Events | `WS /api/events?after=<id>` (replay, then live; text deltas, `session.thinking`, `claude_chats.updated` and live `session.agents` updates during a turn arrive with `id: null`; revoking a device closes its sockets with 4401; `session.notice` `{kind: compacted\|cleared\|model_fallback\|api_retry, text}` marks Claude Code's own notices; a turn that ends with an engine error ends with `session.state` `failed` and its reason) |
 
-Coverage is enforced at 100%: daemon line and branch coverage, and web lines, branches, functions and statements.
+Coverage is enforced at 100%: daemon line and branch coverage, web lines, branches, functions and statements, and `HarnessKit` lines and functions.
