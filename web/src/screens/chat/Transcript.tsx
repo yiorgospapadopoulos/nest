@@ -28,7 +28,8 @@ interface Props {
   background: BackgroundSummary;
   // An event to scroll to and highlight once it is loaded, such as a search hit.
   focus?: number | null;
-  // Whether the chat's history has been fetched; what was there by then is not announced.
+  // Whether the chat's history has been fetched: until then it is loading, and what was
+  // there by then is not announced.
   loaded: boolean;
 }
 
@@ -37,7 +38,8 @@ export function Transcript({ session, background, focus = null, loaded }: Props)
   const events = state.transcripts[session.id];
   const live = state.live[session.id] ?? "";
   const queued = state.queued[session.id] ?? [];
-  const items = buildTranscript(events ?? [], state.approvals, workRoot(session));
+  const running = new Set(background.items.filter((i) => i.status === "running").map((i) => i.id));
+  const items = buildTranscript(events ?? [], state.approvals, workRoot(session), running);
   const box = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const [away, setAway] = useState(false);
@@ -47,7 +49,6 @@ export function Transcript({ session, background, focus = null, loaded }: Props)
   const now = useNow(working);
   const start = turnStart(events ?? []);
   const thinking = session.id in state.thinking;
-  const running = new Set(background.items.filter((i) => i.status === "running").map((i) => i.id));
   const focused = useRef<number | null>(null);
   const spoken = useAnnouncement(items, loaded);
 
@@ -92,8 +93,8 @@ export function Transcript({ session, background, focus = null, loaded }: Props)
           setAway(!follow.current);
         }}
       >
-        {events === undefined && <p className="note">Loading...</p>}
-        {events !== undefined && items.length === 0 && !working && (
+        {!loaded && items.length === 0 && <p className="note">Loading...</p>}
+        {loaded && items.length === 0 && !working && (
           <div className="tx-empty">
             <Icon name="spark" />
             <b>No messages yet</b>

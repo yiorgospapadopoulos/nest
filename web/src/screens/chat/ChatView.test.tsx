@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type {
   Approval,
@@ -81,23 +81,24 @@ describe("chat view", () => {
       chat: session({ state: "running" }),
       agents: [agent()],
       events: [
+        // An earlier turn that was stopped; the one after it still runs.
+        event({ id: 1, type: "session.state", payload: { state: "interrupted" } }),
         event({
-          id: 1,
+          id: 2,
           type: "session.user_message",
           payload: { text: "Fix it", attachments: [{ filename: "a.png" }] },
         }),
-        message(2, [
+        message(3, [
           { type: "text", text: "Looking." },
           { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/w/s1/a.ts" } },
           { type: "tool_use", id: "t2", name: "Grep", input: { pattern: "x" } },
           { type: "tool_use", id: "t3", name: "WebFetch", input: { url: "https://x.dev" } },
           { type: "tool_use", id: "t4", name: "TaskCreate", input: { subject: "Hidden task" } },
         ]),
-        message(3, [
+        message(4, [
           { type: "tool_result", tool_use_id: "t1", content: "one\ntwo" },
           { type: "tool_result", tool_use_id: "t3", content: "404", is_error: true },
         ]),
-        event({ id: 4, type: "session.state", payload: { state: "interrupted" } }),
       ],
     });
 
@@ -138,10 +139,34 @@ describe("chat view", () => {
     expect(screen.queryByText(/^Working/)).not.toBeInTheDocument();
   });
 
+  it("says it is loading until the chat's history arrives", async () => {
+    const api = fakeApi();
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    let arrive: (events: HarnessEvent[]) => void = () => undefined;
+    api.sessionEvents.mockReturnValue(
+      new Promise((resolve) => {
+        arrive = resolve;
+      }),
+    );
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+    await screen.findByRole("region", { name: "Validate contact form" });
+
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.queryByText("No messages yet")).not.toBeInTheDocument();
+    await act(async () => {
+      arrive([]);
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("No messages yet")).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
   it("shows an empty transcript, then working while it starts", async () => {
     const { push } = await openChat({ chat: session({ branch: null }) });
 
-    expect(screen.getByText("No messages yet")).toBeInTheDocument();
+    expect(await screen.findByText("No messages yet")).toBeInTheDocument();
     push({
       id: 9,
       session_id: "s1",
@@ -248,9 +273,9 @@ describe("chat view", () => {
       within(running)
         .getAllByRole("listitem")
         .map((li) => li.textContent),
-    ).toEqual([expect.stringContaining("ExploreFind DOIs"), "npm run devrunning"]);
-    expect(within(completed).getByText("done")).toBeInTheDocument();
-    expect(within(completed).getByText("failed")).toBeInTheDocument();
+    ).toEqual([expect.stringContaining("ExploreFind DOIs"), "npm run devRunning"]);
+    expect(within(completed).getByText("Done")).toBeInTheDocument();
+    expect(within(completed).getByText("Failed")).toBeInTheDocument();
     await user.click(bar);
     expect(screen.queryByRole("list", { name: "Running" })).not.toBeInTheDocument();
 
@@ -268,6 +293,57 @@ describe("chat view", () => {
     await user.click(idle);
     expect(screen.queryByRole("list", { name: "Running" })).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Completed" })).toBeInTheDocument();
+  });
+
+  it("brings the background bar and the goals back collapsed", async () => {
+    const { user, push } = await openChat();
+    const item: BackgroundItem = {
+      id: "t1",
+      kind: "agent",
+      name: "Explore",
+      description: "Look around",
+      status: "running",
+      started_at: "2026-10-06T10:00:00Z",
+      finished_at: null,
+    };
+    const background = (items: BackgroundItem[]) => {
+      push({
+        id: null,
+        session_id: "s1",
+        type: "session.agents",
+        payload: {
+          agents: [],
+          background: { running: items.length, completed: 0, items } as never,
+        },
+      });
+    };
+    const tasks = (list: unknown[]) => {
+      push({
+        id: null,
+        session_id: "s1",
+        type: "session.tasks",
+        payload: { tasks: list as never },
+      });
+    };
+    const step = { id: "1", subject: "Read", description: null, active_form: null };
+
+    background([item]);
+    await user.click(screen.getByRole("button", { name: "1 running task" }));
+    tasks([{ ...step, status: "in_progress" }]);
+    await user.click(screen.getByRole("button", { name: /Now: Read/ }));
+    background([]);
+    tasks([]);
+    background([item]);
+    tasks([{ ...step, status: "pending" }]);
+
+    expect(screen.getByRole("button", { name: "1 running task" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /Now: Read/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("expands goals from the task list", async () => {
@@ -427,6 +503,16 @@ describe("inline approvals", () => {
     ]);
   });
 
+  it("show why Claude Code asks for a permission", async () => {
+    const asked = approval({
+      payload: { tool: "Bash", input: { command: "ls /etc" }, reason: "Outside the project" },
+    });
+    await openChat({ approvals: [asked], events: [created(asked, 1)] });
+
+    const box = screen.getByRole("group", { name: "Permission needed" });
+    expect(within(box).getByText("Outside the project")).toBeInTheDocument();
+  });
+
   it("answer a question in place", async () => {
     const q = question();
     const { user, api } = await openChat({ approvals: [q], events: [created(q, 1)] });
@@ -448,6 +534,8 @@ describe("inline approvals", () => {
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
     await within(sheet).findByText("app/globals.css");
     await user.click(within(sheet).getByRole("button", { name: "Reject" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
+    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     expect(api.reject).toHaveBeenCalledWith("s1");
 
     push({
@@ -469,6 +557,28 @@ describe("inline approvals", () => {
     await user.click(await screen.findByRole("button", { name: "Approve and open PR" }));
 
     expect(api.approve).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("inline review of work with the agent's own git changes", () => {
+  it("publishes only once they are checked", async () => {
+    const r = review();
+    const { user, api } = await openChat({
+      chat: session({ git_violation: true }),
+      approvals: [r],
+      events: [event({ id: 1, type: "approval.created", payload: { approval: { ...r } } })],
+    });
+    const box = screen.getByRole("group", { name: "Ready for review" });
+    const approve = within(box).getByRole("button", { name: "Approve and open PR" });
+
+    expect(approve).toBeDisabled();
+    await user.click(within(box).getByRole("switch", { name: "I checked, publish anyway" }));
+    await user.click(approve);
+
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      acknowledge_violation: true,
+    });
   });
 });
 
@@ -581,6 +691,73 @@ describe("composer", () => {
     expect(field).toHaveValue("one\ntwo");
     await user.click(screen.getByRole("button", { name: "Dictate" }));
     expect(field).toHaveFocus();
+  });
+
+  it("keeps what was typed and attached while a message was being sent", async () => {
+    const { user, api } = await openChat();
+    let delivered: () => void = () => undefined;
+    api.sendMessage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        delivered = () => {
+          resolve({ ...session({ state: "running" }), queued_message: null });
+        };
+      }),
+    );
+    api.uploadAttachment.mockResolvedValueOnce({
+      id: "a1",
+      filename: "late.png",
+      media_type: "image/png",
+      size: 3,
+      created_at: "x",
+    });
+    const field = screen.getByLabelText("Message");
+
+    await user.type(field, "First part");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.type(field, " and a follow-up");
+    await user.upload(screen.getByLabelText("Attach files"), new File(["x"], "late.png"));
+    await screen.findByText("late.png");
+    await act(async () => {
+      delivered();
+      await Promise.resolve();
+    });
+
+    expect(api.sendMessage).toHaveBeenCalledWith("s1", "First part", []);
+    await waitFor(() => {
+      expect(field).toHaveValue("and a follow-up");
+    });
+    expect(screen.getByText("late.png")).toBeInTheDocument();
+  });
+
+  it("adds a line with Return on a touch screen, where the Send button sends", async () => {
+    // No fine pointer and no hover: a phone without a trackpad or mouse.
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    try {
+      const { user, api } = await openChat();
+      const field = screen.getByLabelText("Message");
+
+      await user.type(field, "one{Enter}two");
+      expect(api.sendMessage).not.toHaveBeenCalled();
+      expect(field).toHaveValue("one\ntwo");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      expect(api.sendMessage).toHaveBeenCalledWith("s1", "one\ntwo", []);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sends with Enter when a mouse or trackpad is around", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("pointer: fine") }));
+    try {
+      const { user, api } = await openChat();
+
+      await user.type(screen.getByLabelText("Message"), "go{Enter}");
+
+      expect(api.sendMessage).toHaveBeenCalledWith("s1", "go", []);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("says when Claude Code has the chat open, until a message goes through", async () => {

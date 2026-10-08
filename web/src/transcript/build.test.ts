@@ -467,6 +467,116 @@ describe("turn lines", () => {
   });
 });
 
+describe("error turns", () => {
+  const user = (id: number) => event({ id, type: "session.user_message", payload: { text: "go" } });
+  const texts = (items: ReturnType<typeof buildTranscript>) =>
+    items.map((i) => (i.kind === "turn" || i.kind === "system" ? `${i.kind}:${i.text}` : i.kind));
+
+  it("say why the turn failed, once, when its state carries the reason", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        event({ id: 2, type: "session.state", payload: { state: "running", turn_start: true } }),
+        event({ id: 3, type: "session.result", payload: { is_error: true, duration_ms: 4_000 } }),
+        event({
+          id: 4,
+          type: "session.state",
+          payload: { state: "failed", error: "Usage limit reached", duration_ms: 5_000 },
+        }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual([
+      "user",
+      "system:Failed: Usage limit reached",
+      "turn:Stopped after 5s",
+    ]);
+  });
+
+  it("keep older error turns, which ended idle, readable", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        event({ id: 2, type: "session.result", payload: { is_error: true, duration_ms: 4_000 } }),
+        event({ id: 3, type: "session.state", payload: { state: "idle", duration_ms: 5_000 } }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual([
+      "user",
+      "system:The turn ended with an error",
+      "turn:Worked for 5s",
+    ]);
+  });
+});
+
+describe("tool calls of a turn that ended", () => {
+  // A daemon restart cut the turn off: interrupted, with neither call's result.
+  const cutOff = [
+    event({ id: 1, type: "session.user_message", payload: { text: "go" } }),
+    blocks(2, call("a")),
+    blocks(3, call("b")),
+    event({ id: 4, type: "session.state", payload: { state: "interrupted" } }),
+  ];
+  const tools = (items: ReturnType<typeof buildTranscript>) =>
+    items.flatMap((i) => (i.kind === "tools" ? i.items : [i])).filter((i) => i.kind === "tool");
+
+  it("stop running", () => {
+    const items = buildTranscript(cutOff, {}, null);
+
+    expect(tools(items).map((t) => t.result)).toEqual(["stopped", "stopped"]);
+    // A single call too, and one a new message follows instead of a turn end.
+    const single = buildTranscript(
+      [blocks(1, call("a")), event({ id: 2, type: "session.user_message", payload: {} })],
+      {},
+      null,
+    );
+    expect(tools(single).map((t) => t.result)).toEqual(["stopped"]);
+  });
+
+  it("keep running while the background task they started runs, and keep a late result", () => {
+    const items = buildTranscript(
+      [...cutOff, blocks(5, { type: "tool_result", tool_use_id: "b", content: "late" })],
+      {},
+      null,
+      new Set(["a"]),
+    );
+
+    expect(tools(items).map((t) => t.result)).toEqual([null, "late"]);
+  });
+
+  it("run on while the turn is open", () => {
+    const items = buildTranscript(cutOff.slice(0, 3), {}, null);
+
+    expect(tools(items).map((t) => t.result)).toEqual([null, null]);
+  });
+});
+
+describe("notices", () => {
+  it("show the engine's notices as notes", () => {
+    const notice = (id: number, payload: JsonObject) =>
+      event({ id, type: "session.notice", payload });
+    const items = buildTranscript(
+      [
+        notice(1, { kind: "compacted", text: "Conversation compacted" }),
+        notice(2, { kind: "api_retry", text: "Claude's API is busy. Retrying" }),
+        notice(3, { kind: "cleared" }),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "system", key: "1", text: "Conversation compacted" },
+      { kind: "system", key: "2", text: "Claude's API is busy. Retrying" },
+    ]);
+  });
+});
+
 describe("turnStart", () => {
   const at = (id: number, type: string, payload: JsonObject = {}) =>
     event({ id, type, payload, ts: `2026-01-01T12:00:0${String(id)}Z` });

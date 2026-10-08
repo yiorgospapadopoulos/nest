@@ -10,6 +10,12 @@ const TONES: Record<BackgroundItem["status"], Tone> = {
   done: "done",
   failed: "fail",
 };
+// A task's status in the Mac's words, where no start time is shown instead.
+const STATUS: Record<BackgroundItem["status"], string> = {
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+};
 
 /**
  * "N running · M completed" just above the composer, like Claude Code: the subagents and
@@ -20,7 +26,10 @@ const TONES: Record<BackgroundItem["status"], Tone> = {
  */
 export function BackgroundBar({ summary }: { summary: BackgroundSummary }) {
   const [open, setOpen] = useState(false);
-  if (summary.running === 0 && summary.completed === 0) return null;
+  const hidden = summary.running === 0 && summary.completed === 0;
+  // It comes back collapsed.
+  if (hidden && open) setOpen(false);
+  if (hidden) return null;
   const running = summary.items.filter((item) => item.status === "running");
   const finished = summary.items.filter((item) => item.status !== "running");
   return (
@@ -69,7 +78,7 @@ function Group({ label, items }: { label: string; items: BackgroundItem[] }) {
             <span className="mt2">
               {item.status === "running" && item.started_at !== null
                 ? ago(item.started_at, now)
-                : item.status}
+                : STATUS[item.status]}
             </span>
           </li>
         ))}

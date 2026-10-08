@@ -6,6 +6,8 @@ import { Icon } from "../../ui/Icon.tsx";
 export function GoalsStrip({ tasks }: { tasks: TrackedTask[] }) {
   const [open, setOpen] = useState(false);
   const shown = tasks.filter((t) => t.status !== "deleted");
+  // It comes back collapsed.
+  if (shown.length === 0 && open) setOpen(false);
   if (shown.length === 0) return null;
   const done = shown.filter((t) => t.status === "completed").length;
   const current =

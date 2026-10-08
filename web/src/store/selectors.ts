@@ -210,8 +210,9 @@ export function isRunning(state: State, repo: string): boolean {
 
 /**
  * The background bar's tasks: those of the exchange the user's latest message opened,
- * plus any earlier one still at work. Turns the agent starts by itself stay in the
- * exchange. Without a user message in the transcript, every task counts.
+ * plus any earlier one still at work, which counts as completed here once it finishes.
+ * Turns the agent starts by itself stay in the exchange. Without a user message in the
+ * transcript, every task counts.
  */
 export function exchangeBackground(
   summary: BackgroundSummary,
@@ -220,10 +221,9 @@ export function exchangeBackground(
   const message = (events ?? []).findLast((e) => e.type === "session.user_message");
   if (message === undefined) return summary;
   const start = Date.parse(message.ts);
+  const since = (ts: string | null) => ts !== null && Date.parse(ts) >= start;
   const items = summary.items.filter(
-    (item) =>
-      item.status === "running" ||
-      (item.started_at !== null && Date.parse(item.started_at) >= start),
+    (item) => item.status === "running" || since(item.started_at) || since(item.finished_at),
   );
   const running = items.filter((item) => item.status === "running").length;
   return { running, completed: items.length - running, items };

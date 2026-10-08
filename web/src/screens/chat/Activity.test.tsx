@@ -10,7 +10,17 @@ import { BackgroundBar } from "./BackgroundBar.tsx";
 // The turn below starts at 10:00:00; the clock reads 12 seconds later.
 const START = "2026-10-06T10:00:00Z";
 
-async function openChat(chat: Session, events: HarnessEvent[], background?: BackgroundSummary) {
+interface Options {
+  background?: BackgroundSummary;
+  // Seconds after START the clock reads, with a fake clock and ticker from when the chat opens.
+  clock?: number;
+}
+
+async function openChat(
+  chat: Session,
+  events: HarnessEvent[],
+  { background, clock }: Options = {},
+) {
   const api = fakeApi();
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
@@ -18,6 +28,7 @@ async function openChat(chat: Session, events: HarnessEvent[], background?: Back
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
   await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  if (clock !== undefined) fakeClock(clock);
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;
@@ -48,8 +59,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// Only the clock and the ticker, and only once the app is up: testing-library polls its
+// waits with setInterval, so a fake one installed earlier can stall them.
 function fakeClock(seconds: number) {
-  // Only the clock and the ticker: testing-library still waits with real timeouts.
   vi.useFakeTimers({
     now: Date.parse(START) + seconds * 1000,
     toFake: ["Date", "setInterval", "clearInterval"],
@@ -58,10 +70,9 @@ function fakeClock(seconds: number) {
 
 describe("a running turn", () => {
   it("ticks a working timer and says when the agent thinks", async () => {
-    fakeClock(12);
-    const { push } = await openChat(session({ state: "running" }), turnStarted);
+    const { push } = await openChat(session({ state: "running" }), turnStarted, { clock: 12 });
 
-    expect(screen.getByText("Working... 12s")).toHaveClass("glow");
+    expect(await screen.findByText("Working... 12s")).toHaveClass("glow");
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
@@ -156,7 +167,7 @@ describe("a running turn", () => {
         blocks(3, [call("a1", "Agent"), call("a2", "Task"), call("a3", "Agent")]),
         blocks(4, [result("a2", "found it"), result("a3", "Started in the background")]),
       ],
-      background,
+      { background },
     );
 
     expect(screen.getByText("Running 3 agents, 1 done")).toHaveClass("glow");
@@ -173,16 +184,16 @@ describe("screen reader announcements", () => {
     );
 
   it("leave the ticking timer and streamed text out, and announce finished items only", async () => {
-    fakeClock(12);
-    const { push } = await openChat(session({ state: "running" }), [
-      ...turnStarted,
-      blocks(3, [{ type: "text", text: "Earlier answer" }]),
-    ]);
+    const { push } = await openChat(
+      session({ state: "running" }),
+      [...turnStarted, blocks(3, [{ type: "text", text: "Earlier answer" }])],
+      { clock: 12 },
+    );
     const chat = screen.getByRole("region", { name: "Validate contact form" });
     const announcer = within(chat).getByRole("status");
+    expect(liveRegion(await screen.findByText("Working... 12s"))).toBeNull();
     // The history already on screen is not read out again.
     expect(announcer).toBeEmptyDOMElement();
-    expect(liveRegion(screen.getByText("Working... 12s"))).toBeNull();
     expect(liveRegion(screen.getByText("Earlier answer"))).toBeNull();
 
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "Strea" } });
@@ -279,6 +290,54 @@ describe("a finished turn", () => {
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
   });
 
+  describe("cut off", () => {
+    const ended = at(4, "session.state", { state: "interrupted", error: null });
+    const cutOff = [
+      ...turnStarted,
+      blocks(3, [call("t1", "Bash", { command: "npm run dev" }), call("t2", "Bash")]),
+      ended,
+    ];
+    // The dev server t1 started in the background.
+    const background: BackgroundSummary = {
+      running: 1,
+      completed: 0,
+      items: [
+        {
+          id: "t1",
+          kind: "bash",
+          name: "npm run dev",
+          description: null,
+          status: "running",
+          started_at: START,
+          finished_at: null,
+        },
+      ],
+    };
+
+    it("stops the calls left without a result", async () => {
+      await openChat(session({ state: "interrupted" }), cutOff);
+
+      expect(await screen.findByText("Ran 2 commands")).not.toHaveClass("glow");
+    });
+
+    it("keeps a call running while the background task it started runs", async () => {
+      await openChat(session({ state: "interrupted" }), cutOff, { background });
+
+      expect(await screen.findByText("Running 2 commands")).toHaveClass("glow");
+    });
+
+    it("keeps a single call running while its background task runs", async () => {
+      await openChat(
+        session({ state: "interrupted" }),
+        [...turnStarted, blocks(3, [call("t1", "Bash")]), ended],
+        { background },
+      );
+
+      const row = defined((await screen.findByText("Bash")).closest<HTMLElement>(".tool"));
+      expect(within(row).getByText("running")).toBeInTheDocument();
+    });
+  });
+
   it("says how long a stopped turn ran", async () => {
     await openChat(session({ state: "interrupted" }), [
       ...turnStarted,
@@ -322,7 +381,7 @@ describe("the background bar", () => {
         at(4, "session.user_message", { text: "Next" }, 60),
         at(5, "session.state", { state: "running", error: null, turn_start: true }, 60),
       ],
-      background,
+      { background },
     );
 
     const bar = screen.getByRole("button", { name: "3 running · 1 completed" });

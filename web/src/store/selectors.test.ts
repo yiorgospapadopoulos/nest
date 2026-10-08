@@ -316,4 +316,29 @@ describe("the background bar's exchange", () => {
     expect(exchangeBackground(summary, undefined)).toBe(summary);
     expect(exchangeBackground(summary, [event({ type: "session.state" })])).toBe(summary);
   });
+
+  it("counts a carried-over task that finishes as completed in the current exchange", () => {
+    const finished = (id: string, started: string, at: string) => ({
+      ...item(id, "done", started),
+      finished_at: at,
+    });
+    const carried = {
+      running: 0,
+      completed: 3,
+      items: [
+        // Finished before the latest message: the earlier exchange's.
+        finished("before", "2026-10-06T09:00:10Z", "2026-10-06T09:30:00Z"),
+        // Ran into the latest exchange and finished there.
+        finished("over", "2026-10-06T09:00:20Z", "2026-10-06T10:05:00Z"),
+        {
+          ...item("failed", "failed", "2026-10-06T09:00:30Z"),
+          finished_at: "2026-10-06T10:06:00Z",
+        },
+      ],
+    };
+
+    const current = exchangeBackground(carried, [message(1, "2026-10-06T10:00:00Z")]);
+    expect(current.items.map((i) => i.id)).toEqual(["over", "failed"]);
+    expect([current.running, current.completed]).toEqual([0, 2]);
+  });
 });

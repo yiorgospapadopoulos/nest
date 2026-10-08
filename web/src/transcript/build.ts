@@ -43,16 +43,21 @@ const DETAIL_LIMIT = 4000;
 // Task list bookkeeping shows in the Goals strip instead.
 const HIDDEN_TOOLS = new Set(["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]);
 const SUMMARY_LIMIT = 40;
+// What a call shows when its turn ended without its result.
+const STOPPED = "stopped";
+const NO_TASKS: ReadonlySet<string> = new Set();
 
 /**
  * The chat transcript from its stored events. Subagent messages are left out (they show
  * in the Agents sheet); approvals still pending render as inline cards, finished ones as
- * a short note.
+ * a short note. Calls without a result stop when their turn ends, except those whose
+ * background task (by tool use id in `running`) still runs.
  */
 export function buildTranscript(
   events: HarnessEvent[],
   pending: Record<string, Approval>,
   root: string | null,
+  running: ReadonlySet<string> = NO_TASKS,
 ): TranscriptItem[] {
   const finals = new Map<string, Approval>();
   for (const e of events) {
@@ -63,8 +68,14 @@ export function buildTranscript(
   }
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolItem>();
-  // The open turn's result: a turn a queued message ends has no other end (D045).
-  let result: { ms: number | null; key: string } | null = null;
+  // The open turn's result: a turn a queued message ends has no other end (D045). An error
+  // result's note gives way to the reason a failed state carries.
+  let result: { ms: number | null; key: string; error: TranscriptItem | null } | null = null;
+  const settle = () => {
+    for (const tool of tools.values()) {
+      if (tool.result === null && !running.has(tool.id)) tool.result = STOPPED;
+    }
+  };
   for (const e of events) {
     const key = String(e.id);
     const p = e.payload;
@@ -74,6 +85,7 @@ export function buildTranscript(
           items.push({ kind: "turn", key: `${result.key}.end`, text: turnLabel(result.ms, false) });
         }
         result = null;
+        settle();
         items.push({
           kind: "user",
           key,
@@ -96,14 +108,22 @@ export function buildTranscript(
         }
         break;
       }
-      case "session.result":
-        result = { ms: num(p.duration_ms), key };
-        note(items, key, p.is_error === true ? "The turn ended with an error" : null);
+      case "session.result": {
+        // Daemons before B31 end an error turn idle, with this note as its only trace.
+        const error: TranscriptItem | null =
+          p.is_error === true
+            ? { kind: "system", key, text: "The turn ended with an error" }
+            : null;
+        result = { ms: num(p.duration_ms), key, error };
+        if (error !== null) items.push(error);
         break;
+      }
       case "session.state":
         if (TURN_ENDS.has(p.state)) {
+          if (p.state === "failed" && result?.error) items.splice(items.indexOf(result.error), 1);
           endTurn(items, key, p, num(p.duration_ms) ?? result?.ms ?? null);
           result = null;
+          settle();
         }
         break;
       default:
@@ -269,6 +289,9 @@ function systemText(e: HarnessEvent): string | null {
       return `Setup failed: ${str(p.command) ?? ""}`;
     case "session.git_violation":
       return "The agent changed git refs itself";
+    case "session.notice":
+      // Compaction, a cleared context, a model fallback or an API retry.
+      return str(p.text);
     case "git.failed":
       return `Git ${str(p.step) ?? ""} failed`;
     case "pr.opened":
