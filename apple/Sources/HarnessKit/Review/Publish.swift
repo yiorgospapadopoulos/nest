@@ -14,6 +14,16 @@ public enum PublishStepKind: String, Sendable, CaseIterable {
     }
 }
 
+/// What rejecting a review does to the chat's changes, for its confirmation: an in-place
+/// chat has no worktree to remove, so its edits stay in the folder.
+public enum RejectConsequence {
+    public static func of(_ mode: SessionMode?) -> String {
+        mode == .inPlace
+            ? "The chat closes. Its changes stay in your folder."
+            : "The chat closes and its worktree and branch are removed. Nothing is merged."
+    }
+}
+
 /// What the approve sheet edits: the commit message, push and pull request choices, and
 /// the acknowledgement a git violation needs.
 public struct PublishForm: Sendable, Hashable {

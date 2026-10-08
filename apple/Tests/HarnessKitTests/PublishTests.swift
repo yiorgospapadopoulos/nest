@@ -4,6 +4,18 @@ import Testing
 @testable import HarnessKit
 
 @MainActor
+@Suite struct RejectConsequenceTests {
+    @Test func rejectingSaysWhatHappensToTheChatsChanges() {
+        // Nothing removes an in-place chat's edits from the folder.
+        #expect(
+            RejectConsequence.of(.inPlace) == "The chat closes. Its changes stay in your folder.")
+        #expect(
+            RejectConsequence.of(.worktree)
+                == "The chat closes and its worktree and branch are removed. Nothing is merged.")
+        #expect(RejectConsequence.of(nil) == RejectConsequence.of(.worktree))
+    }
+}
+
 @Suite struct PublishFormTests {
     var review: Approval { Fixture.approval("ap-review") }
 

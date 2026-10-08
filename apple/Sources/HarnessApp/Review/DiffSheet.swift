@@ -107,7 +107,7 @@ struct DiffSheet: View {
             }
             Spacer()
             if confirmingReject {
-                Text("Close the chat and remove its worktree and branch?")
+                Text("Reject? \(RejectConsequence.of(session?.mode))")
                     .font(.ui(TypeSize.small))
                     .foregroundStyle(Palette.t2)
                 Button("Cancel") { confirmingReject = false }

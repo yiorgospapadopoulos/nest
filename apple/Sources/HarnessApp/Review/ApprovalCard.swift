@@ -83,7 +83,7 @@ struct ApprovalCard: View {
     }
 }
 
-/// The command in mono, Claude's reason, and Approve, Reject, Always allow.
+/// The command in mono, Claude's prompt and why it asks, and Approve, Reject, Always allow.
 private struct PermissionBody: View {
     let approval: Approval
     let style: ApprovalCard.Style
@@ -97,11 +97,19 @@ private struct PermissionBody: View {
                         "\(permission.tool) \(ToolSummary.argument(tool: permission.tool, input: permission.input))"
                 )
                 .padding(.vertical, 6)
-                if let reason = permission.title {
-                    Text(reason)
+                if let title = permission.title {
+                    Text(title)
                         .font(.ui(TypeSize.label))
                         .foregroundStyle(Palette.t2)
                         .lineSpacing(1.5)
+                }
+                if let reason = permission.reason {
+                    Text(reason)
+                        .font(.ui(TypeSize.small))
+                        .foregroundStyle(Palette.t3)
+                        .lineSpacing(1.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 }
             }
             ActionRow {
@@ -392,7 +400,7 @@ private struct ReviewBody: View {
                 .padding(.top, 8)
             }
             if confirmingReject {
-                RejectConfirmation(title: approval.title) {
+                RejectConfirmation(mode: session?.mode) {
                     confirmingReject = false
                     shell.reject(approval)
                 } cancel: {
@@ -498,14 +506,14 @@ private struct FileList: View {
 
 /// "Reject this work?" with the consequence and the two choices.
 struct RejectConfirmation: View {
-    let title: String
+    let mode: SessionMode?
     let reject: () -> Void
     let cancel: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Reject this work?").font(.ui(TypeSize.body, .semibold))
-            Text("\(title) is closed and its worktree and branch are removed. Nothing is merged.")
+            Text(RejectConsequence.of(mode))
                 .font(.ui(TypeSize.label))
                 .foregroundStyle(Palette.t2)
                 .fixedSize(horizontal: false, vertical: true)
