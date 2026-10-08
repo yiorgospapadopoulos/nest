@@ -40,3 +40,16 @@ struct TokenStub: TokenStore {
         token
     }
 }
+
+/// A Keychain whose token changes, as when the daemon stores a new one.
+final class ChangingTokens: TokenStore {
+    let token: Mutex<String?>
+
+    init(_ token: String?) {
+        self.token = Mutex(token)
+    }
+
+    func deviceToken() throws -> String? {
+        token.withLock { $0 }
+    }
+}

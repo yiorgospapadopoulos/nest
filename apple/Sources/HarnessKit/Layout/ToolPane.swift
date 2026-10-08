@@ -73,8 +73,24 @@ public struct ToolPane: Codable, Sendable, Hashable, Identifiable {
 
 /// The text typed into a shell to run a command from a chat.
 public enum TerminalInput {
-    /// The command's lines followed by a newline, which runs it.
-    public static func line(for command: String) -> String {
-        command.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+    /// Marks that reorder text on screen, so it would read differently from what runs.
+    static let directionMarks: Set<Unicode.Scalar> = [
+        "\u{061C}", "\u{200E}", "\u{200F}", "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}",
+        "\u{202E}", "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}",
+    ]
+
+    /// The command followed by the newline that runs it, without control characters
+    /// (tabs aside) or direction marks. Nil when nothing is left, or when it spans lines:
+    /// each line would run as a command of its own.
+    public static func line(for command: String) -> String? {
+        let kept = command.unicodeScalars.filter { scalar in
+            scalar == "\t" || Character(scalar).isNewline
+                || scalar.properties.generalCategory != .control
+                    && !directionMarks.contains(scalar)
+        }
+        let text = String(String.UnicodeScalarView(kept))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains(where: \.isNewline) else { return nil }
+        return text + "\n"
     }
 }

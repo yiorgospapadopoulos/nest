@@ -42,7 +42,30 @@ private let workspace = CGSize(width: 1000, height: 600)
     @Test func aCommandRunsWithOneNewline() {
         #expect(TerminalInput.line(for: "npm test") == "npm test\n")
         #expect(TerminalInput.line(for: "  make check\n\n") == "make check\n")
-        #expect(TerminalInput.line(for: "cd web\nnpm run dev") == "cd web\nnpm run dev\n")
+        #expect(TerminalInput.line(for: "printf\t'%s'") == "printf\t'%s'\n")
+    }
+
+    @Test func aCommandOfSeveralLinesIsNotRun() {
+        // Each line would run as a command of its own; Copy still offers them.
+        for command in [
+            "cd web\nnpm run dev", "make \\\n  check", "ls\rrm -r build", "ls\r\npwd",
+            "ls\u{2028}pwd", "ls\u{0B}pwd", "ls\u{85}pwd", "   ", "\u{1B}\u{7}",
+        ] {
+            #expect(TerminalInput.line(for: command) == nil, "\(command.debugDescription)")
+        }
+    }
+
+    @Test func controlAndDirectionCharactersAreDropped() {
+        #expect(TerminalInput.line(for: "echo \u{1B}[2Jhi\u{7}") == "echo [2Jhi\n")
+        #expect(TerminalInput.line(for: "rm\u{0} x\u{7F}\u{9B}") == "rm x\n")
+        // Shown as "cat exe.txt" but would read the other way round.
+        #expect(
+            TerminalInput.line(for: "cat \u{202E}txt.exe\u{202C}") == "cat txt.exe\n")
+        let marks =
+            "\u{200E}\u{200F}\u{061C}\u{202A}\u{202B}\u{202D}\u{2066}\u{2067}\u{2068}\u{2069}"
+        #expect(TerminalInput.line(for: "ls\(marks) -la") == "ls -la\n")
+        // Joiners in emoji are not direction controls.
+        #expect(TerminalInput.line(for: "echo 👩\u{200D}💻") == "echo 👩\u{200D}💻\n")
     }
 
     @Test func aSessionWorksInItsWorktreeOrItsFolder() {
@@ -166,7 +189,7 @@ private let workspace = CGSize(width: 1000, height: 600)
     let memory = MemoryStore()
 
     func app() -> AppStore {
-        AppStore(api: api, approvals: ApprovalsStore(api: api), store: memory)
+        AppStore(api: api, store: memory)
     }
 
     @Test func toolPanesAreSavedPerProjectAndReopened() async throws {
@@ -223,6 +246,23 @@ private let workspace = CGSize(width: 1000, height: 600)
         app.update("map-viewer") { $0.closePane(browser.id) }
         app.openProject("map-viewer")
         #expect(app.state(of: "map-viewer").openTools.isEmpty)
+    }
+
+    @Test func aClosedTabKeepsItsToolPanesAndARemovedProjectEndsThem() async throws {
+        let app = app()
+        try await app.loadRepos()
+        app.openProject("map-viewer")
+        let terminal = ToolPane.terminal(in: "/repo/map-viewer")
+        app.update("map-viewer") { $0.openTool(terminal, in: workspace) }
+
+        app.closeProject("map-viewer")
+        #expect(app.state(of: "map-viewer").openTools == [terminal])
+
+        api.set { $0.repos.removeAll { $0.name == "map-viewer" } }
+        try await app.loadRepos()
+        #expect(app.projects["map-viewer"] == nil)
+        #expect(memory.values["projects.tools.map-viewer"] == nil)
+        #expect(app.state(of: "todo-ui") == ProjectState())
     }
 
     @Test func anEmptySavedListRestoresNothing() async throws {

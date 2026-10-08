@@ -186,6 +186,20 @@ final class SlowRunner: CommandRunner {
         #expect(result.output == "out\nerr")
     }
 
+    @Test func readsOutputLargerThanThePipeBuffer() async throws {
+        // Unread, 64 KB fill the pipe and the program waits forever.
+        let finished = Mutex<CommandOutput?>(nil)
+        Task {
+            let result = await ProcessRunner().run(
+                "/bin/sh", ["-c", "head -c 200000 /dev/zero | tr '\\0' a; exit 4"])
+            finished.withLock { $0 = result }
+        }
+        try await waitUntil { finished.withLock { $0 != nil } }
+        let result = finished.withLock { $0 }
+        #expect(result?.status == 4)
+        #expect(result?.output.count == 200_000)
+    }
+
     @Test func reportsAProgramThatCannotStart() async {
         let result = await ProcessRunner().run("/no/such/program", [])
 

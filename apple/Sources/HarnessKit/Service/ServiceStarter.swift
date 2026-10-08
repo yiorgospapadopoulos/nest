@@ -17,8 +17,8 @@ public protocol CommandRunner: Sendable {
     func run(_ executable: String, _ arguments: [String]) async -> CommandOutput
 }
 
-/// Runs commands with `Process`. Meant for short commands such as `launchctl`: output is
-/// read once the process has exited.
+/// Runs commands with `Process`. Meant for short commands such as `launchctl`. The output
+/// is read while the process runs, since one that fills the pipe waits until it is read.
 public struct ProcessRunner: CommandRunner {
     public init() {}
 
@@ -30,23 +30,30 @@ public struct ProcessRunner: CommandRunner {
         process.standardOutput = pipe
         process.standardError = pipe
         let reader = pipe.fileHandleForReading
-        return await withCheckedContinuation { continuation in
-            process.terminationHandler = { finished in
-                let data = reader.readDataToEndOfFile()
-                continuation.resume(
-                    returning: CommandOutput(
-                        status: finished.terminationStatus,
-                        output: String(decoding: data, as: UTF8.self)
-                            .trimmingCharacters(in: .whitespacesAndNewlines)))
-            }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(
-                    returning: CommandOutput(status: -1, output: error.localizedDescription))
+        let (exits, exited) = AsyncStream<Int32>.makeStream()
+        process.terminationHandler = { finished in
+            exited.yield(finished.terminationStatus)
+            exited.finish()
+        }
+        do {
+            try process.run()
+        } catch {
+            return CommandOutput(status: -1, output: error.localizedDescription)
+        }
+        // On its own thread: the read blocks until the program closes its output.
+        let data = await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(returning: reader.readDataToEndOfFile())
             }
         }
+        var status: Int32 = -1
+        for await code in exits {
+            status = code
+        }
+        return CommandOutput(
+            status: status,
+            output: String(decoding: data, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
 

@@ -61,6 +61,17 @@ public enum SendButtonMode: Sendable, Hashable {
     }
 }
 
+/// What a composer keeps once its message is sent: the text typed while the send was in
+/// flight.
+public enum SentDraft {
+    /// `current` without the `sent` text it starts with; when the user changed the sent
+    /// part meanwhile, all of it stays, so nothing typed is lost.
+    public static func remainder(of current: String, after sent: String) -> String {
+        guard current.hasPrefix(sent) else { return current }
+        return String(current.dropFirst(sent.count).drop { $0.isWhitespace })
+    }
+}
+
 /// The last message the user sent in each chat from this app, for Up arrow.
 @MainActor @Observable
 public final class SentMessages {

@@ -40,31 +40,12 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         """
 
     static let all: [RouteCase] = [
-        RouteCase("GET", "/api/health", response: #"{"status": "ok", "version": "0.1.0"}"#) {
-            _ = try await $0.health()
-        },
         RouteCase("GET", "/api/repos", response: Fixture.text("repos")) {
             _ = try await $0.repos()
-        },
-        RouteCase("GET", "/api/repos/todo-ui", response: repoJSON) {
-            _ = try await $0.repo("todo-ui")
         },
         RouteCase(
             "POST", "/api/repos", body: #"{"name":"cv","path":"/tmp/cv"}"#, response: repoJSON
         ) { _ = try await $0.registerRepo(path: "/tmp/cv", name: "cv") },
-        RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
-            _ = try await $0.linkSuggestions(repo: "todo-ui")
-        },
-        RouteCase(
-            "PUT", "/api/repos/todo-ui/worktree",
-            body: #"{"default":false,"link":[".env"],"setup":["make"],"setup_timeout_seconds":60}"#,
-            response: repoJSON
-        ) {
-            _ = try await $0.updateWorktree(
-                repo: "todo-ui",
-                config: WorktreeConfig(
-                    isDefault: false, link: [".env"], setup: ["make"], setupTimeoutSeconds: 60))
-        },
         RouteCase("POST", "/api/repos/todo-ui/open", body: #"{"app":"vscode"}"#, response: "") {
             try await $0.openRepo("todo-ui", in: .vscode)
         },
@@ -110,12 +91,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("PATCH", "/api/sessions/s1", body: #"{"effort":"xhigh"}"#, response: sessionJSON)
         { _ = try await $0.updateSession("s1", UpdateSessionRequest(effort: .xhigh)) },
-        RouteCase("DELETE", "/api/sessions/s1?remove_worktree=true", response: sessionJSON) {
-            _ = try await $0.closeSession("s1", removeWorktree: true)
-        },
-        RouteCase("DELETE", "/api/sessions/s1?remove_worktree=false", response: sessionJSON) {
-            _ = try await $0.closeSession("s1", removeWorktree: false)
-        },
         RouteCase("DELETE", "/api/sessions/s1?purge=true", response: "") {
             try await $0.deleteSession("s1")
         },
@@ -227,9 +202,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("GET", "/api/approvals?status=pending&project=todo-ui", response: "[]") {
             _ = try await $0.approvals(status: .pending, project: "todo-ui")
-        },
-        RouteCase("GET", "/api/approvals/ap1", response: approvalJSON) {
-            _ = try await $0.approval("ap1")
         },
         RouteCase(
             "POST", "/api/approvals/ap1/resolve",
@@ -375,17 +347,17 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     }
 
     @Test func pathComponentsAreEscaped() async throws {
-        transport.reply(200, RouteCase.repoJSON)
-        _ = try await client.repo("a b/c")
-        #expect(transport.last.target == "/api/repos/a%20b%2Fc")
+        transport.reply(200, RouteCase.sessionJSON)
+        _ = try await client.session("a b/c")
+        #expect(transport.last.target == "/api/sessions/a%20b%2Fc")
     }
 
     @Test func usesTheGivenBaseURL() async throws {
         let remote = APIClient(
             token: "t", baseURL: URL(string: "https://mac.tailnet.ts.net")!, transport: transport)
-        transport.reply(200, #"{"status": "ok", "version": "0.1.0"}"#)
-        _ = try await remote.health()
-        #expect(transport.last.url?.absoluteString == "https://mac.tailnet.ts.net/api/health")
+        transport.reply(200, "[]")
+        _ = try await remote.repos()
+        #expect(transport.last.url?.absoluteString == "https://mac.tailnet.ts.net/api/repos")
         #expect(remote.baseURL.host() == "mac.tailnet.ts.net")
     }
 
@@ -424,6 +396,48 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     }
 }
 
+@Suite struct AttachmentFileTests {
+    func file(size: Int, named name: String = UUID().uuidString) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: name)
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: UInt64(size))
+        try handle.close()
+        return url
+    }
+
+    @Test func readsAFileUpToTheDaemonsLimit() async throws {
+        let small = try file(size: 3)
+        defer { try? FileManager.default.removeItem(at: small) }
+        #expect(try await AttachmentFile.read(small) == Data([0, 0, 0]))
+
+        let largest = try file(size: AttachmentFile.maximumSize)
+        defer { try? FileManager.default.removeItem(at: largest) }
+        #expect(try await AttachmentFile.read(largest).count == 20 * 1024 * 1024)
+    }
+
+    @Test func refusesALargerFileBeforeReadingIt() async throws {
+        let large = try file(size: AttachmentFile.maximumSize + 1)
+        defer { try? FileManager.default.removeItem(at: large) }
+        await #expect(throws: AttachmentFileError.tooLarge) {
+            _ = try await AttachmentFile.read(large)
+        }
+        #expect(
+            AttachmentFileError.tooLarge.localizedDescription
+                == "attachments larger than 20 MB are not accepted")
+    }
+
+    @Test func aMissingFileOrAFolderFails() async {
+        await #expect(throws: (any Error).self) {
+            _ = try await AttachmentFile.read(URL(fileURLWithPath: "/no/such/file"))
+        }
+        // A folder has no file size; reading it fails.
+        await #expect(throws: (any Error).self) {
+            _ = try await AttachmentFile.read(FileManager.default.temporaryDirectory)
+        }
+    }
+}
+
 @Suite struct APIErrorTests {
     let transport = FakeTransport()
     var client: APIClient { APIClient(token: "t", transport: transport) }
@@ -432,7 +446,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     {
         transport.reply(status, body, headers: headers)
         do {
-            _ = try await client.health()
+            _ = try await client.repos()
             return nil
         } catch {
             return error as? APIError
@@ -508,13 +522,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
 
     @Test func unreachableDaemonIsATransportError() async {
         transport.fail(.cannotConnectToHost)
-        await #expect(throws: APIError.self) { _ = try await client.health() }
+        await #expect(throws: APIError.self) { _ = try await client.repos() }
     }
 
     @Test func unreadableResponsesAreDecodingErrors() async {
         transport.reply(200, #"{"status": 1}"#)
         do {
-            _ = try await client.health()
+            _ = try await client.repos()
             Issue.record("expected a decoding error")
         } catch let error as APIError {
             guard case .decoding = error else {

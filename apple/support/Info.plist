@@ -41,5 +41,18 @@
 	<string>NSApplication</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>harness turns your dictation into text for the message field.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>harness chat</string>
+			<key>UTTypeIdentifier</key>
+			<string>local.harness.app.chat</string>
+		</dict>
+	</array>
 </dict>
 </plist>

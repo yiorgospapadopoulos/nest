@@ -180,7 +180,7 @@ private struct EmptyWorkspace: View {
                 DropHighlightView(zone: .open, size: nil)
             }
         }
-        .onDrop(of: [.plainText], delegate: PaneDropDelegate(pane: nil, shell: shell))
+        .onDrop(of: [.harnessChat], delegate: PaneDropDelegate(pane: nil, shell: shell))
     }
 }
 

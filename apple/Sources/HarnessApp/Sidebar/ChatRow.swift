@@ -65,7 +65,7 @@ struct ChatRow: View {
         .onTapGesture { shell.openChat(session.id) }
         .onDrag {
             shell.dragging = .chat(session.id)
-            return NSItemProvider(object: session.id as NSString)
+            return .chat(session.id)
         } preview: {
             DragGhost(title: session.title, tone: tone)
         }

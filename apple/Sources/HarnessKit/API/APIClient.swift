@@ -5,42 +5,32 @@ public struct APIClient: HarnessAPI {
     public static let defaultBaseURL = URL(string: "http://127.0.0.1:8765")!
 
     public let baseURL: URL
-    let token: String
+    let deviceToken: DeviceToken
     let transport: any HTTPTransport
 
     public init(
         token: String, baseURL: URL = APIClient.defaultBaseURL,
         transport: any HTTPTransport = URLSessionTransport()
     ) {
-        self.token = token
+        self.init(token: DeviceToken(token), baseURL: baseURL, transport: transport)
+    }
+
+    init(token: DeviceToken, baseURL: URL, transport: any HTTPTransport = URLSessionTransport()) {
+        deviceToken = token
         self.baseURL = baseURL
         self.transport = transport
     }
 
-    // MARK: Repos
+    var token: String { deviceToken.current }
 
-    public func health() async throws -> Health {
-        try await get("health")
-    }
+    // MARK: Repos
 
     public func repos() async throws -> [Repo] {
         try await get("repos")
     }
 
-    public func repo(_ name: String) async throws -> Repo {
-        try await get("repos", name)
-    }
-
     public func registerRepo(path: String, name: String?) async throws -> Repo {
         try await call("POST", ["repos"], body: RegisterRepoRequest(path: path, name: name))
-    }
-
-    public func linkSuggestions(repo: String) async throws -> [String] {
-        try await get("repos", repo, "link-suggestions")
-    }
-
-    public func updateWorktree(repo: String, config: WorktreeConfig) async throws -> Repo {
-        try await call("PUT", ["repos", repo, "worktree"], body: config)
     }
 
     public func openRepo(_ name: String, in app: RepoApp) async throws {
@@ -73,13 +63,6 @@ public struct APIClient: HarnessAPI {
         -> Session
     {
         try await call("PATCH", ["sessions", id], body: request)
-    }
-
-    public func closeSession(_ id: String, removeWorktree: Bool) async throws -> Session {
-        let query = [
-            URLQueryItem(name: "remove_worktree", value: removeWorktree ? "true" : "false")
-        ]
-        return try await call("DELETE", ["sessions", id], query: query)
     }
 
     /// Deletes the session for good, with its worktree, branch and history.
@@ -210,10 +193,6 @@ public struct APIClient: HarnessAPI {
             query.append(URLQueryItem(name: "project", value: project))
         }
         return try await call("GET", ["approvals"], query: query)
-    }
-
-    public func approval(_ id: String) async throws -> Approval {
-        try await get("approvals", id)
     }
 
     public func resolveApproval(_ id: String, _ request: ResolveApprovalRequest) async throws

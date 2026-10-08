@@ -1,5 +1,22 @@
 import Foundation
 import Security
+import Synchronization
+
+/// The device token the API client and the event stream send. It is shared, so a token
+/// read again from the Keychain (the daemon may store a new one) reaches both.
+public final class DeviceToken: Sendable {
+    private let value: Mutex<String>
+
+    public init(_ value: String) {
+        self.value = Mutex(value)
+    }
+
+    public var current: String { value.withLock { $0 } }
+
+    func replace(with token: String) {
+        value.withLock { $0 = token }
+    }
+}
 
 /// Where the Mac's own device token comes from.
 public protocol TokenStore: Sendable {

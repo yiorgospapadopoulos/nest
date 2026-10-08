@@ -79,9 +79,15 @@ final class AppController {
         }
     }
 
-    /// Drops the current connection and connects again at once.
+    /// Drops the current connection and connects again at once, with the Keychain's
+    /// token when the daemon refused the one in use.
     func connect() {
         guard let shell else { return }
+        do {
+            try shell.model.rereadTokenIfRefused()
+        } catch {
+            shell.show(error, doing: "Could not read the device token")
+        }
         liveTask?.cancel()
         liveTask = Task { await shell.model.live.run() }
     }

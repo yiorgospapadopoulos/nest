@@ -65,7 +65,7 @@ struct ClaudeChatRow: View {
         .onTapGesture { shell.openChat(pane) }
         .onDrag {
             shell.dragging = .chat(pane)
-            return NSItemProvider(object: pane as NSString)
+            return .chat(pane)
         } preview: {
             DragGhost(title: chat.title, tone: .done)
         }

@@ -41,9 +41,11 @@ import Testing
         )
     }
 
-    @Test func theRepoUpdateEventIsRead() {
-        let event = Fixture.event(EventType.repoUpdated, #"{"name": "notes"}"#, session: nil)
-        #expect(event.body == .repoUpdated)
+    @Test func registeringChangingAndRemovingARepoAreRead() {
+        for type in [EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved] {
+            let event = Fixture.event(type, #"{"name": "notes"}"#, session: nil)
+            #expect(event.body == .reposChanged)
+        }
     }
 }
 
@@ -77,6 +79,22 @@ import Testing
         await model.app.reloadingRepos?.value
 
         #expect(model.app.repo("notes")?.badge == .branch("main"))
+    }
+
+    @Test func projectsAddedOrRemovedElsewhereAppear() async throws {
+        await model.live.refresh()
+        var added = Fixture.repos[0]
+        added.name = "added"
+        api.set { $0.repos.append(added) }
+        model.live.route(Fixture.event(EventType.repoAdded, #"{"name": "added"}"#, session: nil))
+        await model.app.reloadingRepos?.value
+        #expect(model.app.repo("added") != nil)
+
+        api.set { $0.repos.removeAll { $0.name == "added" } }
+        model.live.route(
+            Fixture.event(EventType.repoRemoved, #"{"name": "added"}"#, session: nil))
+        await model.app.reloadingRepos?.value
+        #expect(model.app.repo("added") == nil)
     }
 
     @Test func aTurnInAPlainFolderChecksForGitAgain() async throws {

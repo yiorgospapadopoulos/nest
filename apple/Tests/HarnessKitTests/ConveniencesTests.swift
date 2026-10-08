@@ -377,6 +377,17 @@ import Testing
         #expect(SendButtonMode.of(working: true, hasText: false) == .interrupt)
     }
 
+    @Test func afterASendOnlyTextTypedMeanwhileStays() {
+        #expect(SentDraft.remainder(of: "First part", after: "First part") == "")
+        #expect(
+            SentDraft.remainder(of: "First part and a follow-up", after: "First part")
+                == "and a follow-up")
+        #expect(SentDraft.remainder(of: "First part\n\nNext ", after: "First part") == "Next ")
+        // An edit inside the sent text keeps all of it, so nothing typed is lost.
+        #expect(SentDraft.remainder(of: "Fixed part", after: "First part") == "Fixed part")
+        #expect(SentDraft.remainder(of: "", after: "First part") == "")
+    }
+
     @MainActor @Test func upArrowRecallsTheLastSentOrTheTranscriptsLastMessage() {
         let sent = SentMessages()
         let transcript = [

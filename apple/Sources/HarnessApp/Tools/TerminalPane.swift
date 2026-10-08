@@ -38,13 +38,14 @@ final class TerminalSession {
             currentDirectory: exists && isFolder.boolValue ? folder : NSHomeDirectory())
     }
 
-    /// Types the command and Return; the shell reads it once its prompt is ready.
-    func run(_ command: String) {
+    /// Types a line from `TerminalInput.line(for:)`, Return included; the shell reads it
+    /// once its prompt is ready.
+    func run(line: String) {
         if exited {
             view.feed(text: "\r\n")
             start()
         }
-        view.send(txt: TerminalInput.line(for: command))
+        view.send(txt: line)
     }
 
     func end() {

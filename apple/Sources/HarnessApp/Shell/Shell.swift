@@ -20,6 +20,26 @@ enum DragItem: Equatable {
     }
 }
 
+extension UTType {
+    /// A chat dragged from the sidebar. Not text, so the composer or another app cannot
+    /// take the drop and insert the chat's id.
+    static let harnessChat = UTType(exportedAs: "local.harness.app.chat", conformingTo: .data)
+}
+
+extension NSItemProvider {
+    /// A sidebar chat's drag; only this app's own panes read it (`shell.dragging` says
+    /// which chat).
+    static func chat(_ id: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(for: .harnessChat, visibility: .ownProcess) {
+            load in
+            load(Data(id.utf8), nil)
+            return nil
+        }
+        return provider
+    }
+}
+
 /// Where the current drag would land; `pane` is nil for the empty workspace.
 struct DropHighlight: Equatable {
     var pane: String?
@@ -129,15 +149,9 @@ final class Shell {
         syncTools()
     }
 
-    #if DEBUG
-        /// Snapshots change project states directly, then let go of closed panes.
-        func syncToolsForSnapshots() {
-            syncTools()
-        }
-    #endif
-
-    /// Ends the shells and web views of tool panes no project shows any more.
-    private func syncTools() {
+    /// Ends the shells and web views of tool panes no project shows any more, such as a
+    /// removed project's; a closed tab keeps its panes.
+    func syncTools() {
         tools.keep(Set(app.projects.values.flatMap { $0.tools.keys }))
     }
 
@@ -404,6 +418,7 @@ final class Shell {
         let draft = draft(for: chat)
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !draft.sending, !draft.isUploading else { return }
+        let typed = draft.text
         let attachments = draft.uploadedIDs
         draft.sending = true
         dictation.cancel()
@@ -423,7 +438,8 @@ final class Shell {
                     }
                     sentMessages.record(text, chat: chat)
                 }
-                draft.clear()
+                // Text typed and files attached while it was sending stay.
+                draft.clearSent(text: typed, attachments: attachments)
             } catch APIError.openInClaudeCode(let message) {
                 withAnimation { draft.blocked = message }
             } catch {
@@ -497,9 +513,11 @@ final class Shell {
 
     /// Runs a command from a chat's transcript in the project's terminal for the chat's
     /// folder, opening one when there is none. It runs without asking: the user clicked
-    /// Run in terminal.
+    /// Run in terminal. A command of several lines is not run (`TerminalInput`).
     func runInTerminal(command: String, from chat: String?) {
-        guard let project, let folder = chat.flatMap(folder(ofPane:)) ?? repo?.path else {
+        guard let project, let line = TerminalInput.line(for: command),
+            let folder = chat.flatMap(folder(ofPane:)) ?? repo?.path
+        else {
             return
         }
         let size = workspaceSize
@@ -509,7 +527,7 @@ final class Shell {
         }
         syncTools()
         if let target {
-            tools.terminal(for: target).run(command)
+            tools.terminal(for: target).run(line: line)
         }
     }
 
@@ -564,7 +582,7 @@ final class Shell {
             draft.attachments.append(pending)
             Task {
                 do {
-                    let data = try Data(contentsOf: url)
+                    let data = try await AttachmentFile.read(url)
                     let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
                     let uploaded = try await model.api.uploadAttachment(
                         filename: url.lastPathComponent,
@@ -988,6 +1006,23 @@ final class ComposerDraft {
         completion = CompletionSelection()
         volatile = ""
         attachments = []
+        hint = nil
+        blocked = nil
+    }
+
+    /// After a send: removes the text and files that went, keeping what was typed or
+    /// attached meanwhile.
+    func clearSent(text sent: String, attachments sentIDs: [String]) {
+        let rest = SentDraft.remainder(of: text, after: sent)
+        if rest != text {
+            replaceText(rest, caret: rest.count)
+        }
+        if rest.isEmpty {
+            selection = nil
+        }
+        completion = CompletionSelection()
+        volatile = ""
+        attachments.removeAll { $0.uploaded.map { sentIDs.contains($0.id) } ?? false }
         hint = nil
         blocked = nil
     }

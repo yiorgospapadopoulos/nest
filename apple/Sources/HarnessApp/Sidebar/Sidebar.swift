@@ -354,7 +354,7 @@ private struct RailChat: View {
             .onTapGesture { shell.openChat(entry.id) }
             .onDrag {
                 shell.dragging = .chat(entry.id)
-                return NSItemProvider(object: entry.id as NSString)
+                return .chat(entry.id)
             } preview: {
                 DragGhost(title: entry.title, tone: tone)
             }

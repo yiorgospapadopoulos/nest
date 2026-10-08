@@ -79,7 +79,7 @@ struct PaneChrome: ViewModifier {
                 shell.paneSizes[pane] = size
             }
             .simultaneousGesture(TapGesture().onEnded { shell.focusPane(pane) })
-            .onDrop(of: [.plainText], delegate: PaneDropDelegate(pane: pane, shell: shell))
+            .onDrop(of: [.harnessChat], delegate: PaneDropDelegate(pane: pane, shell: shell))
             .transition(.scale(scale: 0.97).combined(with: .opacity))
     }
 }
