@@ -217,12 +217,61 @@ async def test_a_result_ends_the_turns_thinking_timings() -> None:
         stream({"type": "content_block_delta", "delta": {"type": "thinking_delta"}}),
         stream({"type": "message_start", "message": {}}),
         SystemMessage(subtype="status", data={}),
+        SystemMessage(subtype="status", data={"status": None, "permissionMode": "auto"}),
         HookEventMessage(subtype="hook_started", data={}, hook_event_name="PreToolUse"),
-        ConversationResetMessage(new_conversation_id="c2", uuid="u", session_id="sdk-1"),
     ],
 )
 async def test_other_messages_are_ignored(event: Message) -> None:
     assert await translated(event) == []
+
+
+def system(subtype: str, **data: object) -> SystemMessage:
+    return SystemMessage(subtype=subtype, data={"type": "system", "subtype": subtype, **data})
+
+
+@pytest.mark.parametrize(
+    ("message", "notice"),
+    [
+        (
+            system("compact_boundary", compact_metadata={"trigger": "auto", "pre_tokens": 9}),
+            ("compacted", "Conversation compacted"),
+        ),
+        (
+            ConversationResetMessage(new_conversation_id="c2", uuid="u", session_id="sdk-1"),
+            ("cleared", "Context cleared"),
+        ),
+        (
+            system(
+                "model_fallback",
+                trigger="overloaded",
+                original_model="claude-opus-5",
+                fallback_model="claude-sonnet-5",
+                content="Opus is overloaded; using Sonnet",
+            ),
+            ("model_fallback", "Opus is overloaded; using Sonnet"),
+        ),
+        (
+            system("model_fallback", fallback_model="claude-sonnet-5"),
+            ("model_fallback", "Switched to claude-sonnet-5"),
+        ),
+        (system("model_fallback"), ("model_fallback", "Switched to another model")),
+        (
+            system("api_retry", attempt=1, max_retries=10, error_status=529, error="overloaded"),
+            ("api_retry", "API error (overloaded), retrying"),
+        ),
+        (system("api_retry", attempt=2, error=None), ("api_retry", "API error, retrying")),
+    ],
+)
+async def test_engine_notices_are_reported(message: Message, notice: tuple[str, str]) -> None:
+    """BUG-41, BUG-44: what Claude Code shows in its transcript is not dropped."""
+    assert await translated(message) == [("notice", notice)]
+
+
+async def test_a_permission_mode_the_engine_switched_to_is_reported() -> None:
+    """BUG-43: such as leaving plan mode, or a mode change made by a hook."""
+    message = system("status", status=None, permissionMode="plan")
+
+    assert await translated(message) == [("permission_mode", "plan")]
 
 
 def rate_limit(raw: dict[str, Any]) -> RateLimitEvent:

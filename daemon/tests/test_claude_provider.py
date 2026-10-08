@@ -180,6 +180,79 @@ async def test_permission_callback_is_bridged_to_the_handler(tmp_path: Path) -> 
     ]
 
 
+@pytest.mark.parametrize(
+    ("context", "reason"),
+    [
+        (ToolPermissionContext(decision_reason="A hook asks", blocked_path="/x"), "A hook asks"),
+        (ToolPermissionContext(blocked_path="/Users/me/secrets"), "/Users/me/secrets"),
+        (ToolPermissionContext(), None),
+    ],
+)
+async def test_permission_requests_carry_the_engines_reason(
+    tmp_path: Path, context: ToolPermissionContext, reason: str | None
+) -> None:
+    """BUG-44: why Claude Code asks, shown under the prompt."""
+    allow = ScriptedHandler(PermissionDecision("allow"))
+    _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "default"), allow)
+    assert client.options.can_use_tool is not None
+
+    await client.options.can_use_tool("Read", {"file_path": "/x"}, context)
+
+    assert allow.requests == [PermissionRequest("Read", {"file_path": "/x"}, None, reason)]
+
+
+async def test_a_crash_says_what_the_agent_wrote_to_stderr(tmp_path: Path) -> None:
+    """BUG-42: instead of the SDK's "Check stderr output for details"."""
+    opened = Opened(tmp_path)
+    _, client = await opened.open(SessionSpec(tmp_path, "default"))
+    assert client.options.stderr is not None
+    noise = [f"noise {n:02} " + "." * 30 for n in range(30)]
+    for line in ("Debug: starting", "", "  ", *noise):
+        client.options.stderr(line)
+    client.options.stderr("Error: Invalid API key \u00b7 Please run /login\n")
+
+    client.push(
+        ProcessError(
+            "Command failed with exit code 1",
+            exit_code=1,
+            stderr="Check stderr output for details",
+        )
+    )
+    await until(lambda: bool(opened.sink.calls))
+
+    ((name, message),) = opened.sink.calls
+    assert name == "stopped"
+    assert isinstance(message, str)
+    assert message.startswith("Command failed with exit code 1 (exit code: 1)\nError output: ")
+    tail = message.split("Error output: ")[1]
+    assert tail.endswith(f"{noise[-1]}\nError: Invalid API key \u00b7 Please run /login")
+    assert "Check stderr" not in message
+    # Whole lines, as many as fit.
+    assert tail.startswith("noise ")
+    assert 300 - 41 < len(tail) <= 300
+
+
+async def test_a_long_stderr_line_is_cut_to_its_end(tmp_path: Path) -> None:
+    opened = Opened(tmp_path)
+    _, client = await opened.open(SessionSpec(tmp_path, "default"))
+    assert client.options.stderr is not None
+    client.options.stderr("x" * 400)
+
+    client.push(
+        ProcessError(
+            "Command failed with exit code 1",
+            exit_code=1,
+            stderr="Check stderr output for details",
+        )
+    )
+    await until(lambda: bool(opened.sink.calls))
+
+    ((_, message),) = opened.sink.calls
+    assert message == (
+        "Command failed with exit code 1 (exit code: 1)\nError output: ..." + "x" * 297
+    )
+
+
 async def test_questions_are_answered_by_the_hook_and_never_prompt(tmp_path: Path) -> None:
     handler = ScriptedHandler(PermissionDecision("deny"))
     _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "bypassPermissions"), handler)
@@ -575,6 +648,52 @@ async def test_a_plan_without_text_is_still_a_plan(tmp_path: Path) -> None:
     await client.options.can_use_tool("ExitPlanMode", {"plan": 3}, ToolPermissionContext())
 
     assert handler.plans == [PlanRequest("", None)]
+
+
+class StuckSink(RecordingSink):
+    """Storing the command list takes a while, as the database writes can."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inside = asyncio.Event()
+
+    async def commands(self, catalog: CommandCatalog) -> None:
+        self.inside.set()
+        await asyncio.Event().wait()
+
+
+class FailingSink(RecordingSink):
+    async def commands(self, catalog: CommandCatalog) -> None:
+        raise OSError("disk full")
+
+
+async def test_a_run_whose_opening_is_cancelled_after_connecting_is_disconnected(
+    tmp_path: Path,
+) -> None:
+    """BUG-15: otherwise the CLI process is left running, unowned."""
+    opened = Opened(tmp_path)
+
+    def described(options: ClaudeAgentOptions) -> FakeSdkClient:
+        client = opened.factory(options)
+        client.server_info = {"commands": [{"name": "review"}]}
+        return client
+
+    opened.provider = ClaudeProvider(tmp_path / "agent-gh", described)
+    sink = StuckSink()
+    spec = SessionSpec(tmp_path, "default")
+    opening = asyncio.create_task(
+        opened.provider.open(spec, ScriptedHandler(PermissionDecision("allow")), sink)
+    )
+    await asyncio.wait_for(sink.inside.wait(), 5)
+    opening.cancel()
+    await asyncio.gather(opening, return_exceptions=True)
+
+    with pytest.raises(OSError, match="disk full"):
+        await opened.provider.open(
+            spec, ScriptedHandler(PermissionDecision("allow")), FailingSink()
+        )
+
+    assert [(c.connected, c.disconnects) for c in opened.clients] == [(True, 1), (True, 1)]
 
 
 async def test_open_reports_the_commands_of_the_initialize_response(tmp_path: Path) -> None:

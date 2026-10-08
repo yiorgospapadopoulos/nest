@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from contextlib import suppress
 from pathlib import Path
@@ -25,6 +26,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import JsonValue
 
 from harness.config.models import PermissionMode
+from harness.gitops.remotes import scrub_credentials
 from harness.providers.base import (
     ApprovalHandler,
     ContextUsage,
@@ -47,6 +49,10 @@ from harness.providers.claude_thinking import ThinkingTimer
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
+# What the SDK puts in a crash's message where the CLI's own error belongs.
+STDERR_PLACEHOLDER = "Check stderr output for details"
+STDERR_LINES = 20
+STDERR_CHARS = 300
 # The tool Claude calls in plan mode to present its plan and ask to start working (D032).
 EXIT_PLAN_MODE = "ExitPlanMode"
 KEEP_PLANNING_MESSAGE = "Keep planning."
@@ -109,8 +115,33 @@ CLAUDE_APP_ENV = {
 }
 
 
+class StderrTail:
+    """The last lines the CLI wrote to stderr, which say why it crashed (BUG-42)."""
+
+    def __init__(self) -> None:
+        self._lines: deque[str] = deque(maxlen=STDERR_LINES)
+
+    def add(self, line: str) -> None:
+        text = line.strip()
+        if text:
+            self._lines.append(text)
+
+    def text(self) -> str:
+        """The last whole lines that fit in STDERR_CHARS, or the end of the last line."""
+        kept: list[str] = []
+        for line in reversed(self._lines):
+            if kept and sum(len(k) + 1 for k in kept) + len(line) > STDERR_CHARS:
+                break
+            kept.append(line)
+        text = scrub_credentials("\n".join(reversed(kept)))
+        return text if len(text) <= STDERR_CHARS else "..." + text[3 - STDERR_CHARS :]
+
+
 def build_options(
-    spec: SessionSpec, handler: ApprovalHandler, gh_config_dir: Path
+    spec: SessionSpec,
+    handler: ApprovalHandler,
+    gh_config_dir: Path,
+    stderr: Callable[[str], None] | None = None,
 ) -> ClaudeAgentOptions:
     questions = QuestionBridge(handler)
 
@@ -121,7 +152,10 @@ def build_options(
             return questions.permission(tool_input, context.tool_use_id)
         if tool_name == EXIT_PLAN_MODE:
             return await _review_plan(handler, tool_input, context.tool_use_id)
-        decision = await handler.decide(PermissionRequest(tool_name, tool_input, context.title))
+        reason = context.decision_reason or context.blocked_path
+        decision = await handler.decide(
+            PermissionRequest(tool_name, tool_input, context.title, reason)
+        )
         if decision.behavior == "allow":
             return PermissionResultAllow()
         return PermissionResultDeny(message=decision.message or DEFAULT_DENY_MESSAGE)
@@ -153,6 +187,7 @@ def build_options(
             ]
         },
         env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
+        stderr=stderr,
     )
 
 
@@ -161,9 +196,10 @@ class ClaudeRun:
     so turns the agent starts on its own are reported like any other.
     """
 
-    def __init__(self, client: SdkClient, sink: ProviderEventSink) -> None:
+    def __init__(self, client: SdkClient, sink: ProviderEventSink, stderr: StderrTail) -> None:
         self._client = client
         self._sink = sink
+        self._stderr = stderr
         self._tasks = BackgroundTasks()
         self._thinking = ThinkingTimer()
         self._reader = asyncio.create_task(self._read())
@@ -202,6 +238,9 @@ class ClaudeRun:
                 await self._handle(message)
         except Exception as exc:
             error = str(exc)
+            tail = self._stderr.text()
+            if tail:
+                error = error.replace(STDERR_PLACEHOLDER, tail)
         with suppress(Exception):
             await self._client.disconnect()
         await self._abandon_tasks()
@@ -237,16 +276,23 @@ class ClaudeProvider:
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> ClaudeRun:
-        client = self._client_factory(build_options(spec, handler, self._gh_config_dir))
-        await client.connect()
-        info = await client.get_server_info()
-        catalog = described_catalog(info)
-        if catalog is not None:
-            await sink.commands(catalog)
-        details = engine_details(info)
-        if details is not None:
-            await sink.engine_details(details)
-        return ClaudeRun(client, sink)
+        stderr = StderrTail()
+        client = self._client_factory(build_options(spec, handler, self._gh_config_dir, stderr.add))
+        try:
+            await client.connect()
+            info = await client.get_server_info()
+            catalog = described_catalog(info)
+            if catalog is not None:
+                await sink.commands(catalog)
+            details = engine_details(info)
+            if details is not None:
+                await sink.engine_details(details)
+        except BaseException:
+            # Cancelled or failed after the CLI started: it must not run on unowned.
+            with suppress(Exception):
+                await client.disconnect()
+            raise
+        return ClaudeRun(client, sink, stderr)
 
 
 async def _review_plan(

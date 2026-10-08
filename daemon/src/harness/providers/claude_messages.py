@@ -2,12 +2,13 @@
 
 import json
 from datetime import datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_args
 
 from claude_agent_sdk import (
     TERMINAL_TASK_STATUSES,
     AssistantMessage,
     ContentBlock,
+    ConversationResetMessage,
     Message,
     RateLimitEvent,
     ResultMessage,
@@ -25,9 +26,12 @@ from claude_agent_sdk import (
 )
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from harness.config.models import PermissionMode
 from harness.providers import base
 from harness.providers.claude_commands import described_catalog, init_catalog
 from harness.providers.claude_thinking import ThinkingTimer
+
+PERMISSION_MODES: frozenset[str] = frozenset(get_args(PermissionMode))
 
 
 async def translate(
@@ -40,6 +44,20 @@ async def translate(
             await _report_commands(init_catalog(message.data), sink)
         case SystemMessage(subtype="commands_changed"):
             await _report_commands(described_catalog(message.data), sink)
+        case SystemMessage(subtype="status"):
+            mode = message.data.get("permissionMode")
+            if mode in PERMISSION_MODES:
+                await sink.permission_mode(mode)
+        case SystemMessage(subtype="compact_boundary"):
+            await sink.notice("compacted", "Conversation compacted")
+        case SystemMessage(subtype="model_fallback"):
+            await sink.notice("model_fallback", _fallback_text(message.data))
+        case SystemMessage(subtype="api_retry"):
+            error = message.data.get("error")
+            reason = f" ({error})" if isinstance(error, str) and error else ""
+            await sink.notice("api_retry", f"API error{reason}, retrying")
+        case ConversationResetMessage():
+            await sink.notice("cleared", "Context cleared")
         case AssistantMessage() | UserMessage():
             # Plain-text user content is the engine echoing input the session already recorded.
             content = message.content if isinstance(message.content, list) else []
@@ -79,6 +97,14 @@ async def translate(
             )
         case _:
             pass
+
+
+def _fallback_text(data: dict[str, Any]) -> str:
+    """The engine's own sentence, else the model it switched to."""
+    content, model = data.get("content"), data.get("fallback_model")
+    if isinstance(content, str) and content:
+        return content
+    return f"Switched to {model}" if isinstance(model, str) else "Switched to another model"
 
 
 async def _report_commands(

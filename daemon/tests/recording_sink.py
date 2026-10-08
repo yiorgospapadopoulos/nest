@@ -1,9 +1,11 @@
+from harness.config.models import PermissionMode
 from harness.providers.base import (
     AgentTask,
     CommandCatalog,
     EngineDetails,
     McpServer,
     MessageBlock,
+    NoticeKind,
     ResultInfo,
     UsageInfo,
 )
@@ -48,3 +50,9 @@ class RecordingSink:
 
     async def stopped(self, error: str) -> None:
         self.calls.append(("stopped", error))
+
+    async def notice(self, kind: NoticeKind, text: str) -> None:
+        self.calls.append(("notice", (kind, text)))
+
+    async def permission_mode(self, mode: PermissionMode) -> None:
+        self.calls.append(("permission_mode", mode))

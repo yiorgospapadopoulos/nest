@@ -39,6 +39,10 @@ class ToolResultBlock(BaseModel):
 
 type MessageBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
 
+# What the engine notes in its transcript besides messages: the context was compacted or
+# cleared, it switched to a fallback model, or it retries a failed API request.
+type NoticeKind = Literal["compacted", "cleared", "model_fallback", "api_retry"]
+
 
 class TokenUsage(BaseModel):
     """Tokens one turn used; components the engine did not report count as zero."""
@@ -197,6 +201,8 @@ class PermissionRequest:
     tool_input: dict[str, JsonValue]
     # The engine's own sentence for the prompt, when it provides one.
     title: str | None = None
+    # Why the engine asks, such as a hook's reason or the path outside the allowed folders.
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -312,6 +318,14 @@ class ProviderEventSink(Protocol):
 
     async def stopped(self, error: str) -> None:
         """The agent process ended on its own; the run is unusable and already closed."""
+        ...
+
+    async def notice(self, kind: NoticeKind, text: str) -> None:
+        """Something the engine notes in its transcript, in words for the user."""
+        ...
+
+    async def permission_mode(self, mode: PermissionMode) -> None:
+        """The engine switched its permission mode itself."""
         ...
 
 
