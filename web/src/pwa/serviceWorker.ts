@@ -1,11 +1,13 @@
 // The app shell cache: the page, its hashed assets, the manifest and icons. The API is
 // never cached, so everything shown comes live from the Mac. Push notifications open the
-// item they are about.
+// item they are about. Assets an older page used leave the cache once a newer page arrives.
 //
 // The worker is registered as a classic script, so the app must never import this module:
 // a module shared by both would be split into a chunk the worker cannot load.
 
 export const CACHE = "harness-shell-v1";
+// How long a page may take before the cached shell opens instead.
+export const NAVIGATION_TIMEOUT_MS = 4000;
 export const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -165,10 +167,49 @@ export function respond(scope: WorkerScope, request: Request): Promise<Response>
   if (request.method !== "GET") return null;
   const url = new URL(request.url);
   if (url.origin !== scope.location.origin || url.pathname.startsWith("/api/")) return null;
-  if (request.mode === "navigate") return networkFirst(scope, request, "/");
+  if (request.mode === "navigate") return page(scope, request);
   if (url.pathname.startsWith("/assets/")) return cacheFirst(scope, request);
   if (SHELL.includes(url.pathname)) return networkFirst(scope, request, url.pathname);
   return null;
+}
+
+/**
+ * A page: the network's, unless it fails, answers with a server error (`tailscale serve`
+ * with the daemon down) or takes too long (a sleeping Mac); then the cached shell, when
+ * there is one. A page that arrives late still refreshes the cache.
+ */
+async function page(scope: WorkerScope, request: Request): Promise<Response> {
+  const cache = await scope.caches.open(CACHE);
+  const network = scope.fetch(request).then(async (response) => {
+    if (response.ok) await keepPage(cache, response);
+    return response;
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((resolve) => {
+    timer = setTimeout(() => {
+      resolve("late");
+    }, NAVIGATION_TIMEOUT_MS);
+  });
+  const answer = await Promise.race([network.catch(() => null), late]);
+  clearTimeout(timer);
+  if (answer instanceof Response && answer.status < 500) return answer;
+  const shell = await cache.match("/");
+  if (shell !== undefined) return shell;
+  if (answer === "late") return network.catch(() => Response.error());
+  return answer ?? Response.error();
+}
+
+/** Caches the page and drops the hashed assets it no longer names. */
+async function keepPage(cache: Cache, response: Response): Promise<void> {
+  const html = await response.clone().text();
+  await cache.put("/", response.clone());
+  const used = new Set(html.match(/\/assets\/[^"'\s)]+/g));
+  // A page naming no assets (an error page, say) is no guide to what is stale.
+  if (used.size === 0) return;
+  for (const request of await cache.keys()) {
+    const path = new URL(request.url).pathname;
+    if (path.startsWith("/assets/") && !used.has(path)) await cache.delete(request);
+  }
 }
 
 async function networkFirst(scope: WorkerScope, request: Request, key: string) {

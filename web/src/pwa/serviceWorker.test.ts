@@ -5,6 +5,7 @@ import {
   ICON,
   installWorker,
   NAVIGATE,
+  NAVIGATION_TIMEOUT_MS,
   parsePush,
   respond,
   SHELL,
@@ -30,6 +31,9 @@ function fakeCaches() {
         return Promise.resolve();
       },
       match: (request: RequestInfo | URL) => Promise.resolve(store.get(key(request))),
+      keys: () =>
+        Promise.resolve([...store.keys()].map((path) => new Request(`https://mac.ts.net${path}`))),
+      delete: (request: RequestInfo | URL) => Promise.resolve(store.delete(key(request))),
     } as unknown as Cache);
   };
   const caches = {
@@ -133,6 +137,110 @@ describe("service worker", () => {
     expect(await offline.text()).toBe("network");
     const missing = await defined(respond(scope, get("/icon-512.png")));
     expect(missing.type).toBe("error");
+  });
+
+  it("falls back to the cached shell when the Mac answers with a server error", async () => {
+    const { scope, network } = setup(() =>
+      Promise.resolve(new Response("bad gateway", { status: 502 })),
+    );
+    // Nothing cached yet: the error is all there is.
+    const first = await defined(respond(scope, get("/inbox", "navigate")));
+    expect(first.status).toBe(502);
+
+    await (await scope.caches.open(CACHE)).put("/", new Response("shell"));
+    const page = await defined(respond(scope, get("/inbox", "navigate")));
+
+    expect(await page.text()).toBe("shell");
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the cached shell when the Mac is slow to answer", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => undefined;
+      const { scope, stores } = setup(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      );
+      // Nothing cached: it waits for the network.
+      const waiting = defined(respond(scope, get("/inbox", "navigate")));
+      await vi.advanceTimersByTimeAsync(NAVIGATION_TIMEOUT_MS);
+      answer(new Response("late page"));
+      expect(await (await waiting).text()).toBe("late page");
+
+      const slow = defined(respond(scope, get("/inbox", "navigate")));
+      await vi.advanceTimersByTimeAsync(NAVIGATION_TIMEOUT_MS - 1);
+      let settled = false;
+      void slow.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await (await slow).text()).toBe("late page");
+      // The page that comes later still refreshes the cache.
+      answer(new Response("newer page"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await stores.get(CACHE)?.get("/")?.text()).toBe("newer page");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops cached assets the newest page no longer uses", async () => {
+    const page = '<script src="/assets/index-new.js"></script><link href="/assets/index-new.css">';
+    const { scope, stores, network } = setup(() => Promise.resolve(new Response(page)));
+    const cache = await scope.caches.open(CACHE);
+    for (const path of ["/assets/index-old.js", "/assets/index-new.js", "/icon-192.png"]) {
+      await cache.put(path, new Response(path));
+    }
+
+    await defined(respond(scope, get("/projects", "navigate")));
+    expect([...(stores.get(CACHE)?.keys() ?? [])].sort()).toEqual([
+      "/",
+      "/assets/index-new.js",
+      "/icon-192.png",
+    ]);
+
+    // A page that names no assets, such as an error page, prunes nothing.
+    await cache.put("/assets/index-old.js", new Response("old"));
+    network.mockResolvedValueOnce(new Response("<p>Hello</p>"));
+    await defined(respond(scope, get("/projects", "navigate")));
+    expect(stores.get(CACHE)?.has("/assets/index-old.js")).toBe(true);
+  });
+
+  it("gives an error page when the Mac is out of reach and nothing is cached", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail: (error: Error) => void = () => undefined;
+      const { scope, network } = setup(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject;
+          }),
+      );
+      const late = defined(respond(scope, get("/inbox", "navigate")));
+      await vi.advanceTimersByTimeAsync(NAVIGATION_TIMEOUT_MS);
+      fail(new TypeError("offline"));
+      expect((await late).type).toBe("error");
+
+      network.mockRejectedValueOnce(new TypeError("offline"));
+      const failed = await defined(respond(scope, get("/inbox", "navigate")));
+      expect(failed.type).toBe("error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the manifest and icons fresh, and serves them from the cache offline", async () => {
+    const { scope, network } = setup();
+
+    await respond(scope, get("/manifest.webmanifest"));
+    network.mockRejectedValue(new TypeError("offline"));
+    const offline = await defined(respond(scope, get("/manifest.webmanifest")));
+
+    expect(await offline.text()).toBe("network");
   });
 
   it("does not cache failed responses", async () => {
