@@ -157,6 +157,10 @@ async def test_leaves_out_what_is_not_a_claude_code_chat_of_the_repo(
     claude.write_chat(root, owned, simple_chat())
     session = await setup.store.create(new_session(mode="in_place", cwd=root))
     await setup.store.update(session.id, provider_session_id=owned)
+    # A conversation that session had before /clear (BUG-41).
+    cleared = "ffffffff-0000-4000-8000-000000000007"
+    claude.write_chat(root, cleared, simple_chat())
+    await setup.store.keep_earlier_provider_session(session.id, cleared)
 
     assert await setup.chats.list_chats() == []
 

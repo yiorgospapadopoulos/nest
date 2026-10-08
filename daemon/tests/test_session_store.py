@@ -124,6 +124,7 @@ async def test_delete_removes_the_session_with_its_approvals_attachments_and_eve
     doomed = await store.create(new_session())
     kept = await store.create(new_session())
     for session_id in (doomed.id, kept.id):
+        await store.keep_earlier_provider_session(session_id, f"sdk-{session_id}")
         await db.execute(
             "INSERT INTO approvals (id, session_id, kind, status, payload, created_at)"
             " VALUES (?, ?, 'review', 'pending', '{}', ?)",
@@ -144,7 +145,7 @@ async def test_delete_removes_the_session_with_its_approvals_attachments_and_eve
     with pytest.raises(SessionNotFoundError):
         await store.get(doomed.id)
     assert await store.get(kept.id) == kept
-    for table in ("approvals", "attachments", "events"):
+    for table in ("approvals", "attachments", "events", "earlier_provider_sessions"):
         rows = await db.fetch_all(f"SELECT session_id FROM {table}")  # noqa: S608
         assert [row["session_id"] for row in rows] == [kept.id]
 

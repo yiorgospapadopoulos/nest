@@ -61,18 +61,33 @@ class SessionStore:
         return [_session(row) for row in rows]
 
     async def provider_session_ids(self) -> set[str]:
-        """The engine session ids of every session, archived and closed ones included."""
+        """The engine session ids of every session, archived and closed ones included, and
+        those they had before their conversation was cleared.
+        """
         rows = await self._db.fetch_all(
             "SELECT provider_session_id FROM sessions WHERE provider_session_id IS NOT NULL"
+            " UNION SELECT provider_session_id FROM earlier_provider_sessions"
         )
         return {row["provider_session_id"] for row in rows}
 
     async def find_by_provider_session(self, provider_session_id: str) -> Session | None:
         row = await self._db.fetch_one(
-            "SELECT * FROM sessions WHERE provider_session_id = ? ORDER BY rowid LIMIT 1",
-            (provider_session_id,),
+            "SELECT * FROM sessions WHERE provider_session_id = ? OR id IN"
+            " (SELECT session_id FROM earlier_provider_sessions WHERE provider_session_id = ?)"
+            " ORDER BY rowid LIMIT 1",
+            (provider_session_id, provider_session_id),
         )
         return None if row is None else _session(row)
+
+    async def keep_earlier_provider_session(
+        self, session_id: str, provider_session_id: str
+    ) -> None:
+        """The session's conversation was cleared and continues under a new engine id."""
+        await self._db.execute(
+            "INSERT OR IGNORE INTO earlier_provider_sessions (provider_session_id, session_id)"
+            " VALUES (?, ?)",
+            (provider_session_id, session_id),
+        )
 
     async def update(self, session_id: str, **changes: object) -> Session:
         changes["updated_at"] = self._clock.now()
@@ -117,10 +132,13 @@ class SessionStore:
 
     async def delete(self, session_id: str) -> None:
         """Delete the session with everything stored for it: approvals, attachments, events,
-        queued messages and its command list.
+        queued messages, earlier engine session ids and its command list.
         """
         async with self._db.transaction() as tx:
-            for table in ("approvals", "attachments", "events", "queued_messages"):
+            for table in (
+                *("approvals", "attachments", "events", "queued_messages"),
+                "earlier_provider_sessions",
+            ):
                 await tx.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))  # noqa: S608
             await tx.execute(
                 "DELETE FROM command_catalogs WHERE scope = 'session' AND key = ?", (session_id,)
