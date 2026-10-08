@@ -8,6 +8,10 @@ from pathlib import Path
 # Injectable so tests can replace tools such as gh.
 type CommandRunner = Callable[[Sequence[str], Path], Awaitable[str]]
 
+# How long a git or gh command may take, network ones included (push, pull requests, a
+# worktree checkout fetching large files), before it is killed and fails (BUG-20).
+TIMEOUT_SECONDS = 300.0
+
 
 class CommandError(Exception):
     """A command exited with a non-zero status, or never started (returncode None)."""
@@ -33,18 +37,18 @@ class GitError(CommandError):
         return "not a git repository" in self.stderr
 
 
-async def run_command(argv: Sequence[str], cwd: Path) -> str:
-    """Run `argv` in `cwd` and return its stdout."""
+async def run_command(argv: Sequence[str], cwd: Path, time_limit: float = TIMEOUT_SECONDS) -> str:
+    """Run `argv` in `cwd` and return its stdout; after `time_limit` seconds it is killed."""
     # Otherwise the subprocess fails with a bare OSError that callers do not expect.
     problem = await asyncio.to_thread(_cwd_problem, cwd)
     if problem is not None:
         raise CommandError(argv, None, f"the working directory {cwd} {problem}")
-    running = asyncio.ensure_future(_run(argv, cwd))
+    running = asyncio.ensure_future(_run(argv, cwd, time_limit))
     try:
         returncode, stdout, stderr = await asyncio.shield(running)
     except asyncio.CancelledError:
-        # Commands are short; stopping one midway could leave a lock file behind.
-        await running
+        # Stopping one midway could leave a lock file behind; the timeout bounds the wait.
+        await asyncio.gather(running, return_exceptions=True)
         raise
     if returncode:
         raise CommandError(argv, returncode, stderr.decode(errors="replace"))
@@ -57,20 +61,28 @@ def _cwd_problem(cwd: Path) -> str | None:
     return "is not a directory" if cwd.exists() else "does not exist"
 
 
-async def _run(argv: Sequence[str], cwd: Path) -> tuple[int | None, bytes, bytes]:
+async def _run(
+    argv: Sequence[str], cwd: Path, time_limit: float
+) -> tuple[int | None, bytes, bytes]:
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await process.communicate()
+    try:
+        async with asyncio.timeout(time_limit):
+            stdout, stderr = await process.communicate()
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        raise CommandError(argv, None, f"timed out after {time_limit:g} seconds") from None
     return process.returncode, stdout, stderr
 
 
-async def run_git(args: Sequence[str], cwd: Path) -> str:
+async def run_git(args: Sequence[str], cwd: Path, time_limit: float = TIMEOUT_SECONDS) -> str:
     """Run `git <args>` in `cwd` and return its stdout."""
     try:
-        return await run_command(["git", *args], cwd)
+        return await run_command(["git", *args], cwd, time_limit)
     except CommandError as error:
         raise GitError(args, error.returncode, error.stderr) from None

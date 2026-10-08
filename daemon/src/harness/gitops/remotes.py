@@ -10,6 +10,8 @@ REMOTE = "origin"
 GITHUB_HOST = "github.com"
 # scp-like syntax: `[user@]host:path`.
 _SCP = re.compile(r"^(?:[^@/]+@)?(?P<host>[^:/]+):(?P<path>[^/].*)$")
+# The user name and token part of an http(s) URL inside some text.
+_HTTP_USERINFO = re.compile(r"(?i)\b(https?://)[^\s/@'\"]+@")
 
 
 async def push_urls(cwd: Path, run: CommandRunner) -> list[str]:
@@ -29,6 +31,11 @@ def scrub_url(url: str) -> str:
     if parts.scheme.lower() not in ("http", "https") or "@" not in parts.netloc:
         return url
     return urlunsplit(parts._replace(netloc=parts.netloc.rsplit("@", 1)[1]))
+
+
+def scrub_credentials(text: str) -> str:
+    """`text`, such as git's error output, without user names and tokens in http(s) URLs."""
+    return _HTTP_USERINFO.sub(r"\1", text)
 
 
 def github_repo(url: str) -> str | None:

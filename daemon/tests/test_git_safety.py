@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.remotes import github_repo, push_urls, scrub_url
+from harness.gitops.remotes import github_repo, push_urls, scrub_credentials, scrub_url
 from harness.gitops.runner import run_command
 from harness.gitops.safety import RepoSetting, filter_overrides, repo_settings, unsafe_settings
 from tests.git_support import init_repo
@@ -100,6 +100,29 @@ def test_a_filter_driver_named_with_an_equals_sign_cannot_be_switched_off() -> N
 )
 def test_scrub_url_leaves_out_http_credentials(url: str, scrubbed: str) -> None:
     assert scrub_url(url) == scrubbed
+
+
+@pytest.mark.parametrize(
+    ("text", "scrubbed"),
+    [
+        (
+            "fatal: unable to access 'https://me:ghp_secret@github.com/me/repo.git/': 403",
+            "fatal: unable to access 'https://github.com/me/repo.git/': 403",
+        ),
+        (
+            "remote: see HTTPS://x-access-token:abc@Example.com/a and http://tok@b.example/c",
+            "remote: see HTTPS://Example.com/a and http://b.example/c",
+        ),
+        (
+            "fatal: could not read from ssh://git@github.com/me/repo.git or git@github.com:me/r",
+            "fatal: could not read from ssh://git@github.com/me/repo.git or git@github.com:me/r",
+        ),
+        ("error: failed to push some refs", "error: failed to push some refs"),
+    ],
+)
+def test_scrub_credentials_leaves_out_http_credentials_in_text(text: str, scrubbed: str) -> None:
+    """H-06: git's error output can quote a remote URL with its user name and token."""
+    assert scrub_credentials(text) == scrubbed
 
 
 @pytest.mark.parametrize(
