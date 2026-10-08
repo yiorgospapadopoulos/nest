@@ -57,9 +57,6 @@ public struct RichParagraph: Sendable, Hashable {
         self.spacing = spacing
     }
 
-    /// The text without the list marker.
-    public var plainText: String { runs.map(\.text).joined() }
-
     /// What precedes the runs on screen: a list marker and a tab to the hanging indent.
     public var prefix: String {
         if case .listItem(let marker, _) = role {
@@ -96,11 +93,6 @@ public enum RichText {
             paragraphs.append(RichParagraph(role: role, runs: runs, spacing: spacing))
         }
         return paragraphs
-    }
-
-    /// The text the view shows: paragraphs on their own lines, list items after their marker.
-    public static func plainText(_ paragraphs: [RichParagraph]) -> String {
-        paragraphs.map { $0.prefix + $0.plainText }.joined(separator: "\n")
     }
 
     /// Inline markdown as runs. Foundation's parser also links bare web addresses; text

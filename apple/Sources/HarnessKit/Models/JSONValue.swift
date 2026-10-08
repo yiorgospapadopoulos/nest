@@ -58,10 +58,6 @@ public enum JSONValue: Sendable, Hashable, Codable {
         if case .array(let value) = self { value } else { nil }
     }
 
-    public var objectValue: [String: JSONValue]? {
-        if case .object(let value) = self { value } else { nil }
-    }
-
     /// Reads this value as a typed model, with the same rules as API responses.
     public func decode<T: Decodable>(_ type: T.Type) throws -> T {
         try HarnessJSON.decoder.decode(type, from: HarnessJSON.encoder.encode(self))

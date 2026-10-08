@@ -55,7 +55,7 @@ public enum ConnectorState: Sendable, Hashable {
         case .connected: "Connected"
         case .needsSignIn: "Needs sign-in"
         case .failed: "Failed"
-        case .pending: "Pending"
+        case .pending: "Connecting"
         case .other(let status): status.prefix(1).uppercased() + status.dropFirst()
         }
     }
@@ -106,11 +106,6 @@ public final class ConnectorsStore {
             }
             return members.isEmpty ? nil : ConnectorSection(kind: kind, connectors: members)
         }
-    }
-
-    /// Connectors that are not connected, such as ones needing sign-in or failing.
-    public var needingAttention: Int {
-        connectors.count { $0.status != "connected" }
     }
 
     public func apply(_ event: Event) {

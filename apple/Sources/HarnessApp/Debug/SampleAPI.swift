@@ -38,8 +38,6 @@
             chatEvents = data.claudeEvents
         }
 
-        func health() async throws -> Health { try decode(["status": "ok", "version": "0.1.0"]) }
-
         /// Four git repositories and a plain folder, "recipes".
         func repos() async throws -> [Repo] {
             try ["todo-ui", "weather-forecast", "map-viewer", "harness", "recipes"].map { name in
@@ -54,18 +52,8 @@
             }
         }
 
-        func repo(_ name: String) async throws -> Repo {
-            try await repos().first { $0.name == name }!
-        }
-
         func registerRepo(path: String, name: String?) async throws -> Repo {
             try await repos()[0]
-        }
-
-        func linkSuggestions(repo: String) async throws -> [String] { [] }
-
-        func updateWorktree(repo: String, config: WorktreeConfig) async throws -> Repo {
-            try await self.repo(repo)
         }
 
         func openRepo(_ name: String, in app: RepoApp) async throws {}
@@ -102,10 +90,6 @@
                 }
                 return sessionList[index]
             }
-        }
-
-        func closeSession(_ id: String, removeWorktree: Bool) async throws -> Session {
-            try await session(id)
         }
 
         func deleteSession(_ id: String) async throws {
@@ -251,14 +235,10 @@
             approvalList.filter { project == nil || $0.repo == project }
         }
 
-        func approval(_ id: String) async throws -> Approval {
-            approvalList.first { $0.id == id }!
-        }
-
         func resolveApproval(_ id: String, _ request: ResolveApprovalRequest) async throws
             -> Approval
         {
-            try await approval(id)
+            approvalList.first { $0.id == id }!
         }
 
         func uploadAttachment(filename: String, mediaType: String, data: Data) async throws

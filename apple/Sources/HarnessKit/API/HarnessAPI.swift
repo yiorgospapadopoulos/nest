@@ -3,13 +3,8 @@ import Foundation
 /// Everything the Mac app asks of the daemon. `APIClient` implements it over HTTP;
 /// store tests use a fake.
 public protocol HarnessAPI: Sendable {
-    func health() async throws -> Health
-
     func repos() async throws -> [Repo]
-    func repo(_ name: String) async throws -> Repo
     func registerRepo(path: String, name: String?) async throws -> Repo
-    func linkSuggestions(repo: String) async throws -> [String]
-    func updateWorktree(repo: String, config: WorktreeConfig) async throws -> Repo
     func openRepo(_ name: String, in app: RepoApp) async throws
     /// The slash commands of the repo's latest agent run, for chats not started yet.
     func repoCommands(_ repo: String) async throws -> CommandList
@@ -18,7 +13,6 @@ public protocol HarnessAPI: Sendable {
     func session(_ id: String) async throws -> Session
     func createSession(_ request: CreateSessionRequest) async throws -> Session
     func updateSession(_ id: String, _ request: UpdateSessionRequest) async throws -> Session
-    func closeSession(_ id: String, removeWorktree: Bool) async throws -> Session
     func deleteSession(_ id: String) async throws
     /// Stored events with `after < id < before`, oldest first; with a limit, the ones
     /// nearest `before` when it is given, else nearest `after`.
@@ -60,7 +54,6 @@ public protocol HarnessAPI: Sendable {
     func search(query: String, repo: String?, limit: Int) async throws -> SearchResults
 
     func approvals(status: ApprovalStatus?, project: String?) async throws -> [Approval]
-    func approval(_ id: String) async throws -> Approval
     func resolveApproval(_ id: String, _ request: ResolveApprovalRequest) async throws -> Approval
 
     func uploadAttachment(filename: String, mediaType: String, data: Data) async throws

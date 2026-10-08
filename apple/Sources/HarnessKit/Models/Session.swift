@@ -83,8 +83,6 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var prURL: String?
     /// The pull request's last known status; nil before harness first reads it.
     public var pr: PullRequest?
-    /// Up to three lines on the pull request: the agent's summary and the diff stats.
-    public var prSummary: String?
     public var allowedTools: [String]
     public var pinned: Bool
     public var archivedAt: Date?
@@ -107,7 +105,6 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
         case pr
-        case prSummary = "pr_summary"
         case tasks, agents, background, context, queued, stuck
         case permissionMode = "permission_mode"
         case baseRef = "base_ref"

@@ -45,13 +45,12 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(pr(checks: "weird").checks.state == .unknown)
     }
 
-    @Test func sessionsCarryTheirPullRequestAndSummary() {
+    @Test func sessionsCarryTheirPullRequest() {
         var json = Fixture.text("session_detail")
         json.removeLast(2)
-        json += #", "pr": \#(prJSON()), "pr_summary": "Adds a feed\n3 files changed, +40 -2"}"#
+        json += #", "pr": \#(prJSON())}"#
         let session = Fixture.decode(Session.self, json: json)
         #expect(session.pr?.number == 12)
-        #expect(session.prSummary == "Adds a feed\n3 files changed, +40 -2")
         #expect(Fixture.sessionDetail.pr == nil)
     }
 
@@ -81,7 +80,10 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
             MergeMethod.allCases.map(\.label) == [
                 "Squash and merge", "Merge commit", "Rebase and merge",
             ])
-        #expect(CIFailure.message(["test", "build"]) == "CI failed: test, build. Please fix.")
+        #expect(
+            CIFailure.message(["test", "build"])
+                == "CI failed: test, build. Please fix. You can't use gh or reach GitHub from here, so work from the code and the check names, and ask me for the logs if you need them."
+        )
     }
 
     @Test func mergeApprovalsCarryTheProposal() {
@@ -166,6 +168,28 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(sessions.checksFailed(in: "map-viewer").isEmpty)
     }
 
+    @Test func attentionCountsApprovalsFailedChecksAndStuckChats() async throws {
+        var other = Fixture.approval("ap-perm")
+        other.id = "ap-other"
+        other.repo = "map-viewer"
+        api.set {
+            $0.sessions = [
+                session("failed"), StuckFixture.session("stuck"),
+                session("green", pr: pr(checks: "success")),
+            ]
+            $0.approvals = Array(Fixture.approvals.prefix(2)) + [other]
+        }
+        try await sessions.load()
+        try await approvals.load()
+
+        #expect(sessions.attention(of: "todo-ui") == 3)
+        #expect(sessions.attention(of: "map-viewer") == 1)
+        #expect(sessions.attention(of: "notes-app") == 1)
+        #expect(sessions.attention(of: "none") == 0)
+        // The Dock badge counts every project.
+        #expect(sessions.attention() == 5)
+    }
+
     @Test func sendToAgentNamesTheFailingChecks() async throws {
         api.set {
             $0.sessions = [
@@ -174,7 +198,7 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         }
         try await sessions.load()
         try await sessions.sendChecksFailure("s1")
-        #expect(api.calls.last == "sendMessage s1 CI failed: test, build. Please fix. []")
+        #expect(api.calls.last == "sendMessage s1 \(CIFailure.message(["test", "build"])) []")
         #expect(try await sessions.sendChecksFailure("none") == nil)
         #expect(try await sessions.sendChecksFailure("green") == nil)
         #expect(api.calls.count { $0.hasPrefix("sendMessage") } == 1)

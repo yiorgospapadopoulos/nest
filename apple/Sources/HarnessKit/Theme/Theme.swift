@@ -1,26 +1,5 @@
 import Foundation
 
-public enum Appearance: Sendable, Hashable {
-    case light, dark
-}
-
-extension ThemedColor {
-    public func resolved(_ appearance: Appearance) -> RGBA {
-        appearance == .light ? light : dark
-    }
-}
-
-/// The colors the settings pick, for one appearance.
-public struct ResolvedTheme: Sendable, Equatable {
-    public let appearance: Appearance
-    public let accent: RGBA
-    /// Text and icons on the accent.
-    public let onAccent: RGBA
-    public let bubble: RGBA
-    public let bubbleText: RGBA
-    public let glass: GlassStyle
-}
-
 /// The fixed status colors: running blue, needs you amber, review green, failed red,
 /// interrupted grey-brown, done grey.
 public enum StatusTone: Sendable, Hashable, CaseIterable {
@@ -48,7 +27,8 @@ public enum StatusTone: Sendable, Hashable, CaseIterable {
         }
     }
 
-    /// The tone of a session's dot; `hasReview` is true while work waits for review.
+    /// The tone of a session's dot; `hasReview` is true while work waits for review, or a
+    /// pull request to merge.
     public static func of(_ state: SessionState, hasReview: Bool) -> StatusTone {
         switch state {
         case .starting, .running: .running
@@ -61,14 +41,6 @@ public enum StatusTone: Sendable, Hashable, CaseIterable {
 }
 
 public enum Theme {
-    public static func appearance(for mode: ThemeMode, system: Appearance) -> Appearance {
-        switch mode {
-        case .auto: system
-        case .light: .light
-        case .dark: .dark
-        }
-    }
-
     public static func accent(_ name: AccentName) -> AccentColor {
         switch name {
         case .graphite: DesignTokens.Accent.graphite
@@ -78,29 +50,5 @@ public enum Theme {
         case .clay: DesignTokens.Accent.clay
         case .rose: DesignTokens.Accent.rose
         }
-    }
-
-    public static func resolve(
-        accent name: AccentName, bubble: BubbleStyle, glass: GlassStyle, appearance: Appearance
-    ) -> ResolvedTheme {
-        let accent = accent(name)
-        let neutral = bubble == .neutral
-        return ResolvedTheme(
-            appearance: appearance,
-            accent: accent.fill.resolved(appearance),
-            onAccent: accent.on.resolved(appearance),
-            bubble: (neutral ? DesignTokens.Colors.Surface.neutralBubble : accent.fill)
-                .resolved(appearance),
-            bubbleText: (neutral ? DesignTokens.Colors.Text.primary : accent.on).resolved(
-                appearance),
-            glass: glass)
-    }
-
-    /// The theme for the current settings and system appearance.
-    @MainActor
-    public static func resolve(_ settings: SettingsStore, system: Appearance) -> ResolvedTheme {
-        resolve(
-            accent: settings.accent, bubble: settings.bubble, glass: settings.glass,
-            appearance: appearance(for: settings.theme, system: system))
     }
 }

@@ -159,11 +159,6 @@ public struct Attachment: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-public struct Health: Decodable, Sendable, Hashable {
-    public var status: String
-    public var version: String
-}
-
 /// The result of continuing a session in Claude Code.
 public struct ClaudeCodeLaunch: Decodable, Sendable, Hashable {
     public var launcher: String

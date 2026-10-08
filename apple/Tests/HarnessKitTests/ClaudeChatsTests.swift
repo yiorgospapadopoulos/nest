@@ -147,33 +147,28 @@ import Testing
                 "claudeChats todo-ui automated=false", "claudeChats harness automated=false",
                 "claudeChats todo-ui automated=false",
             ])
-        #expect(store.refreshError == nil)
     }
 
-    @Test func aFailedRefreshIsRecordedAndClearedByTheNextOne() async throws {
+    @Test func aFailedRefreshKeepsTheListsUntilTheNextOne() async throws {
+        try await store.load()
+        let before = store.chats(in: "todo-ui").map(\.id)
+        api.set { $0.claudeChats = [] }
         api.fail("claudeChats")
         store.apply(
             Fixture.event(
-                EventType.claudeChatsUpdated, #"{"repos": ["todo-ui"]}"#, id: nil, session: nil))
+                EventType.claudeChatsUpdated, #"{"repos": ["todo-ui", "harness"]}"#, id: nil,
+                session: nil))
         await store.refreshing?.value
-        #expect(store.refreshError == .server(status: 500, detail: "boom"))
+        #expect(store.chats(in: "todo-ui").map(\.id) == before)
+        // It stops at the first failure.
+        #expect(api.calls.filter { $0.hasPrefix("claudeChats") }.count == 2)
 
         api.set { $0.failures = [:] }
         store.apply(
             Fixture.event(
                 EventType.claudeChatsUpdated, #"{"repos": ["todo-ui"]}"#, id: nil, session: nil))
         await store.refreshing?.value
-        #expect(store.refreshError == nil)
-        #expect(store.chats(in: "todo-ui").count == 2)
-    }
-
-    @Test func otherErrorsBecomeTransportErrors() async throws {
-        api.fail("claudeChats", with: CancellationError())
-        store.apply(
-            Fixture.event(
-                EventType.claudeChatsUpdated, #"{"repos": ["todo-ui"]}"#, id: nil, session: nil))
-        await store.refreshing?.value
-        #expect(store.refreshError == .transport("CancellationError()"))
+        #expect(store.chats(in: "todo-ui").isEmpty)
     }
 
     @Test func adoptingReturnsTheSessionAndDropsTheChat() async throws {

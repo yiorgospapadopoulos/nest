@@ -46,8 +46,6 @@ enum Palette {
     static let attentionGlow = Color(Tokens.Signal.attentionGlow)
     static let addedText = Color(Tokens.Diff.addedText)
     static let removedText = Color(Tokens.Diff.removedText)
-    static let addedFill = Color(Tokens.Diff.addedFill)
-    static let removedFill = Color(Tokens.Diff.removedFill)
 
     /// Text on the amber badge.
     static let onWaiting = Color(red: 0.169, green: 0.09, blue: 0)
@@ -133,7 +131,4 @@ extension Font {
     static func mono(_ size: Double, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
     }
-
-    /// The mockup's 650 weight sits between semibold and bold.
-    static let emphasized = Font.Weight.semibold
 }

@@ -74,8 +74,6 @@ public struct SidebarGroup: Sendable, Hashable, Identifiable {
 @MainActor @Observable
 public final class ClaudeChatsStore {
     public private(set) var chats: [String: ClaudeChat] = [:]
-    /// The last refresh after an update event failed with this.
-    public private(set) var refreshError: APIError?
 
     let api: any HarnessAPI
     let settings: SettingsStore
@@ -147,13 +145,9 @@ public final class ClaudeChatsStore {
         let previous = refreshing
         refreshing = Task {
             await previous?.value
-            do {
-                for repo in repos {
-                    try await load(repo: repo)
-                }
-                refreshError = nil
-            } catch {
-                refreshError = error as? APIError ?? .transport(String(describing: error))
+            // A failure keeps the lists as they are; the next update or connect reads them.
+            for repo in repos {
+                guard (try? await load(repo: repo)) != nil else { return }
             }
         }
     }

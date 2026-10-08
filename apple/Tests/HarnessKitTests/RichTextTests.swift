@@ -71,10 +71,9 @@ import Testing
             ])
     }
 
-    @Test func plainTextIsWhatTheViewShows() {
+    @Test func listItemsShowTheirMarkerBeforeTheText() {
         let paragraphs = RichText.paragraphs("## Plan\n- **one**\n1. two\n\n```\na\nb\n```")
-        #expect(RichText.plainText(paragraphs) == "Plan\n•\tone\n1.\ttwo\na\nb")
-        #expect(paragraphs[1].plainText == "one")
-        #expect(RichText.plainText([]) == "")
+        #expect(paragraphs.map(\.prefix) == ["", "•\t", "1.\t", ""])
+        #expect(paragraphs.map { $0.runs.map(\.text).joined() } == ["Plan", "one", "two", "a\nb"])
     }
 }

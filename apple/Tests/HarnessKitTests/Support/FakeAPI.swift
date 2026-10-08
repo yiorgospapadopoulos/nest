@@ -85,16 +85,8 @@ final class FakeAPI: HarnessAPI {
         return state.sessions[index]
     }
 
-    func health() async throws -> Health {
-        try call("health") { _ in Health(status: "ok", version: "0.1.0") }
-    }
-
     func repos() async throws -> [Repo] {
         try call("repos") { $0.repos }
-    }
-
-    func repo(_ name: String) async throws -> Repo {
-        try call("repo", name) { state in state.repos.first { $0.name == name }! }
     }
 
     func registerRepo(path: String, name: String?) async throws -> Repo {
@@ -105,14 +97,6 @@ final class FakeAPI: HarnessAPI {
             state.repos.append(repo)
             return repo
         }
-    }
-
-    func linkSuggestions(repo: String) async throws -> [String] {
-        try call("linkSuggestions", repo) { _ in [".env"] }
-    }
-
-    func updateWorktree(repo: String, config: WorktreeConfig) async throws -> Repo {
-        try call("updateWorktree", repo) { state in state.repos.first { $0.name == repo }! }
     }
 
     func openRepo(_ name: String, in app: RepoApp) async throws {
@@ -159,10 +143,6 @@ final class FakeAPI: HarnessAPI {
         }
     }
 
-    func closeSession(_ id: String, removeWorktree: Bool) async throws -> Session {
-        try call("closeSession", id) { state in session(id, in: &state) { $0.state = .closed } }
-    }
-
     func deleteSession(_ id: String) async throws {
         try call("deleteSession", id) { state in state.sessions.removeAll { $0.id == id } }
     }
@@ -173,13 +153,16 @@ final class FakeAPI: HarnessAPI {
         let detail =
             "\(id) after=\(after)" + (before.map { " before=\($0)" } ?? "")
             + (limit.map { " limit=\($0)" } ?? "")
-        return try call("sessionEvents", detail) { state in
+        // Read before the gate, as the daemon answers from what it stored by then.
+        let answer = try call("sessionEvents", detail) { state in
             let range = (state.events[id] ?? []).filter {
                 ($0.id ?? 0) > after && ($0.id ?? 0) < (before ?? .max)
             }
             guard let limit else { return range }
             return before == nil ? Array(range.prefix(limit)) : Array(range.suffix(limit))
         }
+        await pass("sessionEvents")
+        return answer
     }
 
     func sendMessage(_ id: String, text: String, attachmentIDs: [String], interrupt: Bool)
@@ -325,10 +308,6 @@ final class FakeAPI: HarnessAPI {
         try call("approvals") { state in
             state.approvals.filter { status == nil || $0.status == status }
         }
-    }
-
-    func approval(_ id: String) async throws -> Approval {
-        try call("approval", id) { state in state.approvals.first { $0.id == id }! }
     }
 
     func resolveApproval(_ id: String, _ request: ResolveApprovalRequest) async throws -> Approval {

@@ -590,7 +590,7 @@
                     arrange(&state)
                     state.focusPane("c1")
                 }
-                shell.syncToolsForSnapshots()
+                shell.syncTools()
                 if name == "four" {
                     let page = shell.tools.browser(for: browser) { _ in }
                     await waitUntil { page.url != nil && !page.isLoading }
@@ -687,7 +687,7 @@
                 state.openTool(browser, in: workspace)
                 state.focusPane("c1")
             }
-            shell.syncToolsForSnapshots()
+            shell.syncTools()
             let page = shell.tools.browser(for: browser) { _ in }
             await waitUntil { page.url != nil && !page.isLoading }
             for appearance in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
@@ -833,7 +833,7 @@
                 state.openChat("c6", in: workspace)
                 state.openTool(terminal, in: workspace)
             }
-            shell.syncToolsForSnapshots()
+            shell.syncTools()
             let session = shell.tools.terminal(for: terminal)
             try await pair(controller, "b25-terminal", folder) { _ in
                 session.view.feed(text: sampleTerminal)
@@ -844,7 +844,7 @@
                 state.closePane(terminal.id)
                 state.openTool(browser, in: workspace)
             }
-            shell.syncToolsForSnapshots()
+            shell.syncTools()
             let page = shell.tools.browser(for: browser) { _ in }
             await waitUntil { page.url != nil && !page.isLoading }
             try await pair(controller, "b25-browser", folder)
@@ -868,7 +868,7 @@
                 state.focusPane("c6")
                 state.openCards = [.needsYou]
             }
-            shell.syncToolsForSnapshots()
+            shell.syncTools()
             let session2 = shell.tools.terminal(for: terminal2)
             let page2 = shell.tools.browser(for: browser2) { _ in }
             await waitUntil { page2.url != nil && !page2.isLoading }

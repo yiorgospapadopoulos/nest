@@ -318,7 +318,7 @@ private func window(updated: Date?) -> LimitWindow {
         let model = AppModel(api: api, events: source, preferences: MemoryStore())
         model.visibility.update(visible: true)
         let run = Task { await model.live.run() }
-        source.continuation.yield(.connected)
+        source.continuation.yield(.connected(resumed: false))
         try await waitFor { reports.count == 2 }
         #expect(reports == Array(repeating: "reportVisibility true mac", count: 2))
         source.continuation.finish()

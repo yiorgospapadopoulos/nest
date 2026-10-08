@@ -117,7 +117,7 @@ struct EffortMenu: View {
     }
 }
 
-/// The model's own thinking levels; Default (nil) only where `offersDefault` is set.
+/// The model's own thinking levels; Model default (nil) only where `offersDefault` is set.
 struct ThinkingItems: View {
     let model: String?
     let effort: Effort?
@@ -132,7 +132,9 @@ struct ThinkingItems: View {
                 Button("Not available for this model") {}.disabled(true)
             } else {
                 if offersDefault {
-                    OptionItem(title: "Default", detail: "", checked: effort == nil) { pick(nil) }
+                    OptionItem(title: "Model default", detail: "", checked: effort == nil) {
+                        pick(nil)
+                    }
                 }
                 ForEach(levels, id: \.self) { level in
                     OptionItem(title: level.label, detail: "", checked: effort == level) {

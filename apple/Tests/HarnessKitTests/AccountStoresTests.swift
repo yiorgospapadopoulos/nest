@@ -142,7 +142,6 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(
             store.sections[1].connectors.map(\.name)
                 == ["plugin:engineering:github", "serena", "mystery"])
-        #expect(store.needingAttention == 3)
         #expect(store.sections.map(\.attention) == ["1 needs sign-in", "2 failed"])
         #expect(ConnectorsStore.claudeAISettings.absoluteString.hasSuffix("/settings/connectors"))
 
@@ -152,7 +151,6 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
                 "{\"connectors\": [\(Fixture.json(Fixture.connectors[1]))]}",
                 session: nil))
         #expect(store.sections.map(\.id) == [.claudeCode])
-        #expect(store.needingAttention == 0)
         store.apply(Fixture.event("daemon.started", "{}"))
         #expect(store.connectors.count == 1)
     }
@@ -186,7 +184,10 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             ])
         #expect(
             states.map(\.label)
-                == ["Connected", "Needs sign-in", "Needs sign-in", "Failed", "Pending", "Disabled"])
+                == [
+                    "Connected", "Needs sign-in", "Needs sign-in", "Failed", "Connecting",
+                    "Disabled",
+                ])
         #expect(states.map(\.tone) == [.review, .waiting, .waiting, .failed, .running, .done])
     }
 
@@ -301,6 +302,23 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(!reloaded.notifications.finished)
         #expect(reloaded.notifications.sound)
         #expect(reloaded.notifications.reviews)
+
+        reloaded.notifications.ciFailed = false
+        reloaded.notifications.readyToMerge = false
+        #expect(memory.values["notifications.ci_failed"] == "off")
+        #expect(memory.values["notifications.ready_to_merge"] == "off")
+        #expect(!SettingsStore(store: memory).notifications.readyToMerge)
+    }
+
+    @Test func questionsKeepTheChoiceOfTheOldApprovalsToggle() {
+        // Approvals and questions used to share one toggle.
+        let memory = MemoryStore()
+        memory.values["notifications.approvals"] = "off"
+        #expect(!SettingsStore(store: memory).notifications.questions)
+        memory.values["notifications.questions"] = "on"
+        let settings = SettingsStore(store: memory)
+        #expect(settings.notifications.questions)
+        #expect(!settings.notifications.approvals)
     }
 
     @Test func persistsEveryChoice() {
@@ -358,54 +376,11 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
 }
 
 @Suite struct ThemeTests {
-    @Test func themeModeChoosesTheAppearance() {
-        #expect(Theme.appearance(for: .auto, system: .dark) == .dark)
-        #expect(Theme.appearance(for: .auto, system: .light) == .light)
-        #expect(Theme.appearance(for: .light, system: .dark) == .light)
-        #expect(Theme.appearance(for: .dark, system: .light) == .dark)
-    }
-
     @Test func everyAccentMapsToItsToken() {
         #expect(
             AccentName.allCases.map { Theme.accent($0).name } == AccentName.allCases.map(\.rawValue)
         )
         #expect(DesignTokens.Accent.all.map(\.name) == AccentName.allCases.map(\.rawValue))
-    }
-
-    @Test func accentBubblesUseTheAccent() {
-        let theme = Theme.resolve(
-            accent: .ocean, bubble: .accent, glass: DesignTokens.GlassTheme.frosted,
-            appearance: .dark)
-        let ocean = DesignTokens.Accent.ocean
-        #expect(theme.appearance == .dark)
-        #expect(theme.accent == ocean.fill.dark)
-        #expect(theme.onAccent == ocean.on.dark)
-        #expect(theme.bubble == ocean.fill.dark)
-        #expect(theme.bubbleText == ocean.on.dark)
-        #expect(theme.glass == DesignTokens.GlassTheme.frosted)
-    }
-
-    @Test func neutralBubblesUseGlassAndPrimaryText() {
-        let theme = Theme.resolve(
-            accent: .rose, bubble: .neutral, glass: DesignTokens.GlassTheme.clear,
-            appearance: .light)
-        #expect(theme.bubble == DesignTokens.Colors.Surface.neutralBubble.light)
-        #expect(theme.bubbleText == DesignTokens.Colors.Text.primary.light)
-        #expect(theme.accent == DesignTokens.Accent.rose.fill.light)
-    }
-
-    @MainActor
-    @Test func resolvesFromSettings() {
-        let settings = SettingsStore(store: MemoryStore())
-        settings.theme = .light
-        settings.accent = .clay
-        settings.glass = DesignTokens.GlassTheme.bluegrey
-        let theme = Theme.resolve(settings, system: .dark)
-        #expect(
-            theme
-                == Theme.resolve(
-                    accent: .clay, bubble: .accent, glass: DesignTokens.GlassTheme.bluegrey,
-                    appearance: .light))
     }
 
     @Test func statusTonesFollowTheSessionState() {
