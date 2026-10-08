@@ -7,6 +7,7 @@ import { fakeApi } from "../../test/fakeApi.ts";
 import {
   approval,
   check,
+  detail,
   diff,
   mergeApproval,
   prStatus,
@@ -69,6 +70,21 @@ describe("Inbox", () => {
       expect(screen.getByText("All clear")).toBeInTheDocument();
     });
     expect(screen.getByText("Always allowed: Bash")).toBeInTheDocument();
+  });
+
+  it("shows why Claude Code asks, when it says", async () => {
+    const why = "Path is outside the allowed working directories";
+    const api = withItems([
+      approval({
+        payload: { tool: "Bash", input: { command: "ls /etc" }, title: null, reason: why },
+      }),
+      approval({ id: "q8", payload: { tool: "Bash", input: { command: "ls" }, reason: null } }),
+    ]);
+    await renderApp({ api });
+    const [first, second] = screen.getAllByRole("article");
+
+    expect(within(defined(first)).getByText(why)).toBeInTheDocument();
+    expect(defined(second).querySelectorAll(".why")).toHaveLength(0);
   });
 
   it("keeps the card usable when resolving fails", async () => {
@@ -140,6 +156,28 @@ describe("Inbox", () => {
     expect(
       await screen.findByRole("region", { name: "Validate contact form" }),
     ).toBeInTheDocument();
+  });
+
+  it("orders a project's cards approvals, failed checks, stuck, and counts them all", async () => {
+    const failing = session({
+      id: "s2",
+      title: "Failing checks",
+      pr: prStatus({ checks: [check("unit", "failure")] }),
+    });
+    const stuck = session({
+      id: "s3",
+      title: "Stuck one",
+      state: "running",
+      stuck: { reason: "silent", since: "2026-10-06T09:48:00Z", details: "No new output." },
+    });
+    await renderApp({ api: withItems([approval()], [session(), failing, stuck]) });
+
+    expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual([
+      "Permission: Validate contact form",
+      "Checks failed: Failing checks",
+      "Stuck: Stuck one",
+    ]);
+    expect(screen.getByLabelText("3 need you")).toBeInTheDocument();
   });
 
   it("falls back to the approval's title when the session is unknown", async () => {
@@ -263,10 +301,13 @@ describe("review cards", () => {
 
   it("swipe to approve or reject", async () => {
     const api = withItems([review(), review({ id: "q4", session_id: "s2" })]);
-    await renderApp({ api });
+    const { user } = await renderApp({ api });
 
     const [first, second] = screen.getAllByRole("article");
     swipe(defined(second), -150);
+    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
+    expect(api.reject).not.toHaveBeenCalled();
+    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     swipe(defined(first), 150);
 
     await waitFor(() => {
@@ -276,16 +317,87 @@ describe("review cards", () => {
     expect(await screen.findByText("All clear")).toBeInTheDocument();
   });
 
-  it("reject the work", async () => {
+  it("name what a swipe to approve does", async () => {
+    const hint = (article: HTMLElement) => {
+      fireEvent.pointerDown(article, { button: 0, clientX: 100, clientY: 10 });
+      fireEvent.pointerMove(article, { clientX: 140, clientY: 10 });
+      const text = article.parentElement?.querySelector(".swbg .sl")?.textContent;
+      fireEvent.pointerCancel(article);
+      return text;
+    };
+    await renderApp({
+      api: withItems(
+        [review(), review({ id: "q4", session_id: "s2" })],
+        [session(), session({ id: "s2", mode: "in_place", worktree_path: null })],
+      ),
+    });
+
+    const [worktree, inPlace] = screen.getAllByRole("article");
+    expect(hint(defined(worktree))).toBe("Approve and open PR");
+    expect(hint(defined(inPlace))).toBe("Approve and push");
+  });
+
+  it("reject the work after confirming", async () => {
     const api = withItems([review()]);
     api.reject.mockRejectedValueOnce(new ApiError(502, "push failed"));
     const { user } = await renderApp({ api });
+    const reject = async () => {
+      await user.click(screen.getByRole("button", { name: "Reject" }));
+      const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
+      expect(confirm).toHaveTextContent(
+        "The chat closes and its worktree and branch are removed. Nothing is merged.",
+      );
+      return confirm;
+    };
 
-    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.click(within(await reject()).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.reject).not.toHaveBeenCalled();
+    await user.click(within(await reject()).getByRole("button", { name: "Reject" }));
     expect(await screen.findByText("push failed")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.click(within(await reject()).getByRole("button", { name: "Reject" }));
 
     expect(await screen.findByText("Rejected. Nothing merged")).toBeInTheDocument();
+  });
+
+  it("say that rejecting in-place work leaves its changes in the folder", async () => {
+    const api = withItems([review()], [session({ mode: "in_place", worktree_path: null })]);
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "The chat closes. Its changes stay in your folder.",
+    );
+  });
+
+  it("need the agent's own git changes checked before publishing", async () => {
+    const api = withItems([review()], [session({ git_violation: true })]);
+    api.session.mockResolvedValue(detail({ git_violation: true }));
+    const { user } = await renderApp({ api });
+    const approve = screen.getByRole("button", { name: "Approve and open PR" });
+
+    expect(
+      screen.getByText(
+        "The agent ran git itself and changed this chat's branch. Check its commits before publishing.",
+      ),
+    ).toBeInTheDocument();
+    expect(approve).toBeDisabled();
+    // A swipe does not publish it either: it opens the chat instead.
+    swipe(card(/Ready for review/), 150);
+    expect(
+      await screen.findByRole("region", { name: "Validate contact form" }),
+    ).toBeInTheDocument();
+    expect(api.approve).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
+
+    await user.click(screen.getByRole("switch", { name: "I checked, publish anyway" }));
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      acknowledge_violation: true,
+    });
   });
 
   it("send feedback instead", async () => {
@@ -370,12 +482,14 @@ describe("review cards", () => {
     await user.click(within(sheet).getByRole("button", { name: "Done" }));
 
     sheet = await open();
-    expect(await within(sheet).findByText("No changes.")).toBeInTheDocument();
+    expect(await within(sheet).findByText("No changes against the base.")).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     sheet = await open();
     expect(await within(sheet).findByText("The changes could not be loaded.")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Reject" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
+    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     expect(api.reject).toHaveBeenCalledWith("s1");
   });
 });
@@ -449,7 +563,12 @@ describe("pull request cards", () => {
     expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
     await user.click(within(failed).getByRole("button", { name: "Send to agent" }));
 
-    expect(api.sendMessage).toHaveBeenCalledWith("s1", "CI failed: unit, e2e. Please fix.", []);
+    expect(api.sendMessage).toHaveBeenCalledWith(
+      "s1",
+      "CI failed: unit, e2e. Please fix. You can't use gh or reach GitHub from here, so work " +
+        "from the code and the check names, and ask me for the logs if you need them.",
+      [],
+    );
     expect(await screen.findByText("Sent to the agent")).toBeInTheDocument();
   });
 

@@ -56,24 +56,48 @@ export function usePlan(approval: Approval) {
 export function useReview(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
+  // The agent changed git refs itself: publishing waits until the user says they checked.
+  const [acknowledged, setAcknowledged] = useState(false);
+  // Reject asks first, from a button or a swipe.
+  const [rejecting, setRejecting] = useState(false);
   const view = reviewOf(approval);
   const inPlace = session?.mode === "in_place";
-  const body = (message: string): ApproveBody =>
+  const violation = session?.git_violation === true;
+  const body = (message: string): ApproveBody => ({
+    commit_message: message,
     // In-place work is pushed without a pull request, committing only the changed files.
-    inPlace
-      ? { commit_message: message, files: view.paths, open_pr: false }
-      : { commit_message: message };
+    ...(inPlace ? { files: view.paths, open_pr: false } : {}),
+    ...(violation && acknowledged ? { acknowledge_violation: true } : {}),
+  });
   return {
     view,
     busy,
+    inPlace,
+    violation,
+    acknowledged,
+    setAcknowledged,
+    // Approving would be refused until the violation is acknowledged.
+    blocked: violation && !acknowledged,
     title: session?.title ?? approval.title,
     approveLabel: inPlace ? "Approve and push" : "Approve and open PR",
     approve: (message: string) =>
       run(() => actions.approveReview(approval, body(message.trim() || approval.title))),
-    reject: () => run(() => actions.rejectReview(approval)),
+    rejecting,
+    askReject: () => {
+      setRejecting(true);
+    },
+    cancelReject: () => {
+      setRejecting(false);
+    },
+    reject: () => {
+      setRejecting(false);
+      return run(() => actions.rejectReview(approval));
+    },
     feedback: (text: string) => run(() => actions.feedback(approval, text)),
   };
 }
+
+export type Review = ReturnType<typeof useReview>;
 
 export function useMerge(approval: Approval) {
   const { actions } = useStore();

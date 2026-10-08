@@ -399,6 +399,8 @@ export interface ApproveBody {
   commit_message: string;
   files?: string[];
   open_pr?: boolean;
+  // The user checked the git refs the agent changed itself (session.git_violation).
+  acknowledge_violation?: boolean;
 }
 
 export type NotifyKind =

@@ -54,6 +54,8 @@ export interface PermissionView {
   // The Bash command, or the tool with its main argument.
   command: string;
   why: string | null;
+  // Why Claude Code asks rather than deciding itself, when it says.
+  reason: string | null;
 }
 
 export function permissionOf(approval: Approval, root: string | null): PermissionView {
@@ -61,7 +63,12 @@ export function permissionOf(approval: Approval, root: string | null): Permissio
   const input = obj(approval.payload.input);
   const command =
     tool === "Bash" ? (str(input.command) ?? "") : `${tool} ${toolArg(input, root)}`.trim();
-  return { tool, command, why: str(input.description) ?? str(approval.payload.title) };
+  return {
+    tool,
+    command,
+    why: str(input.description) ?? str(approval.payload.title),
+    reason: str(approval.payload.reason),
+  };
 }
 
 export interface QuestionOption {

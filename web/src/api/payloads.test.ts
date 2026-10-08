@@ -49,26 +49,34 @@ describe("permissionOf", () => {
       tool: "Bash",
       command: "npm install zod",
       why: "Adds zod",
+      reason: null,
     });
   });
 
   it("shows other tools with their argument and the prompt title", () => {
     const item = approval({
-      payload: { tool: "Edit", input: { file_path: "/w/s1/a.ts" }, title: "Edit a file?" },
+      payload: {
+        tool: "Edit",
+        input: { file_path: "/w/s1/a.ts" },
+        title: "Edit a file?",
+        reason: "Outside the project",
+      },
     });
 
     expect(permissionOf(item, "/w/s1")).toEqual({
       tool: "Edit",
       command: "Edit a.ts",
       why: "Edit a file?",
+      reason: "Outside the project",
     });
   });
 
   it("survives a malformed payload", () => {
-    expect(permissionOf(approval({ payload: { input: [] } }), null)).toEqual({
+    expect(permissionOf(approval({ payload: { input: [], reason: 4 } }), null)).toEqual({
       tool: "Tool",
       command: "Tool",
       why: null,
+      reason: null,
     });
     expect(permissionOf(approval({ payload: { tool: "Bash", input: null } }), null).command).toBe(
       "",

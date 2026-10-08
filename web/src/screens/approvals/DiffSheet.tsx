@@ -37,7 +37,7 @@ export function DiffSheet({ sessionId, title, onClose, footer }: Props) {
           <div className="dsum">
             <DiffStats {...diff.stats} />
           </div>
-          {diff.files.length === 0 && <p className="note">No changes.</p>}
+          {diff.files.length === 0 && <p className="note">No changes against the base.</p>}
           {diff.files.map((file) => (
             <FileView key={file.path} file={file} />
           ))}

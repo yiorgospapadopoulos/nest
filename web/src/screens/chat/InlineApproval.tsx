@@ -6,6 +6,7 @@ import { DiffSheet } from "../approvals/DiffSheet.tsx";
 import { useMerge, usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
+import { RejectConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
 
 interface Props {
   approval: Approval;
@@ -73,6 +74,7 @@ function InlinePermission({ approval, session }: Props) {
         Permission needed
       </div>
       <div className="cmdbox">{view.command}</div>
+      {view.reason !== null && <div className="why">{view.reason}</div>}
       <div className="acts">
         <button className="b b-ok" disabled={busy} onClick={() => void decide("allow")}>
           Approve
@@ -98,8 +100,9 @@ function InlineReview({ approval, session }: Props) {
       <div className="crr">
         <DiffStats {...review.view} />
       </div>
+      <ViolationNotice review={review} />
       <div className="acts">
-        <button className="b b-ok" disabled={review.busy} onClick={approve}>
+        <button className="b b-ok" disabled={review.busy || review.blocked} onClick={approve}>
           {review.approveLabel}
         </button>
         <button
@@ -120,20 +123,17 @@ function InlineReview({ approval, session }: Props) {
           }}
           footer={
             <>
-              <button className="b b-ok" disabled={review.busy} onClick={approve}>
+              <button className="b b-ok" disabled={review.busy || review.blocked} onClick={approve}>
                 {review.approveLabel}
               </button>
-              <button
-                className="b b-no"
-                disabled={review.busy}
-                onClick={() => void review.reject()}
-              >
+              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
                 Reject
               </button>
             </>
           }
         />
       )}
+      <RejectConfirmation review={review} />
     </div>
   );
 }

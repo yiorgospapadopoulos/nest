@@ -7,6 +7,7 @@ import { DiffSheet } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
+import { RejectConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
 import { Card, SwipeCard } from "../approvals/SwipeCard.tsx";
 import { MergeCard } from "./PrCards.tsx";
 
@@ -50,6 +51,7 @@ export function InboxCard({ approval, onOpenChat }: Props) {
           approval={approval}
           session={session}
           head={head("check", "Ready for review", true)}
+          onOpenChat={onOpenChat}
         />
       );
     case "plan":
@@ -88,6 +90,7 @@ function PermissionCard({ approval, session, head }: CardProps) {
       {head}
       <div className="cmdbox">{view.command}</div>
       {view.why !== null && <div className="why">{view.why}</div>}
+      {view.reason !== null && <div className="why">{view.reason}</div>}
       <div className="acts">
         <button className="b b-ok" disabled={busy} onClick={() => void decide("allow")}>
           <Icon name="check" />
@@ -104,7 +107,12 @@ function PermissionCard({ approval, session, head }: CardProps) {
   );
 }
 
-function ReviewCard({ approval, session, head }: CardProps) {
+function ReviewCard({
+  approval,
+  session,
+  head,
+  onOpenChat,
+}: CardProps & { onOpenChat: (sessionId: string) => void }) {
   const review = useReview(approval, session);
   const [message, setMessage] = useState(review.title);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -115,9 +123,13 @@ function ReviewCard({ approval, session, head }: CardProps) {
     <>
       <SwipeCard
         label={`Ready for review: ${review.title}`}
-        approveLabel="Open PR"
-        onApprove={() => void review.approve(message)}
-        onReject={() => void review.reject()}
+        approveLabel={review.approveLabel}
+        onApprove={() => {
+          // Never publish unchecked git changes with a swipe: show the chat instead.
+          if (review.blocked) onOpenChat(approval.session_id);
+          else void review.approve(message);
+        }}
+        onReject={review.askReject}
       >
         {head}
         <div className="cq">{review.title}</div>
@@ -134,6 +146,7 @@ function ReviewCard({ approval, session, head }: CardProps) {
           View changes
           <Icon name="chevr" />
         </button>
+        <ViolationNotice review={review} />
         {feedback === null ? (
           <>
             <label className="flbl" htmlFor={fieldId}>
@@ -151,16 +164,12 @@ function ReviewCard({ approval, session, head }: CardProps) {
             <div className="acts">
               <button
                 className="b b-ok"
-                disabled={review.busy}
+                disabled={review.busy || review.blocked}
                 onClick={() => void review.approve(message)}
               >
                 {review.approveLabel}
               </button>
-              <button
-                className="b b-no"
-                disabled={review.busy}
-                onClick={() => void review.reject()}
-              >
+              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
                 Reject
               </button>
               <button
@@ -223,22 +232,19 @@ function ReviewCard({ approval, session, head }: CardProps) {
             <>
               <button
                 className="b b-ok"
-                disabled={review.busy}
+                disabled={review.busy || review.blocked}
                 onClick={() => void review.approve(message)}
               >
                 {review.approveLabel}
               </button>
-              <button
-                className="b b-no"
-                disabled={review.busy}
-                onClick={() => void review.reject()}
-              >
+              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
                 Reject
               </button>
             </>
           }
         />
       )}
+      <RejectConfirmation review={review} />
     </>
   );
 }
