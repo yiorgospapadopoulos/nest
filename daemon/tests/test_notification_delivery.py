@@ -158,13 +158,15 @@ async def test_quiet_hours_hold_everything_back(h: Harness) -> None:
 
 
 async def test_ntfy_receives_the_same_notice_when_enabled(h: Harness) -> None:
-    h.rules.current = NotificationSettings(ntfy=NtfySettings(enabled=True, topic="t0p1c"))
+    h.rules.current = NotificationSettings(
+        ntfy=NtfySettings(enabled=True, topic="harness-t0p1c-k2v9x7")
+    )
     await h.delivery.start()
 
     await h.notify()
 
     await eventually(lambda: len(h.servers.to(NTFY)) == 1)
-    assert json_body(h.servers.to(NTFY)[0])["topic"] == "t0p1c"
+    assert json_body(h.servers.to(NTFY)[0])["topic"] == "harness-t0p1c-k2v9x7"
 
 
 async def test_a_failing_delivery_is_logged_and_the_next_one_still_goes_out(

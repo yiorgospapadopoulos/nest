@@ -36,7 +36,7 @@ class AgentDefaults(_Strict):
     # Where new chats work; a repo's `[worktree] default` overrides it when set (D038).
     default_mode: SessionMode = "in_place"
     # Idle agent processes are closed after this long and resumed on the next message.
-    idle_close_minutes: int = Field(default=10, ge=1)
+    idle_close_minutes: int = Field(default=60, ge=1)
 
 
 class AgentChoices(_Strict):
@@ -92,7 +92,10 @@ class NtfySettings(_Strict):
 
     enabled: bool = False
     server: str = Field(default="https://ntfy.sh", pattern=_HTTP_URL)
-    topic: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    # Long enough to be hard to guess, since the topic is all that protects it.
+    topic: str | None = Field(
+        default=None, min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
     # The address the phone opens harness at, such as "https://mac.tailnet.ts.net", so a
     # tapped ntfy notification opens the item. Without it, notifications carry no link.
     click_base_url: str | None = Field(default=None, pattern=_HTTP_URL)

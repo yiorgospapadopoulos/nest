@@ -74,10 +74,17 @@ def test_enabled_ntfy_needs_a_topic() -> None:
         NtfySettings(enabled=True)
 
 
-@pytest.mark.parametrize("topic", ["has space", "a/b", "x" * 65])
+@pytest.mark.parametrize("topic", ["has space in a topic", "harness/k2v9x7q4m1z8", "x" * 65])
 def test_ntfy_topics_are_url_safe(topic: str) -> None:
     with pytest.raises(ValidationError):
         NtfySettings(topic=topic)
+
+
+def test_ntfy_topics_are_long_enough_to_be_hard_to_guess() -> None:
+    """H-04: anyone who knows a public topic can read it."""
+    assert NtfySettings(topic="k" * 16).topic == "k" * 16
+    with pytest.raises(ValidationError, match="16"):
+        NtfySettings(topic="harness-k2v9x7q")
 
 
 @pytest.mark.parametrize("server", ["ftp://ntfy.sh", "ntfy.sh", "https://"])

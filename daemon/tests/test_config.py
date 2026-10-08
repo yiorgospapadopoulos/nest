@@ -180,7 +180,7 @@ def test_save_repo_round_trips(tmp_path: Path) -> None:
 def test_agent_and_worktree_defaults_for_sessions() -> None:
     settings = Settings()
 
-    assert settings.agents.idle_close_minutes == 10
+    assert settings.agents.idle_close_minutes == 60
     assert WorktreeConfig().setup_timeout_seconds == 900
 
 

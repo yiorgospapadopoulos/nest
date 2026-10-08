@@ -58,7 +58,7 @@ async def test_routine_notices_have_default_priority_and_no_link_without_a_base(
 ) -> None:
     routine = Notice(kind="finished", title="t", body="b", url="/chat/s", tag="x", urgent=False)
 
-    await channel.send(routine, NtfySettings(enabled=True, topic="topic"))
+    await channel.send(routine, NtfySettings(enabled=True, topic="harness-topic-k2v9x7"))
 
     body = json_body(servers.to("https://ntfy.sh/")[0])
     assert body["priority"] == 3
@@ -68,7 +68,7 @@ async def test_routine_notices_have_default_priority_and_no_link_without_a_base(
 async def test_disabled_or_topicless_channels_send_nothing(
     channel: NtfyChannel, servers: FakeServers
 ) -> None:
-    assert await channel.send(URGENT, NtfySettings(topic="topic")) is False
+    assert await channel.send(URGENT, NtfySettings(topic="harness-topic-k2v9x7")) is False
     assert await channel.send(URGENT, NtfySettings.model_construct(enabled=True)) is False
     assert servers.requests == []
 
@@ -77,7 +77,7 @@ async def test_failures_are_logged_without_the_topic(
     channel: NtfyChannel, servers: FakeServers, caplog: pytest.LogCaptureFixture
 ) -> None:
     servers.statuses["https://ntfy.sh/"] = 429
-    settings = NtfySettings(enabled=True, topic="secret-topic")
+    settings = NtfySettings(enabled=True, topic="secret-topic-k2v9x7q4")
 
     with caplog.at_level(logging.WARNING):
         assert await channel.send(URGENT, settings) is False
@@ -86,4 +86,4 @@ async def test_failures_are_logged_without_the_topic(
 
     assert "429" in caplog.text
     assert "ConnectError" in caplog.text
-    assert "secret-topic" not in caplog.text
+    assert "secret-topic-k2v9x7q4" not in caplog.text

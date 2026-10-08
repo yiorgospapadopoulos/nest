@@ -26,6 +26,17 @@ def test_new_chats_work_in_place_unless_settings_say_otherwise(paths: AppPaths) 
     assert load_settings(paths).agents.default_mode == "worktree"
 
 
+def test_idle_agents_are_closed_after_an_hour_unless_settings_say_otherwise(
+    paths: AppPaths,
+) -> None:
+    """BUG-11: each close re-runs the user's SessionEnd and SessionStart hooks."""
+    assert load_settings(paths).agents.idle_close_minutes == 60
+
+    paths.settings_file.write_text("[agents]\nidle_close_minutes = 15\n", encoding="utf-8")
+
+    assert load_settings(paths).agents.idle_close_minutes == 15
+
+
 def test_an_unknown_default_mode_is_refused() -> None:
     with pytest.raises(ValidationError):
         AgentDefaults.model_validate({"default_mode": "elsewhere"})
