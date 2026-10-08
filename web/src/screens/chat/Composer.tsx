@@ -30,6 +30,16 @@ import { useSuggestions } from "./useSuggestions.ts";
 
 const BUSY = new Set<Session["state"]>(["starting", "running", "waiting"]);
 
+/**
+ * Whether Return adds a line: on a touch screen with no fine pointer and no hover, as a
+ * phone's keyboard Return, while the Send button sends. With a mouse or trackpad around,
+ * Enter sends, as on the Mac. A hardware keyboard on a phone alone cannot be told apart.
+ */
+function returnAddsLine(): boolean {
+  const { matchMedia } = window as { matchMedia?: Window["matchMedia"] };
+  return matchMedia?.("(any-pointer: fine), (any-hover: hover)").matches === false;
+}
+
 interface Choices {
   model: string | null;
   effort: Effort | null;
@@ -116,6 +126,8 @@ export function Composer({ session, repo, onCreated }: Props) {
   const send = async () => {
     if (!canSend) return;
     setSending(true);
+    // As typed now: anything added while it sends stays in the draft.
+    const typed = text;
     const prompt = text.trim();
     const ids = files.map((f) => f.id);
     let ok: boolean;
@@ -134,8 +146,8 @@ export function Composer({ session, repo, onCreated }: Props) {
       ok = await deliver(session.id, prompt, ids);
     }
     setSending(false);
-    // Cleared by key: the user may have moved on to another chat meanwhile.
-    if (ok) actions.clearDraft(key);
+    // By key: the user may have moved on to another chat meanwhile.
+    if (ok) actions.draftSent(key, typed, ids);
   };
 
   const attach = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -185,7 +197,7 @@ export function Composer({ session, repo, onCreated }: Props) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends on a hardware keyboard; the iPhone keyboard's return adds a line.
+    // Enter picks a suggestion, and sends unless Return adds a line here.
     const enter = event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
     // Undefined while nothing is being completed.
     const active = suggest.items[suggest.active];
@@ -195,7 +207,7 @@ export function Composer({ session, repo, onCreated }: Props) {
     } else if (active !== undefined && (enter || event.key === "Tab")) {
       event.preventDefault();
       choose(active);
-    } else if (enter) {
+    } else if (enter && !returnAddsLine()) {
       event.preventDefault();
       void send();
     }

@@ -99,7 +99,8 @@ describe("switching chats", () => {
     );
 
     await go("s1", "Fix login");
-    await user.type(screen.getByLabelText("Message"), "Ship it{Enter}");
+    await user.type(screen.getByLabelText("Message"), "Ship it");
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await go("s2", "Add tests");
     await user.type(screen.getByLabelText("Message"), "Keep me");
     await act(async () => {
