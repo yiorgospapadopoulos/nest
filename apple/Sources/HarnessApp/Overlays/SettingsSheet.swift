@@ -213,7 +213,7 @@ struct AgentDefaultsSection: View {
                 }
             }
             SheetRow(label: "Thinking") {
-                DropdownMenu(title: defaults.effort?.label ?? "Default") {
+                DropdownMenu(title: defaults.effort?.label ?? "Model default") {
                     ThinkingItems(
                         model: defaults.model, effort: defaults.effort, offersDefault: true
                     ) { effort in
@@ -383,18 +383,14 @@ struct NotificationsSection: View {
 
     var body: some View {
         let settings = shell.settings
-        let toggles: [(String, WritableKeyPath<NotificationPreferences, Bool>)] = [
-            ("Approvals and questions", \.approvals), ("Work ready for review", \.reviews),
-            ("Agent errors", \.errors), ("Finished work", \.finished),
-            ("Chats that look stuck", \.stuck), ("Sound", \.sound),
-        ]
+        let toggles = NotificationPreferences.toggles
         SheetSection(title: "Notifications") {
             ForEach(Array(toggles.enumerated()), id: \.offset) { index, toggle in
-                SheetRow(label: toggle.0, first: index == 0) {
-                    Switch(isOn: settings.notifications[keyPath: toggle.1]) {
-                        settings.notifications[keyPath: toggle.1].toggle()
+                SheetRow(label: toggle.title, first: index == 0) {
+                    Switch(isOn: settings.notifications[keyPath: toggle.path]) {
+                        settings.notifications[keyPath: toggle.path].toggle()
                     }
-                    .accessibilityLabel(toggle.0)
+                    .accessibilityLabel(toggle.title)
                 }
             }
         }

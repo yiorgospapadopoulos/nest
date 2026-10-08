@@ -177,15 +177,10 @@ public final class AppStore {
     public var projects: [String: ProjectState] = [:]
 
     let api: any HarnessAPI
-    let approvals: ApprovalsStore
     @ObservationIgnored let store: any KeyValueStore
 
-    public init(
-        api: any HarnessAPI, approvals: ApprovalsStore,
-        store: any KeyValueStore = UserDefaultsStore()
-    ) {
+    public init(api: any HarnessAPI, store: any KeyValueStore = UserDefaultsStore()) {
         self.api = api
-        self.approvals = approvals
         self.store = store
         openProjects = (store.string(forKey: Key.openProjects) ?? "")
             .split(separator: "\n").map(String.init)
@@ -195,12 +190,16 @@ public final class AppStore {
         }
     }
 
-    /// Loads the repos; tabs of repos that are gone close, and the first repo opens when
-    /// no tab is open.
+    /// Loads the repos; tabs of repos that are gone close and their terminal and browser
+    /// panes end, and the first repo opens when no tab is open. A closed tab keeps its panes.
     public func loadRepos() async throws {
         repos = try await api.repos()
         let names = Set(repos.map(\.name))
         openProjects.removeAll { !names.contains($0) }
+        for name in projects.keys where !names.contains(name) {
+            projects[name] = nil
+            saveTools([], of: name)
+        }
         if openProjects.isEmpty, let first = repos.first {
             openProjects = [first.name]
         }
@@ -315,16 +314,6 @@ public final class AppStore {
         if state.openTools != tools {
             saveTools(state.openTools, of: name)
         }
-    }
-
-    /// Pending approvals of the project, for its tab's attention glow.
-    public func attention(of project: String) -> Int {
-        approvals.countsByRepo[project] ?? 0
-    }
-
-    /// Background tabs that need the user.
-    public var glowingProjects: [String] {
-        openProjects.filter { $0 != currentProject && attention(of: $0) > 0 }
     }
 
     /// A deleted chat leaves every workspace.

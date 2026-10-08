@@ -92,14 +92,39 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
     @Test func preferencesChooseKinds() {
         var preferences = NotificationPreferences()
         let kinds: [NoticeKind] = [
-            .needsApproval, .question, .reviewReady, .failed, .finished, .unknown,
+            .needsApproval, .question, .reviewReady, .failed, .finished, .ciFailed,
+            .readyToMerge, .stuck,
         ]
-        #expect(kinds.map(preferences.wants) == [true, true, true, true, true, false])
-        preferences.approvals = false
-        preferences.reviews = false
-        preferences.errors = false
-        preferences.finished = false
-        #expect(kinds.allSatisfy { !preferences.wants($0) })
+        #expect(kinds.allSatisfy(preferences.wants))
+        #expect(!preferences.wants(.unknown))
+        for (kind, toggle) in zip(kinds, NotificationPreferences.toggles) {
+            preferences[keyPath: toggle.path] = false
+            #expect(!preferences.wants(kind), "\(toggle.title)")
+        }
+        #expect(preferences.sound == false)
+    }
+
+    @Test func togglesUseTheIPhonesNames() {
+        #expect(
+            NotificationPreferences.toggles.map(\.title) == [
+                "Approvals", "Questions", "Work ready for review", "Agent errors",
+                "Finished turns", "Pull request checks failed", "Pull requests ready to merge",
+                "Chats that look stuck", "Sound",
+            ])
+    }
+
+    @Test func pullRequestNoticesAreRead() {
+        for (name, kind) in [("ci_failed", NoticeKind.ciFailed), ("ready_to_merge", .readyToMerge)]
+        {
+            let event = Fixture.event(
+                EventType.notify,
+                #"{"kind": "\#(name)", "session_id": "s1", "repo": "r", "title": "t", "text": "x"}"#
+            )
+            #expect(
+                event.body
+                    == .notify(
+                        Notice(kind: kind, sessionID: "s1", repo: "r", title: "t", text: "x")))
+        }
     }
 
     @Test func buildsTheNotification() {
@@ -127,7 +152,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
 
     @Test func visibleChatsAreTheFocusedWorkspacesPanes() async throws {
         let api = FakeAPI()
-        let app = AppStore(api: api, approvals: ApprovalsStore(api: api), store: MemoryStore())
+        let app = AppStore(api: api, store: MemoryStore())
         #expect(NotificationPolicy.visibleChats(app: app, windowFocused: true).isEmpty)
         try await app.loadRepos()
         let size = CGSize(width: 1200, height: 800)

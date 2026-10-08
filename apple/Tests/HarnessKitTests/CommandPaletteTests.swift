@@ -14,7 +14,7 @@ import Testing
     init() {
         approvals = ApprovalsStore(api: api)
         sessions = SessionsStore(api: api, approvals: approvals)
-        app = AppStore(api: api, approvals: approvals, store: MemoryStore())
+        app = AppStore(api: api, store: MemoryStore())
     }
 
     func load() async throws {

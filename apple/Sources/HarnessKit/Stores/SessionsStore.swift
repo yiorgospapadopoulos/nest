@@ -107,9 +107,13 @@ public final class SessionsStore {
             || session.stuck != nil
     }
 
-    /// The status color of a session's dot and pill.
+    /// The status color of a session's dot and pill; a pull request ready to merge shows
+    /// as review too.
     public func tone(of session: Session) -> StatusTone {
-        StatusTone.of(session.state, hasReview: approvals.hasPendingReview(session: session.id))
+        let ready =
+            approvals.hasPendingReview(session: session.id)
+            || approvals.pending(session: session.id).contains { $0.kind == .merge }
+        return StatusTone.of(session.state, hasReview: ready)
     }
 
     /// The status words of a session's pill, sidebar row and palette entry.
@@ -118,16 +122,20 @@ public final class SessionsStore {
         case .starting: return "Starting"
         case .running: return "Running"
         case .waiting:
+            // A question first, then a plan, then a permission prompt (as on the iPhone).
             let kinds = Set(approvals.pending(session: session.id).map(\.kind))
-            if kinds.contains(.plan) {
-                return "Plan ready"
+            if kinds.contains(.question) {
+                return "Question"
             }
-            return kinds.contains(.question) ? "Question" : "Needs approval"
+            return kinds.contains(.plan) ? "Plan ready" : "Needs approval"
         case .interrupted: return "Interrupted"
         case .failed: return "Failed"
         case .closed: return "Done"
         case .idle, .unknown:
-            return tone(of: session) == .review ? "Ready for review" : "Idle"
+            if approvals.hasPendingReview(session: session.id) {
+                return "Ready for review"
+            }
+            return tone(of: session) == .review ? "Ready to merge" : "Idle"
         }
     }
 
@@ -150,8 +158,8 @@ public final class SessionsStore {
 
     /// Chats whose open pull request has failed checks and that wait for the user: not
     /// working, closed or archived, and with no review of new work pending.
-    public func checksFailed(in repo: String) -> [Session] {
-        sessions(in: repo).filter { session in
+    public func checksFailed(in repo: String?) -> [Session] {
+        listed(in: repo).filter { session in
             guard let pr = session.pr, pr.state == .open, pr.checks.state == .failure else {
                 return false
             }
@@ -161,8 +169,20 @@ public final class SessionsStore {
     }
 
     /// Chats that look stuck, for their Needs you cards; archived ones are left out.
-    public func stuck(in repo: String) -> [Session] {
-        sessions(in: repo).filter { $0.stuck != nil && !$0.isArchived }
+    public func stuck(in repo: String?) -> [Session] {
+        listed(in: repo).filter { $0.stuck != nil && !$0.isArchived }
+    }
+
+    /// What needs the user, for the project's tab and the Dock badge (every project's
+    /// without a repo): pending approvals, pull requests whose checks failed and chats
+    /// that look stuck, as on the iPhone.
+    public func attention(of repo: String? = nil) -> Int {
+        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
+        return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
+    }
+
+    private func listed(in repo: String?) -> [Session] {
+        repo.map(sessions(in:)) ?? Array(sessions.values)
     }
 
     // MARK: Actions

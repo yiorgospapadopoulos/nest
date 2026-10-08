@@ -1,12 +1,17 @@
 import Foundation
 
-/// The Notifications settings.
+/// The Notifications settings, one toggle per kind of notice.
 public struct NotificationPreferences: Sendable, Hashable {
-    /// Permission prompts and questions.
+    /// Permission prompts.
     public var approvals = true
+    public var questions = true
     public var reviews = true
     public var errors = true
     public var finished = true
+    /// Pull requests whose checks failed.
+    public var ciFailed = true
+    /// Pull requests that are green and mergeable.
+    public var readyToMerge = true
     /// Chats that look stuck (D036).
     public var stuck = true
     public var sound = false
@@ -16,18 +21,35 @@ public struct NotificationPreferences: Sendable, Hashable {
     /// Stored names of the toggles.
     static var fields: [(String, WritableKeyPath<NotificationPreferences, Bool>)] {
         [
-            ("approvals", \.approvals), ("reviews", \.reviews), ("errors", \.errors),
-            ("finished", \.finished), ("stuck", \.stuck), ("sound", \.sound),
+            ("approvals", \.approvals), ("questions", \.questions), ("reviews", \.reviews),
+            ("errors", \.errors), ("finished", \.finished), ("ci_failed", \.ciFailed),
+            ("ready_to_merge", \.readyToMerge), ("stuck", \.stuck), ("sound", \.sound),
+        ]
+    }
+
+    /// The Settings toggles in order, named as on the iPhone.
+    public static var toggles:
+        [(title: String, path: WritableKeyPath<NotificationPreferences, Bool>)]
+    {
+        [
+            ("Approvals", \.approvals), ("Questions", \.questions),
+            ("Work ready for review", \.reviews), ("Agent errors", \.errors),
+            ("Finished turns", \.finished), ("Pull request checks failed", \.ciFailed),
+            ("Pull requests ready to merge", \.readyToMerge), ("Chats that look stuck", \.stuck),
+            ("Sound", \.sound),
         ]
     }
 
     /// Whether this kind of notice is switched on.
     public func wants(_ kind: NoticeKind) -> Bool {
         switch kind {
-        case .needsApproval, .question: approvals
+        case .needsApproval: approvals
+        case .question: questions
         case .reviewReady: reviews
         case .failed: errors
         case .finished: finished
+        case .ciFailed: ciFailed
+        case .readyToMerge: readyToMerge
         case .stuck: stuck
         case .unknown: false
         }
@@ -70,7 +92,8 @@ public enum NotificationPolicy {
         return Set(state.layout.leaves)
     }
 
-    /// The Dock badge: every pending approval, or none.
+    /// The Dock badge: everything that needs the user (`SessionsStore.attention()`), or
+    /// none.
     public static func badge(pending: Int) -> String? {
         pending > 0 ? "\(pending)" : nil
     }

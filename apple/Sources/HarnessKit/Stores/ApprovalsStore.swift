@@ -39,11 +39,6 @@ public final class ApprovalsStore {
         pending.filter { $0.sessionID == session }
     }
 
-    /// Pending items per repo, for the project tabs' attention glow.
-    public var countsByRepo: [String: Int] {
-        pending.reduce(into: [:]) { counts, approval in counts[approval.repo, default: 0] += 1 }
-    }
-
     public func hasPendingReview(session: String) -> Bool {
         pending.contains { $0.sessionID == session && $0.kind == .review }
     }

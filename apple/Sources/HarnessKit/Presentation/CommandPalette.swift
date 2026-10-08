@@ -175,7 +175,7 @@ extension CommandPalette {
             ]
         }
         for project in app.openProjects where project != app.currentProject {
-            let attention = app.attention(of: project)
+            let attention = sessions.attention(of: project)
             items.append(
                 PaletteItem(
                     group: .projects, title: "Go to \(project)",

@@ -66,10 +66,7 @@ struct PanelCounts {
         let project = shell.project ?? ""
         let ids = shell.sessions.sessions(in: project).map(\.id)
         agents = shell.activity.runningAgents(in: ids)
-        needs =
-            shell.approvals.pending(repo: project).count
-            + shell.sessions.checksFailed(in: project).count
-            + shell.sessions.stuck(in: project).count
+        needs = shell.sessions.attention(of: project)
         let chats = shell.projectState.layout.leaves.filter { PaneKind(paneID: $0) == .chat }
         goals = chats.filter { !shell.isDraft($0) }.count
     }

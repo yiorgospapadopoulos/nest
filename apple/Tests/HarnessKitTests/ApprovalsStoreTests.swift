@@ -31,7 +31,6 @@ import Testing
         #expect(store.pending.map(\.id) == ["ap-perm", "ap-question", "ap-review"])
         #expect(store.pending(repo: "todo-ui").map(\.id) == ["ap-perm", "ap-review"])
         #expect(store.pending(session: question.sessionID).map(\.id) == ["ap-question"])
-        #expect(store.countsByRepo == ["todo-ui": 2, "notes-app": 1])
         #expect(store.hasPendingReview(session: review.sessionID))
         #expect(!store.hasPendingReview(session: permission.sessionID))
     }

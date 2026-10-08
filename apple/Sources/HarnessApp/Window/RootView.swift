@@ -82,12 +82,14 @@ struct ShellView: View {
         ) { _ in fullScreen = false }
         .onAppear { shell.startWatchingDrags() }
         .onDisappear { shell.stopWatchingDrags() }
+        // A project removed from the daemon drops its state, ending its tool panes.
+        .onChange(of: Set(shell.app.projects.keys)) { shell.syncTools() }
         .onChange(of: shell.app.connection) { _, connection in
             if connection == .connected {
                 controller.service.reset()
             }
         }
-        .onChange(of: shell.approvals.pending.count, initial: true) { _, count in
+        .onChange(of: shell.sessions.attention(), initial: true) { _, count in
             if !snapshot {
                 NSApp.dockTile.badgeLabel = NotificationPolicy.badge(pending: count)
             }

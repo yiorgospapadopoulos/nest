@@ -194,20 +194,36 @@ import Testing
         permission.sessionID = "perm"
         var review = Fixture.approval("ap-review")
         review.sessionID = "review"
-        api.set { $0.approvals = [question, permission, review] }
+        // A question outranks a plan, and a plan a permission prompt.
+        func pending(_ kind: ApprovalKind, _ session: String) -> Approval {
+            var approval = Fixture.approval("ap-perm")
+            approval.id = "\(kind)-\(session)"
+            approval.kind = kind
+            approval.sessionID = session
+            return approval
+        }
+        api.set {
+            $0.approvals = [
+                question, permission, review, pending(.plan, "ask"), pending(.plan, "plan"),
+                pending(.permission, "plan"), pending(.merge, "merge"),
+            ]
+        }
         try await approvals.load()
         let states: [(String, SessionState)] = [
-            ("setup", .starting), ("run", .running), ("ask", .waiting), ("perm", .waiting),
-            ("stop", .interrupted), ("broken", .failed), ("done", .closed), ("idle", .idle),
-            ("review", .idle), ("odd", .unknown),
+            ("setup", .starting), ("run", .running), ("ask", .waiting), ("plan", .waiting),
+            ("perm", .waiting), ("stop", .interrupted), ("broken", .failed), ("done", .closed),
+            ("idle", .idle), ("review", .idle), ("merge", .idle), ("odd", .unknown),
         ]
         let labels = states.map { store.statusLabel(of: Fixture.session($0.0, state: $0.1)) }
         #expect(
             labels == [
-                "Starting", "Running", "Question", "Needs approval", "Interrupted", "Failed",
-                "Done", "Idle", "Ready for review", "Idle",
+                "Starting", "Running", "Question", "Plan ready", "Needs approval",
+                "Interrupted", "Failed", "Done", "Idle", "Ready for review", "Ready to merge",
+                "Idle",
             ])
         #expect(store.tone(of: Fixture.session("review", state: .idle)) == .review)
+        #expect(store.tone(of: Fixture.session("merge", state: .idle)) == .review)
+        #expect(store.tone(of: Fixture.session("idle", state: .idle)) == .done)
         #expect(store.tone(of: Fixture.session("run", state: .running)) == .running)
     }
 }

@@ -71,6 +71,10 @@ public final class SettingsStore {
                 notifications[keyPath: path] = stored == "on"
             }
         }
+        // Questions shared the approvals toggle before they had their own.
+        if store.string(forKey: Key.notifications + "questions") == nil {
+            notifications.questions = notifications.approvals
+        }
         self.notifications = notifications
     }
 

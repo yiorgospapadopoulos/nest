@@ -75,7 +75,7 @@ private struct ProjectTab: View {
     var body: some View {
         let isCurrent = shell.project == name
         let strip = glass.spacing.stripHeight
-        let attention = shell.app.attention(of: name)
+        let attention = shell.sessions.attention(of: name)
         let running = shell.sessions.sessions(in: name).contains {
             $0.state == .running || $0.state == .starting
         }

@@ -15,7 +15,7 @@ struct AgentsCard: View {
             .sorted { ($0.state == .waiting ? 0 : 1) < ($1.state == .waiting ? 0 : 1) }
         LazyVStack(alignment: .leading, spacing: 0) {
             if chats.isEmpty {
-                EmptyCard(icon: Icon.agent, text: "No agents running", tone: nil)
+                EmptyCard(icon: Icon.agent, text: "No agents have run yet.", tone: nil)
             }
             ForEach(chats) { session in
                 AgentGroup(session: session)
@@ -208,7 +208,8 @@ private struct StepList: View {
     }
 }
 
-/// Pending approvals of the project, each with its actions; resolved ones slide out.
+/// Pending approvals, failed checks and stuck chats of the project, each with its actions;
+/// resolved ones slide out.
 struct NeedsCard: View {
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
@@ -219,19 +220,20 @@ struct NeedsCard: View {
         let stuck = shell.sessions.stuck(in: shell.project ?? "")
         VStack(alignment: .leading, spacing: 8) {
             if pending.isEmpty && failed.isEmpty && stuck.isEmpty {
-                EmptyCard(icon: Icon.check, text: "Nothing needs you", tone: .review)
+                EmptyCard(icon: Icon.check, text: "Nothing needs you.", tone: .review)
                     .transition(.opacity)
             }
-            ForEach(stuck) { session in
-                StuckCard(session: session)
-                    .transition(slideOut)
-            }
+            // As on the iPhone: approvals, failed checks, then stuck chats.
             ForEach(pending) { approval in
                 ApprovalCard(approval: approval, style: .panel)
                     .transition(slideOut)
             }
             ForEach(failed) { session in
                 ChecksFailedCard(session: session)
+                    .transition(slideOut)
+            }
+            ForEach(stuck) { session in
+                StuckCard(session: session)
                     .transition(slideOut)
             }
         }
