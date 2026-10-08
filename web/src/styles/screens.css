@@ -261,6 +261,35 @@
   white-space: pre-line;
   margin-bottom: 4px;
 }
+/* The agent changed git refs itself: a warning with the switch that allows publishing. */
+.vio {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--fail-soft);
+  color: var(--fail-t);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.vio p {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+}
+.vio p .ic {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+.vio-r {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  color: var(--t1);
+}
 .cilist {
   margin: 6px 0 0;
   padding-left: 18px;
@@ -1101,17 +1130,20 @@ a.b {
 .sfield input::-webkit-search-cancel-button {
   display: none;
 }
+/* A 32 point button in a 44 point target, as the composer's send button. */
 .sfield button {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  margin: -6px;
+  background-clip: content-box;
   border: 0;
-  border-radius: var(--r-ctl);
-  background: var(--fill);
+  border-radius: calc(var(--r-ctl) + 6px);
+  background-color: var(--fill);
   color: var(--t2);
   display: grid;
   place-items: center;
   cursor: pointer;
-  padding: 0;
 }
 .sfield button .ic {
   width: 14px;

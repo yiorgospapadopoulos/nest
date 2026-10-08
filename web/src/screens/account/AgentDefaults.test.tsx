@@ -75,7 +75,7 @@ describe("agent defaults", () => {
         .getAllByRole("option")
         .map((o) => o.textContent),
     ).toEqual(["Model default", "Low", "Medium", "High", "Extra high", "Max"]);
-    expect(within(card).getByLabelText("Permission")).toHaveValue("plan");
+    expect(within(card).getByLabelText("Permission mode")).toHaveValue("plan");
     expect(within(card).getByRole("button", { name: "Worktree" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -93,7 +93,7 @@ describe("agent defaults", () => {
 
     await user.selectOptions(within(card).getByLabelText("Model"), "claude-opus-4-6");
     await user.selectOptions(within(card).getByLabelText("Thinking"), "max");
-    await user.selectOptions(within(card).getByLabelText("Permission"), "acceptEdits");
+    await user.selectOptions(within(card).getByLabelText("Permission mode"), "acceptEdits");
     await user.click(within(card).getByRole("button", { name: "Worktree" }));
     await user.selectOptions(within(card).getByLabelText("Thinking"), "");
 
@@ -120,7 +120,9 @@ describe("agent defaults", () => {
     await waitFor(() => {
       expect(within(card).getByLabelText("Thinking")).toBeDisabled();
     });
-    expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue("Not available");
+    expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue(
+      "Not available for this model",
+    );
   });
 
   it("keeps a model the list does not know", async () => {
@@ -161,13 +163,13 @@ describe("agent defaults", () => {
     const { user } = await openAccount(api);
     const card = await screen.findByRole("region", { name: "Agent defaults" });
     await waitFor(() => {
-      expect(within(card).getByLabelText("Permission")).toHaveValue("default");
+      expect(within(card).getByLabelText("Permission mode")).toHaveValue("default");
     });
 
-    await user.selectOptions(within(card).getByLabelText("Permission"), "plan");
+    await user.selectOptions(within(card).getByLabelText("Permission mode"), "plan");
 
     expect(await screen.findByText("Haiku 4.5 does not take a thinking level")).toBeInTheDocument();
-    expect(within(card).getByLabelText("Permission")).toHaveValue("default");
+    expect(within(card).getByLabelText("Permission mode")).toHaveValue("default");
   });
 
   it("waits for the Mac", async () => {

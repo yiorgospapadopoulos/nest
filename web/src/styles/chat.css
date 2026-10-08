@@ -484,11 +484,13 @@
   max-width: 100%;
   padding-right: 2px;
 }
+/* A 44 point target that takes the 22 point place of the icon. */
 .atts .chip button {
   border: 0;
   background: transparent;
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
+  margin: -11px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -541,26 +543,29 @@
   background: var(--fill);
   color: var(--t1);
 }
+/* A 36 point button in a 44 point target: the color fills the content box only, and the
+   negative margins keep its 36 point place in the row. */
 .send {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-ctl);
+  width: 44px;
+  height: 44px;
+  padding: 4px;
+  background-clip: content-box;
+  border-radius: calc(var(--r-ctl) + 4px);
   border: 0;
-  background: var(--accent);
+  background-color: var(--accent);
   color: var(--on-accent);
   display: grid;
   place-items: center;
   cursor: pointer;
-  padding: 0;
   flex: none;
-  margin-left: 4px;
+  margin: -4px -4px -4px 0;
 }
 .send:disabled {
   opacity: 0.35;
   cursor: default;
 }
 .send.stop {
-  background: var(--fail-soft);
+  background-color: var(--fail-soft);
   color: var(--fail-t);
 }
 .send .ic {
@@ -987,7 +992,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 14px;
   border: 0;
   background: transparent;
@@ -1138,12 +1143,14 @@
   opacity: 0.8;
   margin: -2px -6px 2px 0;
 }
+/* A 44 point target that takes the 26 point place of the icon. */
 .m-u .qh button {
   border: 0;
   background: transparent;
   color: inherit;
-  width: 26px;
-  height: 26px;
+  width: 44px;
+  height: 44px;
+  margin: -9px;
   padding: 0;
   display: grid;
   place-items: center;

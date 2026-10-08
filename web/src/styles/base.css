@@ -170,6 +170,22 @@ code {
   mask: linear-gradient(#000 55%, transparent);
 }
 
+/* "Reconnecting..." at the top while the live connection comes back. */
+.reconn {
+  position: fixed;
+  top: calc(var(--sat) + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: var(--r-ctl);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2);
+  white-space: nowrap;
+  pointer-events: none;
+}
 .gl {
   background: var(--g1);
   -webkit-backdrop-filter: var(--gfilter);

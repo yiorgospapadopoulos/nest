@@ -1,12 +1,6 @@
 import type { AgentDefaults, Effort, PermissionMode, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import {
-  CLAUDE_DEFAULT,
-  effortLabel,
-  NO_THINKING,
-  PERMISSIONS,
-  thinkingLevels,
-} from "../chat/options.ts";
+import { CLAUDE_DEFAULT, effortLabel, PERMISSIONS, thinkingLevels } from "../chat/options.ts";
 
 const MODES: { mode: SessionMode; label: string }[] = [
   { mode: "in_place", label: "In place" },
@@ -69,7 +63,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         <label htmlFor="default-effort">Thinking</label>
         {levels.length === 0 ? (
           <select id="default-effort" className="ssel" disabled value="">
-            <option value="">{NO_THINKING}</option>
+            <option value="">Not available for this model</option>
           </select>
         ) : (
           <select
@@ -91,7 +85,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         )}
       </div>
       <div className="srow">
-        <label htmlFor="default-permission">Permission</label>
+        <label htmlFor="default-permission">Permission mode</label>
         <select
           id="default-permission"
           className="ssel"
