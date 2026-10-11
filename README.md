@@ -6,6 +6,13 @@ harness is the app around the agent, not the agent itself. Agents run on the off
 
 Status: early development.
 
+<!-- Screenshot slot: add images once the UI settles, e.g.
+<p align="center">
+  <img src="docs/images/mac-app.png" alt="harness Mac app" width="720">
+  <img src="docs/images/iphone.png" alt="harness iPhone app" width="240">
+</p>
+-->
+
 ## Layout
 
 | Path | What |
@@ -216,3 +223,7 @@ All routes need a device token (`Authorization: Bearer <token>` or the `harness_
 | Events | `WS /api/events?after=<id>` (replay, then live; text deltas, `session.thinking`, `claude_chats.updated` and live `session.agents` updates during a turn arrive with `id: null`; revoking a device closes its sockets with 4401; `session.notice` `{kind: compacted\|cleared\|model_fallback\|api_retry, text}` marks Claude Code's own notices; a turn that ends with an engine error ends with `session.state` `failed` and its reason) |
 
 Coverage is enforced at 100%: daemon line and branch coverage, web lines, branches, functions and statements, and `HarnessKit` lines and functions.
+
+## License
+
+[MIT](LICENSE)
