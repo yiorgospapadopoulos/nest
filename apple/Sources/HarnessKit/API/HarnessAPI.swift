@@ -78,6 +78,24 @@ public protocol HarnessAPI: Sendable {
     func agentDefaults() async throws -> AgentDefaults
     func updateAgentDefaults(_ defaults: AgentDefaults) async throws -> AgentDefaults
 
+    func pixies() async throws -> [Pixie]
+    func createPixie(_ request: CreatePixieRequest) async throws -> Pixie
+    func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie
+    /// Stops the pixie's run and removes its chat and folder.
+    func deletePixie(_ id: String) async throws
+    /// Sends the text into the pixie's chat; answers the chat.
+    func sendToPixie(_ id: String, text: String) async throws -> Session
+    /// Opens a fresh run for the pixie's chat.
+    func resetPixie(_ id: String) async throws -> Pixie
+    /// A file of the pixie's folder, such as `soul` or `notes/ideas`.
+    func pixieFile(_ id: String, name: String) async throws -> PixieFile
+    /// Writes the file; the hash must be the one read, else the call fails with
+    /// `APIError.staleFile`.
+    func savePixieFile(_ id: String, name: String, text: String, hash: String?) async throws
+        -> PixieFile
+    func pixieNotes(_ id: String) async throws -> [String]
+    func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit]
+
     func createPairingCode() async throws -> PairingCode
     func devices() async throws -> [Device]
     func revokeDevice(_ id: String) async throws

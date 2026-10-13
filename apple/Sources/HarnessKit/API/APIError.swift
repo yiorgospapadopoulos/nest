@@ -8,6 +8,8 @@ public enum APIError: Error, Sendable, Equatable {
     case conflict(String, files: [String])
     /// The chat is open in Claude Code right now; it has to be closed there first.
     case openInClaudeCode(String)
+    /// A pixie file changed since it was read; carries the current text and hash.
+    case staleFile(text: String, hash: String)
     case invalidInput(String)
     case payloadTooLarge(String)
     case rateLimited(String, retryAfter: Int?)
@@ -24,6 +26,8 @@ public enum APIError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
+        case .staleFile:
+            "The file changed since you opened it."
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail, _),
             .openInClaudeCode(let detail), .invalidInput(let detail), .payloadTooLarge(let detail),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
@@ -44,6 +48,11 @@ public enum APIError: Error, Sendable, Equatable {
         case 409 where body["code"]?.stringValue == "open_in_claude_code":
             return .openInClaudeCode(detail)
         case 409:
+            if body["code"]?.stringValue == "stale_file", let text = body["text"]?.stringValue,
+                let hash = body["hash"]?.stringValue
+            {
+                return .staleFile(text: text, hash: hash)
+            }
             let files = body["files"]?.arrayValue?.compactMap(\.stringValue) ?? []
             return .conflict(detail, files: files)
         case 413: return .payloadTooLarge(detail)

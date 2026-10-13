@@ -33,6 +33,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let defaultsJSON = """
         {"model": "opus", "effort": "high", "permission_mode": "default", "mode": "in_place"}
         """
+    static let pixieJSON = Fixture.text("pixie")
     static let claudeChatJSON = """
         {"id": "c1", "repo": "todo-ui", "title": "T", "cwd": "/r", "worktree": null,
          "created_at": "2026-10-06T09:00:00Z", "last_activity_at": "2026-10-06T09:00:00Z",
@@ -162,6 +163,41 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "POST", "/api/sessions/s1/open-in-claude-code",
             response: #"{"launcher": "/tmp/x.command", "warning": null}"#
         ) { _ = try await $0.openInClaudeCode("s1") },
+        RouteCase("GET", "/api/pixies", response: "[" + pixieJSON + "]") {
+            _ = try await $0.pixies()
+        },
+        RouteCase(
+            "POST", "/api/pixies", body: #"{"mascot":"owl","name":"Reviewer"}"#,
+            response: pixieJSON
+        ) { _ = try await $0.createPixie(CreatePixieRequest(name: "Reviewer", mascot: .owl)) },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"all_projects":true,"hidden":true}"#,
+            response: pixieJSON
+        ) {
+            _ = try await $0.updatePixie(
+                "p1", UpdatePixieRequest(hidden: true, allProjects: true))
+        },
+        RouteCase("DELETE", "/api/pixies/p1", response: "") { try await $0.deletePixie("p1") },
+        RouteCase(
+            "POST", "/api/pixies/p1/messages", body: #"{"text":"hi"}"#, response: sessionJSON
+        ) { _ = try await $0.sendToPixie("p1", text: "hi") },
+        RouteCase("POST", "/api/pixies/p1/reset", response: pixieJSON) {
+            _ = try await $0.resetPixie("p1")
+        },
+        RouteCase(
+            "GET", "/api/pixies/p1/files/soul", response: #"{"text": "I am", "hash": "h"}"#
+        ) { _ = try await $0.pixieFile("p1", name: "soul") },
+        RouteCase(
+            "PUT", "/api/pixies/p1/files/notes/a", body: #"{"hash":null,"text":"x"}"#,
+            response: #"{"text": "x", "hash": "h2"}"#
+        ) { _ = try await $0.savePixieFile("p1", name: "notes/a", text: "x", hash: nil) },
+        RouteCase("GET", "/api/pixies/p1/notes", response: #"["a", "b"]"#) {
+            _ = try await $0.pixieNotes("p1")
+        },
+        RouteCase(
+            "GET", "/api/pixies/p1/search?q=a%20b",
+            response: #"[{"file": "MEMORY.md", "line": "- x"}]"#
+        ) { _ = try await $0.searchPixie("p1", query: "a b") },
         RouteCase("GET", "/api/sessions/s1/diff", response: Fixture.text("diff")) {
             _ = try await $0.diff("s1")
         },
@@ -462,6 +498,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(await failure(409, #"{"detail": "busy"}"#) == .conflict("busy", files: []))
         #expect(
             await failure(
+                409, #"{"detail": "changed", "code": "stale_file", "text": "t", "hash": "h"}"#)
+                == .staleFile(text: "t", hash: "h"))
+        #expect(
+            await failure(409, #"{"detail": "changed", "code": "stale_file"}"#)
+                == .conflict("changed", files: []))
+        #expect(
+            await failure(
                 409, #"{"detail": "Close it there first.", "code": "open_in_claude_code"}"#)
                 == .openInClaudeCode("Close it there first."))
         #expect(
@@ -550,5 +593,8 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             .transport("a"), .decoding("a"),
         ]
         #expect(errors.map(\.message) == Array(repeating: "a", count: errors.count))
+        #expect(
+            APIError.staleFile(text: "t", hash: "h").message
+                == "The file changed since you opened it.")
     }
 }

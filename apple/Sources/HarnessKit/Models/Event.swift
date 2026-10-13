@@ -69,6 +69,8 @@ public enum EventType {
     /// A repo's registration changed, such as a plain folder that git now tracks.
     public static let repoUpdated = "repo.updated"
     public static let repoRemoved = "repo.removed"
+    public static let pixieUpdated = "pixie.updated"
+    public static let pixieDeleted = "pixie.deleted"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -113,6 +115,8 @@ public enum EventBody: Sendable, Hashable {
     case reposChanged
     /// A muted line for the transcript.
     case sessionNotice(text: String)
+    case pixieUpdated(Pixie)
+    case pixieDeleted(String)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -170,6 +174,8 @@ public enum EventBody: Sendable, Hashable {
             self = .reposChanged
         case EventType.sessionNotice:
             self = .sessionNotice(text: try field("text", as: String.self))
+        case EventType.pixieUpdated: self = .pixieUpdated(try field("pixie", as: Pixie.self))
+        case EventType.pixieDeleted: self = .pixieDeleted(try field("pixie_id", as: String.self))
         default: self = .other
         }
     }

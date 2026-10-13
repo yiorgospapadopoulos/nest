@@ -77,6 +77,13 @@ import Testing
         }
     }
 
+    @Test func readsThePixieAChatBelongsTo() throws {
+        #expect(Fixture.sessions[0].pixieID == nil)
+        let json = Fixture.json(Fixture.sessions[0]).dropLast()
+        let chat = Fixture.decode(Session.self, json: json + #","pixie_id":"p1"}"#)
+        #expect(chat.pixieID == "p1")
+    }
+
     @Test func encodesDatesWithFractionalSeconds() throws {
         var session = Fixture.sessions[0]
         session.archivedAt = Date(timeIntervalSince1970: 1_791_278_350.5)

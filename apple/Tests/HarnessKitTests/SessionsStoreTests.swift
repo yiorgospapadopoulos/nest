@@ -226,4 +226,33 @@ import Testing
         #expect(store.tone(of: Fixture.session("idle", state: .idle)) == .done)
         #expect(store.tone(of: Fixture.session("run", state: .running)) == .running)
     }
+
+    @Test func pixieChatsStayOutOfProjectLists() async throws {
+        var pixieChat = Fixture.session("pc", repo: "pixie:p1", state: .waiting)
+        pixieChat.pixieID = "p1"
+        var stuck = Fixture.session("ps", repo: "todo-ui", state: .running)
+        stuck.pixieID = "p1"
+        stuck.stuck = StuckFixture.flag
+        try await seed([pixieChat, stuck, Fixture.session("normal")])
+        approvals.apply(
+            .approvalCreated(
+                pixieApproval(session: "pc")))
+
+        #expect(store.session("pc")?.pixieID == "p1")
+        #expect(store.sessions(in: "pixie:p1").isEmpty)
+        #expect(store.sessions(in: "todo-ui").map(\.id) == ["normal"])
+        #expect(store.groups(in: "todo-ui").map { $0.sessions.map(\.id) } == [["normal"]])
+        #expect(store.board(in: "todo-ui").values.flatMap { $0 }.map(\.id) == ["normal"])
+        #expect(store.stuck(in: nil).isEmpty)
+        #expect(store.attention() == 0)
+        #expect(approvals.pending.count == 1)
+    }
+
+    func pixieApproval(session: String) -> Approval {
+        var approval = Fixture.approval("ap-perm")
+        approval.id = "ap-pixie"
+        approval.sessionID = session
+        approval.repo = "pixie:p1"
+        return approval
+    }
 }

@@ -26,6 +26,9 @@
         private var searchIndexing = false
         private var agentDefaults = AgentDefaults(
             model: "opus", effort: .high, permissionMode: .default, mode: .inPlace)
+        private var pixieList: [Pixie] = []
+        /// Pixie files by "<pixie id>/<name>", such as "reviewer/soul".
+        private var pixieFiles: [String: String] = [:]
 
         init(now: Date = Date()) {
             self.now = now
@@ -36,6 +39,8 @@
             approvalList = data.approvals
             chatList = data.claudeChats
             chatEvents = data.claudeEvents
+            pixieList = Self.samplePixies(now: now)
+            pixieFiles = Self.samplePixieFiles
         }
 
         /// Four git repositories and a plain folder, "recipes".
@@ -442,6 +447,126 @@
         func updateAgentDefaults(_ defaults: AgentDefaults) async throws -> AgentDefaults {
             lock.withLock { agentDefaults = defaults }
             return defaults
+        }
+
+        // MARK: Pixies
+
+        /// "Reviewer" the owl on dusk and "Watcher" the ghost on night.
+        private static func samplePixies(now: Date) -> [Pixie] {
+            let rows: [(String, String, String, String, String, String, Int)] = [
+                ("reviewer", "Reviewer", "owl", "#8B7CF6", "dusk", "default", 0),
+                ("watcher", "Watcher", "ghost", "#12A594", "night", "plan", 1),
+            ]
+            return rows.map { id, name, mascot, color, background, permission, position in
+                let object: [String: Any] = [
+                    "id": id, "slug": id, "name": name, "mascot": mascot, "color": color,
+                    "background": background, "model": NSNull(), "effort": NSNull(),
+                    "permission_mode": permission, "autonomy": "observe",
+                    "project_access": "read", "projects": NSNull(), "skills": [String](),
+                    "can_call": [String](), "allowed_tools": [String](),
+                    "disallowed_tools": [String](), "hidden": false, "position": position,
+                    "chat_session_id": NSNull(), "created_at": SampleData.iso(now - 86_400 * 5),
+                    "updated_at": SampleData.iso(now - 3600),
+                ]
+                return try! SampleData.decode(object)
+            }
+        }
+
+        private static var samplePixieFiles: [String: String] {
+            [
+                "reviewer/soul":
+                    "I review pull requests with care. I say what I would change and why.\n",
+                "reviewer/memory": """
+                # Memory
+                - 2026-10-10: Sam prefers small pull requests.
+                - 2026-10-11: todo-ui uses Zod for every form.
+                - 2026-10-12: Flag any change that skips the tests.
+
+                """,
+                "reviewer/notes/review-checklist":
+                    "Tests first. Then naming. Then the diff size.\n",
+                "watcher/soul": "I keep an eye on builds and tell Sam when one breaks.\n",
+                "watcher/memory":
+                    "# Memory\n- 2026-10-12: The map-viewer build is flaky on Mondays.\n",
+            ]
+        }
+
+        func pixies() async throws -> [Pixie] {
+            lock.withLock { pixieList }
+        }
+
+        func createPixie(_ request: CreatePixieRequest) async throws -> Pixie {
+            lock.withLock {
+                var pixie = Self.samplePixies(now: now)[0]
+                pixie.id = "pixie-\(pixieList.count + 1)"
+                pixie.slug = pixie.id
+                pixie.name = request.name
+                pixie.mascot = request.mascot ?? .invader
+                pixie.position = pixieList.count
+                pixieList.append(pixie)
+                pixieFiles["\(pixie.id)/soul"] = request.soul ?? ""
+                pixieFiles["\(pixie.id)/memory"] = "# Memory\n"
+                return pixie
+            }
+        }
+
+        func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie {
+            try lock.withLock {
+                guard let index = pixieList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound("unknown pixie")
+                }
+                pixieList[index].name = request.name ?? pixieList[index].name
+                pixieList[index].hidden = request.hidden ?? pixieList[index].hidden
+                return pixieList[index]
+            }
+        }
+
+        func deletePixie(_ id: String) async throws {
+            lock.withLock { pixieList.removeAll { $0.id == id } }
+        }
+
+        func sendToPixie(_ id: String, text: String) async throws -> Session {
+            var session = try await sessions(repo: nil, archived: false)[0]
+            session.pixieID = id
+            session.repo = "pixie:\(id)"
+            return session
+        }
+
+        func resetPixie(_ id: String) async throws -> Pixie {
+            try lock.withLock {
+                guard let pixie = pixieList.first(where: { $0.id == id }) else {
+                    throw APIError.notFound("unknown pixie")
+                }
+                return pixie
+            }
+        }
+
+        func pixieFile(_ id: String, name: String) async throws -> PixieFile {
+            let text = lock.withLock { pixieFiles["\(id)/\(name)"] ?? "" }
+            return PixieFile(text: text, hash: String(text.hashValue))
+        }
+
+        func savePixieFile(_ id: String, name: String, text: String, hash: String?) async throws
+            -> PixieFile
+        {
+            lock.withLock { pixieFiles["\(id)/\(name)"] = text }
+            return PixieFile(text: text, hash: String(text.hashValue))
+        }
+
+        func pixieNotes(_ id: String) async throws -> [String] {
+            lock.withLock {
+                pixieFiles.keys.compactMap { key in
+                    key.hasPrefix("\(id)/notes/")
+                        ? String(key.dropFirst("\(id)/notes/".count)) : nil
+                }.sorted()
+            }
+        }
+
+        func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit] {
+            lock.withLock { pixieFiles["\(id)/memory"] ?? "" }
+                .split(separator: "\n")
+                .filter { $0.hasPrefix("- ") && $0.localizedCaseInsensitiveContains(query) }
+                .map { PixieSearchHit(file: "MEMORY.md", line: String($0)) }
         }
 
         func createPairingCode() async throws -> PairingCode {

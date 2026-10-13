@@ -173,6 +173,10 @@ struct FeedbackRequest: Encodable {
     var text: String
 }
 
+struct PixieMessageRequest: Encodable {
+    var text: String
+}
+
 struct VisibilityRequest: Encodable {
     var visible: Bool
     var client: String
@@ -184,4 +188,140 @@ struct OpenRepoRequest: Encodable {
 
 struct ArchiveRequest: Encodable {
     var archived: Bool
+}
+
+/// `POST /api/pixies`; fields left nil use the daemon's defaults.
+public struct CreatePixieRequest: Encodable, Sendable, Hashable {
+    public var name: String
+    public var slug: String?
+    public var mascot: Mascot?
+    public var color: String?
+    public var background: PixieBackground?
+    public var model: String?
+    public var effort: Effort?
+    public var permissionMode: PermissionMode?
+    public var autonomy: Autonomy?
+    public var projectAccess: ProjectAccess?
+    /// Repo names; nil means every project.
+    public var projects: [String]?
+    public var skills: [String]?
+    public var allowedTools: [String]?
+    public var disallowedTools: [String]?
+    public var hidden: Bool?
+    /// The first text of the pixie's `SOUL.md`.
+    public var soul: String?
+
+    public init(
+        name: String, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
+        background: PixieBackground? = nil, model: String? = nil, effort: Effort? = nil,
+        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
+        projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
+        allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
+        soul: String? = nil
+    ) {
+        self.name = name
+        self.slug = slug
+        self.mascot = mascot
+        self.color = color
+        self.background = background
+        self.model = model
+        self.effort = effort
+        self.permissionMode = permissionMode
+        self.autonomy = autonomy
+        self.projectAccess = projectAccess
+        self.projects = projects
+        self.skills = skills
+        self.allowedTools = allowedTools
+        self.disallowedTools = disallowedTools
+        self.hidden = hidden
+        self.soul = soul
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, slug, mascot, color, background, model, effort, autonomy, projects, skills
+        case hidden, soul
+        case permissionMode = "permission_mode"
+        case projectAccess = "project_access"
+        case allowedTools = "allowed_tools"
+        case disallowedTools = "disallowed_tools"
+    }
+}
+
+/// `PATCH /api/pixies/{id}`; nil fields are left unchanged.
+public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var slug: String?
+    public var mascot: Mascot?
+    public var color: String?
+    public var background: PixieBackground?
+    public var model: String?
+    public var effort: Effort?
+    public var permissionMode: PermissionMode?
+    public var autonomy: Autonomy?
+    public var projectAccess: ProjectAccess?
+    public var projects: [String]?
+    public var skills: [String]?
+    public var allowedTools: [String]?
+    public var disallowedTools: [String]?
+    public var hidden: Bool?
+    /// True sets `projects` back to every project.
+    public var allProjects: Bool?
+
+    public init(
+        name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
+        background: PixieBackground? = nil, model: String? = nil, effort: Effort? = nil,
+        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
+        projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
+        allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
+        allProjects: Bool? = nil
+    ) {
+        self.name = name
+        self.slug = slug
+        self.mascot = mascot
+        self.color = color
+        self.background = background
+        self.model = model
+        self.effort = effort
+        self.permissionMode = permissionMode
+        self.autonomy = autonomy
+        self.projectAccess = projectAccess
+        self.projects = projects
+        self.skills = skills
+        self.allowedTools = allowedTools
+        self.disallowedTools = disallowedTools
+        self.hidden = hidden
+        self.allProjects = allProjects
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, slug, mascot, color, background, model, effort, autonomy, projects, skills
+        case hidden
+        case permissionMode = "permission_mode"
+        case projectAccess = "project_access"
+        case allowedTools = "allowed_tools"
+        case disallowedTools = "disallowed_tools"
+        case allProjects = "all_projects"
+    }
+}
+
+/// `PUT /api/pixies/{id}/files/{name}`: the hash is the one the writer read, null for a
+/// file that does not exist yet.
+public struct WritePixieFileRequest: Encodable, Sendable, Hashable {
+    public var text: String
+    public var hash: String?
+
+    public init(text: String, hash: String?) {
+        self.text = text
+        self.hash = hash
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case text, hash
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(hash, forKey: .hash)
+    }
 }

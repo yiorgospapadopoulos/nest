@@ -136,6 +136,15 @@ import Testing
         #expect(model.app.connection == .disconnected)
     }
 
+    @Test func pixiesLoadOnConnectAndFollowEvents() async throws {
+        api.set { $0.pixies = [Fixture.decode(Pixie.self, "pixie")] }
+        await model.live.refresh()
+        #expect(model.pixies.pixies.map(\.id) == ["p1"])
+
+        model.live.route(Fixture.event(EventType.pixieDeleted, #"{"pixie_id": "p1"}"#))
+        #expect(model.pixies.pixies.isEmpty)
+    }
+
     @Test func aFailedRefreshIsReported() async {
         api.fail("approvals", with: APIError.unauthorized("not authenticated"))
         await model.live.refresh()

@@ -42,6 +42,13 @@ final class FakeAPI: HarnessAPI {
         var account = ClaudeAccount(
             displayName: "Sam", email: "me@example.com", plan: "Claude Max",
             organization: nil)
+        var pixies: [Pixie] = []
+        /// What a pixie file save answers with a `staleFile` error, when set.
+        var staleFile: PixieFile?
+        /// Pixie files by name.
+        var pixieFiles: [String: PixieFile] = [:]
+        var pixieNotes: [String] = []
+        var pixieHits: [PixieSearchHit] = []
         var agentDefaults = AgentDefaults(
             model: "opus", effort: .xhigh, permissionMode: .default, mode: .inPlace)
     }
@@ -409,6 +416,74 @@ final class FakeAPI: HarnessAPI {
             state.agentDefaults = defaults
             return defaults
         }
+    }
+
+    func pixies() async throws -> [Pixie] {
+        try call("pixies") { $0.pixies }
+    }
+
+    func createPixie(_ request: CreatePixieRequest) async throws -> Pixie {
+        try call("createPixie", request.name) { state in
+            var pixie = Fixture.decode(Pixie.self, "pixie")
+            pixie.id = "new-\(state.pixies.count)"
+            pixie.name = request.name
+            pixie.hidden = request.hidden ?? false
+            state.pixies.append(pixie)
+            return pixie
+        }
+    }
+
+    func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie {
+        try call("updatePixie", id) { state in
+            let index = state.pixies.firstIndex { $0.id == id }!
+            state.pixies[index].name = request.name ?? state.pixies[index].name
+            state.pixies[index].hidden = request.hidden ?? state.pixies[index].hidden
+            return state.pixies[index]
+        }
+    }
+
+    func deletePixie(_ id: String) async throws {
+        try call("deletePixie", id) { state in state.pixies.removeAll { $0.id == id } }
+    }
+
+    func sendToPixie(_ id: String, text: String) async throws -> Session {
+        try call("sendToPixie", id) { _ in
+            var session = Fixture.session("chat-\(id)", repo: "pixie:\(id)", state: .running)
+            session.pixieID = id
+            return session
+        }
+    }
+
+    func resetPixie(_ id: String) async throws -> Pixie {
+        try call("resetPixie", id) { state in state.pixies.first { $0.id == id }! }
+    }
+
+    func pixieFile(_ id: String, name: String) async throws -> PixieFile {
+        try call("pixieFile", "\(id) \(name)") { state in
+            state.pixieFiles[name] ?? PixieFile(text: "", hash: "empty")
+        }
+    }
+
+    func savePixieFile(_ id: String, name: String, text: String, hash: String?) async throws
+        -> PixieFile
+    {
+        let stale = try call("savePixieFile", "\(id) \(name)") { $0.staleFile }
+        if let stale {
+            throw APIError.staleFile(text: stale.text, hash: stale.hash)
+        }
+        return state.withLock { state in
+            let saved = PixieFile(text: text, hash: "hash-of-\(text)")
+            state.pixieFiles[name] = saved
+            return saved
+        }
+    }
+
+    func pixieNotes(_ id: String) async throws -> [String] {
+        try call("pixieNotes", id) { $0.pixieNotes }
+    }
+
+    func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit] {
+        try call("searchPixie", "\(id) \(query)") { $0.pixieHits }
     }
 
     func createPairingCode() async throws -> PairingCode {

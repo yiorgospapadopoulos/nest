@@ -90,6 +90,8 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var context: SessionContext?
     /// Why the running chat looks stuck, while it does (D036).
     public var stuck: StuckFlag?
+    /// The pixie this chat belongs to; such chats stay out of project lists (D057).
+    public var pixieID: String?
     /// Only in `GET /api/sessions/{id}`.
     public var tasks: [TrackedTask]?
     public var agents: [TrackedAgent]?
@@ -106,6 +108,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
         case pr
         case tasks, agents, background, context, queued, stuck
+        case pixieID = "pixie_id"
         case permissionMode = "permission_mode"
         case baseRef = "base_ref"
         case worktreePath = "worktree_path"

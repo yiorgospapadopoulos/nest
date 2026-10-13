@@ -286,6 +286,57 @@ public struct APIClient: HarnessAPI {
         try await perform("DELETE", ["devices", id])
     }
 
+    // MARK: Pixies
+
+    public func pixies() async throws -> [Pixie] {
+        try await get("pixies")
+    }
+
+    public func createPixie(_ request: CreatePixieRequest) async throws -> Pixie {
+        try await call("POST", ["pixies"], body: request)
+    }
+
+    public func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie {
+        try await call("PATCH", ["pixies", id], body: request)
+    }
+
+    public func deletePixie(_ id: String) async throws {
+        try await perform("DELETE", ["pixies", id])
+    }
+
+    public func sendToPixie(_ id: String, text: String) async throws -> Session {
+        try await call("POST", ["pixies", id, "messages"], body: PixieMessageRequest(text: text))
+    }
+
+    public func resetPixie(_ id: String) async throws -> Pixie {
+        try await call("POST", ["pixies", id, "reset"])
+    }
+
+    public func pixieFile(_ id: String, name: String) async throws -> PixieFile {
+        try await call("GET", Self.filePath(id, name))
+    }
+
+    public func savePixieFile(_ id: String, name: String, text: String, hash: String?)
+        async throws -> PixieFile
+    {
+        try await call(
+            "PUT", Self.filePath(id, name), body: WritePixieFileRequest(text: text, hash: hash))
+    }
+
+    public func pixieNotes(_ id: String) async throws -> [String] {
+        try await get("pixies", id, "notes")
+    }
+
+    public func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit] {
+        try await call(
+            "GET", ["pixies", id, "search"], query: [URLQueryItem(name: "q", value: query)])
+    }
+
+    /// A name such as `notes/ideas` is one path segment per slash.
+    private static func filePath(_ id: String, _ name: String) -> [String] {
+        ["pixies", id, "files"] + name.split(separator: "/").map(String.init)
+    }
+
     // MARK: Plumbing
 
     private func get<T: Decodable>(_ path: String...) async throws -> T {

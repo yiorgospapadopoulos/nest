@@ -150,6 +150,14 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
                 for: notice(.failed), preferences: preferences, visibleChats: []) == nil)
     }
 
+    @Test func pixieChatsDoNotNotifyAsProjects() {
+        var pixie = notice(.needsApproval)
+        pixie.repo = "pixie:p1"
+        #expect(
+            NotificationPolicy.content(
+                for: pixie, preferences: NotificationPreferences(), visibleChats: []) == nil)
+    }
+
     @Test func visibleChatsAreTheFocusedWorkspacesPanes() async throws {
         let api = FakeAPI()
         let app = AppStore(api: api, store: MemoryStore())

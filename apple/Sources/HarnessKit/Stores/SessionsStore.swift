@@ -68,9 +68,10 @@ public final class SessionsStore {
         sessions[id]
     }
 
-    /// The repo's sessions, most recently updated first.
+    /// The repo's sessions, most recently updated first. Pixie chats belong to no project
+    /// and are left out (D057).
     public func sessions(in repo: String) -> [Session] {
-        sessions.values.filter { $0.repo == repo }.sorted {
+        sessions.values.filter { $0.repo == repo && $0.pixieID == nil }.sorted {
             ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id)
         }
     }
@@ -177,12 +178,13 @@ public final class SessionsStore {
     /// without a repo): pending approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone.
     public func attention(of repo: String? = nil) -> Int {
-        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
+        let pending =
+            repo.map(approvals.pending(repo:)) ?? approvals.pending.filter { !$0.isPixieChat }
         return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
     }
 
     private func listed(in repo: String?) -> [Session] {
-        repo.map(sessions(in:)) ?? Array(sessions.values)
+        repo.map(sessions(in:)) ?? sessions.values.filter { $0.pixieID == nil }
     }
 
     // MARK: Actions

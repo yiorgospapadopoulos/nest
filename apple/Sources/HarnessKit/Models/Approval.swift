@@ -40,6 +40,9 @@ public struct Approval: Codable, Sendable, Hashable, Identifiable {
         case resolvedAt = "resolved_at"
     }
 
+    /// Asked in a pixie's chat, whose repo is `pixie:<id>` rather than a project (D057).
+    public var isPixieChat: Bool { repo.hasPrefix("pixie:") }
+
     public var permission: PermissionRequest? {
         kind == .permission ? try? payload.decode(PermissionRequest.self) : nil
     }

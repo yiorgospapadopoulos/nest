@@ -71,7 +71,10 @@ public enum NotificationPolicy {
     public static func content(
         for notice: Notice, preferences: NotificationPreferences, visibleChats: Set<String>
     ) -> NotificationContent? {
-        guard preferences.wants(notice.kind), !visibleChats.contains(notice.sessionID) else {
+        // A pixie chat is no project, so it has none to open (D057).
+        guard preferences.wants(notice.kind), !visibleChats.contains(notice.sessionID),
+            !notice.repo.hasPrefix("pixie:")
+        else {
             return nil
         }
         return NotificationContent(
