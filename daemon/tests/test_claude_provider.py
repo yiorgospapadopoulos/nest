@@ -17,10 +17,12 @@ from claude_agent_sdk import (
     TextBlock,
     ToolPermissionContext,
 )
+from pydantic import JsonValue
 
 from harness.providers.base import (
     AccountInfo,
     AgentTask,
+    AgentTool,
     CommandCatalog,
     ContextUsage,
     EngineDetails,
@@ -797,3 +799,45 @@ async def test_a_sink_failure_is_logged_and_the_run_keeps_reading(
 
     assert not any(name == "stopped" for name, _ in opened.sink.calls)
     assert "could not handle a message from the agent (RuntimeError: disk full)" in caplog.text
+
+
+async def test_tools_and_the_write_root_reach_the_options(tmp_path: Path) -> None:
+    async def noop(_args: dict[str, JsonValue]) -> str:
+        return ""
+
+    tool = AgentTool("memory_read", "Read memory", {"type": "object"}, noop)
+    spec = SessionSpec(
+        cwd=tmp_path,
+        permission_mode="default",
+        tools=(tool,),
+        write_root=tmp_path / "w",
+        skills=("review",),
+        allowed_tools=("Bash(npm test:*)",),
+        disallowed_tools=("WebFetch",),
+    )
+
+    _, client = await Opened(tmp_path).open(spec)
+    allowed = await client.options.can_use_tool(  # type: ignore[misc]
+        "mcp__pixie__memory_read", {}, ToolPermissionContext()
+    )
+
+    assert list(client.options.mcp_servers) == ["pixie"]  # type: ignore[arg-type]
+    assert isinstance(allowed, PermissionResultAllow)
+    assert client.options.hooks is not None
+    assert [m.matcher for m in client.options.hooks["PreToolUse"]] == [
+        "*",
+        "AskUserQuestion",
+        "Edit|Write|MultiEdit|NotebookEdit",
+    ]
+    assert client.options.skills == ["review"]
+    assert client.options.allowed_tools == ["Bash(npm test:*)"]
+    assert client.options.disallowed_tools == [*GIT_WRITE_RULES, "WebFetch"]
+
+
+async def test_no_tools_means_no_tool_server(tmp_path: Path) -> None:
+    _, client = await Opened(tmp_path).open(SessionSpec(cwd=tmp_path, permission_mode="default"))
+
+    assert client.options.mcp_servers == {}
+    assert client.options.skills is None
+    assert client.options.hooks is not None
+    assert len(client.options.hooks["PreToolUse"]) == 2

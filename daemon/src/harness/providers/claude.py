@@ -46,6 +46,7 @@ from harness.providers.claude_questions import (
     QuestionBridge,
 )
 from harness.providers.claude_thinking import ThinkingTimer
+from harness.providers.claude_tools import WRITE_TOOLS, own_tool, tool_servers, write_guard
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
@@ -148,6 +149,8 @@ def build_options(
     async def can_use_tool(
         tool_name: str, tool_input: dict[str, JsonValue], context: ToolPermissionContext
     ) -> PermissionResult:
+        if own_tool(tool_name):
+            return PermissionResultAllow()
         if tool_name == ASK_USER_QUESTION:
             return questions.permission(tool_input, context.tool_use_id)
         if tool_name == EXIT_PLAN_MODE:
@@ -163,6 +166,18 @@ def build_options(
     system_prompt: SystemPromptPreset = {"type": "preset", "preset": "claude_code"}
     if spec.system_prompt_append:
         system_prompt["append"] = spec.system_prompt_append
+    pre_tool_use = [
+        HookMatcher(matcher="*", hooks=[block_git_writes]),
+        HookMatcher(
+            matcher=ASK_USER_QUESTION,
+            hooks=[questions.hook],
+            timeout=QUESTION_TIMEOUT_SECONDS,
+        ),
+    ]
+    if spec.write_root is not None:
+        pre_tool_use.append(
+            HookMatcher(matcher="|".join(WRITE_TOOLS), hooks=[write_guard(spec.write_root)])
+        )
     return ClaudeAgentOptions(
         cwd=spec.cwd,
         model=spec.model,
@@ -175,17 +190,12 @@ def build_options(
         setting_sources=["user", "project", "local"],
         include_partial_messages=True,
         can_use_tool=can_use_tool,
-        disallowed_tools=list(GIT_WRITE_RULES),
-        hooks={
-            "PreToolUse": [
-                HookMatcher(matcher="*", hooks=[block_git_writes]),
-                HookMatcher(
-                    matcher=ASK_USER_QUESTION,
-                    hooks=[questions.hook],
-                    timeout=QUESTION_TIMEOUT_SECONDS,
-                ),
-            ]
-        },
+        mcp_servers=tool_servers(spec.tools),
+        allowed_tools=list(spec.allowed_tools),
+        disallowed_tools=[*GIT_WRITE_RULES, *spec.disallowed_tools],
+        # None keeps Claude Code's default of every skill.
+        skills=list(spec.skills) or None,
+        hooks={"PreToolUse": pre_tool_use},
         env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
         stderr=stderr,
     )

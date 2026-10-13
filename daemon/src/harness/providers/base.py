@@ -1,5 +1,6 @@
 """Provider-neutral agent types, so engines other than Claude (Codex) can plug in later."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -169,6 +170,22 @@ class McpServer:
     error: str | None = None
 
 
+class ToolRefusedError(Exception):
+    """A harness tool declined the call; the agent sees the message as the tool's error."""
+
+
+@dataclass(frozen=True)
+class AgentTool:
+    """A tool the daemon offers the agent in-process, such as a pixie's memory (D057)."""
+
+    name: str
+    description: str
+    # JSON Schema of the input object.
+    schema: dict[str, JsonValue]
+    # Returns the text the agent sees; raises ToolRefusedError to refuse.
+    handler: Callable[[dict[str, JsonValue]], Awaitable[str]]
+
+
 @dataclass(frozen=True)
 class SessionSpec:
     cwd: Path
@@ -179,6 +196,15 @@ class SessionSpec:
     resume_id: str | None = None
     extra_dirs: tuple[Path, ...] = ()
     system_prompt_append: str | None = None
+    # Harness tools for this run, served in-process (D057).
+    tools: tuple[AgentTool, ...] = ()
+    # When set, file edits outside this folder are denied, in every permission mode.
+    write_root: Path | None = None
+    # Claude Code skill names for this run; empty leaves Claude Code's default (all).
+    skills: tuple[str, ...] = ()
+    # Permission rules that never prompt, and ones added to the git rules (D057).
+    allowed_tools: tuple[str, ...] = ()
+    disallowed_tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
