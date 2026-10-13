@@ -106,9 +106,14 @@ import Testing
         let full = UpdatePixieRequest(
             name: "N", slug: "n", mascot: .cat, color: "#000000", background: .night,
             model: "m", effort: .low, permissionMode: .default, autonomy: .start,
-            projectAccess: ProjectAccess.none, projects: [], skills: [], allowedTools: [],
+            projectAccess: .noAccess, projects: [], skills: [], allowedTools: [],
             disallowedTools: [], hidden: false, allProjects: false)
         #expect(Fixture.json(full).contains(#""project_access":"none""#))
+        #expect(
+            Fixture.json(CreatePixieRequest(name: "A", projectAccess: .noAccess))
+                == #"{"name":"A","project_access":"none"}"#)
+        let none = Fixture.text("pixie").replacingOccurrences(of: "\"edit\"", with: "\"none\"")
+        #expect(Fixture.decode(Pixie.self, json: none).projectAccess == .noAccess)
         #expect(
             Fixture.json(WritePixieFileRequest(text: "x", hash: nil))
                 == #"{"hash":null,"text":"x"}"#)

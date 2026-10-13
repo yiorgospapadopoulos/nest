@@ -173,10 +173,6 @@ struct FeedbackRequest: Encodable {
     var text: String
 }
 
-struct PixieMessageRequest: Encodable {
-    var text: String
-}
-
 struct VisibilityRequest: Encodable {
     var visible: Bool
     var client: String

@@ -169,17 +169,19 @@ public final class SessionsStore {
         }
     }
 
-    /// Chats that look stuck, for their Needs you cards; archived ones are left out.
+    /// Chats that look stuck, for their Needs you cards; archived ones and pixie chats are
+    /// left out.
     public func stuck(in repo: String?) -> [Session] {
         listed(in: repo).filter { $0.stuck != nil && !$0.isArchived }
     }
 
     /// What needs the user, for the project's tab and the Dock badge (every project's
     /// without a repo): pending approvals, pull requests whose checks failed and chats
-    /// that look stuck, as on the iPhone.
+    /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock
+    /// badge, but no project's count; its chat is not a project chat, so it adds no failed
+    /// checks or stuck flags (D057).
     public func attention(of repo: String? = nil) -> Int {
-        let pending =
-            repo.map(approvals.pending(repo:)) ?? approvals.pending.filter { !$0.isPixieChat }
+        let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
         return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
     }
 

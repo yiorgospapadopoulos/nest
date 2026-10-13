@@ -69,17 +69,22 @@ public struct NotificationContent: Sendable, Hashable {
 public enum NotificationPolicy {
     /// Switched-on notices, unless the user is looking at that chat right now.
     public static func content(
-        for notice: Notice, preferences: NotificationPreferences, visibleChats: Set<String>
+        for notice: Notice, preferences: NotificationPreferences, visibleChats: Set<String>,
+        pixies: [Pixie] = []
     ) -> NotificationContent? {
-        // A pixie chat is no project, so it has none to open (D057).
-        guard preferences.wants(notice.kind), !visibleChats.contains(notice.sessionID),
-            !notice.repo.hasPrefix("pixie:")
-        else {
+        guard preferences.wants(notice.kind), !visibleChats.contains(notice.sessionID) else {
             return nil
         }
         return NotificationContent(
-            title: "\(notice.repo) · \(notice.title)", body: notice.text,
+            title: "\(source(of: notice, pixies: pixies)) · \(notice.title)", body: notice.text,
             sessionID: notice.sessionID, project: notice.repo, playsSound: preferences.sound)
+    }
+
+    /// The project a notice comes from, or the pixie's name for a pixie chat (D057).
+    static func source(of notice: Notice, pixies: [Pixie]) -> String {
+        guard notice.repo.hasPrefix("pixie:") else { return notice.repo }
+        let id = String(notice.repo.dropFirst("pixie:".count))
+        return pixies.first { $0.id == id }?.name ?? "Pixie"
     }
 
     /// The chats on screen: the current project's open panes while its workspace shows in

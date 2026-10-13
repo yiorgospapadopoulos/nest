@@ -150,12 +150,18 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
                 for: notice(.failed), preferences: preferences, visibleChats: []) == nil)
     }
 
-    @Test func pixieChatsDoNotNotifyAsProjects() {
+    @Test func pixieChatsNotifyUnderThePixiesName() {
         var pixie = notice(.needsApproval)
         pixie.repo = "pixie:p1"
-        #expect(
-            NotificationPolicy.content(
-                for: pixie, preferences: NotificationPreferences(), visibleChats: []) == nil)
+        let preferences = NotificationPreferences()
+        let known = NotificationPolicy.content(
+            for: pixie, preferences: preferences, visibleChats: [],
+            pixies: [Fixture.decode(Pixie.self, "pixie")])
+        #expect(known?.title == "Tester · Dark mode")
+        #expect(known?.sessionID == "s1")
+        let unknown = NotificationPolicy.content(
+            for: pixie, preferences: preferences, visibleChats: [])
+        #expect(unknown?.title == "Pixie · Dark mode")
     }
 
     @Test func visibleChatsAreTheFocusedWorkspacesPanes() async throws {

@@ -305,7 +305,7 @@ public struct APIClient: HarnessAPI {
     }
 
     public func sendToPixie(_ id: String, text: String) async throws -> Session {
-        try await call("POST", ["pixies", id, "messages"], body: PixieMessageRequest(text: text))
+        try await call("POST", ["pixies", id, "messages"], body: FeedbackRequest(text: text))
     }
 
     public func resetPixie(_ id: String) async throws -> Pixie {

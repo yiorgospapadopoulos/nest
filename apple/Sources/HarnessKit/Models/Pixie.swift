@@ -19,7 +19,9 @@ public enum Autonomy: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
 
 /// How far a pixie's chat reaches into the user's projects.
 public enum ProjectAccess: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
-    case edit, read, none
+    case edit, read
+    /// Wire value "none"; named apart so `.none` never reads as `Optional.none`.
+    case noAccess = "none"
     case unknown
 }
 

@@ -244,7 +244,10 @@ import Testing
         #expect(store.groups(in: "todo-ui").map { $0.sessions.map(\.id) } == [["normal"]])
         #expect(store.board(in: "todo-ui").values.flatMap { $0 }.map(\.id) == ["normal"])
         #expect(store.stuck(in: nil).isEmpty)
-        #expect(store.attention() == 0)
+        // The pixie's approval reaches the Dock badge, but no project's count.
+        #expect(store.attention() == 1)
+        #expect(store.attention(of: "todo-ui") == 0)
+        #expect(store.attention(of: "pixie:p1") == 1)
         #expect(approvals.pending.count == 1)
     }
 
