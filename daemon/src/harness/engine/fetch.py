@@ -4,6 +4,7 @@ Connecting runs Claude Code's initialize handshake only: no prompt, no model cal
 """
 
 import asyncio
+import json
 import tempfile
 from collections.abc import Callable
 from contextlib import suppress
@@ -45,6 +46,8 @@ def info_options(cwd: Path) -> ClaudeAgentOptions:
         strict_mcp_config=True,
         # No transcript in Claude Code's projects folder.
         extra_args={"no-session-persistence": None},
+        # No hooks: a SessionStart or SessionEnd hook of the user's could call a model (PL-16).
+        settings=json.dumps({"disableAllHooks": True}),
     )
 
 

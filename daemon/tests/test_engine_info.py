@@ -42,6 +42,7 @@ class Harness:
             fetch=lambda: fetch_details(self.factory, timedelta(seconds=1)),
             clock=self.clock,
             account_file=None,
+            settings_file=None,
             **timing,
         )
 
@@ -51,7 +52,7 @@ def h(db: Database, clock: FakeClock) -> Harness:
     return Harness(db, clock)
 
 
-def test_the_fetch_loads_only_user_settings_without_tools_or_a_transcript(
+def test_the_fetch_loads_only_user_settings_without_tools_hooks_or_a_transcript(
     tmp_path: Path,
 ) -> None:
     options = info_options(tmp_path)
@@ -61,6 +62,9 @@ def test_the_fetch_loads_only_user_settings_without_tools_or_a_transcript(
     assert options.tools == []
     assert options.strict_mcp_config is True
     assert options.extra_args == {"no-session-persistence": None}
+    # PL-16: no SessionStart or SessionEnd hook of the user's runs (and may call a model).
+    assert options.settings is not None
+    assert json.loads(options.settings) == {"disableAllHooks": True}
 
 
 async def test_a_fetch_reads_the_initialize_response_in_a_temporary_folder() -> None:

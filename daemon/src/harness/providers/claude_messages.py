@@ -1,6 +1,7 @@
 """Translate Claude Agent SDK messages into provider-neutral sink calls."""
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Literal, cast, get_args
 
@@ -32,39 +33,73 @@ from harness.providers.claude_commands import described_catalog, init_catalog
 from harness.providers.claude_thinking import ThinkingTimer
 
 PERMISSION_MODES: frozenset[str] = frozenset(get_args(PermissionMode))
+# How Claude Code wraps a local slash command's output in a user message.
+_COMMAND_OUTPUT = re.compile(r"<local-command-(stdout|stderr)>(.*?)</local-command-\1>", re.DOTALL)
+
+
+class TurnOutput:
+    """Whether the current turn showed the user text: the agent's, a command's or a notice;
+    and whether the engine's echo of the user message just sent is still to come.
+    """
+
+    def __init__(self) -> None:
+        self.shown = False
+        # The echo carries the message's id, the checkpoint its files restore to (IMP-02).
+        self.awaiting_replay = False
 
 
 async def translate(
-    message: Message, sink: base.ProviderEventSink, thinking: ThinkingTimer
+    message: Message, sink: base.ProviderEventSink, thinking: ThinkingTimer, output: TurnOutput
 ) -> None:
     match message:
         case SystemMessage(subtype="init"):
             await sink.provider_session_id(str(message.data["session_id"]))
             await sink.connectors(mcp_servers(message.data.get("mcp_servers")))
             await _report_commands(init_catalog(message.data), sink)
+            # The mode the run works in; Claude Code's own when it opened without one.
+            await _report_mode(message.data, sink)
         case SystemMessage(subtype="commands_changed"):
             await _report_commands(described_catalog(message.data), sink)
         case SystemMessage(subtype="status"):
-            mode = message.data.get("permissionMode")
-            if mode in PERMISSION_MODES:
-                await sink.permission_mode(mode)
+            await _report_mode(message.data, sink)
         case SystemMessage(subtype="compact_boundary"):
-            await sink.notice("compacted", "Conversation compacted")
+            await _notice(sink, output, "compacted", "Conversation compacted")
         case SystemMessage(subtype="model_fallback"):
-            await sink.notice("model_fallback", _fallback_text(message.data))
+            await _notice(sink, output, "model_fallback", _fallback_text(message.data))
         case SystemMessage(subtype="api_retry"):
             error = message.data.get("error")
             reason = f" ({error})" if isinstance(error, str) and error else ""
-            await sink.notice("api_retry", f"API error{reason}, retrying")
+            await _notice(sink, output, "api_retry", f"API error{reason}, retrying")
+        case SystemMessage(subtype="local_command_output"):
+            content = message.data.get("content")
+            if isinstance(content, str) and content.strip():
+                await _notice(sink, output, "command_output", content.strip())
         case ConversationResetMessage():
-            await sink.notice("cleared", "Context cleared")
+            await _notice(sink, output, "cleared", "Context cleared")
+        case UserMessage() if _is_replay(message, output):
+            # The user's own message, which the session already shows (IMP-02).
+            output.awaiting_replay = False
+            await sink.checkpoint(str(message.uuid))
+        case UserMessage(content=str() as plain):
+            # Plain user text is the user's own input, which the session already recorded,
+            # or a local slash command's output, which only Claude Code has (PL-13).
+            text = _command_output(plain)
+            if text:
+                await _notice(sink, output, "command_output", text)
         case AssistantMessage() | UserMessage():
-            # Plain-text user content is the engine echoing input the session already recorded.
             content = message.content if isinstance(message.content, list) else []
-            if content:
-                blocks = [_block(block) for block in content]
+            blocks: list[base.MessageBlock] = [_block(block) for block in content]
+            if isinstance(message, UserMessage):
+                # Only tool results: text in a user message is the engine's own (a skill's
+                # body, an interruption marker, a subagent's prompt), not Claude's (PL-09).
+                blocks = [block for block in blocks if isinstance(block, base.ToolResultBlock)]
+            if blocks:
                 if message.parent_tool_use_id is None:
                     _time_thinking(blocks, thinking)
+                    if isinstance(message, AssistantMessage) and any(
+                        isinstance(block, base.TextBlock) for block in blocks
+                    ):
+                        output.shown = True
                 await sink.message(blocks, message.parent_tool_use_id)
         case StreamEvent():
             if message.parent_tool_use_id is None:
@@ -83,6 +118,12 @@ async def translate(
                 await sink.task(update)
         case ResultMessage():
             thinking.reset()
+            output.awaiting_replay = False
+            # A local command that ran without the model may answer only here (PL-13).
+            answer = (message.result or "").strip()
+            if answer and not output.shown and not message.is_error and message.num_turns == 0:
+                await sink.notice("command_output", answer)
+            output.shown = False
             await sink.provider_session_id(message.session_id)
             await sink.result(
                 base.ResultInfo(
@@ -97,6 +138,37 @@ async def translate(
             )
         case _:
             pass
+
+
+async def _notice(
+    sink: base.ProviderEventSink, output: TurnOutput, kind: base.NoticeKind, text: str
+) -> None:
+    output.shown = True
+    await sink.notice(kind, text)
+
+
+def _is_replay(message: UserMessage, output: TurnOutput) -> bool:
+    """Whether `message` is the engine's echo of the user message just sent: the first
+    user message after it from the main agent, with an id, that answers no tool and is not
+    a local command's output.
+    """
+    if not output.awaiting_replay or message.uuid is None or message.parent_tool_use_id:
+        return False
+    if isinstance(message.content, str):
+        return not _command_output(message.content)
+    return not any(isinstance(block, ToolResultBlock) for block in message.content)
+
+
+async def _report_mode(data: dict[str, Any], sink: base.ProviderEventSink) -> None:
+    mode = data.get("permissionMode")
+    if mode in PERMISSION_MODES:
+        await sink.permission_mode(mode)
+
+
+def _command_output(content: str) -> str:
+    """The text of a local command's output in `content`, else ""."""
+    parts = (match.group(2).strip() for match in _COMMAND_OUTPUT.finditer(content))
+    return "\n".join(part for part in parts if part)
 
 
 def _fallback_text(data: dict[str, Any]) -> str:

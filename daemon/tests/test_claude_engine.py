@@ -27,6 +27,7 @@ def test_models_keep_the_engine_order_and_their_effort_levels() -> None:
                 supportsEffort=True,
                 supportedEffortLevels=LEVELS,
                 supportsFastMode=True,
+                supportsAutoMode=True,
             ),
             model("haiku", "Haiku 4.5"),
             model(
@@ -48,14 +49,22 @@ def test_models_keep_the_engine_order_and_their_effort_levels() -> None:
                 description="Default (recommended) for work",
                 effort_levels=LEVELS,
                 supports_effort=True,
+                supports_auto_mode=True,
+                resolved_model="claude-default",
             ),
-            ModelOption(value="haiku", display_name="Haiku 4.5", description="Haiku 4.5 for work"),
+            ModelOption(
+                value="haiku",
+                display_name="Haiku 4.5",
+                description="Haiku 4.5 for work",
+                resolved_model="claude-haiku",
+            ),
             ModelOption(
                 value="claude-opus-4-6",
                 display_name="Opus 4.6",
                 description="Opus 4.6 for work",
                 effort_levels=["low", "medium", "high", "max"],
                 supports_effort=True,
+                resolved_model="claude-claude-opus-4-6",
             ),
         ]
     )
@@ -69,7 +78,13 @@ def test_malformed_model_entries_are_skipped_and_missing_text_has_fallbacks() ->
             {"value": ""},
             {"value": "sonnet", "supportedEffortLevels": "high"},
             {"value": "opus", "displayName": "", "description": None},
-            {"value": "fable", "supportedEffortLevels": ["high", 3], "supportsEffort": "yes"},
+            {
+                "value": "fable",
+                "supportedEffortLevels": ["high", 3],
+                "supportsEffort": "yes",
+                "supportsAutoMode": "yes",
+                "resolvedModel": 5,
+            },
         ]
     }
 

@@ -41,7 +41,11 @@ type MessageBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
 
 # What the engine notes in its transcript besides messages: the context was compacted or
 # cleared, it switched to a fallback model, or it retries a failed API request.
-type NoticeKind = Literal["compacted", "cleared", "model_fallback", "api_retry"]
+# `command_output`: what a local slash command (/cost, /context...) answered, without the model.
+# `files_restored`: the user restored files to before one of their messages (IMP-02).
+type NoticeKind = Literal[
+    "compacted", "cleared", "model_fallback", "api_retry", "command_output", "files_restored"
+]
 
 
 class TokenUsage(BaseModel):
@@ -140,6 +144,13 @@ class ModelOption(BaseModel):
     # The thinking levels the model takes; empty when it takes none (Haiku).
     effort_levels: list[str] = Field(default_factory=list[str])
     supports_effort: bool = False
+    # Whether the model can run in the `auto` permission mode (IMP-06).
+    supports_auto_mode: bool = False
+    # The model id the engine resolves `value` to, such as "claude-opus-5-5" for "opus".
+    resolved_model: str | None = None
+    # The thinking level Claude Code uses for this model when none is chosen, from your
+    # Claude Code settings (IMP-07); None when they set none. Read when served, not stored.
+    claude_code_effort: str | None = None
 
 
 class AccountInfo(BaseModel):
@@ -172,7 +183,8 @@ class McpServer:
 @dataclass(frozen=True)
 class SessionSpec:
     cwd: Path
-    permission_mode: PermissionMode
+    # None passes no mode, so Claude Code's own setting (`defaultMode`) applies (IMP-06).
+    permission_mode: PermissionMode | None
     model: str | None = None
     effort: Effort | None = None
     # The engine's own session id to continue a previous conversation.
@@ -203,12 +215,17 @@ class PermissionRequest:
     title: str | None = None
     # Why the engine asks, such as a hook's reason or the path outside the allowed folders.
     reason: str | None = None
+    # The rule the engine suggests for "Always allow", in words such as `Bash(npm test:*)`;
+    # None when it suggests none, and "always" then allows the tool by name (IMP-06).
+    always_rule: str | None = None
 
 
 @dataclass(frozen=True)
 class PermissionDecision:
     behavior: Literal["allow", "deny"]
     message: str | None = None
+    # The user chose "Always allow": the engine applies the rules it suggested.
+    always: bool = False
 
 
 @dataclass(frozen=True)
@@ -257,6 +274,17 @@ class PlanDecision:
     mode: PermissionMode | None = None
     # What the agent is told when the plan is not approved.
     message: str | None = None
+
+
+class RewindResult(BaseModel):
+    """Restoring files to before a user message, previewed or done (IMP-02)."""
+
+    can_rewind: bool
+    files_changed: list[str] = Field(default_factory=list[str])
+    insertions: int = 0
+    deletions: int = 0
+    # Why the files cannot be restored, in the engine's words.
+    error: str | None = None
 
 
 class ApprovalHandler(Protocol):
@@ -325,7 +353,13 @@ class ProviderEventSink(Protocol):
         ...
 
     async def permission_mode(self, mode: PermissionMode) -> None:
-        """The engine switched its permission mode itself."""
+        """The engine reported its permission mode: at a turn's start, or a switch it made."""
+        ...
+
+    async def checkpoint(self, checkpoint_id: str) -> None:
+        """The engine took the user message just sent, under this id: files can be
+        restored to how they were before it (IMP-02).
+        """
         ...
 
 
@@ -348,6 +382,13 @@ class AgentRun(Protocol):
 
     async def context_usage(self) -> ContextUsage | None:
         """How full the context window is now; None when the engine does not say."""
+        ...
+
+    async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
+        """Restore the files the agent changed since the user message `checkpoint_id` to
+        how they were before it, or with `dry_run` only say what that would change. The
+        conversation stays as it is.
+        """
         ...
 
     async def close(self) -> None:

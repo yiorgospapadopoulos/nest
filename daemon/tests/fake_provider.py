@@ -24,6 +24,7 @@ from harness.providers.base import (
     QuestionAnswer,
     QuestionRequest,
     ResultInfo,
+    RewindResult,
     SessionSpec,
     TextBlock,
     TokenUsage,
@@ -82,6 +83,8 @@ class FakeRun:
 
     async def connector_statuses(self) -> list[McpServer]:
         self.status_calls += 1
+        if self.provider.status_gate is not None:
+            await self.provider.status_gate.wait()
         if self.provider.status_error is not None:
             raise self.provider.status_error
         return self.provider.statuses
@@ -90,9 +93,15 @@ class FakeRun:
         self.calls.append(("set_permission_mode", mode))
 
     async def context_usage(self) -> ContextUsage | None:
+        if self.provider.context_gate is not None:
+            await self.provider.context_gate.wait()
         if self.provider.context_error is not None:
             raise self.provider.context_error
         return self.provider.context
+
+    async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
+        self.calls.append(("rewind_files", (checkpoint_id, dry_run)))
+        return self.provider.rewind
 
     async def close(self) -> None:
         self._reader.cancel()
@@ -126,6 +135,10 @@ class FakeProvider:
         # What the run reports as the live status of its MCP servers after each turn.
         self.statuses: list[McpServer] = []
         self.status_error: Exception | None = None
+        # When set, the status and context calls wait for it, like a control request the
+        # engine has not answered yet.
+        self.status_gate: asyncio.Event | None = None
+        self.context_gate: asyncio.Event | None = None
         self.exit_hook = False
         # When set, open() waits for it, so a test can act while a run is opening.
         self.open_gate: asyncio.Event | None = None
@@ -134,6 +147,8 @@ class FakeProvider:
         # What the run reports as its context usage after each turn.
         self.context: ContextUsage | None = None
         self.context_error: Exception | None = None
+        # What restoring files to a checkpoint previews or does.
+        self.rewind = RewindResult(can_rewind=True, files_changed=["a.py"], insertions=2)
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
@@ -348,6 +363,16 @@ def engine(details: EngineDetails, then: Turn) -> Turn:
 
     async def turn(run: FakeRun) -> None:
         await run.sink.engine_details(details)
+        await then(run)
+
+    return turn
+
+
+def echoed(checkpoint_id: str, then: Turn) -> Turn:
+    """The engine echoes the user message it was sent, with the id of its file checkpoint."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.checkpoint(checkpoint_id)
         await then(run)
 
     return turn
