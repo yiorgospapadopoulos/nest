@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from harness.clock import Clock
+from harness.engine.effort import claude_code_effort, effort_settings
 from harness.engine.fetch import FetchError
 from harness.engine.models import FALLBACK_MODELS, ModelList
 from harness.engine.profile import profile_name
@@ -40,6 +41,13 @@ def effort_problem(model: ModelOption, effort: str | None) -> str | None:
     return f"{model.display_name} takes these thinking levels: {', '.join(model.effort_levels)}"
 
 
+def mode_problem(model: ModelOption, mode: str | None) -> str | None:
+    """Why `mode` does not fit `model`: only some models run in Auto mode (IMP-06)."""
+    if mode != "auto" or model.supports_auto_mode:
+        return None
+    return f"{model.display_name} does not support Auto mode"
+
+
 class EngineInfo:
     def __init__(
         self,
@@ -51,9 +59,11 @@ class EngineInfo:
         retry: timedelta = RETRY,
         tick: timedelta = TICK,
         account_file: Path | None = None,
+        settings_file: Path | None = None,
     ) -> None:
-        """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039);
-        None reads no file.
+        """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039),
+        and `settings_file` its `~/.claude/settings.json`, for its default thinking levels
+        (IMP-07); None reads no file.
         """
         self._store = store
         self._fetch = fetch
@@ -63,6 +73,7 @@ class EngineInfo:
         self._retry = retry
         self._tick = tick
         self._account_file = account_file
+        self._settings_file = settings_file
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._last_attempt: datetime | None = None
@@ -79,9 +90,23 @@ class EngineInfo:
                 await task
 
     async def models(self) -> ModelList:
-        """The engine's last reported list, or Claude Code's aliases before any report."""
+        """The engine's last reported list, or Claude Code's aliases before any report,
+        with the thinking level Claude Code uses for each, read from its settings on every
+        call so an edit there shows at once.
+        """
         listed = await self._store.models()
-        return listed or ModelList(models=list(FALLBACK_MODELS), updated_at=None)
+        models = listed or ModelList(models=list(FALLBACK_MODELS), updated_at=None)
+        settings = await asyncio.to_thread(effort_settings, self._settings_file)
+        return models.model_copy(
+            update={
+                "models": [
+                    model.model_copy(
+                        update={"claude_code_effort": claude_code_effort(model, settings)}
+                    )
+                    for model in models.models
+                ]
+            }
+        )
 
     async def account(self) -> AccountInfo:
         """The engine's account; without a name from the engine, Claude Code's profile name,
@@ -107,6 +132,13 @@ class EngineInfo:
         """422 when the engine's list knows `model` and it does not take `effort`."""
         option = await self.find(model)
         problem = None if option is None else effort_problem(option, effort)
+        if problem is not None:
+            raise InvalidInputError(problem)
+
+    async def require_mode(self, model: str | None, mode: str | None) -> None:
+        """422 when the engine's list knows `model` and it does not run in `mode`."""
+        option = await self.find(model)
+        problem = None if option is None else mode_problem(option, mode)
         if problem is not None:
             raise InvalidInputError(problem)
 

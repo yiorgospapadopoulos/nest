@@ -87,6 +87,7 @@ async def test_a_permission_becomes_an_approval_item(env: Env) -> None:
         "input": {"command": "ls"},
         "title": "Claude wants to run ls",
         "reason": "A hook asks first",
+        "always_rule": None,
     }
     session_id = item.session_id
     assert env.waiting == [(session_id, True), (session_id, False)]
@@ -101,10 +102,29 @@ async def test_always_allows_the_tool_for_the_rest_of_the_session(env: Env) -> N
     decision = await first
     later = await prompts.decide(PermissionRequest("Edit", {"file": "b"}))
 
-    assert decision == PermissionDecision("allow")
+    assert decision == PermissionDecision("allow", always=True)
     assert later == PermissionDecision("allow")
     assert (await env.store.get(item.session_id)).allowed_tools == ["Edit"]
     assert len(await env.queue.list_approvals()) == 1
+
+
+async def test_always_with_a_suggested_rule_leaves_the_rule_to_claude_code(env: Env) -> None:
+    """IMP-06: the engine applies its own narrower rule; the tool is not allowed by name."""
+    prompts = await env.prompts()
+    request = PermissionRequest("Bash", {"command": "npm test"}, always_rule="Bash(npm test:*)")
+
+    first = asyncio.ensure_future(prompts.decide(request))
+    item = await env.pending()
+    await env.queue.resolve(item.id, {"behavior": "allow", "message": None, "always": True})
+    decision = await first
+    other = asyncio.ensure_future(prompts.decide(PermissionRequest("Bash", {"command": "rm"})))
+    asked_again = await env.pending()
+    await env.queue.resolve(asked_again.id, {"behavior": "deny"})
+
+    assert decision == PermissionDecision("allow", always=True)
+    assert item.payload["always_rule"] == "Bash(npm test:*)"
+    assert (await env.store.get(item.session_id)).allowed_tools == []
+    assert (await other).behavior == "deny"
 
 
 async def test_a_permission_without_a_title_gets_a_notice(env: Env) -> None:
@@ -204,6 +224,20 @@ async def test_two_tools_always_allowed_at_once_are_both_kept(env: Env) -> None:
     await asyncio.gather(first, second)
 
     assert sorted((await env.store.get(items[0].session_id)).allowed_tools) == ["Bash", "Edit"]
+
+
+@pytest.mark.parametrize("mode", ["default", "auto", "acceptEdits"])
+async def test_an_approved_plan_continues_in_the_chosen_mode(
+    env: Env, mode: PermissionMode
+) -> None:
+    prompts = await env.prompts()
+
+    reviewing = asyncio.ensure_future(prompts.review_plan(PlanRequest("plan")))
+    item = await env.pending()
+    await env.queue.resolve(item.id, {"decision": "approve", "mode": mode})
+
+    assert await reviewing == PlanDecision(approved=True, mode=mode)
+    assert env.modes == [(item.session_id, mode)]
 
 
 async def test_an_approved_plan_continues_with_edits_allowed(env: Env) -> None:

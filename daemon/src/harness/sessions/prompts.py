@@ -2,12 +2,13 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import get_args
 
 from pydantic import JsonValue
 
 from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
 from harness.approvals.queue import ApprovalQueue
-from harness.config.models import PermissionMode
+from harness.config.models import PermissionMode, PlanApprovalMode
 from harness.providers.base import (
     PermissionDecision,
     PermissionRequest,
@@ -26,8 +27,10 @@ type ModeCallback = Callable[[str, PermissionMode], Awaitable[None]]
 
 DEFAULT_QUESTION_NOTICE = "The agent has a question."
 PLAN_NOTICE = "The plan is ready for review."
-# An approved plan continues with edits allowed, as in Claude Code (D032).
+# An approved plan continues with edits allowed, as in Claude Code (D032), unless the user
+# chose another of PLAN_MODES.
 PLAN_APPROVED_MODE: PermissionMode = "acceptEdits"
+PLAN_MODES: dict[str, PermissionMode] = {mode: mode for mode in get_args(PlanApprovalMode)}
 KEEP_PLANNING = "Keep planning"
 
 
@@ -66,6 +69,7 @@ class SessionPrompts:
                 "input": request.tool_input,
                 "title": request.title,
                 "reason": request.reason,
+                "always_rule": request.always_rule,
             },
             request.title or f"Allow {request.tool_name}?",
         )
@@ -74,9 +78,12 @@ class SessionPrompts:
             return PermissionDecision("deny", _text(resolution.get("reason")))
         if resolution.get("behavior") != "allow":
             return PermissionDecision("deny", _text(resolution.get("message")))
-        if resolution.get("always") is True:
+        always = resolution.get("always") is True
+        if always and request.always_rule is None:
+            # Nothing suggested: the tool is allowed by name for the rest of the session.
+            # Otherwise the engine applies the rule it suggested, wherever it keeps it.
             await self._allow_always(request.tool_name)
-        return PermissionDecision("allow", _text(resolution.get("message")))
+        return PermissionDecision("allow", _text(resolution.get("message")), always)
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
         approval = await self._wait(
@@ -108,8 +115,10 @@ class SessionPrompts:
             return PlanDecision(
                 approved=False, message=keep_planning_message(_text(resolution.get("message")))
             )
-        await self._on_mode(self._session_id, PLAN_APPROVED_MODE)
-        return PlanDecision(approved=True, mode=PLAN_APPROVED_MODE)
+        chosen = resolution.get("mode")
+        mode = PLAN_MODES.get(chosen if isinstance(chosen, str) else "", PLAN_APPROVED_MODE)
+        await self._on_mode(self._session_id, mode)
+        return PlanDecision(approved=True, mode=mode)
 
     async def _wait(
         self, kind: ApprovalKind, payload: dict[str, JsonValue], notice: str

@@ -24,10 +24,11 @@ async def get_defaults(ctx: Context) -> AgentChoices:
 
 @router.put("/defaults")
 async def put_defaults(body: AgentChoices, ctx: Context) -> AgentChoices:
-    """Set the defaults; 422 when the model does not take the effort. Applies to the next
-    new session.
+    """Set the defaults; 422 when the model does not take the effort or Auto mode. A null
+    mode is Claude Code's own. Applies to the next new session.
     """
     await ctx.engine.require_effort(body.model, body.effort)
+    await ctx.engine.require_mode(body.model, body.permission_mode)
     try:
         saved = save_agent_defaults(ctx.paths, body)
     except ConfigError as error:

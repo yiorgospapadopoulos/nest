@@ -22,6 +22,12 @@ async def get_approval(approval_id: str, ctx: Context) -> Approval:
 
 @router.post("/{approval_id}/resolve")
 async def resolve_approval(approval_id: str, body: ResolveApproval, ctx: Context) -> Approval:
-    """Permissions and questions; reviews use the session's approve, reject and feedback."""
+    """Permissions, questions and plans; reviews use the session's approve, reject and
+    feedback. A plan approved in Auto mode needs a model that supports it (422).
+    """
     approval = await ctx.approvals.get(approval_id)
-    return await ctx.approvals.resolve(approval_id, resolution_for(approval, body))
+    resolution = resolution_for(approval, body)
+    if body.mode is not None:
+        session = await ctx.sessions.get(approval.session_id)
+        await ctx.engine.require_mode(session.model, body.mode)
+    return await ctx.approvals.resolve(approval_id, resolution)
