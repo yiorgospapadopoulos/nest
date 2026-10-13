@@ -78,6 +78,15 @@ enum Overlay: Equatable {
     case publish(String)
 }
 
+/// What the pixie page's right-hand panel shows: the details, or a page opened from them.
+enum PixiePanel: Equatable {
+    case details
+    case soul
+    case memory
+    /// A note of the memory page, by name.
+    case note(String)
+}
+
 /// The window's model: the daemon's stores plus the transient state of the views, and
 /// the actions they call.
 @MainActor @Observable
@@ -134,9 +143,18 @@ final class Shell {
     var claudeChats: ClaudeChatsStore { model.claudeChats }
     var completions: CompletionStore { model.completions }
     var agents: AgentsStore { model.agents }
+    var pixies: PixiesStore { model.pixies }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
+
+    /// The Pixies tab is showing in place of a project.
+    var pixiesOpen = false
+    /// The pixie whose page shows in the Pixies tab.
+    var pixie: String?
+    /// The details panel beside the pixie's chat.
+    var pixieDetailsOpen = false
+    var pixiePanel = PixiePanel.details
 
     var project: String? { app.currentProject }
     var projectState: ProjectState { project.map(app.state(of:)) ?? ProjectState() }
@@ -153,6 +171,128 @@ final class Shell {
     /// removed project's; a closed tab keeps its panes.
     func syncTools() {
         tools.keep(Set(app.projects.values.flatMap { $0.tools.keys }))
+    }
+
+    // MARK: Tabs
+
+    /// A project tab: leaves the Pixies tab.
+    func selectProject(_ name: String) {
+        pixiesOpen = false
+        app.selectProject(name)
+    }
+
+    /// Cmd-1 to Cmd-9.
+    func selectProject(at index: Int) {
+        pixiesOpen = false
+        app.selectProject(at: index)
+    }
+
+    /// Previous and Next Project; from the Pixies tab they go to the current project.
+    func selectProject(offset: Int) {
+        if pixiesOpen {
+            pixiesOpen = false
+        } else {
+            app.selectProject(offset: offset)
+        }
+    }
+
+    // MARK: Pixies
+
+    /// Cmd-0: the Pixies tab, on the pixie shown last or the first one.
+    func openPixies() {
+        close()
+        pixiesOpen = true
+        if shownPixie == nil {
+            selectPixie(pixies.visible.first?.id)
+        }
+    }
+
+    /// The pixie the page shows: the selected one while it exists, else the first.
+    var shownPixie: Pixie? {
+        let visible = pixies.visible
+        return visible.first { $0.id == pixie } ?? pixies.pixies.first { $0.id == pixie }
+            ?? visible.first
+    }
+
+    func selectPixie(_ id: String?) {
+        guard pixie != id else { return }
+        pixie = id
+        pixiePanel = .details
+    }
+
+    /// A notification or approval of a pixie's chat: the pixie's page, on its chat.
+    func revealPixie(_ id: String) {
+        close()
+        pixiesOpen = true
+        selectPixie(id)
+    }
+
+    /// New pixie and the starters; New pixie opens its details to set it up.
+    func createPixie(_ request: CreatePixieRequest, details: Bool) {
+        run("Could not create the pixie") {
+            let created = try await self.pixies.create(request)
+            self.selectPixie(created.id)
+            withAnimation(.smooth(duration: 0.22)) { self.pixieDetailsOpen = details }
+        }
+    }
+
+    /// Saves one change at once; there is no form to submit (D057).
+    func updatePixie(_ id: String, _ request: UpdatePixieRequest) {
+        run("Could not save the pixie") { try await self.pixies.update(id, request) }
+    }
+
+    /// Why the slug was refused (taken or not allowed), else nil.
+    func setPixieSlug(_ id: String, _ slug: String) async -> String? {
+        do {
+            try await pixies.update(id, UpdatePixieRequest(slug: slug))
+        } catch APIError.invalidInput(let message), APIError.conflict(let message, _) {
+            return message
+        } catch {
+            show(error, doing: "Could not save the pixie")
+        }
+        return nil
+    }
+
+    func resetPixie(_ id: String) {
+        run("Could not reset the conversation") {
+            try await self.pixies.reset(id)
+            self.show("Started a fresh conversation", kind: .done)
+        }
+    }
+
+    func deletePixie(_ id: String) {
+        run("Could not delete the pixie") {
+            let name = self.pixies.pixies.first { $0.id == id }?.name ?? "The pixie"
+            try await self.pixies.delete(id)
+            if self.pixie == id {
+                self.selectPixie(self.pixies.visible.first?.id)
+            }
+            self.show("Deleted \(name)", kind: .done)
+        }
+    }
+
+    /// The composer's key for a pixie's message, whichever chat it has.
+    static func pixieDraft(_ id: String) -> String { "\(Pixie.repoPrefix)\(id)" }
+
+    /// Sends through the pixie, which opens a fresh run when its chat needs one.
+    func sendToPixie(_ id: String) {
+        let draft = draft(for: Self.pixieDraft(id))
+        let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !draft.sending else { return }
+        let typed = draft.text
+        draft.sending = true
+        dictation.cancel()
+        Task {
+            defer { draft.sending = false }
+            do {
+                let session = try await pixies.send(id, text: text)
+                sessions.insert(session)
+                sentMessages.record(text, chat: session.id)
+                draft.clearSent(text: typed, attachments: [])
+            } catch {
+                show(error, doing: "Could not send")
+            }
+        }
     }
 
     // MARK: Session presentation
@@ -247,6 +387,7 @@ final class Shell {
     /// Opens an empty composer pane; the chat is created with its first message.
     @discardableResult
     func newChat() -> ComposerDraft {
+        pixiesOpen = false
         draftCount += 1
         let id = "\(Self.draftPrefix)\(draftCount)"
         let draft = draft(for: id)
@@ -267,10 +408,17 @@ final class Shell {
         draft.wantsFocus = true
     }
 
-    /// Cmd-W: closes the open sheet, else the focused pane, else the window.
+    /// Cmd-W: closes the open sheet, else the focused pane (a pixie's details), else the
+    /// window.
     func closeFocused() {
         if overlay != nil {
             close()
+        } else if pixiesOpen {
+            if pixieDetailsOpen {
+                withAnimation(.smooth(duration: 0.22)) { pixieDetailsOpen = false }
+            } else {
+                NSApp.keyWindow?.performClose(nil)
+            }
         } else if let focused = projectState.layout.focused {
             closePane(focused)
         } else {
@@ -280,7 +428,11 @@ final class Shell {
 
     /// Cmd-Return: sends the focused pane's message.
     func sendFocused() {
-        if let focused = projectState.layout.focused {
+        if pixiesOpen {
+            if let pixie = shownPixie {
+                sendToPixie(pixie.id)
+            }
+        } else if let focused = projectState.layout.focused {
             send(focused)
         }
     }
@@ -483,11 +635,12 @@ final class Shell {
         }
     }
 
-    /// Up arrow in an empty composer: the chat's last message, caret at its end.
-    func recallLastMessage(_ chat: String) {
+    /// Up arrow in an empty composer: the chat's last message, caret at its end. A pixie's
+    /// composer names its draft apart from its chat.
+    func recallLastMessage(_ chat: String, into draftKey: String? = nil) {
         let items = model.transcripts.existing(chat)?.items ?? []
         guard let text = sentMessages.last(chat: chat, transcript: items) else { return }
-        draft(for: chat).replaceText(text, caret: text.count)
+        draft(for: draftKey ?? chat).replaceText(text, caret: text.count)
     }
 
     /// Puts a picked suggestion into the composer.
@@ -552,12 +705,14 @@ final class Shell {
     /// A new terminal pane in the project folder.
     func newTerminal() {
         guard let path = repo?.path else { return }
+        pixiesOpen = false
         let size = workspaceSize
         update { $0.openTool(.terminal(in: path), in: size) }
     }
 
     func newBrowser(url: String? = nil) {
         guard project != nil else { return }
+        pixiesOpen = false
         let size = workspaceSize
         update { $0.openTool(.browser(url: url), in: size) }
     }
@@ -759,8 +914,7 @@ final class Shell {
         close()
         switch action {
         case .openChat(let project, let chat):
-            app.selectProject(project)
-            openChat(chat)
+            reveal(chat: chat, in: project)
         case .newChat:
             newChat()
         case .newTerminal:
@@ -778,7 +932,7 @@ final class Shell {
         case .openInVSCode:
             openProject(in: .vscode)
         case .goToProject(let project):
-            app.selectProject(project)
+            selectProject(project)
         case .openMessage(let project, let pane, let event):
             openMessage(project: project, pane: pane, event: event)
         }
@@ -786,6 +940,11 @@ final class Shell {
 
     /// A notification was clicked: show its chat.
     func reveal(chat: String, in project: String) {
+        if let pixie = Pixie.id(ofRepo: project) {
+            revealPixie(pixie)
+            return
+        }
+        pixiesOpen = false
         close()
         let size = workspaceSize
         withAnimation(.smooth(duration: 0.22)) {

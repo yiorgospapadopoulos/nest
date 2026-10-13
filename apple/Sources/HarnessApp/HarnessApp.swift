@@ -74,13 +74,15 @@ struct HarnessCommands: Commands {
             Divider()
         }
         CommandMenu("Projects") {
-            Button("Previous Project") { shell?.app.selectProject(offset: -1) }
+            Button("Previous Project") { shell?.selectProject(offset: -1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
-            Button("Next Project") { shell?.app.selectProject(offset: 1) }
+            Button("Next Project") { shell?.selectProject(offset: 1) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Divider()
+            Button("Pixies") { shell?.openPixies() }
+                .keyboardShortcut("0")
             ForEach(1..<10) { number in
-                Button(projectTitle(number)) { shell?.app.selectProject(at: number - 1) }
+                Button(projectTitle(number)) { shell?.selectProject(at: number - 1) }
                     .keyboardShortcut(KeyEquivalent(Character("\(number)")))
             }
         }

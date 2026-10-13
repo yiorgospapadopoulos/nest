@@ -116,6 +116,10 @@
                 try await renderTurnActivity(model, shell, controller, folder)
                 return
             }
+            if only == "b34" {
+                try await renderPixies(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -238,6 +242,34 @@
         /// B29: a running turn with its timer, thinking, a running agents group and a
         /// running group of commands beside a finished turn that says how long it worked;
         /// then the thinking and the commands group open.
+        /// B34: the Pixies tab with no pixies, then Reviewer's chat, its details, and the
+        /// Soul and Memory pages of the details panel.
+        private static func renderPixies(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            // The empty tab: the sample pixies are removed for this shot only.
+            for pixie in model.pixies.pixies {
+                try await model.pixies.delete(pixie.id)
+            }
+            shell.openPixies()
+            try await pair(controller, "pixies-empty", folder)
+
+            (model.api as? SampleAPI)?.restorePixies()
+            try await model.pixies.load()
+            // Watcher's chat runs; live events would have brought it.
+            try await model.sessions.fetch("p2")
+            shell.selectPixie("reviewer")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "pixie-chat", folder)
+            shell.pixieDetailsOpen = true
+            try await pair(controller, "pixie-details", folder)
+            shell.pixiePanel = .soul
+            try await pair(controller, "pixie-details-soul", folder)
+            shell.pixiePanel = .memory
+            try await pair(controller, "pixie-details-memory", folder)
+        }
+
         private static func renderTurnActivity(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {

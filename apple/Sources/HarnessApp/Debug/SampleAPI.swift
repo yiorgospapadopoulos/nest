@@ -453,11 +453,11 @@
 
         /// "Reviewer" the owl on dusk and "Watcher" the ghost on night.
         private static func samplePixies(now: Date) -> [Pixie] {
-            let rows: [(String, String, String, String, String, String, Int)] = [
-                ("reviewer", "Reviewer", "owl", "#8B7CF6", "dusk", "default", 0),
-                ("watcher", "Watcher", "ghost", "#12A594", "night", "plan", 1),
+            let rows: [(String, String, String, String, String, String, Int, String)] = [
+                ("reviewer", "Reviewer", "owl", "#8B7CF6", "dusk", "default", 0, "p1"),
+                ("watcher", "Watcher", "ghost", "#12A594", "night", "plan", 1, "p2"),
             ]
-            return rows.map { id, name, mascot, color, background, permission, position in
+            return rows.map { id, name, mascot, color, background, permission, position, chat in
                 let object: [String: Any] = [
                     "id": id, "slug": id, "name": name, "mascot": mascot, "color": color,
                     "background": background, "model": NSNull(), "effort": NSNull(),
@@ -465,7 +465,7 @@
                     "project_access": "read", "projects": NSNull(), "skills": [String](),
                     "can_call": [String](), "allowed_tools": [String](),
                     "disallowed_tools": [String](), "hidden": false, "position": position,
-                    "chat_session_id": NSNull(), "created_at": SampleData.iso(now - 86_400 * 5),
+                    "chat_session_id": chat, "created_at": SampleData.iso(now - 86_400 * 5),
                     "updated_at": SampleData.iso(now - 3600),
                 ]
                 return try! SampleData.decode(object)
@@ -515,14 +515,35 @@
                 guard let index = pixieList.firstIndex(where: { $0.id == id }) else {
                     throw APIError.notFound("unknown pixie")
                 }
-                pixieList[index].name = request.name ?? pixieList[index].name
-                pixieList[index].hidden = request.hidden ?? pixieList[index].hidden
-                return pixieList[index]
+                var pixie = pixieList[index]
+                pixie.name = request.name ?? pixie.name
+                pixie.slug = request.slug ?? pixie.slug
+                pixie.mascot = request.mascot ?? pixie.mascot
+                pixie.color = request.color ?? pixie.color
+                pixie.background = request.background ?? pixie.background
+                pixie.model = request.model ?? pixie.model
+                pixie.effort = request.effort ?? pixie.effort
+                pixie.permissionMode = request.permissionMode ?? pixie.permissionMode
+                pixie.autonomy = request.autonomy ?? pixie.autonomy
+                pixie.projectAccess = request.projectAccess ?? pixie.projectAccess
+                pixie.projects =
+                    request.allProjects == true ? nil : request.projects ?? pixie.projects
+                pixie.skills = request.skills ?? pixie.skills
+                pixie.allowedTools = request.allowedTools ?? pixie.allowedTools
+                pixie.disallowedTools = request.disallowedTools ?? pixie.disallowedTools
+                pixie.hidden = request.hidden ?? pixie.hidden
+                pixieList[index] = pixie
+                return pixie
             }
         }
 
         func deletePixie(_ id: String) async throws {
             lock.withLock { pixieList.removeAll { $0.id == id } }
+        }
+
+        /// The sample pixies again, after a snapshot removed them.
+        func restorePixies() {
+            lock.withLock { pixieList = Self.samplePixies(now: now) }
         }
 
         func sendToPixie(_ id: String, text: String) async throws -> Session {
@@ -783,6 +804,39 @@
             buildWeatherForecast()
             buildMapViewer()
             buildClaudeChats()
+            buildPixieChats()
+        }
+
+        /// Reviewer's chat, idle after a review, and Watcher's, running.
+        private mutating func buildPixieChats() {
+            session(
+                "p1", repo: "pixie:reviewer", title: "Reviewer", state: "idle", minutes: 20,
+                model: "opus", effort: "high", permission: "default", branch: "", context: 23,
+                pixie: "reviewer")
+            transcript(
+                "p1",
+                [
+                    Self.user("Can you look over the dark mode pull request on todo-ui?"),
+                    Self.text(
+                        "I read the diff of #42. Three things, most important first:\n\n"
+                            + "1. **`ThemeToggle.tsx`** reads `localStorage` during render, which "
+                            + "breaks the server render. Move it into an effect.\n"
+                            + "2. The snapshot test covers light mode only. Add a dark run.\n"
+                            + "3. `--surface-2` is unused after this change; remove it.\n\n"
+                            + "Everything else looks good. I noted that you prefer small pull "
+                            + "requests, so I would split the token cleanup out."),
+                    Self.user("Thanks. Remember that we always test both themes."),
+                    Self.text("Noted: every UI change gets a light and a dark snapshot run."),
+                ])
+            session(
+                "p2", repo: "pixie:watcher", title: "Watcher", state: "running", minutes: 1,
+                permission: "plan", branch: "", pixie: "watcher")
+            transcript(
+                "p2",
+                [
+                    Self.user("Keep an eye on the map-viewer build this morning."),
+                    Self.text("Watching it. The 09:00 run is in progress."),
+                ])
         }
 
         private func ago(_ minutes: Double) -> String {
@@ -795,7 +849,7 @@
             permission: String = "acceptEdits", branch: String, pinned: Bool = false,
             archived: Bool = false, tasks: [[String: Any]] = [], agents: [[String: Any]] = [],
             background: [[String: Any]] = [], context: Double? = nil, queued: [String] = [],
-            pr: [String: Any]? = nil, stuck: [String: Any]? = nil
+            pr: [String: Any]? = nil, stuck: [String: Any]? = nil, pixie: String? = nil
         ) {
             var object: [String: Any] = [
                 "id": id, "repo": repo, "title": title, "prompt": title, "mode": "worktree",
@@ -817,8 +871,15 @@
                     "percent": context, "used": Int(context * 2_000), "limit": 200_000,
                 ]
             }
-            let summary: Session = try! Self.decode(object)
-            sessions.append(summary)
+            if let pixie {
+                // A pixie's chat: no branch, and no list carries it (D057).
+                object["pixie_id"] = pixie
+                object["branch"] = NSNull()
+                object["mode"] = "in_place"
+            } else {
+                let summary: Session = try! Self.decode(object)
+                sessions.append(summary)
+            }
             object["tasks"] = tasks
             object["agents"] = agents
             let running = background.count { $0["status"] as? String == "running" }

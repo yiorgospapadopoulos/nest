@@ -3,9 +3,13 @@ import HarnessKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The message field of a pane with attach, dictation, the quiet selectors and send.
+/// The message field of a pane with attach, dictation, the quiet selectors and send. A
+/// pixie's composer sends through the pixie and leaves out attachments, selectors and
+/// suggestions: its settings live in its details, and it belongs to no project (D057).
 struct Composer: View {
+    /// The draft's key: the pane's chat, or `Shell.pixieDraft` for a pixie.
     let chat: String
+    let pixie: String?
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
     @FocusState private var focused: Bool
@@ -14,6 +18,23 @@ struct Composer: View {
     @Environment(\.revealsHoverControls) private var reveal
     @Environment(\.seeThrough) private var seeThrough
     @Environment(\.glass) private var glass
+
+    init(chat: String) {
+        self.chat = chat
+        pixie = nil
+    }
+
+    init(pixie: String) {
+        chat = Shell.pixieDraft(pixie)
+        self.pixie = pixie
+    }
+
+    /// The chat that runs: the pane's, or the pixie's current one (none before its first
+    /// message).
+    private var live: String? {
+        guard let pixie else { return chat }
+        return shell.pixies.pixies.first { $0.id == pixie }?.chatSessionID
+    }
 
     var body: some View {
         let draft = shell.draft(for: chat)
@@ -62,7 +83,7 @@ struct Composer: View {
     private var session: String? { shell.isDraft(chat) ? nil : chat }
 
     private func suggestions(_ draft: ComposerDraft) -> CompletionList? {
-        guard focused || reveal, let repo = shell.project else { return nil }
+        guard pixie == nil, focused || reveal, let repo = shell.project else { return nil }
         return shell.completions.suggestions(
             text: draft.text, caret: draft.caret, session: session, repo: repo)
     }
@@ -80,7 +101,7 @@ struct Composer: View {
     private func handle(_ key: ComposerKey, draft: ComposerDraft, suggestions: CompletionList?)
         -> Bool
     {
-        let working = shell.sessions.session(chat)?.state.isInFlight ?? false
+        let working = live.flatMap(shell.sessions.session)?.state.isInFlight ?? false
         let action = ComposerKeyAction.of(
             key, suggesting: suggestions != nil, isEmpty: draft.text.isEmpty, working: working)
         switch action {
@@ -97,15 +118,27 @@ struct Composer: View {
                 withAnimation(.smooth(duration: 0.15)) { draft.completion.dismiss(suggestions) }
             }
         case .send:
-            shell.send(chat)
+            send()
         case .interrupt:
-            shell.interrupt(chat)
+            if let live {
+                shell.interrupt(live)
+            }
         case .recall:
-            shell.recallLastMessage(chat)
+            if let live {
+                shell.recallLastMessage(live, into: chat)
+            }
         case .ignore:
             return false
         }
         return true
+    }
+
+    private func send() {
+        if let pixie {
+            shell.sendToPixie(pixie)
+        } else {
+            shell.send(chat)
+        }
     }
 
     private func field(_ draft: ComposerDraft, suggestions: CompletionList?) -> some View {
@@ -132,7 +165,7 @@ struct Composer: View {
                 .padding(.bottom, 4)
                 .transition(.opacity)
             }
-            ControlRow(chat: chat, draft: draft)
+            ControlRow(chat: chat, live: live, pixie: pixie != nil, draft: draft, send: send)
         }
         .padding(EdgeInsets(top: 4, leading: 12, bottom: 6, trailing: 8))
         .background(shape.fill(GlassTint.reading.color(in: glass, seeThrough: seeThrough)))
@@ -143,7 +176,7 @@ struct Composer: View {
             }
         }
         .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
-        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+        .onDrop(of: pixie == nil ? [.fileURL] : [], isTargeted: $dropTargeted) { providers in
             loadFiles(providers)
             return true
         }
@@ -322,35 +355,48 @@ private struct AttachmentChips: View {
 }
 
 /// Attach, mic, Model, Thinking, Permission, then Worktree for new chats or the context
-/// meter for open ones, and send (Queue or Interrupt while Claude works).
+/// meter for open ones, and send (Queue or Interrupt while Claude works). A pixie's row
+/// has the mic, the context meter and send.
 private struct ControlRow: View {
+    /// The draft's key.
     let chat: String
+    /// The chat that runs, if any.
+    let live: String?
+    let pixie: Bool
     let draft: ComposerDraft
+    let send: () -> Void
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
 
     var body: some View {
-        let session = shell.sessions.session(chat)
+        let session = live.flatMap(shell.sessions.session)
         let isDraft = shell.isDraft(chat)
         let working = session.map { $0.state.isInFlight } ?? false
         let listening = shell.dictation.activeChat == chat
         HStack(spacing: 4) {
-            Button(action: attach) {
-                Image(systemName: Icon.attach).font(.system(size: 13))
+            if !pixie {
+                Button(action: attach) {
+                    Image(systemName: Icon.attach).font(.system(size: 13))
+                }
+                .buttonStyle(.harness(.ghost, iconOnly: true))
+                .help("Attach")
+                .accessibilityLabel("Attach")
             }
-            .buttonStyle(.harness(.ghost, iconOnly: true))
-            .help("Attach")
-            .accessibilityLabel("Attach")
             MicButton(listening: listening) { toggleDictation() }
-            ModelMenu(chat: chat, model: isDraft ? draft.model : session?.model)
-            EffortMenu(
-                chat: chat, model: isDraft ? draft.model : session?.model,
-                effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
-            PermissionMenu(chat: chat, mode: isDraft ? draft.permission : session?.permissionMode)
+            if !pixie {
+                ModelMenu(chat: chat, model: isDraft ? draft.model : session?.model)
+                EffortMenu(
+                    chat: chat, model: isDraft ? draft.model : session?.model,
+                    effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
+                PermissionMenu(
+                    chat: chat, mode: isDraft ? draft.permission : session?.permissionMode)
+            }
             if isDraft && shell.repo?.git != false {
                 ModeMenu(draft: draft)
-            } else if let context = session?.context, let label = fit.context.label(context) {
-                ContextMeter(chat: chat, context: context, label: label)
+            } else if let live, let context = session?.context,
+                let label = fit.context.label(context)
+            {
+                ContextMeter(chat: live, context: context, label: label)
             }
             Spacer(minLength: 4)
             SendButton(
@@ -360,9 +406,11 @@ private struct ControlRow: View {
                 sending: draft.sending
             ) { mode in
                 if mode == .interrupt {
-                    shell.interrupt(chat)
+                    if let live {
+                        shell.interrupt(live)
+                    }
                 } else {
-                    shell.send(chat)
+                    send()
                 }
             }
             .padding(.leading, 4)
@@ -380,8 +428,8 @@ private struct ControlRow: View {
 
     private func toggleDictation() {
         let terms = DictationVocabulary.terms(
-            repo: shell.project, branch: shell.sessions.session(chat)?.branch,
-            items: shell.model.transcripts.existing(chat)?.items ?? [])
+            repo: pixie ? nil : shell.project, branch: live.flatMap(shell.sessions.session)?.branch,
+            items: live.flatMap(shell.model.transcripts.existing)?.items ?? [])
         Task {
             let hint = await shell.dictation.toggle(for: chat, draft: draft, terms: terms)
             withAnimation { draft.hint = hint }

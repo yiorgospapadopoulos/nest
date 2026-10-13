@@ -2,7 +2,8 @@ import AppKit
 import HarnessKit
 import SwiftUI
 
-/// The project tabs across the top of the window, with the usage meter and search.
+/// The Pixies tab and the project tabs across the top of the window, with the usage meter
+/// and search.
 struct TabStrip: View {
     /// Room for the window's traffic lights.
     static let leadingInset = 86.0
@@ -15,6 +16,7 @@ struct TabStrip: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 4) {
+            PixiesTab()
             ForEach(shell.app.openProjects, id: \.self) { name in
                 ProjectTab(name: name)
             }
@@ -73,7 +75,7 @@ private struct ProjectTab: View {
     @State private var hovering = false
 
     var body: some View {
-        let isCurrent = shell.project == name
+        let isCurrent = shell.project == name && !shell.pixiesOpen
         let strip = glass.spacing.stripHeight
         let attention = shell.sessions.attention(of: name)
         let running = shell.sessions.sessions(in: name).contains {
@@ -124,7 +126,7 @@ private struct ProjectTab: View {
         }
         .contentShape(Rectangle())
         .pointerStyle(.link)
-        .onTapGesture { shell.app.selectProject(name) }
+        .onTapGesture { shell.selectProject(name) }
         .onHover { hovering = $0 }
         .padding(.bottom, isCurrent ? 0 : 5)
         .zIndex(isCurrent ? 1 : 0)
@@ -132,6 +134,63 @@ private struct ProjectTab: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityLabel(attention > 0 ? "\(name), \(attention) need you" : name)
+    }
+}
+
+/// The leftmost tab (Cmd-0): the user's pixies, whichever project is open. It glows like a
+/// project tab while a pixie's chat needs the user.
+private struct PixiesTab: View {
+    @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
+    @Environment(\.glass) private var glass
+    @State private var hovering = false
+
+    var body: some View {
+        let isCurrent = shell.pixiesOpen
+        let strip = glass.spacing.stripHeight
+        let attention = shell.approvals.pending.count { Pixie.id(ofRepo: $0.repo) != nil }
+        let running = shell.pixies.visible.contains { pixie in
+            let state = pixie.chatSessionID.flatMap(shell.sessions.session)?.state
+            return state == .running || state == .starting
+        }
+        let mascot = shell.shownPixie ?? shell.pixies.visible.first
+        HStack(spacing: 8) {
+            SpriteView(
+                mascot: mascot?.mascot ?? .invader, color: mascot?.color ?? PixieColor.standard,
+                size: 20)
+            Text("Pixies")
+                .font(.ui(TypeSize.callout, .semibold))
+                .foregroundStyle(isCurrent ? Palette.t1 : Palette.t2)
+                .lineLimit(1)
+            if attention > 0 {
+                CountBadge(count: attention, urgent: true, size: 18)
+            } else if running {
+                StatusDot(tone: .running, size: 7)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: isCurrent ? strip - 9 : strip - 16)
+        .background {
+            if isCurrent {
+                TabShape(radius: glass.radius.tab).fill(glass.shell)
+                    .padding(.horizontal, -glass.radius.tab)
+            } else if attention > 0 {
+                AttentionGlow(reduceMotion: reduceMotion, radius: glass.radius.item)
+            } else if hovering {
+                glass.rounded(glass.radius.item).fill(Palette.fill)
+            }
+        }
+        .contentShape(Rectangle())
+        .pointerStyle(.link)
+        .onTapGesture { shell.openPixies() }
+        .onHover { hovering = $0 }
+        .padding(.bottom, isCurrent ? 0 : 5)
+        .zIndex(isCurrent ? 1 : 0)
+        .help(attention > 0 ? "Pixies, \(attention) need you (⌘0)" : "Pixies (⌘0)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(attention > 0 ? "Pixies, \(attention) need you" : "Pixies")
+        .accessibilityAction { shell.openPixies() }
     }
 }
 

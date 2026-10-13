@@ -229,3 +229,30 @@ struct ChatLink: View {
         .help("Open this chat")
     }
 }
+
+/// A pixie's sprite and name that open its page, where its chat shows.
+struct PixieLink: View {
+    let id: String
+    @Environment(Shell.self) private var shell
+    @State private var hovering = false
+
+    var body: some View {
+        let pixie = shell.pixies.pixies.first { $0.id == id }
+        Button {
+            shell.revealPixie(id)
+        } label: {
+            HStack(spacing: 5) {
+                SpriteView(
+                    mascot: pixie?.mascot ?? .invader, color: pixie?.color ?? PixieColor.standard,
+                    size: 14)
+                Text(pixie?.name ?? "Pixie")
+                    .lineLimit(1)
+                    .underline(hovering)
+            }
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .onHover { hovering = $0 }
+        .help("Open this pixie")
+    }
+}

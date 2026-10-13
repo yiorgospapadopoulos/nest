@@ -49,10 +49,18 @@ struct ApprovalCard: View {
             }
             if style == .panel {
                 Spacer(minLength: 8)
-                ChatLink(chat: approval.sessionID, title: approval.title)
-                    .font(.ui(TypeSize.caption, .medium))
-                    .foregroundStyle(Palette.t3)
-                    .frame(maxWidth: 150, alignment: .trailing)
+                Group {
+                    if let pixieID = Pixie.id(ofRepo: approval.repo) {
+                        // A pixie's chat belongs to no project: name the pixie, never
+                        // "pixie:<id>", and open its page (D057).
+                        PixieLink(id: pixieID)
+                    } else {
+                        ChatLink(chat: approval.sessionID, title: approval.title)
+                    }
+                }
+                .font(.ui(TypeSize.caption, .medium))
+                .foregroundStyle(Palette.t3)
+                .frame(maxWidth: 150, alignment: .trailing)
             }
         }
         .font(.ui(TypeSize.caption, .bold))

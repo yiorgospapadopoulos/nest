@@ -25,7 +25,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     private func post(_ notice: Notice) {
         let focused = NSApp.isActive && NSApp.keyWindow != nil
-        let visible = NotificationPolicy.visibleChats(app: shell.app, windowFocused: focused)
+        // On the Pixies tab only the shown pixie's chat is in view.
+        let pixieChat = shell.shownPixie?.chatSessionID
+        let visible =
+            shell.pixiesOpen
+            ? Set(focused ? [pixieChat].compactMap { $0 } : [])
+            : NotificationPolicy.visibleChats(app: shell.app, windowFocused: focused)
         guard
             let content = NotificationPolicy.content(
                 for: notice, preferences: shell.settings.notifications, visibleChats: visible,

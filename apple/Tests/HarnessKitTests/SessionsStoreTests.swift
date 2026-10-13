@@ -251,6 +251,20 @@ import Testing
         #expect(approvals.pending.count == 1)
     }
 
+    @Test func pixieChatsAreReadOneByOneAndOutliveAReload() async throws {
+        var pixieChat = Fixture.session("pc", repo: "pixie:p1", state: .idle)
+        pixieChat.pixieID = "p1"
+        api.set { $0.details["pc"] = pixieChat }
+        try await seed([Fixture.session("normal")])
+        #expect(store.session("pc") == nil)
+
+        try await store.fetch("pc")
+        #expect(store.session("pc")?.pixieID == "p1")
+        // The daemon's list has no pixie chats; a reload keeps the one already read.
+        try await store.load()
+        #expect(Set(store.sessions.keys) == ["normal", "pc"])
+    }
+
     func pixieApproval(session: String) -> Approval {
         var approval = Fixture.approval("ap-perm")
         approval.id = "ap-pixie"

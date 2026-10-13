@@ -53,11 +53,12 @@ public final class SessionsStore {
         self.approvals = approvals
     }
 
-    /// Loads open and archived sessions of every repo.
+    /// Loads open and archived sessions of every repo. The daemon lists no pixie chats, so
+    /// the ones already read stay (D057).
     public func load() async throws {
         let active = try await api.sessions(repo: nil, archived: false)
         let archived = try await api.sessions(repo: nil, archived: true)
-        var loaded: [String: Session] = [:]
+        var loaded = sessions.filter { $0.value.pixieID != nil }
         for session in active + archived {
             loaded[session.id] = session
         }
@@ -194,6 +195,11 @@ public final class SessionsStore {
     @discardableResult
     public func create(_ request: CreateSessionRequest) async throws -> Session {
         store(try await api.createSession(request))
+    }
+
+    /// Reads one session, such as a pixie's chat, which no list carries.
+    public func fetch(_ id: String) async throws {
+        store(try await api.session(id))
     }
 
     /// A session the app got from another call, such as an adopted Claude Code chat.

@@ -105,14 +105,17 @@ struct ShellView: View {
     }
 }
 
-/// The current project's toolbar, sidebar, workspace or board, and activity panel.
+/// The Pixies tab, or the current project's toolbar, sidebar, workspace or board, and
+/// activity panel.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
     @Environment(\.glass) private var glass
 
     var body: some View {
         Group {
-            if shell.project == nil {
+            if shell.pixiesOpen {
+                PixiesView()
+            } else if shell.project == nil {
                 NoProjectView()
             } else {
                 VStack(spacing: 0) {
