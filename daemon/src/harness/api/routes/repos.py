@@ -19,6 +19,17 @@ class RegisterRepo(BaseModel):
     name: str | None = None
 
 
+class UpdateRepo(BaseModel):
+    """`[worktree]` keys to set; those left out (or null) are unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Gitignored files symlinked into each new worktree, relative to the repository.
+    link: list[str] | None = None
+    # Commands run in each new worktree after it is created.
+    setup: list[str] | None = None
+
+
 @router.get("")
 async def list_repos(ctx: Context) -> list[RepoConfig]:
     """Plain folders that became git repositories are updated on the way (D041)."""
@@ -57,6 +68,15 @@ async def link_suggestions(name: str, ctx: Context) -> list[str]:
     return await ctx.repos.suggest_links(name)
 
 
+@router.patch("/{name}")
+async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoConfig:
+    """Edit links and setup (IMP-09); 422 for a link outside the repository. Announced as
+    `repo.updated`.
+    """
+    return await ctx.repos.edit_worktree(name, body.model_dump(exclude_none=True))
+
+
 @router.put("/{name}/worktree")
 async def update_worktree(name: str, body: WorktreeConfig, ctx: Context) -> RepoConfig:
-    return ctx.repos.update_worktree_config(name, body)
+    """Replace the whole `[worktree]` config; announced as `repo.updated`."""
+    return await ctx.repos.configure_worktree(name, body)

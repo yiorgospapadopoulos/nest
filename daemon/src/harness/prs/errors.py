@@ -1,3 +1,5 @@
+from pydantic import JsonValue
+
 from harness.errors import ConflictError, HarnessError
 from harness.gitops.runner import CommandError
 
@@ -14,3 +16,15 @@ class PrReadError(HarnessError):
 
 class NoPullRequestError(ConflictError):
     pass
+
+
+class NoFailingChecksError(ConflictError):
+    """Nothing to send to the agent: no check of the pull request fails now (IMP-08)."""
+
+    code = "no_failing_checks"
+
+    def __init__(self) -> None:
+        super().__init__("No checks of this pull request are failing now.")
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}

@@ -1,3 +1,4 @@
+import gc
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -165,6 +166,9 @@ async def test_merge_options_and_an_unread_pull_request(api: Api) -> None:
     # GitHub could not be read after the merge either, so no status is known.
     assert merged.json()["pr"] is None
     assert merge_calls(api) == [("gh", "pr", "merge", PR_URL, "--repo", "me/repo", "--rebase")]
+    # IMP-13: a session's lock lives only while it is held.
+    gc.collect()
+    assert len(api.ctx.prs._locks) == 0  # pyright: ignore[reportPrivateUsage]
 
 
 async def test_after_a_merge_an_unreadable_status_is_marked_merged(api: Api) -> None:
