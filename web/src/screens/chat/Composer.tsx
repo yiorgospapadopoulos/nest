@@ -18,8 +18,9 @@ import {
   labelOf,
   modelOptions,
   NO_THINKING,
-  PERMISSIONS,
+  permissionOptions,
   PICKER_TITLES,
+  takesAuto,
   thinkingLevels,
   type Option,
   type PickerKind,
@@ -130,7 +131,6 @@ export function Composer({ session, repo, onCreated }: Props) {
     const typed = text;
     const prompt = text.trim();
     const ids = files.map((f) => f.id);
-    let ok: boolean;
     if (session === undefined) {
       const created = await actions.create({
         repo,
@@ -140,11 +140,14 @@ export function Composer({ session, repo, onCreated }: Props) {
         ...(draft.effort === null ? {} : { effort: draft.effort }),
         ...(draft.permission === null ? {} : { permission_mode: draft.permission }),
       });
-      ok = created !== null;
-      if (created !== null) onCreated(created);
-    } else {
-      ok = await deliver(session.id, prompt, ids);
+      setSending(false);
+      if (created === null) return;
+      // Anything typed while it was created goes on in the new chat.
+      actions.draftSent(key, typed, ids, draftKey({ session: created.id }));
+      onCreated(created);
+      return;
     }
+    const ok = await deliver(session.id, prompt, ids);
     setSending(false);
     // By key: the user may have moved on to another chat meanwhile.
     if (ok) actions.draftSent(key, typed, ids);
@@ -166,7 +169,7 @@ export function Composer({ session, repo, onCreated }: Props) {
     const listed: Record<PickerKind, Option<string>[]> = {
       model: modelOptions(models),
       effort: effortOptions(levels),
-      permission: PERMISSIONS,
+      permission: permissionOptions(models, runModel ?? null),
     };
     // An open chat offers no default option.
     return session === undefined ? [AGENT_DEFAULT, ...listed[kind]] : listed[kind];
@@ -184,6 +187,8 @@ export function Composer({ session, repo, onCreated }: Props) {
       if (next.effort !== null && !thinkingLevels(models, model).includes(next.effort)) {
         next.effort = null;
       }
+      // So is Auto, for a model that does not take it.
+      if (next.permission === "auto" && !takesAuto(models, model)) next.permission = null;
       setDraft(next);
       return;
     }
@@ -244,11 +249,14 @@ export function Composer({ session, repo, onCreated }: Props) {
         />
       )}
       <div className="comp gl">
-        {elsewhere && (
-          <p className="cnote" role="status">
-            This chat is open in Claude Code right now. Close it there first.
-          </p>
-        )}
+        {/* Always there, as VoiceOver often misses a live region inserted with its text. */}
+        <div aria-live="polite">
+          {elsewhere && (
+            <p className="cnote">
+              This chat is open in Claude Code right now. Close it there first.
+            </p>
+          )}
+        </div>
         {files.length > 0 && (
           <ul className="atts" aria-label="Attachments">
             {files.map((file) => (

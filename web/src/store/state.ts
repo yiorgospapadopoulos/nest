@@ -41,6 +41,9 @@ export function draftKey(target: { session: string } | { repo: string }): string
   return "session" in target ? `session:${target.session}` : `new:${target.repo}`;
 }
 
+// Whether an open chat's history arrived; a failed load is tried again (BUG-66).
+export type HistoryStatus = "loading" | "loaded" | "failed";
+
 export interface Toast {
   id: number;
   text: string;
@@ -62,6 +65,7 @@ export interface State {
   tracking: Record<string, Tracking>;
   // Stored events of the chats that were opened, oldest first.
   transcripts: Record<string, HarnessEvent[]>;
+  history: Record<string, HistoryStatus>;
   // Assistant text streaming in before its message is complete.
   live: Record<string, string>;
   // When the agent started the thinking it is doing now (D045); live only.
@@ -90,6 +94,7 @@ export const initialState: State = {
   approvals: {},
   tracking: {},
   transcripts: {},
+  history: {},
   live: {},
   thinking: {},
   queued: {},
@@ -107,6 +112,8 @@ export type Action =
   | { type: "auth"; auth: AuthState }
   | { type: "reconnecting"; on: boolean }
   | { type: "loaded"; repos: RepoConfig[]; sessions: Session[]; approvals: Approval[] }
+  | { type: "repo"; repo: RepoConfig }
+  | { type: "repoRemoved"; name: string }
   | { type: "session"; session: Session }
   | { type: "sessionRemoved"; id: string }
   | { type: "claudeChats"; chats: ClaudeChat[] }
@@ -118,6 +125,7 @@ export type Action =
   | { type: "transcriptOpened"; id: string }
   | { type: "transcriptLoaded"; id: string; events: HarnessEvent[] }
   | { type: "transcriptClosed"; id: string }
+  | { type: "historyFailed"; id: string }
   | { type: "queued"; id: string; queued: QueuedMessage[] }
   | { type: "queuedRemoved"; id: string; queuedId: string }
   | { type: "event"; event: HarnessEvent }
@@ -129,7 +137,8 @@ export type Action =
   | { type: "draftFileAdded"; key: string; file: Attachment }
   | { type: "draftFileRemoved"; key: string; fileId: string }
   // A message from the draft went out: what was typed or attached since stays.
-  | { type: "draftSent"; key: string; text: string; fileIds: string[] }
+  // `to`: the new chat the first message created, which takes what is left of the draft.
+  | { type: "draftSent"; key: string; text: string; fileIds: string[]; to?: string }
   | { type: "connectors"; connectors: Connector[] }
   | { type: "limits"; limits: UsageLimits }
   | { type: "notifications"; notifications: NotificationSettings }

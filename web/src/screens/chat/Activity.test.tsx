@@ -421,6 +421,46 @@ describe("the background bar", () => {
   });
 });
 
+describe("the background bar of a reopened chat", () => {
+  it("waits for the history, so it counts only the latest exchange", async () => {
+    const background: BackgroundSummary = {
+      running: 0,
+      completed: 2,
+      items: [
+        {
+          id: "old",
+          kind: "agent",
+          name: "Explore",
+          description: "Earlier",
+          status: "done",
+          started_at: START,
+          finished_at: START,
+        },
+      ],
+    };
+    const history = [at(1, "session.user_message", { text: "Next" }, 60)];
+    const { api, user } = await openChat(session(), history, { background });
+    expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
+
+    let finish: (events: HarnessEvent[]) => void = () => undefined;
+    api.sessionEvents.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+    await screen.findByRole("region", { name: "Validate contact form" });
+
+    expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
+    await act(async () => {
+      finish(history);
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("background bar wording", () => {
   it("names running tasks alone until one completes, as on the Mac", () => {
     const item = (id: string, status: "running" | "done") => ({

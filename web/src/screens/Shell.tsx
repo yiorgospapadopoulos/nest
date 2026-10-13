@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NAVIGATE, type NavigateMessage } from "../pwa/navigate.ts";
 import { parseRoute, routePath, type Route, type Tab } from "../routes.ts";
 import { useStore } from "../store/context.ts";
@@ -26,13 +26,24 @@ export function Shell() {
     if (window.location.pathname !== path) window.history.replaceState(null, "", path);
   }, [tab, chat]);
 
+  // What had focus when a chat opened over the tabs, to get it back when the chat closes.
+  const opener = useRef<Element | null>(null);
+  const showing = useRef(chat !== null);
+  useEffect(() => {
+    showing.current = chat !== null;
+  }, [chat]);
+  const show = useCallback((target: ChatTarget | null) => {
+    if (target !== null && !showing.current) opener.current = document.activeElement;
+    setChat(target);
+  }, []);
+
   // A tapped notification sends an open app to its item (see the service worker).
   useEffect(() => {
     const worker = window.navigator.serviceWorker as ServiceWorkerContainer | undefined;
     if (worker === undefined) return;
     const go = ({ tab: next, chat: id }: Route) => {
       setTab(next);
-      setChat(id === null ? null : { id });
+      show(id === null ? null : { id });
     };
     const onMessage = (event: MessageEvent<NavigateMessage | null>) => {
       if (event.data?.type === NAVIGATE) go(parseRoute(event.data.url));
@@ -41,20 +52,28 @@ export function Shell() {
     return () => {
       worker.removeEventListener("message", onMessage);
     };
-  }, []);
+  }, [show]);
 
-  // The chat that just closed: its row (data-chat) gets focus back once the tabs show again.
+  // The chat that just closed: once the tabs show again, focus goes back to what opened
+  // it, such as an Inbox card or a search hit, or else to the chat's row (data-chat). A tap
+  // leaves focus on the page itself, and an opener may be gone, as an answered card.
   const closed = useRef<string | null>(null);
   useEffect(() => {
     const id = closed.current;
     if (chat !== null || id === null) return;
     closed.current = null;
+    const back = opener.current;
+    opener.current = null;
+    if (back instanceof HTMLElement && back !== document.body && back.isConnected) {
+      back.focus();
+      return;
+    }
     const rows = document.querySelectorAll<HTMLElement>("[data-chat]");
     [...rows].find((row) => row.dataset.chat === id)?.focus();
   }, [chat]);
 
   const openChat = (id: string, event?: number) => {
-    setChat(event === undefined ? { id } : { id, event });
+    show(event === undefined ? { id } : { id, event });
   };
 
   return (
@@ -73,10 +92,10 @@ export function Shell() {
             onProject={setProject}
             onOpenChat={openChat}
             onOpenClaudeChat={(id) => {
-              setChat({ claude: id });
+              show({ claude: id });
             }}
             onNewChat={(repo) => {
-              setChat({ draft: repo });
+              show({ draft: repo });
             }}
           />
         )}

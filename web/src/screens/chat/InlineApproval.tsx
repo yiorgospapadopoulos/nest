@@ -2,11 +2,15 @@ import { useState } from "react";
 import type { Approval, Session } from "../../api/types.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
-import { DiffSheet } from "../approvals/DiffSheet.tsx";
+import { DiffSheet, ReviewHead } from "../approvals/DiffSheet.tsx";
 import { useMerge, usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import { RejectConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
+import {
+  RejectConfirmation,
+  RemoteConfirmation,
+  ViolationNotice,
+} from "../approvals/ReviewGuards.tsx";
 
 interface Props {
   approval: Approval;
@@ -82,6 +86,9 @@ function InlinePermission({ approval, session }: Props) {
         <button className="b b-no" disabled={busy} onClick={() => void decide("deny")}>
           Reject
         </button>
+        <button className="b qb2" disabled={busy} onClick={() => void decide("allow", true)}>
+          Always allow {view.always}
+        </button>
       </div>
     </div>
   );
@@ -100,6 +107,7 @@ function InlineReview({ approval, session }: Props) {
       <div className="crr">
         <DiffStats {...review.view} />
       </div>
+      {typeof review.diff === "object" && review.diff !== null && <ReviewHead diff={review.diff} />}
       <ViolationNotice review={review} />
       <div className="acts">
         <button className="b b-ok" disabled={review.busy || review.blocked} onClick={approve}>
@@ -116,8 +124,7 @@ function InlineReview({ approval, session }: Props) {
       </div>
       {diffOpen && (
         <DiffSheet
-          sessionId={session.id}
-          title={review.title}
+          review={review}
           onClose={() => {
             setDiffOpen(false);
           }}
@@ -134,6 +141,7 @@ function InlineReview({ approval, session }: Props) {
         />
       )}
       <RejectConfirmation review={review} />
+      <RemoteConfirmation review={review} />
     </div>
   );
 }

@@ -123,13 +123,13 @@ describe("thinking selector", () => {
     const list = modelList();
     list.models[1] = { ...defined(list.models[1]), effort_levels: ["low", "turbo"] };
     api.models.mockResolvedValue(list);
-    const chat = session({ model: "opus", effort: null, permission_mode: "auto" as never });
+    const chat = session({ model: "opus", effort: null, permission_mode: "dontAsk" as never });
     const { user } = await openChat(chat, api);
 
     await user.click(screen.getByRole("button", { name: "Thinking: Thinking" }));
 
     expect(options(screen.getByRole("dialog", { name: "Thinking" }))).toEqual(["Low", "turbo"]);
-    expect(screen.getByRole("button", { name: "Permission mode: auto" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Permission mode: dontAsk" })).toBeInTheDocument();
   });
 
   it("is not available for Haiku", async () => {
@@ -170,5 +170,71 @@ describe("thinking selector", () => {
       prompt: "Go",
       attachment_ids: [],
     });
+  });
+});
+
+describe("permission mode selector", () => {
+  it("offers Auto for a model that takes it", async () => {
+    const { user, api } = await openChat(session({ model: "opus", permission_mode: "default" }));
+
+    await user.click(screen.getByRole("button", { name: "Permission mode: Ask" }));
+    const sheet = screen.getByRole("dialog", { name: "Permission mode" });
+    expect(options(sheet)).toEqual([
+      "AskAsks before edits and commands",
+      "Accept editsEdits files without asking",
+      "PlanReads and plans only",
+      "BypassRuns everything without asking",
+      "AutoClaude decides what needs asking",
+    ]);
+    await user.click(within(sheet).getByRole("menuitemradio", { name: /^Auto/ }));
+
+    expect(api.updateSession).toHaveBeenCalledWith("s1", { permission_mode: "auto" });
+    expect(
+      await screen.findByRole("button", { name: "Permission mode: Auto" }),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves Auto out for a model that does not take it", async () => {
+    const { user } = await openChat(session({ model: "haiku" }));
+
+    await user.click(screen.getByRole("button", { name: "Permission mode: Ask" }));
+
+    expect(options(screen.getByRole("dialog", { name: "Permission mode" }))).not.toContain(
+      "AutoClaude decides what needs asking",
+    );
+  });
+
+  it("follows the model a new chat will use", async () => {
+    const api = fakeApi();
+    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "haiku" }));
+    const { user } = await newChat(api);
+    const permissions = async () => {
+      await user.click(screen.getByRole("button", { name: /^Permission mode:/ }));
+      const found = options(screen.getByRole("dialog", { name: "Permission mode" }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      return found;
+    };
+
+    expect(await permissions()).toHaveLength(5);
+    await user.click(screen.getByRole("button", { name: "Model: Model" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Opus 5.5/ }));
+    expect(await permissions()).toHaveLength(6);
+    await user.click(screen.getByRole("button", { name: "Permission mode: Mode" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Auto/ }));
+    await user.click(screen.getByRole("button", { name: "Permission mode: Auto" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Accept edits/ }));
+    await user.click(screen.getByRole("button", { name: "Model: Opus 5.5" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Haiku/ }));
+    expect(
+      screen.getByRole("button", { name: "Permission mode: Accept edits" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Model: Haiku 4.5" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Opus 5.5/ }));
+    await user.click(screen.getByRole("button", { name: "Permission mode: Accept edits" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Auto/ }));
+    await user.click(screen.getByRole("button", { name: "Model: Opus 5.5" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Haiku/ }));
+    // Haiku does not take Auto: the new chat goes back to the agent default.
+    expect(screen.getByRole("button", { name: "Permission mode: Mode" })).toBeInTheDocument();
   });
 });

@@ -107,6 +107,19 @@ describe("reduce", () => {
     expect(fresh.transcripts.s9).toEqual([]);
   });
 
+  it("marks a failed history load only while the open chat is still loading", () => {
+    let state = reduce(loaded(), { type: "transcriptOpened", id: "s1" });
+    expect(state.history.s1).toBe("loading");
+    state = reduce(state, { type: "historyFailed", id: "s1" });
+    expect(state.history.s1).toBe("failed");
+
+    state = reduce(state, { type: "transcriptLoaded", id: "s1", events: [] });
+    // A later refresh that fails keeps what is shown, and a closed chat has no status.
+    expect(reduce(state, { type: "historyFailed", id: "s1" })).toBe(state);
+    expect(reduce(state, { type: "historyFailed", id: "s2" })).toBe(state);
+    expect(reduce(state, { type: "transcriptClosed", id: "s1" }).history).toEqual({});
+  });
+
   it("takes only what was sent out of a draft", () => {
     const file = (id: string) => ({
       id,
@@ -195,6 +208,12 @@ describe("live events", () => {
     expect(state.sessions.s1?.pr).toEqual(pr);
     state = apply(state, event({ type: "session.pr", payload: { pr: "garbled" } }));
     expect(state.sessions.s1?.pr).toBeNull();
+    expect(state.sessions.s1?.git_violation).toBe(false);
+    state = apply(
+      state,
+      event({ type: "session.git_violation", payload: { changes: ["refs/heads/x"] } }),
+    );
+    expect(state.sessions.s1?.git_violation).toBe(true);
     const unknown = apply(state, event({ type: "session.state", session_id: "nope" }));
     expect(unknown).toBe(state);
     expect(apply(state, event({ type: "session.state", session_id: null }))).toBe(state);

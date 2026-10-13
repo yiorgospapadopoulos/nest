@@ -249,10 +249,63 @@ describe("plan approval", () => {
     expect(within(card).getByRole("heading", { name: "Plan", level: 4 })).toBeInTheDocument();
     expect(within(card).getByText("zod").tagName).toBe("STRONG");
     expect(screen.getByText("Plan ready", { selector: ".sp span" })).toBeInTheDocument();
+    const modes = within(card).getByRole("radiogroup", { name: "Then" });
+    expect(within(modes).getByRole("radio", { name: "Auto-accept edits" })).toBeChecked();
     await user.click(within(card).getByRole("button", { name: "Approve plan" }));
 
-    expect(api.resolveApproval).toHaveBeenCalledWith("q4", { decision: "approve" });
+    expect(api.resolveApproval).toHaveBeenCalledWith("q4", {
+      decision: "approve",
+      mode: "acceptEdits",
+    });
     expect(await screen.findByText("Plan approved")).toBeInTheDocument();
+  });
+
+  it("approves a plan to go on with edits approved manually, or in Auto", async () => {
+    const p = plan();
+    const second = plan({ id: "q9" });
+    const { user, api, push } = await openChat({ approvals: [p], events: [created(p)] });
+    const card = screen.getByRole("group", { name: "Plan ready" });
+    const modes = within(card).getByRole("radiogroup", { name: "Then" });
+    await waitFor(() => {
+      expect(
+        within(modes)
+          .getAllByRole("radio")
+          .map((r) => r.textContent),
+      ).toEqual(["Auto-accept edits", "Approve edits manually", "Auto"]);
+    });
+
+    await user.click(within(modes).getByRole("radio", { name: "Approve edits manually" }));
+    expect(within(modes).getByRole("radio", { name: "Auto-accept edits" })).not.toBeChecked();
+    await user.click(within(card).getByRole("button", { name: "Approve plan" }));
+    push({
+      id: 2,
+      session_id: "s1",
+      type: "approval.created",
+      payload: { approval: { ...second } },
+    });
+    const next = await screen.findByRole("group", { name: "Plan ready" });
+    await user.click(within(next).getByRole("radio", { name: "Auto" }));
+    await user.click(within(next).getByRole("button", { name: "Approve plan" }));
+
+    expect(api.resolveApproval.mock.calls).toEqual([
+      ["q4", { decision: "approve", mode: "default" }],
+      ["q9", { decision: "approve", mode: "auto" }],
+    ]);
+  });
+
+  it("offers Auto after a plan only for models that take it", async () => {
+    const p = plan();
+    const { api } = await openChat({
+      chat: session({ model: "haiku" }),
+      approvals: [p],
+      events: [created(p)],
+    });
+    await waitFor(() => {
+      expect(api.models).toHaveBeenCalled();
+    });
+
+    const modes = screen.getByRole("radiogroup", { name: "Then" });
+    expect(within(modes).getAllByRole("radio")).toHaveLength(2);
   });
 
   it("keeps planning with an optional note", async () => {
@@ -320,7 +373,10 @@ describe("plan approval", () => {
     const card = screen.getByRole("article", { name: "Plan: Validate contact form" });
     expect(within(card).queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "Approve plan" }));
-    expect(api.resolveApproval).toHaveBeenCalledWith("q4", { decision: "approve" });
+    expect(api.resolveApproval).toHaveBeenCalledWith("q4", {
+      decision: "approve",
+      mode: "acceptEdits",
+    });
   });
 });
 

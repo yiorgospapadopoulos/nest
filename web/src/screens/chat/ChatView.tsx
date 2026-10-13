@@ -63,12 +63,10 @@ function SessionChat({
   const { state, actions } = useStore();
   const session = state.sessions[id];
   const [sheet, setSheet] = useState<"agents" | "actions" | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const history = state.history[id];
 
   useEffect(() => {
-    void actions.openChat(id).then(() => {
-      setLoaded(true);
-    });
+    void actions.openChat(id);
     return () => {
       actions.closeChat(id);
     };
@@ -121,9 +119,13 @@ function SessionChat({
         session={session}
         background={tracking.background}
         focus={focus}
-        loaded={loaded}
+        history={history ?? "loading"}
+        onRetry={() => void actions.reloadChat(id)}
       />
-      <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
+      {/* Until the history is in, the latest exchange and so its tasks are unknown. */}
+      {history === "loaded" && (
+        <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
+      )}
       <Composer session={session} />
       {sheet === "agents" && (
         <AgentsSheet

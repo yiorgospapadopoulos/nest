@@ -7,6 +7,7 @@ import type {
   Session,
   StuckFlag,
 } from "../api/types.ts";
+import { list, obj, str } from "../api/payloads.ts";
 import type { State } from "./state.ts";
 
 export type Tone = "run" | "wait" | "rev" | "fail" | "done" | "idle" | "int";
@@ -49,6 +50,9 @@ export function chatStatus(session: Session, pending: Approval[]): ChatStatus {
 }
 
 export type ChatGroup = "pinned" | "need" | "run" | "idle" | "done";
+
+// The order the groups are listed in.
+export const GROUP_ORDER: ChatGroup[] = ["pinned", "need", "run", "idle", "done"];
 
 export const GROUP_LABELS: Record<ChatGroup, string> = {
   pinned: "Pinned",
@@ -102,11 +106,11 @@ export function chatLists(state: State, repo: string): ChatLists {
   const groupOf = (e: ChatEntry): ChatGroup =>
     e.session === undefined ? "idle" : chatGroup(e.session, e.status);
   const live = entries.filter((e) => !archived(e));
-  const order: ChatGroup[] = ["pinned", "need", "run", "idle", "done"];
   return {
-    groups: order
-      .map((group) => ({ group, chats: live.filter((e) => groupOf(e) === group) }))
-      .filter((g) => g.chats.length > 0),
+    groups: GROUP_ORDER.map((group) => ({
+      group,
+      chats: live.filter((e) => groupOf(e) === group),
+    })).filter((g) => g.chats.length > 0),
     archived: entries.filter(archived),
   };
 }
@@ -208,22 +212,43 @@ export function isRunning(state: State, repo: string): boolean {
   );
 }
 
+/** The event each tool call was made in, by tool use id. */
+function callEvents(events: HarnessEvent[]): Map<string, number> {
+  const calls = new Map<string, number>();
+  for (const e of events) {
+    if (e.type !== "session.message") continue;
+    for (const block of list(e.payload.blocks).map(obj)) {
+      const id = str(block.id);
+      if (block.type === "tool_use" && id !== null) calls.set(id, Number(e.id));
+    }
+  }
+  return calls;
+}
+
 /**
  * The background bar's tasks: those of the exchange the user's latest message opened,
  * plus any earlier one still at work, which counts as completed here once it finishes.
  * Turns the agent starts by itself stay in the exchange. Without a user message in the
- * transcript, every task counts.
+ * transcript, every task counts. A task belongs to the exchange by the event that started
+ * it, so a clock change cannot move it (I-H); one whose call is not in the transcript goes
+ * by its start time. Finishing still goes by time, as no event records it.
  */
 export function exchangeBackground(
   summary: BackgroundSummary,
   events: HarnessEvent[] | undefined,
 ): BackgroundSummary {
-  const message = (events ?? []).findLast((e) => e.type === "session.user_message");
+  const all = events ?? [];
+  const message = all.findLast((e) => e.type === "session.user_message");
   if (message === undefined) return summary;
   const start = Date.parse(message.ts);
+  const calls = callEvents(all);
   const since = (ts: string | null) => ts !== null && Date.parse(ts) >= start;
+  const startedSince = (item: BackgroundSummary["items"][number]) => {
+    const call = calls.get(item.id);
+    return call === undefined ? since(item.started_at) : call > Number(message.id);
+  };
   const items = summary.items.filter(
-    (item) => item.status === "running" || since(item.started_at) || since(item.finished_at),
+    (item) => item.status === "running" || startedSince(item) || since(item.finished_at),
   );
   const running = items.filter((item) => item.status === "running").length;
   return { running, completed: items.length - running, items };

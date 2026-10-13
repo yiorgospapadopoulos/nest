@@ -4,7 +4,7 @@ import { EventStream, eventsUrl, type SocketFactory } from "../api/events.ts";
 import { browserPushEnv } from "../pwa/push.ts";
 import { reportVisibility } from "../pwa/visibility.ts";
 import { createActions } from "./actions.ts";
-import { loadShowAutomated } from "./devicePrefs.ts";
+import { loadDrafts, loadShowAutomated, saveDrafts } from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
 import { reduce } from "./reducer.ts";
 import { initialState } from "./state.ts";
@@ -30,9 +30,15 @@ export function StoreProvider({
   const [state, dispatch] = useReducer(reduce, storage, (from) => ({
     ...initialState,
     showAutomated: loadShowAutomated(from),
+    drafts: loadDrafts(from),
   }));
   const actions = useMemo(() => createActions(api, dispatch, storage), [api, storage]);
   const ready = state.auth === "ready";
+  const drafts = state.drafts;
+
+  useEffect(() => {
+    saveDrafts(storage, drafts);
+  }, [storage, drafts]);
 
   useEffect(() => {
     void actions.load();
@@ -49,9 +55,14 @@ export function StoreProvider({
         dispatch({ type: "reconnecting", on: false });
         // Without a cursor, events between the snapshot and the socket may be missing,
         // including those of the chat on screen. The Claude Code chat list changes with
-        // ephemeral events only, so it reloads either way.
-        if (resumed) void actions.loadClaudeChats();
-        else void actions.resync();
+        // ephemeral events only, so it reloads either way, as does a chat on screen whose
+        // history failed to load.
+        if (resumed) {
+          void actions.loadClaudeChats();
+          void actions.reloadFailed();
+        } else {
+          void actions.resync();
+        }
       },
       onLost: () => {
         dispatch({ type: "reconnecting", on: true });

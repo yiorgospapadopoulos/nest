@@ -16,7 +16,9 @@ import type {
   HarnessEvent,
   MonthUsage,
   NotificationSettings,
+  RepoConfig,
   ResolveBody,
+  RewindPreview,
   SearchResults,
   Session,
   SessionDiff,
@@ -35,6 +37,29 @@ const WORKING = new Set<Session["state"]>(["starting", "running"]);
 // "elsewhere": refused because Claude Code has the chat open right now.
 export type SendResult = "sent" | "failed" | "elsewhere";
 
+/** Where origin pushes now, when publishing waits for the user to confirm it (I-008). */
+export interface RemotePrompt {
+  urls: string[];
+  // The address harness recorded before, when origin changed since.
+  confirmed: string | null;
+}
+
+// "remote": refused until the user confirms where origin pushes.
+export type ApproveResult = "approved" | "refused" | "failed" | { remote: RemotePrompt };
+
+// The daemon's code for an approve refused because HEAD is no longer the one reviewed.
+const HEAD_CHANGED = "head_changed";
+// Codes of an approve refused until the push address is confirmed.
+const REMOTE_CODES: readonly (string | null)[] = ["remote_not_confirmed", "remote_changed"];
+
+function remotePrompt(data: Record<string, unknown>): RemotePrompt {
+  const urls = Array.isArray(data.remote_urls) ? data.remote_urls : [];
+  return {
+    urls: urls.filter((url): url is string => typeof url === "string"),
+    confirmed: typeof data.confirmed_url === "string" ? data.confirmed_url : null,
+  };
+}
+
 /**
  * Everything the screens can do. Each call reports its own failure as a toast (or sends
  * the app back to pairing on 401) and resolves to null, so screens only handle success.
@@ -46,6 +71,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
   const onScreen = new Set<string>();
+  // The chats on screen whose last load failed, tried again after a reconnect.
+  const failed = new Set<string>();
   // The stored events that arrived during each snapshot request in flight.
   const arriving = new Set<HarnessEvent[]>();
 
@@ -106,7 +133,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // `stale`: streamed text and thinking may have missed their end, so a chat that is no
   // longer working drops them.
   async function fetchChat(id: string, stale = false): Promise<void> {
-    await attempt(() =>
+    const done = await attempt(() =>
       snapshot(
         () => Promise.all([api.session(id), api.sessionEvents(id)]),
         ([found, events]) => {
@@ -121,6 +148,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         },
       ),
     );
+    if (done === null && onScreen.has(id)) {
+      failed.add(id);
+      dispatch({ type: "historyFailed", id });
+    } else {
+      failed.delete(id);
+    }
   }
 
   async function load(): Promise<void> {
@@ -198,6 +231,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     /** The chat left the screen; its transcript is fetched again when it opens. */
     closeChat(id: string): void {
       onScreen.delete(id);
+      failed.delete(id);
       dispatch({ type: "transcriptClosed", id });
     },
 
@@ -205,6 +239,14 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
      * After a reconnect that could not resume from a cursor, events may have been missed:
      * reload the snapshots and the chats on screen. Stored events merge without duplicates.
      */
+    /** Loads again an open chat whose history could not be loaded. */
+    reloadChat: (id: string) => fetchChat(id),
+
+    /** After a resumed reconnect: the chats on screen whose history failed to load. */
+    async reloadFailed(): Promise<void> {
+      await Promise.all([...failed].map((id) => fetchChat(id)));
+    },
+
     async resync(): Promise<void> {
       await Promise.all([load(), ...[...onScreen].map((id) => fetchChat(id, true))]);
     },
@@ -218,13 +260,35 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
-    async approveReview(review: Approval, body: ApproveBody): Promise<boolean> {
-      const updated = await attempt(() => api.approve(review.session_id, body));
-      if (updated === null) return false;
+    /**
+     * "refused": the daemon said no (409), for example for a git violation or a branch that
+     * moved. The session is fetched again so the screen shows why, then the reason. A push
+     * address to confirm comes back for the screen to ask about instead.
+     */
+    async approveReview(review: Approval, body: ApproveBody): Promise<ApproveResult> {
+      let updated: Session;
+      try {
+        updated = await api.approve(review.session_id, body);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 409)) {
+          report(error);
+          return "failed";
+        }
+        const found = await attempt(() => api.session(review.session_id));
+        if (found !== null) dispatch({ type: "session", session: found });
+        if (REMOTE_CODES.includes(error.code)) return { remote: remotePrompt(error.data) };
+        toast(
+          error.code === HEAD_CHANGED
+            ? "The branch moved since you looked. Check the changes again."
+            : error.message,
+          "error",
+        );
+        return "refused";
+      }
       dispatch({ type: "session", session: updated });
       dispatch({ type: "approval", approval: { ...review, status: "resolved" } });
       toast(updated.pr_url === null ? "Approved and committed" : "Pull request opened");
-      return true;
+      return "approved";
     },
 
     async rejectReview(review: Approval): Promise<boolean> {
@@ -245,6 +309,57 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
+    /** Where the project's new chats work: a worktree, in place, or the agent default (null). */
+    async setWorktreeDefault(repo: RepoConfig, value: boolean | null): Promise<boolean> {
+      const updated = await attempt(() =>
+        api.updateWorktree(repo.name, { ...repo.worktree, default: value }),
+      );
+      if (updated === null) return false;
+      dispatch({ type: "repo", repo: updated });
+      return true;
+    },
+
+    /** The files linked into the project's worktrees and the commands run in new ones. */
+    async saveRepoSetup(repo: RepoConfig, link: string[], setup: string[]): Promise<boolean> {
+      const updated = await attempt(() => api.updateRepo(repo.name, { link, setup }));
+      if (updated === null) return false;
+      dispatch({ type: "repo", repo: updated });
+      toast(`Saved ${repo.name}`);
+      return true;
+    },
+
+    /**
+     * Unregisters the project; its folder stays. Its chats (`sessions`) are deleted first,
+     * as the daemon refuses to remove a project that still has any.
+     */
+    async removeRepo(name: string, sessions: string[]): Promise<boolean> {
+      const done = await attempt(async () => {
+        await api.removeRepo(name, sessions.length > 0);
+        return true;
+      });
+      if (done === null) return false;
+      for (const id of sessions) dispatch({ type: "sessionRemoved", id });
+      dispatch({ type: "repoRemoved", name });
+      toast(`Removed ${name}`, "info");
+      return true;
+    },
+
+    /** What restoring files to before the user message `eventId` would change. */
+    rewindPreview(sessionId: string, eventId: number): Promise<RewindPreview | null> {
+      return attempt(() => api.rewindPreview(sessionId, eventId));
+    },
+
+    /** Restores the files, not the conversation, to before the user message `eventId`. */
+    async rewind(sessionId: string, eventId: number): Promise<boolean> {
+      const done = await attempt(async () => {
+        await api.rewind(sessionId, eventId);
+        return true;
+      });
+      if (done === null) return false;
+      toast("Files restored");
+      return true;
+    },
+
     /** Squash-merges the pull request; the daemon then closes the chat and its worktree. */
     async merge(approval: Approval, number: number): Promise<boolean> {
       const updated = await attempt(() => api.merge(approval.session_id, { method: "squash" }));
@@ -256,17 +371,17 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     /**
-     * Asks the agent to fix the failing checks, in the same chat. The agent has no GitHub
-     * login (the git rules keep it off GitHub), so the message says how to go about it.
+     * Asks the agent to fix the failing checks, in the same chat. The daemon reads their
+     * logs with its own GitHub login (the agent has none) and sends them in.
      */
-    async sendCiFailure(session: Session, names: string[]): Promise<boolean> {
-      const text =
-        `CI failed: ${names.join(", ")}. Please fix. You can't use gh or reach GitHub from ` +
-        "here, so work from the code and the check names, and ask me for the logs if you need them.";
-      const sent = await attempt(() => api.sendMessage(session.id, text, []));
+    async sendCiFailure(session: Session): Promise<boolean> {
+      const sent = await attempt(async () => {
+        await api.ciFeedback(session.id);
+        return true;
+      });
       if (sent === null) return false;
       // The session's events show the agent starting on it.
-      toast("Sent to the agent");
+      toast("Sent to the agent with the checks' logs");
       return true;
     },
 
@@ -400,9 +515,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "draftFileRemoved", key, fileId });
     },
 
-    /** Takes what was sent out of the draft, keeping anything added while it was sending. */
-    draftSent(key: string, text: string, fileIds: string[]): void {
-      dispatch({ type: "draftSent", key, text, fileIds });
+    /**
+     * Takes what was sent out of the draft, keeping anything added while it was sending,
+     * under `to` when the message created a new chat.
+     */
+    draftSent(key: string, text: string, fileIds: string[], to?: string): void {
+      dispatch({ type: "draftSent", key, text, fileIds, ...(to === undefined ? {} : { to }) });
     },
 
     /** Uploads a file into the draft it was chosen for, even if another chat is open by then. */
