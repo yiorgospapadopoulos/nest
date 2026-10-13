@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from harness.pixies.errors import DuplicateSlugError, PixieNotFoundError
@@ -50,3 +52,30 @@ async def test_missing_pixies(db: Database, clock: FakeClock) -> None:
         await store.update("nope", name="x")
     with pytest.raises(PixieNotFoundError):
         await store.set_chat("nope", None)
+
+
+async def test_an_unknown_chat_session_is_not_a_slug_conflict(
+    db: Database, clock: FakeClock
+) -> None:
+    store = PixieStore(db, clock)
+    pixie = await store.create(PixieSettings(name="Tester"), "tester")
+
+    with pytest.raises(sqlite3.IntegrityError) as raised:
+        await store.set_chat(pixie.id, "no-such-session")
+
+    assert not isinstance(raised.value, DuplicateSlugError)
+    assert "pixies.slug" not in str(raised.value)
+
+
+async def test_create_re_raises_other_integrity_errors(
+    db: Database, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = PixieStore(db, clock)
+
+    async def refuse(sql: str, params: tuple[object, ...] = ()) -> int:
+        raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
+
+    monkeypatch.setattr(db, "execute", refuse)
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        await store.create(PixieSettings(name="Tester"), "tester")

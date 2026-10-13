@@ -38,7 +38,8 @@ class PixieStore:
                 tuple(values.values()),
             )
         except sqlite3.IntegrityError as error:
-            raise _taken(slug) from error
+            _check_slug_conflict(error, slug)
+            raise
         return pixie
 
     async def get(self, pixie_id: str) -> Pixie:
@@ -66,7 +67,8 @@ class PixieStore:
                 (*(_column(name, value) for name, value in changes.items()), pixie_id),
             )
         except sqlite3.IntegrityError as error:
-            raise _taken(str(changes.get("slug"))) from error
+            _check_slug_conflict(error, str(changes.get("slug")))
+            raise
         return await self.get(pixie_id)
 
     async def set_chat(self, pixie_id: str, session_id: str | None) -> Pixie:
@@ -76,8 +78,11 @@ class PixieStore:
         await self._db.execute("DELETE FROM pixies WHERE id = ?", (pixie_id,))
 
 
-def _taken(slug: str) -> DuplicateSlugError:
-    return DuplicateSlugError(f"a pixie called @{slug} already exists")
+def _check_slug_conflict(error: sqlite3.IntegrityError, slug: str) -> None:
+    # Other constraints, such as a chat session that does not exist, re-raise unchanged.
+    if "pixies.slug" in str(error):
+        msg = f"a pixie called @{slug} already exists"
+        raise DuplicateSlugError(msg) from error
 
 
 def _column(name: str, value: object) -> object:
