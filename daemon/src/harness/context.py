@@ -33,6 +33,10 @@ from harness.notifications.notifier import Notifier
 from harness.notifications.subscriptions import PushSubscriptionStore
 from harness.notifications.vapid import VapidKeys
 from harness.paths import AppPaths
+from harness.pixies.files import PixieFiles
+from harness.pixies.runtime import PixieRuntime
+from harness.pixies.service import PixieService
+from harness.pixies.store import PixieStore
 from harness.providers.base import AgentProvider
 from harness.providers.claude import ClaudeProvider
 from harness.prs.monitor import PrMonitor
@@ -83,6 +87,7 @@ class AppContext:
     search: SearchIndex
     stuck: StuckWatcher
     engine: EngineInfo
+    pixies: PixieService
 
     @classmethod
     async def build(
@@ -130,6 +135,9 @@ class AppContext:
             clock=clock,
             account_file=paths.claude_account_file,
         )
+        pixie_store = PixieStore(db, clock)
+        pixie_files = PixieFiles(paths.pixies_dir)
+        pixie_runtime = PixieRuntime(pixie_store, pixie_files, repos, bus, clock)
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -155,6 +163,16 @@ class AppContext:
             live_chats=live_chats,
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
+            extras=pixie_runtime.extras,
+        )
+        pixies = PixieService(
+            pixie_store,
+            pixie_files,
+            sessions,
+            bus,
+            clock,
+            # Read for each new chat, so edits through the API apply at once.
+            defaults=lambda: context.settings.agents,
         )
         monitor = PrMonitor(
             store=store,
@@ -239,6 +257,7 @@ class AppContext:
                 settings=lambda: context.settings.stuck,
             ),
             engine=engine,
+            pixies=pixies,
         )
         return context
 

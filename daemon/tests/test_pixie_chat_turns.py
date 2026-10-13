@@ -95,3 +95,13 @@ async def test_below_the_threshold_the_run_is_kept(env: Env) -> None:
     await until(lambda: len(env.provider.runs[0].inputs) == 2)
 
     assert len(env.provider.runs) == 1
+
+
+async def test_a_pixie_chat_without_an_extras_source_fails_loudly(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    bare = Env(tmp_path, db, clock)
+    session = await create(bare)
+
+    with pytest.raises(RuntimeError, match=f"pixie chat {session.id} has no run extras source"):
+        await bare.manager._turns._pixie_extras(session)  # type: ignore[attr-defined]

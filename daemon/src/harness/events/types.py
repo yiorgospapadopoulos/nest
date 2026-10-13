@@ -75,3 +75,8 @@ CLAUDE_CHATS_UPDATED: Final = "claude_chats.updated"
 
 # Subscription usage windows reported by the agent engine; global, not per session.
 USAGE_UPDATED: Final = "usage.updated"
+
+# Pixies (D057); global. A pixie was created or changed, `{pixie}` with the whole pixie,
+# or deleted, `{pixie_id}`. Clients replace or drop their copy.
+PIXIE_UPDATED: Final = "pixie.updated"
+PIXIE_DELETED: Final = "pixie.deleted"

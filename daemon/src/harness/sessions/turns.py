@@ -340,8 +340,12 @@ class TurnRunner:
         return run
 
     async def _pixie_extras(self, session: Session) -> RunExtras | None:
-        if session.pixie_id is None or self._extras is None:
+        if session.pixie_id is None:
             return None
+        if self._extras is None:
+            # Falling back to the project path would resume the old engine session.
+            msg = f"pixie chat {session.id} has no run extras source"
+            raise RuntimeError(msg)
         return await self._extras(session)
 
     async def _harness_prompt(self, session: Session) -> str:

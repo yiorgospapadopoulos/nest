@@ -79,3 +79,21 @@ async def test_create_re_raises_other_integrity_errors(
 
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
         await store.create(PixieSettings(name="Tester"), "tester")
+
+
+async def test_chat_sessions_lists_the_current_and_the_archived_chats(
+    db: Database, clock: FakeClock
+) -> None:
+    store = PixieStore(db, clock)
+    pixie = await store.create(PixieSettings(name="Tester"), "tester")
+    other = await store.create(PixieSettings(name="Other"), "other")
+    for session_id, owner in (("s1", pixie.id), ("s2", pixie.id), ("s3", other.id)):
+        await db.execute(
+            "INSERT INTO sessions (id, repo, title, prompt, mode, state, permission_mode, provider,"
+            " pixie_id, created_at, updated_at)"
+            " VALUES (?, ?, 't', 'p', 'in_place', 'idle', 'default', 'claude', ?, 'x', 'x')",
+            (session_id, f"pixie:{owner}", owner),
+        )
+
+    assert await store.chat_sessions(pixie.id) == ["s1", "s2"]
+    assert await store.chat_sessions("nope") == []

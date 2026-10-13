@@ -71,6 +71,13 @@ class PixieStore:
             raise
         return await self.get(pixie_id)
 
+    async def chat_sessions(self, pixie_id: str) -> list[str]:
+        """Every session of the pixie: its current chat and the ones a reset archived."""
+        rows = await self._db.fetch_all(
+            "SELECT id FROM sessions WHERE pixie_id = ? ORDER BY rowid", (pixie_id,)
+        )
+        return [row["id"] for row in rows]
+
     async def set_chat(self, pixie_id: str, session_id: str | None) -> Pixie:
         return await self.update(pixie_id, chat_session_id=session_id)
 
