@@ -10,6 +10,7 @@ import {
   modelList,
   month,
   notificationSettings,
+  pixie,
   repo,
   session,
 } from "./fixtures.ts";
@@ -79,5 +80,17 @@ export function fakeApi(): FakeApi {
     saveAgentDefaults: vi
       .fn<Api["saveAgentDefaults"]>()
       .mockImplementation((defaults) => Promise.resolve(defaults)),
+    pixies: vi.fn<Api["pixies"]>().mockResolvedValue([]),
+    createPixie: vi.fn<Api["createPixie"]>().mockResolvedValue(pixie()),
+    updatePixie: vi.fn<Api["updatePixie"]>().mockResolvedValue(pixie()),
+    deletePixie: vi.fn<Api["deletePixie"]>().mockResolvedValue(null),
+    sendToPixie: vi
+      .fn<Api["sendToPixie"]>()
+      .mockResolvedValue(session({ pixie_id: "p1", repo: "pixie:p1" })),
+    resetPixie: vi.fn<Api["resetPixie"]>().mockResolvedValue(pixie()),
+    pixieFile: vi.fn<Api["pixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
+    savePixieFile: vi.fn<Api["savePixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
+    pixieNotes: vi.fn<Api["pixieNotes"]>().mockResolvedValue([]),
+    searchPixie: vi.fn<Api["searchPixie"]>().mockResolvedValue([]),
   };
 }

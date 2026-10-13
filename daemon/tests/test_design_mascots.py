@@ -113,6 +113,8 @@ def test_outputs_are_generated() -> None:
     assert '"#8B7CF6"' in ts
     assert '"#8B7CF6"' in swift
     assert "export const PIXIE_COLORS" in ts
+    assert 'import type { Mascot } from "../api/types.ts";' in ts
+    assert "export type Mascot" not in ts
     assert "public enum PixieColors" in swift
 
 

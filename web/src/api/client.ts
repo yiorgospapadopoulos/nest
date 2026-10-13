@@ -7,12 +7,16 @@ import type {
   ClaudeChat,
   CommandList,
   Connector,
+  CreatePixieBody,
   CreateSessionBody,
   HarnessEvent,
   MergeBody,
   ModelList,
   MonthUsage,
   NotificationSettings,
+  Pixie,
+  PixieFile,
+  PixieSearchHit,
   PushReport,
   PushSubscriptionBody,
   RedeemResponse,
@@ -23,12 +27,15 @@ import type {
   Session,
   SessionDetail,
   SessionDiff,
+  UpdatePixieBody,
   UpdateSessionBody,
   UsageLimits,
 } from "./types.ts";
 
 // The daemon's code for a message refused because Claude Code has the chat open.
 export const OPEN_ELSEWHERE = "open_in_claude_code";
+
+const pixiePath = (id: string) => `/api/pixies/${encodeURIComponent(id)}`;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -97,6 +104,16 @@ export interface Api {
   account(): Promise<AccountInfo>;
   agentDefaults(): Promise<AgentDefaults>;
   saveAgentDefaults(defaults: AgentDefaults): Promise<AgentDefaults>;
+  pixies(): Promise<Pixie[]>;
+  createPixie(body: CreatePixieBody): Promise<Pixie>;
+  updatePixie(id: string, body: UpdatePixieBody): Promise<Pixie>;
+  deletePixie(id: string): Promise<null>;
+  sendToPixie(id: string, text: string): Promise<Session>;
+  resetPixie(id: string): Promise<Pixie>;
+  pixieFile(id: string, name: string): Promise<PixieFile>;
+  savePixieFile(id: string, name: string, text: string, hash: string | null): Promise<PixieFile>;
+  pixieNotes(id: string): Promise<string[]>;
+  searchPixie(id: string, q: string): Promise<PixieSearchHit[]>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -303,6 +320,48 @@ export class HttpApi implements Api {
   /** 422 when the model does not take the chosen thinking level. */
   saveAgentDefaults(defaults: AgentDefaults) {
     return this.json<AgentDefaults>("PUT", "/api/agents/defaults", defaults);
+  }
+
+  pixies() {
+    return this.json<Pixie[]>("GET", "/api/pixies");
+  }
+
+  createPixie(body: CreatePixieBody) {
+    return this.json<Pixie>("POST", "/api/pixies", body);
+  }
+
+  updatePixie(id: string, body: UpdatePixieBody) {
+    return this.json<Pixie>("PATCH", pixiePath(id), body);
+  }
+
+  deletePixie(id: string) {
+    return this.json<null>("DELETE", pixiePath(id));
+  }
+
+  sendToPixie(id: string, text: string) {
+    return this.json<Session>("POST", `${pixiePath(id)}/messages`, { text });
+  }
+
+  resetPixie(id: string) {
+    return this.json<Pixie>("POST", `${pixiePath(id)}/reset`);
+  }
+
+  // `name` is soul, memory or notes/<name>; the slash is part of the path.
+  pixieFile(id: string, name: string) {
+    return this.json<PixieFile>("GET", `${pixiePath(id)}/files/${name}`);
+  }
+
+  /** 409 `stale_file` when `hash` is not the current one. */
+  savePixieFile(id: string, name: string, text: string, hash: string | null) {
+    return this.json<PixieFile>("PUT", `${pixiePath(id)}/files/${name}`, { text, hash });
+  }
+
+  pixieNotes(id: string) {
+    return this.json<string[]>("GET", `${pixiePath(id)}/notes`);
+  }
+
+  searchPixie(id: string, q: string) {
+    return this.json<PixieSearchHit[]>("GET", `${pixiePath(id)}/search?q=${encodeURIComponent(q)}`);
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

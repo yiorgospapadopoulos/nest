@@ -208,6 +208,52 @@ const calls: Call[] = [
     "/api/pairing/redeem",
     { code: "ABCD2345", device_name: "iPhone" },
   ],
+  ["pixies", (a) => a.pixies(), "GET", "/api/pixies", undefined],
+  [
+    "createPixie",
+    (a) => a.createPixie({ name: "Tester" }),
+    "POST",
+    "/api/pixies",
+    { name: "Tester" },
+  ],
+  [
+    "updatePixie",
+    (a) => a.updatePixie("p 1", { mascot: "ghost" }),
+    "PATCH",
+    "/api/pixies/p%201",
+    { mascot: "ghost" },
+  ],
+  ["deletePixie", (a) => a.deletePixie("p1"), "DELETE", "/api/pixies/p1", undefined],
+  [
+    "sendToPixie",
+    (a) => a.sendToPixie("p1", "hi"),
+    "POST",
+    "/api/pixies/p1/messages",
+    { text: "hi" },
+  ],
+  ["resetPixie", (a) => a.resetPixie("p1"), "POST", "/api/pixies/p1/reset", undefined],
+  [
+    "pixieFile",
+    (a) => a.pixieFile("p1", "notes/a"),
+    "GET",
+    "/api/pixies/p1/files/notes/a",
+    undefined,
+  ],
+  [
+    "savePixieFile",
+    (a) => a.savePixieFile("p1", "soul", "x", "h"),
+    "PUT",
+    "/api/pixies/p1/files/soul",
+    { text: "x", hash: "h" },
+  ],
+  ["pixieNotes", (a) => a.pixieNotes("p1"), "GET", "/api/pixies/p1/notes", undefined],
+  [
+    "searchPixie",
+    (a) => a.searchPixie("p1", "a b"),
+    "GET",
+    "/api/pixies/p1/search?q=a%20b",
+    undefined,
+  ],
 ];
 
 describe("HttpApi", () => {

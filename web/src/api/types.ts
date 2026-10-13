@@ -99,6 +99,8 @@ export interface Session {
   pr_summary: string | null;
   // Set while the chat looks stuck.
   stuck: StuckFlag | null;
+  // Set for a pixie's chat (D057).
+  pixie_id: string | null;
 }
 
 /** A Claude Code chat of a registered repo that harness does not own (D028). */
@@ -504,4 +506,59 @@ export interface AgentDefaults {
   effort: Effort | null;
   permission_mode: PermissionMode;
   mode: SessionMode;
+}
+
+export type Mascot =
+  "invader" | "ghost" | "cat" | "owl" | "robot" | "frog" | "mushroom" | "bunny" | "crab" | "sprout";
+export type PixieBackground = "plain" | "meadow" | "dusk" | "night" | "dawn";
+export type Autonomy = "observe" | "message" | "start" | "answer";
+export type ProjectAccess = "edit" | "read" | "none";
+
+/** Everything the user sets on a pixie (D057). */
+export interface PixieSettings {
+  name: string;
+  mascot: Mascot;
+  color: string;
+  background: PixieBackground;
+  model: string | null;
+  effort: Effort | null;
+  permission_mode: PermissionMode;
+  autonomy: Autonomy;
+  project_access: ProjectAccess;
+  // Repo names; null means every project.
+  projects: string[] | null;
+  skills: string[];
+  can_call: string[];
+  allowed_tools: string[];
+  disallowed_tools: string[];
+  hidden: boolean;
+}
+
+export interface Pixie extends PixieSettings {
+  id: string;
+  slug: string;
+  position: number;
+  chat_session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CreatePixieBody = Partial<PixieSettings> & {
+  name: string;
+  slug?: string;
+  soul?: string;
+};
+// Fields left out are unchanged; `all_projects` sets `projects` back to every project.
+export type UpdatePixieBody = Partial<PixieSettings> & { slug?: string; all_projects?: boolean };
+
+/** A pixie file's text and the hash a later write must name. */
+export interface PixieFile {
+  text: string;
+  hash: string;
+}
+
+/** A line of a pixie's memory that matched a search. */
+export interface PixieSearchHit {
+  file: string;
+  line: string;
 }

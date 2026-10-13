@@ -13,6 +13,7 @@ import type {
   NotificationSettings,
   PrCheck,
   PrStatus,
+  Pixie,
   QueuedMessage,
   RepoConfig,
   Session,
@@ -67,6 +68,34 @@ export function session(overrides: Partial<Session> = {}): Session {
     pr: null,
     pr_summary: null,
     stuck: null,
+    pixie_id: null,
+    ...overrides,
+  };
+}
+
+export function pixie(overrides: Partial<Pixie> = {}): Pixie {
+  return {
+    id: "p1",
+    slug: "tester",
+    name: "Tester",
+    mascot: "invader",
+    color: "#8B7CF6",
+    background: "plain",
+    model: null,
+    effort: null,
+    permission_mode: "default",
+    autonomy: "observe",
+    project_access: "edit",
+    projects: null,
+    skills: [],
+    can_call: [],
+    allowed_tools: [],
+    disallowed_tools: [],
+    hidden: false,
+    position: 0,
+    chat_session_id: null,
+    created_at: "2026-10-13T09:00:00Z",
+    updated_at: "2026-10-13T09:00:00Z",
     ...overrides,
   };
 }

@@ -60,7 +60,6 @@ def load_mascots(path: Path) -> Mascots:
 
 
 def render_ts(m: Mascots) -> str:
-    union = "\n".join(f'  | "{name}"' for name in m.sprites)
     sprites = "\n".join(
         f'  "{name}": [\n' + "".join(f'    "{row}",\n' for row in rows) + "  ],"
         for name, rows in m.sprites.items()
@@ -68,8 +67,7 @@ def render_ts(m: Mascots) -> str:
     colors = "".join(f'  "{color}",\n' for color in m.colors)
     return (
         f"{_HEADER}\n"
-        "// Task 10 moves this union to ../api/types.\n"
-        f"export type Mascot =\n{union};\n\n"
+        'import type { Mascot } from "../api/types.ts";\n\n'
         '/** 12 columns by 10 rows; "#" is filled, "." is empty. */\n'
         f"export const MASCOT_SPRITES: Record<Mascot, readonly string[]> = {{\n{sprites}\n}};\n\n"
         f"export const PIXIE_COLORS: readonly string[] = [\n{colors}];\n"
