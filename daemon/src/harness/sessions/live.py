@@ -52,6 +52,8 @@ class LiveSession:
     resume_queue: bool = False
     # Background tasks the agent reports running; the run is kept open while there are any.
     background_tasks: int = 0
+    # A pixie chat whose context filled up: its next turn opens a fresh run (D057).
+    rotate: bool = False
     # Refs as the last audit saw them, for the next one (D013 layer 4); None before the
     # first turn of this process.
     baseline: dict[str, str] | None = None

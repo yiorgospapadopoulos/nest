@@ -50,8 +50,8 @@ class SessionReactions:
         tracker = await self._tracking.sync(session.id)
         if session.state is SessionState.IDLE:
             # The agent may have made a plain folder a git repository (D041); a plain
-            # folder has nothing to review.
-            git = await self._repos.has_git(session.repo)
+            # folder and a pixie chat have nothing to review (D057).
+            git = session.pixie_id is None and await self._repos.has_git(session.repo)
             # A review announces itself; otherwise the user hears the turn finished.
             if not git or await self._reviews.turn_ended(session) is None:
                 await self._notify(session, "finished", tracker.summary or "The turn finished.")

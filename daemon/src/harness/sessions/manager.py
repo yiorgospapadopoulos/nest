@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
+from pathlib import Path
 
 from harness.approvals.models import BLOCKING, ApprovalKind
 from harness.approvals.queue import ApprovalQueue
@@ -25,6 +26,7 @@ from harness.gitops.remotes import REMOTE
 from harness.providers.base import AgentProvider, ApprovalHandler, ModelOption
 from harness.repos.service import RepoNotFoundError, RepoService, require_folder
 from harness.sessions.errors import DirtyCheckoutError, NoTurnInProgressError, NoWorkspaceError
+from harness.sessions.extras import RunExtrasSource
 from harness.sessions.files import FileIndex
 from harness.sessions.git_audit import with_own_changes
 from harness.sessions.hooks import SessionHooks
@@ -38,6 +40,7 @@ from harness.sessions.models import (
     Session,
     SessionState,
     UpdateSession,
+    pixie_repo,
 )
 from harness.sessions.prompts import SessionPrompts
 from harness.sessions.queue import MessageQueue
@@ -77,6 +80,7 @@ class SessionManager:
         queue: MessageQueue,
         files: FileIndex | None = None,
         models: ModelLookup | None = None,
+        extras: RunExtrasSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038).
@@ -109,6 +113,7 @@ class SessionManager:
             idle_close=idle_close,
             queue=queue,
             clock=clock,
+            extras=extras,
         )
         self._live: dict[str, LiveSession] = {}
 
@@ -176,6 +181,42 @@ class SessionManager:
         live.start(
             lambda: self._turns.guard(live, self._turns.start(live, session, repo, attachments))
         )
+        return session
+
+    async def create_pixie_chat(
+        self,
+        *,
+        pixie_id: str,
+        cwd: Path,
+        prompt: str,
+        title: str,
+        model: str | None,
+        effort: Effort | None,
+        permission_mode: PermissionMode,
+    ) -> Session:
+        """A pixie's chat: in place in its workdir, with no project, review or git (D057)."""
+        session = await self._store.create(
+            NewSession(
+                repo=pixie_repo(pixie_id),
+                title=title,
+                prompt=prompt,
+                mode="in_place",
+                cwd=cwd,
+                model=model,
+                effort=await self._effort(model, effort, None),
+                permission_mode=permission_mode,
+                provider=self._provider.name,
+                pixie_id=pixie_id,
+            )
+        )
+        await self._bus.publish(
+            types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
+        )
+        await self._bus.publish(
+            types.SESSION_STATE, {"state": session.state, "error": None}, session.id
+        )
+        live = self._live.setdefault(session.id, LiveSession(session.id))
+        live.start(lambda: self._turns.guard(live, self._turns.start(live, session, None, [])))
         return session
 
     async def adopt(self, chat: ChatImport) -> Session:
@@ -278,6 +319,8 @@ class SessionManager:
         """Files in the session's working directory matching `query`, for @ mentions."""
         session = await self._store.get(session_id)
         cwd = require_workspace(session)
+        if session.pixie_id is not None:
+            return []  # a pixie's workdir is not a repository
         if not await self._repos.has_git(session.repo):
             return []  # the listing comes from git (D041)
         return await self._files.search(cwd, query)

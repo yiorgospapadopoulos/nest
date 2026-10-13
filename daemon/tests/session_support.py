@@ -13,6 +13,7 @@ from harness.notifications.notifier import Notifier
 from harness.paths import AppPaths
 from harness.providers.base import ModelOption
 from harness.repos.service import RepoService
+from harness.sessions.extras import RunExtrasSource
 from harness.sessions.manager import SessionManager
 from harness.sessions.models import CreateSession, Session, SessionState
 from harness.sessions.queue import MessageQueue
@@ -59,7 +60,7 @@ class Env:
         self.models: list[ModelOption] | None = None
         self.manager = self.build(timedelta(hours=1))
 
-    def build(self, idle_close: timedelta) -> SessionManager:
+    def build(self, idle_close: timedelta, extras: RunExtrasSource | None = None) -> SessionManager:
         return SessionManager(
             store=self.store,
             bus=self.bus,
@@ -75,6 +76,7 @@ class Env:
             live_chats=LiveChats(self.claude.root, alive=lambda pid: pid in self.alive),
             queue=self.queue,
             models=self.find_model,
+            extras=extras,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

@@ -15,6 +15,7 @@ from harness.events.bus import EventBus
 from harness.providers.base import AgentProvider, AgentRun, ApprovalHandler, SessionSpec
 from harness.repos.service import RepoService
 from harness.sessions.bookkeeping import isolated
+from harness.sessions.extras import RunExtras, RunExtrasSource
 from harness.sessions.git_audit import changed_refs, snapshot_refs, with_branches
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import BYPASS, LiveSession
@@ -28,6 +29,9 @@ from harness.sessions.workspace import prepare_worktree
 from harness.worktrees.manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
+
+# A pixie chat opens a fresh run after a turn that filled this much of the context (D057).
+ROTATE_PERCENT = 60
 
 _CONNECTORS_NOTE = (
     "Mention MCP servers that need authorization or failed to connect only when the user "
@@ -67,9 +71,11 @@ class TurnRunner:
         idle_close: timedelta,
         queue: MessageQueue,
         clock: Clock,
+        extras: RunExtrasSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself."""
         self._on_mode = on_mode
+        self._extras = extras
         self._repos = repos
         self._queue = queue
         self._clock = clock
@@ -105,9 +111,14 @@ class TurnRunner:
                 live.schedule_idle_close(self._idle_close)
 
     async def start(
-        self, live: LiveSession, session: Session, repo: RepoConfig, attachments: list[Attachment]
+        self,
+        live: LiveSession,
+        session: Session,
+        repo: RepoConfig | None,
+        attachments: list[Attachment],
     ) -> Outcome | None:
         if session.mode == "worktree":
+            assert repo is not None  # noqa: S101 (a worktree session always has a project)
             setup = await prepare_worktree(session, repo, self._worktrees, self._store, self._bus)
             if not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
@@ -160,7 +171,7 @@ class TurnRunner:
         await isolated("the git audit", session_id, self.audit(live))
         run = live.run
         if run is not None:
-            await isolated("the context report", session_id, self._report_context(session_id, run))
+            await isolated("the context report", session_id, self._report_context(live, run))
         if live.interrupted:
             await self._conclude(live, SessionState.INTERRUPTED, None)
         elif error is not None:
@@ -249,15 +260,18 @@ class TurnRunner:
         await self._announce(live, queued.text, attachments)
         return queued.text, attachments
 
-    async def _report_context(self, session_id: str, run: AgentRun) -> None:
+    async def _report_context(self, live: LiveSession, run: AgentRun) -> None:
         """How full the context window is after the turn, for the session's meter."""
         usage = await run.context_usage()
         if usage is None:
             return
-        await self._store.update(session_id, context=usage)
+        session_id = live.session_id
+        session = await self._store.update(session_id, context=usage)
         await self._bus.publish(
             types.SESSION_CONTEXT, {"context": usage.model_dump(mode="json")}, session_id
         )
+        if session.pixie_id is not None and usage.percent >= ROTATE_PERCENT:
+            live.rotate = True
 
     async def _end_turn(self, live: LiveSession, state: SessionState, error: str | None) -> None:
         # Free the session before announcing the outcome, so a client reacting to the
@@ -292,20 +306,29 @@ class TurnRunner:
         dirs = await self._attachments.file_dirs(session.id)
         while (run := live.run) is None or not _fits(live, session, dirs):
             await live.close_run()
-            git = await self._repos.has_git(session.repo)
+            extras = await self._pixie_extras(session)
             spec = SessionSpec(
                 cwd=cwd,
                 permission_mode=session.permission_mode,
                 model=session.model,
                 effort=session.effort,
-                resume_id=session.provider_session_id,
-                extra_dirs=dirs,
-                system_prompt_append=HARNESS_PROMPT if git else PLAIN_FOLDER_PROMPT,
+                # A pixie never resumes: each run starts fresh with its memory (D057).
+                resume_id=None if extras else session.provider_session_id,
+                extra_dirs=dirs + (extras.extra_dirs if extras else ()),
+                system_prompt_append=(
+                    extras.system_prompt if extras else await self._harness_prompt(session)
+                ),
+                tools=extras.tools if extras else (),
+                write_root=extras.write_root if extras else None,
+                skills=extras.skills if extras else (),
+                allowed_tools=extras.allowed_tools if extras else (),
+                disallowed_tools=extras.disallowed_tools if extras else (),
             )
             sink = SessionSink(
                 live, self._bus, self._store, self, self._hooks, session.provider_session_id
             )
             live.run = await self._provider.open(spec, self._handler_for(live), sink)
+            live.rotate = False
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = session.permission_mode == BYPASS
@@ -315,6 +338,15 @@ class TurnRunner:
             session = await self._store.get(session.id)
         await self.apply_controls(live)
         return run
+
+    async def _pixie_extras(self, session: Session) -> RunExtras | None:
+        if session.pixie_id is None or self._extras is None:
+            return None
+        return await self._extras(session)
+
+    async def _harness_prompt(self, session: Session) -> str:
+        git = await self._repos.has_git(session.repo)
+        return HARNESS_PROMPT if git else PLAIN_FOLDER_PROMPT
 
     async def audit(self, live: LiveSession, publishing: bool = False) -> None:
         """Compare refs with the last audit, at the end of each turn (all refs) and right
@@ -342,7 +374,7 @@ def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...]) -> bool:
     # them. Until then the agent asks before reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = set(dirs) <= set(live.run_dirs) and live.run_effort == session.effort
-    return (same and not needs_bypass) or live.background_tasks > 0
+    return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 
 
 async def _apply_controls(live: LiveSession, run: AgentRun, session: Session) -> None:
