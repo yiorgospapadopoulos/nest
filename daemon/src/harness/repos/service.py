@@ -12,8 +12,9 @@ from harness.config.models import RepoConfig, WorktreeConfig
 from harness.errors import ConflictError, InvalidInputError, NotFoundError
 from harness.events import types
 from harness.events.bus import EventBus
+from harness.gitops.hardened import run_hardened_git
 from harness.gitops.remotes import push_urls
-from harness.gitops.runner import GitError, run_command, run_git
+from harness.gitops.runner import GitError, run_command
 from harness.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
@@ -136,6 +137,23 @@ class RepoService:
         save_repo(self._paths, repo)
         return repo
 
+    async def configure_worktree(self, name: str, config: WorktreeConfig) -> RepoConfig:
+        """Replace the repo's `[worktree]` config and announce it to other devices."""
+        repo = self.update_worktree_config(name, config)
+        await self._announce(types.REPO_UPDATED, repo)
+        return repo
+
+    async def edit_worktree(self, name: str, changes: dict[str, list[str]]) -> RepoConfig:
+        """Set some `[worktree]` keys (`link`, `setup`), checked as when the config file is
+        loaded, then save and announce the repo (IMP-09).
+        """
+        current = self.get(name).worktree
+        try:
+            config = WorktreeConfig.model_validate({**current.model_dump(), **changes})
+        except ValidationError as error:
+            raise InvalidRepoError(_problems(error)) from None
+        return await self.configure_worktree(name, config)
+
     def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
         """The user confirmed that origin may push to `url` (D050)."""
         repo = self.get(name).model_copy(update={"remote_url": url})
@@ -152,7 +170,7 @@ class RepoService:
         if not repo.git:
             raise NotAGitRepositoryError(name)
         # --directory lists wholly ignored directories (node_modules/) as one entry.
-        output = await run_git(
+        output = await run_hardened_git(
             ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
             repo.path,
         )
@@ -165,7 +183,7 @@ class RepoService:
         if repo.git or not await asyncio.to_thread((repo.path / ".git").exists):
             return repo
         try:
-            toplevel = await run_git(["rev-parse", "--show-toplevel"], repo.path)
+            toplevel = await run_hardened_git(["rev-parse", "--show-toplevel"], repo.path)
         except GitError:
             return repo
         if Path(toplevel.strip()) != repo.path:
@@ -199,7 +217,7 @@ async def _work_tree_root(path: Path) -> Path | None:
         msg = f"{path} is not a directory"
         raise InvalidRepoError(msg)
     try:
-        output = await run_git(["rev-parse", "--show-toplevel", "--show-prefix"], path)
+        output = await run_hardened_git(["rev-parse", "--show-toplevel", "--show-prefix"], path)
     except GitError as error:
         if error.not_a_repository:
             return None
@@ -224,11 +242,16 @@ async def _default_branch(root: Path) -> str:
         ["symbolic-ref", "--quiet", "--short", "HEAD"],
     ):
         try:
-            ref = (await run_git(args, root)).strip()
+            ref = (await run_hardened_git(args, root)).strip()
         except GitError:
             continue
         return ref.removeprefix("origin/")
     return FALLBACK_BRANCH
+
+
+def _problems(error: ValidationError) -> str:
+    """What pydantic found wrong, without its own prefixes ("Value error, ")."""
+    return "; ".join(str(detail["msg"]).removeprefix("Value error, ") for detail in error.errors())
 
 
 def _slug(name: str) -> str:
