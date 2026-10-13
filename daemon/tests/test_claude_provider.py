@@ -841,3 +841,17 @@ async def test_no_tools_means_no_tool_server(tmp_path: Path) -> None:
     assert client.options.skills is None
     assert client.options.hooks is not None
     assert len(client.options.hooks["PreToolUse"]) == 2
+
+
+async def test_a_user_server_named_like_the_tool_server_is_not_auto_allowed(tmp_path: Path) -> None:
+    handler = ScriptedHandler(PermissionDecision("deny", "no"))
+    _, client = await Opened(tmp_path).open(
+        SessionSpec(cwd=tmp_path, permission_mode="default"), handler
+    )
+
+    result = await client.options.can_use_tool(  # type: ignore[misc]
+        "mcp__pixie__x", {}, ToolPermissionContext()
+    )
+
+    assert isinstance(result, PermissionResultDeny)
+    assert [r.tool_name for r in handler.requests] == ["mcp__pixie__x"]

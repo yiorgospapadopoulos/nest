@@ -1,5 +1,6 @@
 """Harness tools as an in-process MCP server, and the write guard for pixie runs (D057)."""
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +14,10 @@ WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 WRITE_DENIED = "A pixie may only write files in its own workdir; use its memory tools instead."
 
 
-def own_tool(tool_name: str) -> bool:
-    """Harness's own tools check their callers themselves, so they never prompt."""
-    return tool_name.startswith(f"mcp__{TOOL_SERVER}__")
+def own_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
+    """Claude Code's names for a run's own tools. They check their callers themselves, so
+    they never prompt; a same-named server the user configured is not among them."""
+    return frozenset(f"mcp__{TOOL_SERVER}__{tool.name}" for tool in tools)
 
 
 def to_sdk_tool(tool: AgentTool) -> SdkMcpTool[Any]:
@@ -48,9 +50,13 @@ def write_guard(root: Path) -> HookCallback:
             return {}
         tool_input = input_data["tool_input"]
         raw = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-        target = (resolved_root / str(raw)).resolve()
-        if target == resolved_root or resolved_root in target.parents:
-            return {}
+        # Claude Code resolves a relative path against the run's cwd, not the root, so
+        # only an absolute path can be judged here; anything else is denied.
+        path = Path(str(raw))
+        if path.is_absolute():
+            target = await asyncio.to_thread(path.resolve)
+            if target == resolved_root or resolved_root in target.parents:
+                return {}
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",

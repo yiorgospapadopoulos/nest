@@ -6,7 +6,7 @@ from pydantic import JsonValue
 from harness.providers.base import AgentTool, ToolRefusedError
 from harness.providers.claude_tools import (
     TOOL_SERVER,
-    own_tool,
+    own_tool_names,
     to_sdk_tool,
     tool_servers,
     write_guard,
@@ -41,9 +41,8 @@ def test_tool_servers_and_own_tools() -> None:
     assert tool_servers(()) == {}
     assert list(servers) == [TOOL_SERVER]
     assert servers[TOOL_SERVER].get("type") == "sdk"
-    assert own_tool("mcp__pixie__echo") is True
-    assert own_tool("mcp__other__echo") is False
-    assert own_tool("Bash") is False
+    assert own_tool_names((ECHO,)) == {"mcp__pixie__echo"}
+    assert own_tool_names(()) == frozenset()
 
 
 async def guard(root: Path, tool: str, tool_input: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +56,10 @@ async def test_the_write_guard_keeps_edits_inside_the_root(tmp_path: Path) -> No
     inside = await guard(root, "Write", {"file_path": str(root / "a.md")})
     relative = await guard(root, "Edit", {"file_path": "a.md"})
     outside = await guard(root, "Edit", {"file_path": str(tmp_path / "repo" / "x.py")})
+    empty = await guard(root, "Write", {})
+    root.mkdir()
+    (root / "link").symlink_to(tmp_path / "repo")
+    through_link = await guard(root, "Write", {"file_path": str(root / "link" / "x.py")})
     escape = await guard(root, "Write", {"file_path": str(root / ".." / "SOUL.md")})
     notebook = await guard(root, "NotebookEdit", {"notebook_path": "/etc/x.ipynb"})
     read = await guard(root, "Read", {"file_path": "/etc/hosts"})
@@ -65,8 +68,7 @@ async def test_the_write_guard_keeps_edits_inside_the_root(tmp_path: Path) -> No
     )
 
     assert inside == {}
-    assert relative == {}
     assert read == {}
     assert other_event == {}
-    for denied in (outside, escape, notebook):
+    for denied in (relative, empty, through_link, outside, escape, notebook):
         assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"

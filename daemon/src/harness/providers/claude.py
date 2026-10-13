@@ -46,7 +46,7 @@ from harness.providers.claude_questions import (
     QuestionBridge,
 )
 from harness.providers.claude_thinking import ThinkingTimer
-from harness.providers.claude_tools import WRITE_TOOLS, own_tool, tool_servers, write_guard
+from harness.providers.claude_tools import WRITE_TOOLS, own_tool_names, tool_servers, write_guard
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
@@ -145,11 +145,12 @@ def build_options(
     stderr: Callable[[str], None] | None = None,
 ) -> ClaudeAgentOptions:
     questions = QuestionBridge(handler)
+    own_tools = own_tool_names(spec.tools)
 
     async def can_use_tool(
         tool_name: str, tool_input: dict[str, JsonValue], context: ToolPermissionContext
     ) -> PermissionResult:
-        if own_tool(tool_name):
+        if tool_name in own_tools:
             return PermissionResultAllow()
         if tool_name == ASK_USER_QUESTION:
             return questions.permission(tool_input, context.tool_use_id)
