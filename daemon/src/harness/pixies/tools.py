@@ -64,13 +64,19 @@ def pixie_tools(
         return f"Saved: {saved.text.splitlines()[-1]}"
 
     async def memory_forget(args: dict[str, JsonValue]) -> str:
-        removed = files.forget(pid, _text(args, "text"))
+        text = _text(args, "text")
+        if not text.strip():
+            raise ToolRefusedError("Say which fact to forget.")
+        removed = files.forget(pid, text)
         if removed == 0:
             return "No fact matched."
         return f"Forgot {removed} fact." if removed == 1 else f"Forgot {removed} facts."
 
     async def notes_search(args: dict[str, JsonValue]) -> str:
-        hits = files.search(pid, _text(args, "query"))
+        query = _text(args, "query")
+        if not query.strip():
+            raise ToolRefusedError("Say what to search for.")
+        hits = files.search(pid, query)
         return "\n".join(f"{h.file}: {h.line}" for h in hits) or "Nothing found."
 
     async def note_read(args: dict[str, JsonValue]) -> str:
@@ -78,6 +84,7 @@ def pixie_tools(
 
     async def note_write(args: dict[str, JsonValue]) -> str:
         name = f"notes/{_text(args, 'name')}"
+        # Safe only because nothing awaits between this read and the write below.
         try:
             current: str | None = files.read(pid, name).hash
         except HarnessError:
@@ -89,6 +96,7 @@ def pixie_tools(
         return files.read(pid, "soul").text
 
     async def soul_write(args: dict[str, JsonValue]) -> str:
+        # Safe only because nothing awaits between this read and the write below.
         files.write(pid, "soul", _text(args, "text"), files.read(pid, "soul").hash)
         return "Saved SOUL.md."
 

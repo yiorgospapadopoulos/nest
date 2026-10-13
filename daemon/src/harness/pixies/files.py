@@ -76,6 +76,8 @@ class PixieFiles:
         return FileText(text=text, hash=text_hash(text))
 
     def forget(self, pixie_id: str, fragment: str) -> int:
+        if not fragment.strip():
+            return 0
         path = self._folder(pixie_id) / MEMORY_FILE
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         needle = fragment.lower()

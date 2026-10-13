@@ -166,3 +166,12 @@ def test_remove_deletes_the_folder(files: PixieFiles, tmp_path: Path) -> None:
     files.remove("p1")
 
     assert not (tmp_path / "pixies" / "p1").exists()
+
+
+def test_a_blank_forget_fragment_removes_nothing(files: PixieFiles) -> None:
+    files.add_fact("p1", "keep me", TODAY)
+    before = files.read("p1", "memory").text
+
+    assert files.forget("p1", "  ") == 0
+    assert files.forget("p1", "") == 0
+    assert files.read("p1", "memory").text == before

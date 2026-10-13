@@ -94,3 +94,20 @@ async def test_soul_and_projects(tmp_path: Path, setup: tuple[PixieFiles, RepoSe
     assert soul == "You review code.\n"
     assert await call(all_tools, "list_projects") == "api\nweb"
     assert await call(some_tools, "list_projects") == "web"
+
+
+async def test_blank_forget_and_search_are_refused(setup: tuple[PixieFiles, RepoService]) -> None:
+    files, repos = setup
+    tools = by_name(pixie_tools(pixie(), files, repos, FakeClock(NOW)))
+    await call(tools, "memory_write", fact="keep me")
+    before = await call(tools, "memory_read")
+
+    for text in ("", "   ", "\n\t"):
+        with pytest.raises(ToolRefusedError, match=r"Say which fact to forget\."):
+            await call(tools, "memory_forget", text=text)
+    with pytest.raises(ToolRefusedError, match=r"Say which fact to forget\."):
+        await call(tools, "memory_forget")
+    with pytest.raises(ToolRefusedError, match=r"Say what to search for\."):
+        await call(tools, "notes_search", query="  ")
+
+    assert await call(tools, "memory_read") == before
