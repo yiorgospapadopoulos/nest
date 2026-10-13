@@ -11,15 +11,18 @@ import type {
   Approval,
   ApproveBody,
   ClaudeChat,
+  CreatePixieBody,
   CommandList,
   CreateSessionBody,
   HarnessEvent,
   MonthUsage,
   NotificationSettings,
+  Pixie,
   ResolveBody,
   SearchResults,
   Session,
   SessionDiff,
+  UpdatePixieBody,
   UpdateSessionBody,
 } from "../api/types.ts";
 import { loadShowAutomated, saveShowAutomated } from "./devicePrefs.ts";
@@ -133,10 +136,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
             api.sessions(true),
             api.approvals(),
             api.claudeChats(showAutomated),
+            api.pixies(),
           ]),
-        ([repos, open, archived, approvals, chats]) => {
+        ([repos, open, archived, approvals, chats, pixies]) => {
           dispatch({ type: "loaded", repos, sessions: [...open, ...archived], approvals });
           dispatch({ type: "claudeChats", chats });
+          dispatch({ type: "pixies", pixies });
         },
       );
       loaded = true;
@@ -157,6 +162,39 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "toast", toast: null });
     },
     load,
+
+    async loadPixies(): Promise<void> {
+      const pixies = await quietly(() => api.pixies());
+      if (pixies !== null) dispatch({ type: "pixies", pixies });
+    },
+    async createPixie(body: CreatePixieBody): Promise<Pixie | null> {
+      const created = await attempt(() => api.createPixie(body));
+      if (created !== null) dispatch({ type: "pixie", pixie: created });
+      return created;
+    },
+    async updatePixie(id: string, body: UpdatePixieBody): Promise<boolean> {
+      const updated = await attempt(() => api.updatePixie(id, body));
+      if (updated === null) return false;
+      dispatch({ type: "pixie", pixie: updated });
+      return true;
+    },
+    async deletePixie(id: string): Promise<boolean> {
+      const done = await attempt(() => api.deletePixie(id).then(() => true));
+      if (done === null) return false;
+      dispatch({ type: "pixieRemoved", id });
+      return true;
+    },
+    async sendToPixie(id: string, text: string): Promise<Session | null> {
+      const sent = await attempt(() => api.sendToPixie(id, text));
+      if (sent !== null) dispatch({ type: "session", session: sent });
+      return sent;
+    },
+    async resetPixie(id: string): Promise<boolean> {
+      const pixie = await attempt(() => api.resetPixie(id));
+      if (pixie === null) return false;
+      dispatch({ type: "pixie", pixie });
+      return true;
+    },
 
     /** A live event from the socket. */
     receive(event: HarnessEvent): void {

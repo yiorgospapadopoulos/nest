@@ -9,6 +9,7 @@ import type {
   HarnessEvent,
   ModelOption,
   NotificationSettings,
+  Pixie,
   QueuedMessage,
   RepoConfig,
   Session,
@@ -53,6 +54,8 @@ export interface State {
   reconnecting: boolean;
   repos: RepoConfig[];
   sessions: Record<string, Session>;
+  // The user's pixies by id; their chats are sessions with a pixie_id.
+  pixies: Record<string, Pixie>;
   // Claude Code chats of the projects that harness does not own, by Claude Code session id.
   claudeChats: Record<string, ClaudeChat>;
   // List chats programs started through an Agent SDK too; remembered on this device.
@@ -85,6 +88,7 @@ export const initialState: State = {
   reconnecting: false,
   repos: [],
   sessions: {},
+  pixies: {},
   claudeChats: {},
   showAutomated: false,
   approvals: {},
@@ -109,6 +113,9 @@ export type Action =
   | { type: "loaded"; repos: RepoConfig[]; sessions: Session[]; approvals: Approval[] }
   | { type: "session"; session: Session }
   | { type: "sessionRemoved"; id: string }
+  | { type: "pixies"; pixies: Pixie[] }
+  | { type: "pixie"; pixie: Pixie }
+  | { type: "pixieRemoved"; id: string }
   | { type: "claudeChats"; chats: ClaudeChat[] }
   | { type: "claudeChat"; chat: ClaudeChat }
   | { type: "claudeChatRemoved"; id: string }

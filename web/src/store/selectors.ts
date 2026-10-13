@@ -3,6 +3,7 @@ import type {
   BackgroundSummary,
   ClaudeChat,
   HarnessEvent,
+  Pixie,
   PrStatus,
   Session,
   StuckFlag,
@@ -14,6 +15,18 @@ export type Tone = "run" | "wait" | "rev" | "fail" | "done" | "idle" | "int";
 export interface ChatStatus {
   tone: Tone;
   label: string;
+}
+
+/** A pixie's chat lives in its own screen, never in a project's lists. */
+function projectChats(state: State): Session[] {
+  return Object.values(state.sessions).filter((s) => s.pixie_id == null);
+}
+
+/** The pixies shown in the app, in the order the user set. */
+export function pixieList(state: State): Pixie[] {
+  return Object.values(state.pixies)
+    .filter((p) => !p.hidden)
+    .sort((a, b) => a.position - b.position);
 }
 
 export function pendingFor(state: State, sessionId: string): Approval[] {
@@ -92,7 +105,7 @@ export interface ChatLists {
  * Claude Code chats join the idle group; archived ones of both kinds are listed apart.
  */
 export function chatLists(state: State, repo: string): ChatLists {
-  const sessions: ChatEntry[] = Object.values(state.sessions)
+  const sessions: ChatEntry[] = projectChats(state)
     .filter((s) => s.repo === repo)
     .map((session) => ({ session, status: chatStatus(session, pendingFor(state, session.id)) }));
   const chats: ChatEntry[] = Object.values(state.claudeChats)
@@ -150,14 +163,14 @@ export function ciFailure(session: Session, pending: Approval[]): CiFailure | nu
 }
 
 function failures(state: State): CiFailure[] {
-  return Object.values(state.sessions)
+  return projectChats(state)
     .flatMap((s) => ciFailure(s, pendingFor(state, s.id)) ?? [])
     .sort((a, b) => a.pr.changed_at.localeCompare(b.pr.changed_at));
 }
 
 /** Chats flagged as stuck, the longest stuck first. */
 export function stuckChats(state: State): StuckChat[] {
-  return Object.values(state.sessions)
+  return projectChats(state)
     .flatMap((session) =>
       session.stuck !== null && session.archived_at === null
         ? [{ repo: session.repo, session, stuck: session.stuck }]
@@ -203,7 +216,7 @@ export function needsCount(state: State, repo?: string): number {
 }
 
 export function isRunning(state: State, repo: string): boolean {
-  return Object.values(state.sessions).some(
+  return projectChats(state).some(
     (s) => s.repo === repo && (s.state === "running" || s.state === "starting"),
   );
 }

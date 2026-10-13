@@ -7,6 +7,7 @@ import type {
   JsonObject,
   JsonValue,
   LimitWindow,
+  Pixie,
   RepoConfig,
   Session,
   TrackedAgent,
@@ -44,6 +45,12 @@ export function reduce(state: State, action: Action): State {
       return upsertSession(state, action.session);
     case "sessionRemoved":
       return removeSession(state, action.id);
+    case "pixies":
+      return { ...state, pixies: Object.fromEntries(action.pixies.map((p) => [p.id, p])) };
+    case "pixie":
+      return { ...state, pixies: { ...state.pixies, [action.pixie.id]: action.pixie } };
+    case "pixieRemoved":
+      return { ...state, pixies: withoutPixie(state.pixies, action.id) };
     case "claudeChats":
       return {
         ...state,
@@ -199,6 +206,12 @@ export function applyEvent(state: State, event: HarnessEvent): State {
     case "session.message":
     case "session.result":
       return clearThinking(clearLive(next, id), id);
+    case "pixie.updated": {
+      const pixie = p.pixie as unknown as Pixie;
+      return { ...next, pixies: { ...next.pixies, [pixie.id]: pixie } };
+    }
+    case "pixie.deleted":
+      return { ...next, pixies: withoutPixie(next.pixies, str(p.pixie_id) ?? "") };
     case "connectors.updated":
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
@@ -206,6 +219,10 @@ export function applyEvent(state: State, event: HarnessEvent): State {
     default:
       return next;
   }
+}
+
+function withoutPixie(pixies: Record<string, Pixie>, id: string): Record<string, Pixie> {
+  return Object.fromEntries(Object.entries(pixies).filter(([key]) => key !== id));
 }
 
 function withTranscript(state: State, event: HarnessEvent): State {

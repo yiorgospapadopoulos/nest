@@ -6,6 +6,7 @@ import {
   event,
   NO_BACKGROUND,
   NOW,
+  pixie,
   prStatus,
   question,
   queuedMessage,
@@ -392,5 +393,22 @@ describe("live events", () => {
   it("ignore unknown event types", () => {
     const state = loaded();
     expect(apply(state, event({ type: "daemon.started", session_id: null }))).toBe(state);
+  });
+
+  it("keeps pixies from events", () => {
+    let state = reduce(initialState, { type: "pixies", pixies: [pixie({ id: "a" })] });
+    state = apply(
+      state,
+      event({
+        type: "pixie.updated",
+        payload: { pixie: pixie({ id: "b", position: 1 }) } as never,
+      }),
+    );
+    expect(Object.keys(state.pixies)).toEqual(["a", "b"]);
+    state = reduce(state, { type: "pixie", pixie: pixie({ id: "c" }) });
+    state = apply(state, event({ type: "pixie.deleted", payload: { pixie_id: "a" } }));
+    state = apply(state, event({ type: "pixie.deleted", payload: {} }));
+    state = reduce(state, { type: "pixieRemoved", id: "c" });
+    expect(Object.keys(state.pixies)).toEqual(["b"]);
   });
 });
