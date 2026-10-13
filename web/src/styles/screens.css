@@ -1240,6 +1240,9 @@ a.b {
 .pxnew {
   color: var(--accent);
 }
+.pxhid {
+  color: var(--t2);
+}
 .pxplus {
   width: 28px;
   display: grid;

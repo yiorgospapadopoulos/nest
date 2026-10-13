@@ -29,6 +29,33 @@ describe("Pixies section", () => {
     expect(api.createPixie).toHaveBeenCalledWith(expect.objectContaining({ name: "Reviewer" }));
   });
 
+  it("shows hidden pixies on request, and no templates while they exist", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([
+      pixie({ id: "p1", name: "Shown", slug: "shown" }),
+      pixie({ id: "p2", name: "Secret", slug: "secret", hidden: true, position: 1 }),
+    ]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    expect(screen.queryByRole("button", { name: /Secret/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
+    expect(screen.getByRole("button", { name: /Secret/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hide hidden" }));
+    expect(screen.queryByRole("button", { name: /Secret/ })).not.toBeInTheDocument();
+  });
+
+  it("offers no templates when every pixie is hidden", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie({ hidden: true })]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    expect(screen.queryByText("Or start from a template")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
+    expect(screen.getByRole("button", { name: /Tester/ })).toBeInTheDocument();
+  });
+
   it("New pixie creates one and opens its details", async () => {
     const api = fakeApi();
     api.createPixie.mockResolvedValue(pixie({ id: "p9", name: "New pixie", slug: "new-pixie" }));

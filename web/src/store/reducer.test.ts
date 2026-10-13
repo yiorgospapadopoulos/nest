@@ -38,6 +38,21 @@ describe("reduce", () => {
     expect(reduce(state, { type: "auth", auth: "unpaired" }).auth).toBe("unpaired");
   });
 
+  it("keeps pixie chats, which the session list leaves out, across a reload", () => {
+    const withChat = reduce(loaded(), {
+      type: "session",
+      session: session({ id: "c1", repo: "pixie:p1", pixie_id: "p1" }),
+    });
+    const reloaded = reduce(withChat, {
+      type: "loaded",
+      repos: [],
+      sessions: [session({ id: "s2" })],
+      approvals: [],
+    });
+
+    expect(Object.keys(reloaded.sessions).sort()).toEqual(["c1", "s2"]);
+  });
+
   it("tracks a reconnect until the socket opens or the device has to pair again", () => {
     const lost = reduce(loaded(), { type: "reconnecting", on: true });
     expect(lost.reconnecting).toBe(true);

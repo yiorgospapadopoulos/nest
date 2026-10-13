@@ -36,7 +36,13 @@ export function reduce(state: State, action: Action): State {
         ...state,
         auth: "ready",
         repos: action.repos,
-        sessions: Object.fromEntries(action.sessions.map((s) => [s.id, s])),
+        // The session list leaves pixie chats out (D057); the ones known stay.
+        sessions: Object.fromEntries([
+          ...Object.values(state.sessions)
+            .filter((s) => s.pixie_id != null)
+            .map((s) => [s.id, s] as const),
+          ...action.sessions.map((s) => [s.id, s] as const),
+        ]),
         approvals: Object.fromEntries(
           action.approvals.filter((a) => a.status === "pending").map((a) => [a.id, a]),
         ),

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Mascot } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { pixieList } from "../../store/selectors.ts";
@@ -33,7 +34,9 @@ interface Props {
 /** The user's pixies above the projects, each opening its page, and New pixie. */
 export function PixieSection({ onOpen }: Props) {
   const { state, actions } = useStore();
-  const pixies = pixieList(state);
+  const [showHidden, setShowHidden] = useState(false);
+  const pixies = pixieList(state, showHidden);
+  const hidden = pixieList(state, true).length - pixieList(state).length;
 
   const create = async (body: Parameters<typeof actions.createPixie>[0], tab: PixieTab) => {
     const created = await actions.createPixie(body);
@@ -81,8 +84,22 @@ export function PixieSection({ onOpen }: Props) {
             <span className="rt">New pixie</span>
           </button>
         </div>
+        {hidden > 0 && (
+          <div className="lrow">
+            <button
+              className="row pxr pxhid"
+              onClick={() => {
+                setShowHidden(!showHidden);
+              }}
+            >
+              <span className="rt">
+                {showHidden ? "Hide hidden" : `Show hidden (${String(hidden)})`}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
-      {pixies.length === 0 && (
+      {Object.keys(state.pixies).length === 0 && (
         <div className="pxtpl">
           <span className="hint">Or start from a template</span>
           {TEMPLATES.map((t) => (

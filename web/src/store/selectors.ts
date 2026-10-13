@@ -22,10 +22,10 @@ function projectChats(state: State): Session[] {
   return Object.values(state.sessions).filter((s) => s.pixie_id == null);
 }
 
-/** The pixies shown in the app, in the order the user set. */
-export function pixieList(state: State): Pixie[] {
+/** The pixies shown in the app, in the order the user set; hidden ones only on request. */
+export function pixieList(state: State, withHidden = false): Pixie[] {
   return Object.values(state.pixies)
-    .filter((p) => !p.hidden)
+    .filter((p) => withHidden || !p.hidden)
     .sort((a, b) => a.position - b.position);
 }
 

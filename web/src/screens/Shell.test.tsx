@@ -51,6 +51,18 @@ describe("deep links", () => {
     expect(await screen.findByRole("region", { name: "Tester" })).toBeInTheDocument();
   });
 
+  it("sends a pixie chat's address to the pixie's page", async () => {
+    window.history.replaceState(null, "", "/chat/c1");
+    const chat = session({ id: "c1", repo: "pixie:p1", pixie_id: "p1", title: "Tester" });
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie({ chat_session_id: "c1" })]);
+    api.session.mockResolvedValue(detail(chat));
+    await renderApp({ api, ready: false });
+
+    expect(await screen.findByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/pixie/p1");
+  });
+
   it("shows an empty page for a pixie it does not know", async () => {
     window.history.replaceState(null, "", "/pixie/gone");
     const { user } = await renderApp({ ready: false });

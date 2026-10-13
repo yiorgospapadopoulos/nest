@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { SearchHit } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { claudeChat, event, NOW, repo, session } from "../../test/fixtures.ts";
+import { claudeChat, event, NOW, pixie, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 
 function hit(overrides: Partial<SearchHit> = {}): SearchHit {
@@ -150,6 +150,31 @@ describe("search", () => {
     await user.click(await screen.findByRole("button", { name: /^Validate contact formtodo-ui$/ }));
     expect(await screen.findByRole("button", { name: "Agents, 0 active" })).toBeInTheDocument();
     expect(document.querySelector(".hit")).toBeNull();
+  });
+
+  it("names a pixie's chat after its pixie and opens the pixie's page", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie()]);
+    api.search.mockResolvedValue({
+      hits: [
+        hit({ session_id: "c1", repo: "pixie:p1", title: "Tester", event_id: 4 }),
+        hit({ session_id: "c2", repo: "pixie:gone", title: "Old", event_id: null }),
+      ],
+      indexing: false,
+    });
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    await user.type(field(), "login");
+    const results = await screen.findByLabelText("Search results");
+    expect(within(results).queryByText(/pixie:/)).not.toBeInTheDocument();
+    expect(within(results).getByText("Pixie")).toBeInTheDocument();
+    const found = within(results).getByRole("region", { name: "Tester" });
+    expect(found.querySelector(".sres-h svg")).not.toBeNull();
+    await user.click(within(found).getByRole("button", { name: /^ClaudeThe login form/ }));
+
+    expect(await screen.findByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/pixie/p1");
   });
 
   it("says when nothing matches, while older chats are indexed, or when search fails", async () => {

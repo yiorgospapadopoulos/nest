@@ -104,6 +104,7 @@ export function Shell() {
             setChat(null);
           }}
           onOpen={openChat}
+          onOpenPixie={openPixie}
         />
       )}
     </>

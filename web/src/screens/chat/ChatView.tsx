@@ -29,9 +29,16 @@ interface Props {
   target: ChatTarget;
   onBack: () => void;
   onOpen: (sessionId: string) => void;
+  onOpenPixie: (id: string) => void;
 }
 
-export function ChatView({ target, onBack, onOpen }: Props) {
+export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
+  const { state } = useStore();
+  // A pixie's chat shows on its page, also when opened by its address or an inbox card.
+  const pixieOfChat = "id" in target ? state.sessions[target.id]?.pixie_id : undefined;
+  useEffect(() => {
+    if (pixieOfChat != null) onOpenPixie(pixieOfChat);
+  }, [pixieOfChat, onOpenPixie]);
   if ("claude" in target) {
     return <ClaudeChatView id={target.claude} onBack={onBack} onOpen={onOpen} />;
   }
@@ -81,9 +88,10 @@ function SessionChat({
   }, [actions, id]);
 
   useEffect(() => {
-    // Deleted, here or on another device.
-    if (session === undefined) onBack();
-  }, [session, onBack]);
+    // Deleted, here or on another device. A pixie chat is not in the session list, so
+    // one opened by its address is known only once fetched.
+    if (session === undefined && loaded) onBack();
+  }, [session, loaded, onBack]);
 
   if (session === undefined) return null;
   const tracking = state.tracking[id] ?? { tasks: [], agents: [], background: NO_BACKGROUND };

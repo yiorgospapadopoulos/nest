@@ -175,6 +175,9 @@ export function Projects({
           query={query}
           onOpenChat={onOpenChat}
           onOpenClaudeChat={onOpenClaudeChat}
+          onOpenPixie={(id) => {
+            onOpenPixie(id, "chat");
+          }}
         />
       ) : (
         listsView
