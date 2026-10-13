@@ -52,10 +52,12 @@ class SessionStore:
         return _session(row)
 
     async def list_sessions(self, repo: str | None = None, archived: bool = False) -> list[Session]:
-        """Pinned first, then most recently updated; archived or not, optionally of one repo."""
+        """Pinned first, then most recently updated; archived or not, optionally of one repo.
+        Pixie chats are never listed here (D057).
+        """
         rows = await self._db.fetch_all(
             "SELECT * FROM sessions WHERE (? IS NULL OR repo = ?) AND (archived_at IS NOT NULL) = ?"
-            " ORDER BY pinned DESC, updated_at DESC, rowid DESC",
+            " AND pixie_id IS NULL ORDER BY pinned DESC, updated_at DESC, rowid DESC",
             (repo, repo, archived),
         )
         return [_session(row) for row in rows]

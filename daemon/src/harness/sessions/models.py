@@ -11,6 +11,13 @@ from harness.providers.base import ContextUsage
 from harness.prs.models import PrStatus
 from harness.stuck.models import StuckFlag
 
+# A pixie's chat has no project; its `repo` names the pixie instead (D057).
+PIXIE_REPO_PREFIX = "pixie:"
+
+
+def pixie_repo(pixie_id: str) -> str:
+    return f"{PIXIE_REPO_PREFIX}{pixie_id}"
+
 
 class SessionState(StrEnum):
     STARTING = "starting"  # creating the worktree and running setup
@@ -38,6 +45,8 @@ class NewSession(BaseModel):
     # The commit the session's work is compared with: the worktree's base, or HEAD when an
     # in-place session started.
     base_ref: str | None = None
+    # Set for a pixie's chat (D057); such sessions are not listed with a project's chats.
+    pixie_id: str | None = None
 
 
 class Session(NewSession):
