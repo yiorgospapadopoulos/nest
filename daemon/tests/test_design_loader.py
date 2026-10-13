@@ -27,8 +27,8 @@ def test_repository_tokens_cover_the_locked_design() -> None:
     assert tokens.status["running"].fill.light == "#0a7aff"
     assert tokens.colors["text"]["primary"].dark == "#f2f3f7"
     assert tokens.glass.blur.heavy == 30
-    assert tokens.radius["window"] == 24
-    assert tokens.motion.easing["pop"] == (0.2, 0.9, 0.3, 1.15)
+    assert tokens.typography.size["headline"] == 17
+    assert tokens.motion.duration["attention"] == 2600
 
 
 def test_minimal_tokens_load(tmp_path: Path) -> None:
