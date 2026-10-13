@@ -17,7 +17,11 @@ LOCAL_DEVICE_NAME = "This Mac"
 LOCAL_DEVICE_ACCOUNT = "local-device-token"
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8
+# Failed redemptions allowed per client address, and in total as a safety net, within
+# the window (H-01): one guesser locks out only itself, and spreading guesses over many
+# addresses still stops soon. 31^8 codes make either rate hopeless for guessing.
 MAX_FAILURES = 5
+MAX_TOTAL_FAILURES = 20
 FAILURE_WINDOW = timedelta(minutes=5)
 
 
@@ -26,7 +30,7 @@ class InvalidPairingCodeError(Exception):
 
 
 class PairingLockedError(Exception):
-    """Too many failed redemptions recently; all redemptions are refused for a while."""
+    """Too many failed redemptions recently; this client's (or everyone's) are refused."""
 
     def __init__(self, retry_after: timedelta) -> None:
         super().__init__(f"pairing locked; retry in {retry_after}")
@@ -38,8 +42,10 @@ class DeviceService:
         self._db = db
         self._clock = clock
         self._secrets = secrets
-        # Failed redemption times inside the current window, oldest first.
+        # Failed redemption times inside the current window, oldest first: all of them,
+        # and per client address.
         self._failures: deque[datetime] = deque()
+        self._client_failures: dict[str, deque[datetime]] = {}
         # Redemptions run one at a time, so each failure counts before the next lockout
         # check; otherwise concurrent guesses all pass the check (D051).
         self._redeeming = asyncio.Lock()
@@ -82,13 +88,16 @@ class DeviceService:
         )
         return PairingCode(code=code, expires_at=expires_at)
 
-    async def redeem_pairing_code(self, code: str, device_name: str) -> tuple[Device, str]:
+    async def redeem_pairing_code(
+        self, code: str, device_name: str, *, client: str
+    ) -> tuple[Device, str]:
+        """Redeem a code for a new device; `client` is the address failures count against."""
         async with self._redeeming:
-            return await self._redeem(code, device_name)
+            return await self._redeem(code, device_name, client)
 
-    async def _redeem(self, code: str, device_name: str) -> tuple[Device, str]:
+    async def _redeem(self, code: str, device_name: str, client: str) -> tuple[Device, str]:
         now = self._clock.now()
-        self._check_lockout(now)
+        self._check_lockout(now, client)
         code_hash = _hash(code.strip().upper())
         async with self._db.transaction() as tx:
             row = await tx.fetch_one(
@@ -100,6 +109,7 @@ class DeviceService:
                 or datetime.fromisoformat(row["expires_at"]) <= now
             ):
                 self._failures.append(now)
+                self._client_failures.setdefault(client, deque()).append(now)
                 raise InvalidPairingCodeError
             await tx.execute(
                 "UPDATE pairing_codes SET used_at = ? WHERE code_hash = ?",
@@ -151,11 +161,22 @@ class DeviceService:
         )
         return changed == 1
 
-    def _check_lockout(self, now: datetime) -> None:
-        while self._failures and now - self._failures[0] >= FAILURE_WINDOW:
-            self._failures.popleft()
-        if len(self._failures) >= MAX_FAILURES:
+    def _check_lockout(self, now: datetime, client: str) -> None:
+        _drop_expired(self._failures, now)
+        for address, failures in list(self._client_failures.items()):
+            _drop_expired(failures, now)
+            if not failures:
+                del self._client_failures[address]
+        mine = self._client_failures.get(client, deque[datetime]())
+        if len(mine) >= MAX_FAILURES:
+            raise PairingLockedError(mine[0] + FAILURE_WINDOW - now)
+        if len(self._failures) >= MAX_TOTAL_FAILURES:
             raise PairingLockedError(self._failures[0] + FAILURE_WINDOW - now)
+
+
+def _drop_expired(failures: deque[datetime], now: datetime) -> None:
+    while failures and now - failures[0] >= FAILURE_WINDOW:
+        failures.popleft()
 
 
 def _hash(secret: str) -> str:

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from harness import __version__
 from harness.api.errors import install_error_handlers
+from harness.api.hosts import HostCheckMiddleware
 from harness.api.routes import (
     agents,
     approvals,
@@ -30,7 +31,6 @@ from harness.api.routes import (
 )
 from harness.api.static import install_static
 from harness.context import AppContext
-from harness.events import types
 
 
 def create_app(ctx: AppContext) -> FastAPI:
@@ -49,7 +49,6 @@ def create_app(ctx: AppContext) -> FastAPI:
             await ctx.search.start()
             await ctx.stuck.start()
             await ctx.engine.start()
-            await ctx.bus.publish(types.DAEMON_STARTED, {"version": __version__})
             yield
         finally:
             await ctx.engine.stop()
@@ -71,6 +70,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         openapi_url=None,
     )
     app.state.ctx = ctx
+    app.add_middleware(HostCheckMiddleware, allowed=lambda: ctx.settings.server.allowed_hosts)
     install_error_handlers(app)
     for module in (
         health,

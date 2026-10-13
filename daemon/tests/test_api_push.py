@@ -110,6 +110,15 @@ async def test_a_device_cannot_remove_another_devices_subscription(api: Api) -> 
     [
         {"endpoint": "http://push.example/a"},
         {"endpoint": "not a url"},
+        # H-05: only the browsers' push services, so the daemon never posts elsewhere.
+        {"endpoint": "https://push.example/a"},
+        {"endpoint": "https://127.0.0.1:8765/api/sessions"},
+        {"endpoint": "https://web.push.apple.com.evil.example/a"},
+        {"endpoint": "https://evil.example/web.push.apple.com/a"},
+        {"endpoint": "https://push.apple.com/a"},
+        {"endpoint": "https://web.push.apple.com:8443/a"},
+        {"endpoint": "https://me@web.push.apple.com/a"},
+        {"endpoint": "http://web.push.apple.com/a"},
         {"keys": {"p256dh": "AAAA", "auth": b64(bytes(16))}},
         {"keys": {"p256dh": b64(bytes(65)), "auth": b64(bytes(16))}},
         {"keys": {"p256dh": Receiver().p256dh, "auth": b64(bytes(8))}},
@@ -123,6 +132,23 @@ async def test_subscriptions_are_validated(api: Api, change: dict[str, JsonValue
     response = await api.http.post("/api/push/subscribe", json=body)
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://web.push.apple.com/QG/a",
+        "https://api.push.apple.com/a",
+        "https://fcm.googleapis.com/fcm/send/a",
+        "https://updates.push.services.mozilla.com/wpush/v2/a",
+        "https://wns2-par02p.notify.windows.com/w/?token=a",
+        "https://WEB.PUSH.APPLE.COM:443/a",
+    ],
+)
+async def test_known_push_services_are_accepted(api: Api, endpoint: str) -> None:
+    response = await api.http.post("/api/push/subscribe", json=subscription(Receiver(), endpoint))
+
+    assert response.status_code == 204
 
 
 async def test_revoking_a_device_deletes_its_subscriptions(api: Api) -> None:

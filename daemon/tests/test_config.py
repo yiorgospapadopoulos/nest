@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from harness.config.errors import ConfigError
 from harness.config.loader import load_repos, load_settings, load_templates, save_repo
-from harness.config.models import RepoConfig, Settings, WorktreeConfig
+from harness.config.models import RepoConfig, ServerSettings, Settings, WorktreeConfig
 from harness.paths import AppPaths
 
 
@@ -22,7 +22,8 @@ def test_first_run_writes_default_settings_file(paths: AppPaths) -> None:
 
     assert settings == Settings()
     assert settings.server.port == 8765
-    assert settings.agents.permission_mode == "default"
+    # No mode: Claude Code applies its own `defaultMode` (IMP-06).
+    assert settings.agents.permission_mode is None
     assert settings.modules.enabled == []
     written = tomllib.loads(paths.settings_file.read_text(encoding="utf-8"))
     assert written["server"]["port"] == 8765
@@ -206,3 +207,21 @@ def test_allowed_origins_default_to_empty_and_are_read(paths: AppPaths) -> None:
     )
 
     assert load_settings(paths).server.allowed_origins == ["https://mac.example.ts.net"]
+
+
+def test_allowed_hosts_default_to_empty_and_are_read(paths: AppPaths) -> None:
+    assert load_settings(paths).server.allowed_hosts == []
+
+    paths.settings_file.write_text(
+        '[server]\nallowed_hosts = ["Harness.Local", "*.example.org"]\n', encoding="utf-8"
+    )
+
+    assert load_settings(paths).server.allowed_hosts == ["harness.local", "*.example.org"]
+
+
+@pytest.mark.parametrize(
+    "entry", ["", "*", "https://mac.ts.net", "mac.ts.net:8765", "a b", "*.", "x.*.org"]
+)
+def test_allowed_hosts_must_be_host_names(entry: str) -> None:
+    with pytest.raises(ValidationError):
+        ServerSettings(allowed_hosts=[entry])

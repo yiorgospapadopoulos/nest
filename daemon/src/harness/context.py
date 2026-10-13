@@ -129,6 +129,7 @@ class AppContext:
             fetch=lambda: fetch_details(engine_factory),
             clock=clock,
             account_file=paths.claude_account_file,
+            settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
         )
         sessions = SessionManager(
             store=store,
