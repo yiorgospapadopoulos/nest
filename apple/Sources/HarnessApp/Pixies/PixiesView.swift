@@ -14,12 +14,40 @@ struct PixiesView: View {
                     PixieList()
                     PixiePage(pixie: pixie)
                 }
-            } else {
+            } else if shell.pixies.pixies.isEmpty {
                 NoPixiesView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                AllHiddenView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(glass.spacing.gap)
+    }
+}
+
+/// Every pixie is hidden: a way to list them again, to open and show them.
+private struct AllHiddenView: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "eye.slash").font(.system(size: 22)).foregroundStyle(Palette.t2)
+            Text("All pixies are hidden")
+                .font(.ui(TypeSize.subhead, .semibold))
+                .foregroundStyle(Palette.t1)
+            HStack(spacing: 8) {
+                Button("Show hidden") { shell.showsHiddenPixies = true }
+                    .buttonStyle(.harness(height: 30))
+                Button {
+                    shell.createPixie(CreatePixieRequest(name: "New pixie"), details: true)
+                } label: {
+                    Label("New pixie", systemImage: Icon.plus)
+                }
+                .buttonStyle(.harness(.primary, height: 30))
+            }
+            .padding(.top, 4)
+        }
     }
 }
 

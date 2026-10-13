@@ -239,11 +239,8 @@
             try await renderExchangeBar(model, shell, controller, folder)
         }
 
-        /// B29: a running turn with its timer, thinking, a running agents group and a
-        /// running group of commands beside a finished turn that says how long it worked;
-        /// then the thinking and the commands group open.
-        /// B34: the Pixies tab with no pixies, then Reviewer's chat, its details, and the
-        /// Soul and Memory pages of the details panel.
+        /// B34: the Pixies tab empty and with every pixie hidden, then Reviewer's chat, its
+        /// details, and the Soul and Memory pages.
         private static func renderPixies(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -255,6 +252,17 @@
             shell.openPixies()
             try await pair(controller, "pixies-empty", folder)
 
+            (model.api as? SampleAPI)?.restorePixies()
+            try await model.pixies.load()
+            // Every pixie hidden: the tab offers to show them.
+            for pixie in model.pixies.pixies {
+                try await model.pixies.update(pixie.id, UpdatePixieRequest(hidden: true))
+            }
+            shell.selectPixie(nil)
+            try await pair(controller, "pixies-all-hidden", folder)
+            shell.showsHiddenPixies = true
+            try await pair(controller, "pixies-hidden-shown", folder)
+            shell.showsHiddenPixies = false
             (model.api as? SampleAPI)?.restorePixies()
             try await model.pixies.load()
             // Watcher's chat runs; live events would have brought it.
@@ -270,6 +278,9 @@
             try await pair(controller, "pixie-details-memory", folder)
         }
 
+        /// B29: a running turn with its timer, thinking, a running agents group and a
+        /// running group of commands beside a finished turn that says how long it worked;
+        /// then the thinking and the commands group open.
         private static func renderTurnActivity(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {

@@ -336,7 +336,7 @@ private struct AddProjectPopover: View {
                 .padding(.bottom, 6)
             ForEach(shell.app.closedRepos) { repo in
                 MenuRow(icon: nil, title: repo.name, detail: repo.path) {
-                    shell.app.openProject(repo.name)
+                    shell.openProject(repo.name)
                     dismiss()
                 }
             }

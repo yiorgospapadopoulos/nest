@@ -154,6 +154,8 @@ final class Shell {
     var pixie: String?
     /// The details panel beside the pixie's chat.
     var pixieDetailsOpen = false
+    /// The list shows hidden pixies too, so they can be opened and shown again.
+    var showsHiddenPixies = false
     var pixiePanel = PixiePanel.details
 
     var project: String? { app.currentProject }
@@ -181,6 +183,12 @@ final class Shell {
         app.selectProject(name)
     }
 
+    /// A project opened from the + menu becomes the current tab, leaving the Pixies tab.
+    func openProject(_ name: String) {
+        pixiesOpen = false
+        app.openProject(name)
+    }
+
     /// Cmd-1 to Cmd-9.
     func selectProject(at index: Int) {
         pixiesOpen = false
@@ -203,15 +211,18 @@ final class Shell {
         close()
         pixiesOpen = true
         if shownPixie == nil {
-            selectPixie(pixies.visible.first?.id)
+            selectPixie(listedPixies.first?.id)
         }
     }
 
-    /// The pixie the page shows: the selected one while it exists, else the first.
+    /// The pixies the list shows: the visible ones, or all while hidden ones are shown.
+    var listedPixies: [Pixie] {
+        showsHiddenPixies ? pixies.pixies : pixies.visible
+    }
+
+    /// The pixie the page shows: the selected one while it exists, else the first listed.
     var shownPixie: Pixie? {
-        let visible = pixies.visible
-        return visible.first { $0.id == pixie } ?? pixies.pixies.first { $0.id == pixie }
-            ?? visible.first
+        pixies.pixies.first { $0.id == pixie } ?? listedPixies.first
     }
 
     func selectPixie(_ id: String?) {
@@ -265,7 +276,7 @@ final class Shell {
             let name = self.pixies.pixies.first { $0.id == id }?.name ?? "The pixie"
             try await self.pixies.delete(id)
             if self.pixie == id {
-                self.selectPixie(self.pixies.visible.first?.id)
+                self.selectPixie(self.listedPixies.first?.id)
             }
             self.show("Deleted \(name)", kind: .done)
         }
@@ -863,10 +874,13 @@ final class Shell {
     func addProject(at url: URL) {
         let path = url.standardizedFileURL.path
         if let known = app.repos.first(where: { $0.path == path }) {
-            app.openProject(known.name)
+            openProject(known.name)
             return
         }
-        run("Could not add the project") { try await self.app.addProject(path: path) }
+        run("Could not add the project") {
+            try await self.app.addProject(path: path)
+            self.pixiesOpen = false
+        }
     }
 
     // MARK: Sheets

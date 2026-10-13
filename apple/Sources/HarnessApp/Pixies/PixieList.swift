@@ -8,12 +8,13 @@ struct PixieList: View {
     @Environment(\.glass) private var glass
 
     var body: some View {
-        let pixies = shell.pixies.visible
+        let pixies = shell.listedPixies
+        let hidden = shell.pixies.pixies.count { $0.hidden }
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Pixies")
                     .font(.ui(TypeSize.subhead, .bold))
-                CountBadge(count: pixies.count, size: 18)
+                CountBadge(count: shell.pixies.visible.count, size: 18)
                 Spacer(minLength: 0)
             }
             .padding(.leading, 6)
@@ -49,6 +50,18 @@ struct PixieList: View {
             }
             .scrollIndicators(.never)
             .padding(.horizontal, -4)
+
+            if hidden > 0 {
+                Button {
+                    shell.showsHiddenPixies.toggle()
+                } label: {
+                    Label(
+                        shell.showsHiddenPixies ? "Hide hidden" : "Show hidden (\(hidden))",
+                        systemImage: shell.showsHiddenPixies ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.harness(.ghost, height: 26))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(EdgeInsets(top: 12, leading: 10, bottom: 10, trailing: 10))
         .frame(width: Sidebar.width)
@@ -80,12 +93,13 @@ private struct PixieRow: View {
                     }
                 }
                 .frame(width: 30)
+                .opacity(pixie.hidden ? 0.5 : 1)
             VStack(alignment: .leading, spacing: 1) {
                 Text(pixie.name)
                     .font(.ui(TypeSize.callout, selected ? .semibold : .regular))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
-                Text("@\(pixie.slug)")
+                Text(pixie.hidden ? "@\(pixie.slug) · Hidden" : "@\(pixie.slug)")
                     .font(.ui(TypeSize.caption))
                     .foregroundStyle(Palette.t3)
                     .lineLimit(1)
