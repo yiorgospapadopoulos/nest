@@ -7,9 +7,12 @@ request is opened once.
 The tree and its git config may hold what the agent planted, so (D050): every git command
 runs with `HARDENED` overrides (no hooks, no fsmonitor program), nothing starts while the
 repository's own config sets something that runs a program or sends data elsewhere, and a
-push goes only to the origin URL the user confirmed. The branch is pushed by an explicit
-refspec, and only when its name is a plain branch name: the agent can name a branch
-`--mirror` and check it out (SEC-01).
+push goes only to the origin URL the user confirmed. Both checks run again right before
+the push, since a process the agent left running could change the config meanwhile
+(SEC-07). The branch is pushed by an explicit refspec, without tags, and only when its name
+is a plain branch name: the agent can name a branch `--mirror` and check it out (SEC-01).
+A worktree is pushed only from its own branch (SEC-06), and a git repository inside the
+work is never committed (BUG-65).
 """
 
 from collections.abc import Sequence
@@ -24,6 +27,7 @@ from harness.gitops.runner import CommandError, CommandRunner
 from harness.gitops.safety import GIT_CONFIG_LIST, HARDENED, repo_settings, unsafe_settings
 from harness.review.errors import (
     GitActionError,
+    NestedRepositoryError,
     NothingToCommitError,
     RemoteChangedError,
     RemoteNotConfirmedError,
@@ -71,8 +75,13 @@ class GitPublisher:
         session = await self._commit(session, cwd, plan)
         if branch is None:
             return session
+        await self.require_safe_config(session)
+        await self.require_remote(session, plan.remote_url)
         ref = f"refs/heads/{branch}"
-        push = ["push", "--no-verify", "--recurse-submodules=no", "-u", REMOTE, f"{ref}:{ref}"]
+        push = [
+            *("push", "--no-verify", "--recurse-submodules=no", "--no-follow-tags", "-u"),
+            *(REMOTE, f"{ref}:{ref}"),
+        ]
         await self._step(session, "push", _git(*push), cwd)
         await self._bus.publish(types.GIT_PUSHED, {"remote": REMOTE, "branch": branch}, session.id)
         if plan.pull_request is None or session.pr_url is not None:
@@ -115,13 +124,13 @@ class GitPublisher:
         raise error
 
     async def _branch(self, session: Session, cwd: Path) -> str:
-        """The worktree's branch, or the checkout's current branch for in-place sessions,
-        which must be a plain branch name.
+        """The checkout's current branch, which must be a plain branch name, and for a
+        worktree its session's branch.
         """
-        if session.branch is not None:
-            return session.branch
         head = (await self._step(session, "push", _git("symbolic-ref", "HEAD"), cwd)).strip()
         branch = head.removeprefix("refs/heads/")
+        if session.branch is not None and branch != session.branch:
+            await self._refuse(session, "push", UnsafeBranchError(branch, session.branch))
         if branch == head or branch.startswith("-"):
             await self._refuse(session, "push", UnsafeBranchError(branch))
         try:
@@ -154,23 +163,27 @@ class GitPublisher:
         return await self._store.update(session.id, commit_sha=head)
 
     async def _stage(self, session: Session, cwd: Path, paths: list[str] | None) -> None:
+        # git lists an untracked repository inside the work as its folder, `lib/`.
+        listing = ("ls-files", "-z", "--others", "--exclude-standard")
         if paths is None:
+            untracked = await self._step(session, "commit", _git(*listing), cwd)
+            await self._refuse_nested(session, untracked)
             await self._step(session, "commit", _git("add", "-A"), cwd)
             return
         # `git add` rejects paths git no longer knows, such as the old name of a file the
         # agent renamed with `git mv`; those changes are staged already.
         listed = await self._step(
-            session,
-            "commit",
-            _git(
-                *("ls-files", "-z", "--cached", "--others", "--deleted"),
-                *("--exclude-standard", "--", *paths),
-            ),
-            cwd,
+            session, "commit", _git(*listing, "--cached", "--deleted", "--", *paths), cwd
         )
+        await self._refuse_nested(session, listed)
         known = sorted(set(filter(None, listed.split("\0"))))
         if known:
             await self._step(session, "commit", _git("add", "-A", "--", *known), cwd)
+
+    async def _refuse_nested(self, session: Session, listing: str) -> None:
+        nested = sorted({path for path in listing.split("\0") if path.endswith("/")})
+        if nested:
+            await self._refuse(session, "commit", NestedRepositoryError(nested))
 
     async def _head(self, session: Session, cwd: Path) -> str:
         return (await self._step(session, "commit", _git("rev-parse", "HEAD"), cwd)).strip()

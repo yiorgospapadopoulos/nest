@@ -7,6 +7,7 @@ from harness.events.bus import EventBus
 from harness.gitops.runner import CommandError
 from harness.review.errors import (
     GitActionError,
+    NestedRepositoryError,
     NothingToCommitError,
     RemoteChangedError,
     RemoteNotConfirmedError,
@@ -490,7 +491,8 @@ async def test_pushes_name_the_branch_in_an_explicit_refspec(env: Env) -> None:
 
     assert push_calls(env.runner) == [
         (
-            *("push", "--no-verify", "--recurse-submodules=no", "-u", "origin"),
+            *("push", "--no-verify", "--recurse-submodules=no", "--no-follow-tags", "-u"),
+            "origin",
             "refs/heads/main:refs/heads/main",
         )
     ]
@@ -512,3 +514,110 @@ async def test_a_missing_gh_fails_the_pull_request_step(env: Env) -> None:
     assert caught.value.step == "pr"
     assert "No such file" in caught.value.stderr
     assert (await env.store.get(session.id)).commit_sha is not None
+
+
+@pytest.mark.parametrize(("name", "users"), [("*", "notes.txt"), ("[ab].txt", "a.txt")])
+async def test_wildcards_in_a_chosen_file_name_commit_only_that_file(
+    env: Env, name: str, users: str
+) -> None:
+    """SEC-04: git reads paths as patterns even after `--`; the user's own edit stays out."""
+    commit_file(env.repo, users, "the user's\n")
+    env.base = git(env.repo, "rev-parse", "HEAD").strip()
+    session = await env.in_place_session()
+    (env.repo / users).write_text("the user's own edit\n", encoding="utf-8")
+    (env.repo / name).write_text("from the agent\n", encoding="utf-8")
+
+    await env.publisher.publish(session, env.plan(paths=[name], pull_request=None))
+
+    assert git(env.repo, "show", "--name-only", "--format=", "HEAD").strip() == name
+    assert git(env.repo, "status", "--porcelain").strip() == f"M {users}"
+
+
+async def test_tags_are_never_pushed_with_the_work(env: Env) -> None:
+    """SEC-05: `push.followTags` in the repository's config would push annotated tags."""
+    session = await env.worktree_session()
+    git(env.repo, "config", "push.followTags", "true")
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+    env.runner.before["git push"] = lambda: git(env.worktree, "tag", "-a", "-m", "go", "release")
+
+    await env.publisher.publish(session, env.plan(pull_request=None))
+
+    assert "--no-follow-tags" in push_calls(env.runner)[0]
+    assert git(env.origin, "tag") == ""
+
+
+async def test_settings_planted_during_publishing_stop_the_push(env: Env) -> None:
+    """SEC-07: the repository's config is checked again right before the push."""
+    session = await env.worktree_session()
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+    env.runner.before["git commit"] = lambda: git(env.repo, "config", "core.sshCommand", "evil")
+
+    with pytest.raises(UnsafeRepoConfigError):
+        await env.publisher.publish(session, env.plan())
+
+    assert push_calls(env.runner) == []
+    assert git(env.origin, "for-each-ref", "refs/heads/agent") == ""
+
+
+async def test_a_remote_changed_during_publishing_stops_the_push(env: Env, tmp_path: Path) -> None:
+    evil = bare(tmp_path / "evil.git")
+    session = await env.worktree_session()
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+    env.runner.before["git commit"] = lambda: git(
+        env.repo, "remote", "set-url", "origin", str(evil)
+    )
+
+    with pytest.raises(RemoteChangedError):
+        await env.publisher.publish(session, env.plan())
+
+    assert push_calls(env.runner) == []
+    assert git(evil, "for-each-ref") == ""
+
+
+async def test_a_nested_repository_is_never_committed(env: Env) -> None:
+    """BUG-65: `git add -A` would commit it as a submodule that points nowhere."""
+    session = await env.worktree_session()
+    init_repo(env.worktree / "lib")
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+
+    with pytest.raises(NestedRepositoryError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    assert caught.value.status_code == 409
+    assert caught.value.payload() == {
+        "detail": str(caught.value),
+        "code": "nested_repository",
+        "paths": ["lib/"],
+    }
+    assert "lib/" in str(caught.value)
+    assert git(env.worktree, "rev-parse", "HEAD").strip() == env.base
+    assert git(env.worktree, "diff", "--cached", "--name-only") == ""
+    assert push_calls(env.runner) == []
+
+
+async def test_a_chosen_nested_repository_is_never_committed(env: Env) -> None:
+    session = await env.in_place_session()
+    init_repo(env.repo / "lib")
+
+    with pytest.raises(NestedRepositoryError):
+        await env.publisher.publish(session, env.plan(paths=["lib/"], pull_request=None))
+
+    assert git(env.repo, "rev-parse", "HEAD").strip() == env.base
+
+
+async def test_a_worktree_switched_to_another_branch_is_not_pushed(env: Env) -> None:
+    """SEC-06: the review says the work goes to the worktree's branch, and only there."""
+    session = await env.worktree_session()
+    git(env.repo, "branch", "deploy")
+    git(env.worktree, "symbolic-ref", "HEAD", "refs/heads/deploy")
+    (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
+    before = remote_refs(env.origin)
+
+    with pytest.raises(UnsafeBranchError) as caught:
+        await env.publisher.publish(session, env.plan())
+
+    assert caught.value.payload()["code"] == "unsafe_branch"
+    assert caught.value.branch == "deploy"
+    assert "agent/fix" in str(caught.value)
+    assert git(env.repo, "rev-parse", "deploy").strip() == env.base
+    assert remote_refs(env.origin) == before

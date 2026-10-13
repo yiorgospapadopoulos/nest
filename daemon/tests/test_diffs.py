@@ -1,10 +1,13 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from harness.gitops.runner import GitError
+from harness.review import head
 from harness.review.diff_parser import parse_name_status, parse_patch
 from harness.review.diffs import session_diff
+from harness.review.models import ReviewCommit, ReviewHead
 from tests.git_support import commit_file, git, init_repo
 
 PATCH = """\
@@ -243,6 +246,8 @@ async def test_an_untracked_nested_repository_is_listed_as_a_folder(repo: Path) 
 
     fresh, nested = diff.files
     assert (nested.path, nested.status, nested.additions, nested.hunks) == ("lib/", "added", 0, [])
+    # BUG-65: shown as a repository of its own, which harness will not commit.
+    assert (nested.nested_repository, fresh.nested_repository) == (True, False)
     assert (fresh.path, fresh.additions) == ("fresh.txt", 1)
 
 
@@ -272,3 +277,111 @@ async def test_unusual_paths_get_their_own_changes(repo: Path) -> None:
     renamed = by_path[moved]
     assert (renamed.status, renamed.old_path) == ("renamed", tabbed)
     assert (renamed.additions, renamed.deletions) == (1, 0)
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        [("diff.noprefix", "true")],
+        [("diff.mnemonicPrefix", "true")],
+        [("diff.srcPrefix", "x/"), ("diff.dstPrefix", "y/")],
+    ],
+)
+async def test_diff_prefix_settings_never_blank_a_change(
+    repo: Path, settings: list[tuple[str, str]]
+) -> None:
+    """BUG-52: the agent may set these with an allowed `git config`; the user may have them."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    for key, value in settings:
+        git(repo, "config", key, value)
+    (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
+    spaced = repo / "with space \u00e9.txt"
+    spaced.write_text("one\n", encoding="utf-8")
+    git(repo, "add", spaced.name)
+    git(repo, "commit", "-q", "-m", "quoted name")
+    spaced.write_text("one\ntwo\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    by_path = {f.path: f for f in diff.files}
+    assert (by_path["keep.txt"].additions, by_path["keep.txt"].deletions) == (1, 1)
+    assert len(by_path["keep.txt"].hunks) == 1
+    assert (by_path[spaced.name].additions, len(by_path[spaced.name].hunks)) == (2, 1)
+
+
+async def test_the_diff_names_head_and_its_branch(repo: Path) -> None:
+    head = git(repo, "rev-parse", "HEAD").strip()
+
+    diff = await session_diff(repo, head)
+    git(repo, "checkout", "-q", "--detach")
+    detached = await session_diff(repo, head)
+
+    assert diff.head == ReviewHead(commit=head, branch="main")
+    assert detached.head == ReviewHead(commit=head, branch=None)
+
+
+async def test_a_repository_without_commits_has_no_head(tmp_path: Path) -> None:
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+
+    diff = await session_diff(repo, None)
+
+    assert diff.head == ReviewHead(commit=None, branch="main")
+    assert diff.commits == []
+
+
+async def test_commits_the_base_and_the_published_work_do_not_hold_are_listed(repo: Path) -> None:
+    """SEC-02: a commit made behind the review's back is shown, whatever made it."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    published = commit_file(repo, "approved.txt")
+    hidden = commit_file(repo, "hidden.txt")
+    second = commit_file(repo, "also hidden.txt")
+
+    diff = await session_diff(repo, base, published)
+    nothing_published = await session_diff(repo, base)
+    without_base = await session_diff(repo, None)
+
+    assert diff.commits == [
+        ReviewCommit(sha=second, subject="add also hidden.txt"),
+        ReviewCommit(sha=hidden, subject="add hidden.txt"),
+    ]
+    assert [c.sha for c in nothing_published.commits] == [second, hidden, published]
+    assert len(without_base.commits) == 7
+    assert without_base.commits[-1] == ReviewCommit(
+        sha=git(repo, "rev-list", "--max-parents=0", "HEAD").strip(), subject="init"
+    )
+    assert (await session_diff(repo, base, second)).commits == []
+
+
+async def test_replace_refs_hide_neither_changes_nor_commits(repo: Path) -> None:
+    """`git replace` (allowed by the git guard) could make the base look like the work, or
+    the work's commits look like the base's; the daemon's git reads the real objects.
+    """
+    base = git(repo, "rev-parse", "HEAD").strip()
+    hidden = commit_file(repo, "keep.txt", "a\nB\nc\n")
+    git(repo, "replace", "--graft", base, hidden)
+    (repo / "notes.txt").write_text("new\n", encoding="utf-8")
+    original = git(repo, "rev-parse", f"{base}:old.txt").strip()
+    planted = git(repo, "hash-object", "-w", "notes.txt").strip()
+    git(repo, "replace", original, planted)
+    (repo / "old.txt").write_text("new\n", encoding="utf-8")
+
+    diff = await session_diff(repo, base)
+
+    assert [c.sha for c in diff.commits] == [hidden]
+    by_path = {f.path: f for f in diff.files}
+    assert by_path["old.txt"].deletions == 20
+    assert by_path["keep.txt"].additions == 1
+
+
+async def test_reading_head_reports_unexpected_git_failures(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def failing(args: Sequence[str], cwd: Path) -> str:
+        raise GitError(args, 128, "fatal: bad object HEAD")
+
+    monkeypatch.setattr(head, "run_git", failing)
+
+    with pytest.raises(GitError, match="bad object"):
+        await session_diff(repo, git(repo, "rev-parse", "HEAD").strip())

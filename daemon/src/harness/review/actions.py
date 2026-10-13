@@ -2,10 +2,16 @@
 
 Approving commits, pushes and opens a pull request with the daemon's credentials; the
 pending review is resolved only when every step succeeded, so a failure can be retried.
+
+Approving waits for the agent's background tasks (BUG-57), refuses a HEAD other than the
+one the review showed, and needs the user's acknowledgement when the agent changed what
+the publish uses, or HEAD holds commits the review diff never showed (SEC-02). A refusal's
+text is shown to the user as it is, so it names no API field.
 """
 
 import asyncio
 from dataclasses import replace
+from weakref import WeakValueDictionary
 
 from pydantic import JsonValue
 
@@ -16,8 +22,8 @@ from harness.gitops.remotes import scrub_url
 from harness.prs.monitor import PrMonitor
 from harness.prs.summary import pr_summary
 from harness.repos.service import FALLBACK_BRANCH, RepoService
-from harness.review.diffs import session_diff
-from harness.review.errors import GitViolationError
+from harness.review.diffs import session_diff, session_head
+from harness.review.errors import BackgroundRunningError, GitViolationError, HeadChangedError
 from harness.review.models import ApproveRequest, SessionDiff
 from harness.review.publish import GitPublisher, PublishPlan, PullRequest
 from harness.sessions.errors import SessionBusyError
@@ -44,26 +50,29 @@ class ReviewActions:
         self._tracking = tracking
         self._publisher = publisher
         self._prs = prs
-        self._locks: dict[str, asyncio.Lock] = {}
+        # One operation per session at a time; a lock goes once nobody holds it (IMP-13).
+        self._locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
     async def diff(self, session_id: str) -> SessionDiff:
         session = await self._sessions.get(session_id)
         await self._repos.require_git(session.repo)
-        return await session_diff(require_workspace(session), session.base_ref)
+        cwd = require_workspace(session)
+        return await session_diff(cwd, session.base_ref, session.commit_sha)
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
         async with self._lock(session_id), self._sessions.publishing(session_id):
             session = await self._idle(session_id)
-            require_workspace(session)
+            cwd = require_workspace(session)
             await self._repos.require_git(session.repo)
             await self._sessions.audit_refs(session_id)
+            head, commits = await session_head(cwd, session.base_ref, session.commit_sha)
+            if commits:
+                await self._sessions.set_git_violation(session_id, True)
+            if request.expected_head is not None and head.commit != request.expected_head:
+                raise HeadChangedError
             session = await self._sessions.get(session_id)
             if session.git_violation and not request.acknowledge_violation:
-                msg = (
-                    "the agent changed git refs itself; check them and set "
-                    "acknowledge_violation to publish anyway"
-                )
-                raise GitViolationError(msg)
+                raise GitViolationError
             plan = await self._plan(session, request)
             if plan.push:
                 plan = replace(plan, remote_url=await self._remote_url(session, request))
@@ -71,6 +80,9 @@ class ReviewActions:
                 session = await self._publisher.publish(session, plan)
             finally:
                 await self._sessions.refresh_refs(session_id)
+            if session.git_violation:
+                # The user published anyway: what was flagged is now part of the work.
+                session = await self._sessions.set_git_violation(session_id, False)
             if plan.push and session.pr_url is not None:
                 # A new pull request, or new commits on one: read it without waiting.
                 self._prs.check_soon(session_id)
@@ -102,6 +114,8 @@ class ReviewActions:
         if session.state in IN_FLIGHT or self._sessions.busy(session_id):
             msg = f"session {session_id!r} is working; wait until its turn ends"
             raise SessionBusyError(msg)
+        if self._sessions.background_running(session_id):
+            raise BackgroundRunningError
         return session
 
     async def _plan(self, session: Session, request: ApproveRequest) -> PublishPlan:
@@ -110,7 +124,10 @@ class ReviewActions:
             raise InvalidInputError(msg)
         if session.mode == "in_place":
             if request.open_pr:
-                msg = "in-place sessions push without a pull request; set open_pr to false"
+                msg = (
+                    "A chat that works in your checkout pushes without a pull request; turn "
+                    "off opening one."
+                )
                 raise ConflictError(msg)
             paths = await self._chosen_paths(session, request.files)
             return PublishPlan(request.commit_message, paths, request.push, None)

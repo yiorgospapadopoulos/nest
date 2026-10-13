@@ -82,6 +82,28 @@ def test_filter_overrides_switch_off_each_driver_once() -> None:
     assert filter_overrides([]) == []
 
 
+def test_checkout_overrides_keep_git_lfs_as_it_installs_itself() -> None:
+    """Checking out a worktree must still run git-lfs, but not a driver the agent added."""
+    lfs = [
+        local("filter.lfs.clean", "git-lfs clean -- %f"),
+        local("filter.lfs.smudge", "git-lfs smudge -- %f"),
+        local("filter.lfs.process", "git-lfs filter-process"),
+        local("filter.lfs.required", "true"),
+    ]
+
+    assert filter_overrides(lfs, only_unsafe=True) == []
+    assert filter_overrides([local("filter.only.required", "true")], only_unsafe=True) == []
+    assert filter_overrides(
+        [*lfs[:2], local("filter.lfs.process", "sh -c evil"), local("filter.x.clean")],
+        only_unsafe=True,
+    ) == [
+        *("-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge="),
+        *("-c", "filter.lfs.process=", "-c", "filter.lfs.required=false"),
+        *("-c", "filter.x.clean=", "-c", "filter.x.smudge="),
+        *("-c", "filter.x.process=", "-c", "filter.x.required=false"),
+    ]
+
+
 def test_a_filter_driver_named_with_an_equals_sign_cannot_be_switched_off() -> None:
     with pytest.raises(ValueError, match="'a=b' cannot be switched off"):
         filter_overrides([local("filter.a=b.clean")])

@@ -36,6 +36,9 @@ class FileDiff(BaseModel):
     # Lines beyond the per-file limit are left out; the counts still include them.
     truncated: bool
     hunks: list[Hunk]
+    # An untracked folder that is a git repository of its own (`lib/`): harness does not
+    # commit it (BUG-65).
+    nested_repository: bool = False
 
 
 class DiffStats(BaseModel):
@@ -44,9 +47,25 @@ class DiffStats(BaseModel):
     deletions: int
 
 
+class ReviewHead(BaseModel):
+    # None while the repository has no commits.
+    commit: str | None
+    # The branch HEAD names, such as `main`, where an approved push goes; None when detached.
+    branch: str | None
+
+
+class ReviewCommit(BaseModel):
+    sha: str
+    subject: str
+
+
 class SessionDiff(BaseModel):
     # The commit the work is compared with; None when the repository had no commits.
     base: str | None
+    head: ReviewHead
+    # Commits on HEAD that neither the base nor the work harness published holds: made
+    # behind the review's back, they are published with the work (SEC-02), newest first.
+    commits: list[ReviewCommit]
     files: list[FileDiff]
     stats: DiffStats
 
@@ -66,6 +85,8 @@ class ApproveRequest(BaseModel):
     pr_body: str | None = None
     # Publish even though the agent changed git refs itself (D013 layer 4).
     acknowledge_violation: bool = False
+    # HEAD's commit as the review showed it; approving is refused if HEAD moved since.
+    expected_head: str | None = None
     # Push to origin's current URL and remember it, after the user saw that it is not the
     # URL harness recorded (D050); it must match origin's push URL exactly.
     confirm_remote_url: str | None = None

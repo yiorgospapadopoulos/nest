@@ -1,8 +1,10 @@
 """A session's work as a diff: its working tree, untracked files included, against its base.
 
 The diff runs with the user's credentials in a tree the agent could change, so git runs
-with no hooks, fsmonitor, textconv or external diff, and with the repository's own filter
-drivers switched off (D050).
+with no hooks, fsmonitor, textconv, external diff or replace refs, and with the
+repository's own filter drivers switched off (D050). The patch's `a/` and `b/` prefixes are
+pinned, since the files are matched to their patch sections by path and the repository's
+config may change the prefixes (BUG-52).
 """
 
 from pathlib import Path
@@ -10,7 +12,15 @@ from pathlib import Path
 from harness.gitops.runner import GitError, run_git
 from harness.gitops.safety import GIT_CONFIG_LIST, HARDENED, filter_overrides, repo_settings
 from harness.review.diff_parser import PatchFile, by_path, parse_name_status, parse_patch
-from harness.review.models import DiffStats, FileDiff, FileStatus, SessionDiff
+from harness.review.head import read_head, unaccounted_commits
+from harness.review.models import (
+    DiffStats,
+    FileDiff,
+    FileStatus,
+    ReviewCommit,
+    ReviewHead,
+    SessionDiff,
+)
 from harness.review.untracked import untracked_diff
 
 MAX_LINES_PER_FILE = 2000
@@ -18,7 +28,10 @@ MAX_LINES_PER_FILE = 2000
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
-async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
+async def session_diff(cwd: Path, base: str | None, published: str | None = None) -> SessionDiff:
+    """The work in `cwd` against `base`; `published` is the work harness last published
+    (the session's commit), whose commits on HEAD are accounted for.
+    """
     ref = base or EMPTY_TREE
     safe = await _safe_options(cwd)
     # The same rename detection for both, so git lists the files in the same order.
@@ -27,7 +40,11 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
         cwd,
     )
     patch = await run_git(
-        [*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M", ref, "--"], cwd
+        [
+            *(*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv"),
+            *("--src-prefix=a/", "--dst-prefix=b/", "-M", ref, "--"),
+        ],
+        cwd,
     )
     untracked = await run_git([*safe, "ls-files", "--others", "--exclude-standard", "-z"], cwd)
     # By path, not position: a typechange is one status but two patch sections, and the
@@ -40,8 +57,11 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
     for path in filter(None, untracked.split("\0")):
         files.append(await untracked_diff(cwd, path, MAX_LINES_PER_FILE))
     files.sort(key=lambda f: f.path)
+    head = await read_head(cwd, safe)
     return SessionDiff(
         base=base,
+        head=head,
+        commits=await unaccounted_commits(cwd, safe, head.commit, base, published),
         files=files,
         stats=DiffStats(
             files=len(files),
@@ -49,6 +69,15 @@ async def session_diff(cwd: Path, base: str | None) -> SessionDiff:
             deletions=sum(f.deletions for f in files),
         ),
     )
+
+
+async def session_head(
+    cwd: Path, base: str | None, published: str | None
+) -> tuple[ReviewHead, list[ReviewCommit]]:
+    """HEAD as `session_diff` reports it, and its commits that need the user's word."""
+    safe = await _safe_options(cwd)
+    head = await read_head(cwd, safe)
+    return head, await unaccounted_commits(cwd, safe, head.commit, base, published)
 
 
 def _file(path: str, old_path: str | None, status: FileStatus, part: PatchFile) -> FileDiff:
