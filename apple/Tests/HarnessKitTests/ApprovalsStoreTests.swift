@@ -179,6 +179,33 @@ import Testing
         #expect(progress.failure == .gitFailed("git push failed", step: "push", stderr: "denied"))
     }
 
+    /// The daemon refuses to publish when HEAD is no longer the one the review showed
+    /// (audit SEC-02, SEC-06).
+    @Test func approveSendsTheHeadTheReviewShowed() async throws {
+        try await store.load()
+        try await store.loadDiff(session: review.sessionID)
+        try await store.publish(review, store.publishForm(for: review, session: nil))
+        #expect(
+            api.calls.last
+                == "approve \(review.sessionID) Dark mode contrast open_pr=true head=2222222222222222222222222222222222222222"
+        )
+    }
+
+    @Test func aRefusedApproveRunsNoStepAndKeepsTheReason() async throws {
+        try await store.load()
+        let refusal = APIError.approveRefused("Work still runs.", reason: .backgroundRunning)
+        api.fail("approve", with: refusal)
+        await #expect(throws: refusal) {
+            try await store.publish(review, store.publishForm(for: review, session: nil))
+        }
+        let progress = try #require(store.progress(session: review.sessionID))
+        #expect(progress.steps.map(\.state) == [.pending, .pending, .pending])
+        #expect(progress.failedStep == nil)
+        #expect(progress.failure == refusal)
+        #expect(!progress.isRunning)
+        #expect(store.hasPendingReview(session: review.sessionID))
+    }
+
     @Test func otherPublishErrorsMarkTheRunningStep() async throws {
         try await store.load()
         api.fail("approve", with: CancellationError())

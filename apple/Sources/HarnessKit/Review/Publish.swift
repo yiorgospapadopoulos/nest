@@ -33,8 +33,10 @@ public struct PublishForm: Sendable, Hashable {
     public var prTitle = ""
     public var prBody = ""
     public var acknowledgeViolation: Bool
+    /// The push address the user confirmed after approving was refused for it (I-008).
+    public var confirmRemoteURL: String?
     /// The agent changed git refs itself; publishing needs an explicit acknowledgement.
-    public let hasViolation: Bool
+    public private(set) var hasViolation: Bool
     public let mode: SessionMode
     /// In-place sessions commit only the reviewed files.
     public let files: [String]
@@ -46,6 +48,11 @@ public struct PublishForm: Sendable, Hashable {
         acknowledgeViolation = acknowledged
         mode = session?.mode ?? .worktree
         files = approval.review?.paths ?? []
+    }
+
+    /// Takes up a violation found while the form is open, as the session now reads.
+    public mutating func follow(_ session: Session?) {
+        hasViolation = session?.gitViolation ?? false
     }
 
     /// In-place sessions work on the checkout's own branch, so no pull request is opened.
@@ -73,7 +80,8 @@ public struct PublishForm: Sendable, Hashable {
             files: mode == .inPlace ? files : nil, push: push, openPR: pullRequest,
             prTitle: pullRequest ? optional(prTitle) : nil,
             prBody: pullRequest ? optional(prBody) : nil,
-            acknowledgeViolation: hasViolation && acknowledgeViolation)
+            acknowledgeViolation: hasViolation && acknowledgeViolation,
+            confirmRemoteURL: push ? confirmRemoteURL : nil)
     }
 }
 
@@ -146,8 +154,11 @@ public final class PublishProgress {
         isRunning = false
     }
 
+    /// A refusal (409) ran no step: the steps stay pending and the failure says why.
     func finish(_ error: APIError) {
-        if case .gitFailed(_, let step, let stderr) = error {
+        if error.isConflict {
+            steps = steps.map { PublishStep(kind: $0.kind, state: .pending) }
+        } else if case .gitFailed(_, let step, let stderr) = error {
             let message = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             fail(
                 step: PublishStepKind(rawValue: step),

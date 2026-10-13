@@ -65,6 +65,20 @@ import Testing
         #expect(store.board(in: "todo-ui")[.review]?.map(\.id) == [reviewed.sessionID])
     }
 
+    /// As on the iPhone, a pull request ready to merge needs the user, so the sidebar
+    /// group agrees with the tab's count (audit BUG-77).
+    @Test func aMergeReadyChatIsUnderNeedsYou() async throws {
+        var merge = Fixture.approval("ap-review")
+        merge.id = "ap-merge"
+        merge.kind = .merge
+        try await seed([Fixture.session(merge.sessionID, state: .idle)])
+
+        approvals.apply(.approvalCreated(merge))
+
+        #expect(store.groups(in: "todo-ui").map(\.kind) == [.needsYou])
+        #expect(store.attention(of: "todo-ui") == 1)
+    }
+
     @Test func boardColumnsLeaveArchivedOut() async throws {
         try await seed([
             Fixture.session("run", state: .running), Fixture.session("wait", state: .waiting),
@@ -171,6 +185,95 @@ import Testing
 
         store.apply(Fixture.event(EventType.sessionDeleted, #"{"session_id": "s2"}"#, session: nil))
         #expect(store.session("s2") == nil)
+    }
+
+    /// The daemon found the agent changing git refs: Approve needs the acknowledgement
+    /// right away, without a reload (audit BUG-50).
+    @Test func aGitViolationFlagsTheSessionLive() async throws {
+        try await seed([Fixture.session("s1"), Fixture.session("s2")])
+        #expect(store.session("s1")?.gitViolation == false)
+
+        store.apply(Fixture.event(EventType.sessionGitViolation, #"{"changes": []}"#))
+
+        #expect(store.session("s1")?.gitViolation == true)
+        #expect(store.session("s2")?.gitViolation == false)
+        store.apply(
+            Fixture.event(EventType.sessionGitViolation, #"{"changes": []}"#, session: "zzz"))
+        #expect(store.session("zzz") == nil)
+    }
+
+    /// A worktree chat learns its folder, branch and base once the worktree exists, so
+    /// terminal commands run there and not in the main checkout (audit BUG-55).
+    @Test func aWorkspaceEventGivesTheChatItsFolderAndBranch() async throws {
+        var session = Fixture.session("s1", state: .starting)
+        session.cwd = nil
+        session.worktreePath = nil
+        session.branch = nil
+        session.baseRef = nil
+        try await seed([session])
+
+        store.apply(
+            Fixture.event(
+                EventType.sessionWorkspace,
+                #"{"path": "/w/s1", "branch": "agent/s1", "base_ref": "abc", "linked": [], "missing": [], "existing": []}"#
+            ))
+
+        let updated = try #require(store.session("s1"))
+        #expect(updated.worktreePath == "/w/s1")
+        #expect(updated.cwd == "/w/s1")
+        #expect(updated.folder == "/w/s1")
+        #expect(updated.branch == "agent/s1")
+        #expect(updated.baseRef == "abc")
+    }
+
+    /// After any 409 from Approve the chat and its diff are read again, so the switch
+    /// for a violation and the moved branch show (audit BUG-50).
+    @Test func aRefusedApproveReadsTheChatAndItsDiffAgain() async throws {
+        let review = Fixture.approval("ap-review")
+        let id = review.sessionID
+        try await seed([Fixture.session(id)])
+        approvals.apply(.approvalCreated(review))
+        var flagged = Fixture.session(id)
+        flagged.gitViolation = true
+        var moved = Fixture.diff
+        moved.head = ReviewHead(commit: "4444", branch: "agent/dark-mode-1a2b3c")
+        api.set {
+            $0.details[id] = flagged
+            $0.diff = moved
+        }
+        let refusal = APIError.approveRefused("The branch moved.", reason: .headChanged)
+        api.fail("approve", with: refusal)
+
+        await #expect(throws: refusal) {
+            try await store.publish(
+                review, approvals.publishForm(for: review, session: store.session(id)))
+        }
+
+        let calls = api.calls.suffix(3).map { $0.components(separatedBy: " ")[0] }
+        #expect(calls == ["approve", "session", "diff"])
+        #expect(store.session(id)?.gitViolation == true)
+        #expect(approvals.diffs[id] == moved)
+    }
+
+    @Test func otherApproveFailuresReadNothingAgain() async throws {
+        let review = Fixture.approval("ap-review")
+        try await seed([Fixture.session(review.sessionID)])
+        approvals.apply(.approvalCreated(review))
+        api.fail("approve", with: APIError.gitFailed("push failed", step: "push", stderr: ""))
+        await #expect(throws: APIError.self) {
+            try await store.publish(review, approvals.publishForm(for: review, session: nil))
+        }
+        #expect(api.calls.last?.hasPrefix("approve") == true)
+    }
+
+    @Test func aPublishedChatIsStored() async throws {
+        let review = Fixture.approval("ap-review")
+        try await seed([Fixture.session(review.sessionID)])
+        approvals.apply(.approvalCreated(review))
+        let session = try await store.publish(
+            review, approvals.publishForm(for: review, session: nil))
+        #expect(session.prURL == "https://example.com/pr/1")
+        #expect(store.session(review.sessionID)?.prURL == "https://example.com/pr/1")
     }
 
     @Test func eventsForUnknownSessionsAreIgnored() async throws {

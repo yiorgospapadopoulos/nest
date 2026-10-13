@@ -18,6 +18,18 @@ import Testing
         #expect(list.updatedAt == Date(timeIntervalSince1970: 1_791_360_000))
     }
 
+    /// Auto mode and Claude Code's own effort per model (IMP-06, IMP-07); older daemons
+    /// send neither, and an effort this app does not know reads as none.
+    @Test func decodesAutoModeAndClaudeCodesEffort() {
+        let models = Fixture.models
+        #expect(models.map(\.supportsAutoMode) == [true, true, false, false, false, false])
+        #expect(models.map(\.claudeCodeEffort) == [.high, nil, nil, nil, nil, nil])
+        let built = ModelInfo(
+            value: "x", displayName: "X", description: "", effortLevels: [], supportsEffort: false)
+        #expect(!built.supportsAutoMode)
+        #expect(built.claudeCodeEffort == nil)
+    }
+
     @Test func dropsUnknownEffortLevels() {
         let sonnet = Fixture.models[3]
         #expect(sonnet.effortLevels == [.low, .medium, .high, .xhigh])
@@ -66,19 +78,34 @@ import Testing
         #expect(
             encoded == #"{"effort":null,"mode":"worktree","model":null,"permission_mode":"plan"}"#)
         #expect(AgentDefaults.standard.mode == .inPlace)
-        #expect(AgentDefaults.standard.permissionMode == .default)
+        // Until the daemon answers, no mode is passed: Claude Code's own setting applies.
+        #expect(AgentDefaults.standard.permissionMode == nil)
+    }
+
+    /// A null mode leaves it to Claude Code's `defaultMode` and goes back as null (IMP-06).
+    @Test func aNullPermissionModeMeansClaudeCodesOwn() throws {
+        let defaults = Fixture.decode(
+            AgentDefaults.self,
+            json: #"{"model": null, "effort": null, "permission_mode": null, "mode": "worktree"}"#
+        )
+        #expect(defaults.permissionMode == nil)
+        let encoded = String(decoding: try HarnessJSON.encoder.encode(defaults), as: UTF8.self)
+        #expect(
+            encoded == #"{"effort":null,"mode":"worktree","model":null,"permission_mode":null}"#)
+        let auto = Fixture.decode(
+            AgentDefaults.self, json: #"{"permission_mode": "auto", "mode": "in_place"}"#)
+        #expect(auto.permissionMode == .auto)
     }
 
     @Test func unknownDefaultsReadAsTheStandardOnes() {
         let defaults = Fixture.decode(
             AgentDefaults.self,
             json:
-                #"{"model": "opus", "effort": "ultra", "permission_mode": "auto", "mode": "cloud"}"#
+                #"{"model": "opus", "effort": "ultra", "permission_mode": "yolo", "mode": "cloud"}"#
         )
         #expect(
             defaults
-                == AgentDefaults(
-                    model: "opus", effort: nil, permissionMode: .default, mode: .inPlace))
+                == AgentDefaults(model: "opus", effort: nil, permissionMode: nil, mode: .inPlace))
         let missing = Fixture.decode(
             AgentDefaults.self, json: #"{"permission_mode": "acceptEdits", "mode": "in_place"}"#)
         #expect(missing.model == nil)
@@ -190,6 +217,48 @@ import Testing
         #expect(store.effort(.max, afterSwitchingTo: "claude-unknown") == .max)
     }
 
+    @Test func showsClaudeCodesEffortAsTheModelDefault() async {
+        let store = AgentsStore(api: api)
+        #expect(store.defaultEffortLabel(for: nil) == "Model default")
+        await store.load()
+        #expect(store.defaultEffortLabel(for: nil) == "Model default (High, from Claude Code)")
+        #expect(
+            store.defaultEffortLabel(for: "default") == "Model default (High, from Claude Code)")
+        #expect(store.defaultEffortLabel(for: "opus") == "Model default")
+        #expect(store.defaultEffortLabel(for: "claude-unknown") == "Model default")
+    }
+
+    @Test func offersAutoOnlyWhereTheModelSupportsIt() async {
+        let store = AgentsStore(api: api)
+        #expect(!store.supportsAuto("opus"))
+        await store.load()
+        #expect(store.supportsAuto(nil))
+        #expect(store.supportsAuto("opus"))
+        #expect(!store.supportsAuto("haiku"))
+        #expect(!store.supportsAuto("claude-unknown"))
+        #expect(store.permissionModes(for: "opus").last == .auto)
+        #expect(store.permissionModes(for: "haiku") == PermissionMode.selectable)
+        #expect(store.planChoices(for: "opus") == [.acceptEdits, .default, .auto])
+        #expect(store.planChoices(for: "sonnet") == [.acceptEdits, .default])
+        #expect(store.permission(.auto, afterSwitchingTo: "haiku") == nil)
+        #expect(store.permission(.auto, afterSwitchingTo: "opus") == .auto)
+        #expect(store.permission(.plan, afterSwitchingTo: "haiku") == .plan)
+        #expect(store.permission(nil, afterSwitchingTo: "haiku") == nil)
+    }
+
+    @Test func switchingTheDefaultModelDropsAutoWhereItIsMissing() async throws {
+        let store = AgentsStore(api: api)
+        await store.load()
+        try await store.setDefaultPermissionMode(.auto)
+        try await store.setDefaultModel("haiku")
+        #expect(store.current.permissionMode == nil)
+        try await store.setDefaultPermissionMode(.plan)
+        try await store.setDefaultModel("opus")
+        #expect(store.current.permissionMode == .plan)
+        try await store.setDefaultPermissionMode(nil)
+        #expect(api.calls.last == "updateAgentDefaults opus nil nil in_place")
+    }
+
     @Test func changesTheDefaultsOnTheDaemon() async throws {
         let store = AgentsStore(api: api)
         await store.load()
@@ -224,7 +293,7 @@ import Testing
     @Test func changesBeforeLoadingStartFromTheStandardDefaults() async throws {
         let store = AgentsStore(api: api)
         try await store.setDefaultMode(.worktree)
-        #expect(api.calls == ["updateAgentDefaults nil nil default worktree"])
+        #expect(api.calls == ["updateAgentDefaults nil nil nil worktree"])
         #expect(store.defaults?.mode == .worktree)
     }
 

@@ -71,6 +71,11 @@ import Testing
                 "Reads and plans only", "Runs everything without asking",
             ])
         #expect(PermissionMode.unknown.summary == "")
+        #expect(PermissionMode.auto.summary == "Asks only when Claude Code judges an action risky")
+        #expect(PermissionMode.claudeCodeDefaultSummary == "Your Claude Code setting applies")
+        #expect(PermissionMode.shortLabel(nil) == "Default")
+        #expect(PermissionMode.shortLabel(.acceptEdits) == "Edits")
+        #expect(PermissionMode.unknown.planChoiceLabel == "Auto-accept edits")
     }
 }
 
@@ -337,7 +342,11 @@ import Testing
     }
 
     @Test func resultsSummarizeToAShortNote() {
-        #expect(ToolSummary.result(of: call("Bash", [:])) == "running")
+        // Without a result a call runs, until its turn ends without one.
+        var open = call("Bash", [:])
+        #expect(ToolSummary.result(of: open) == "running")
+        open.stopped = true
+        #expect(ToolSummary.result(of: open) == "stopped")
         var failed = call("Bash", [:], result: "exit 1")
         failed.isError = true
         #expect(ToolSummary.result(of: failed) == "failed")

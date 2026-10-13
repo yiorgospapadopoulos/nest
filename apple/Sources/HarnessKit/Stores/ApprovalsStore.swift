@@ -20,15 +20,26 @@ public final class ApprovalsStore {
     private var freeAnswers: [String: [String: String]] = [:]
     /// Notes for Keep planning, by approval id.
     private var planNotes: [String: String] = [:]
+    /// How the chat goes on after Approve plan, by approval id, when the user chose.
+    private var planModes: [String: PermissionMode] = [:]
 
     let api: any HarnessAPI
+    @ObservationIgnored private let live = LiveEventLog()
 
     public init(api: any HarnessAPI) {
         self.api = api
     }
 
+    /// Loads the pending approvals; live approval events that arrive meanwhile apply
+    /// again on top, so an approval created during a resync stays.
     public func load() async throws {
-        pending = try await api.approvals(status: .pending, project: nil)
+        _ = try await live.read {
+            try await self.api.approvals(status: .pending, project: nil)
+        } store: {
+            pending = $0
+        } replay: {
+            apply($0.body)
+        }
     }
 
     public func pending(repo: String) -> [Approval] {
@@ -124,9 +135,22 @@ public final class ApprovalsStore {
         planNotes[approval.id] = note
     }
 
-    /// Continues with the plan; the daemon switches the chat to Accept edits.
-    public func approvePlan(_ approval: Approval) async throws {
-        try await resolve(approval, .approvePlan)
+    /// How the chat goes on once the plan is approved: Accept edits until the user picks.
+    public func planMode(for approval: Approval) -> PermissionMode {
+        planModes[approval.id] ?? .acceptEdits
+    }
+
+    public func setPlanMode(_ mode: PermissionMode, for approval: Approval) {
+        planModes[approval.id] = mode
+    }
+
+    /// Continues with the plan; the daemon switches the chat to the chosen mode, which
+    /// is returned.
+    @discardableResult
+    public func approvePlan(_ approval: Approval) async throws -> PermissionMode {
+        let mode = planMode(for: approval)
+        try await resolve(approval, .approvePlan(mode: mode))
+        return mode
     }
 
     /// Sends Claude back to planning with the typed note, if any.
@@ -155,15 +179,18 @@ public final class ApprovalsStore {
     }
 
     /// Commits, and pushes and opens a pull request as the form asks; progress follows
-    /// the daemon's git events. A failed step leaves the review pending for a retry.
+    /// the daemon's git events. A failed step leaves the review pending for a retry. The
+    /// HEAD commit of the loaded diff goes along, so the daemon refuses if it moved since.
     @discardableResult
     public func publish(_ approval: Approval, _ form: PublishForm) async throws -> Session {
         let progress = PublishProgress(steps: form.steps)
         publishing[approval.sessionID] = progress
         progress.start()
+        var request = form.request
+        request.expectedHead = diffs[approval.sessionID]?.head?.commit
         do {
             let session = try await track(approval) {
-                try await self.api.approve(approval.sessionID, form.request)
+                try await self.api.approve(approval.sessionID, request)
             }
             progress.finish(session)
             remove(approval.id)
@@ -210,6 +237,7 @@ public final class ApprovalsStore {
 
     /// Approval events, and the git steps of an approve call in flight.
     public func apply(_ event: Event) {
+        live.record(event)
         apply(event.body)
         guard let session = event.sessionID, let progress = publishing[session] else { return }
         switch event.body {
@@ -255,6 +283,7 @@ public final class ApprovalsStore {
         choices[id] = nil
         freeAnswers[id] = nil
         planNotes[id] = nil
+        planModes[id] = nil
         acknowledgedViolations.remove(id)
     }
 }

@@ -131,20 +131,30 @@ public enum TranscriptGrouping {
     /// them become a group; anything else, assistant text above all, ends it. `live` says
     /// the session's turn is running, so calls after the last turn end can still run.
     /// `background` holds the tool use ids of background tasks still running: a call that
-    /// started one runs until it ends (D045).
+    /// started one runs until it ends (D045). Other calls without a result that can no
+    /// longer run are marked stopped (D054).
     public static func entries(
         _ items: [TranscriptItem], live: Bool, background: Set<String> = []
     ) -> [TranscriptEntry] {
-        let lastEnd = items.lastIndex { if case .turnEnd = $0.content { true } else { false } }
+        // A turn's end line, or a user message starting the next turn.
+        let lastEnd = items.lastIndex {
+            switch $0.content {
+            case .turnEnd, .user: true
+            default: false
+            }
+        }
         var entries: [TranscriptEntry] = []
         var run: [TranscriptItem] = []
         var runIsOpen = false
 
         func flush() {
+            let open = runIsOpen && live
+            if !open {
+                run = run.map { $0.stoppingCall(unless: background) }
+            }
             let tail = run.reversed().prefix { !$0.isTool }.count
             let grouped = run.dropLast(tail)
             if grouped.count(where: \.isTool) > 1 {
-                let open = runIsOpen && live
                 let working = Set(grouped.map(\.id)).intersection(background)
                 let running =
                     !working.isEmpty
@@ -195,5 +205,15 @@ extension TranscriptItem {
     /// A tool call's result: nil while it runs, and for other items.
     fileprivate var toolResult: String? {
         if case .tool(let call) = content { call.result } else { nil }
+    }
+
+    /// A call without a result, marked stopped unless its background task still runs.
+    fileprivate func stoppingCall(unless background: Set<String>) -> TranscriptItem {
+        guard case .tool(var call) = content, call.result == nil, !background.contains(id)
+        else { return self }
+        call.stopped = true
+        var item = self
+        item.content = .tool(call)
+        return item
     }
 }

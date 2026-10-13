@@ -96,7 +96,7 @@ public enum RichText {
     }
 
     /// Inline markdown as runs. Foundation's parser also links bare web addresses; text
-    /// it cannot read is shown as written.
+    /// it cannot read is shown as written, and links of other schemes as plain text.
     static func runs(
         _ text: String, parse: (String) throws -> AttributedString = parseInline
     ) -> [TextRun] {
@@ -108,7 +108,9 @@ public enum RichText {
             if intent.contains(.emphasized) { style.insert(.italic) }
             if intent.contains(.code) { style.insert(.code) }
             if intent.contains(.strikethrough) { style.insert(.strikethrough) }
-            return TextRun(String(attributed[run.range].characters), style: style, link: run.link)
+            // Only links the app may open stay links (`SafeLink`).
+            let link = run.link.flatMap { SafeLink.allows($0) ? $0 : nil }
+            return TextRun(String(attributed[run.range].characters), style: style, link: link)
         }
     }
 

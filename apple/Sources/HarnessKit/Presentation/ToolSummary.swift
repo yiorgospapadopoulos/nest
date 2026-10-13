@@ -42,7 +42,7 @@ public enum ToolSummary {
     }
 
     public static func result(of call: ToolCall) -> String {
-        guard let result = call.result else { return "running" }
+        guard let result = call.result else { return call.stopped ? "stopped" : "running" }
         if call.isError {
             return "failed"
         }

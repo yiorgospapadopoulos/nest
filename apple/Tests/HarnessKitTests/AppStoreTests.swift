@@ -110,18 +110,22 @@ private let workspace = CGSize(width: 1000, height: 600)
         app.selectProject("not-open")
         #expect(app.currentProject == "todo-ui")
 
-        app.moveProject("todo-ui", to: 5)
-        #expect(app.openProjects == ["map-viewer", "todo-ui"])
-        app.moveProject("todo-ui", to: -1)
-        #expect(app.openProjects == ["todo-ui", "map-viewer"])
-        app.moveProject("not-open", to: 0)
-
         app.closeProject("todo-ui")
         #expect(app.openProjects == ["map-viewer"])
         #expect(app.currentProject == "map-viewer")
         app.closeProject("map-viewer")
         #expect(app.openProjects == ["map-viewer"])
         #expect(memory.values["projects.open"] == "map-viewer")
+    }
+
+    @Test func openPanesSpanEveryProject() async throws {
+        let app = app()
+        try await app.loadRepos()
+        app.update("todo-ui") { $0.openChat("s1", in: workspace) }
+        app.update("map-viewer") { $0.openChat("s2", in: workspace) }
+        #expect(app.openPanes == ["s1", "s2"])
+        app.update("todo-ui") { $0.closePane("s1") }
+        #expect(app.openPanes == ["s2"])
     }
 
     @Test func closingTheCurrentTabSelectsTheOneBefore() async throws {

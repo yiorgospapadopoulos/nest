@@ -281,6 +281,53 @@ import Testing
         #expect(transcript.lastEventID == 22)
     }
 
+    /// A catch-up that fails leaves a gap: live events wait instead of moving past it,
+    /// and the next catch-up loads again even when the stream resumed (audit BUG-79).
+    @Test func aFailedCatchUpHoldsLiveEventsAndIsRetried() async throws {
+        let transcript = TranscriptStore(sessionID: sessionID, api: api)
+        try await transcript.load()
+        #expect(!transcript.needsLoad)
+        api.fail("sessionEvents")
+
+        await transcript.catchUp(missed: true)
+
+        #expect(transcript.needsLoad)
+        #expect(transcript.isLoaded)
+        func text(_ value: String, id: Int) -> Event {
+            Fixture.event(
+                EventType.sessionMessage,
+                #"{"blocks": [{"type": "text", "text": "\#(value)"}], "parent_tool_use_id": null}"#,
+                id: id, session: sessionID)
+        }
+        transcript.receive(text("live", id: 31))
+        #expect(transcript.lastEventID == 21)
+        #expect(transcript.items.count == 8)
+
+        api.set {
+            $0.failures["sessionEvents"] = nil
+            $0.events[sessionID, default: []] += [text("missed", id: 30), text("live", id: 31)]
+        }
+        await transcript.catchUp(missed: false)
+
+        #expect(!transcript.needsLoad)
+        #expect(transcript.lastEventID == 31)
+        #expect(
+            transcript.items.suffix(2).map(\.content) == [
+                .assistant("missed", streaming: false), .assistant("live", streaming: false),
+            ])
+    }
+
+    /// A transcript that never loaded keeps only the stored events it will apply, not
+    /// every streamed delta (audit BUG-80).
+    @Test func aTranscriptNotLoadedYetHoldsNoDeltas() {
+        let transcript = TranscriptStore(sessionID: sessionID, api: api)
+        for _ in 0..<50 {
+            transcript.receive(Fixture.event(EventType.sessionDelta, #"{"text": "x"}"#, id: nil))
+        }
+        transcript.receive(Fixture.events[10])
+        #expect(transcript.held.count == 1)
+    }
+
     @Test func reloadingFetchesOnlyNewerEvents() async throws {
         let transcript = TranscriptStore(sessionID: sessionID, api: api)
         try await transcript.load()
@@ -308,6 +355,18 @@ import Testing
         let second = transcripts.transcript(for: "s2")
         transcripts.close("s2")
         #expect(transcripts.transcript(for: "s2") !== second)
+    }
+
+    /// Transcripts of panes no workspace shows any more are released (audit BUG-80).
+    @Test func onlyTranscriptsOfOpenPanesAreKept() {
+        let transcripts = Transcripts(api: api)
+        let open = transcripts.transcript(for: "s1")
+        let closed = transcripts.transcript(for: "s2")
+        transcripts.keep(["s1", "s3"])
+        #expect(transcripts.existing("s1") === open)
+        #expect(transcripts.existing("s2") == nil)
+        #expect(transcripts.transcript(for: "s2") !== closed)
+        #expect(transcripts.existing("s3") == nil)
     }
 }
 

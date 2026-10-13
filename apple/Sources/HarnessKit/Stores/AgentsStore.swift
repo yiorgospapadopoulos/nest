@@ -62,16 +62,48 @@ public final class AgentsStore {
         Effort.fallback(current, supported: thinkingLevels(for: model))
     }
 
+    /// Thinking left to the model: what Claude Code's settings give it, when they say,
+    /// such as "Model default (High, from Claude Code)".
+    public func defaultEffortLabel(for model: String?) -> String {
+        guard let effort = info(for: model)?.claudeCodeEffort else { return "Model default" }
+        return "Model default (\(effort.label), from Claude Code)"
+    }
+
+    /// The model offers Claude Code's Auto mode; unknown models do not.
+    public func supportsAuto(_ model: String?) -> Bool {
+        info(for: model)?.supportsAutoMode == true
+    }
+
+    /// The permission modes to offer with this model.
+    public func permissionModes(for model: String?) -> [PermissionMode] {
+        PermissionMode.options(supportsAuto: supportsAuto(model))
+    }
+
+    /// How a chat on this model can go on after its plan is approved.
+    public func planChoices(for model: String?) -> [PermissionMode] {
+        PermissionMode.planChoices(supportsAuto: supportsAuto(model))
+    }
+
+    /// The mode a new chat keeps after switching to this model: Auto only where the model
+    /// offers it, else Claude Code's own setting.
+    public func permission(_ current: PermissionMode?, afterSwitchingTo model: String?)
+        -> PermissionMode?
+    {
+        current == .auto && !supportsAuto(model) ? nil : current
+    }
+
     // MARK: Defaults
 
     /// The defaults new chats start from, before and after loading.
     public var current: AgentDefaults { defaults ?? .standard }
 
-    /// Switches the default model and keeps the default effort only as far as it allows.
+    /// Switches the default model and keeps the default effort and permission mode only
+    /// as far as it allows.
     public func setDefaultModel(_ model: String) async throws {
         try await change {
             $0.model = model
             $0.effort = effort($0.effort, afterSwitchingTo: model)
+            $0.permissionMode = permission($0.permissionMode, afterSwitchingTo: model)
         }
     }
 
@@ -79,7 +111,8 @@ public final class AgentsStore {
         try await change { $0.effort = effort }
     }
 
-    public func setDefaultPermissionMode(_ mode: PermissionMode) async throws {
+    /// Nil leaves the mode to Claude Code's own setting.
+    public func setDefaultPermissionMode(_ mode: PermissionMode?) async throws {
         try await change { $0.permissionMode = mode }
     }
 

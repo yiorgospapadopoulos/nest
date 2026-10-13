@@ -561,12 +561,40 @@ import Testing
         try await approvals.keepPlanning(plan)
         #expect(approvals.planNote(for: plan) == "")
 
-        try await approvals.approvePlan(second)
+        #expect(approvals.planMode(for: second) == .acceptEdits)
+        #expect(try await approvals.approvePlan(second) == .acceptEdits)
         #expect(approvals.pending.isEmpty)
         #expect(
             api.calls.suffix(2) == [
                 #"resolveApproval ap-question {"always":false,"decision":"keep_planning","dismiss":false,"message":"Keep it smaller"}"#,
-                #"resolveApproval ap-plan-2 {"always":false,"decision":"approve","dismiss":false}"#,
+                #"resolveApproval ap-plan-2 {"always":false,"decision":"approve","dismiss":false,"mode":"acceptEdits"}"#,
             ])
+    }
+
+    /// Approving a plan can go on asking for each edit, or in Auto (IMP-06).
+    @Test func approvingAPlanSendsTheChosenMode() async throws {
+        var plan = Fixture.approval("ap-question")
+        plan.kind = .plan
+        var other = plan
+        other.id = "ap-plan-2"
+        api.set { $0.approvals = [plan, other] }
+        try await approvals.load()
+
+        approvals.setPlanMode(.auto, for: plan)
+        #expect(approvals.planMode(for: plan) == .auto)
+        #expect(approvals.planMode(for: other) == .acceptEdits)
+        #expect(try await approvals.approvePlan(plan) == .auto)
+        #expect(api.calls.last?.hasSuffix(#""mode":"auto"}"#) == true)
+        // The choice is forgotten with the approval.
+        #expect(approvals.planMode(for: plan) == .acceptEdits)
+
+        approvals.setPlanMode(.default, for: other)
+        try await approvals.approvePlan(other)
+        #expect(api.calls.last?.hasSuffix(#""mode":"default"}"#) == true)
+        #expect(
+            PermissionMode.planChoices(supportsAuto: true).map(\.planChoiceLabel) == [
+                "Auto-accept edits", "Approve edits manually", "Auto",
+            ])
+        #expect(PermissionMode.planChoices(supportsAuto: false) == [.acceptEdits, .default])
     }
 }

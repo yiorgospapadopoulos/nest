@@ -46,7 +46,7 @@ import Testing
     @Test func unknownEnumValuesDecodeAsUnknown() {
         let json = Fixture.text("session_detail")
             .replacingOccurrences(of: "\"waiting\"", with: "\"hibernating\"")
-            .replacingOccurrences(of: "\"acceptEdits\"", with: "\"auto\"")
+            .replacingOccurrences(of: "\"acceptEdits\"", with: "\"yolo\"")
             .replacingOccurrences(of: "\"in_progress\"", with: "\"blocked\"")
         let session = Fixture.decode(Session.self, json: json)
 
@@ -66,6 +66,11 @@ import Testing
         #expect(
             PermissionMode.selectable.map(\.label) == ["Ask", "Accept edits", "Plan", "Bypass"])
         #expect(PermissionMode.unknown.label == "Unknown")
+        #expect(PermissionMode.auto.label == "Auto")
+        #expect(PermissionMode.options(supportsAuto: false) == PermissionMode.selectable)
+        #expect(PermissionMode.options(supportsAuto: true) == PermissionMode.selectable + [.auto])
+        #expect(PermissionMode.label(nil) == "Claude Code default")
+        #expect(PermissionMode.label(.plan) == "Plan")
         #expect(Effort.selectable.map(\.rawValue) == ["low", "medium", "high", "xhigh", "max"])
     }
 
@@ -169,6 +174,28 @@ import Testing
         #expect(approval.permission?.reason == "No allow rule matches rm")
     }
 
+    /// "Always allow" names the rule Claude Code suggests (IMP-06).
+    @Test func permissionPayloadCarriesTheSuggestedRule() throws {
+        var approval = Fixture.approval("ap-perm")
+        let plain = try #require(approval.permission)
+        #expect(plain.alwaysRule == nil)
+        #expect(plain.alwaysAllowTitle == "Always allow")
+        #expect(plain.alwaysAllowHelp == "Allow this tool for the rest of the chat")
+
+        approval.payload = Fixture.decode(
+            JSONValue.self,
+            json: #"{"tool": "Bash", "input": {}, "always_rule": "Bash(npm test:*)"}"#)
+        let ruled = try #require(approval.permission)
+        #expect(ruled.alwaysRule == "Bash(npm test:*)")
+        #expect(ruled.alwaysAllowTitle == "Always allow Bash(npm test:*)")
+        #expect(ruled.alwaysAllowHelp.hasPrefix("Allow this and anything matching the rule"))
+
+        approval.payload = Fixture.decode(
+            JSONValue.self, json: #"{"tool": "Bash", "input": {}, "always_rule": "  "}"#)
+        #expect(approval.permission?.alwaysAllowTitle == "Always allow")
+        #expect(approval.permission?.suggestedRule == nil)
+    }
+
     @Test func questionPayloadKeepsRecommendedFlags() throws {
         let approval = Fixture.approval("ap-question")
         let question = try #require(approval.question)
@@ -214,6 +241,57 @@ import Testing
         #expect(diff.files[1].oldPath == "public/old-logo.png")
         #expect(diff.files[1].status == .renamed)
         #expect(diff.files[1].binary)
+        // The fixture is an older daemon's, without the nested repository flag.
+        #expect(!file.isNestedRepository)
+    }
+
+    @Test func aNestedRepositoryIsFlagged() {
+        let file = Fixture.decode(
+            FileDiff.self,
+            json: #"""
+                {"path": "vendor/lib", "old_path": null, "status": "added", "additions": 0,
+                 "deletions": 0, "binary": false, "truncated": false, "hunks": [],
+                 "nested_repository": true}
+                """#)
+        #expect(file.isNestedRepository)
+        #expect(FileDiff.nestedRepositoryNote == "Nested repository, not committed")
+    }
+
+    @Test func decodesWhatApprovePublishes() {
+        let diff = Fixture.diff
+        #expect(
+            diff.head
+                == ReviewHead(
+                    commit: "2222222222222222222222222222222222222222",
+                    branch: "agent/dark-mode-1a2b3c"))
+        #expect(
+            diff.commits
+                == [
+                    ReviewCommit(
+                        sha: "3333333333333333333333333333333333333333",
+                        subject: "Add a CI workflow")
+                ])
+        #expect(diff.commits[0].shortSHA == "3333333")
+        #expect(diff.commits[0].id == diff.commits[0].sha)
+        #expect(diff.pushTarget == "Pushes to agent/dark-mode-1a2b3c")
+    }
+
+    @Test func aDiffFromAnOlderDaemonHasNoHeadOrCommits() {
+        let empty = #""stats": {"files": 0, "additions": 0, "deletions": 0}, "files": []"#
+        let diff = Fixture.decode(SessionDiff.self, json: #"{"base": null, \#(empty)}"#)
+        #expect(diff.head == nil)
+        #expect(diff.commits.isEmpty)
+        #expect(diff.pushTarget == nil)
+        // A detached HEAD names no branch.
+        let head = #""head": {"commit": "c", "branch": null}, "commits": []"#
+        let detached = Fixture.decode(
+            SessionDiff.self, json: #"{"base": null, \#(head), \#(empty)}"#)
+        #expect(detached.head == ReviewHead(commit: "c", branch: nil))
+        #expect(detached.pushTarget == nil)
+        #expect(
+            SessionDiff.foreignCommitsWarning
+                == "These commits are on the branch, but harness did not make them. "
+                + "Check them before publishing.")
     }
 }
 

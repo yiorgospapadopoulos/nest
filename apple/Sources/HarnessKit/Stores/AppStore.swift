@@ -193,7 +193,11 @@ public final class AppStore {
     /// Loads the repos; tabs of repos that are gone close and their terminal and browser
     /// panes end, and the first repo opens when no tab is open. A closed tab keeps its panes.
     public func loadRepos() async throws {
-        repos = try await api.repos()
+        show(try await api.repos())
+    }
+
+    private func show(_ repos: [Repo]) {
+        self.repos = repos
         let names = Set(repos.map(\.name))
         openProjects.removeAll { !names.contains($0) }
         for name in projects.keys where !names.contains(name) {
@@ -293,13 +297,6 @@ public final class AppStore {
         update(project) { $0.openChat(chat, in: size) }
     }
 
-    public func moveProject(_ name: String, to index: Int) {
-        guard let from = openProjects.firstIndex(of: name) else { return }
-        openProjects.remove(at: from)
-        openProjects.insert(name, at: min(max(0, index), openProjects.count))
-        save()
-    }
-
     public func state(of project: String) -> ProjectState {
         projects[project] ?? ProjectState()
     }
@@ -316,6 +313,11 @@ public final class AppStore {
         }
     }
 
+    /// The panes every project's workspace shows, open tabs or not.
+    public var openPanes: Set<String> {
+        Set(projects.values.flatMap(\.layout.leaves))
+    }
+
     /// A deleted chat leaves every workspace.
     public func forgetChat(_ id: String) {
         for name in projects.keys {
@@ -325,6 +327,32 @@ public final class AppStore {
 
     public func openProject(_ name: String, in app: RepoApp) async throws {
         try await api.openRepo(name, in: app)
+    }
+
+    // MARK: Project settings
+
+    /// Unregisters a project; with `purgeChats` its chats are deleted first, which the
+    /// daemon requires while it has any. The folder stays. Its tab closes and its terminal
+    /// and browser panes end.
+    public func removeProject(_ name: String, purgeChats: Bool) async throws {
+        try await api.removeRepo(name, purgeSessions: purgeChats)
+        show(repos.filter { $0.name != name })
+    }
+
+    /// Saves a project's worktree settings: its default, links and setup commands.
+    @discardableResult
+    public func saveWorktree(_ config: WorktreeConfig, of name: String) async throws -> Repo {
+        let repo = try await api.updateWorktree(name, config)
+        if let index = repos.firstIndex(where: { $0.name == name }) {
+            repos[index] = repo
+        }
+        return repo
+    }
+
+    /// Gitignored files of the project worth linking, not linked yet.
+    public func linkSuggestions(for name: String) async throws -> [String] {
+        let linked = Set(repo(name)?.worktree.link ?? [])
+        return try await api.linkSuggestions(name).filter { !linked.contains($0) }
     }
 
     /// Reopens the terminal and browser panes the project had; unreadable data is ignored.

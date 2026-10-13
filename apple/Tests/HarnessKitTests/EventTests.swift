@@ -124,6 +124,25 @@ import Testing
         #expect(session.title == "Dark mode contrast")
     }
 
+    @Test func gitViolationAndWorkspaceEvents() {
+        #expect(
+            Fixture.event(
+                EventType.sessionGitViolation,
+                #"{"changes": [{"ref": "HEAD", "before": "a", "after": "b"}]}"#
+            ).body == .gitViolation)
+        #expect(
+            Fixture.event(
+                EventType.sessionWorkspace,
+                #"{"path": "/w/s1", "branch": "agent/s1", "base_ref": "abc", "linked": [".env"], "missing": [], "existing": []}"#
+            ).body
+                == .workspace(SessionWorkspace(path: "/w/s1", branch: "agent/s1", baseRef: "abc")))
+        #expect(
+            Fixture.event(
+                EventType.sessionWorkspace, #"{"path": "/w/s1", "branch": null, "base_ref": null}"#
+            ).body == .workspace(SessionWorkspace(path: "/w/s1", branch: nil, baseRef: nil)))
+        #expect(Fixture.event(EventType.sessionWorkspace, #"{"branch": "b"}"#).body == .other)
+    }
+
     @Test func unknownTypesAndBadPayloadsReadAsOther() {
         #expect(Fixture.event("daemon.started", #"{"version": "0.1.0"}"#).body == .other)
         #expect(Fixture.event(EventType.sessionDelta, #"{"text": 3}"#).body == .other)

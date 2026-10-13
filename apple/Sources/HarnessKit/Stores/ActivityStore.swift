@@ -30,18 +30,25 @@ public final class ActivityStore {
     private var queued: [String: [QueuedMessage]] = [:]
 
     let api: any HarnessAPI
+    @ObservationIgnored private let live = LiveEventLog()
 
     public init(api: any HarnessAPI) {
         self.api = api
     }
 
-    /// Loads the current tasks, agents and background work from the session detail.
+    /// Loads the current tasks, agents and background work from the session detail; live
+    /// events that arrive meanwhile apply again on top.
     public func load(session id: String) async throws {
-        let detail = try await api.session(id)
-        tasks[id] = detail.tasks ?? []
-        agents[id] = detail.agents ?? []
-        background[id] = detail.background ?? .empty
-        queued[id] = detail.queued ?? []
+        _ = try await live.read {
+            try await self.api.session(id)
+        } store: { detail in
+            tasks[id] = detail.tasks ?? []
+            agents[id] = detail.agents ?? []
+            background[id] = detail.background ?? .empty
+            queued[id] = detail.queued ?? []
+        } replay: {
+            apply($0)
+        }
     }
 
     /// The chats whose activity the panel loads: busy ones, open panes, chats with work
@@ -117,6 +124,7 @@ public final class ActivityStore {
     }
 
     public func apply(_ event: Event) {
+        live.record(event)
         switch event.body {
         case .tasks(let list):
             guard let id = event.sessionID else { return }
