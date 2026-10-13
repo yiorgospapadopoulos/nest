@@ -71,6 +71,7 @@ def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     assert paths.agent_gh_dir == tmp_path / "d" / "agent-gh"
     assert paths.launchers_dir == tmp_path / "d" / "launchers"
     assert paths.probe_dir == tmp_path / "d" / "probe"
+    assert paths.pixies_dir == tmp_path / "d" / "pixies"
 
 
 def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> None:
@@ -90,5 +91,6 @@ def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> Non
         paths.agent_gh_dir,
         paths.launchers_dir,
         paths.probe_dir,
+        paths.pixies_dir,
     ):
         assert directory.is_dir()

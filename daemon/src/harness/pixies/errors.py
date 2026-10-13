@@ -1,5 +1,7 @@
 """Pixie errors the API maps to status codes."""
 
+from pydantic import JsonValue
+
 from harness.errors import ConflictError, InvalidInputError, NotFoundError
 
 
@@ -17,3 +19,22 @@ class InvalidSlugError(InvalidInputError):
 
 class InvalidFileNameError(InvalidInputError):
     pass
+
+
+class StaleFileError(ConflictError):
+    """The file changed since the writer read it; carries the current text."""
+
+    code = "stale_file"
+
+    def __init__(self, name: str, text: str, current_hash: str) -> None:
+        super().__init__(f"{name} changed since it was read")
+        self.text = text
+        self.current_hash = current_hash
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {
+            "detail": str(self),
+            "code": self.code,
+            "text": self.text,
+            "hash": self.current_hash,
+        }

@@ -85,6 +85,11 @@ class AppPaths:
         return self.data_dir / "probe"
 
     @property
+    def pixies_dir(self) -> Path:
+        """Each pixie's soul, memory, notes and chat folder (D057)."""
+        return self.data_dir / "pixies"
+
+    @property
     def db_path(self) -> Path:
         return self.data_dir / "harness.db"
 
@@ -98,5 +103,6 @@ class AppPaths:
             self.agent_gh_dir,
             self.launchers_dir,
             self.probe_dir,
+            self.pixies_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
