@@ -4,7 +4,8 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: calc(var(--sat) + 4px) 16px calc(var(--sab) + 86px);
+  padding: calc(var(--sat) + 4px) calc(16px + var(--sar)) calc(var(--sab) + 86px)
+    calc(16px + var(--sal));
   scrollbar-width: none;
 }
 .view::-webkit-scrollbar {
@@ -18,7 +19,7 @@
   gap: 8px;
 }
 .lt {
-  font-size: 32px;
+  font-size: 1.8824rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 2px 4px 10px;
@@ -55,7 +56,7 @@
   border-radius: 9px;
   background: var(--st-run);
   color: #fff;
-  font-size: 10.5px;
+  font-size: 0.6176rem;
   font-weight: 800;
   display: grid;
   place-items: center;
@@ -65,7 +66,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.7647rem;
   font-weight: 600;
   color: var(--t2);
   margin: 20px 6px 8px;
@@ -105,8 +106,8 @@
 
 .tabbar {
   position: fixed;
-  left: 14px;
-  right: 14px;
+  left: calc(14px + var(--sal));
+  right: calc(14px + var(--sar));
   bottom: calc(var(--sab) - 8px);
   height: 64px;
   border-radius: calc(var(--r-ctl) + 6px);
@@ -127,7 +128,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 10.5px;
+  font-size: 0.6176rem;
   font-weight: 600;
   color: var(--t2);
   cursor: pointer;
@@ -149,7 +150,7 @@
   border-radius: 10px;
   background: var(--st-wait);
   color: #2b1700;
-  font-size: 11px;
+  font-size: 0.6471rem;
   font-weight: 800;
   display: grid;
   place-items: center;
@@ -171,7 +172,7 @@
   justify-content: space-between;
   padding: 0 22px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 0.8824rem;
   color: #fff;
   opacity: 0;
   transition: opacity 0.15s;
@@ -216,7 +217,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-weight: 700;
   color: var(--wait-t);
   min-width: 0;
@@ -236,7 +237,7 @@
   border: 0;
   background: transparent;
   padding: 6px 0 6px 8px;
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-weight: 500;
   color: var(--t3);
   cursor: pointer;
@@ -247,13 +248,13 @@
   text-align: right;
 }
 .cq {
-  font-size: 16px;
+  font-size: 0.9412rem;
   font-weight: 650;
   margin: 6px 0 4px;
   line-height: 1.3;
 }
 .why {
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t2);
   line-height: 1.4;
 }
@@ -268,7 +269,7 @@
   border-radius: var(--r-sm);
   background: var(--fail-soft);
   color: var(--fail-t);
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   line-height: 1.4;
 }
 .vio p {
@@ -282,6 +283,28 @@
   height: 14px;
   margin-top: 1px;
 }
+/* Where approving pushes, and commits on the branch that harness did not make. */
+.dpush {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  font-size: 0.7353rem;
+  color: var(--t2);
+}
+.dpush .ic {
+  width: 14px;
+  height: 14px;
+}
+.dcommits {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--t1);
+}
+.dcommits code {
+  margin-right: 6px;
+  font: 600 0.7059rem var(--mono);
+}
 .vio-r {
   display: flex;
   align-items: center;
@@ -293,14 +316,14 @@
 .cilist {
   margin: 6px 0 0;
   padding-left: 18px;
-  font: 600 13px/1.5 var(--mono);
+  font: 600 0.7647rem/1.5 var(--mono);
   color: var(--fail-t);
 }
 a.b {
   text-decoration: none;
 }
 .cmdbox {
-  font: 600 14px/1.4 var(--mono);
+  font: 600 0.8235rem/1.4 var(--mono);
   padding: 10px 12px;
   border-radius: var(--r-tab);
   background: var(--code-bg);
@@ -316,7 +339,7 @@ a.b {
 }
 .acts .b {
   height: 44px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   flex: 1 1 auto;
   border-radius: var(--r-inner);
   min-width: 0;
@@ -333,7 +356,7 @@ a.b {
   background: transparent;
   padding: 0 2px;
   min-height: 36px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   font-weight: 600;
   color: var(--accent);
   cursor: pointer;
@@ -349,7 +372,7 @@ a.b {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   color: var(--t3);
   flex-wrap: wrap;
 }
@@ -366,7 +389,7 @@ a.b {
   text-align: left;
   cursor: pointer;
   margin-top: 8px;
-  font-size: 14px;
+  font-size: 0.8235rem;
 }
 .ropt[aria-checked="true"] {
   border-color: var(--accent);
@@ -396,12 +419,12 @@ a.b {
 .ropt small {
   display: block;
   color: var(--t2);
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   line-height: 1.4;
   margin-top: 1px;
 }
 .rec {
-  font-size: 10px;
+  font-size: 0.5882rem;
   font-weight: 700;
   color: var(--rev-t);
   background: var(--rev-soft);
@@ -417,7 +440,7 @@ a.b {
   background: var(--g3);
   box-shadow: inset 0 0 0 1px var(--hair);
   padding: 0 12px;
-  font-size: 16px;
+  font-size: 0.9412rem;
   color: var(--t1);
   outline: none;
   margin-top: 10px;
@@ -427,7 +450,7 @@ a.b {
 }
 .flbl {
   display: block;
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-weight: 600;
   color: var(--t3);
   margin-top: 10px;
@@ -451,7 +474,7 @@ a.b {
   color: var(--rev-t);
 }
 .allclear b {
-  font-size: 19px;
+  font-size: 1.1176rem;
   color: var(--t1);
 }
 
@@ -479,7 +502,7 @@ a.b {
   background: var(--g1);
   -webkit-backdrop-filter: var(--gfilter);
   backdrop-filter: var(--gfilter);
-  font-size: 14px;
+  font-size: 0.8235rem;
   font-weight: 600;
   color: var(--t2);
   cursor: pointer;
@@ -520,7 +543,7 @@ a.b {
   border-radius: 9px;
   background: var(--st-wait);
   color: #2b1700;
-  font-size: 10.5px;
+  font-size: 0.6176rem;
   font-weight: 800;
   display: inline-grid;
   place-items: center;
@@ -577,13 +600,13 @@ a.b {
 .rt {
   flex: 1;
   min-width: 0;
-  font-size: 15.5px;
+  font-size: 0.9118rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .rm {
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t3);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -616,7 +639,7 @@ a.b {
   padding: 24px 10px;
   text-align: center;
   color: var(--t3);
-  font-size: 14px;
+  font-size: 0.8235rem;
 }
 
 /* account */
@@ -627,7 +650,7 @@ a.b {
   gap: 12px;
   min-height: 52px;
   padding: 6px 16px;
-  font-size: 15px;
+  font-size: 0.8824rem;
   position: relative;
 }
 .srow + .srow::before {
@@ -664,7 +687,7 @@ a.b {
   place-items: center;
   background: var(--fill2);
   color: var(--t2);
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-weight: 700;
   flex: none;
 }
@@ -676,7 +699,7 @@ a.b {
   flex: none;
 }
 .hint {
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 .sw {
@@ -690,6 +713,16 @@ a.b {
   cursor: pointer;
   background: var(--fill2);
   transition: background 0.2s;
+}
+/* A 44 point tap target around the 31 point switch (I-013). */
+.sw::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 .sw::after {
   content: "";
@@ -721,7 +754,7 @@ a.b {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   color: var(--t2);
 }
 .qh input {
@@ -735,7 +768,7 @@ a.b {
 /* The agent defaults' choices; the native list opens on iPhone. */
 .ssel {
   font: inherit;
-  font-size: 14px;
+  font-size: 0.8235rem;
   color: var(--t1);
   background: var(--fill);
   border: 0;
@@ -755,7 +788,7 @@ a.b {
 .u1 {
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: 0.8235rem;
   color: var(--t2);
 }
 .u1 b {
@@ -765,7 +798,7 @@ a.b {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 .asof.stale {
@@ -776,7 +809,7 @@ a.b {
   opacity: 0.6;
 }
 .ulbl {
-  font-size: 13px;
+  font-size: 0.7647rem;
   font-weight: 650;
   margin: 4px 0 0;
 }
@@ -793,11 +826,11 @@ a.b {
 }
 .utot b {
   display: block;
-  font-size: 19px;
+  font-size: 1.1176rem;
   letter-spacing: -0.01em;
 }
 .utot small {
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 .cal {
@@ -812,7 +845,7 @@ a.b {
 .cal-h b {
   flex: 1;
   text-align: center;
-  font-size: 15px;
+  font-size: 0.8824rem;
 }
 .cal-g {
   display: grid;
@@ -820,7 +853,7 @@ a.b {
   gap: 3px;
 }
 .cal-w {
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t3);
   text-align: center;
   font-weight: 600;
@@ -854,7 +887,7 @@ a.b {
 }
 .cd .n,
 .cd .v {
-  font-size: 10.5px;
+  font-size: 0.6176rem;
   line-height: 1;
 }
 .cd .n {
@@ -884,7 +917,7 @@ a.b {
 }
 .cdet {
   min-height: 36px;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t2);
   margin: 8px 2px 4px;
 }
@@ -894,7 +927,8 @@ a.b {
 .swl,
 .wpl {
   display: flex;
-  gap: 10px;
+  /* The swatches' 44 point tap targets meet without overlapping. */
+  gap: 14px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -903,6 +937,7 @@ a.b {
   justify-content: space-between;
 }
 .swc {
+  position: relative;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -914,6 +949,16 @@ a.b {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
   display: grid;
   place-items: center;
+}
+/* A 44 point tap target around the 30 point swatch (I-013). */
+.swc::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
 }
 .swc .ic {
   width: 13px;
@@ -948,7 +993,7 @@ a.b {
   padding: 2px;
   min-height: 44px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t2);
   border-radius: var(--r-item);
 }
@@ -1036,17 +1081,17 @@ a.b {
 }
 .pair h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 1.5294rem;
   letter-spacing: -0.02em;
 }
 .pair p {
   margin: 0 0 8px;
   color: var(--t2);
-  font-size: 14px;
+  font-size: 0.8235rem;
   line-height: 1.45;
 }
 .pair .code {
-  font: 700 24px/1 var(--mono);
+  font: 700 1.4118rem/1 var(--mono);
   letter-spacing: 0.3em;
   text-transform: uppercase;
   text-align: center;
@@ -1054,13 +1099,13 @@ a.b {
 }
 .pair .b {
   height: 48px;
-  font-size: 15px;
+  font-size: 0.8824rem;
   border-radius: var(--r-inner);
   margin-top: 12px;
 }
 .err {
   color: var(--fail-t);
-  font-size: 13px;
+  font-size: 0.7647rem;
   min-height: 18px;
 }
 .qset {
@@ -1076,7 +1121,7 @@ a.b {
   margin-top: 12px;
 }
 .ask-q {
-  font-size: 14px;
+  font-size: 0.8235rem;
   font-weight: 600;
   margin: 6px 0 2px;
 }
@@ -1087,7 +1132,7 @@ a.b {
   padding: 1px 6px;
   border-radius: 6px;
   background: var(--fill);
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t2);
 }
 /* The per-device "Show automated chats" switch under a project's chats. */
@@ -1095,7 +1140,7 @@ a.b {
   margin-top: 18px;
   border-radius: var(--r-inner);
   min-height: 46px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   color: var(--t2);
 }
 
@@ -1121,7 +1166,7 @@ a.b {
   height: 100%;
   border: 0;
   background: transparent;
-  font-size: 16px;
+  font-size: 0.9412rem;
   color: var(--t1);
   outline: none;
   -webkit-appearance: none;
@@ -1177,7 +1222,7 @@ a.b {
   position: relative;
   align-items: baseline;
   padding: 9px 16px 10px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   line-height: 1.4;
 }
 .sres-hit::before {
@@ -1196,7 +1241,7 @@ a.b {
 .sk {
   flex: none;
   width: 52px;
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   font-weight: 600;
   color: var(--t3);
 }
@@ -1219,7 +1264,7 @@ a.b {
 
 /* stuck chats (D036) */
 .stk {
-  font-size: 11px;
+  font-size: 0.6471rem;
   font-weight: 700;
   color: var(--wait-t);
   background: var(--wait-soft);
@@ -1228,4 +1273,25 @@ a.b {
 }
 .ck-k.st {
   color: var(--wait-t);
+}
+
+/* Project settings: the path, then the worktree choices, links, setup and Remove. */
+.pset-path {
+  margin: 0 4px 12px;
+  overflow-wrap: anywhere;
+}
+.pset {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+.pset label {
+  font-weight: 600;
+}
+.pset textarea {
+  height: auto;
+  margin-top: 0;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: var(--mono);
 }

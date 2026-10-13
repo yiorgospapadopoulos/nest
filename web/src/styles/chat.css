@@ -5,6 +5,7 @@
   z-index: 40;
   display: flex;
   flex-direction: column;
+  padding: 0 var(--sar) 0 var(--sal);
   background: var(--bg);
   animation: slidein 0.34s var(--motion-easing-glide);
 }
@@ -38,7 +39,7 @@
   align-items: center;
   gap: 2px;
   color: var(--accent);
-  font-size: 16px;
+  font-size: 0.9412rem;
   cursor: pointer;
   padding: 0 8px 0 2px;
   max-width: 180px;
@@ -55,7 +56,7 @@
 }
 .ch-t {
   margin: 0 12px;
-  font-size: 18px;
+  font-size: 1.0588rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -89,7 +90,7 @@
   text-align: left;
   cursor: pointer;
   color: var(--t1);
-  font-size: 13.5px;
+  font-size: 0.7941rem;
 }
 .gs-h > .ic {
   width: 15px;
@@ -103,7 +104,7 @@
   text-overflow: ellipsis;
 }
 .gs-n {
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 .gs-h .cv {
@@ -137,7 +138,7 @@
   gap: 4px 8px;
   align-items: start;
   padding: 5px 2px;
-  font-size: 13.5px;
+  font-size: 0.7941rem;
   border-radius: var(--r-sm);
 }
 .ck li.act {
@@ -205,7 +206,7 @@
   padding: 8px 12px;
   border-radius: calc(var(--r-inner) + 2px) calc(var(--r-inner) + 2px) 6px
     calc(var(--r-inner) + 2px);
-  font-size: 15px;
+  font-size: 0.8824rem;
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -213,19 +214,19 @@
 .m-u small {
   display: block;
   opacity: 0.75;
-  font-size: 12px;
+  font-size: 0.7059rem;
   margin-top: 2px;
 }
 .m-a {
   max-width: 96%;
-  font-size: 15px;
+  font-size: 0.8824rem;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .m-sys {
   align-self: center;
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t3);
   padding: 3px 10px;
   border-radius: var(--r-ctl);
@@ -234,11 +235,11 @@
 }
 /* "Working... 12s" at the end of a running turn (D045). */
 .m-live {
-  font-size: 12px;
+  font-size: 0.7059rem;
 }
 /* "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn. */
 .m-turn {
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t3);
 }
 /* Running activity: a soft light sweeps across the text; a static highlight with
@@ -277,7 +278,7 @@
 .think {
   align-self: flex-start;
   max-width: 96%;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t3);
 }
 .think summary {
@@ -304,7 +305,7 @@
   margin: 2px 0 4px 2px;
   padding-left: 10px;
   border-left: 2px solid var(--hair);
-  font-size: 13px;
+  font-size: 0.7647rem;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -313,7 +314,7 @@
   max-width: 100%;
   border-radius: calc(var(--r-item) + 1px);
   background: var(--fill);
-  font-size: 13px;
+  font-size: 0.7647rem;
   overflow: hidden;
 }
 .tool summary,
@@ -345,14 +346,14 @@
 .ta {
   flex: 1;
   min-width: 0;
-  font: 11px var(--mono);
+  font: 0.6471rem var(--mono);
   color: var(--t2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tr {
-  font-size: 11px;
+  font-size: 0.6471rem;
   color: var(--t3);
   white-space: nowrap;
 }
@@ -394,7 +395,7 @@
 .tool pre {
   margin: 0;
   padding: 8px 12px 10px 32px;
-  font: 11px/1.6 var(--mono);
+  font: 0.6471rem/1.6 var(--mono);
   color: var(--t2);
   border-top: 1px solid var(--hair);
   white-space: pre-wrap;
@@ -415,7 +416,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 0.6471rem;
   font-weight: 700;
   color: var(--wait-t);
 }
@@ -427,12 +428,12 @@
   height: 14px;
 }
 .ask .cmdbox {
-  font-size: 12px;
+  font-size: 0.7059rem;
   margin: 6px 0;
 }
 .ask .acts .b {
   height: 40px;
-  font-size: 14px;
+  font-size: 0.8235rem;
   border-radius: var(--r-tab);
 }
 .tx-empty {
@@ -441,7 +442,7 @@
   gap: 6px;
   text-align: center;
   color: var(--t3);
-  font-size: 13px;
+  font-size: 0.7647rem;
   padding: 60px 10px;
 }
 .tx-empty .ic {
@@ -466,7 +467,7 @@
   border: 0;
   background: transparent;
   resize: none;
-  font-size: 16px;
+  font-size: 0.9412rem;
   color: var(--t1);
   outline: none;
   padding: 9px 2px 4px;
@@ -525,7 +526,7 @@
   border-radius: var(--r-tab);
   background: transparent;
   color: var(--t2);
-  font-size: 13px;
+  font-size: 0.7647rem;
   font-weight: 500;
   padding: 0 6px;
   cursor: pointer;
@@ -593,8 +594,8 @@
 }
 .sheet {
   position: fixed;
-  left: 0;
-  right: 0;
+  left: var(--sal);
+  right: var(--sar);
   bottom: 0;
   z-index: 81;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
@@ -617,8 +618,8 @@
 }
 .asheet {
   position: fixed;
-  left: 8px;
-  right: 8px;
+  left: calc(8px + var(--sal));
+  right: calc(8px + var(--sar));
   bottom: calc(var(--sab) - 4px);
   z-index: 81;
   display: grid;
@@ -648,7 +649,7 @@
 .sh-h h2 {
   flex: 1;
   margin: 0;
-  font-size: 17px;
+  font-size: 1rem;
   font-weight: 700;
   min-width: 0;
   white-space: nowrap;
@@ -667,7 +668,7 @@
   background: transparent;
   color: var(--accent);
   font-weight: 650;
-  font-size: 16px;
+  font-size: 0.9412rem;
   padding: 0 12px;
   cursor: pointer;
   border-radius: var(--r-tab);
@@ -690,7 +691,7 @@
 .sh-f .b {
   height: 48px;
   flex: 1;
-  font-size: 15px;
+  font-size: 0.8824rem;
   border-radius: var(--r-inner);
 }
 .asg {
@@ -706,14 +707,14 @@
 .ast {
   padding: 12px 16px 10px;
   text-align: center;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t3);
   line-height: 1.35;
 }
 .ast b {
   display: block;
   color: var(--t2);
-  font-size: 13px;
+  font-size: 0.7647rem;
 }
 .asi {
   display: flex;
@@ -725,7 +726,7 @@
   border: 0;
   border-top: 1px solid var(--hair);
   background: transparent;
-  font-size: 17px;
+  font-size: 1rem;
   color: var(--t1);
   cursor: pointer;
   text-align: left;
@@ -755,7 +756,7 @@
 }
 .asi small {
   display: block;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t3);
   margin-top: 1px;
 }
@@ -794,19 +795,19 @@
   color: var(--t1);
 }
 .agr b {
-  font-size: 15px;
+  font-size: 0.8824rem;
   font-weight: 650;
 }
 .agr .mono {
   grid-column: 2/4;
-  font: 12px var(--mono);
+  font: 0.7059rem var(--mono);
   color: var(--t2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .agr .mt2 {
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   color: var(--t3);
 }
 .aglog {
@@ -822,10 +823,10 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.7059rem;
 }
 .aglog .la {
-  font: 11.5px var(--mono);
+  font: 0.6765rem var(--mono);
   color: var(--t2);
   white-space: nowrap;
   overflow: hidden;
@@ -833,7 +834,7 @@
 }
 .aglog .lr {
   color: var(--t3);
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -847,7 +848,7 @@
   border-radius: var(--r-inner);
   background: var(--fill);
   padding: 0 14px;
-  font-size: 17px;
+  font-size: 1rem;
   color: var(--t1);
   outline: none;
   margin: 4px 0 8px;
@@ -862,7 +863,7 @@
   align-items: center;
   gap: 10px;
   margin: 2px 2px 12px;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t3);
 }
 .dfile {
@@ -878,7 +879,7 @@
   align-items: center;
   padding: 9px 12px;
   background: var(--fill);
-  font: 600 12px var(--mono);
+  font: 600 0.7059rem var(--mono);
   color: var(--t1);
   overflow-wrap: anywhere;
 }
@@ -889,20 +890,20 @@
 }
 .dhh {
   padding: 4px 12px;
-  font: 11px var(--mono);
+  font: 0.6471rem var(--mono);
   color: var(--t3);
   background: var(--fill);
 }
 .dl {
   display: grid;
   grid-template-columns: 30px 14px minmax(0, 1fr);
-  font: 11.5px/1.7 var(--mono);
+  font: 0.6765rem/1.7 var(--mono);
 }
 .dl span {
   color: var(--t3);
   text-align: right;
   padding-right: 6px;
-  font-size: 10.5px;
+  font-size: 0.6176rem;
 }
 .dl b {
   font-weight: 400;
@@ -928,12 +929,12 @@
 }
 .dnote {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 .cnote {
   margin: 6px 0 2px;
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   color: var(--t2);
   line-height: 1.4;
 }
@@ -967,7 +968,7 @@
   padding: 7px 14px 7px 10px;
   border-radius: var(--r-ctl);
   background: var(--g2);
-  font-size: 13px;
+  font-size: 0.7647rem;
   font-weight: 600;
   color: var(--t1);
   cursor: pointer;
@@ -996,7 +997,7 @@
   padding: 6px 14px;
   border: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t2);
   text-align: left;
   cursor: pointer;
@@ -1024,7 +1025,7 @@
 }
 .bgh {
   margin: 0 0 4px;
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1042,7 +1043,7 @@
   grid-template-columns: 8px 14px auto minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: 0.7647rem;
   color: var(--t1);
 }
 .bgg li .ic {
@@ -1058,14 +1059,14 @@
   max-width: 45vw;
 }
 .bgg li .mono {
-  font: 11.5px var(--mono);
+  font: 0.6765rem var(--mono);
   color: var(--t2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .bgg li .mt2 {
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
 }
 
@@ -1102,19 +1103,19 @@
 .sgn {
   flex: none;
   max-width: 70%;
-  font: 13.5px/1.3 var(--mono);
+  font: 0.7941rem/1.3 var(--mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sgn small {
   color: var(--t3);
-  font-size: 12px;
+  font-size: 0.7059rem;
 }
 .sgd {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   color: var(--t3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1124,7 +1125,7 @@
 /* "context 41%" among the composer's selectors. */
 .qt.ctx {
   flex: none;
-  font-size: 12px;
+  font-size: 0.7059rem;
   color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
@@ -1138,7 +1139,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 0.6471rem;
   font-weight: 650;
   opacity: 0.8;
   margin: -2px -6px 2px 0;
@@ -1173,7 +1174,7 @@
   mask-image: linear-gradient(#000 70%, transparent);
 }
 .md {
-  font-size: 14px;
+  font-size: 0.8235rem;
   line-height: 1.5;
   color: var(--t1);
   overflow-wrap: anywhere;
@@ -1186,12 +1187,12 @@
 }
 .md h3,
 .md h4 {
-  font-size: 15px;
+  font-size: 0.8824rem;
   font-weight: 700;
 }
 .md h5,
 .md h6 {
-  font-size: 14px;
+  font-size: 0.8235rem;
   font-weight: 650;
 }
 .md ul {
@@ -1222,7 +1223,7 @@
 .md code,
 .md pre {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.7059rem;
   background: var(--fill);
   border-radius: 6px;
 }
@@ -1257,4 +1258,66 @@
   100% {
     box-shadow: 0 0 0 3px transparent;
   }
+}
+
+/* How Claude goes on after a plan is approved. */
+.pmodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 2px;
+  border-radius: calc(var(--r-sm) + 2px);
+  background: var(--fill);
+}
+.pmodes button {
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.7941rem;
+  font-weight: 600;
+  color: var(--t2);
+  cursor: pointer;
+}
+.pmodes button[aria-checked="true"] {
+  background: var(--g2);
+  color: var(--t1);
+  box-shadow: 0 1px 3px var(--gsh);
+}
+
+/* A user message with "Restore files to before this message" beside it. */
+.m-ur {
+  align-self: flex-end;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 2px;
+  max-width: calc(82% + 46px);
+}
+.m-ur .m-u {
+  max-width: calc(100% - 46px);
+}
+.rwd {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rwd .ic {
+  width: 16px;
+  height: 16px;
+}
+.rwp {
+  display: block;
+  margin: 6px 0;
+  color: var(--t1);
 }

@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
+import { appearanceBootScript, themeColorTags, type Colors } from "../src/appearance/boot.ts";
+
+export { themeColorTags, type Colors };
 
 // The installable app's manifest and theme colors, from the design tokens at build time,
 // and its icons: the column mark on white, rendered from apple/support/AppIcon-1024.png.
@@ -8,11 +11,6 @@ import type { Plugin } from "vite";
 export interface Asset {
   fileName: string;
   source: string | Uint8Array;
-}
-
-export interface Colors {
-  light: string;
-  dark: string;
 }
 
 /** The page colors from the generated token CSS. */
@@ -52,20 +50,19 @@ export function pwaAssets(colors: Colors, read: (fileName: string) => Uint8Array
   ];
 }
 
-export function themeColorTags(colors: Colors): string {
-  return [
-    `<meta name="theme-color" content="${colors.light}" media="(prefers-color-scheme: light)" />`,
-    `<meta name="theme-color" content="${colors.dark}" media="(prefers-color-scheme: dark)" />`,
-  ].join("\n    ");
-}
-
-/** Emits the manifest and icons with the build, and adds the theme colors to the page. */
+/**
+ * Emits the manifest and icons with the build, and adds the theme colors and the saved
+ * appearance (applied before the first paint) to the page.
+ */
 export function pwa(tokensPath: string, iconsDir: string): Plugin {
   const colors = () => tokenColors(readFileSync(tokensPath, "utf8"));
   return {
     name: "harness-pwa",
     transformIndexHtml(html) {
-      return html.replace("<!-- theme-color -->", themeColorTags(colors()));
+      return html.replace(
+        "<!-- theme-color -->",
+        `${themeColorTags(colors())}\n    <script>${appearanceBootScript()}</script>`,
+      );
     },
     generateBundle() {
       const read = (fileName: string) => readFileSync(resolve(iconsDir, fileName));

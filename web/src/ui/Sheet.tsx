@@ -132,7 +132,12 @@ export function ActionSheet({
           {children}
         </div>
         <div className="asg">
-          <button className="asi cxl" onClick={onClose}>
+          {/* A confirmation opens on Cancel, so one stray Enter changes nothing. */}
+          <button
+            className="asi cxl"
+            data-autofocus={role === "alertdialog" ? true : undefined}
+            onClick={onClose}
+          >
             Cancel
           </button>
         </div>

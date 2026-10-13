@@ -31,6 +31,15 @@ export function fakeApi(): FakeApi {
       },
     }),
     repos: vi.fn<Api["repos"]>().mockResolvedValue([repo("todo-ui")]),
+    removeRepo: vi.fn<Api["removeRepo"]>().mockResolvedValue(null),
+    updateWorktree: vi
+      .fn<Api["updateWorktree"]>()
+      .mockImplementation((name, worktree) => Promise.resolve({ ...repo(name), worktree })),
+    updateRepo: vi
+      .fn<Api["updateRepo"]>()
+      .mockImplementation((name, patch) =>
+        Promise.resolve({ ...repo(name), worktree: { ...repo(name).worktree, ...patch } }),
+      ),
     sessions: vi.fn<Api["sessions"]>().mockResolvedValue([]),
     session: vi.fn<Api["session"]>().mockResolvedValue(detail()),
     sessionEvents: vi.fn<Api["sessionEvents"]>().mockResolvedValue([]),
@@ -56,6 +65,15 @@ export function fakeApi(): FakeApi {
     approve: vi.fn<Api["approve"]>().mockResolvedValue(session({ state: "idle" })),
     reject: vi.fn<Api["reject"]>().mockResolvedValue(session({ state: "closed" })),
     feedback: vi.fn<Api["feedback"]>().mockResolvedValue(session({ state: "running" })),
+    ciFeedback: vi.fn<Api["ciFeedback"]>().mockResolvedValue(null),
+    rewindPreview: vi.fn<Api["rewindPreview"]>().mockResolvedValue({
+      can_rewind: true,
+      files_changed: ["app/form.tsx", "app/schema.ts"],
+      insertions: 12,
+      deletions: 3,
+      error: null,
+    }),
+    rewind: vi.fn<Api["rewind"]>().mockResolvedValue(null),
     merge: vi.fn<Api["merge"]>().mockResolvedValue(session({ state: "closed" })),
     uploadAttachment: vi.fn<Api["uploadAttachment"]>(),
     connectors: vi.fn<Api["connectors"]>().mockResolvedValue([]),

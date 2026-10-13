@@ -63,6 +63,7 @@ describe("pwa assets", () => {
     (plugin.generateBundle as (this: unknown) => void).call({ emitFile });
 
     expect(html).toContain('<meta name="theme-color" content="#eeeeec"');
+    expect(html).toContain("<script>(function () {\n  try {\n    var saved = JSON.parse(");
     expect(emitFile).toHaveBeenCalledTimes(4);
     expect(emitFile).toHaveBeenCalledWith({
       type: "asset",
