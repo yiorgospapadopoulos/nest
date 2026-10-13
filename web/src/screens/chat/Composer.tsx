@@ -47,18 +47,43 @@ interface Choices {
 }
 
 type Props =
-  | { session: Session; repo?: undefined; onCreated?: undefined }
-  | { session?: undefined; repo: string; onCreated: (session: Session) => void };
+  | {
+      session: Session;
+      repo?: undefined;
+      onCreated?: undefined;
+      pixie?: undefined;
+      chat?: undefined;
+    }
+  | {
+      session?: undefined;
+      repo: string;
+      onCreated: (session: Session) => void;
+      pixie?: undefined;
+      chat?: undefined;
+    }
+  // A pixie's chat, if it has one yet: messages go through the pixie, which starts a new run
+  // when needed. Its settings live on its page, so the selectors and suggestions stay out (D057).
+  | {
+      pixie: string;
+      chat: Session | undefined;
+      session?: undefined;
+      repo?: undefined;
+      onCreated?: undefined;
+    };
 
 /**
  * The message field with attachments and the quiet model, thinking and permission
  * selectors. In a new chat the first message creates the session with those choices.
  * While a turn runs, a message is queued and sent when the turn ends.
  */
-export function Composer({ session, repo, onCreated }: Props) {
+export function Composer({ session, repo, onCreated, pixie, chat }: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
-  const key = draftKey(session === undefined ? { repo } : { session: session.id });
+  const key = draftKey(
+    pixie !== undefined ? { pixie } : session === undefined ? { repo } : { session: session.id },
+  );
+  // The chat that runs: an open chat, or the pixie's.
+  const live = session ?? chat;
   const { text, files } = state.drafts[key] ?? NO_DRAFT;
   const setText = (next: string) => {
     actions.setDraftText(key, next);
@@ -78,9 +103,9 @@ export function Composer({ session, repo, onCreated }: Props) {
   const suggest = useSuggestions({
     text,
     caret,
-    focused,
+    focused: focused && pixie === undefined,
     sessionId: session?.id,
-    repo: session === undefined ? repo : session.repo,
+    repo: session?.repo ?? repo ?? "",
   });
 
   useLayoutEffect(() => {
@@ -98,7 +123,7 @@ export function Composer({ session, repo, onCreated }: Props) {
     if (unknownModels) void actions.loadChoices();
   }, [unknownModels, actions]);
 
-  const busy = session !== undefined && BUSY.has(session.state);
+  const busy = live !== undefined && BUSY.has(live.state);
   const closed = session?.state === "closed";
   const choices: Choices =
     session === undefined
@@ -131,7 +156,9 @@ export function Composer({ session, repo, onCreated }: Props) {
     const prompt = text.trim();
     const ids = files.map((f) => f.id);
     let ok: boolean;
-    if (session === undefined) {
+    if (pixie !== undefined) {
+      ok = (await actions.sendToPixie(pixie, prompt)) !== null;
+    } else if (session === undefined) {
       const created = await actions.create({
         repo,
         prompt,
@@ -293,22 +320,26 @@ export function Composer({ session, repo, onCreated }: Props) {
           onKeyDown={onKeyDown}
         />
         <div className="crow">
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            aria-label="Attach files"
-            onChange={(event) => void attach(event)}
-          />
-          <button
-            className="qb"
-            aria-label="Attach"
-            disabled={closed}
-            onClick={() => fileInput.current?.click()}
-          >
-            <Icon name="clip" />
-          </button>
+          {pixie === undefined && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                aria-label="Attach files"
+                onChange={(event) => void attach(event)}
+              />
+              <button
+                className="qb"
+                aria-label="Attach"
+                disabled={closed}
+                onClick={() => fileInput.current?.click()}
+              >
+                <Icon name="clip" />
+              </button>
+            </>
+          )}
           <button
             className="qb"
             aria-label="Dictate"
@@ -318,9 +349,13 @@ export function Composer({ session, repo, onCreated }: Props) {
           >
             <Icon name="mic" />
           </button>
-          {selector("model")}
-          {selector("effort")}
-          {selector("permission")}
+          {pixie === undefined && (
+            <>
+              {selector("model")}
+              {selector("effort")}
+              {selector("permission")}
+            </>
+          )}
           {session !== undefined && context !== null && (
             <ContextMeter
               context={context}
@@ -333,7 +368,7 @@ export function Composer({ session, repo, onCreated }: Props) {
             <button
               className="send stop"
               aria-label="Interrupt"
-              onClick={() => void actions.interrupt(session.id)}
+              onClick={() => void actions.interrupt(live.id)}
             >
               <Icon name="stop" />
             </button>

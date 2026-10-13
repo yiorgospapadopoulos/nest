@@ -41,11 +41,14 @@ export class ApiError extends Error {
   readonly status: number;
   // A machine-readable reason some refusals carry next to the message.
   readonly code: string | null;
+  // The whole answer, for refusals that carry more, such as a stale file's current text.
+  readonly body: unknown;
 
-  constructor(status: number, message: string, code: string | null = null) {
+  constructor(status: number, message: string, code: string | null = null, body: unknown = null) {
     super(message);
     this.status = status;
     this.code = code;
+    this.body = body;
   }
 
   get unauthorized(): boolean {
@@ -382,6 +385,7 @@ export class HttpApi implements Api {
         response.status,
         field(data, "detail") ?? `Request failed (${String(response.status)})`,
         field(data, "code"),
+        data,
       );
     }
     return data as T;

@@ -12,6 +12,10 @@ describe("routes", () => {
     ["/chat/a/b", { tab: "inbox", chat: null }],
     ["/chat/%E0%A4%A", { tab: "inbox", chat: null }],
     ["/account/x", { tab: "inbox", chat: null }],
+    ["/pixie/p%2F1", { tab: "projects", chat: null, pixie: "p/1" }],
+    ["/pixie/", { tab: "inbox", chat: null }],
+    ["/pixie/a/b", { tab: "inbox", chat: null }],
+    ["/pixie/%E0%A4%A", { tab: "inbox", chat: null }],
     ["/elsewhere", { tab: "inbox", chat: null }],
   ])("reads %s", (path, route) => {
     expect(parseRoute(path)).toEqual(route);
@@ -21,6 +25,7 @@ describe("routes", () => {
     for (const route of [
       { tab: "account", chat: null },
       { tab: "projects", chat: "s/1 x" },
+      { tab: "projects", chat: null, pixie: "p/1 x" },
     ] as const) {
       expect(parseRoute(routePath(route))).toEqual(route);
     }

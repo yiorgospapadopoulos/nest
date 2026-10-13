@@ -15,6 +15,8 @@ import { ChatRow } from "./ChatRow.tsx";
 import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
+import { PixieSection } from "../pixies/PixieSection.tsx";
+import type { PixieTab } from "../pixies/PixieView.tsx";
 
 interface Props {
   project: string | null;
@@ -23,13 +25,21 @@ interface Props {
   onOpenChat: (sessionId: string, event?: number) => void;
   onOpenClaudeChat: (chatId: string) => void;
   onNewChat: (repo: string) => void;
+  onOpenPixie: (id: string, tab: PixieTab) => void;
 }
 
 /**
  * A search over every chat, then project chips and the selected project's chats grouped
  * like the Mac sidebar. While a search is typed, its results replace the lists.
  */
-export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onNewChat }: Props) {
+export function Projects({
+  project,
+  onProject,
+  onOpenChat,
+  onOpenClaudeChat,
+  onNewChat,
+  onOpenPixie,
+}: Props) {
   const { state, actions } = useStore();
   const [showArchived, setShowArchived] = useState(false);
   const [acting, setActing] = useState<Session | null>(null);
@@ -66,6 +76,7 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
 
   const listsView = (
     <>
+      <PixieSection onOpen={onOpenPixie} />
       {state.repos.length === 0 && (
         <p className="sempty">
           No projects yet. Add one on your Mac with <code>harness</code>.

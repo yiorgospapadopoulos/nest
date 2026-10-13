@@ -14,11 +14,16 @@ import { Frame } from "./Frame.tsx";
 import { GoalsStrip } from "./GoalsStrip.tsx";
 import { PrChip } from "./PrChip.tsx";
 import { Transcript } from "./Transcript.tsx";
+import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
-// continued in harness.
-export type ChatTarget = { id: string; event?: number } | { draft: string } | { claude: string };
+// continued in harness, or a pixie's page (D057).
+export type ChatTarget =
+  | { id: string; event?: number }
+  | { draft: string }
+  | { claude: string }
+  | { pixie: string; tab?: PixieTab };
 
 interface Props {
   target: ChatTarget;
@@ -30,6 +35,7 @@ export function ChatView({ target, onBack, onOpen }: Props) {
   if ("claude" in target) {
     return <ClaudeChatView id={target.claude} onBack={onBack} onOpen={onOpen} />;
   }
+  if ("pixie" in target) return <PixieView id={target.pixie} tab={target.tab} onBack={onBack} />;
   return "draft" in target ? (
     <Frame title="New chat" back={target.draft} onBack={onBack}>
       <div className="ch-tx">

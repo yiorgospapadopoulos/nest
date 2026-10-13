@@ -2,13 +2,50 @@ import { useStore } from "../../store/context.ts";
 import { inboxGroups } from "../../store/selectors.ts";
 import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
+import { Sprite } from "../pixies/Sprite.tsx";
 import { InboxCard } from "./InboxCard.tsx";
 import { CiFailureCard } from "./PrCards.tsx";
 import { StuckCard } from "./StuckCard.tsx";
 
+// A pixie chat's repo; its items are grouped under the pixie (D057).
+const PIXIE_REPO = "pixie:";
+
+interface Props {
+  onOpenChat: (sessionId: string) => void;
+  onOpenPixie: (id: string) => void;
+}
+
 /** Every approval, question, review, merge, failed check and stuck chat, by project. */
-export function Inbox({ onOpenChat }: { onOpenChat: (sessionId: string) => void }) {
+export function Inbox({ onOpenChat, onOpenPixie }: Props) {
   const { state } = useStore();
+  const heading = (repo: string) => {
+    if (!repo.startsWith(PIXIE_REPO)) {
+      return (
+        <>
+          <ProjectIcon name={repo} />
+          <span>{repo}</span>
+        </>
+      );
+    }
+    const pixie = state.pixies[repo.slice(PIXIE_REPO.length)];
+    // A pixie deleted meanwhile.
+    if (pixie === undefined) return <span>Pixie</span>;
+    return (
+      <>
+        <Sprite mascot={pixie.mascot} color={pixie.color} size={22} />
+        <span>{pixie.name}</span>
+        <button
+          className="pxopen"
+          aria-label={`Open ${pixie.name}`}
+          onClick={() => {
+            onOpenPixie(pixie.id);
+          }}
+        >
+          <Icon name="chevr" />
+        </button>
+      </>
+    );
+  };
   const groups = inboxGroups(state);
   return (
     <>
@@ -24,8 +61,7 @@ export function Inbox({ onOpenChat }: { onOpenChat: (sessionId: string) => void 
       {groups.map((group) => (
         <section key={group.repo} aria-labelledby={`inbox-${group.repo}`}>
           <h2 className="pg-h" id={`inbox-${group.repo}`}>
-            <ProjectIcon name={group.repo} />
-            <span>{group.repo}</span>
+            {heading(group.repo)}
             <span className="gc">
               {group.items.length + group.failures.length + group.stuck.length}
             </span>

@@ -18,6 +18,7 @@ import type {
   MonthUsage,
   NotificationSettings,
   Pixie,
+  PixieSearchHit,
   ResolveBody,
   SearchResults,
   Session,
@@ -30,6 +31,25 @@ import { nudgeText } from "./selectors.ts";
 import type { Action, Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
+
+// A pixie file as read: `hash` is null while the file does not exist yet.
+export interface FileState {
+  text: string;
+  hash: string | null;
+}
+
+export type FileSave = { saved: FileState } | { stale: FileState };
+
+// The code of a write that named an old hash (D057).
+const STALE_FILE = "stale_file";
+
+/** The current file a stale-write refusal carries. */
+function currentFile(body: unknown): FileState {
+  const { text, hash } = (body ?? {}) as Record<string, unknown>;
+  return typeof text === "string" && typeof hash === "string"
+    ? { text, hash }
+    : { text: "", hash: null };
+}
 
 export type Actions = ReturnType<typeof createActions>;
 
@@ -101,6 +121,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     }
   }
 
+  async function loadPixies(): Promise<void> {
+    const pixies = await quietly(() => api.pixies());
+    if (pixies !== null) dispatch({ type: "pixies", pixies });
+  }
+
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
@@ -136,15 +161,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
             api.sessions(true),
             api.approvals(),
             api.claudeChats(showAutomated),
-            api.pixies(),
           ]),
-        ([repos, open, archived, approvals, chats, pixies]) => {
+        ([repos, open, archived, approvals, chats]) => {
           dispatch({ type: "loaded", repos, sessions: [...open, ...archived], approvals });
           dispatch({ type: "claudeChats", chats });
-          dispatch({ type: "pixies", pixies });
         },
       );
       loaded = true;
+      // Apart, so the app still opens when only the pixies cannot load.
+      await loadPixies();
     } catch (error) {
       if (error instanceof ApiError && error.unauthorized) {
         dispatch({ type: "auth", auth: "unpaired" });
@@ -163,10 +188,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
     load,
 
-    async loadPixies(): Promise<void> {
-      const pixies = await quietly(() => api.pixies());
-      if (pixies !== null) dispatch({ type: "pixies", pixies });
-    },
+    loadPixies,
     async createPixie(body: CreatePixieBody): Promise<Pixie | null> {
       const created = await attempt(() => api.createPixie(body));
       if (created !== null) dispatch({ type: "pixie", pixie: created });
@@ -194,6 +216,51 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (pixie === null) return false;
       dispatch({ type: "pixie", pixie });
       return true;
+    },
+    /** Resolves to why the Mac refused the slug (409 taken, 422 invalid), else null. */
+    async setPixieSlug(id: string, slug: string): Promise<string | null> {
+      try {
+        dispatch({ type: "pixie", pixie: await api.updatePixie(id, { slug }) });
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 409 || error.status === 422)) {
+          return error.message;
+        }
+        report(error);
+      }
+      return null;
+    },
+    /** A file that does not exist yet reads as empty, with no hash to name. */
+    async readPixieFile(id: string, name: string): Promise<FileState | null> {
+      try {
+        return await api.pixieFile(id, name);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return { text: "", hash: null };
+        report(error);
+        return null;
+      }
+    },
+    /** A stale write resolves to the file as it is now, for the user to choose. */
+    async savePixieFile(
+      id: string,
+      name: string,
+      text: string,
+      hash: string | null,
+    ): Promise<FileSave | null> {
+      try {
+        return { saved: await api.savePixieFile(id, name, text, hash) };
+      } catch (error) {
+        if (error instanceof ApiError && error.code === STALE_FILE) {
+          return { stale: currentFile(error.body) };
+        }
+        report(error);
+        return null;
+      }
+    },
+    async pixieNotes(id: string): Promise<string[]> {
+      return (await quietly(() => api.pixieNotes(id))) ?? [];
+    },
+    async searchPixie(id: string, query: string): Promise<PixieSearchHit[]> {
+      return (await quietly(() => api.searchPixie(id, query))) ?? [];
     },
 
     /** A live event from the socket. */

@@ -1,0 +1,351 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import type { Pixie, UpdatePixieBody } from "../../api/types.ts";
+import { useStore } from "../../store/context.ts";
+import { Icon } from "../../ui/Icon.tsx";
+import { ActionSheet } from "../../ui/Sheet.tsx";
+import { ChipList } from "./ChipList.tsx";
+import { FilePage } from "./FilePage.tsx";
+import { InlineInput } from "./InlineInput.tsx";
+import { factLines } from "./memory.ts";
+import { MemoryPage } from "./MemoryPage.tsx";
+import { PixieLook } from "./PixieLook.tsx";
+import { PixieProjects } from "./PixieProjects.tsx";
+import { PixieSettings } from "./PixieSettings.tsx";
+import { Sprite } from "./Sprite.tsx";
+
+// The skill names offered while adding one.
+const SKILL_LIST = "pixie-skills";
+
+/**
+ * Everything that sets a pixie up, in one scrolling panel laid out like the approved design's Details
+ * panel. Every change is saved at once; there is no form to submit (D057).
+ */
+export function PixieDetails({ pixie }: { pixie: Pixie }) {
+  const { actions } = useStore();
+  const { id } = pixie;
+  const save = useCallback(
+    (body: UpdatePixieBody) => {
+      void actions.updatePixie(id, body);
+    },
+    [actions, id],
+  );
+  const [page, setPage] = useState<"soul" | "memory" | null>(null);
+  const [confirm, setConfirm] = useState<"reset" | "delete" | null>(null);
+  // Bumped when the memory page closes, to count the facts again.
+  const [memoryRead, setMemoryRead] = useState(0);
+  const facts = useFactCount(id, memoryRead);
+
+  return (
+    <>
+      <PixieHeader pixie={pixie} save={save} />
+      <PixieLook pixie={pixie} save={save} />
+
+      <PixieSettings pixie={pixie} save={save} />
+
+      <h2 className="pg-h">Projects</h2>
+      <PixieProjects pixie={pixie} save={save} />
+
+      <h2 className="pg-h">Skills</h2>
+      <div className="lgrp gl pad">
+        <ChipList
+          label="Skill"
+          add="Add skill"
+          items={pixie.skills}
+          empty="All skills"
+          list={SKILL_LIST}
+          onChange={(skills) => {
+            save({ skills });
+          }}
+        />
+        <SkillNames />
+      </div>
+
+      <h2 className="pg-h">Tools</h2>
+      <div className="lgrp gl pad pxtools">
+        <h3 className="pxsub">Never ask for</h3>
+        <ChipList
+          label="Never ask for"
+          items={pixie.allowed_tools}
+          empty="Asks as its permission mode says"
+          onChange={(allowed_tools) => {
+            save({ allowed_tools });
+          }}
+        />
+        <h3 className="pxsub">Never allow</h3>
+        <ChipList
+          label="Never allow"
+          items={pixie.disallowed_tools}
+          empty="Nothing beyond the git rules"
+          onChange={(disallowed_tools) => {
+            save({ disallowed_tools });
+          }}
+        />
+      </div>
+
+      <div className="lgrp gl pxgap">
+        <DrillIn
+          title="Soul"
+          about="Who this pixie is and the rules it follows"
+          onOpen={() => {
+            setPage("soul");
+          }}
+        />
+        <DrillIn title="Habits" about="Recurring tasks this pixie runs on its own">
+          Coming soon
+        </DrillIn>
+        <DrillIn
+          title="Memory"
+          about="Facts and preferences this pixie remembers"
+          onOpen={() => {
+            setPage("memory");
+          }}
+        >
+          {facts !== null && `${String(facts)} ${facts === 1 ? "fact" : "facts"}`}
+        </DrillIn>
+      </div>
+
+      <div className="lgrp gl pxgap">
+        <div className="srow">
+          <span id="pixie-hidden">Hidden</span>
+          <button
+            className="sw"
+            role="switch"
+            aria-checked={pixie.hidden}
+            aria-labelledby="pixie-hidden"
+            onClick={() => {
+              save({ hidden: !pixie.hidden });
+            }}
+          />
+        </div>
+      </div>
+      <p className="hint gnote">A hidden pixie leaves the Pixies list. Its chat stays.</p>
+
+      <div className="lgrp gl pxgap">
+        <button
+          className="pxrow-d pxdanger"
+          aria-label="Reset conversation"
+          aria-describedby="pixie-reset-about"
+          onClick={() => {
+            setConfirm("reset");
+          }}
+        >
+          <span className="pxdt">
+            <b>Reset conversation</b>
+            <span id="pixie-reset-about">Clear all messages and start fresh</span>
+          </span>
+        </button>
+        <button
+          className="pxrow-d pxdanger"
+          onClick={() => {
+            setConfirm("delete");
+          }}
+        >
+          <span className="pxdt">
+            <b>Delete pixie</b>
+          </span>
+        </button>
+      </div>
+
+      {confirm === "reset" && (
+        <Confirm
+          title="Reset conversation?"
+          about="The chat is archived. Soul and memory stay."
+          action="Reset"
+          onConfirm={() => void actions.resetPixie(id)}
+          onClose={() => {
+            setConfirm(null);
+          }}
+        />
+      )}
+      {confirm === "delete" && (
+        <Confirm
+          title={`Delete ${pixie.name}?`}
+          about="Its chat, soul, memory and notes are removed."
+          action="Delete"
+          // Once it is gone, the page goes back by itself.
+          onConfirm={() => void actions.deletePixie(id)}
+          onClose={() => {
+            setConfirm(null);
+          }}
+        />
+      )}
+      {page === "soul" && (
+        <FilePage
+          pixie={pixie}
+          name="soul"
+          title="Soul"
+          onClose={() => {
+            setPage(null);
+          }}
+        />
+      )}
+      {page === "memory" && (
+        <MemoryPage
+          pixie={pixie}
+          onClose={() => {
+            setPage(null);
+            setMemoryRead((n) => n + 1);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The big sprite, then the name and the @slug, each edited in place. */
+function PixieHeader({ pixie, save }: { pixie: Pixie; save: (body: UpdatePixieBody) => void }) {
+  const { actions } = useStore();
+  const [editing, setEditing] = useState<"name" | "slug" | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
+  const stop = () => {
+    setEditing(null);
+  };
+  return (
+    <div className="pxhead">
+      <Sprite mascot={pixie.mascot} color={pixie.color} size={96} />
+      {editing === "name" ? (
+        <InlineInput
+          label="Name"
+          initial={pixie.name}
+          className="pxin pxname"
+          onDone={(name) => {
+            stop();
+            if (name && name !== pixie.name) save({ name });
+          }}
+        />
+      ) : (
+        <button
+          className="pxedit pxname"
+          aria-label={`Edit name, ${pixie.name}`}
+          onClick={() => {
+            setEditing("name");
+          }}
+        >
+          {pixie.name}
+        </button>
+      )}
+      {editing === "slug" ? (
+        <InlineInput
+          label="Slug"
+          initial={pixie.slug}
+          className="pxin pxslug"
+          onDone={(slug) => {
+            stop();
+            if (slug && slug !== pixie.slug) {
+              void actions.setPixieSlug(pixie.id, slug).then(setRefused);
+            }
+          }}
+        />
+      ) : (
+        <button
+          className="pxedit pxslug"
+          aria-label={`Edit slug, @${pixie.slug}`}
+          onClick={() => {
+            setEditing("slug");
+          }}
+        >
+          @{pixie.slug}
+        </button>
+      )}
+      {refused !== null && (
+        <p className="pxerr" role="alert">
+          {refused}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The skill names of the slash-command catalog, from the first project's last known list. */
+function SkillNames() {
+  const { state, actions } = useStore();
+  const repo = state.repos[0]?.name;
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (repo === undefined) return;
+    void actions.commands({ repo }).then((list) => {
+      if (list !== null) setNames(list.commands.map((command) => command.name));
+    });
+  }, [actions, repo]);
+  return (
+    <datalist id={SKILL_LIST}>
+      {names.map((name) => (
+        <option key={name} value={name} />
+      ))}
+    </datalist>
+  );
+}
+
+/** The facts in MEMORY.md, counted again for each new `version`. */
+function useFactCount(id: string, version: number): number | null {
+  const { actions } = useStore();
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    void actions.readPixieFile(id, "memory").then((file) => {
+      if (file !== null) setCount(factLines(file.text).length);
+    });
+  }, [actions, id, version]);
+  return count;
+}
+
+interface DrillInProps {
+  title: string;
+  about: string;
+  onOpen?: () => void;
+  children?: ReactNode;
+}
+
+/** A row that opens a page: title, a line about it, a count or note, and a chevron. */
+function DrillIn({ title, about, onOpen, children }: DrillInProps) {
+  const body = (
+    <>
+      <span className="pxdt">
+        <b>{title}</b>
+        <span>{about}</span>
+      </span>
+      <span className="pxn">{children}</span>
+    </>
+  );
+  return onOpen === undefined ? (
+    <div className="pxrow-d off">{body}</div>
+  ) : (
+    <button className="pxrow-d" onClick={onOpen}>
+      {body}
+      <Icon name="chevr" className="chv" />
+    </button>
+  );
+}
+
+interface ConfirmProps {
+  title: string;
+  about: string;
+  action: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}
+
+function Confirm({ title, about, action, onConfirm, onClose }: ConfirmProps) {
+  return (
+    <ActionSheet
+      label={title}
+      role="alertdialog"
+      onClose={onClose}
+      title={
+        <>
+          <b>{title}</b>
+          {about}
+        </>
+      }
+    >
+      <button
+        className="asi dng mid"
+        onClick={() => {
+          onClose();
+          onConfirm();
+        }}
+      >
+        {action}
+      </button>
+    </ActionSheet>
+  );
+}

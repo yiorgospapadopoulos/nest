@@ -310,6 +310,17 @@ describe("HttpApi", () => {
     });
   });
 
+  it("keeps the whole body of a refusal", async () => {
+    const body = { detail: "soul changed", code: "stale_file", text: "Theirs", hash: "h2" };
+    const { api } = setup(409, body);
+
+    await expect(api.savePixieFile("p1", "soul", "Mine", "h1")).rejects.toMatchObject({
+      code: "stale_file",
+      body,
+    });
+    expect(new ApiError(500, "x").body).toBeNull();
+  });
+
   it.each([
     [jsonResponse(422, { detail: [{ msg: "bad" }] })],
     [new Response("<html>", { status: 502 })],

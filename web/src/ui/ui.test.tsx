@@ -77,7 +77,7 @@ describe("Toast", () => {
         connect={socketFactory().connect}
         location={{ protocol: "http:", host: "x" }}
       >
-        <Inbox onOpenChat={() => undefined} />
+        <Inbox onOpenChat={() => undefined} onOpenPixie={() => undefined} />
         <Toast />
       </StoreProvider>,
     );

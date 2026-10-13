@@ -1229,3 +1229,486 @@ a.b {
 .ck-k.st {
   color: var(--wait-t);
 }
+
+/* Pixies (D057): the section above the projects, the pixie page and its details panel. */
+.pxsec {
+  margin-bottom: 14px;
+}
+.pxr .pxs {
+  flex: none;
+}
+.pxnew {
+  color: var(--accent);
+}
+.pxplus {
+  width: 28px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.pxtpl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 6px 0;
+}
+.pxtb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
+  border-radius: var(--r-ctl);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+  cursor: pointer;
+}
+.pxopen {
+  width: 44px;
+  height: 44px;
+  margin: -12px -12px -12px -8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.ch-t .pxs {
+  vertical-align: -3px;
+  margin-right: 8px;
+}
+.pxtabs {
+  display: flex;
+  margin: 8px 12px 0;
+}
+.pxtabs button {
+  flex: 1;
+  height: 40px;
+}
+.pxtabs button[aria-selected="true"] {
+  background: var(--g2);
+  color: var(--t1);
+  box-shadow: 0 1px 3px var(--gsh);
+}
+/* The pixie's chat background: a soft wash over the wallpaper, so text keeps its contrast. */
+.pxbg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.pxbg-plain {
+  background-image: none;
+}
+.pxbg-meadow {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--st-review) 16%, transparent),
+    color-mix(in srgb, var(--st-wait) 6%, transparent)
+  );
+}
+.pxbg-dusk {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--st-wait) 16%, transparent),
+    color-mix(in srgb, var(--st-fail) 8%, transparent)
+  );
+}
+.pxbg-night {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--st-run) 18%, transparent),
+    color-mix(in srgb, var(--t1) 8%, transparent)
+  );
+}
+.pxbg-dawn {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--st-fail) 10%, transparent),
+    color-mix(in srgb, var(--st-wait) 12%, transparent)
+  );
+}
+.pxchat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pxhi .pxs {
+  margin-bottom: 10px;
+}
+.pxhi b {
+  font-size: 16px;
+  color: var(--t1);
+}
+.pxd {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 16px calc(var(--sab) + 24px);
+  scrollbar-width: none;
+}
+.pxd::-webkit-scrollbar {
+  display: none;
+}
+.pxhead {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.pxhead > .pxs {
+  margin-bottom: 8px;
+}
+.pxedit {
+  min-height: 44px;
+  max-width: 100%;
+  border: 0;
+  padding: 0 12px;
+  border-radius: var(--r-tab);
+  background: transparent;
+  color: var(--t1);
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pxname {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.pxslug {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--t3);
+}
+.pxin {
+  min-height: 44px;
+  max-width: 100%;
+  border: 0;
+  padding: 0 12px;
+  border-radius: var(--r-tab);
+  background: var(--g3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--t1);
+  text-align: center;
+  outline: none;
+}
+.pxin:focus {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+/* 16px keeps iPhone from zooming into the field. */
+.pxin.pxslug,
+.pxin-sm {
+  font-size: 16px;
+}
+.pxin-sm {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.pxerr {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--fail-t);
+}
+.pxpick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.pxm {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-item);
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxm[aria-pressed="true"],
+.pxbgs[aria-pressed="true"] i,
+.pxdot[aria-pressed="true"]::before {
+  box-shadow:
+    0 0 0 2px var(--g2),
+    0 0 0 3.5px var(--t1);
+}
+.pxm[aria-pressed="true"] {
+  background: var(--g2);
+}
+/* A 24px dot in a 44px tap target. */
+.pxdot {
+  width: 44px;
+  height: 44px;
+  margin: -4px;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxdot::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--px);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.pxcustom::before {
+  background: conic-gradient(
+    hsl(0 85% 60%),
+    hsl(60 85% 55%),
+    hsl(120 70% 50%),
+    hsl(180 75% 50%),
+    hsl(240 80% 62%),
+    hsl(300 75% 60%),
+    hsl(360 85% 60%)
+  );
+}
+.pxbgs {
+  width: 52px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxbgs i {
+  display: block;
+  width: 44px;
+  height: 32px;
+  border-radius: var(--r-item);
+  background-color: var(--g3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.pxgap {
+  margin-top: 20px;
+}
+.pxset,
+.pxadd-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.pxset:active,
+.pxadd-row:active {
+  background: var(--fill);
+}
+.pxset:disabled {
+  cursor: default;
+  background: transparent;
+}
+.pxv {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.pxset:disabled .pxv .chv {
+  visibility: hidden;
+}
+.pxadd-row {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pxx {
+  width: 44px;
+  height: 44px;
+  margin-right: -12px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.pxchips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pxchip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 36px;
+  padding-left: 12px;
+  border-radius: var(--r-ctl);
+  background: var(--fill);
+  font-size: 13px;
+}
+.pxchip code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pxchip button {
+  width: 44px;
+  height: 44px;
+  margin: -4px 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxadd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px dashed var(--hair2);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pxsub {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t3);
+}
+.pxchips + .pxsub {
+  margin-top: 16px;
+}
+.sh-b > .pxsub {
+  margin: 18px 4px 8px;
+}
+/* A row that opens a page or asks first: title, a line about it, and a chevron. */
+.pxrow-d {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.pxrow-d + .pxrow-d::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hair);
+}
+.pxrow-d:active {
+  background: var(--fill);
+}
+.pxrow-d.off {
+  cursor: default;
+}
+.pxrow-d.off:active {
+  background: transparent;
+}
+.pxdt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.pxdt b {
+  font-weight: 600;
+}
+.pxdt span,
+.pxdt small {
+  font-size: 13px;
+  color: var(--t3);
+}
+.pxn {
+  font-size: 13px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.pxdanger .pxdt b {
+  color: var(--fail-t);
+}
+.pxfact .pxdt > span {
+  font-size: 15px;
+  color: var(--t1);
+}
+.pxform {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pxgo {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 14px;
+  border-radius: var(--r-tab);
+}
+.pxhits {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.pxhits .srow {
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.pxstale {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-inner);
+  background: var(--wait-soft);
+  color: var(--wait-t);
+  font-size: 13px;
+}
+.pxstale .acts {
+  margin-top: 6px;
+}
+.pxfile {
+  display: block;
+  width: 100%;
+  min-height: 60vh;
+  border: 0;
+  padding: 12px;
+  border-radius: var(--r-inner);
+  background: var(--g3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--t1);
+  font: 15px/1.5 var(--mono);
+  resize: none;
+  outline: none;
+}
+.pxfile:focus {
+  box-shadow: 0 0 0 2px var(--accent);
+}

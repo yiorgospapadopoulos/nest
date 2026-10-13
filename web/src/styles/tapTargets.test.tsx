@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { screen } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
-import { detail, queuedMessage, repo, session } from "../test/fixtures.ts";
+import { detail, pixie, queuedMessage, repo, session } from "../test/fixtures.ts";
+import { openPixie } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
 
 // The app's own stylesheets: jsdom has no layout, but it applies their declared sizes.
@@ -102,5 +103,30 @@ describe("tap targets", () => {
       width: TAP,
       height: TAP,
     });
+  });
+
+  it("are at least 44 points on a pixie's details", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("web")]);
+    await openPixie(api, pixie({ projects: ["web"], skills: ["review"] }), "Details");
+
+    const controls = [
+      screen.getByRole("button", { name: "ghost" }),
+      screen.getByRole("button", { name: "Colour #E5484D" }),
+      screen.getByRole("button", { name: "Custom colour" }),
+      screen.getByRole("button", { name: "Dusk background" }),
+      screen.getByRole("button", { name: "Remove web" }),
+      screen.getByRole("button", { name: "Remove review" }),
+    ];
+    for (const control of controls) {
+      const { width, height } = box(control);
+      expect(
+        Math.min(width, height),
+        control.getAttribute("aria-label") ?? "",
+      ).toBeGreaterThanOrEqual(TAP);
+    }
+    for (const name of [/^Edit name/, /^Edit slug/, "Add project", "Add skill", /^Soul/]) {
+      expect(box(screen.getByRole("button", { name })).height).toBeGreaterThanOrEqual(TAP);
+    }
   });
 });

@@ -61,6 +61,76 @@ describe("pixie actions", () => {
     vi.clearAllMocks();
   });
 
+  it("loads the rest and stays online when pixies cannot load", async () => {
+    const { api, dispatched, actions } = setup();
+    api.pixies.mockRejectedValueOnce(new Error("no pixies"));
+    await actions.load();
+    expect(dispatched.map((a) => a.type)).toEqual(["loaded", "claudeChats"]);
+  });
+
+  it("reads a pixie file, empty when it does not exist", async () => {
+    const { api, dispatched, actions } = setup();
+    api.pixieFile.mockResolvedValueOnce({ text: "Hi", hash: "h" });
+    expect(await actions.readPixieFile("p1", "soul")).toEqual({ text: "Hi", hash: "h" });
+    api.pixieFile.mockRejectedValueOnce(new ApiError(404, "gone"));
+    expect(await actions.readPixieFile("p1", "soul")).toEqual({ text: "", hash: null });
+    api.pixieFile.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.readPixieFile("p1", "soul")).toBeNull();
+    expect(dispatched.at(-1)).toMatchObject({ type: "toast", toast: { text: "down" } });
+  });
+
+  it("saves a pixie file and returns the current one when it is stale", async () => {
+    const { api, actions } = setup();
+    api.savePixieFile.mockResolvedValueOnce({ text: "Mine", hash: "h2" });
+    expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toEqual({
+      saved: { text: "Mine", hash: "h2" },
+    });
+    api.savePixieFile.mockRejectedValueOnce(
+      new ApiError(409, "changed", "stale_file", { text: "Theirs", hash: "h3" }),
+    );
+    expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toEqual({
+      stale: { text: "Theirs", hash: "h3" },
+    });
+    // A body without the file reads as empty.
+    api.savePixieFile.mockRejectedValueOnce(new ApiError(409, "changed", "stale_file", null));
+    expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toEqual({
+      stale: { text: "", hash: null },
+    });
+    api.savePixieFile.mockRejectedValueOnce(
+      new ApiError(409, "changed", "stale_file", { text: 1 }),
+    );
+    expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toEqual({
+      stale: { text: "", hash: null },
+    });
+    api.savePixieFile.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toBeNull();
+  });
+
+  it("sets a slug, returning why the Mac refused it", async () => {
+    const { api, dispatched, actions } = setup();
+    expect(await actions.setPixieSlug("p1", "new")).toBeNull();
+    expect(dispatched[0]).toMatchObject({ type: "pixie" });
+    api.updatePixie.mockRejectedValueOnce(new ApiError(409, "taken"));
+    expect(await actions.setPixieSlug("p1", "x")).toBe("taken");
+    api.updatePixie.mockRejectedValueOnce(new ApiError(422, "bad slug"));
+    expect(await actions.setPixieSlug("p1", "X")).toBe("bad slug");
+    api.updatePixie.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.setPixieSlug("p1", "y")).toBeNull();
+    expect(dispatched.at(-1)).toMatchObject({ type: "toast", toast: { text: "down" } });
+  });
+
+  it("lists notes and searches quietly", async () => {
+    const { api, actions } = setup();
+    api.pixieNotes.mockResolvedValueOnce(["a"]);
+    expect(await actions.pixieNotes("p1")).toEqual(["a"]);
+    api.pixieNotes.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.pixieNotes("p1")).toEqual([]);
+    api.searchPixie.mockResolvedValueOnce([{ file: "MEMORY.md", line: "x" }]);
+    expect(await actions.searchPixie("p1", "x")).toEqual([{ file: "MEMORY.md", line: "x" }]);
+    api.searchPixie.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.searchPixie("p1", "x")).toEqual([]);
+  });
+
   it("loads pixies with everything else", async () => {
     const { api, dispatched, actions } = setup();
     api.pixies.mockResolvedValueOnce([pixie()]);

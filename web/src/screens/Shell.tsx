@@ -5,6 +5,7 @@ import { useStore } from "../store/context.ts";
 import { needsCount } from "../store/selectors.ts";
 import { Account } from "./account/Account.tsx";
 import { ChatView, type ChatTarget } from "./chat/ChatView.tsx";
+import type { PixieTab } from "./pixies/PixieView.tsx";
 import { Inbox } from "./inbox/Inbox.tsx";
 import { Projects } from "./projects/Projects.tsx";
 import { TabBar } from "./TabBar.tsx";
@@ -15,14 +16,16 @@ export function Shell() {
   const [initial] = useState(() => parseRoute(window.location.pathname));
   const [tab, setTab] = useState<Tab>(initial.tab);
   const [project, setProject] = useState<string | null>(null);
-  const [chat, setChat] = useState<ChatTarget | null>(
-    initial.chat === null ? null : { id: initial.chat },
-  );
+  const [chat, setChat] = useState<ChatTarget | null>(() => routeTarget(initial));
   // The chosen project while it is still registered, else the first one.
   const current = state.repos.find((r) => r.name === project)?.name ?? state.repos[0]?.name ?? null;
 
   useEffect(() => {
-    const path = routePath({ tab, chat: chat !== null && "id" in chat ? chat.id : null });
+    const path = routePath({
+      tab,
+      chat: chat !== null && "id" in chat ? chat.id : null,
+      ...(chat !== null && "pixie" in chat ? { pixie: chat.pixie } : {}),
+    });
     if (window.location.pathname !== path) window.history.replaceState(null, "", path);
   }, [tab, chat]);
 
@@ -30,9 +33,9 @@ export function Shell() {
   useEffect(() => {
     const worker = window.navigator.serviceWorker as ServiceWorkerContainer | undefined;
     if (worker === undefined) return;
-    const go = ({ tab: next, chat: id }: Route) => {
-      setTab(next);
-      setChat(id === null ? null : { id });
+    const go = (route: Route) => {
+      setTab(route.tab);
+      setChat(routeTarget(route));
     };
     const onMessage = (event: MessageEvent<NavigateMessage | null>) => {
       if (event.data?.type === NAVIGATE) go(parseRoute(event.data.url));
@@ -57,6 +60,12 @@ export function Shell() {
     setChat(event === undefined ? { id } : { id, event });
   };
 
+  // A pixie's page opens over the projects tab, where its row is.
+  const openPixie = (id: string, pixieTab: PixieTab = "chat") => {
+    setTab("projects");
+    setChat({ pixie: id, tab: pixieTab });
+  };
+
   return (
     <>
       <div
@@ -66,7 +75,7 @@ export function Shell() {
         role="tabpanel"
         aria-labelledby={`tab-${tab}`}
       >
-        {tab === "inbox" && <Inbox onOpenChat={openChat} />}
+        {tab === "inbox" && <Inbox onOpenChat={openChat} onOpenPixie={openPixie} />}
         {tab === "projects" && (
           <Projects
             project={current}
@@ -78,6 +87,7 @@ export function Shell() {
             onNewChat={(repo) => {
               setChat({ draft: repo });
             }}
+            onOpenPixie={openPixie}
           />
         )}
         {tab === "account" && <Account />}
@@ -100,14 +110,22 @@ export function Shell() {
   );
 }
 
-/** The session or Claude Code chat a target shows; null for a new chat. */
+/** What an address opens over the tabs, if anything. */
+function routeTarget({ chat, pixie }: Route): ChatTarget | null {
+  if (pixie !== undefined) return { pixie };
+  return chat === null ? null : { id: chat };
+}
+
+/** The row a target came from (its data-chat); null for a new chat. */
 function chatId(target: ChatTarget): string | null {
   if ("claude" in target) return target.claude;
+  if ("pixie" in target) return `pixie:${target.pixie}`;
   return "draft" in target ? null : target.id;
 }
 
 /** Which chat a target is, ignoring the event it opens at. */
 function chatKey(target: ChatTarget): string {
   if ("claude" in target) return `claude:${target.claude}`;
+  if ("pixie" in target) return `pixie:${target.pixie}`;
   return "draft" in target ? `new:${target.draft}` : `session:${target.id}`;
 }

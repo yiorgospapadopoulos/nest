@@ -10,6 +10,7 @@ import {
   detail,
   diff,
   mergeApproval,
+  pixie,
   prStatus,
   question,
   repo,
@@ -49,6 +50,27 @@ describe("Inbox", () => {
     const groups = screen.getAllByRole("heading", { level: 2 });
     expect(groups.map((h) => h.textContent)).toEqual(["Nnarwhal1", "TUtodo-ui1"]);
     expect(screen.getByLabelText("2 need you")).toBeInTheDocument();
+  });
+
+  it("groups a pixie's items under the pixie and opens its page", async () => {
+    const api = withItems(
+      [
+        approval({ repo: "pixie:p1", session_id: "c1" }),
+        approval({ id: "q2", repo: "pixie:gone", session_id: "c2" }),
+      ],
+      [session({ id: "c1", repo: "pixie:p1", pixie_id: "p1" })],
+    );
+    api.pixies.mockResolvedValue([pixie()]);
+    const { user } = await renderApp({ api });
+
+    const groups = screen.getAllByRole("heading", { level: 2 });
+    expect(groups.map((h) => h.textContent)).toEqual(["Pixie1", "Tester1"]);
+    expect(screen.queryByText("pixie:p1")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "invader" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Pixie" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Tester" }));
+    expect(screen.getByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
   });
 
   it("approves, rejects and always allows permissions with buttons", async () => {

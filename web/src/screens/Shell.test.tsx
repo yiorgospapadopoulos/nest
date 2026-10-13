@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NAVIGATE } from "../pwa/navigate.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import { installBrowserPush, uninstallBrowserPush } from "../test/fakePush.ts";
-import { detail, session } from "../test/fixtures.ts";
+import { detail, pixie, session } from "../test/fixtures.ts";
 import { renderApp } from "../test/render.tsx";
 
 afterEach(() => {
@@ -28,6 +28,35 @@ describe("deep links", () => {
     await user.click(screen.getByRole("button", { name: /back/i }));
 
     expect(screen.getByRole("tab", { name: "Projects" })).toHaveAttribute("aria-selected", "true");
+    expect(window.location.pathname).toBe("/projects");
+  });
+
+  it("opens a pixie from its address and from a notification", async () => {
+    window.history.replaceState(null, "", "/pixie/p1");
+    const { worker } = installBrowserPush();
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie()]);
+    const { user } = await renderApp({ api, ready: false });
+
+    expect(await screen.findByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/pixie/p1");
+    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
+    expect(window.location.pathname).toBe("/projects");
+
+    act(() => {
+      worker.dispatchEvent(
+        new MessageEvent("message", { data: { type: NAVIGATE, url: "/pixie/p1" } }),
+      );
+    });
+    expect(await screen.findByRole("region", { name: "Tester" })).toBeInTheDocument();
+  });
+
+  it("shows an empty page for a pixie it does not know", async () => {
+    window.history.replaceState(null, "", "/pixie/gone");
+    const { user } = await renderApp({ ready: false });
+
+    expect(await screen.findByRole("region", { name: "Pixie" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
     expect(window.location.pathname).toBe("/projects");
   });
 

@@ -4,6 +4,8 @@ import { Icon } from "../../ui/Icon.tsx";
 
 interface FrameProps {
   title: string;
+  // Shown before the title, such as a pixie's sprite.
+  icon?: ReactNode;
   back: string;
   onBack: () => void;
   tools?: ReactNode;
@@ -12,7 +14,7 @@ interface FrameProps {
 }
 
 /** The pushed chat screen: header with back, title and tools, over the wallpaper. */
-export function Frame({ title, back, onBack, tools, details, children }: FrameProps) {
+export function Frame({ title, icon, back, onBack, tools, details, children }: FrameProps) {
   const { appearance } = useAppearance();
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") onBack();
@@ -29,7 +31,10 @@ export function Frame({ title, back, onBack, tools, details, children }: FramePr
           <span className="flex" />
           {tools}
         </div>
-        <h2 className="ch-t">{title}</h2>
+        <h2 className="ch-t">
+          {icon}
+          {title}
+        </h2>
         {details}
       </header>
       {children}

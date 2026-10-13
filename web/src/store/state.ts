@@ -38,7 +38,10 @@ export interface Draft {
 export const NO_DRAFT: Draft = { text: "", files: [] };
 
 /** Where a composer keeps its draft. */
-export function draftKey(target: { session: string } | { repo: string }): string {
+export function draftKey(
+  target: { session: string } | { repo: string } | { pixie: string },
+): string {
+  if ("pixie" in target) return `pixie:${target.pixie}`;
   return "session" in target ? `session:${target.session}` : `new:${target.repo}`;
 }
 
