@@ -41,8 +41,8 @@ async def test_create_gives_unique_slugs_and_a_folder(ctx: AppContext) -> None:
     second = await ctx.pixies.create(CreatePixie(name="Tester"))
 
     assert (first.slug, second.slug) == ("tester", "tester-2")
-    assert ctx.pixies.read_file(first.id, "soul").text == "You test.\n"
-    assert "You are a helpful pixie" in ctx.pixies.read_file(second.id, "soul").text
+    assert (await ctx.pixies.read_file(first.id, "soul")).text == "You test.\n"
+    assert "You are a helpful pixie" in (await ctx.pixies.read_file(second.id, "soul")).text
     with pytest.raises(InvalidSlugError):
         await ctx.pixies.create(CreatePixie(name="Planner", slug="plan"))
     with pytest.raises(DuplicateSlugError):
@@ -106,7 +106,7 @@ async def test_reset_archives_the_chat_and_keeps_soul_and_memory(
     assert reset.chat_session_id is None
     assert (await ctx.sessions.get(chat.id)).archived_at is not None
     assert fresh.id != chat.id
-    assert ctx.pixies.read_file(pixie.id, "soul").text == "Keep me.\n"
+    assert (await ctx.pixies.read_file(pixie.id, "soul")).text == "Keep me.\n"
 
 
 async def test_delete_mid_turn_removes_everything(ctx: AppContext, provider: FakeProvider) -> None:
@@ -126,15 +126,15 @@ async def test_delete_mid_turn_removes_everything(ctx: AppContext, provider: Fak
 
 async def test_files_conflict_on_stale_hashes(ctx: AppContext) -> None:
     pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
-    soul = ctx.pixies.read_file(pixie.id, "soul")
+    soul = await ctx.pixies.read_file(pixie.id, "soul")
 
-    ctx.pixies.write_file(pixie.id, "soul", WriteFile(text="v2", hash=soul.hash))
+    await ctx.pixies.write_file(pixie.id, "soul", WriteFile(text="v2", hash=soul.hash))
     with pytest.raises(StaleFileError):
-        ctx.pixies.write_file(pixie.id, "soul", WriteFile(text="v3", hash=soul.hash))
-    ctx.pixies.write_file(pixie.id, "notes/a", WriteFile(text="note", hash=None))
+        await ctx.pixies.write_file(pixie.id, "soul", WriteFile(text="v3", hash=soul.hash))
+    await ctx.pixies.write_file(pixie.id, "notes/a", WriteFile(text="note", hash=None))
 
-    assert ctx.pixies.notes(pixie.id) == ["a"]
-    assert [h.file for h in ctx.pixies.search(pixie.id, "note")] == ["notes/a.md"]
+    assert await ctx.pixies.notes(pixie.id) == ["a"]
+    assert [h.file for h in await ctx.pixies.search(pixie.id, "note")] == ["notes/a.md"]
 
 
 async def test_events_are_published(ctx: AppContext) -> None:
@@ -285,3 +285,76 @@ async def test_reset_waits_for_a_message_being_sent(
 
     assert reset.chat_session_id is None
     assert (await ctx.sessions.get(chat.id)).archived_at is not None
+
+
+async def test_settings_that_shape_the_run_open_a_fresh_one_next_turn(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"), reply("again"), reply("third"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester", project_access="edit"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+    assert provider.runs[0].spec.write_root is None
+
+    await ctx.pixies.update(pixie.id, UpdatePixie(project_access="none"))
+    await ctx.pixies.send(pixie.id, "more", [])
+    await until(lambda: len(provider.runs) == 2 and not ctx.sessions.busy(chat.id))
+    soul = await ctx.pixies.read_file(pixie.id, "soul")
+    await ctx.pixies.write_file(pixie.id, "soul", WriteFile(text="Be terse.", hash=soul.hash))
+    await ctx.pixies.send(pixie.id, "last", [])
+    await until(lambda: len(provider.runs) == 3)
+
+    assert provider.runs[0].closed is True
+    assert provider.runs[1].spec.write_root == ctx.paths.pixies_dir / pixie.id / "workdir"
+    assert "Be terse." in (provider.runs[2].spec.system_prompt_append or "")
+
+
+async def test_cosmetic_changes_keep_the_run(ctx: AppContext, provider: FakeProvider) -> None:
+    provider.script(reply("hi"), reply("again"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    await ctx.pixies.update(pixie.id, UpdatePixie(mascot="ghost", hidden=True))
+    await ctx.pixies.write_file(pixie.id, "notes/a", WriteFile(text="x", hash=None))
+    await ctx.pixies.send(pixie.id, "more", [])
+    await until(lambda: len(provider.runs[0].inputs) == 2)
+
+    assert len(provider.runs) == 1
+
+
+async def test_a_rename_renames_the_open_chat(ctx: AppContext, provider: FakeProvider) -> None:
+    provider.script(reply("hi"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    await ctx.pixies.update(pixie.id, UpdatePixie(name="Reviewer"))
+
+    assert (await ctx.sessions.get(chat.id)).title == "Reviewer"
+
+
+async def test_attachments_of_the_first_message_reach_the_agent(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+    image = await ctx.attachments.save("shot.png", b"\x89PNG", "image/png")
+
+    chat = await ctx.pixies.send(pixie.id, "look", [image.id])
+    await until(lambda: bool(provider.runs and provider.runs[0].inputs))
+
+    assert len(provider.runs[0].inputs[0].images) == 1
+    assert [a.id for a in await ctx.attachments.for_session([image.id], chat.id)] == [image.id]
+
+
+@pytest.mark.parametrize("pixie_id", ["..", "", "0" * 32])
+async def test_files_of_an_unknown_pixie_are_not_found(ctx: AppContext, pixie_id: str) -> None:
+    with pytest.raises(PixieNotFoundError):
+        await ctx.pixies.read_file(pixie_id, "soul")
+    with pytest.raises(PixieNotFoundError):
+        await ctx.pixies.write_file(pixie_id, "soul", WriteFile(text="x", hash=None))
+    with pytest.raises(PixieNotFoundError):
+        await ctx.pixies.notes(pixie_id)
+    with pytest.raises(PixieNotFoundError):
+        await ctx.pixies.search(pixie_id, "x")

@@ -306,6 +306,9 @@ class TurnRunner:
         dirs = await self._attachments.file_dirs(session.id)
         while (run := live.run) is None or not _fits(live, session, dirs):
             await live.close_run()
+            # Cleared before the extras are read: a change saved while this run opens
+            # sets it again, and the loop opens another run with that change.
+            live.rotate = False
             extras = await self._pixie_extras(session)
             spec = SessionSpec(
                 cwd=cwd,
@@ -328,7 +331,6 @@ class TurnRunner:
                 live, self._bus, self._store, self, self._hooks, session.provider_session_id
             )
             live.run = await self._provider.open(spec, self._handler_for(live), sink)
-            live.rotate = False
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = session.permission_mode == BYPASS

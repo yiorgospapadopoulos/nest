@@ -75,8 +75,9 @@ async def test_a_pixie_turn_notifies_finished_without_a_review(api: Api) -> None
     events = (await api.http.get(f"/api/sessions/{chat['id']}/events")).json()
 
     assert [a for a in approvals.json() if a["session_id"] == chat["id"]] == []
-    kinds = [e["payload"]["kind"] for e in events if e["type"] == types.NOTIFY]
-    assert "review_ready" not in kinds
+    notices = [e["payload"] for e in events if e["type"] == types.NOTIFY]
+    assert "review_ready" not in [n["kind"] for n in notices]
+    assert {(n["pixie_id"], n["pixie_name"]) for n in notices} == {(pid, "Tester")}
 
 
 async def test_files(api: Api) -> None:
@@ -103,3 +104,32 @@ async def test_files(api: Api) -> None:
     assert traversal.status_code == 422
     assert notes.json() == ["a"]
     assert hits.json() == [{"file": "notes/a.md", "line": "x"}]
+
+
+@pytest.mark.parametrize("pixie_id", ["nope", "0" * 32])
+async def test_files_of_an_unknown_pixie_are_not_found(api: Api, pixie_id: str) -> None:
+    base = f"/api/pixies/{pixie_id}"
+    responses = [
+        await api.http.get(f"{base}/files/soul"),
+        await api.http.put(f"{base}/files/soul", json={"text": "x", "hash": None}),
+        await api.http.get(f"{base}/notes"),
+        await api.http.get(f"{base}/search", params={"q": "x"}),
+    ]
+
+    assert [r.status_code for r in responses] == [404, 404, 404, 404]
+
+
+@pytest.mark.parametrize("query", ["", "?purge=true"])
+async def test_a_pixie_chat_is_not_deleted_as_a_session(api: Api, query: str) -> None:
+    api.provider.script(reply("hi"))
+    pid = (await api.http.post("/api/pixies", json={"name": "Tester"})).json()["id"]
+    chat = (await api.http.post(f"/api/pixies/{pid}/messages", json={"text": "go"})).json()
+    await notified(api, chat["id"], "finished")
+
+    refused = await api.http.delete(f"/api/sessions/{chat['id']}{query}")
+    after = await api.http.get(f"/api/sessions/{chat['id']}")
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "pixie_chat"
+    assert after.json()["state"] == "idle"
+    assert (await api.http.get(f"/api/pixies/{pid}")).json()["chat_session_id"] == chat["id"]

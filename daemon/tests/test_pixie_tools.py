@@ -13,12 +13,14 @@ from harness.repos.service import RepoService
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 
+P1 = "0" * 31 + "1"
+
 NOW = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
 
 
 def pixie(projects: list[str] | None = None) -> Pixie:
     return Pixie(
-        id="p1",
+        id=P1,
         slug="tester",
         name="Tester",
         position=0,
@@ -34,7 +36,7 @@ def setup(tmp_path: Path) -> tuple[PixieFiles, RepoService]:
     paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
     paths.ensure()
     files = PixieFiles(paths.pixies_dir)
-    files.create("p1", "You test.")
+    files.create(P1, "You test.")
     return files, RepoService(paths)
 
 
@@ -92,8 +94,10 @@ async def test_soul_and_projects(tmp_path: Path, setup: tuple[PixieFiles, RepoSe
     soul = await call(all_tools, "soul_read")
 
     assert soul == "You review code.\n"
-    assert await call(all_tools, "list_projects") == "api\nweb"
-    assert await call(some_tools, "list_projects") == "web"
+    assert await call(all_tools, "list_projects") == (
+        f"api: {tmp_path / 'api'}\nweb: {tmp_path / 'web'}"
+    )
+    assert await call(some_tools, "list_projects") == f"web: {tmp_path / 'web'}"
 
 
 async def test_blank_forget_and_search_are_refused(setup: tuple[PixieFiles, RepoService]) -> None:

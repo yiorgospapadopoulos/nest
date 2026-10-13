@@ -445,3 +445,22 @@ async def test_a_turn_that_ends_during_a_check_keeps_no_flag(env: Env) -> None:
 
     assert await env.stuck(second) is None
     assert (await env.flags(second))[-1:] in ([], [("unstuck", None)])
+
+
+async def test_a_pixie_chat_is_never_flagged(env: Env, db: Database) -> None:
+    # Neither the inbox on the iPhone nor the Mac's shows a pixie chat's stuck card (D057).
+    await db.execute(
+        "INSERT INTO pixies (id, slug, name, mascot, color, background, permission_mode,"
+        " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
+        " VALUES ('p1', 't', 'T', 'sprout', '#000000', 'plain', 'default', 'observe', 'none',"
+        " '[]', '[]', 0, 'x', 'x')"
+    )
+    session = await env.store.create(new_session(repo="pixie:p1", pixie_id="p1"))
+    await env.state(session, "running")
+
+    await env.wait(120)
+    await env.wait(1)
+
+    assert await env.stuck(session) is None
+    assert await env.flags(session) == []
+    assert await env.notices(session) == []

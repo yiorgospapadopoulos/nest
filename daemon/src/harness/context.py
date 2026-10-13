@@ -118,7 +118,8 @@ class AppContext:
         settings = load_settings(paths)
         db = await Database.open(paths.db_path)
         bus = EventBus(db, clock)
-        notifier = Notifier(bus)
+        pixie_store = PixieStore(db, clock)
+        notifier = Notifier(bus, pixie_store.name)
         repos = RepoService(paths, bus)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
@@ -135,7 +136,6 @@ class AppContext:
             clock=clock,
             account_file=paths.claude_account_file,
         )
-        pixie_store = PixieStore(db, clock)
         pixie_files = PixieFiles(paths.pixies_dir)
         pixie_runtime = PixieRuntime(pixie_store, pixie_files, repos, bus, clock)
         sessions = SessionManager(

@@ -101,10 +101,10 @@ def pixie_tools(
         return "Saved SOUL.md."
 
     async def list_projects(_args: dict[str, JsonValue]) -> str:
-        names = sorted(repo.name for repo in repos.list_repos())
+        projects = sorted(repos.list_repos(), key=lambda repo: repo.name)
         if pixie.projects is not None:
-            names = [name for name in names if name in pixie.projects]
-        return "\n".join(names) or "No projects."
+            projects = [repo for repo in projects if repo.name in pixie.projects]
+        return "\n".join(f"{repo.name}: {repo.path}" for repo in projects) or "No projects."
 
     specs: list[tuple[str, str, dict[str, JsonValue], Handler]] = [
         (
@@ -146,6 +146,11 @@ def pixie_tools(
             _schema(text="The whole new SOUL.md."),
             soul_write,
         ),
-        ("list_projects", "List the projects you are assigned to.", _schema(), list_projects),
+        (
+            "list_projects",
+            "List the projects you are assigned to, one per line as name: folder.",
+            _schema(),
+            list_projects,
+        ),
     ]
     return tuple(AgentTool(name, desc, schema, refusing(h)) for name, desc, schema, h in specs)

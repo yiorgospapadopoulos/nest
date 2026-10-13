@@ -49,6 +49,11 @@ class PixieStore:
             raise PixieNotFoundError(msg)
         return _pixie(row)
 
+    async def name(self, pixie_id: str) -> str | None:
+        """The pixie's name, or None when there is no such pixie."""
+        row = await self._db.fetch_one("SELECT name FROM pixies WHERE id = ?", (pixie_id,))
+        return None if row is None else str(row["name"])
+
     async def list_pixies(self) -> list[Pixie]:
         rows = await self._db.fetch_all("SELECT * FROM pixies ORDER BY position, rowid")
         return [_pixie(row) for row in rows]

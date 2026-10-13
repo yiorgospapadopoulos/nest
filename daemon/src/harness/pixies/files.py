@@ -20,6 +20,8 @@ MEMORY_HEADER = "# Memory\n"
 MEMORY_BUDGET = 8192
 NOTE = re.compile(r"^notes/([a-z0-9][a-z0-9-]{0,63})$")
 FACT_PREFIX = "- "
+# What the store hands out (uuid4().hex); anything else never becomes a path.
+PIXIE_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 def text_hash(text: str) -> str:
@@ -35,14 +37,14 @@ class PixieFiles:
         self._root = root
 
     def create(self, pixie_id: str, soul: str) -> None:
-        folder = self._root / pixie_id
+        folder = self._root / _checked(pixie_id)
         for sub in ("notes", "archive", "workdir"):
             (folder / sub).mkdir(parents=True, exist_ok=True)
         (folder / SOUL_FILE).write_text(_normal(soul), encoding="utf-8")
         (folder / MEMORY_FILE).write_text(MEMORY_HEADER, encoding="utf-8")
 
     def remove(self, pixie_id: str) -> None:
-        shutil.rmtree(self._root / pixie_id, ignore_errors=True)
+        shutil.rmtree(self._root / _checked(pixie_id), ignore_errors=True)
 
     def workdir(self, pixie_id: str) -> Path:
         return self._folder(pixie_id) / "workdir"
@@ -121,7 +123,7 @@ class PixieFiles:
         return "".join(lines)
 
     def _folder(self, pixie_id: str) -> Path:
-        folder = self._root / pixie_id
+        folder = self._root / _checked(pixie_id)
         if not folder.is_dir():
             msg = f"unknown pixie {pixie_id!r}"
             raise PixieNotFoundError(msg)
@@ -137,3 +139,10 @@ class PixieFiles:
             msg = f"invalid file name {name!r}: use soul, memory or notes/<name>"
             raise InvalidFileNameError(msg)
         return self._folder(pixie_id) / "notes" / f"{match.group(1)}.md"
+
+
+def _checked(pixie_id: str) -> str:
+    if PIXIE_ID.fullmatch(pixie_id) is None:
+        msg = f"unknown pixie {pixie_id!r}"
+        raise PixieNotFoundError(msg)
+    return pixie_id

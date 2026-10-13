@@ -4,8 +4,12 @@ import pytest
 from pydantic import JsonValue
 
 from harness.config.models import NotificationKinds, NotificationSettings, QuietHours
+from harness.events.bus import EventBus
 from harness.notifications.messages import TEST_NOTICE, Notice, notice_from_event
+from harness.notifications.notifier import Notifier
 from harness.notifications.rules import in_quiet_hours, should_send
+from harness.storage.db import Database
+from tests.fakes import FakeClock
 
 
 def event(kind: str = "needs_approval", **changes: JsonValue) -> dict[str, JsonValue]:
@@ -111,3 +115,39 @@ def test_should_send_needs_the_kind_enabled_and_no_quiet_hours() -> None:
     assert not should_send(settings, "finished", time(12, 0))
     quiet = settings.model_copy(update={"quiet_hours": QuietHours(start="11:00", end="13:00")})
     assert not should_send(quiet, "failed", time(12, 0))
+
+
+@pytest.mark.parametrize(
+    ("kind", "url"),
+    [("finished", "/pixie/p%2F1"), ("failed", "/pixie/p%2F1"), ("needs_approval", "/inbox")],
+)
+def test_a_pixie_chat_is_titled_with_the_pixie_and_opens_its_page(kind: str, url: str) -> None:
+    notice = notice_from_event(
+        event(kind, repo="pixie:p/1", pixie_id="p/1", pixie_name="Tester", title="Tester")
+    )
+
+    assert notice is not None
+    assert notice.title.endswith(" · Tester")
+    # The chat's title is the pixie's name already.
+    assert notice.body == "Approve Bash: npm test"
+    assert notice.url == url
+
+
+def test_a_pixie_without_a_name_is_titled_pixie() -> None:
+    notice = notice_from_event(event("finished", repo="pixie:p1", pixie_id="p1"))
+
+    assert notice is not None
+    assert notice.title == "Finished · Pixie"
+
+
+async def test_a_gone_pixie_is_notified_without_a_name(db: Database, clock: FakeClock) -> None:
+    bus = EventBus(db, clock)
+
+    async def gone(_pixie_id: str) -> str | None:
+        return None
+
+    await Notifier(bus, gone).notify("finished", "s1", "pixie:p1", "Tester", "Done")
+    await Notifier(bus).notify("finished", "s1", "pixie:p1", "Tester", "Done")
+
+    payloads = [e.payload for e in await bus.session_events("s1")]
+    assert [(p["pixie_id"], "pixie_name" in p) for p in payloads] == [("p1", False)] * 2

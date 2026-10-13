@@ -193,8 +193,10 @@ class SessionManager:
         model: str | None,
         effort: Effort | None,
         permission_mode: PermissionMode,
+        attachment_ids: list[str],
     ) -> Session:
         """A pixie's chat: in place in its workdir, with no project, review or git (D057)."""
+        attachments = await self._attachments.for_session(attachment_ids, None)
         session = await self._store.create(
             NewSession(
                 repo=pixie_repo(pixie_id),
@@ -216,8 +218,18 @@ class SessionManager:
             types.SESSION_STATE, {"state": session.state, "error": None}, session.id
         )
         live = self._live.setdefault(session.id, LiveSession(session.id))
-        live.start(lambda: self._turns.guard(live, self._turns.start(live, session, None, [])))
+        live.start(
+            lambda: self._turns.guard(live, self._turns.start(live, session, None, attachments))
+        )
         return session
+
+    def refresh_run(self, session_id: str) -> None:
+        """What a pixie chat's run is opened with changed: its next turn opens a fresh run.
+        The run in use is left alone, so a turn in progress finishes as it began (D057).
+        """
+        live = self._live.get(session_id)
+        if live is not None:
+            live.rotate = True
 
     async def adopt(self, chat: ChatImport) -> Session:
         """Continue a Claude Code chat as an idle in-place session in the chat's own folder.

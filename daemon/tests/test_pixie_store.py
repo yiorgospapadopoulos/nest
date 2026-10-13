@@ -97,3 +97,11 @@ async def test_chat_sessions_lists_the_current_and_the_archived_chats(
 
     assert await store.chat_sessions(pixie.id) == ["s1", "s2"]
     assert await store.chat_sessions("nope") == []
+
+
+async def test_name_is_none_for_a_missing_pixie(db: Database, clock: FakeClock) -> None:
+    store = PixieStore(db, clock)
+    pixie = await store.create(PixieSettings(name="Tester"), "tester")
+
+    assert await store.name(pixie.id) == "Tester"
+    assert await store.name("gone") is None

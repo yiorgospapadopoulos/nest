@@ -50,6 +50,7 @@ async def create(env: Env) -> Session:
         model=None,
         effort=None,
         permission_mode="default",
+        attachment_ids=[],
     )
 
 
@@ -105,3 +106,9 @@ async def test_a_pixie_chat_without_an_extras_source_fails_loudly(
 
     with pytest.raises(RuntimeError, match=f"pixie chat {session.id} has no run extras source"):
         await bare.manager._turns._pixie_extras(session)  # type: ignore[attr-defined]
+
+
+async def test_refreshing_a_chat_without_a_run_does_nothing(env: Env) -> None:
+    env.manager.refresh_run("no-such-session")
+
+    assert not env.manager.has_run("no-such-session")

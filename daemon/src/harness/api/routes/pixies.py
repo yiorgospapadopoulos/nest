@@ -60,22 +60,22 @@ async def reset_pixie(pixie_id: str, ctx: Context) -> Pixie:
 @router.get("/{pixie_id}/files/{name:path}")
 async def read_file(pixie_id: str, name: str, ctx: Context) -> FileText:
     """`soul`, `memory` or `notes/<name>`."""
-    return ctx.pixies.read_file(pixie_id, name)
+    return await ctx.pixies.read_file(pixie_id, name)
 
 
 @router.put("/{pixie_id}/files/{name:path}")
 async def write_file(pixie_id: str, name: str, body: WriteFile, ctx: Context) -> FileText:
     """409 `stale_file` with the current text and hash when `hash` is not the current one."""
-    return ctx.pixies.write_file(pixie_id, name, body)
+    return await ctx.pixies.write_file(pixie_id, name, body)
 
 
 @router.get("/{pixie_id}/notes")
 async def list_notes(pixie_id: str, ctx: Context) -> list[str]:
-    return ctx.pixies.notes(pixie_id)
+    return await ctx.pixies.notes(pixie_id)
 
 
 @router.get("/{pixie_id}/search")
 async def search_memory(
     pixie_id: str, ctx: Context, q: Annotated[str, Query(min_length=1, max_length=200)]
 ) -> list[SearchHit]:
-    return ctx.pixies.search(pixie_id, q)
+    return await ctx.pixies.search(pixie_id, q)

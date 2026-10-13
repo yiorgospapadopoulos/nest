@@ -69,9 +69,19 @@ def notice_from_event(payload: Mapping[str, JsonValue]) -> Notice | None:
     ):
         return None
     url = "/inbox" if kind in _INBOX_KINDS else f"/chat/{quote(session_id, safe='')}"
+    where = repo
+    pixie_id = payload.get("pixie_id")
+    if isinstance(pixie_id, str):
+        # A pixie's chat opens on its page and is named after it (D057); its title is the
+        # pixie's name, so the body leaves it out.
+        if kind not in _INBOX_KINDS:
+            url = f"/pixie/{quote(pixie_id, safe='')}"
+        name = payload.get("pixie_name")
+        where = name if isinstance(name, str) else "Pixie"
+        title = ""
     return Notice(
         kind=kind,
-        title=f"{_LABELS[kind]} · {repo}",
+        title=f"{_LABELS[kind]} · {where}",
         body=f"{title}: {text}" if title else text,
         url=url,
         tag=f"session-{session_id}",

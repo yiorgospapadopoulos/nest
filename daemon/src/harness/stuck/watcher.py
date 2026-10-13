@@ -75,6 +75,9 @@ class _Turn:
     # The latest tool call of the main agent (None) and of each subagent (its tool use id).
     repeats: dict[str | None, _Repeat] = field(default_factory=dict[str | None, _Repeat])
     flag: StuckFlag | None = None
+    # A pixie's chat is never flagged: no inbox shows its stuck card (D057). None until
+    # a condition first holds and the session is looked up.
+    pixie_chat: bool | None = None
     # Reasons already notified in this turn.
     announced: set[str] = field(default_factory=set[str])
 
@@ -176,6 +179,10 @@ class StuckWatcher:
                 await self._clear(session_id, old)
             return
         if old is not None and (old.reason, old.since) == (flag.reason, flag.since):
+            return
+        if turn.pixie_chat is None:
+            turn.pixie_chat = (await self._store.get(session_id)).pixie_id is not None
+        if turn.pixie_chat:
             return
         turn.flag = flag
         session = await self._store.set_stuck(session_id, flag)

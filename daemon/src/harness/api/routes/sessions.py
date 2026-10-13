@@ -6,6 +6,7 @@ from harness.api.deps import Context, RequireDevice
 from harness.api.schemas import FileList, SessionDetail
 from harness.events.models import Event
 from harness.sessions.commands import CommandList
+from harness.sessions.errors import PixieChatError
 from harness.sessions.models import CreateSession, SendMessage, SendResult, Session, UpdateSession
 
 router = APIRouter(prefix="/api/sessions", dependencies=[RequireDevice])
@@ -98,7 +99,11 @@ async def update_session(session_id: str, body: UpdateSession, ctx: Context) -> 
 async def close_session(
     session_id: str, ctx: Context, remove_worktree: bool = False, purge: bool = False
 ) -> Session | Response:
-    """Close the session; with purge, delete it with its worktree, branch and history."""
+    """Close the session; with purge, delete it with its worktree, branch and history.
+    A pixie's chat is refused (409 `pixie_chat`): it goes with its pixie (D057).
+    """
+    if (await ctx.sessions.get(session_id)).pixie_id is not None:
+        raise PixieChatError
     if purge:
         await ctx.sessions.purge(session_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
