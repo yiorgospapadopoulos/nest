@@ -80,6 +80,44 @@ public struct WorktreeConfig: Codable, Sendable, Hashable {
     }
 }
 
+extension WorktreeConfig {
+    /// Adds a link as typed, trimmed; false when it is blank, already there, or not a
+    /// relative path inside the repository (the daemon refuses those).
+    @discardableResult
+    public mutating func addLink(_ text: String) -> Bool {
+        let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard !path.hasPrefix("/"), !parts.allSatisfy({ $0 == "." }), !parts.contains(".."),
+            !link.contains(path)
+        else { return false }
+        link.append(path)
+        return true
+    }
+
+    /// Adds a setup command as typed, trimmed; false when it is blank.
+    @discardableResult
+    public mutating func addSetup(_ text: String) -> Bool {
+        let command = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else { return false }
+        setup.append(command)
+        return true
+    }
+}
+
+/// What removing a project from harness does, for its confirmation.
+public enum ProjectRemoval {
+    public static func consequence(chats: Int) -> String {
+        let folder = "harness forgets this project. Its folder stays as it is."
+        switch chats {
+        case 0: return folder
+        case 1: return "\(folder) Its chat is deleted for good, with its worktree and branch."
+        default:
+            return
+                "\(folder) Its \(chats) chats are deleted for good, with their worktrees and branches."
+        }
+    }
+}
+
 /// Local apps a project can be opened in.
 public enum RepoApp: String, Codable, Sendable, CaseIterable {
     case vscode

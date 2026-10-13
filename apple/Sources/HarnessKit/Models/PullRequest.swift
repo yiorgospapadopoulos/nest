@@ -162,13 +162,3 @@ public enum PRBadge {
         }
     }
 }
-
-/// What "Send to agent" sends when checks failed, the same on the iPhone. Agents have no
-/// GitHub login (D013), so it asks for the logs rather than have the agent fetch them.
-public enum CIFailure {
-    public static func message(_ checks: [String]) -> String {
-        "CI failed: \(checks.joined(separator: ", ")). Please fix. You can't use gh or reach"
-            + " GitHub from here, so work from the code and the check names, and ask me for"
-            + " the logs if you need them."
-    }
-}

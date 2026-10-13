@@ -41,6 +41,19 @@ public struct APIClient: HarnessAPI {
         try await get("repos", repo, "commands")
     }
 
+    public func removeRepo(_ name: String, purgeSessions: Bool) async throws {
+        let query = purgeSessions ? [URLQueryItem(name: "purge_sessions", value: "true")] : []
+        try await perform("DELETE", ["repos", name], query: query)
+    }
+
+    public func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo {
+        try await call("PUT", ["repos", name, "worktree"], body: config)
+    }
+
+    public func linkSuggestions(_ name: String) async throws -> [String] {
+        try await get("repos", name, "link-suggestions")
+    }
+
     // MARK: Sessions
 
     public func sessions(repo: String?, archived: Bool) async throws -> [Session] {
@@ -112,6 +125,21 @@ public struct APIClient: HarnessAPI {
 
     public func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
         try await call("POST", ["sessions", id, "open-in-claude-code"])
+    }
+
+    public func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
+        try await call(
+            "GET", ["sessions", id, "rewind"],
+            query: [URLQueryItem(name: "message", value: "\(message)")])
+    }
+
+    public func rewind(_ id: String, message: Int) async throws {
+        try await perform(
+            "POST", ["sessions", id, "rewind"], body: RewindRequest(message: message))
+    }
+
+    public func ciFeedback(_ id: String) async throws {
+        try await perform("POST", ["sessions", id, "ci-feedback"])
     }
 
     // MARK: Claude Code chats

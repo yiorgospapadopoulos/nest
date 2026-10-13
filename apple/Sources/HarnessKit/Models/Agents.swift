@@ -9,6 +9,10 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
     /// Levels this daemon does not know are left out.
     public var effortLevels: [Effort]
     public var supportsEffort: Bool
+    /// The model offers Claude Code's Auto permission mode.
+    public var supportsAutoMode: Bool
+    /// The effort Claude Code's own settings give the model, when they set one.
+    public var claudeCodeEffort: Effort?
 
     public var id: String { value }
 
@@ -19,13 +23,15 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
 
     public init(
         value: String, displayName: String, description: String, effortLevels: [Effort],
-        supportsEffort: Bool
+        supportsEffort: Bool, supportsAutoMode: Bool = false, claudeCodeEffort: Effort? = nil
     ) {
         self.value = value
         self.displayName = displayName
         self.description = description
         self.effortLevels = effortLevels
         self.supportsEffort = supportsEffort
+        self.supportsAutoMode = supportsAutoMode
+        self.claudeCodeEffort = claudeCodeEffort
     }
 
     public init(from decoder: any Decoder) throws {
@@ -36,6 +42,11 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         effortLevels = try container.decode([Effort].self, forKey: .effortLevels)
             .filter { $0 != .unknown }
         supportsEffort = try container.decode(Bool.self, forKey: .supportsEffort)
+        // Older daemons send neither; an effort this app does not know reads as none.
+        supportsAutoMode =
+            try container.decodeIfPresent(Bool.self, forKey: .supportsAutoMode) ?? false
+        claudeCodeEffort = try container.decodeIfPresent(Effort.self, forKey: .claudeCodeEffort)
+            .flatMap { $0 == .unknown ? nil : $0 }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -43,6 +54,8 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         case displayName = "display_name"
         case effortLevels = "effort_levels"
         case supportsEffort = "supports_effort"
+        case supportsAutoMode = "supports_auto_mode"
+        case claudeCodeEffort = "claude_code_effort"
     }
 }
 
@@ -85,15 +98,17 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
     /// Nil leaves the choice to Claude Code.
     public var model: String?
     public var effort: Effort?
-    public var permissionMode: PermissionMode
+    /// Nil passes no mode, so Claude Code's own `defaultMode` applies.
+    public var permissionMode: PermissionMode?
     public var mode: SessionMode
 
     /// What applies before the daemon has answered.
     public static let standard = AgentDefaults(
-        model: nil, effort: nil, permissionMode: .default, mode: .inPlace)
+        model: nil, effort: nil, permissionMode: nil, mode: .inPlace)
 
-    public init(model: String?, effort: Effort?, permissionMode: PermissionMode, mode: SessionMode)
-    {
+    public init(
+        model: String?, effort: Effort?, permissionMode: PermissionMode?, mode: SessionMode
+    ) {
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
@@ -106,8 +121,10 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
         model = try container.decodeIfPresent(String.self, forKey: .model)
         effort = try container.decodeIfPresent(Effort.self, forKey: .effort)
             .flatMap { $0 == .unknown ? nil : $0 }
-        let permission = try container.decode(PermissionMode.self, forKey: .permissionMode)
-        permissionMode = permission == .unknown ? .default : permission
+        permissionMode = try container.decodeIfPresent(
+            PermissionMode.self, forKey: .permissionMode
+        )
+        .flatMap { $0 == .unknown ? nil : $0 }
         let mode = try container.decode(SessionMode.self, forKey: .mode)
         self.mode = mode == .unknown ? .inPlace : mode
     }

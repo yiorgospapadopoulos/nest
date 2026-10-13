@@ -68,9 +68,14 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
     /// completed. Without that message, all of them.
     public func exchange(since start: Date?) -> BackgroundSummary {
         guard let start else { return self }
+        return exchange(since: ExchangeStart(date: start))
+    }
+
+    /// As `exchange(since:)` with a date, placing tasks by event id where `start` knows
+    /// the events of their start or end.
+    public func exchange(since start: ExchangeStart) -> BackgroundSummary {
         let kept = items.filter { item in
-            item.isRunning || item.startedAt.map { $0 >= start } == true
-                || item.finishedAt.map { $0 >= start } == true
+            item.isRunning || start.began(item) || start.ended(item)
         }
         let running = kept.count(where: \.isRunning)
         return BackgroundSummary(running: running, completed: kept.count - running, items: kept)
@@ -85,6 +90,43 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
         items[index].finishedAt = date
         running = max(0, running - 1)
         completed += 1
+    }
+}
+
+/// Where the current exchange starts: the user's latest message, by time and, when known,
+/// by event id, with the events that started and finished background tasks (I-H).
+public struct ExchangeStart: Sendable, Hashable {
+    public var date: Date
+    /// The message's event id.
+    public var event: Int?
+    /// The event of each task's tool call, by tool use id.
+    public var starts: [String: Int]
+    /// The event that reported each task's end, by tool use id.
+    public var ends: [String: Int]
+
+    public init(
+        date: Date, event: Int? = nil, starts: [String: Int] = [:], ends: [String: Int] = [:]
+    ) {
+        self.date = date
+        self.event = event
+        self.starts = starts
+        self.ends = ends
+    }
+
+    /// The task started in the exchange.
+    func began(_ item: BackgroundItem) -> Bool {
+        if let event, let start = starts[item.id] {
+            return start > event
+        }
+        return item.startedAt.map { $0 >= date } == true
+    }
+
+    /// The task finished during the exchange.
+    func ended(_ item: BackgroundItem) -> Bool {
+        if let event, let end = ends[item.id] {
+            return end > event
+        }
+        return item.finishedAt.map { $0 >= date } == true
     }
 }
 

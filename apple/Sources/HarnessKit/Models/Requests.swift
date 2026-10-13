@@ -77,10 +77,15 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
     public var prBody: String?
     /// Publish even though the agent changed git refs itself.
     public var acknowledgeViolation: Bool
+    /// HEAD's commit as the review showed it; the daemon refuses if it moved since.
+    public var expectedHead: String?
+    /// The address origin pushes to now, which the user agreed to push to (I-008).
+    public var confirmRemoteURL: String?
 
     public init(
         commitMessage: String, files: [String]? = nil, push: Bool = true, openPR: Bool = true,
-        prTitle: String? = nil, prBody: String? = nil, acknowledgeViolation: Bool = false
+        prTitle: String? = nil, prBody: String? = nil, acknowledgeViolation: Bool = false,
+        expectedHead: String? = nil, confirmRemoteURL: String? = nil
     ) {
         self.commitMessage = commitMessage
         self.files = files
@@ -89,6 +94,8 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         self.prTitle = prTitle
         self.prBody = prBody
         self.acknowledgeViolation = acknowledgeViolation
+        self.expectedHead = expectedHead
+        self.confirmRemoteURL = confirmRemoteURL
     }
 
     enum CodingKeys: String, CodingKey {
@@ -98,6 +105,8 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         case prTitle = "pr_title"
         case prBody = "pr_body"
         case acknowledgeViolation = "acknowledge_violation"
+        case expectedHead = "expected_head"
+        case confirmRemoteURL = "confirm_remote_url"
     }
 }
 
@@ -121,6 +130,8 @@ public struct ResolveApprovalRequest: Encodable, Sendable, Hashable {
     public var dismiss: Bool
     /// Plans only.
     public var decision: Decision?
+    /// Approved plans only: how the chat goes on (`PermissionMode.planChoices`).
+    public var mode: PermissionMode?
 
     public static func allow(always: Bool = false, message: String? = nil) -> Self {
         Self(behavior: .allow, message: message, always: always, answers: nil, dismiss: false)
@@ -138,10 +149,12 @@ public struct ResolveApprovalRequest: Encodable, Sendable, Hashable {
         Self(behavior: nil, message: message, always: false, answers: nil, dismiss: true)
     }
 
-    /// Continues with the plan; the chat switches to Accept edits.
-    public static let approvePlan = Self(
-        behavior: nil, message: nil, always: false, answers: nil, dismiss: false,
-        decision: .approve)
+    /// Continues with the plan in the given mode, Accept edits unless chosen otherwise.
+    public static func approvePlan(mode: PermissionMode = .acceptEdits) -> Self {
+        Self(
+            behavior: nil, message: nil, always: false, answers: nil, dismiss: false,
+            decision: .approve, mode: mode)
+    }
 
     /// Sends Claude back to planning, with the user's note when it is not blank.
     public static func keepPlanning(note: String = "") -> Self {
@@ -184,4 +197,9 @@ struct OpenRepoRequest: Encodable {
 
 struct ArchiveRequest: Encodable {
     var archived: Bool
+}
+
+struct RewindRequest: Encodable {
+    /// The user message's event id.
+    var message: Int
 }
