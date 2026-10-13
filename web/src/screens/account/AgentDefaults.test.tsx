@@ -111,6 +111,51 @@ describe("agent defaults", () => {
     ]);
   });
 
+  it("leaves the permission mode to Claude Code, and offers Auto where the model takes it", async () => {
+    const api = fakeApi();
+    api.agentDefaults.mockResolvedValue(agentDefaults({ permission_mode: null }));
+    const { user } = await openAccount(api);
+    const card = await screen.findByRole("region", { name: "Agent defaults" });
+    const permission = () => within(card).getByLabelText("Permission mode");
+    await waitFor(() => {
+      expect(permission()).toHaveDisplayValue("Claude Code default");
+    });
+    expect(
+      within(permission())
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Claude Code default", "Ask", "Accept edits", "Plan", "Bypass", "Auto"]);
+
+    await user.selectOptions(permission(), "auto");
+    await user.selectOptions(within(card).getByLabelText("Model"), "haiku");
+    expect(within(permission()).queryByRole("option", { name: "Auto" })).toBeNull();
+    await user.selectOptions(permission(), "plan");
+    await user.selectOptions(permission(), "");
+
+    expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
+      agentDefaults({ permission_mode: "auto" }),
+      // Haiku does not take Auto, so the mode goes back to Claude Code's.
+      agentDefaults({ model: "haiku", permission_mode: null }),
+      agentDefaults({ model: "haiku", permission_mode: "plan" }),
+      agentDefaults({ model: "haiku", permission_mode: null }),
+    ]);
+  });
+
+  it("names the thinking level Claude Code gives the model by default", async () => {
+    const api = fakeApi();
+    const { user } = await openAccount(api);
+    const card = await screen.findByRole("region", { name: "Agent defaults" });
+    const thinking = () => within(card).getByLabelText("Thinking");
+    await waitFor(() => {
+      expect(thinking()).toHaveDisplayValue("Model default (High, from Claude Code)");
+    });
+
+    await user.selectOptions(within(card).getByLabelText("Model"), "opus");
+    expect(thinking()).toHaveDisplayValue("Model default");
+    await user.selectOptions(within(card).getByLabelText("Model"), "claude-opus-4-6");
+    expect(thinking()).toHaveDisplayValue("Model default (Medium, from Claude Code)");
+  });
+
   it("has no thinking for Haiku", async () => {
     const api = fakeApi();
     api.agentDefaults.mockResolvedValue(agentDefaults({ model: "haiku" }));
@@ -153,6 +198,19 @@ describe("agent defaults", () => {
         .map((o) => o.textContent),
     ).toEqual(["default"]);
     expect(within(within(card).getByLabelText("Thinking")).getAllByRole("option")).toHaveLength(6);
+  });
+
+  it("keeps Auto while the model list is unknown", async () => {
+    const api = fakeApi();
+    api.models.mockRejectedValue(new Error("offline"));
+    api.agentDefaults.mockResolvedValue(agentDefaults({ permission_mode: "auto" }));
+    await openAccount(api);
+
+    const card = await screen.findByRole("region", { name: "Agent defaults" });
+    await waitFor(() => {
+      expect(within(card).getByLabelText("Permission mode")).toHaveValue("auto");
+    });
+    expect(within(card).getByLabelText("Permission mode")).toHaveDisplayValue("Auto");
   });
 
   it("puts the previous defaults back when the Mac refuses", async () => {

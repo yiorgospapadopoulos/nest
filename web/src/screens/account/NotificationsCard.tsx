@@ -1,19 +1,10 @@
 import { useEffect, useState } from "react";
-import type { NotificationSettings, NotifyKind, QuietHours } from "../../api/types.ts";
+import type { NotificationSettings, QuietHours } from "../../api/types.ts";
 import { browserPushEnv, pushStatus, type PushStatus } from "../../pwa/push.ts";
 import { useStore } from "../../store/context.ts";
 import { Pill } from "../../ui/bits.tsx";
+import { KINDS } from "./notifyKinds.ts";
 
-const KINDS: { kind: NotifyKind; label: string }[] = [
-  { kind: "needs_approval", label: "Approvals" },
-  { kind: "question", label: "Questions" },
-  { kind: "review_ready", label: "Work ready for review" },
-  { kind: "failed", label: "Agent errors" },
-  { kind: "finished", label: "Finished turns" },
-  { kind: "ci_failed", label: "Pull request checks failed" },
-  { kind: "ready_to_merge", label: "Pull requests ready to merge" },
-  { kind: "stuck", label: "Chats that look stuck" },
-];
 const DEFAULT_QUIET: QuietHours = { start: "22:00", end: "07:00" };
 
 const HINTS: Partial<Record<PushStatus, string>> = {

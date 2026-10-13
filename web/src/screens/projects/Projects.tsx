@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { ClaudeChat, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
@@ -14,6 +14,7 @@ import { ChatActions } from "./ChatActions.tsx";
 import { ChatRow } from "./ChatRow.tsx";
 import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
+import { ProjectSettings } from "./ProjectSettings.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
 
 interface Props {
@@ -35,6 +36,11 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
   const [acting, setActing] = useState<Session | null>(null);
   const [actingChat, setActingChat] = useState<ClaudeChat | null>(null);
   const [query, setQuery] = useState("");
+  // The project whose settings are open.
+  const [settings, setSettings] = useState<string | null>(null);
+  const closeSettings = useCallback(() => {
+    setSettings(null);
+  }, []);
   const lists = project === null ? null : chatLists(state, project);
   const empty = lists !== null && lists.groups.length === 0 && lists.archived.length === 0;
 
@@ -146,15 +152,27 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
     <>
       <div className="navr">
         {project !== null && (
-          <button
-            className="ib gl"
-            aria-label={`New chat in ${project}`}
-            onClick={() => {
-              onNewChat(project);
-            }}
-          >
-            <Icon name="plus" />
-          </button>
+          <>
+            <button
+              className="ib gl"
+              aria-label={`Settings for ${project}`}
+              aria-haspopup="dialog"
+              onClick={() => {
+                setSettings(project);
+              }}
+            >
+              <Icon name="gear" />
+            </button>
+            <button
+              className="ib gl"
+              aria-label={`New chat in ${project}`}
+              onClick={() => {
+                onNewChat(project);
+              }}
+            >
+              <Icon name="plus" />
+            </button>
+          </>
         )}
       </div>
       <h1 className="lt">Projects</h1>
@@ -176,6 +194,7 @@ export function Projects({ project, onProject, onOpenChat, onOpenClaudeChat, onN
           }}
         />
       )}
+      {settings !== null && <ProjectSettings name={settings} onClose={closeSettings} />}
       {actingChat !== null && (
         <ClaudeChatActions
           chat={actingChat}
