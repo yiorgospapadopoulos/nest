@@ -26,6 +26,8 @@
         private var searchIndexing = false
         private var agentDefaults = AgentDefaults(
             model: "opus", effort: .high, permissionMode: .default, mode: .inPlace)
+        /// What approving answers instead of the failed push, when set.
+        private var approveRefusal: APIError?
 
         init(now: Date = Date()) {
             self.now = now
@@ -57,6 +59,19 @@
         }
 
         func openRepo(_ name: String, in app: RepoApp) async throws {}
+
+        func removeRepo(_ name: String, purgeSessions: Bool) async throws {}
+
+        func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo {
+            let all = try await repos()
+            var repo = all.first { $0.name == name } ?? all[0]
+            repo.worktree = config
+            return repo
+        }
+
+        func linkSuggestions(_ name: String) async throws -> [String] {
+            [".env", "node_modules/"]
+        }
 
         func sessions(repo: String?, archived: Bool) async throws -> [Session] {
             lock.withLock { sessionList }.filter {
@@ -192,6 +207,16 @@
 
         func interrupt(_ id: String) async throws {}
 
+        func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
+            RewindPreview(
+                canRewind: true, files: ["src/App.tsx", "src/styles.css"], insertions: 12,
+                deletions: 4)
+        }
+
+        func rewind(_ id: String, message: Int) async throws {}
+
+        func ciFeedback(_ id: String) async throws {}
+
         func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
             try decode(["launcher": "/tmp/claude.command"])
         }
@@ -200,8 +225,16 @@
             try SampleData.diff()
         }
 
+        /// Approving answers this refusal from now on, as when origin's address changed.
+        func refuseApprove(with error: APIError) {
+            lock.withLock { approveRefusal = error }
+        }
+
         /// Pushing fails, so snapshots show a failed step with git's output.
         func approve(_ sessionID: String, _ request: ApproveRequest) async throws -> Session {
+            if let refusal = lock.withLock({ approveRefusal }) {
+                throw refusal
+            }
             throw APIError.gitFailed(
                 "git push failed", step: "push",
                 stderr:
@@ -423,6 +456,8 @@
                     [
                         "value": value, "display_name": name, "description": description,
                         "effort_levels": levels, "supports_effort": !levels.isEmpty,
+                        "supports_auto_mode": value == "default" || value == "opus",
+                        "claude_code_effort": value == "default" ? "high" : NSNull(),
                     ] as [String: Any]
                 },
                 "updated_at": SampleData.iso(now),
@@ -628,6 +663,8 @@
             }
             return try decode([
                 "base": "main",
+                "head": ["commit": "9f3c2e1a7b", "branch": "agent/dark-mode-contrast-3f2a"],
+                "commits": [["sha": "4d5e6f7a8b9c", "subject": "Add a release workflow"]],
                 "stats": ["files": 4, "additions": 48, "deletions": 19],
                 "files": [
                     file(
@@ -896,6 +933,7 @@
                 payload: [
                     "tool": "Bash", "input": ["command": "npm install zod"],
                     "title": "Adds zod so one schema is shared by the form and the API route.",
+                    "always_rule": "Bash(npm install:*)",
                 ])
 
             session(

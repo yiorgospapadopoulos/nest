@@ -79,7 +79,6 @@
             await model.live.refresh()
             model.app.openProject("weather-forecast")
             model.app.openProject("map-viewer")
-            model.app.moveProject("weather-forecast", to: 0)
             model.app.selectProject("todo-ui")
             for id in ["c1", "c2", "c3", "c4"] {
                 try await model.transcripts.transcript(for: id).load()
@@ -114,6 +113,10 @@
             }
             if only == "b29" {
                 try await renderTurnActivity(model, shell, controller, folder)
+                return
+            }
+            if only == "b33" {
+                try await renderImprovements(model, shell, controller, folder)
                 return
             }
 
@@ -233,6 +236,60 @@
             try await renderArchiveConnectorsAndPlainFolders(model, shell, controller, folder)
             try await renderTurnActivity(model, shell, controller, folder)
             try await renderExchangeBar(model, shell, controller, folder)
+            try await renderImprovements(model, shell, controller, folder)
+        }
+
+        /// B33: Always allow with Claude Code's rule, how a plan goes on, project settings,
+        /// restoring files, Claude Code's own defaults and a push address to confirm.
+        private static func renderImprovements(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.openProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+                state.openChat("c8", in: workspace)
+                state.rightCollapsed = false
+                state.openCards = [.needsYou]
+            }
+            try await pair(controller, "b33-needs-you", folder)
+
+            shell.show(.project("todo-ui"))
+            try await pair(controller, "b33-project-settings", folder)
+
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c3", in: workspace)
+            }
+            try await pair(controller, "b33-rewind-button", folder, revealsHoverControls: true)
+            if let message = model.transcripts.transcript(for: "c3").items.first(where: {
+                if case .user = $0.content { true } else { false }
+            })?.eventID {
+                shell.startRewind("c3", message: message)
+                try await Task.sleep(for: .milliseconds(50))
+                try await pair(controller, "b33-rewind", folder)
+            }
+
+            try await model.agents.setDefaultEffort(nil)
+            try await model.agents.setDefaultPermissionMode(nil)
+            shell.show(.settings)
+            try await pair(controller, "b33-agent-defaults", folder)
+
+            let review = model.approvals.pending.first { $0.kind == .review }!
+            (model.api as? SampleAPI)?.refuseApprove(
+                with: .approveRefused(
+                    "origin now pushes to git@github.com:me/todo-ui-new.git instead of git@github.com:me/todo-ui.git, the address harness recorded. Check the repository's remotes, or confirm the new address to push there.",
+                    reason: .remoteChanged,
+                    remote: PushRemote(
+                        urls: ["git@github.com:me/todo-ui-new.git"],
+                        confirmedURL: "git@github.com:me/todo-ui.git")))
+            shell.show(.publish(review.id))
+            _ = try? await model.approvals.publish(
+                review, model.approvals.publishForm(for: review, session: nil))
+            try await pair(controller, "b33-push-there", folder)
+            shell.close()
         }
 
         /// B29: a running turn with its timer, thinking, a running agents group and a
@@ -1152,7 +1209,7 @@
         /// The real daemon's data in the B09 sheets; only reads.
         static func renderLive(to folder: URL) async throws {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            guard let model = try AppModel.local() else {
+            guard let model = try await AppModel.local() else {
                 print("no device token")
                 return
             }

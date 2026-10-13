@@ -10,7 +10,13 @@ struct PublishSheet: View {
 
     var body: some View {
         let approval = shell.approval(approvalID)
-        SheetFrame(title: title, width: 540) {
+        let remote = approval.flatMap {
+            shell.approvals.progress(session: $0.sessionID)?.failure?.pushRemote
+        }
+        // A push address to confirm brings Push there into view.
+        SheetFrame(
+            title: title, width: 540, scrollTarget: remote.map { _ in RemoteConfirmation.id }
+        ) {
             if let approval, let form = Binding($form) {
                 content(approval, form)
             } else {
@@ -24,6 +30,18 @@ struct PublishSheet: View {
             if let approval {
                 form = shell.approvals.publishForm(
                     for: approval, session: shell.sessions.session(approval.sessionID))
+            }
+        }
+        // A violation found while the sheet is open, as after a refused approve.
+        .onChange(of: approval.flatMap { shell.sessions.session($0.sessionID)?.gitViolation }) {
+            if let approval {
+                form?.follow(shell.sessions.session(approval.sessionID))
+            }
+        }
+        // Approve sends the HEAD of the diff it shows, so it is read when missing.
+        .task(id: approvalID) {
+            if let session = approval?.sessionID, shell.approvals.diffs[session] == nil {
+                _ = try? await shell.approvals.loadDiff(session: session)
             }
         }
     }
@@ -52,6 +70,9 @@ struct PublishSheet: View {
                 }
             }
             .padding(.top, 14)
+            if let diff = shell.approvals.diffs[approval.sessionID] {
+                PublishTarget(diff: diff).padding(.top, 10)
+            }
             if form.wrappedValue.hasViolation {
                 ViolationNotice(approval: approval)
                     .onChange(of: shell.approvals.acknowledgedViolations) { _, acknowledged in
@@ -89,7 +110,9 @@ struct PublishSheet: View {
                 SheetTextField(placeholder: "Optional", text: form.prBody, lines: 3)
             }
             if let progress {
-                StepList(progress: progress)
+                StepList(progress: progress) { url in
+                    shell.pushThere(approval, form.wrappedValue, url: url)
+                }
             }
             HStack(spacing: 8) {
                 Spacer()
@@ -158,6 +181,8 @@ private struct SheetTextField: View {
 /// Commit, push and pull request with their state; a failed step shows git's output.
 private struct StepList: View {
     let progress: PublishProgress
+    /// Approves again, pushing to the address origin pushes to now.
+    let pushThere: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -192,6 +217,20 @@ private struct StepList: View {
                 )
                 .font(.ui(TypeSize.caption))
                 .foregroundStyle(Palette.t3)
+            } else if let failure = progress.failure {
+                // Refused before any step ran: the daemon's reason, and what to do.
+                Text(failure.message)
+                    .font(.ui(TypeSize.caption, .medium))
+                    .foregroundStyle(StatusTone.failed.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                if case .approveRefused(_, let reason, _) = failure, let hint = reason.hint {
+                    Text(hint)
+                        .font(.ui(TypeSize.caption))
+                        .foregroundStyle(Palette.t3)
+                }
+                if let remote = failure.pushRemote {
+                    RemoteConfirmation(remote: remote, push: pushThere)
+                }
             }
         }
         .padding(12)
@@ -227,5 +266,47 @@ private struct StepList: View {
         case .done: "Done"
         case .failed: "Failed"
         }
+    }
+}
+
+/// Where origin pushes now, after approving was refused for it, and Push there (I-008).
+private struct RemoteConfirmation: View {
+    static let id = "push-remote"
+
+    let remote: PushRemote
+    let push: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(remote.summary)
+                .font(.ui(TypeSize.caption))
+                .foregroundStyle(Palette.t3)
+            ForEach(remote.urls, id: \.self) { url in
+                Text(url)
+                    .font(.mono(TypeSize.small, .semibold))
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if let previous = remote.confirmedURL {
+                Text("Confirmed before: \(previous)")
+                    .font(.ui(TypeSize.caption))
+                    .foregroundStyle(Palette.t3)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if let target = remote.target {
+                Button {
+                    push(target)
+                } label: {
+                    Label("Push there", systemImage: Icon.send)
+                }
+                .buttonStyle(.card(.approve))
+                .fixedSize()
+                .help("Approve again and remember this address for the project")
+            }
+        }
+        .padding(.top, 4)
+        .id(Self.id)
     }
 }

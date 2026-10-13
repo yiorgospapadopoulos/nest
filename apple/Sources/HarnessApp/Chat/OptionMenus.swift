@@ -132,9 +132,10 @@ struct ThinkingItems: View {
                 Button("Not available for this model") {}.disabled(true)
             } else {
                 if offersDefault {
-                    OptionItem(title: "Model default", detail: "", checked: effort == nil) {
-                        pick(nil)
-                    }
+                    OptionItem(
+                        title: shell.agents.defaultEffortLabel(for: model), detail: "",
+                        checked: effort == nil
+                    ) { pick(nil) }
                 }
                 ForEach(levels, id: \.self) { level in
                     OptionItem(title: level.label, detail: "", checked: effort == level) {
@@ -148,20 +149,45 @@ struct ThinkingItems: View {
 
 struct PermissionMenu: View {
     let chat: String
+    let model: String?
     let mode: PermissionMode?
+    /// A new chat can leave the mode to Claude Code's own setting (nil).
+    let isDraft: Bool
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
 
     var body: some View {
-        let label = fit.compact ? mode?.shortLabel : mode?.label
-        QuietMenu(title: label ?? "Ask", help: "Permission mode") {
-            Section("Permission mode") {
-                ForEach(PermissionMode.selectable, id: \.self) { option in
-                    OptionItem(title: option.label, detail: option.summary, checked: mode == option)
-                    {
-                        shell.setPermission(option, for: chat)
-                    }
-                }
+        let label =
+            fit.compact ? PermissionMode.shortLabel(mode) : PermissionMode.label(mode)
+        QuietMenu(title: label, help: "Permission mode") {
+            PermissionItems(
+                modes: shell.agents.permissionModes(for: model), current: mode,
+                offersDefault: isDraft
+            ) { shell.setPermission($0, for: chat) }
+        }
+    }
+}
+
+/// The permission modes with their descriptions: Auto only for models that offer it,
+/// and Claude Code default (nil) where `offersDefault` is set.
+struct PermissionItems: View {
+    let modes: [PermissionMode]
+    let current: PermissionMode?
+    var offersDefault = false
+    let pick: (PermissionMode?) -> Void
+
+    var body: some View {
+        Section("Permission mode") {
+            if offersDefault {
+                OptionItem(
+                    title: PermissionMode.claudeCodeDefaultLabel,
+                    detail: PermissionMode.claudeCodeDefaultSummary, checked: current == nil
+                ) { pick(nil) }
+            }
+            ForEach(modes, id: \.self) { option in
+                OptionItem(
+                    title: option.label, detail: option.summary, checked: current == option
+                ) { pick(option) }
             }
         }
     }

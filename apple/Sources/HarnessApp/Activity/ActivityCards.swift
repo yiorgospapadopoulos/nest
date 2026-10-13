@@ -224,17 +224,24 @@ struct NeedsCard: View {
                     .transition(.opacity)
             }
             // As on the iPhone: approvals, failed checks, then stuck chats.
-            ForEach(pending) { approval in
-                ApprovalCard(approval: approval, style: .panel)
-                    .transition(slideOut)
-            }
-            ForEach(failed) { session in
-                ChecksFailedCard(session: session)
-                    .transition(slideOut)
-            }
-            ForEach(stuck) { session in
-                StuckCard(session: session)
-                    .transition(slideOut)
+            ForEach(NeedsYouSection.allCases, id: \.self) { section in
+                switch section {
+                case .approvals:
+                    ForEach(pending) { approval in
+                        ApprovalCard(approval: approval, style: .panel)
+                            .transition(slideOut)
+                    }
+                case .checksFailed:
+                    ForEach(failed) { session in
+                        ChecksFailedCard(session: session)
+                            .transition(slideOut)
+                    }
+                case .stuck:
+                    ForEach(stuck) { session in
+                        StuckCard(session: session)
+                            .transition(slideOut)
+                    }
+                }
             }
         }
         .animation(

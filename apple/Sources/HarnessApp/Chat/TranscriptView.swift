@@ -23,7 +23,9 @@ struct TranscriptView: View {
         let streaming = items.last?.id == "streaming"
         let hasNewer = store?.hasNewer == true
         let background = Set(shell.activity.background(session: chat).runningItems.map(\.id))
-        let entries = TranscriptGrouping.entries(items, live: working, background: background)
+        // A call waiting on a permission prompt still runs; one whose turn ended stopped.
+        let inFlight = session?.state.isInFlight ?? false
+        let entries = store?.entries(live: inFlight, background: background) ?? []
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 11) {
@@ -125,7 +127,7 @@ struct TranscriptView: View {
         follow = ScrollFollow()
         let transcript = shell.model.transcripts.transcript(for: chat)
         store = transcript
-        if !transcript.isLoaded {
+        if transcript.needsLoad {
             do {
                 try await transcript.load()
                 loadError = nil
@@ -147,7 +149,7 @@ struct TranscriptView: View {
         guard let store, let target = try? await store.resolveFocus() else { return }
         follow.hold()
         // A hit inside a collapsed group of tool calls opens the group first.
-        let entries = TranscriptGrouping.entries(store.visibleItems, live: false)
+        let entries = store.entries(live: false)
         if let group = TranscriptGrouping.group(containing: target, in: entries) {
             shell.expandedItems.insert(group)
         }
@@ -176,11 +178,17 @@ struct TranscriptView: View {
 private struct TranscriptRow: View {
     let item: TranscriptItem
     let chat: String
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         switch item.content {
         case .user(let text, let attachments):
-            UserBubble(text: text, attachments: attachments)
+            let canRewind = RewindFlow.isAvailable(for: shell.sessions.session(chat))
+            UserBubble(
+                text: text, attachments: attachments,
+                rewind: item.eventID.flatMap { event in
+                    canRewind ? { shell.startRewind(chat, message: event) } : nil
+                })
         case .assistant(let text, _):
             AssistantText(text: text, chat: chat)
         case .thinking(let text, let duration):
@@ -204,7 +212,11 @@ private struct TranscriptRow: View {
 private struct UserBubble: View {
     let text: String
     let attachments: [Attachment]
+    /// Restores the files to before this message, while the chat is idle.
+    let rewind: (() -> Void)?
     @Environment(\.accentColors) private var accent
+    @Environment(\.revealsHoverControls) private var reveal
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -217,6 +229,18 @@ private struct UserBubble: View {
                 .padding(.vertical, 8)
                 .background(accent.bubble, in: bubbleShape)
                 .overlay(bubbleShape.stroke(Palette.hair))
+                .overlay(alignment: .leading) {
+                    if let rewind, hovering || reveal {
+                        Button(action: rewind) {
+                            Image(systemName: Icon.rewind).font(.system(size: 11))
+                        }
+                        .buttonStyle(.harness(.ghost, height: 22, iconOnly: true))
+                        .help("Restore files to before this message")
+                        .accessibilityLabel("Restore files to before this message")
+                        .offset(x: -30)
+                        .transition(.opacity)
+                    }
+                }
             }
             ForEach(attachments) { attachment in
                 Chip(icon: Icon.attach, text: attachment.filename)
@@ -224,6 +248,7 @@ private struct UserBubble: View {
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.leading, 48)
+        .onHover { hovering = $0 }
     }
 
     private var bubbleShape: UnevenRoundedRectangle {

@@ -76,6 +76,10 @@ enum Overlay: Equatable {
     case diff(String)
     /// The approve sheet of a review, by approval id.
     case publish(String)
+    /// A project's settings, by repo name.
+    case project(String)
+    /// Restoring files to before a message (`Shell.rewinding`).
+    case rewind
 }
 
 /// The window's model: the daemon's stores plus the transient state of the views, and
@@ -87,6 +91,8 @@ final class Shell {
     let model: AppModel
     let userName: String
     var overlay: Overlay?
+    /// The restore the rewind sheet shows.
+    var rewinding: RewindFlow?
     /// The palette while it is open.
     var palette = CommandPalette(items: [])
 
@@ -114,7 +120,7 @@ final class Shell {
     @ObservationIgnored var workspaceSize = CGSize(width: 900, height: 700)
     /// Each open pane's size, to place drops within it.
     @ObservationIgnored var paneSizes: [String: CGSize] = [:]
-    @ObservationIgnored private var drafts: [String: ComposerDraft] = [:]
+    @ObservationIgnored private let drafts = DraftBook { ComposerDraft() }
     @ObservationIgnored private var draftCount = 0
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     /// Escape ended the pane drag in progress; its later moves are ignored until release.
@@ -150,9 +156,11 @@ final class Shell {
     }
 
     /// Ends the shells and web views of tool panes no project shows any more, such as a
-    /// removed project's; a closed tab keeps its panes.
+    /// removed project's, and releases the transcripts of closed panes; a closed tab
+    /// keeps its panes.
     func syncTools() {
         tools.keep(Set(app.projects.values.flatMap { $0.tools.keys }))
+        model.transcripts.keep(app.openPanes)
     }
 
     // MARK: Session presentation
@@ -163,7 +171,7 @@ final class Shell {
 
     /// Idle chats show a hollow dot.
     func isHollow(_ session: Session) -> Bool {
-        session.state == .idle && tone(of: session) == .done
+        sessions.isHollow(session)
     }
 
     func statusLabel(of session: Session) -> String {
@@ -288,7 +296,7 @@ final class Shell {
     func closePane(_ id: String) {
         update { $0.closePane(id) }
         if isDraft(id) {
-            drafts[id] = nil
+            drafts.remove(id)
         }
     }
 
@@ -406,12 +414,7 @@ final class Shell {
     // MARK: Composer
 
     func draft(for id: String) -> ComposerDraft {
-        if let draft = drafts[id] {
-            return draft
-        }
-        let draft = ComposerDraft()
-        drafts[id] = draft
-        return draft
+        drafts.draft(for: id)
     }
 
     func send(_ chat: String) {
@@ -458,8 +461,9 @@ final class Shell {
             repo: repo, prompt: prompt, mode: mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments)
         let session = try await sessions.create(request)
+        // What was typed or attached meanwhile stays in the chat's composer.
+        drafts.move(draftID, to: session.id)
         app.update(repo) { $0.replaceChat(draftID, with: session.id) }
-        drafts[draftID] = nil
         return session.id
     }
 
@@ -513,11 +517,16 @@ final class Shell {
 
     /// Runs a command from a chat's transcript in the project's terminal for the chat's
     /// folder, opening one when there is none. It runs without asking: the user clicked
-    /// Run in terminal. A command of several lines is not run (`TerminalInput`).
+    /// Run in terminal. A command of several lines is not run (`TerminalInput`), nor one
+    /// whose folder is gone.
     func runInTerminal(command: String, from chat: String?) {
         guard let project, let line = TerminalInput.line(for: command),
-            let folder = chat.flatMap(folder(ofPane:)) ?? repo?.path
+            let place = model.terminalFolder(forPane: chat, project: project)
         else {
+            return
+        }
+        guard case .ready(let folder) = place else {
+            show(TerminalFolder.goneMessage, kind: .failed)
             return
         }
         let size = workspaceSize
@@ -526,25 +535,25 @@ final class Shell {
             app.update(project) { target = $0.terminal(for: folder, in: size).pane }
         }
         syncTools()
-        if let target {
-            tools.terminal(for: target).run(line: line)
+        if let target, !tools.terminal(for: target).run(line: line) {
+            show(TerminalFolder.goneMessage, kind: .failed)
         }
     }
 
     // MARK: Terminal and browser panes
 
-    /// The folder a pane's chat works in: its worktree, its folder in place, or a Claude
-    /// Code chat's folder. Nil for a new chat and tool panes.
+    /// The folder a pane's chat works in (`AppModel.folder(ofPane:)`).
     func folder(ofPane pane: String) -> String? {
-        if let chat = claudeChat(inPane: pane) {
-            return chat.cwd
-        }
-        guard let session = sessions.session(pane) else { return nil }
-        return session.folder ?? app.repo(session.repo)?.path
+        model.folder(ofPane: pane)
     }
 
-    /// "Terminal here": the folder's terminal pane, focused, or a new one.
+    /// "Terminal here": the folder's terminal pane, focused, or a new one; nothing opens
+    /// for a folder that is gone.
     func openTerminal(in folder: String) {
+        guard TerminalFolder.exists(folder) else {
+            show(TerminalFolder.goneMessage, kind: .failed)
+            return
+        }
         let size = workspaceSize
         update { $0.terminal(for: folder, in: size) }
     }
@@ -582,11 +591,7 @@ final class Shell {
             draft.attachments.append(pending)
             Task {
                 do {
-                    let data = try await AttachmentFile.read(url)
-                    let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
-                    let uploaded = try await model.api.uploadAttachment(
-                        filename: url.lastPathComponent,
-                        mediaType: type ?? "application/octet-stream", data: data)
+                    let uploaded = try await AttachmentFile.upload(url, with: model.api)
                     draft.finish(pending.id, with: uploaded)
                 } catch {
                     draft.remove(pending.id)
@@ -602,6 +607,7 @@ final class Shell {
             let draft = draft(for: chat)
             draft.model = info.value
             draft.effort = agents.effort(draft.effort, afterSwitchingTo: info.value)
+            draft.permission = agents.permission(draft.permission, afterSwitchingTo: info.value)
         } else {
             let current = sessions.session(chat)?.effort
             let effort = agents.effort(current, afterSwitchingTo: info.value)
@@ -621,10 +627,11 @@ final class Shell {
         }
     }
 
-    func setPermission(_ mode: PermissionMode, for chat: String) {
+    /// Nil (drafts only) leaves the mode to Claude Code's own setting.
+    func setPermission(_ mode: PermissionMode?, for chat: String) {
         if isDraft(chat) {
             draft(for: chat).permission = mode
-        } else {
+        } else if let mode {
             run("Could not change the permission mode") {
                 try await self.sessions.setPermissionMode(chat, mode)
             }
@@ -803,7 +810,12 @@ final class Shell {
     func allow(_ approval: Approval, always: Bool = false) {
         run("Could not approve") {
             try await self.approvals.allow(approval, always: always)
-            self.show(always ? "Always allowed in this chat" : "Approved", kind: .done)
+            let rule = approval.permission?.suggestedRule
+            let done =
+                !always
+                ? "Approved"
+                : rule.map { "Always allowing \($0)" } ?? "Always allowed in this chat"
+            self.show(done, kind: .done)
         }
     }
 
@@ -827,8 +839,8 @@ final class Shell {
 
     func approvePlan(_ approval: Approval) {
         run("Could not approve the plan") {
-            try await self.approvals.approvePlan(approval)
-            self.show("Plan approved. Claude continues with Accept edits", kind: .done)
+            let mode = try await self.approvals.approvePlan(approval)
+            self.show("Plan approved. Claude continues with \(mode.label)", kind: .done)
         }
     }
 
@@ -859,9 +871,17 @@ final class Shell {
         }
     }
 
+    /// Approves again, pushing to the address origin pushes to now (I-008).
+    func pushThere(_ approval: Approval, _ form: PublishForm, url: String) {
+        var confirmed = form
+        confirmed.confirmRemoteURL = url
+        publish(approval, confirmed)
+    }
+
     func publish(_ approval: Approval, _ form: PublishForm) {
         Task {
-            guard let session = try? await approvals.publish(approval, form) else { return }
+            // A refusal reads the chat and its diff again; the sheet shows why.
+            guard let session = try? await sessions.publish(approval, form) else { return }
             if overlay == .publish(approval.id) {
                 close()
             }
@@ -889,18 +909,60 @@ final class Shell {
         run("Could not read the pull request") { try await self.sessions.refreshPR(session) }
     }
 
-    /// Sends the failing checks into the chat for the agent to fix.
+    /// Has the daemon send the failing checks and their logs into the chat.
     func sendChecksFailure(_ session: Session) {
-        run("Could not send") {
-            if let queued = try await self.sessions.sendChecksFailure(session.id) {
-                self.activity.enqueue(queued, session: session.id)
+        run("Could not send the checks") {
+            if try await self.sessions.sendChecksFailure(session.id) {
+                self.show("Sent the failing checks to \(session.title)", kind: .done)
             }
-            self.show("Sent the failing checks to \(session.title)", kind: .done)
         }
     }
 
+    // MARK: Restoring files
+
+    /// Asks to restore the chat's files to before one of its messages, with a preview.
+    func startRewind(_ chat: String, message: Int) {
+        let flow = RewindFlow(session: chat, message: message, api: model.api)
+        rewinding = flow
+        show(.rewind)
+        Task { await flow.load() }
+    }
+
+    func confirmRewind() {
+        guard let flow = rewinding else { return }
+        Task {
+            guard await flow.restore() else { return }
+            if overlay == .rewind {
+                close()
+            }
+            show("Restored the files to before that message", kind: .done)
+        }
+    }
+
+    // MARK: Project settings
+
+    /// Saves a project's worktree default, links and setup commands.
+    func saveWorktree(_ config: WorktreeConfig, of project: String) {
+        run("Could not save the project settings") {
+            try await self.app.saveWorktree(config, of: project)
+        }
+    }
+
+    /// Removes a project from harness, deleting its chats; the folder stays.
+    func removeProject(_ name: String) {
+        let chats = sessions.sessions(in: name).count
+        if overlay == .project(name) {
+            close()
+        }
+        run("Could not remove \(name)") {
+            try await self.app.removeProject(name, purgeChats: chats > 0)
+            self.show("Removed \(name) from harness", kind: .done)
+        }
+    }
+
+    /// Opens a pull request or check page; only web links open (`SafeLink`).
     func openOnGitHub(_ url: String) {
-        if let link = URL(string: url) {
+        if let link = SafeLink.url(url) {
             NSWorkspace.shared.open(link)
         }
     }
@@ -962,7 +1024,8 @@ final class ComposerDraft {
     /// New chats only: the choices sent with the first message.
     var model: String?
     var effort: Effort?
-    var permission = PermissionMode.default
+    /// Nil leaves it to Claude Code's own setting.
+    var permission: PermissionMode?
     var mode: SessionMode?
     /// The caret and selection in the field.
     var selection: TextSelection?

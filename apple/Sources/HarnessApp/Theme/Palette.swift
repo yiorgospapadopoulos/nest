@@ -104,7 +104,8 @@ extension EnvironmentValues {
     @Entry var paneSize: CGSize?
     /// What the pane's header and composer show at the slot's width.
     @Entry var paneFit = PaneFit(width: 600)
-    /// Reduce Motion, or a snapshot that must hold still.
+    /// Reduce Motion, a snapshot that must hold still, or a window nobody can see:
+    /// continuous animations stop.
     @Entry var reducedMotion = false
     /// Snapshots show controls that otherwise appear on hover, such as Copy.
     @Entry var revealsHoverControls = false

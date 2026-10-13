@@ -112,30 +112,61 @@ private struct PermissionBody: View {
                         .padding(.top, 2)
                 }
             }
-            ActionRow {
-                Button {
-                    shell.allow(approval)
-                } label: {
-                    Label("Approve", systemImage: Icon.check).grows(style)
+            // A long rule moves Always allow under Approve and Reject before they stack.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    approve
+                    reject
+                    always
                 }
-                .buttonStyle(.card(.approve))
-                Button {
-                    shell.deny(approval)
-                } label: {
-                    Text("Reject").grows(style)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        approve
+                        reject
+                    }
+                    always
                 }
-                .buttonStyle(.card(.danger))
-                Button("Always allow") { shell.allow(approval, always: true) }
-                    .buttonStyle(.card(.ghost))
-                    .fixedSize()
-                    .help("Allow this tool for the rest of the chat")
+                VStack(alignment: .leading, spacing: 6) {
+                    approve
+                    reject
+                    always
+                }
             }
+            .padding(.top, 9)
         }
+    }
+
+    private var approve: some View {
+        Button {
+            shell.allow(approval)
+        } label: {
+            Label("Approve", systemImage: Icon.check).grows(style)
+        }
+        .buttonStyle(.card(.approve))
+    }
+
+    private var reject: some View {
+        Button {
+            shell.deny(approval)
+        } label: {
+            Text("Reject").grows(style)
+        }
+        .buttonStyle(.card(.danger))
+    }
+
+    private var always: some View {
+        Button(approval.permission?.alwaysAllowTitle ?? "Always allow") {
+            shell.allow(approval, always: true)
+        }
+        .buttonStyle(.card(.ghost))
+        .fixedSize()
+        .help(approval.permission?.alwaysAllowHelp ?? "Allow this tool for the rest of the chat")
     }
 }
 
-/// The plan as rendered markdown, an optional note, and Approve plan (the chat continues
-/// in Accept edits) or Keep planning (with the note).
+/// The plan as rendered markdown, how the chat goes on after it (Auto-accept edits,
+/// Approve edits manually, or Auto where the model offers it), an optional note, and
+/// Approve plan or Keep planning (with the note).
 private struct PlanBody: View {
     static let panelHeight: CGFloat = 260
 
@@ -162,6 +193,13 @@ private struct PlanBody: View {
             .background(glass.subtle, in: glass.rounded(glass.radius.item))
             .overlay(glass.rounded(glass.radius.item).strokeBorder(Palette.hair))
             .padding(.top, 8)
+            let model = shell.sessions.session(approval.sessionID)?.model
+            Segmented(
+                options: shell.agents.planChoices(for: model).map { ($0, $0.planChoiceLabel) },
+                selection: shell.approvals.planMode(for: approval)
+            ) { shell.approvals.setPlanMode($0, for: approval) }
+            .padding(.top, 8)
+            .help("How Claude goes on once you approve the plan")
             CardField(placeholder: "Note for Claude (optional)", text: note) {
                 shell.keepPlanning(approval)
             }
@@ -173,7 +211,7 @@ private struct PlanBody: View {
                     Label("Approve plan", systemImage: Icon.check).grows(style)
                 }
                 .buttonStyle(.card(.approve))
-                .help("Continue with this plan; the chat switches to Accept edits")
+                .help("Continue with this plan in the mode chosen above")
                 Button {
                     shell.keepPlanning(approval)
                 } label: {

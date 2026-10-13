@@ -45,6 +45,7 @@ enum Icon {
     static let phone = "iphone"
     static let laptop = "laptopcomputer"
     static let refresh = "arrow.clockwise"
+    static let rewind = "arrow.uturn.backward"
     static let globe = "globe"
     static let merge = "arrow.triangle.merge"
     static let server = "server.rack"

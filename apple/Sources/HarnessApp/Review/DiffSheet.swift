@@ -26,6 +26,7 @@ struct DiffSheet: View {
                 if let diff {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
+                            PublishTarget(diff: diff)
                             if diff.files.isEmpty {
                                 Text("No changes against the base.")
                                     .font(.ui(TypeSize.small))
@@ -186,7 +187,9 @@ private struct FileSection: View {
             .buttonStyle(RowHoverStyle(radius: glass.radius.card))
             if !collapsed {
                 Rectangle().fill(Palette.hair).frame(height: 1)
-                if file.binary {
+                if file.isNestedRepository {
+                    note(FileDiff.nestedRepositoryNote)
+                } else if file.binary {
                     note("Binary file, not shown")
                 } else if file.hunks.isEmpty {
                     note("No line changes")

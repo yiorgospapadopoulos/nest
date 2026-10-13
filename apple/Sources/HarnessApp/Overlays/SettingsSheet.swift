@@ -213,7 +213,11 @@ struct AgentDefaultsSection: View {
                 }
             }
             SheetRow(label: "Thinking") {
-                DropdownMenu(title: defaults.effort?.label ?? "Model default") {
+                DropdownMenu(
+                    title: defaults.effort?.label
+                        ?? agents.defaultEffortLabel(for: defaults.model),
+                    width: 260
+                ) {
                     ThinkingItems(
                         model: defaults.model, effort: defaults.effort, offersDefault: true
                     ) { effort in
@@ -222,13 +226,11 @@ struct AgentDefaultsSection: View {
                 }
             }
             SheetRow(label: "Permission mode") {
-                DropdownMenu(title: defaults.permissionMode.label) {
-                    ForEach(PermissionMode.selectable, id: \.self) { mode in
-                        OptionItem(
-                            title: mode.label, detail: mode.summary,
-                            checked: defaults.permissionMode == mode
-                        ) { change { try await agents.setDefaultPermissionMode(mode) } }
-                    }
+                DropdownMenu(title: PermissionMode.label(defaults.permissionMode), width: 260) {
+                    PermissionItems(
+                        modes: agents.permissionModes(for: defaults.model),
+                        current: defaults.permissionMode, offersDefault: true
+                    ) { mode in change { try await agents.setDefaultPermissionMode(mode) } }
                 }
             }
             SheetRow(label: "New chats work in") {
@@ -258,6 +260,7 @@ struct AgentDefaultsSection: View {
 /// A fill-backed menu button, as the mockup's `.dd`.
 struct DropdownMenu<Items: View>: View {
     let title: String
+    var width: Double = 170
     @ViewBuilder let items: () -> Items
     @State private var hovering = false
 
@@ -275,7 +278,7 @@ struct DropdownMenu<Items: View>: View {
             .foregroundStyle(Palette.t1)
             .padding(.leading, 12)
             .padding(.trailing, 10)
-            .frame(width: 170, height: 30)
+            .frame(width: width, height: 30)
             .background(
                 hovering ? Palette.fill2 : Palette.fill, in: RoundedRectangle(cornerRadius: 9)
             )

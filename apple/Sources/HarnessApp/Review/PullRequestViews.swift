@@ -268,7 +268,7 @@ struct ChecksFailedCard: View {
                     Label("Send to agent", systemImage: Icon.send).grows(.panel)
                 }
                 .buttonStyle(.card(.primary))
-                .help("Sends \"\(CIFailure.message(failing))\" to the chat")
+                .help("harness reads the failing checks' logs and sends them to the chat")
                 if let pr = session.pr {
                     Button("Open on GitHub") { shell.openOnGitHub(pr.url) }
                         .buttonStyle(.card(.ghost))

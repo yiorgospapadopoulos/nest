@@ -71,7 +71,11 @@ struct ShellView: View {
         }
         .ignoresSafeArea()
         .environment(\.accentColors, AccentColors(accent: settings.accent, bubble: settings.bubble))
-        .environment(\.reducedMotion, systemReduceMotion || snapshot)
+        // Continuous animations stop while nobody can see the window (IMP-11).
+        .environment(
+            \.reducedMotion,
+            systemReduceMotion || snapshot || !shell.model.visibility.isVisible
+        )
         .environment(\.seeThrough, backdrop.isSeeThrough)
         .preferredColorScheme(colorScheme(settings.theme))
         .onReceive(
@@ -80,7 +84,13 @@ struct ShellView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)
         ) { _ in fullScreen = false }
-        .onAppear { shell.startWatchingDrags() }
+        .onAppear {
+            shell.startWatchingDrags()
+            // A window restored in full screen sends no notification (I-N).
+            fullScreen = NSApp.windows.contains {
+                $0.canBecomeMain && $0.styleMask.contains(.fullScreen)
+            }
+        }
         .onDisappear { shell.stopWatchingDrags() }
         // A project removed from the daemon drops its state, ending its tool panes.
         .onChange(of: Set(shell.app.projects.keys)) { shell.syncTools() }
