@@ -12,22 +12,33 @@ from harness.clock import Clock
 from harness.config.models import PermissionMode, RepoConfig
 from harness.events import types
 from harness.events.bus import EventBus
-from harness.providers.base import AgentProvider, AgentRun, ApprovalHandler, SessionSpec
+from harness.providers.base import (
+    AgentProvider,
+    AgentRun,
+    ApprovalHandler,
+    RewindResult,
+    SessionSpec,
+)
 from harness.repos.service import RepoService
 from harness.sessions.bookkeeping import isolated
-from harness.sessions.git_audit import changed_refs, snapshot_refs, with_branches
+from harness.sessions.git_audit import changed_refs, for_publish, snapshot_refs
 from harness.sessions.hooks import SessionHooks
-from harness.sessions.live import BYPASS, LiveSession
+from harness.sessions.live import BYPASS, LiveSession, Unsent
 from harness.sessions.models import Session, SessionState
 from harness.sessions.queue import MessageQueue
 from harness.sessions.rules import attachment_summary, require_cwd, user_input
 from harness.sessions.sink import SessionSink
 from harness.sessions.states import StateWriter
 from harness.sessions.store import SessionStore
+from harness.sessions.updates import set_git_violation
 from harness.sessions.workspace import prepare_worktree
 from harness.worktrees.manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
+
+# How long the turn's end waits for the context report. The engine answers a control
+# request only while its messages are read, and this wait holds up their reader (I-L).
+CONTROL_TIMEOUT_SECONDS = 10.0
 
 _CONNECTORS_NOTE = (
     "Mention MCP servers that need authorization or failed to connect only when the user "
@@ -101,30 +112,51 @@ class TurnRunner:
             if outcome is not None:
                 await self._conclude(live, *outcome)
             else:
-                # The turn may have ended while its message was still being sent.
+                # The turn may have ended while its message was still being sent, and a
+                # message sent since then waited only for this task (BUG-60).
                 live.schedule_idle_close(self._idle_close)
+                await self.release_held(live)
 
     async def start(
         self, live: LiveSession, session: Session, repo: RepoConfig, attachments: list[Attachment]
     ) -> Outcome | None:
         if session.mode == "worktree":
-            setup = await prepare_worktree(session, repo, self._worktrees, self._store, self._bus)
+            try:
+                setup = await prepare_worktree(
+                    session, repo, self._worktrees, self._store, self._bus
+                )
+            except asyncio.CancelledError:
+                _keep_unsent(live, Unsent(session.prompt, attachments, shown=False))
+                raise
             if not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
         return await self.submit(live, session.prompt, attachments)
 
-    async def submit(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
-        await self._announce(live, text, attachments)
-        await self._run_turn(live, text, attachments)
+    async def submit(
+        self, live: LiveSession, text: str, attachments: list[Attachment], shown: bool = False
+    ) -> None:
+        """Show the message unless it is `shown` already, and give it to the agent. A nudge
+        that cuts it off before the agent has it keeps it to go first (BUG-58).
+        """
+        try:
+            if not shown:
+                await self._announce(live, text, attachments)
+                shown = True
+            await self._run_turn(live, text, attachments)
+        except asyncio.CancelledError:
+            if not live.turn_active:
+                _keep_unsent(live, Unsent(text, attachments, shown))
+            raise
 
     async def _announce(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
         session_id = live.session_id
         await self._attachments.assign([a.id for a in attachments], session_id)
-        await self._bus.publish(
+        event = await self._bus.publish(
             types.SESSION_USER_MESSAGE,
             {"text": text, "attachments": [attachment_summary(a) for a in attachments]},
             session_id,
         )
+        live.user_event = event.id
 
     async def _run_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
         session = await self._start_turn(live)
@@ -168,8 +200,11 @@ class TurnRunner:
         else:
             await self._conclude(live, SessionState.IDLE, None)
         if run is not None:
-            await isolated(
-                "the connector report", session_id, self._report_connectors(session_id, run)
+            # Nothing waits for it, so it waits beside the reader (I-L).
+            live.report(
+                isolated(
+                    "the connector report", session_id, self._report_connectors(session_id, run)
+                )
             )
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
@@ -187,9 +222,33 @@ class TurnRunner:
     async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
         await self._on_mode(live, mode)
 
-    async def deliver_queued(self, live: LiveSession) -> None:
-        """Start the oldest queued message on an idle session, if there is one."""
-        if await self._has_queued(live) and not live.busy:
+    async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
+        """Keep the checkpoint of the user message the agent was last given (IMP-02)."""
+        event_id, live.user_event = live.user_event, None
+        if event_id is not None:
+            await self._store.save_checkpoint(live.session_id, event_id, checkpoint_id)
+
+    async def rewind(self, live: LiveSession, checkpoint_id: str, dry_run: bool) -> RewindResult:
+        """Restore files to `checkpoint_id` on the session's run, resuming the agent's last
+        session when the run was closed; the session counts as busy meanwhile.
+        """
+        try:
+            async with live.hold():
+                session = await self._store.get(live.session_id)
+                run = await self._ensure_run(live, session, require_cwd(session))
+                return await run.rewind_files(checkpoint_id, dry_run)
+        finally:
+            live.schedule_idle_close(self._idle_close)
+            await self.release_held(live)
+
+    async def release_held(self, live: LiveSession) -> None:
+        """Start the queue on an idle session when a message waited only for publishing or
+        a finishing send (BUG-60, BUG-61); one held by a Stop or a failure keeps waiting.
+        """
+        if not live.held or live.busy or live.publishing or live.stopped:
+            return
+        # Starting clears `held`; any turn's end clears it too.
+        if await self._has_queued(live) and not live.busy and not live.publishing:
             live.start(lambda: self.guard(live, self._deliver(live, None, None)))
 
     async def _conclude(self, live: LiveSession, state: SessionState, error: str | None) -> None:
@@ -201,7 +260,12 @@ class TurnRunner:
         resume = state is SessionState.IDLE or (
             state is SessionState.INTERRUPTED and live.resume_queue
         )
-        if not (resume and await self._has_queued(live)):
+        queued = resume and (live.unsent is not None or await self._has_queued(live))
+        queued = queued and not live.stopped  # closing: nothing new starts (BUG-53)
+        if live.interrupted and state is SessionState.IDLE:
+            # Stop was pressed while the queue was read: it was accepted, so it holds (BUG-59).
+            state, queued = SessionState.INTERRUPTED, queued and live.resume_queue
+        if not queued:
             await self._end_turn(live, state, error)
             return
         # The next turn starts once its message is sent; Stop until then cancels it.
@@ -225,8 +289,13 @@ class TurnRunner:
     ) -> Outcome | None:
         """Send the next queued message; `ended` is the outcome if none is left by then."""
         if previous is not None:
-            # The task that submitted the turn just ended may still be finishing.
-            await asyncio.gather(previous, return_exceptions=True)
+            # The task that submitted the turn just ended may still be finishing. A Stop
+            # meanwhile cancels only this wait, not that task (BUG-64).
+            await asyncio.wait({previous})
+        unsent, live.unsent = live.unsent, None
+        if unsent is not None:
+            await self.submit(live, unsent.text, unsent.attachments, unsent.shown)
+            return None
         taking = asyncio.ensure_future(self._take(live))
         try:
             taken = await asyncio.shield(taking)
@@ -237,7 +306,7 @@ class TurnRunner:
             raise
         if taken is None:
             return ended  # the user took it off the queue meanwhile
-        await self._run_turn(live, *taken)
+        await self.submit(live, *taken, shown=True)
         return None
 
     async def _take(self, live: LiveSession) -> tuple[str, list[Attachment]] | None:
@@ -251,7 +320,8 @@ class TurnRunner:
 
     async def _report_context(self, session_id: str, run: AgentRun) -> None:
         """How full the context window is after the turn, for the session's meter."""
-        usage = await run.context_usage()
+        async with asyncio.timeout(CONTROL_TIMEOUT_SECONDS):
+            usage = await run.context_usage()
         if usage is None:
             return
         await self._store.update(session_id, context=usage)
@@ -293,9 +363,11 @@ class TurnRunner:
         while (run := live.run) is None or not _fits(live, session, dirs):
             await live.close_run()
             git = await self._repos.has_git(session.repo)
+            # Following Claude Code's own mode, the run opens without one (IMP-06).
+            mode = None if session.follows_claude_code_mode else session.permission_mode
             spec = SessionSpec(
                 cwd=cwd,
-                permission_mode=session.permission_mode,
+                permission_mode=mode,
                 model=session.model,
                 effort=session.effort,
                 resume_id=session.provider_session_id,
@@ -308,9 +380,9 @@ class TurnRunner:
             live.run = await self._provider.open(spec, self._handler_for(live), sink)
             live.run_dirs = dirs
             live.run_effort = session.effort
-            live.run_bypass = session.permission_mode == BYPASS
+            live.run_bypass = mode == BYPASS
             live.run_model = session.model
-            live.run_mode = session.permission_mode
+            live.run_mode = mode
             # A new effort or bypass chosen while it opened needs another run.
             session = await self._store.get(session.id)
         await self.apply_controls(live)
@@ -318,21 +390,27 @@ class TurnRunner:
 
     async def audit(self, live: LiveSession, publishing: bool = False) -> None:
         """Compare refs with the last audit, at the end of each turn (all refs) and right
-        before the daemon publishes (HEAD and local branches, which decide what is pushed;
-        a fetch meanwhile waits for the next turn end). What this one saw is the next
-        one's baseline.
+        before the daemon publishes (only what the publish uses: HEAD, the branch it names
+        and that branch; other changes wait for the next turn end). What this one saw is
+        the next one's baseline.
         """
         cwd = require_cwd(await self._store.get(live.session_id))
         after = await snapshot_refs(cwd)
         if publishing and live.baseline is not None:
-            after = with_branches(live.baseline, after)
+            after = for_publish(live.baseline, after)
         changes = [] if live.baseline is None else changed_refs(live.baseline, after)
         live.baseline = after
         if changes:
-            await self._store.update(live.session_id, git_violation=True)
+            await set_git_violation(self._store, self._bus, live.session_id, True)
             await self._bus.publish(
                 types.SESSION_GIT_VIOLATION, {"changes": changes}, live.session_id
             )
+
+
+def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
+    """A nudge cut the message off (a plain Stop or closing drops it, as it always did)."""
+    if live.resume_queue:
+        live.unsent = unsent
 
 
 def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...]) -> bool:
@@ -349,6 +427,8 @@ async def _apply_controls(live: LiveSession, run: AgentRun, session: Session) ->
     if session.model != live.run_model:
         await run.set_model(session.model)
         live.run_model = session.model
+    if session.follows_claude_code_mode:
+        return  # the engine reports the mode Claude Code's own settings chose
     mode = session.permission_mode
     # A run that did not open in bypass cannot enter it live; the next message reopens
     # it in bypass instead (D046).

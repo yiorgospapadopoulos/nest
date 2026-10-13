@@ -145,3 +145,19 @@ async def test_work_left_running_by_a_previous_process_is_stopped_and_announced(
     assert (summary["running"], summary["completed"]) == (0, 2)
     assert [e.id for e in await bus.session_events("s2") if e.id and e.id > last] == []
     assert (await after.snapshot("s1")).background.running == 0
+
+
+async def test_a_forgotten_session_is_read_again_from_its_events(
+    db: Database, clock: FakeClock
+) -> None:
+    """IMP-13: a purged session's tracker is dropped with its events."""
+    bus = EventBus(db, clock)
+    tracking = Tracking(bus)
+    await publish_all(bus, [(types.SESSION_MESSAGE, part) for part in create_task(1, "One", "x")])
+    assert [t.id for t in (await tracking.snapshot("s1")).tasks] == ["1"]
+    await db.execute("DELETE FROM events WHERE session_id = ?", ("s1",))
+
+    tracking.forget("s1")
+
+    assert (await tracking.snapshot("s1")).tasks == []
+    tracking.forget("never-seen")

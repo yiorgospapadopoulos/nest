@@ -10,8 +10,12 @@ from claude_agent_sdk import ClaudeAgentOptions
 LEVELS = ["low", "medium", "high", "xhigh", "max"]
 
 
-def server_info(*values: str, plan: str = "Claude Max") -> dict[str, Any]:
-    """An initialize response listing `values` (Haiku without effort levels)."""
+def server_info(
+    *values: str, plan: str = "Claude Max", auto: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """An initialize response listing `values` (Haiku without effort levels); those in
+    `auto` support Auto mode.
+    """
     models: list[dict[str, Any]] = []
     for value in values:
         entry: dict[str, Any] = {
@@ -21,6 +25,8 @@ def server_info(*values: str, plan: str = "Claude Max") -> dict[str, Any]:
         }
         if value != "haiku":
             entry |= {"supportsEffort": True, "supportedEffortLevels": LEVELS}
+        if value in auto:
+            entry |= {"supportsAutoMode": True}
         models.append(entry)
     return {
         "models": models,

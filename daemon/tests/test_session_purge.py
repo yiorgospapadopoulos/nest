@@ -60,6 +60,7 @@ async def test_purge_deletes_the_session_and_everything_it_left(env: Env) -> Non
     assert str(session.branch) not in git(env.repo_path, "branch")
     assert env.provider.runs[0].closed is True
     assert await deleted_events(env) == [(None, f'{{"session_id": "{created.id}"}}')]
+    assert env.hooks.purges == [created.id]
 
 
 async def test_purge_stops_a_working_session(env: Env) -> None:

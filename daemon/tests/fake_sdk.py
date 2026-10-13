@@ -16,6 +16,21 @@ from claude_agent_sdk import (
 type StreamItem = Message | Exception | None
 
 
+class FakeQuery:
+    """The SDK's internal query, for control requests the client has no method for."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, Any]] = []
+        self.response: dict[str, Any] = {}
+        self.error: Exception | None = None
+
+    async def _send_control_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
 class FakeSdkClient:
     def __init__(self, options: ClaudeAgentOptions) -> None:
         self.options = options
@@ -29,6 +44,9 @@ class FakeSdkClient:
         self.server_info: dict[str, Any] | None = None
         # What get_context_usage returns; tests also give malformed responses.
         self.context: dict[str, Any] = {}
+        # Set once connected, as the SDK's own; None as before connect().
+        self.control = FakeQuery()
+        self._query: FakeQuery | None = self.control
 
     def push(self, *items: StreamItem) -> None:
         for item in items:

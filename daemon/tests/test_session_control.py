@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -69,7 +69,13 @@ async def test_permission_prompt_waits_for_the_queue(env: Env) -> None:
     await env.reach(created.id, SessionState.IDLE)
 
     assert item.kind is ApprovalKind.PERMISSION
-    assert item.payload == {"tool": "Bash", "input": {"x": 1}, "title": None, "reason": None}
+    assert item.payload == {
+        "tool": "Bash",
+        "input": {"x": 1},
+        "title": None,
+        "reason": None,
+        "always_rule": None,
+    }
     assert env.provider.runs[0].decisions == [PermissionDecision("allow")]
     assert await env.states(created.id) == ["starting", "running", "waiting", "running", "idle"]
     # The hooks follow every change after the initial state.
@@ -426,6 +432,31 @@ async def test_shutdown_interrupts_turns_and_closes_runs(env: Env) -> None:
 
     assert (await env.store.get(created.id)).state is SessionState.INTERRUPTED
     assert env.provider.runs[0].closed is True
+
+
+async def test_one_sessions_failure_does_not_stop_shutdown_of_the_others(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """IMP-13 (I-M): every agent is stopped, and a failure is logged, not raised."""
+    env.provider.script(hang(), hang())
+    first = await env.create()
+    second = await env.create()
+    await until(lambda: len(env.provider.runs) == 2 and all(r.inputs for r in env.provider.runs))
+    expire = env.approvals.expire
+
+    async def failing(session_id: str, kinds: Sequence[ApprovalKind], reason: str) -> None:
+        if session_id == first.id:
+            raise RuntimeError("database is locked")
+        await expire(session_id, kinds, reason)
+
+    monkeypatch.setattr(env.approvals, "expire", failing)
+
+    await env.manager.shutdown()
+
+    assert (await env.store.get(second.id)).state is SessionState.INTERRUPTED
+    assert [run.closed for run in env.provider.runs].count(True) == 1
+    assert f"stopping session {first.id} failed" in caplog.text
+    assert "database is locked" in caplog.text
 
 
 async def test_setup_in_progress_is_interrupted(env: Env) -> None:

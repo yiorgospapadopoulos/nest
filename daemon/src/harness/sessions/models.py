@@ -34,6 +34,10 @@ class NewSession(BaseModel):
     model: str | None
     effort: Effort | None
     permission_mode: PermissionMode
+    # True while the mode is Claude Code's own (its `defaultMode`) and the engine has not
+    # reported it yet: `permission_mode` holds "default" until then and runs open without
+    # a mode (IMP-06).
+    follows_claude_code_mode: bool = False
     provider: str
     # The commit the session's work is compared with: the worktree's base, or HEAD when an
     # in-place session started.
@@ -95,6 +99,13 @@ class SendMessage(BaseModel):
     # While a turn runs: stop it and start this message right after, ahead of the queue
     # (a nudge to a stuck agent, D036). Ignored when the session is idle.
     interrupt: bool = False
+
+
+class RewindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The id of the `session.user_message` event to restore files to before (IMP-02).
+    message: int = Field(ge=1)
 
 
 class AttachmentSummary(BaseModel):

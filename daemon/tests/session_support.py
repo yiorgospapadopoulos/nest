@@ -1,7 +1,11 @@
 """A SessionManager wired to real stores, real git and the fake provider."""
 
+import asyncio
+from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
+
+import pytest
 
 from harness.approvals.queue import ApprovalQueue
 from harness.approvals.store import ApprovalStore
@@ -9,6 +13,7 @@ from harness.attachments.store import AttachmentStore
 from harness.claude_sessions.live import LiveChats
 from harness.config.models import AgentDefaults, WorktreeConfig
 from harness.events.bus import EventBus
+from harness.gitops import runner
 from harness.notifications.notifier import Notifier
 from harness.paths import AppPaths
 from harness.providers.base import ModelOption
@@ -109,3 +114,27 @@ class Env:
             for event in await self.bus.session_events(session_id)
             if event.type == "session.state"
         ]
+
+
+def gate_worktree_add(
+    monkeypatch: pytest.MonkeyPatch, fail: bool = False
+) -> tuple[asyncio.Event, asyncio.Event]:
+    """Hold `git worktree add` until the second event is set; the first marks it started.
+    With `fail`, git then fails instead of adding the worktree.
+    """
+    started, release = asyncio.Event(), asyncio.Event()
+    run = runner._run  # pyright: ignore[reportPrivateUsage]
+
+    async def gated(
+        argv: Sequence[str], cwd: Path, time_limit: float
+    ) -> tuple[int | None, bytes, bytes]:
+        # After the hardening options (I-009), wherever they end.
+        if any(list(argv[i : i + 2]) == ["worktree", "add"] for i in range(1, len(argv))):
+            started.set()
+            await release.wait()
+            if fail:
+                return 128, b"", b"fatal: no space left"
+        return await run(argv, cwd, time_limit)
+
+    monkeypatch.setattr(runner, "_run", gated)
+    return started, release

@@ -221,3 +221,23 @@ def test_a_cut_off_turn_fails_background_work_and_a_late_notice_corrects_it() ->
 
     task(feed, "t1", "finished", status="completed")
     assert statuses(feed) == [("a1", "done"), ("b1", "failed")]
+
+
+def test_an_error_turn_keeps_background_work_running() -> None:
+    """BUG-63: the run stays open after an engine error (D054), and so does its background
+    work; only what the turn itself was running is cut off.
+    """
+    feed = Feed()
+    feed.state("running")
+    feed.messages(
+        start_agent_message("a1", run_in_background=True),
+        message(tool_use("b1", "Bash", {"command": "sleep 9", "run_in_background": True})),
+        start_agent_message("a2"),
+    )
+    task(feed, "t1", "started", tool_use_id="a1", background=True)
+
+    feed.state("failed")
+
+    assert statuses(feed) == [("a1", "running"), ("b1", "running"), ("a2", "failed")]
+    task(feed, "t1", "finished", status="completed")
+    assert statuses(feed) == [("a1", "done"), ("b1", "running"), ("a2", "failed")]

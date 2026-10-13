@@ -17,6 +17,7 @@ class RecordingHooks:
         self.connectors: list[tuple[str, list[McpServer]]] = []
         self.commands: list[tuple[str, CommandCatalog]] = []
         self.engine: list[EngineDetails] = []
+        self.purges: list[str] = []
 
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))
@@ -38,3 +39,6 @@ class RecordingHooks:
 
     async def engine_reported(self, details: EngineDetails) -> None:
         self.engine.append(details)
+
+    async def purged(self, session_id: str) -> None:
+        self.purges.append(session_id)

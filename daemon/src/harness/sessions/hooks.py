@@ -42,3 +42,7 @@ class SessionHooks(Protocol):
     async def engine_reported(self, details: EngineDetails) -> None:
         """A session's agent reported the engine's models and account (D038)."""
         ...
+
+    async def purged(self, session_id: str) -> None:
+        """The session was deleted for good; drop what is kept in memory for it."""
+        ...

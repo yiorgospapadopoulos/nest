@@ -30,3 +30,12 @@ class DirtyCheckoutError(ConflictError):
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "files": list(self.files)}
+
+
+class CannotRewindError(ConflictError):
+    """The files cannot be restored to before the message (IMP-02)."""
+
+    code = "cannot_rewind"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}

@@ -136,7 +136,7 @@ class SessionStore:
         """
         async with self._db.transaction() as tx:
             for table in (
-                *("approvals", "attachments", "events", "queued_messages"),
+                *("approvals", "attachments", "checkpoints", "events", "queued_messages"),
                 "earlier_provider_sessions",
             ):
                 await tx.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))  # noqa: S608
@@ -144,6 +144,24 @@ class SessionStore:
                 "DELETE FROM command_catalogs WHERE scope = 'session' AND key = ?", (session_id,)
             )
             await tx.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+
+    async def save_checkpoint(self, session_id: str, event_id: int, checkpoint_id: str) -> None:
+        """The engine's id for the user message of event `event_id` (IMP-02)."""
+        await self._db.execute(
+            "INSERT OR REPLACE INTO checkpoints (event_id, session_id, checkpoint_id)"
+            " VALUES (?, ?, ?)",
+            (event_id, session_id, checkpoint_id),
+        )
+
+    async def checkpoint(self, session_id: str, event_id: int) -> str | None:
+        """The checkpoint of the session's user message event `event_id`, if the engine
+        reported one.
+        """
+        row = await self._db.fetch_one(
+            "SELECT checkpoint_id FROM checkpoints WHERE session_id = ? AND event_id = ?",
+            (session_id, event_id),
+        )
+        return None if row is None else row["checkpoint_id"]
 
     async def interrupt_in_flight(self) -> list[str]:
         """After a restart, turns that were in progress can only be resumed."""

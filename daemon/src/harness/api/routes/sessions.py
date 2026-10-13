@@ -5,8 +5,16 @@ from fastapi import APIRouter, Query, Response, status
 from harness.api.deps import Context, RequireDevice
 from harness.api.schemas import FileList, SessionDetail
 from harness.events.models import Event
+from harness.providers.base import RewindResult
 from harness.sessions.commands import CommandList
-from harness.sessions.models import CreateSession, SendMessage, SendResult, Session, UpdateSession
+from harness.sessions.models import (
+    CreateSession,
+    RewindRequest,
+    SendMessage,
+    SendResult,
+    Session,
+    UpdateSession,
+)
 
 router = APIRouter(prefix="/api/sessions", dependencies=[RequireDevice])
 
@@ -87,6 +95,25 @@ async def session_files(
 async def interrupt(session_id: str, ctx: Context) -> Response:
     await ctx.sessions.interrupt(session_id)
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.get("/{session_id}/rewind")
+async def preview_rewind(
+    session_id: str, ctx: Context, message: Annotated[int, Query(ge=1)]
+) -> RewindResult:
+    """What restoring files to before the user message of event `message` would change;
+    `can_rewind` false with `error` when it cannot. 409 unless the chat is idle (IMP-02).
+    """
+    return await ctx.sessions.rewind(session_id, message, dry_run=True)
+
+
+@router.post("/{session_id}/rewind")
+async def rewind(session_id: str, body: RewindRequest, ctx: Context) -> RewindResult:
+    """Restore the files the agent changed since that message to how they were before it,
+    then note it in the chat (`session.notice` of kind `files_restored`). Only files: the
+    conversation stays. 409 unless the chat is idle, or `cannot_rewind` with the reason.
+    """
+    return await ctx.sessions.rewind(session_id, body.message, dry_run=False)
 
 
 @router.patch("/{session_id}")

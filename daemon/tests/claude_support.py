@@ -42,11 +42,15 @@ class ClaudeHome:
             os.utime(path, (modified.timestamp(), modified.timestamp()))
         return path
 
-    def open_chat(self, pid: int, chat_id: str, entrypoint: str = "cli") -> Path:
+    def open_chat(
+        self, pid: int, chat_id: str, entrypoint: str = "cli", status: str | None = None
+    ) -> Path:
         """A sessions file, as a running Claude Code process writes it."""
         self.sessions.mkdir(parents=True, exist_ok=True)
         path = self.sessions / f"{pid}.json"
         record = {"pid": pid, "sessionId": chat_id, "cwd": "/x", "entrypoint": entrypoint}
+        if status is not None:
+            record["status"] = status
         path.write_text(json.dumps(record), encoding="utf-8")
         return path
 

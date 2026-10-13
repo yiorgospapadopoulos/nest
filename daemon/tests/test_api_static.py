@@ -32,7 +32,7 @@ async def serving(ctx: AppContext) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=transport, base_url="https://testserver") as http,
+        httpx.AsyncClient(transport=transport, base_url="https://mac.tailnet.ts.net") as http,
     ):
         yield http
 

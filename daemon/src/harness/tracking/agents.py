@@ -163,10 +163,11 @@ class AgentBoard:
             return Change.LIFECYCLE
         main.finish(status, at)
         if state != "idle":
-            # The turn was cut off: what still runs will never report back. Background work
-            # outlives a turn that ends normally.
+            # The turn was cut off: what it still runs will never report back. Background
+            # work outlives a turn that ends normally, and one the engine ended with an
+            # error, whose run stays open (D054, BUG-63); a run that ends stops its tasks.
             for agent in [*self._agents.values(), *self._commands.values()]:
-                if agent.status == "running":
+                if agent.status == "running" and not (state == "failed" and agent.background):
                     agent.finish("failed", at)
         return Change.LIFECYCLE
 

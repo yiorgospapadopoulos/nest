@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from harness.attachments.store import Attachment
 from harness.config.models import Effort, PermissionMode
 from harness.providers.base import AgentRun
 from harness.sessions.errors import SessionBusyError
@@ -21,6 +23,15 @@ def _set_event() -> asyncio.Event:
     event = asyncio.Event()
     event.set()
     return event
+
+
+@dataclass(frozen=True)
+class Unsent:
+    """A message a nudge cut off before the agent got it; `shown` once announced."""
+
+    text: str
+    attachments: list[Attachment]
+    shown: bool
 
 
 @dataclass(eq=False)
@@ -50,12 +61,26 @@ class LiveSession:
     interrupted: bool = False
     # The turn was interrupted to deliver a queued message (a nudge) right after it.
     resume_queue: bool = False
+    # The message a nudge cut off on its way to the agent; it goes first (BUG-58).
+    unsent: Unsent | None = None
+    # Set first when the session is closed, archived, deleted or the daemon stops: no new
+    # work starts on this live state any more (BUG-53).
+    stopped: bool = False
+    # A message was queued only because publishing or a send still finishing held the
+    # session, not a turn; the queue starts once that hold ends (BUG-60, BUG-61).
+    held: bool = False
     # Background tasks the agent reports running; the run is kept open while there are any.
     background_tasks: int = 0
+    # The user message event the agent was last given, until the engine echoes it with its
+    # file checkpoint id (IMP-02).
+    user_event: int | None = None
     # Refs as the last audit saw them, for the next one (D013 layer 4); None before the
     # first turn of this process.
     baseline: dict[str, str] | None = None
     idle_task: asyncio.Task[None] | None = None
+    # Reports that wait on the run's answer to a control request, off the reader of the
+    # agent's messages (I-L); they end with the run.
+    reports: set[asyncio.Task[None]] = field(default_factory=set[asyncio.Task[None]])
     # Cleared while a turn's end is announced, which makes its review: a message sent
     # then waits, so it supersedes that review instead of running beside it (BUG-18).
     settled: asyncio.Event = field(default_factory=_set_event)
@@ -79,9 +104,27 @@ class LiveSession:
             raise SessionBusyError(msg)
 
     def start(self, work: Callable[[], Coroutine[Any, Any, None]]) -> None:
+        if self.stopped:
+            msg = f"session {self.session_id!r} was stopped meanwhile; send the message again"
+            raise SessionBusyError(msg)
         self.require_idle()
         self.cancel_idle_close()
+        # The queue goes on from here as turns end; a Stop holds it again.
+        self.held = False
         self.task = asyncio.create_task(work())
+
+    @asynccontextmanager
+    async def hold(self) -> AsyncGenerator[None]:
+        """Keep the idle session busy while the caller's own task works on its run, such
+        as restoring files: a message sent meanwhile is queued, and a Stop cancels it. The
+        caller checked that it is idle; nothing else starts a task until this ends.
+        """
+        self.cancel_idle_close()
+        self.task = asyncio.current_task()
+        try:
+            yield
+        finally:
+            self.task = None
 
     async def interrupt(self) -> bool:
         """Stop the current turn or task; False if nothing is in progress."""
@@ -106,6 +149,7 @@ class LiveSession:
         self.turn_started = None
         self.interrupted = False
         self.resume_queue = False
+        self.held = False
         self.schedule_idle_close(idle_close)
 
     def schedule_idle_close(self, idle_close: timedelta) -> None:
@@ -119,8 +163,18 @@ class LiveSession:
             self.idle_task.cancel()
             self.idle_task = None
 
+    def report(self, work: Coroutine[Any, Any, None]) -> None:
+        """Run `work`, which asks the run something, beside the reader of its messages."""
+        task = asyncio.create_task(work)
+        self.reports.add(task)
+        task.add_done_callback(self.reports.discard)
+
     async def close_run(self) -> None:
         """Close the run and wait for its process to exit, or for a close in progress."""
+        reports, self.reports = self.reports, set[asyncio.Task[None]]()
+        for task in reports:
+            task.cancel()
+        await asyncio.gather(*reports, return_exceptions=True)
         run, self.run = self.run, None
         # Background tasks live in the agent process and end with it.
         self.background_tasks = 0
@@ -138,7 +192,9 @@ class LiveSession:
     async def stop(self) -> None:
         """Cancel the current task, then close the run and wait for the agent to exit."""
         # Stopping for good: no queued message starts after the cancelled task.
+        self.stopped = True
         self.resume_queue = False
+        self.unsent = None
         task = self.task
         if task is not None:
             task.cancel()
