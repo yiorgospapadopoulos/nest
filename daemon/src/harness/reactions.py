@@ -76,6 +76,9 @@ class SessionReactions:
     async def engine_reported(self, details: EngineDetails) -> None:
         await self._engine.report(details)
 
+    async def purged(self, session_id: str) -> None:
+        self._tracking.forget(session_id)
+
     async def _notify(self, session: Session, kind: NotifyKind, text: str) -> None:
         await self._notifier.notify(
             kind, session.id, session.repo, session.title, one_line(text, MAX_NOTICE_LENGTH)

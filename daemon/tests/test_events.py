@@ -5,11 +5,12 @@ from contextlib import aclosing
 from datetime import timedelta
 
 import pytest
+from pydantic import JsonValue
 
 from harness.events import types
 from harness.events.bus import EventBus, SubscriptionOverflowError
 from harness.events.models import Event
-from harness.storage.db import Database
+from harness.storage.db import Database, Params
 from tests.fakes import FakeClock
 
 
@@ -18,8 +19,6 @@ async def take(events: AsyncIterator[Event], count: int) -> list[Event]:
 
 
 def test_event_type_names() -> None:
-    assert types.DAEMON_STARTED == "daemon.started"
-    assert types.DEVICE_PAIRED == "device.paired"
     assert types.DEVICE_REVOKED == "device.revoked"
     assert types.SESSION_CREATED == "session.created"
     assert types.SESSION_STATE == "session.state"
@@ -70,6 +69,57 @@ async def test_replay_starts_after_the_given_id(db: Database, clock: FakeClock) 
 
     async with aclosing(bus.subscribe(after_id=published[0].id or 0)) as events:
         assert await take(events, 2) == published[1:]
+
+
+async def test_a_long_backlog_is_read_in_pages(
+    db: Database, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IMP-13: a client far behind does not make the daemon load every event at once."""
+    bus = EventBus(db, clock, backlog_page=2)
+    published = [await bus.publish("e", {"i": i}) for i in range(5)]
+    reads: list[int] = []
+    fetch_all = db.fetch_all
+
+    async def counting(sql: str, params: Params = ()) -> list[sqlite3.Row]:
+        rows = await fetch_all(sql, params)
+        reads.append(len(rows))
+        return rows
+
+    monkeypatch.setattr(db, "fetch_all", counting)
+
+    async with aclosing(bus.subscribe(after_id=0)) as events:
+        assert await take(events, 5) == published
+        live = await bus.publish("live", {})
+        assert await anext(events) == live
+
+    assert reads[:3] == [2, 2, 1]
+
+
+async def test_publish_many_stores_a_batch_together_and_in_order(
+    db: Database, clock: FakeClock
+) -> None:
+    """I-K: an adopted chat's history goes in a few transactions, not one per event, and
+    nothing published meanwhile lands between its events.
+    """
+    bus = EventBus(db, clock, batch_size=2)
+    batch: list[tuple[str, dict[str, JsonValue]]] = [("h", {"i": i}) for i in range(5)]
+
+    async with aclosing(bus.subscribe()) as events:
+        pending = asyncio.ensure_future(take(events, 6))
+        await asyncio.sleep(0)
+        many = asyncio.ensure_future(bus.publish_many(batch, "s1"))
+        await asyncio.sleep(0)
+        other = await bus.publish("other", {})
+        stored = await many
+        received = await pending
+
+    assert [e.payload for e in stored] == [{"i": i} for i in range(5)]
+    assert [e.id for e in stored] == list(range(1, 6))
+    assert {e.session_id for e in stored} == {"s1"}
+    assert other.id == 6
+    assert received == [*stored, other]
+    assert await bus.session_events("s1") == stored
+    assert await bus.publish_many([], "s1") == []
 
 
 async def test_without_after_only_live_events_are_streamed(db: Database, clock: FakeClock) -> None:

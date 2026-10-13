@@ -8,6 +8,10 @@ from typing import cast
 
 # The entrypoint Claude Code records for runs of the Python Agent SDK, as harness's own.
 SDK_ENTRYPOINT = "sdk-py"
+# The Claude app keeps a process alive for every chat it opened, mostly idle for hours.
+# Only one that is working holds its chat (PL-10); if the app later works in a chat that
+# harness continued meanwhile, it does so from what it had in memory.
+DESKTOP_ENTRYPOINT = "claude-desktop"
 
 
 def pid_alive(pid: int) -> bool:
@@ -64,6 +68,8 @@ class LiveChats:
                 data.get("sessionId"),
                 data.get("entrypoint"),
             )
+            if entrypoint == DESKTOP_ENTRYPOINT and data.get("status") == "idle":
+                continue
             if isinstance(pid, int) and isinstance(session_id, str):
                 records.append((pid, session_id, entrypoint if isinstance(entrypoint, str) else ""))
         return records

@@ -1,4 +1,5 @@
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from harness.local_apps.apps import LIVE_WARNING
 from harness.providers.base import McpServer, TokenUsage, UsageInfo, UsageWindow
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import hang, limits, loaded, reply
+from tests.fake_provider import FakeRun, background, hang, limits, loaded, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, reach
@@ -126,22 +127,67 @@ async def test_usage_limits_survive_a_restart(
 
 
 async def test_open_in_claude_code(api: Api) -> None:
+    """PL-15: harness's idle run closes first, so a later message from harness resumes the
+    conversation with what was done in Terminal instead of forking it.
+    """
     api.provider.script(reply("ok"))
     session_id = str((await create(api))["id"])
     await reach(api, session_id, "idle")
+    (run,) = api.provider.runs
 
-    live = await api.http.post(f"/api/sessions/{session_id}/open-in-claude-code")
-    await api.http.patch(f"/api/sessions/{session_id}", json={"archived": True})
-    released = await api.http.post(f"/api/sessions/{session_id}/open-in-claude-code")
+    opened = await api.http.post(f"/api/sessions/{session_id}/open-in-claude-code")
     unknown = await api.http.post("/api/sessions/nope/open-in-claude-code")
 
-    assert live.status_code == 200
-    assert live.json()["warning"] == LIVE_WARNING
-    assert released.json()["warning"] is None
-    launcher = Path(released.json()["launcher"])
+    assert opened.status_code == 200
+    assert run.closed
+    assert not api.ctx.sessions.has_run(session_id)
+    assert opened.json()["warning"] is None
+    launcher = Path(opened.json()["launcher"])
     assert launcher == api.ctx.paths.launchers_dir / f"{session_id}.command"
     assert api.opener.calls[-1][0] == ("open", str(launcher))
     assert unknown.status_code == 404
+
+
+async def test_open_in_claude_code_keeps_a_run_with_background_work(api: Api) -> None:
+    """Closing would stop the agent's background tasks; both run, with a warning."""
+    api.provider.script(background(1, reply("started a background agent")))
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "idle")
+    (run,) = api.provider.runs
+
+    opened = await api.http.post(f"/api/sessions/{session_id}/open-in-claude-code")
+
+    assert opened.json()["warning"] == LIVE_WARNING
+    assert not run.closed
+
+
+async def test_open_in_claude_code_keeps_a_run_whose_turn_is_in_progress(api: Api) -> None:
+    release = asyncio.Event()
+
+    async def long_turn(run: FakeRun) -> None:
+        await run.sink.provider_session_id("sdk-1")
+        await release.wait()
+        await reply("done")(run)
+
+    api.provider.script(long_turn)
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "running")
+    await until(lambda: bool(api.provider.runs) and bool(api.provider.runs[0].inputs))
+    await until(_has_provider_session(api, session_id))
+
+    opened = await api.http.post(f"/api/sessions/{session_id}/open-in-claude-code")
+    release.set()
+    await reach(api, session_id, "idle")
+
+    assert opened.json()["warning"] == LIVE_WARNING
+    assert not api.provider.runs[0].closed
+
+
+def _has_provider_session(api: Api, session_id: str) -> Callable[[], Awaitable[bool]]:
+    async def stored() -> bool:
+        return (await api.ctx.sessions.get(session_id)).provider_session_id is not None
+
+    return stored
 
 
 async def test_open_in_claude_code_before_the_agent_started(api: Api) -> None:

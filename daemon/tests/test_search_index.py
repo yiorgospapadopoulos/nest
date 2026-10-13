@@ -289,7 +289,7 @@ async def test_stop_before_start_is_harmless(env: Env) -> None:
 
 async def test_global_events_and_odd_session_payloads_are_skipped(env: Env) -> None:
     session = await env.session(title="Unrelated")
-    await env.bus.publish(types.DAEMON_STARTED, {"version": "plan"})
+    await env.bus.publish(types.DEVICE_REVOKED, {"device_id": "plan"})
     await env.bus.publish(types.SESSION_CREATED, {"session": "plan"}, session.id)
     await env.bus.publish(
         types.SESSION_UPDATED, {"changes": {"title": 1}, "session": {}}, session.id

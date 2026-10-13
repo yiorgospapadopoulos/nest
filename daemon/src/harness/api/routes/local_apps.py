@@ -24,6 +24,7 @@ class ClaudeCodeOpened(BaseModel):
 @router.post("/sessions/{session_id}/open-in-claude-code")
 async def open_in_claude_code(session_id: str, ctx: Context) -> ClaudeCodeOpened:
     session = await ctx.sessions.get(session_id)
+    await ctx.sessions.close_idle_run(session_id)
     launch = await ctx.local_apps.open_in_claude_code(session, ctx.sessions.has_run(session_id))
     return ClaudeCodeOpened(launcher=launch.launcher, warning=launch.warning)
 

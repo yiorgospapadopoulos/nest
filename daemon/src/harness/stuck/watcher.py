@@ -42,6 +42,10 @@ _ACTIVITY = frozenset(
         types.SESSION_USER_MESSAGE,
         types.SESSION_MESSAGE,
         types.SESSION_DELTA,
+        # Thinking streams no text, and a notice (a retry, a compaction) shows the turn
+        # is alive too (IMP-15, IMP-30).
+        types.SESSION_THINKING,
+        types.SESSION_NOTICE,
         types.SESSION_RESULT,
         types.SESSION_AGENT_TASK,
         types.APPROVAL_CREATED,
@@ -74,6 +78,8 @@ class _Turn:
     )
     # The latest tool call of the main agent (None) and of each subagent (its tool use id).
     repeats: dict[str | None, _Repeat] = field(default_factory=dict[str | None, _Repeat])
+    # The main agent is thinking: no output, yet not silent.
+    thinking: bool = False
     flag: StuckFlag | None = None
     # Reasons already notified in this turn.
     announced: set[str] = field(default_factory=set[str])
@@ -154,12 +160,15 @@ class StuckWatcher:
         if event.type == types.SESSION_USER_MESSAGE:
             # A queued message or a nudge starts the next turn without leaving `running`.
             turn.started = event.ts
+            turn.thinking = False
             turn.repeats.clear()
             turn.announced.clear()
         elif event.type in (types.APPROVAL_CREATED, types.APPROVAL_RESOLVED):
             _note_prompt(turn, event)
         elif event.type == types.SESSION_MESSAGE:
             _note_calls(turn, event)
+        if event.type == types.SESSION_THINKING:
+            turn.thinking = event.payload.get("active") is True
         await self._evaluate(session_id, turn)
 
     async def _end(self, session_id: str) -> None:
@@ -260,6 +269,7 @@ def _condition(turn: _Turn, settings: StuckSettings, now: datetime) -> StuckFlag
     if (
         settings.silent_minutes
         and not turn.prompts
+        and not turn.thinking
         and quiet >= timedelta(minutes=settings.silent_minutes)
     ):
         details = f"No new output for {_minutes(quiet)}"

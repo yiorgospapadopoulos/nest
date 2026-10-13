@@ -50,6 +50,13 @@ class Env:
     async def state(self, session: Session, state: str) -> None:
         await self.send(session, types.SESSION_STATE, {"state": state, "error": None})
 
+    async def ephemeral(
+        self, session: Session, event_type: str, payload: dict[str, JsonValue]
+    ) -> None:
+        await self.watcher.observe(
+            await self.bus.publish_ephemeral(event_type, payload, session.id)
+        )
+
     async def output(self, session: Session) -> None:
         event = await self.bus.publish_ephemeral(types.SESSION_DELTA, {"text": "x"}, session.id)
         await self.watcher.observe(event)
@@ -154,6 +161,32 @@ async def test_running_without_output_and_again_without_a_second_notice(env: Env
 
     assert await env.flags(session) == [("stuck", "silent"), ("unstuck", None), ("stuck", "silent")]
     assert await env.notices(session) == ["No new output for 10 minutes"]
+
+
+async def test_thinking_is_activity_and_long_thinking_is_not_silence(env: Env) -> None:
+    """IMP-15: thinking streams no text, but the agent is working."""
+    session = await env.running()
+    await env.wait(9)
+    await env.ephemeral(session, types.SESSION_THINKING, {"active": True})
+    await env.wait(30)
+    assert await env.flags(session) == []
+
+    await env.ephemeral(session, types.SESSION_THINKING, {"active": False})
+    await env.wait(9)
+    assert await env.flags(session) == []
+    await env.wait(1)
+
+    assert await env.flags(session) == [("stuck", "silent")]
+
+
+async def test_a_notice_is_activity(env: Env) -> None:
+    """IMP-30: an engine notice (a retry, a compaction) shows the turn is alive."""
+    session = await env.running()
+    await env.wait(9)
+    await env.send(session, types.SESSION_NOTICE, {"kind": "api_retry", "text": "Retrying"})
+    await env.wait(9)
+
+    assert await env.flags(session) == []
 
 
 async def test_no_silence_while_a_prompt_waits_and_no_flags_once_the_turn_ends(env: Env) -> None:
@@ -302,7 +335,7 @@ async def test_events_outside_a_turn_or_odd_ones_change_nothing(env: Env) -> Non
     session = await env.store.create(new_session())
     await env.call(session)
     await env.state(session, "starting")
-    await env.watcher.observe(await env.bus.publish(types.DAEMON_STARTED, {"version": "1"}))
+    await env.watcher.observe(await env.bus.publish(types.DEVICE_REVOKED, {"device_id": "1"}))
     running = await env.running()
     await env.send(running, types.SESSION_PR, {"pr": None})
     await env.send(running, types.APPROVAL_CREATED, {"approval": "odd"})

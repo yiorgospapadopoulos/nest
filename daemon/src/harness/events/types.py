@@ -2,8 +2,6 @@
 
 from typing import Final
 
-DAEMON_STARTED: Final = "daemon.started"
-DEVICE_PAIRED: Final = "device.paired"
 DEVICE_REVOKED: Final = "device.revoked"
 
 # A repo was registered; global, `{name, repo}` as in REPO_UPDATED. Clients add it.
