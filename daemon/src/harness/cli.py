@@ -58,7 +58,7 @@ def _parser() -> argparse.ArgumentParser:
     design = commands.add_parser("design", help="generate the client design token files")
     design_actions = design.add_subparsers(required=True, metavar="action")
     for name, handler, help_text in (
-        ("generate", _design_generate, "write the CSS and Swift files from design/tokens.toml"),
+        ("generate", _design_generate, "write the CSS, Swift and mascot files from design/"),
         ("check", _design_check, "fail if the generated token files are missing or stale"),
     ):
         action = design_actions.add_parser(name, help=help_text)

@@ -5,9 +5,15 @@ from pathlib import Path
 import pytest
 
 from harness.cli import main
-from harness.design.outputs import CSS_OUTPUT, SWIFT_OUTPUT, stale_outputs
+from harness.design.outputs import (
+    CSS_OUTPUT,
+    MASCOTS_SWIFT_OUTPUT,
+    MASCOTS_TS_OUTPUT,
+    SWIFT_OUTPUT,
+    stale_outputs,
+)
 from harness.runtime import Runtime, default_runtime
-from tests.design_support import REPO_ROOT, minimal_tokens, write_tokens
+from tests.design_support import REPO_ROOT, minimal_tokens, write_mascots, write_tokens
 
 
 @dataclasses.dataclass
@@ -28,18 +34,37 @@ def console() -> Console:
 
 def test_generate_writes_both_outputs(console: Console, tmp_path: Path) -> None:
     write_tokens(tmp_path, minimal_tokens())
+    write_mascots(tmp_path)
     assert console.run("design", "generate", "--root", str(tmp_path)) == 0
     css = (tmp_path / CSS_OUTPUT).read_text(encoding="utf-8")
     swift = (tmp_path / SWIFT_OUTPUT).read_text(encoding="utf-8")
     assert "--text-primary: #1a1b20;" in css
     assert "public enum DesignTokens {" in swift
-    assert console.out.getvalue() == f"Wrote {CSS_OUTPUT}\nWrote {SWIFT_OUTPUT}\n"
+    assert console.out.getvalue() == (
+        f"Wrote {CSS_OUTPUT}\nWrote {SWIFT_OUTPUT}\n"
+        f"Wrote {MASCOTS_TS_OUTPUT}\nWrote {MASCOTS_SWIFT_OUTPUT}\n"
+    )
+    assert "export const MASCOT_SPRITES" in (tmp_path / MASCOTS_TS_OUTPUT).read_text()
+    assert "public enum MascotSprites" in (tmp_path / MASCOTS_SWIFT_OUTPUT).read_text()
+
+
+def test_a_second_generate_leaves_the_files_unchanged(console: Console, tmp_path: Path) -> None:
+    write_tokens(tmp_path, minimal_tokens())
+    write_mascots(tmp_path)
+    console.run("design", "generate", "--root", str(tmp_path))
+    first = {p: (tmp_path / p).read_bytes() for p in (MASCOTS_TS_OUTPUT, MASCOTS_SWIFT_OUTPUT)}
+
+    assert console.run("design", "generate", "--root", str(tmp_path)) == 0
+
+    assert first == {p: (tmp_path / p).read_bytes() for p in first}
+    assert console.run("design", "check", "--root", str(tmp_path)) == 0
 
 
 def test_the_root_defaults_to_the_nearest_folder_with_tokens(
     console: Console, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     write_tokens(tmp_path, minimal_tokens())
+    write_mascots(tmp_path)
     nested = tmp_path / "daemon"
     nested.mkdir()
     monkeypatch.chdir(nested)
@@ -49,10 +74,12 @@ def test_the_root_defaults_to_the_nearest_folder_with_tokens(
 
 def test_check_reports_missing_and_stale_outputs(console: Console, tmp_path: Path) -> None:
     write_tokens(tmp_path, minimal_tokens())
+    write_mascots(tmp_path)
     root = str(tmp_path)
     assert console.run("design", "check", "--root", root) == 1
     err = console.err.getvalue()
     assert f"harness: {CSS_OUTPUT} is missing\n" in err
+    assert f"harness: {MASCOTS_TS_OUTPUT} is missing\n" in err
     assert f"harness: {SWIFT_OUTPUT} is missing\n" in err
     assert err.endswith("harness: run `harness design generate` to update them\n")
 

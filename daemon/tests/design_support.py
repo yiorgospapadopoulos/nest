@@ -1,5 +1,6 @@
 """A small valid token set and helpers for the design generator tests."""
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -141,4 +142,12 @@ def write_tokens(root: Path, data: dict[str, Any]) -> Path:
     path = root / "design" / "tokens.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomli_w.dumps(data), encoding="utf-8")
+    return path
+
+
+def write_mascots(root: Path) -> Path:
+    """Copy the shipped mascot sprites into a scratch repository."""
+    path = root / "design" / "mascots.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO_ROOT / "design" / "mascots.toml", path)
     return path
