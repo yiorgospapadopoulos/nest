@@ -17,7 +17,9 @@ import type {
   PushSubscriptionBody,
   RedeemResponse,
   RepoConfig,
+  RepoPatch,
   ResolveBody,
+  RewindPreview,
   SearchResults,
   SendResponse,
   Session,
@@ -25,6 +27,7 @@ import type {
   SessionDiff,
   UpdateSessionBody,
   UsageLimits,
+  WorktreeConfig,
 } from "./types.ts";
 
 // The daemon's code for a message refused because Claude Code has the chat open.
@@ -34,11 +37,19 @@ export class ApiError extends Error {
   readonly status: number;
   // A machine-readable reason some refusals carry next to the message.
   readonly code: string | null;
+  // The whole JSON body, for refusals that carry more than a message and a code.
+  readonly data: Record<string, unknown>;
 
-  constructor(status: number, message: string, code: string | null = null) {
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    data: Record<string, unknown> = {},
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 
   get unauthorized(): boolean {
@@ -49,6 +60,10 @@ export class ApiError extends Error {
 export interface Api {
   redeem(code: string, deviceName: string): Promise<RedeemResponse>;
   repos(): Promise<RepoConfig[]>;
+  // Unregisters the project (its folder stays); `purge` deletes its chats first.
+  removeRepo(name: string, purge: boolean): Promise<null>;
+  updateWorktree(name: string, worktree: WorktreeConfig): Promise<RepoConfig>;
+  updateRepo(name: string, patch: RepoPatch): Promise<RepoConfig>;
   sessions(archived: boolean): Promise<Session[]>;
   session(id: string): Promise<SessionDetail>;
   sessionEvents(id: string): Promise<HarnessEvent[]>;
@@ -79,6 +94,11 @@ export interface Api {
   approve(sessionId: string, body: ApproveBody): Promise<Session>;
   reject(sessionId: string): Promise<Session>;
   feedback(sessionId: string, text: string): Promise<Session>;
+  // The daemon reads the failing checks' logs with its own GitHub login and sends them in.
+  ciFeedback(sessionId: string): Promise<unknown>;
+  rewindPreview(sessionId: string, eventId: number): Promise<RewindPreview>;
+  // Restores files (not the conversation) to before the user message `eventId`.
+  rewind(sessionId: string, eventId: number): Promise<unknown>;
   // Merges the pull request, then closes the session and removes its worktree.
   merge(sessionId: string, body: MergeBody): Promise<Session>;
   uploadAttachment(file: File): Promise<Attachment>;
@@ -103,6 +123,7 @@ export interface Api {
 export const SEARCH_LIMIT = 50;
 
 const session = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
+const repo = (name: string) => `/api/repos/${encodeURIComponent(name)}`;
 const claudeChat = (id: string) => `/api/claude-chats/${encodeURIComponent(id)}`;
 
 /** The daemon's REST API; the device token travels in the same-origin cookie. */
@@ -122,6 +143,18 @@ export class HttpApi implements Api {
 
   repos() {
     return this.json<RepoConfig[]>("GET", "/api/repos");
+  }
+
+  removeRepo(name: string, purge: boolean) {
+    return this.json<null>("DELETE", `${repo(name)}?purge_sessions=${String(purge)}`);
+  }
+
+  updateWorktree(name: string, worktree: WorktreeConfig) {
+    return this.json<RepoConfig>("PUT", `${repo(name)}/worktree`, worktree);
+  }
+
+  updateRepo(name: string, patch: RepoPatch) {
+    return this.json<RepoConfig>("PATCH", repo(name), patch);
   }
 
   sessions(archived: boolean) {
@@ -162,7 +195,7 @@ export class HttpApi implements Api {
 
   /** The repo's last known commands, for a new chat that has no session yet. */
   repoCommands(name: string) {
-    return this.json<CommandList>("GET", `/api/repos/${encodeURIComponent(name)}/commands`);
+    return this.json<CommandList>("GET", `${repo(name)}/commands`);
   }
 
   /** Up to 50 repo files ranked by the daemon for an @ mention. */
@@ -228,6 +261,21 @@ export class HttpApi implements Api {
 
   feedback(sessionId: string, text: string) {
     return this.json<Session>("POST", `${session(sessionId)}/feedback`, { text });
+  }
+
+  ciFeedback(sessionId: string) {
+    return this.json<unknown>("POST", `${session(sessionId)}/ci-feedback`);
+  }
+
+  rewindPreview(sessionId: string, eventId: number) {
+    return this.json<RewindPreview>(
+      "GET",
+      `${session(sessionId)}/rewind?message=${String(eventId)}`,
+    );
+  }
+
+  rewind(sessionId: string, eventId: number) {
+    return this.json<unknown>("POST", `${session(sessionId)}/rewind`, { message: eventId });
   }
 
   merge(sessionId: string, body: MergeBody) {
@@ -323,6 +371,7 @@ export class HttpApi implements Api {
         response.status,
         field(data, "detail") ?? `Request failed (${String(response.status)})`,
         field(data, "code"),
+        isRecord(data) ? data : {},
       );
     }
     return data as T;
@@ -337,10 +386,11 @@ function parse(text: string): unknown {
   }
 }
 
+function isRecord(data: unknown): data is Record<string, unknown> {
+  return typeof data === "object" && data !== null && !Array.isArray(data);
+}
+
 function field(data: unknown, name: "detail" | "code"): string | null {
-  if (typeof data === "object" && data !== null && name in data) {
-    const value = (data as Record<string, unknown>)[name];
-    return typeof value === "string" ? value : null;
-  }
-  return null;
+  const value = isRecord(data) ? data[name] : undefined;
+  return typeof value === "string" ? value : null;
 }

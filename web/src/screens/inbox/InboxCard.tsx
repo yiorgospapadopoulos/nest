@@ -3,11 +3,15 @@ import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon, type IconName } from "../../ui/Icon.tsx";
-import { DiffSheet } from "../approvals/DiffSheet.tsx";
+import { DiffSheet, ReviewHead } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import { RejectConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
+import {
+  RejectConfirmation,
+  RemoteConfirmation,
+  ViolationNotice,
+} from "../approvals/ReviewGuards.tsx";
 import { Card, SwipeCard } from "../approvals/SwipeCard.tsx";
 import { MergeCard } from "./PrCards.tsx";
 
@@ -86,6 +90,7 @@ function PermissionCard({ approval, session, head }: CardProps) {
       approveLabel="Approve"
       onApprove={() => void decide("allow")}
       onReject={() => void decide("deny")}
+      busy={busy}
     >
       {head}
       <div className="cmdbox">{view.command}</div>
@@ -100,7 +105,7 @@ function PermissionCard({ approval, session, head }: CardProps) {
           Reject
         </button>
         <button className="b qb2" disabled={busy} onClick={() => void decide("allow", true)}>
-          Always allow
+          Always allow {view.always}
         </button>
       </div>
     </SwipeCard>
@@ -123,7 +128,9 @@ function ReviewCard({
     <>
       <SwipeCard
         label={`Ready for review: ${review.title}`}
-        approveLabel={review.approveLabel}
+        // Unchecked git changes turn a swipe into opening the chat.
+        approveLabel={review.blocked ? "Open chat" : review.approveLabel}
+        busy={review.busy}
         onApprove={() => {
           // Never publish unchecked git changes with a swipe: show the chat instead.
           if (review.blocked) onOpenChat(approval.session_id);
@@ -146,6 +153,9 @@ function ReviewCard({
           View changes
           <Icon name="chevr" />
         </button>
+        {typeof review.diff === "object" && review.diff !== null && (
+          <ReviewHead diff={review.diff} />
+        )}
         <ViolationNotice review={review} />
         {feedback === null ? (
           <>
@@ -223,8 +233,7 @@ function ReviewCard({
       </SwipeCard>
       {diffOpen && (
         <DiffSheet
-          sessionId={approval.session_id}
-          title={review.title}
+          review={review}
           onClose={() => {
             setDiffOpen(false);
           }}
@@ -245,6 +254,7 @@ function ReviewCard({
         />
       )}
       <RejectConfirmation review={review} />
+      <RemoteConfirmation review={review} />
     </>
   );
 }

@@ -202,6 +202,49 @@ const calls: Call[] = [
     agentDefaults({ model: "opus" }),
   ],
   [
+    "remove repo",
+    (a) => a.removeRepo("todo ui", false),
+    "DELETE",
+    "/api/repos/todo%20ui?purge_sessions=false",
+    undefined,
+  ],
+  [
+    "remove repo and its chats",
+    (a) => a.removeRepo("todo-ui", true),
+    "DELETE",
+    "/api/repos/todo-ui?purge_sessions=true",
+    undefined,
+  ],
+  [
+    "worktree default",
+    (a) =>
+      a.updateWorktree("todo-ui", {
+        default: false,
+        link: [".env"],
+        setup: [],
+        setup_timeout_seconds: 900,
+      }),
+    "PUT",
+    "/api/repos/todo-ui/worktree",
+    { default: false, link: [".env"], setup: [], setup_timeout_seconds: 900 },
+  ],
+  [
+    "links and setup",
+    (a) => a.updateRepo("todo-ui", { link: [".env"], setup: ["npm ci"] }),
+    "PATCH",
+    "/api/repos/todo-ui",
+    { link: [".env"], setup: ["npm ci"] },
+  ],
+  ["ci feedback", (a) => a.ciFeedback("s1"), "POST", "/api/sessions/s1/ci-feedback", undefined],
+  [
+    "rewind preview",
+    (a) => a.rewindPreview("s1", 42),
+    "GET",
+    "/api/sessions/s1/rewind?message=42",
+    undefined,
+  ],
+  ["rewind", (a) => a.rewind("s1", 42), "POST", "/api/sessions/s1/rewind", { message: 42 }],
+  [
     "redeem",
     (a) => a.redeem("ABCD2345", "iPhone"),
     "POST",
@@ -262,6 +305,24 @@ describe("HttpApi", () => {
       message: "Open in Claude Code",
       code: "open_in_claude_code",
     });
+  });
+
+  it("keeps the whole refusal for the fields some carry", async () => {
+    const body = {
+      detail: "origin now pushes to x",
+      code: "remote_changed",
+      remote_urls: ["https://github.com/me/x.git"],
+      confirmed_url: "https://github.com/me/y.git",
+    };
+    const { api } = setup(409, body);
+
+    await expect(api.approve("s1", { commit_message: "m" })).rejects.toMatchObject({
+      code: "remote_changed",
+      data: body,
+    });
+    await expect(
+      new HttpApi(() => Promise.resolve(jsonResponse(409, ["x"]))).repos(),
+    ).rejects.toMatchObject({ data: {} });
   });
 
   it.each([

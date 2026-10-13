@@ -1,39 +1,32 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { FileDiff, SessionDiff } from "../../api/types.ts";
-import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
+import type { Review } from "./hooks.ts";
 
 interface Props {
-  sessionId: string;
-  title: string;
+  review: Review;
   onClose: () => void;
   // The review actions.
   footer: ReactNode;
 }
 
-/** The session's work as a full-screen unified diff. */
-export function DiffSheet({ sessionId, title, onClose, footer }: Props) {
-  const { actions } = useStore();
-  const [diff, setDiff] = useState<SessionDiff | null | "failed">(null);
+/** The session's work as a full-screen unified diff, loaded again each time it opens. */
+export function DiffSheet({ review, onClose, footer }: Props) {
+  const { diff, loadDiff } = review;
 
   useEffect(() => {
-    let live = true;
-    void actions.diff(sessionId).then((loaded) => {
-      if (live) setDiff(loaded ?? "failed");
-    });
-    return () => {
-      live = false;
-    };
-  }, [actions, sessionId]);
+    void loadDiff();
+  }, [loadDiff]);
 
   return (
-    <Sheet title={title} onClose={onClose} full footer={footer}>
-      {diff === null && <p className="note">Loading changes...</p>}
+    <Sheet title={review.title} onClose={onClose} full footer={footer}>
+      {(diff === null || diff === undefined) && <p className="note">Loading changes...</p>}
       {diff === "failed" && <p className="note">The changes could not be loaded.</p>}
-      {diff !== null && diff !== "failed" && (
+      {typeof diff === "object" && diff !== null && (
         <>
+          <ReviewHead diff={diff} />
           <div className="dsum">
             <DiffStats {...diff.stats} />
           </div>
@@ -47,6 +40,37 @@ export function DiffSheet({ sessionId, title, onClose, footer }: Props) {
   );
 }
 
+/** Where approving pushes, and any commits on it that harness did not make. */
+export function ReviewHead({ diff }: { diff: SessionDiff }) {
+  return (
+    <>
+      {diff.head.branch !== null && (
+        <p className="dpush">
+          <Icon name="branch" />
+          Pushes to {diff.head.branch}
+        </p>
+      )}
+      {diff.commits.length > 0 && (
+        <div className="vio" role="group" aria-label="Commits harness did not make">
+          <p>
+            <Icon name="shield" />
+            These commits are on the branch, but harness did not make them. Check them before
+            publishing.
+          </p>
+          <ul className="dcommits">
+            {diff.commits.map((commit) => (
+              <li key={commit.sha}>
+                <code>{commit.sha.slice(0, 7)}</code>
+                {commit.subject}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 function FileView({ file }: { file: FileDiff }) {
   const name = file.old_path === null ? file.path : `${file.old_path} → ${file.path}`;
   return (
@@ -56,6 +80,7 @@ function FileView({ file }: { file: FileDiff }) {
         <span>{name}</span>
       </div>
       {file.binary && <div className="dnote">Binary file</div>}
+      {file.nested_repository && <div className="dnote">Nested repository, not committed</div>}
       {file.hunks.map((hunk) => (
         <div key={`${String(hunk.old_start)}-${String(hunk.new_start)}`}>
           <div className="dhh">

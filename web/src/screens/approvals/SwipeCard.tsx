@@ -9,12 +9,14 @@ interface Props {
   approveLabel: string;
   onApprove: () => void;
   onReject: () => void;
+  // An answer is on its way: swipes do nothing, as the buttons are disabled.
+  busy: boolean;
   children: ReactNode;
 }
 
 /** An Inbox card; swipe right to approve and left to reject, buttons stay the main path. */
-export function SwipeCard({ label, approveLabel, onApprove, onReject, children }: Props) {
-  const { dx, handlers } = useSwipe(onApprove, onReject);
+export function SwipeCard({ label, approveLabel, onApprove, onReject, busy, children }: Props) {
+  const { dx, handlers } = useSwipe(onApprove, onReject, busy);
   const side = dx > HINT_DISTANCE ? " r" : dx < -HINT_DISTANCE ? " l" : "";
   return (
     <div className={`swr${side}`}>

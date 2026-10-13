@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { Approval } from "../../api/types.ts";
+import type { Approval, JsonValue } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import {
@@ -59,7 +59,7 @@ describe("Inbox", () => {
     await user.click(within(defined(first)).getByRole("button", { name: "Approve" }));
     expect(await screen.findByText("Approved: npm install zod")).toBeInTheDocument();
     await user.click(within(defined(second)).getByRole("button", { name: "Reject" }));
-    await user.click(within(defined(third)).getByRole("button", { name: "Always allow" }));
+    await user.click(within(defined(third)).getByRole("button", { name: "Always allow Bash" }));
 
     expect(api.resolveApproval.mock.calls).toEqual([
       ["q1", { behavior: "allow", always: false }],
@@ -70,6 +70,20 @@ describe("Inbox", () => {
       expect(screen.getByText("All clear")).toBeInTheDocument();
     });
     expect(screen.getByText("Always allowed: Bash")).toBeInTheDocument();
+  });
+
+  it("names Claude Code's suggested rule on Always allow", async () => {
+    const api = withItems([
+      approval({
+        payload: { tool: "Bash", input: { command: "npm test" }, always_rule: "Bash(npm test:*)" },
+      }),
+    ]);
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Always allow Bash(npm test:*)" }));
+
+    expect(api.resolveApproval).toHaveBeenCalledWith("q1", { behavior: "allow", always: true });
+    expect(await screen.findByText("Always allowed: Bash(npm test:*)")).toBeInTheDocument();
   });
 
   it("shows why Claude Code asks, when it says", async () => {
@@ -96,6 +110,17 @@ describe("Inbox", () => {
 
     expect(await screen.findByText("approval q1 is expired")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  });
+
+  it("returns focus to what opened a chat after closing it", async () => {
+    const { user } = await renderApp({ api: withItems([approval()]) });
+    const title = screen.getByRole("button", { name: "Validate contact form" });
+
+    await user.click(title);
+    await screen.findByRole("region", { name: "Validate contact form" });
+    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
+
+    expect(screen.getByRole("button", { name: "Validate contact form" })).toHaveFocus();
   });
 
   it("swipes right to approve and left to reject", async () => {
@@ -337,6 +362,44 @@ describe("review cards", () => {
     expect(hint(defined(inPlace))).toBe("Approve and push");
   });
 
+  it("name opening the chat when unchecked git changes stop a swipe from publishing", async () => {
+    await renderApp({ api: withItems([review()], [session({ git_violation: true })]) });
+
+    const article = card(/Ready for review/);
+    fireEvent.pointerDown(article, { button: 0, clientX: 100, clientY: 10 });
+    fireEvent.pointerMove(article, { clientX: 140, clientY: 10 });
+
+    expect(article.parentElement?.querySelector(".swbg .sl")).toHaveTextContent("Open chat");
+  });
+
+  it("send one approval for two quick swipes", async () => {
+    const api = withItems([review(), approval()]);
+    let finish: (value: ReturnType<typeof session>) => void = () => undefined;
+    api.approve.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    let allow: (value: Approval) => void = () => undefined;
+    api.resolveApproval.mockReturnValueOnce(
+      new Promise((resolve) => {
+        allow = resolve;
+      }),
+    );
+    await renderApp({ api });
+
+    swipe(card(/Ready for review/), 150);
+    swipe(card(/Ready for review/), 150);
+    swipe(card(/Permission/), 150);
+    swipe(card(/Permission/), -150);
+
+    expect(api.approve).toHaveBeenCalledTimes(1);
+    expect(api.resolveApproval).toHaveBeenCalledTimes(1);
+    finish(session());
+    allow({ ...approval(), status: "resolved" });
+    expect(await screen.findByText("All clear")).toBeInTheDocument();
+  });
+
   it("reject the work after confirming", async () => {
     const api = withItems([review()]);
     api.reject.mockRejectedValueOnce(new ApiError(502, "push failed"));
@@ -347,6 +410,8 @@ describe("review cards", () => {
       expect(confirm).toHaveTextContent(
         "The chat closes and its worktree and branch are removed. Nothing is merged.",
       );
+      // A stray Enter or a VoiceOver tap lands on the safe choice.
+      expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus();
       return confirm;
     };
 
@@ -400,6 +465,269 @@ describe("review cards", () => {
     });
   });
 
+  it("show the acknowledge switch for a violation found while the app is open", async () => {
+    const api = withItems([], [session({ state: "running" })]);
+    const { user, push } = await renderApp({ api });
+
+    // The usual order: the turn ends with a violation, then the review arrives.
+    push({ id: 5, type: "session.git_violation", session_id: "s1", payload: { changes: [] } });
+    push({ id: 6, type: "session.state", session_id: "s1", payload: { state: "idle" } });
+    push({
+      id: 7,
+      type: "approval.created",
+      session_id: "s1",
+      payload: { approval: review() as unknown as JsonValue },
+    });
+
+    const approve = await screen.findByRole("button", { name: "Approve and open PR" });
+    expect(approve).toBeDisabled();
+    await user.click(screen.getByRole("switch", { name: "I checked, publish anyway" }));
+    await user.click(approve);
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      acknowledge_violation: true,
+    });
+  });
+
+  it("refetch the session and the diff when approving is refused, then say why", async () => {
+    const api = withItems([review()]);
+    const why = "The agent changed git refs itself. Check them, then publish anyway.";
+    api.approve.mockRejectedValueOnce(new ApiError(409, why, "git_violation"));
+    api.session.mockResolvedValue(detail({ git_violation: true }));
+    await renderApp({ api });
+
+    swipe(card(/Ready for review/), 150);
+
+    expect(await screen.findByText(why)).toBeInTheDocument();
+    expect(api.session).toHaveBeenCalledWith("s1");
+    expect(api.diff).toHaveBeenCalledWith("s1");
+    expect(
+      await screen.findByRole("switch", { name: "I checked, publish anyway" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeDisabled();
+  });
+
+  it("show where the work is pushed and commits harness did not make", async () => {
+    const api = withItems([review()]);
+    api.diff.mockResolvedValue({
+      ...diff(),
+      commits: [{ sha: "0123456789abcdef", subject: "Squash old work" }],
+    });
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
+
+    expect(await within(sheet).findByText("Pushes to agent/contact")).toBeInTheDocument();
+    const commits = within(sheet).getByRole("group", { name: "Commits harness did not make" });
+    expect(commits).toHaveTextContent(
+      "These commits are on the branch, but harness did not make them. Check them before publishing.",
+    );
+    expect(within(commits).getByRole("listitem")).toHaveTextContent("0123456Squash old work");
+    await user.click(within(sheet).getByRole("button", { name: "Approve and open PR" }));
+
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      expected_head: "c0ffee0000000000000000000000000000000000",
+    });
+  });
+
+  it("check the changes again when the branch moved", async () => {
+    const api = withItems([review()]);
+    api.approve.mockRejectedValueOnce(
+      new ApiError(409, "The branch changed since you looked.", "head_changed"),
+    );
+    api.diff.mockResolvedValueOnce(diff()).mockResolvedValueOnce({
+      ...diff(),
+      head: { commit: "beef", branch: "agent/moved" },
+    });
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
+    await within(sheet).findByText("Pushes to agent/contact");
+    await user.click(within(sheet).getByRole("button", { name: "Approve and open PR" }));
+
+    expect(
+      await screen.findByText("The branch moved since you looked. Check the changes again."),
+    ).toBeInTheDocument();
+    expect(await within(sheet).findByText("Pushes to agent/moved")).toBeInTheDocument();
+    expect(api.diff).toHaveBeenCalledTimes(2);
+    await user.click(within(sheet).getByRole("button", { name: "Approve and open PR" }));
+    expect(api.approve).toHaveBeenLastCalledWith("s1", {
+      commit_message: "Validate contact form",
+      expected_head: "beef",
+    });
+  });
+
+  it("keep the newest diff when an older answer arrives late", async () => {
+    const api = withItems([review()]);
+    let finish: (value: ReturnType<typeof diff>) => void = () => undefined;
+    api.diff
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({ ...diff(), head: { commit: "new", branch: "agent/new" } });
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
+    expect(await within(sheet).findByText("Pushes to agent/new")).toBeInTheDocument();
+    await act(async () => {
+      finish({ ...diff(), head: { commit: "old", branch: "agent/old" } });
+      await Promise.resolve();
+    });
+
+    expect(within(sheet).getByText("Pushes to agent/new")).toBeInTheDocument();
+    expect(screen.queryByText("Pushes to agent/old")).not.toBeInTheDocument();
+  });
+
+  it("leave out the branch and the expected HEAD when HEAD is detached", async () => {
+    const api = withItems([review()]);
+    api.diff.mockResolvedValue({ ...diff(), head: { commit: null, branch: null } });
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
+    await within(sheet).findByRole("region", { name: "app/globals.css" });
+    expect(within(sheet).queryByText(/Pushes to/)).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Approve and open PR" }));
+
+    expect(api.approve).toHaveBeenCalledWith("s1", { commit_message: "Validate contact form" });
+  });
+
+  it("say why approving failed, and still say why it was refused without the session", async () => {
+    const api = withItems([review()]);
+    api.approve
+      .mockRejectedValueOnce(new ApiError(502, "push failed"))
+      .mockRejectedValueOnce(new ApiError(409, "The branch is gone.", "conflict"));
+    api.session.mockRejectedValue(new ApiError(500, "Request failed (500)"));
+    const { user } = await renderApp({ api });
+    const approve = screen.getByRole("button", { name: "Approve and open PR" });
+
+    await user.click(approve);
+    expect(await screen.findByText("push failed")).toBeInTheDocument();
+    expect(api.diff).not.toHaveBeenCalled();
+    await user.click(approve);
+
+    expect(await screen.findByText("The branch is gone.")).toBeInTheDocument();
+    expect(api.session).toHaveBeenCalledWith("s1");
+    expect(approve).toBeEnabled();
+  });
+
+  it("say why approving waits for background work", async () => {
+    const api = withItems([review()]);
+    const why = "Background tasks are still running. Approve once they finish.";
+    api.approve.mockRejectedValueOnce(new ApiError(409, why, "background_running"));
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+
+    expect(await screen.findByText(why)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeEnabled();
+  });
+
+  it("offer pushing where origin now pushes, and approve again with that address", async () => {
+    const api = withItems([review()]);
+    const refusal = {
+      detail: "origin now pushes to https://github.com/me/new.git instead of ...",
+      code: "remote_changed",
+      remote_urls: ["https://github.com/me/new.git"],
+      confirmed_url: "https://github.com/me/old.git",
+    };
+    api.approve.mockRejectedValueOnce(new ApiError(409, refusal.detail, "remote_changed", refusal));
+    api.approve.mockResolvedValueOnce(session({ pr_url: "https://github.com/me/todo-ui/pull/7" }));
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
+    expect(confirm).toHaveTextContent(
+      "origin now pushes to https://github.com/me/new.git instead of " +
+        "https://github.com/me/old.git, the address harness recorded.",
+    );
+    expect(api.session).toHaveBeenCalledWith("s1");
+    expect(api.diff).toHaveBeenCalledWith("s1");
+    await user.click(within(confirm).getByRole("button", { name: "Push there" }));
+
+    expect(api.approve).toHaveBeenLastCalledWith("s1", {
+      commit_message: "Validate contact form",
+      expected_head: "c0ffee0000000000000000000000000000000000",
+      confirm_remote_url: "https://github.com/me/new.git",
+    });
+    expect(await screen.findByText("Pull request opened")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("ask to confirm a push address never confirmed, and let it be cancelled", async () => {
+    const api = withItems([review()]);
+    api.approve.mockRejectedValueOnce(
+      new ApiError(409, "origin pushes to x", "remote_not_confirmed", {
+        remote_urls: ["git@github.com:me/todo-ui.git"],
+        confirmed_url: null,
+      }),
+    );
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
+    expect(confirm).toHaveTextContent(
+      "origin pushes to git@github.com:me/todo-ui.git. harness pushes only to an address " +
+        "you confirmed.",
+    );
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.approve).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeEnabled();
+  });
+
+  it.each([
+    [
+      ["https://a.example/x.git", "https://b.example/x.git"],
+      "origin pushes to more than one address",
+    ],
+    [[], "origin has no push address"],
+  ])("say what to fix when origin has no single push address: %j", async (urls, text) => {
+    const api = withItems([review()]);
+    api.approve.mockRejectedValueOnce(
+      new ApiError(409, "origin pushes to ...", "remote_changed", {
+        remote_urls: urls,
+        confirmed_url: "https://a.example/x.git",
+        extra: 1,
+      }),
+    );
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
+
+    expect(confirm).toHaveTextContent(text);
+    expect(confirm).toHaveTextContent("Fix origin on your Mac, then approve again.");
+    for (const url of urls) expect(confirm).toHaveTextContent(url);
+    expect(within(confirm).queryByRole("button", { name: "Push there" })).toBeNull();
+  });
+
+  it("read a malformed push address refusal as no address", async () => {
+    const api = withItems([review()]);
+    api.approve.mockRejectedValueOnce(
+      new ApiError(409, "origin pushes to ...", "remote_not_confirmed", {
+        remote_urls: "nope",
+        confirmed_url: 4,
+      }),
+    );
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "Approve and open PR" }));
+
+    expect(
+      await screen.findByRole("alertdialog", { name: "Confirm the push address" }),
+    ).toHaveTextContent("origin has no push address");
+  });
+
   it("send feedback instead", async () => {
     const api = withItems([review()]);
     const { user } = await renderApp({ api });
@@ -437,10 +765,33 @@ describe("review cards", () => {
     expect(within(sheet).getByText("Binary file")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Approve and open PR" }));
 
-    expect(api.approve).toHaveBeenCalledWith("s1", { commit_message: "Validate contact form" });
+    // Approving from the diff publishes only the HEAD it showed.
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      expected_head: "c0ffee0000000000000000000000000000000000",
+    });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("mark a nested repository as not committed", async () => {
+    const api = withItems([review()]);
+    const nested = diff();
+    nested.files = [
+      { ...defined(nested.files[1]), path: "vendor/lib", binary: false, nested_repository: true },
+      defined(nested.files[0]),
+    ];
+    api.diff.mockResolvedValueOnce(nested);
+    const { user } = await renderApp({ api });
+
+    await user.click(screen.getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
+    const repo = await within(sheet).findByRole("region", { name: "vendor/lib" });
+    const plain = within(sheet).getByRole("region", { name: "app/globals.css" });
+
+    expect(within(repo).getByText("Nested repository, not committed")).toHaveClass("dnote");
+    expect(within(plain).queryByText("Nested repository, not committed")).not.toBeInTheDocument();
   });
 
   it("ignore a diff that arrives after the sheet closed", async () => {
@@ -563,19 +914,16 @@ describe("pull request cards", () => {
     expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
     await user.click(within(failed).getByRole("button", { name: "Send to agent" }));
 
-    expect(api.sendMessage).toHaveBeenCalledWith(
-      "s1",
-      "CI failed: unit, e2e. Please fix. You can't use gh or reach GitHub from here, so work " +
-        "from the code and the check names, and ask me for the logs if you need them.",
-      [],
-    );
-    expect(await screen.findByText("Sent to the agent")).toBeInTheDocument();
+    // The Mac reads the failing checks' logs with its own GitHub login and sends them in.
+    expect(api.ciFeedback).toHaveBeenCalledWith("s1");
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(await screen.findByText("Sent to the agent with the checks' logs")).toBeInTheDocument();
   });
 
   it("keep the failed checks card when sending fails, and open the chat from it", async () => {
     const failing = session({ pr: prStatus({ checks: [check("unit", "failure")] }) });
     const api = withItems([], [failing]);
-    api.sendMessage.mockRejectedValueOnce(new ApiError(409, "session 's1' is closed"));
+    api.ciFeedback.mockRejectedValueOnce(new ApiError(409, "session 's1' is closed"));
     const { user } = await renderApp({ api });
 
     await user.click(screen.getByRole("button", { name: "Send to agent" }));

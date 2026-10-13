@@ -50,6 +50,7 @@ describe("permissionOf", () => {
       command: "npm install zod",
       why: "Adds zod",
       reason: null,
+      always: "Bash",
     });
   });
 
@@ -60,6 +61,7 @@ describe("permissionOf", () => {
         input: { file_path: "/w/s1/a.ts" },
         title: "Edit a file?",
         reason: "Outside the project",
+        always_rule: "Edit(src/**)",
       },
     });
 
@@ -68,15 +70,19 @@ describe("permissionOf", () => {
       command: "Edit a.ts",
       why: "Edit a file?",
       reason: "Outside the project",
+      always: "Edit(src/**)",
     });
   });
 
   it("survives a malformed payload", () => {
-    expect(permissionOf(approval({ payload: { input: [], reason: 4 } }), null)).toEqual({
+    expect(
+      permissionOf(approval({ payload: { input: [], reason: 4, always_rule: 5 } }), null),
+    ).toEqual({
       tool: "Tool",
       command: "Tool",
       why: null,
       reason: null,
+      always: "Tool",
     });
     expect(permissionOf(approval({ payload: { tool: "Bash", input: null } }), null).command).toBe(
       "",

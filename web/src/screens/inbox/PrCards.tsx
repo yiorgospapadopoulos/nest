@@ -52,7 +52,7 @@ export function CiFailureCard({
   onOpenChat: (sessionId: string) => void;
 }) {
   const { session, pr, names } = failure;
-  const { busy, send } = useCiFailure(session, names);
+  const { busy, send } = useCiFailure(session);
   return (
     <Card label={`Checks failed: ${session.title}`}>
       <div className="ck-k fl">
