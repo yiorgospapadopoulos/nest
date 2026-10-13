@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -78,7 +79,8 @@ async def test_updating_controls_reaches_the_open_chat(
     await until(lambda: not ctx.sessions.busy(chat.id))
 
     updated = await ctx.pixies.update(
-        pixie.id, UpdatePixie(model="sonnet", permission_mode="acceptEdits", projects=["web"])
+        pixie.id,
+        UpdatePixie(model="sonnet", effort="low", permission_mode="acceptEdits", projects=["web"]),
     )
     cleared = await ctx.pixies.update(pixie.id, UpdatePixie(all_projects=True))
     session = await ctx.sessions.get(chat.id)
@@ -86,6 +88,7 @@ async def test_updating_controls_reaches_the_open_chat(
     assert updated.projects == ["web"]
     assert cleared.projects is None
     assert session.model == "sonnet"
+    assert session.effort == "low"
     assert session.permission_mode == "acceptEdits"
 
 
@@ -167,6 +170,7 @@ async def test_a_dead_chat_is_replaced_by_a_new_one(
     # Foreign keys would stop a purge of the current chat; this is a row lost some other way.
     await ctx.db.execute("PRAGMA foreign_keys = OFF")
     await ctx.sessions.purge(chat.id)
+    await ctx.db.execute("PRAGMA foreign_keys = ON")
 
     fresh = await ctx.pixies.send(pixie.id, "again", [])
 
@@ -202,3 +206,82 @@ async def test_an_archived_chat_is_replaced_by_a_new_one(
     fresh = await ctx.pixies.send(pixie.id, "again", [])
 
     assert fresh.id != chat.id
+
+
+async def test_updating_a_pixie_whose_chat_is_gone_still_succeeds(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+    await ctx.db.execute("PRAGMA foreign_keys = OFF")
+    await ctx.sessions.purge(chat.id)
+    await ctx.db.execute("PRAGMA foreign_keys = ON")
+
+    updated = await ctx.pixies.update(pixie.id, UpdatePixie(model="sonnet"))
+
+    assert updated.model == "sonnet"
+
+
+async def test_a_failed_folder_leaves_no_pixie_behind(
+    ctx: AppContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(pixie_id: str, soul: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ctx.pixies._files, "create", refuse)  # type: ignore[attr-defined]
+
+    with pytest.raises(OSError, match="disk full"):
+        await ctx.pixies.create(CreatePixie(name="Tester"))
+
+    assert await ctx.pixies.list_pixies() == []
+
+
+async def test_two_first_messages_make_one_chat(ctx: AppContext, provider: FakeProvider) -> None:
+    provider.script(reply("one"), reply("two"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+
+    first, second = await asyncio.gather(
+        ctx.pixies.send(pixie.id, "a", []), ctx.pixies.send(pixie.id, "b", [])
+    )
+
+    assert first.id == second.id
+    assert await ctx.pixies._store.chat_sessions(pixie.id) == [first.id]  # type: ignore[attr-defined]
+
+
+async def test_deleting_while_a_first_message_is_being_sent(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.open_gate = asyncio.Event()
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+
+    sending = asyncio.create_task(ctx.pixies.send(pixie.id, "hello", []))
+    await asyncio.sleep(0)
+    deleting = asyncio.create_task(ctx.pixies.delete(pixie.id))
+    results = await asyncio.gather(sending, deleting, return_exceptions=True)
+    provider.open_gate.set()
+
+    assert [
+        r for r in results if isinstance(r, Exception) and not isinstance(r, PixieNotFoundError)
+    ] == []
+    with pytest.raises(PixieNotFoundError):
+        await ctx.pixies.get(pixie.id)
+    assert await ctx.sessions.list_sessions() == []
+    rows = await ctx.db.fetch_all("SELECT id FROM sessions")
+    assert rows == []
+    assert not (ctx.paths.pixies_dir / pixie.id).exists()
+
+
+async def test_reset_waits_for_a_message_being_sent(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+
+    chat, reset = await asyncio.gather(
+        ctx.pixies.send(pixie.id, "hello", []), ctx.pixies.reset(pixie.id)
+    )
+
+    assert reset.chat_session_id is None
+    assert (await ctx.sessions.get(chat.id)).archived_at is not None

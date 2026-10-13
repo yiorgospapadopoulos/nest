@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 
 from harness.clock import Clock
 from harness.config.models import AgentDefaults
@@ -61,7 +62,13 @@ class PixieService:
         check_slug(slug)
         settings = PixieSettings.model_validate(request.model_dump(exclude={"slug", "soul"}))
         pixie = await self._store.create(settings, slug)
-        self._files.create(pixie.id, request.soul.strip() or DEFAULT_SOUL)
+        try:
+            self._files.create(pixie.id, request.soul.strip() or DEFAULT_SOUL)
+        except OSError:
+            # No pixie without its folder.
+            await self._store.delete(pixie.id)
+            self._files.remove(pixie.id)
+            raise
         await self._announce(pixie)
         return pixie
 
@@ -74,23 +81,27 @@ class PixieService:
         pixie = await self._store.update(pixie_id, **changes)
         controls = {name: changes[name] for name in _CONTROLS if name in changes}
         if controls and pixie.chat_session_id is not None:
-            await self._sessions.update(pixie.chat_session_id, UpdateSession(**controls))
+            # A chat that is gone has nothing to change; the pixie's row already did.
+            with suppress(SessionNotFoundError):
+                await self._sessions.update(pixie.chat_session_id, UpdateSession(**controls))
         await self._announce(pixie)
         return pixie
 
     async def delete(self, pixie_id: str) -> None:
-        pixie = await self._store.get(pixie_id)
-        chats = await self._store.chat_sessions(pixie_id)
-        await self._store.set_chat(pixie_id, None)
-        for session_id in chats:
-            await self._sessions.purge(session_id)
-        await self._store.delete(pixie_id)
-        self._files.remove(pixie.id)
+        async with self._lock(pixie_id):
+            pixie = await self._store.get(pixie_id)
+            chats = await self._store.chat_sessions(pixie_id)
+            await self._store.set_chat(pixie_id, None)
+            for session_id in chats:
+                await self._sessions.purge(session_id)
+            await self._store.delete(pixie_id)
+            self._files.remove(pixie.id)
+            await self._bus.publish(types.PIXIE_DELETED, {"pixie_id": pixie_id})
+        # Only now: a send that waited on the lock still finds it and sees no pixie.
         self._locks.pop(pixie_id, None)
-        await self._bus.publish(types.PIXIE_DELETED, {"pixie_id": pixie_id})
 
     async def send(self, pixie_id: str, text: str, attachment_ids: list[str]) -> Session:
-        async with self._locks.setdefault(pixie_id, asyncio.Lock()):
+        async with self._lock(pixie_id):
             pixie = await self._store.get(pixie_id)
             chat = await self._open_chat(pixie)
             if chat is not None:
@@ -109,12 +120,13 @@ class PixieService:
             return session
 
     async def reset(self, pixie_id: str) -> Pixie:
-        pixie = await self._store.get(pixie_id)
-        if pixie.chat_session_id is not None:
-            await self._sessions.update(pixie.chat_session_id, UpdateSession(archived=True))
-        pixie = await self._store.set_chat(pixie_id, None)
-        await self._announce(pixie)
-        return pixie
+        async with self._lock(pixie_id):
+            pixie = await self._store.get(pixie_id)
+            if pixie.chat_session_id is not None:
+                await self._sessions.update(pixie.chat_session_id, UpdateSession(archived=True))
+            pixie = await self._store.set_chat(pixie_id, None)
+            await self._announce(pixie)
+            return pixie
 
     def read_file(self, pixie_id: str, name: str) -> FileText:
         return self._files.read(pixie_id, name)
@@ -127,6 +139,9 @@ class PixieService:
 
     def search(self, pixie_id: str, query: str) -> list[SearchHit]:
         return self._files.search(pixie_id, query)
+
+    def _lock(self, pixie_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(pixie_id, asyncio.Lock())
 
     async def _open_chat(self, pixie: Pixie) -> Session | None:
         if pixie.chat_session_id is None:
