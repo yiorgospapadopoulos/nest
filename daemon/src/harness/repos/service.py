@@ -137,22 +137,18 @@ class RepoService:
         save_repo(self._paths, repo)
         return repo
 
-    async def configure_worktree(self, name: str, config: WorktreeConfig) -> RepoConfig:
-        """Replace the repo's `[worktree]` config and announce it to other devices."""
-        repo = self.update_worktree_config(name, config)
-        await self._announce(types.REPO_UPDATED, repo)
-        return repo
-
-    async def edit_worktree(self, name: str, changes: dict[str, list[str]]) -> RepoConfig:
-        """Set some `[worktree]` keys (`link`, `setup`), checked as when the config file is
-        loaded, then save and announce the repo (IMP-09).
+    async def edit_worktree(self, name: str, changes: dict[str, object]) -> RepoConfig:
+        """Set some `[worktree]` keys (`default`, `link`, `setup`), checked as when the
+        config file is loaded, then save and announce the repo to other devices (IMP-09).
         """
         current = self.get(name).worktree
         try:
             config = WorktreeConfig.model_validate({**current.model_dump(), **changes})
         except ValidationError as error:
             raise InvalidRepoError(_problems(error)) from None
-        return await self.configure_worktree(name, config)
+        repo = self.update_worktree_config(name, config)
+        await self._announce(types.REPO_UPDATED, repo)
+        return repo
 
     def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
         """The user confirmed that origin may push to `url` (D050)."""

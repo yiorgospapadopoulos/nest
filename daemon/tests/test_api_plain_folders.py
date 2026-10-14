@@ -64,7 +64,7 @@ async def test_a_plain_folder_registers_without_git(api: Api, folder: Path) -> N
 
 
 async def test_chats_in_a_plain_folder_work_in_place_without_git(api: Api, folder: Path) -> None:
-    await api.http.put("/api/repos/notes/worktree", json={"default": True})
+    await api.http.patch("/api/repos/notes", json={"default": True})
     api.provider.script(reply("Done"), reply("Again"))
 
     asked = await chat(api, mode="worktree")
@@ -96,7 +96,13 @@ async def test_git_actions_are_refused_for_a_plain_folder(api: Api) -> None:
         await api.http.get(f"/api/sessions/{session['id']}/diff"),
         await api.http.post(
             f"/api/sessions/{session['id']}/approve",
-            json={"commit_message": "x", "files": ["todo.md"], "push": False, "open_pr": False},
+            json={
+                "commit_message": "x",
+                "files": ["todo.md"],
+                "push": False,
+                "open_pr": False,
+                "expected_fingerprint": "",
+            },
         ),
         await api.http.get("/api/repos/notes/link-suggestions"),
     ]

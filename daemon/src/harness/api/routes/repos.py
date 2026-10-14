@@ -4,7 +4,7 @@ from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, ConfigDict
 
 from harness.api.deps import Context, RequireDevice
-from harness.config.models import RepoConfig, WorktreeConfig
+from harness.config.models import RepoConfig
 from harness.sessions.commands import CommandList
 from harness.sessions.repo_removal import remove_repo
 
@@ -20,14 +20,22 @@ class RegisterRepo(BaseModel):
 
 
 class UpdateRepo(BaseModel):
-    """`[worktree]` keys to set; those left out (or null) are unchanged."""
+    """`[worktree]` keys to set. `link` and `setup` left out (or null) are unchanged;
+    `default` left out is unchanged, and null clears it (BUG-102).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    # Whether new chats use a worktree; null follows `[agents] default_mode` (D038).
+    default: bool | None = None
     # Gitignored files symlinked into each new worktree, relative to the repository.
     link: list[str] | None = None
     # Commands run in each new worktree after it is created.
     setup: list[str] | None = None
+
+    def changes(self) -> dict[str, object]:
+        sent = self.model_dump(exclude_unset=True)
+        return {key: value for key, value in sent.items() if value is not None or key == "default"}
 
 
 @router.get("")
@@ -70,13 +78,7 @@ async def link_suggestions(name: str, ctx: Context) -> list[str]:
 
 @router.patch("/{name}")
 async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoConfig:
-    """Edit links and setup (IMP-09); 422 for a link outside the repository. Announced as
-    `repo.updated`.
+    """Edit the worktree default, links and setup (IMP-09, BUG-102); 422 for a link outside
+    the repository. Announced as `repo.updated`.
     """
-    return await ctx.repos.edit_worktree(name, body.model_dump(exclude_none=True))
-
-
-@router.put("/{name}/worktree")
-async def update_worktree(name: str, body: WorktreeConfig, ctx: Context) -> RepoConfig:
-    """Replace the whole `[worktree]` config; announced as `repo.updated`."""
-    return await ctx.repos.configure_worktree(name, body)
+    return await ctx.repos.edit_worktree(name, body.changes())

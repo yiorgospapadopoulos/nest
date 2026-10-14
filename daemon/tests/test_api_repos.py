@@ -27,7 +27,6 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("POST", "/api/repos"),
         ("GET", "/api/repos/x"),
         ("GET", "/api/repos/x/link-suggestions"),
-        ("PUT", "/api/repos/x/worktree"),
         ("PATCH", "/api/repos/x"),
         ("DELETE", "/api/repos/x"),
         ("POST", "/api/attachments"),
@@ -48,8 +47,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
     listed = await api.http.get("/api/repos")
     fetched = await api.http.get("/api/repos/project")
     suggestions = await api.http.get("/api/repos/project/link-suggestions")
-    configured = await api.http.put(
-        "/api/repos/project/worktree", json={"default": False, "link": [".env"], "setup": ["make"]}
+    configured = await api.http.patch(
+        "/api/repos/project", json={"default": False, "link": [".env"], "setup": ["make"]}
     )
 
     expected: dict[str, object] = {
@@ -85,8 +84,8 @@ async def test_repo_errors(api: Api, tmp_path: Path) -> None:
     not_a_root = await api.http.post("/api/repos", json={"path": str(repo / "src")})
     missing = await api.http.get("/api/repos/nope")
     missing_links = await api.http.get("/api/repos/nope/link-suggestions")
-    bad_link = await api.http.put("/api/repos/project/worktree", json={"link": ["../x"]})
-    missing_config = await api.http.put("/api/repos/nope/worktree", json={})
+    bad_link = await api.http.patch("/api/repos/project", json={"link": ["../x"]})
+    missing_config = await api.http.patch("/api/repos/nope", json={})
     missing_removal = await api.http.delete("/api/repos/nope")
 
     assert duplicate.status_code == 409
@@ -128,7 +127,7 @@ async def test_links_and_setup_are_edited_and_announced(api: Api, tmp_path: Path
     """IMP-09: each client's project settings; fields left out are unchanged."""
     repo = init_repo(tmp_path / "project")
     await api.http.post("/api/repos", json={"path": str(repo)})
-    await api.http.put("/api/repos/project/worktree", json={"default": True, "link": [".env"]})
+    await api.http.patch("/api/repos/project", json={"default": True, "link": [".env"]})
 
     setup = await api.http.patch("/api/repos/project", json={"setup": ["npm ci", "make"]})
     links = await api.http.patch("/api/repos/project", json={"link": [".env.local", "a/b.key"]})
@@ -164,7 +163,9 @@ async def test_links_and_setup_are_edited_and_announced(api: Api, tmp_path: Path
         ({"link": ["/etc/passwd"]}, 422, "must be a relative path inside the repository"),
         ({"link": [""]}, 422, "must be a relative path inside the repository"),
         ({"setup": "make"}, 422, None),
-        ({"default": True}, 422, None),
+        ({"link": [".git/hooks"]}, 422, "outside .git"),
+        ({"default": "sometimes"}, 422, None),
+        ({"other": True}, 422, None),
     ],
 )
 async def test_invalid_links_and_setup_are_refused(
@@ -180,6 +181,39 @@ async def test_invalid_links_and_setup_are_refused(
         assert detail in refused.json()["detail"]
     assert (await api.http.get("/api/repos/project")).json()["worktree"]["link"] == []
     assert await updated_events(api) == []
+
+
+async def test_the_worktree_default_is_set_cleared_or_left_alone(api: Api, tmp_path: Path) -> None:
+    """BUG-102: an explicit null clears it (new chats follow the agent default); leaving it
+    out keeps it, as null or absent links and setup do.
+    """
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+
+    on = await api.http.patch("/api/repos/project", json={"default": True})
+    kept = await api.http.patch("/api/repos/project", json={"link": [".env"], "setup": None})
+    cleared = await api.http.patch("/api/repos/project", json={"default": None})
+    off = await api.http.patch("/api/repos/project", json={"default": False})
+
+    assert [r.json()["worktree"]["default"] for r in (on, kept, cleared, off)] == [
+        True,
+        True,
+        None,
+        False,
+    ]
+    assert off.json()["worktree"]["link"] == [".env"]
+    assert off.json()["worktree"]["setup"] == []
+
+
+async def test_the_whole_worktree_config_is_no_longer_replaced(api: Api, tmp_path: Path) -> None:
+    """IMP-17: both clients send only what changed, with PATCH."""
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+
+    response = await api.http.put("/api/repos/project/worktree", json={"default": True})
+
+    assert response.status_code == 405
+    assert (await api.http.get("/api/repos/project")).json()["worktree"]["default"] is None
 
 
 async def test_editing_an_unknown_repo(api: Api) -> None:
