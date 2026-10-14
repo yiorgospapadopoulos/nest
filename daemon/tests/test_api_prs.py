@@ -15,8 +15,8 @@ from tests.fake_runner import PR_URL, check_run, pr_json
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import git, init_repo, with_origin
 from tests.test_api_review import (
-    APPROVE,
     approvals,
+    approve,
     event_types,
     exists,
     finished_with_changes,
@@ -43,7 +43,7 @@ async def opened(api: Api, view: str | None = None) -> str:
     """A session whose work was approved and opened as a pull request, read once."""
     api.runner.pr_view = view
     session_id = await finished_with_changes(api)
-    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+    approved = await approve(api, session_id)
     assert approved.status_code == 200, approved.text
     await until(lambda: len(api.runner.gh_calls("view")) >= 1)
     if view is not None:

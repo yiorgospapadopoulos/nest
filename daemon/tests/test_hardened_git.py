@@ -12,7 +12,8 @@ import pytest
 
 from harness.config.models import RepoConfig
 from harness.gitops import runner
-from harness.gitops.runner import GitError
+from harness.gitops.hardened import nested_filter_overrides
+from harness.gitops.runner import GitError, run_command
 from harness.gitops.safety import HARDENED
 from harness.paths import AppPaths
 from harness.repos.service import RepoService
@@ -20,7 +21,8 @@ from harness.sessions.files import FileIndex
 from harness.sessions.git_audit import snapshot_refs, with_own_changes
 from harness.worktrees.manager import WorktreeManager
 from tests.fakes import FakeClock
-from tests.git_support import git, init_repo
+from tests.git_support import commit_file, git, init_repo
+from tests.nested_support import add_nested_repo, plant_filter
 
 
 def marker_script(path: Path, marker: Path, body: str = "") -> Path:
@@ -74,6 +76,26 @@ async def test_listing_dirty_files_runs_no_fsmonitor_program(
     assert not marker.exists()
 
 
+async def test_listing_dirty_files_runs_no_filter_of_a_nested_repository(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    """SEC-08: git would run `status` inside it, with its own config."""
+    repo = init_repo(tmp_path / "repo")
+    nested = add_nested_repo(repo)
+    marker = tmp_path / "filter-ran"
+    plant_filter(nested, marker)
+    (repo / "README.md").write_text("changed\n", encoding="utf-8")
+
+    dirty = await WorktreeManager(paths).dirty_files(RepoConfig(name="repo", path=repo))
+    assert not marker.exists()
+    commit_file(nested, "more.txt", "more\n")
+    moved = await WorktreeManager(paths).dirty_files(RepoConfig(name="repo", path=repo))
+
+    assert dirty == ["README.md"]
+    # A new commit in the nested repository is a change of the work.
+    assert moved == ["README.md", "lib"]
+
+
 async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     paths: AppPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -121,3 +143,32 @@ async def test_a_filter_driver_that_cannot_be_switched_off_stops_the_checkout(
 
     with pytest.raises(GitError, match="cannot be switched off"):
         await WorktreeManager(paths).create(RepoConfig(name="repo", path=repo), "0123456789", "x")
+
+
+async def test_nested_filters_are_found_once_and_only_in_populated_repositories(
+    tmp_path: Path,
+) -> None:
+    """SEC-08: a gitlink path can be missing, or a symlink back to a folder already read."""
+    repo = init_repo(tmp_path / "repo")
+    nested = add_nested_repo(repo)
+    git(nested, "config", "filter.inner.clean", "evil")
+    sha = git(nested, "rev-parse", "HEAD").strip()
+    for name in ("missing", "loop"):
+        git(repo, "update-index", "--add", "--cacheinfo", f"160000,{sha},{name}")
+    (repo / "loop").symlink_to(".")
+    looked_in: list[Path] = []
+
+    async def recording(argv: Sequence[str], cwd: Path) -> str:
+        looked_in.append(cwd)
+        return await run_command(argv, cwd)
+
+    overrides = await nested_filter_overrides(repo, recording)
+
+    # The index of each repository and the config of the nested one, each read once.
+    assert looked_in == [repo, nested, nested]
+    assert overrides == [
+        *("-c", "filter.inner.clean="),
+        *("-c", "filter.inner.smudge="),
+        *("-c", "filter.inner.process="),
+        *("-c", "filter.inner.required=false"),
+    ]

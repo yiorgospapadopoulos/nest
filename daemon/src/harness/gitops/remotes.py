@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from harness.gitops.runner import CommandError, CommandRunner
+from harness.gitops.safety import HARDENED
 
 REMOTE = "origin"
 GITHUB_HOST = "github.com"
@@ -19,7 +20,7 @@ async def push_urls(cwd: Path, run: CommandRunner) -> list[str]:
     an `origin`. Credentials in http(s) URLs are left out.
     """
     try:
-        output = await run(["git", "remote", "get-url", "--push", "--all", REMOTE], cwd)
+        output = await run(["git", *HARDENED, "remote", "get-url", "--push", "--all", REMOTE], cwd)
     except CommandError:
         return []
     return [scrub_url(line) for line in output.splitlines() if line]

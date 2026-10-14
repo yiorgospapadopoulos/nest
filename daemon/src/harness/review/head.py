@@ -6,12 +6,17 @@ branch (SEC-06), and lists the commits on HEAD that neither the base nor the wor
 published holds (SEC-02): commits made behind the review's back, by the agent, a process
 it left running or the user, which a push would publish too. Harness's own commits, and
 the agent's commits the user chose to publish, are in the published work.
+
+Grafts and a shallow boundary, which the agent can write, make git skip commits; the list
+refuses to leave any out that way (SEC-13).
 """
 
+import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 
 from harness.gitops.runner import GitError, run_git
+from harness.review.errors import HiddenHistoryError
 from harness.review.models import ReviewCommit, ReviewHead
 
 
@@ -29,6 +34,15 @@ async def unaccounted_commits(
     """Commits reachable from `head` but from neither `base` nor `published`, newest first."""
     if head is None:
         return []
+    paths = await run_git(
+        [*safe, "rev-parse", "--git-path", "info/grafts", "--git-path", "shallow"], cwd
+    )
+    grafts, shallow = (cwd / path for path in paths.splitlines())
+    if await asyncio.to_thread(_read_lines, grafts):
+        raise HiddenHistoryError(
+            "The repository has a grafts file (.git/info/grafts), which can hide commits from "
+            "this review. Check it and delete it in Terminal, then open the review again."
+        )
     known = [sha for sha in (base, published) if sha is not None]
     output = await run_git(
         [*safe, "rev-list", "--no-commit-header", "--format=%H %s", head, "--not", *known, "--"],
@@ -38,7 +52,21 @@ async def unaccounted_commits(
     for line in filter(None, output.split("\n")):
         sha, _, subject = line.partition(" ")
         commits.append(ReviewCommit(sha=sha, subject=subject))
+    # A listed commit at the shallow boundary has parents git does not show.
+    if set(await asyncio.to_thread(_read_lines, shallow)) & {c.sha for c in commits}:
+        raise HiddenHistoryError(
+            "The repository's shallow history (.git/shallow) hides commits this review would "
+            "have to list. Check that file in Terminal, or fetch the whole history with git "
+            "fetch --unshallow, then open the review again."
+        )
     return commits
+
+
+def _read_lines(file: Path) -> list[str]:
+    """The file's non-blank lines; none when it does not exist."""
+    if not file.is_file():
+        return []
+    return [line.strip() for line in file.read_text(errors="replace").splitlines() if line.strip()]
 
 
 async def _optional(args: list[str], cwd: Path) -> str | None:

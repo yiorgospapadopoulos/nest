@@ -116,8 +116,13 @@ class WorktreeManager:
         return output.strip()
 
     async def dirty_files(self, repo: RepoConfig) -> list[str]:
-        """Paths with uncommitted changes, including untracked files, in the main checkout."""
-        output = await run_checkout_git(["status", "--porcelain", "-z"], repo.path)
+        """Paths with uncommitted changes, including untracked files, in the main checkout.
+
+        A submodule counts only when its commit changed: git never runs `status` inside it,
+        whose own config the agent could have given a filter (SEC-08).
+        """
+        args = ["status", "--porcelain", "-z", "--ignore-submodules=dirty"]
+        output = await run_checkout_git(args, repo.path)
         entries = iter(output.split("\0"))
         files: list[str] = []
         for entry in entries:

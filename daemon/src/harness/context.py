@@ -171,7 +171,7 @@ class AppContext:
             repos=repos,
             approvals=approvals,
             tracking=tracking,
-            publisher=GitPublisher(runner, store, bus),
+            publisher=GitPublisher(runner, store, bus, paths.data_dir),
             prs=monitor,
         )
         notifications = NotificationDelivery(

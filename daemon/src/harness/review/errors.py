@@ -57,6 +57,68 @@ class HeadChangedError(ConflictError):
         return {"detail": str(self), "code": self.code}
 
 
+class HiddenHistoryError(ConflictError):
+    """Grafts or a shallow boundary make git skip commits a push would publish, so the
+    review cannot list them (SEC-13).
+    """
+
+    code = "hidden_history"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
+class ReviewChangedError(ConflictError):
+    """The work, HEAD or its commits differ from the review the user approved."""
+
+    code = "review_changed"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The changes are different from the review you saw. Open the review again."
+        )
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
+class LfsUnsupportedError(ConflictError):
+    """git-lfs uploads its files from a pre-push hook, and harness runs no hooks (PL-17)."""
+
+    code = "lfs_unsupported"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This repository stores files with git-lfs, which harness cannot publish: it runs "
+            "no git hooks, so git-lfs would not upload those files. Publish this work from "
+            "Terminal."
+        )
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
+class IndexFlagsError(ConflictError):
+    """git is told to ignore changes to files the commit would take, so it could commit
+    content other than the review showed (SEC-10).
+    """
+
+    code = "index_flags"
+
+    def __init__(self, paths: list[str]) -> None:
+        super().__init__(
+            f"git is set to ignore changes to {', '.join(paths)} in this checkout "
+            "(assume-unchanged or skip-worktree), so harness could commit something other "
+            "than the review shows. Clear that in Terminal with git update-index "
+            "--no-assume-unchanged <file> and git update-index --no-skip-worktree <file>, "
+            "then open the review again."
+        )
+        self.paths = paths
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code, "paths": list(self.paths)}
+
+
 class BackgroundRunningError(ConflictError):
     """The agent's background tasks could change the tree while it is committed (BUG-57)."""
 

@@ -1,7 +1,8 @@
-"""Parse `git diff` output: `--name-status -z` for paths, the patch for hunks."""
+"""Parse `git diff` output: `--raw -z` for paths and modes, the patch for hunks."""
 
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from harness.review.models import DiffLine, FileStatus, Hunk, LineKind
 
@@ -35,19 +36,27 @@ class PatchFile:
         self.truncated = self.truncated or other.truncated
 
 
-def parse_name_status(output: str) -> list[tuple[FileStatus, str | None, str]]:
-    """(status, old path for renames and copies, path) in git's order."""
+class RawEntry(NamedTuple):
+    status: FileStatus
+    # The old path of a rename or copy.
+    old_path: str | None
+    path: str
+    # Git's octal modes, such as `100644`, `160000` for a gitlink, `000000` for none.
+    old_mode: str
+    new_mode: str
+
+
+def parse_raw(output: str) -> list[RawEntry]:
+    """Each file of `git diff --raw -z` output, in git's order."""
     tokens = iter(output.split("\0"))
-    entries: list[tuple[FileStatus, str | None, str]] = []
-    for code in tokens:
-        if not code:
+    entries: list[RawEntry] = []
+    for meta in tokens:
+        if not meta:
             continue
+        old_mode, new_mode, _, _, code = meta.removeprefix(":").split(" ")
+        old_path = next(tokens) if code[0] in "RC" else None
         status = _STATUSES.get(code[0], "modified")
-        if code[0] in "RC":
-            old = next(tokens)
-            entries.append((status, old, next(tokens)))
-        else:
-            entries.append((status, None, next(tokens)))
+        entries.append(RawEntry(status, old_path, next(tokens), old_mode, new_mode))
     return entries
 
 

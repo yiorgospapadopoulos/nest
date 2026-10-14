@@ -36,8 +36,9 @@ class FileDiff(BaseModel):
     # Lines beyond the per-file limit are left out; the counts still include them.
     truncated: bool
     hunks: list[Hunk]
-    # An untracked folder that is a git repository of its own (`lib/`): harness does not
-    # commit it (BUG-65).
+    # A git repository of its own that harness does not commit (BUG-65, SEC-14): an
+    # untracked folder (`lib/`), or one staged as a gitlink (`lib`) that is neither in the
+    # base nor declared in `.gitmodules`.
     nested_repository: bool = False
 
 
@@ -68,6 +69,9 @@ class SessionDiff(BaseModel):
     commits: list[ReviewCommit]
     files: list[FileDiff]
     stats: DiffStats
+    # A sha256 (hex) of the head, the commits and every file's status, mode and content,
+    # shown or not; approving needs it, so it publishes only what the user saw.
+    fingerprint: str
 
 
 class ApproveRequest(BaseModel):
@@ -87,6 +91,8 @@ class ApproveRequest(BaseModel):
     acknowledge_violation: bool = False
     # HEAD's commit as the review showed it; approving is refused if HEAD moved since.
     expected_head: str | None = None
+    # The review's fingerprint; approving is refused when the work no longer matches it.
+    expected_fingerprint: str
     # Push to origin's current URL and remember it, after the user saw that it is not the
     # URL harness recorded (D050); it must match origin's push URL exactly.
     confirm_remote_url: str | None = None

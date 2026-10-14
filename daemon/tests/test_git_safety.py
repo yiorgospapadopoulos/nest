@@ -1,11 +1,18 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from harness.gitops.remotes import github_repo, push_urls, scrub_credentials, scrub_url
 from harness.gitops.runner import run_command
-from harness.gitops.safety import RepoSetting, filter_overrides, repo_settings, unsafe_settings
-from tests.git_support import init_repo
+from harness.gitops.safety import (
+    HARDENED,
+    RepoSetting,
+    filter_overrides,
+    repo_settings,
+    unsafe_settings,
+)
+from tests.git_support import git, init_repo
 
 
 def local(key: str, value: str = "x") -> RepoSetting:
@@ -194,3 +201,18 @@ def test_settings_that_run_diff_merge_editor_or_pager_programs_are_unsafe(
 ) -> None:
     """A security review flagged programs git can run from these keys during diffs and commits."""
     assert unsafe_settings([setting]) == [f"{setting.key} (runs a program)"]
+
+
+async def test_push_urls_are_read_with_hardened_git(tmp_path: Path) -> None:
+    """SEC-17: every git command the daemon runs in a repository the agent can write."""
+    repo = init_repo(tmp_path / "repo")
+    git(repo, "remote", "add", "origin", "https://me:token@github.com/me/repo.git")
+    calls: list[Sequence[str]] = []
+
+    async def recording(argv: Sequence[str], cwd: Path) -> str:
+        calls.append(argv)
+        return await run_command(argv, cwd)
+
+    assert await push_urls(repo, recording) == ["https://github.com/me/repo.git"]
+    ((program, *rest),) = calls
+    assert (program, tuple(rest[: len(HARDENED)])) == ("git", HARDENED)
