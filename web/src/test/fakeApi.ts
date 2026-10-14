@@ -99,6 +99,7 @@ export function fakeApi(): FakeApi {
     createPixie: vi.fn<Api["createPixie"]>().mockResolvedValue(pixie()),
     updatePixie: vi.fn<Api["updatePixie"]>().mockResolvedValue(pixie()),
     deletePixie: vi.fn<Api["deletePixie"]>().mockResolvedValue(null),
+    reorderPixies: vi.fn<Api["reorderPixies"]>().mockResolvedValue([]),
     sendToPixie: vi
       .fn<Api["sendToPixie"]>()
       .mockResolvedValue(session({ pixie_id: "p1", repo: "pixie:p1" })),

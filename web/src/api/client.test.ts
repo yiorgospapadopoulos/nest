@@ -262,6 +262,13 @@ const calls: Call[] = [
   ],
   ["deletePixie", (a) => a.deletePixie("p1"), "DELETE", "/api/pixies/p1", undefined],
   [
+    "reorderPixies",
+    (a) => a.reorderPixies(["p2", "p1"]),
+    "PUT",
+    "/api/pixies/order",
+    { ids: ["p2", "p1"] },
+  ],
+  [
     "sendToPixie",
     (a) => a.sendToPixie("p1", "hi"),
     "POST",

@@ -55,6 +55,10 @@ describe("Pixie page", () => {
     expect(await screen.findByText("How are the tests?")).toBeInTheDocument();
     expect(api.session).toHaveBeenCalledWith("c1");
     expect(screen.queryByText("Say hi to Tester")).not.toBeInTheDocument();
+    // Each run starts fresh, so earlier runs' checkpoints are gone (D072).
+    expect(
+      screen.queryByRole("button", { name: "Restore files to before this message" }),
+    ).not.toBeInTheDocument();
   });
 
   it("loads the pixie's chat again from Retry", async () => {

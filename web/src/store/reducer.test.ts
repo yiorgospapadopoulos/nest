@@ -469,4 +469,26 @@ describe("live events", () => {
     state = reduce(state, { type: "pixieRemoved", id: "c" });
     expect(Object.keys(state.pixies)).toEqual(["b"]);
   });
+
+  it("drops a removed pixie's saved draft, however it goes", () => {
+    const draft = { text: "hi", files: [] };
+    let state = reduce(initialState, {
+      type: "pixies",
+      pixies: [pixie({ id: "a" }), pixie({ id: "b", position: 1 })],
+    });
+    state = { ...state, drafts: { "pixie:a": draft, "pixie:b": draft, "session:s1": draft } };
+    state = reduce(state, { type: "pixieRemoved", id: "a" });
+    expect(Object.keys(state.drafts)).toEqual(["pixie:b", "session:s1"]);
+    state = apply(state, event({ type: "pixie.deleted", payload: { pixie_id: "b" } }));
+    expect(Object.keys(state.drafts)).toEqual(["session:s1"]);
+  });
+
+  it("drops the drafts of pixies deleted while the app was closed once pixies load", () => {
+    const draft = { text: "hi", files: [] };
+    const state = reduce(
+      { ...initialState, drafts: { "pixie:a": draft, "pixie:gone": draft, "session:s1": draft } },
+      { type: "pixies", pixies: [pixie({ id: "a" })] },
+    );
+    expect(Object.keys(state.drafts)).toEqual(["pixie:a", "session:s1"]);
+  });
 });

@@ -126,6 +126,7 @@ export interface Api {
   createPixie(body: CreatePixieBody): Promise<Pixie>;
   updatePixie(id: string, body: UpdatePixieBody): Promise<Pixie>;
   deletePixie(id: string): Promise<null>;
+  reorderPixies(ids: string[]): Promise<Pixie[]>;
   sendToPixie(id: string, text: string): Promise<Session>;
   resetPixie(id: string): Promise<Pixie>;
   pixieFile(id: string, name: string): Promise<PixieFile>;
@@ -378,6 +379,11 @@ export class HttpApi implements Api {
 
   deletePixie(id: string) {
     return this.json<null>("DELETE", pixiePath(id));
+  }
+
+  /** `ids` names every pixie once, in the new order; 422 otherwise (D072). */
+  reorderPixies(ids: string[]) {
+    return this.json<Pixie[]>("PUT", "/api/pixies/order", { ids });
   }
 
   sendToPixie(id: string, text: string) {

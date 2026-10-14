@@ -1292,6 +1292,38 @@ a.b {
 .pxhid {
   color: var(--t2);
 }
+/* Edit order: the heading's Edit order / Done, and each row's up and down buttons. */
+.pg-h .pxordb {
+  margin-left: 4px;
+  padding-right: 0;
+  color: var(--accent);
+}
+div.pxr {
+  cursor: default;
+}
+div.pxr:active {
+  background: transparent;
+}
+.pxmv {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.pxmv:disabled {
+  color: var(--t3);
+  opacity: 0.4;
+  cursor: default;
+}
+.pxmv .up {
+  transform: rotate(180deg);
+}
 .pxplus {
   width: 28px;
   display: grid;

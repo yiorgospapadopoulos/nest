@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { agentDefaults, commandList, pixie, repo } from "../../test/fixtures.ts";
+import { agentDefaults, commandList, pixie, repo, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 
 const details = (api = fakeApi(), shown = pixie()) => openPixie(api, shown, "Details");
@@ -138,6 +138,62 @@ describe("Pixie details", () => {
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { all_projects: true });
   });
 
+  it("keeps both of two quick chip removals, saving them one after the other", async () => {
+    const api = fakeApi();
+    const shown = pixie({ skills: ["a", "b", "c"], projects: ["web", "api"] });
+    const { user } = await details(api, shown);
+    let finish: () => void = () => undefined;
+    api.updatePixie.mockImplementation(
+      (_id, body) =>
+        new Promise((resolve) => {
+          finish = () => {
+            resolve({ ...shown, ...body });
+          };
+        }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove a" }));
+    await user.click(screen.getByRole("button", { name: "Remove b" }));
+    expect(screen.queryByRole("button", { name: "Remove a" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove b" })).not.toBeInTheDocument();
+    // The second waits for the first.
+    expect(api.updatePixie).toHaveBeenCalledTimes(1);
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["b", "c"] });
+
+    finish();
+    await waitFor(() => {
+      expect(api.updatePixie).toHaveBeenCalledTimes(2);
+    });
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["c"] });
+    // The first answer does not bring "b" back while the second is on its way.
+    expect(screen.queryByRole("button", { name: "Remove b" })).not.toBeInTheDocument();
+    finish();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Remove c" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Remove b" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Remove web" }));
+    await user.click(screen.getByRole("button", { name: "Remove api" }));
+    expect(await screen.findByText("No projects")).toBeInTheDocument();
+    finish();
+    await waitFor(() => {
+      expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: [] });
+    });
+    finish();
+    expect(await screen.findByText("No projects")).toBeInTheDocument();
+  });
+
+  it("puts a chip back when the Mac refuses its removal", async () => {
+    const api = fakeApi();
+    const { user } = await details(api, pixie({ allowed_tools: ["Bash"] }));
+    api.updatePixie.mockRejectedValueOnce(new Error("Mac asleep"));
+
+    await user.click(screen.getByRole("button", { name: "Remove Bash" }));
+    expect(await screen.findByText("Mac asleep")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Bash" })).toBeInTheDocument();
+  });
+
   it("sets project files, autonomy and permissions from picker sheets", async () => {
     const api = fakeApi();
     const { user } = await details(api);
@@ -180,6 +236,36 @@ describe("Pixie details", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "High" }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { effort: "high" });
     expect(await screen.findByRole("button", { name: "Thinking: High" })).toBeInTheDocument();
+  });
+
+  it("sets the model and thinking back to Default", async () => {
+    const api = fakeApi();
+    const { user } = await details(api, pixie({ model: "opus", effort: "high" }));
+
+    await user.click(await screen.findByRole("button", { name: "Thinking: High" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Default" }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { effort: null });
+    expect(await screen.findByRole("button", { name: "Thinking: Default" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Model: Opus 5.5" }));
+    const picker = sheet("Model");
+    await user.click(within(picker).getByRole("menuitemradio", { name: /Your agent default/ }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: null });
+    expect(await screen.findByRole("button", { name: "Model: Default" })).toBeInTheDocument();
+  });
+
+  it("shows the mode the Mac falls back to when the new model has no Auto", async () => {
+    const api = fakeApi();
+    const shown = pixie({ permission_mode: "auto" });
+    const { user } = await details(api, shown);
+    // The Mac moves a pixie in Auto to asking when its new model does not take Auto.
+    api.updatePixie.mockResolvedValueOnce({ ...shown, model: "haiku", permission_mode: "default" });
+
+    expect(await screen.findByRole("button", { name: "Permissions: Auto" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Model: Default" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Haiku 4.5/ }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: "haiku" });
+    expect(await screen.findByRole("button", { name: "Permissions: Ask" })).toBeInTheDocument();
   });
 
   it("follows the agent default model while the pixie has none", async () => {
@@ -293,6 +379,37 @@ describe("Pixie details", () => {
     api.pixieFile.mockResolvedValueOnce({ text: "- 2026-10-01: Uses pnpm\n", hash: "m" });
     await details(api);
     expect(await screen.findByRole("button", { name: /^Memory.*1 fact$/ })).toBeInTheDocument();
+  });
+
+  it("counts memory facts again, quietly, when the pixie changes or its turn ends", async () => {
+    const api = fakeApi();
+    const shown = pixie({ chat_session_id: "c1" });
+    api.sessions.mockImplementation((archived) =>
+      Promise.resolve(
+        archived ? [] : [session({ id: "c1", repo: "pixie:p1", pixie_id: "p1", state: "running" })],
+      ),
+    );
+    api.pixieFile.mockResolvedValueOnce({ text: "- a\n", hash: "m" });
+    const { push } = await details(api, shown);
+    expect(await screen.findByRole("button", { name: /^Memory.*1 fact$/ })).toBeInTheDocument();
+
+    // The turn ends: the pixie may have saved a fact.
+    api.pixieFile.mockResolvedValueOnce({ text: "- a\n- b\n", hash: "m2" });
+    push({ type: "session.state", session_id: "c1", payload: { state: "idle" } });
+    expect(await screen.findByRole("button", { name: /^Memory.*2 facts$/ })).toBeInTheDocument();
+
+    // A failed count keeps the last one, without a toast.
+    api.pixieFile.mockRejectedValueOnce(new Error("Mac asleep"));
+    push({
+      type: "pixie.updated",
+      session_id: null,
+      payload: { pixie: { ...shown, updated_at: "2026-10-14T10:00:00Z" } },
+    });
+    await waitFor(() => {
+      expect(api.pixieFile).toHaveBeenCalledTimes(3);
+    });
+    expect(screen.queryByText("Mac asleep")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Memory.*2 facts$/ })).toBeInTheDocument();
   });
 
   it("hides the pixie", async () => {

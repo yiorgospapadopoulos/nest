@@ -98,6 +98,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   const failed = new Set<string>();
   // The stored events that arrived during each snapshot request in flight.
   const arriving = new Set<HarnessEvent[]>();
+  // The last save of each pixie, and of the pixie order: the next one waits for it, so a
+  // quick second edit reaches the Mac after the first and is the one that stays.
+  const saving = new Map<string, Promise<unknown>>();
 
   const toast = (text: string, tone: Toast["tone"] = "ok") => {
     toastId += 1;
@@ -111,6 +114,17 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       toast(error instanceof Error ? error.message : "Something went wrong", "error");
     }
   };
+
+  /** Runs `call`, which never rejects, after the last one queued under `key`. */
+  function inTurn<T>(key: string, call: () => Promise<T>): Promise<T> {
+    const before = saving.get(key);
+    const run = before === undefined ? call() : before.then(call);
+    saving.set(key, run);
+    void run.then(() => {
+      if (saving.get(key) === run) saving.delete(key);
+    });
+    return run;
+  }
 
   async function attempt<T>(call: () => Promise<T>): Promise<T | null> {
     try {
@@ -130,6 +144,16 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         dispatch({ type: "auth", auth: "unpaired" });
       }
       return null;
+    }
+  }
+
+  /** A pixie file; one that does not exist yet reads as empty, with no hash to name. */
+  async function pixieFile(id: string, name: string): Promise<FileState> {
+    try {
+      return await api.pixieFile(id, name);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return { text: "", hash: null };
+      throw error;
     }
   }
 
@@ -228,7 +252,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return created;
     },
     async updatePixie(id: string, body: UpdatePixieBody): Promise<boolean> {
-      const updated = await attempt(() => api.updatePixie(id, body));
+      const updated = await inTurn(`pixie:${id}`, () => attempt(() => api.updatePixie(id, body)));
       if (updated === null) return false;
       dispatch({ type: "pixie", pixie: updated });
       return true;
@@ -237,6 +261,16 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const done = await attempt(() => api.deletePixie(id).then(() => true));
       if (done === null) return false;
       dispatch({ type: "pixieRemoved", id });
+      return true;
+    },
+    /** `ids` names every pixie once; a refused order reads the list again. */
+    async reorderPixies(ids: string[]): Promise<boolean> {
+      const list = await inTurn("order", () => attempt(() => api.reorderPixies(ids)));
+      if (list === null) {
+        await loadPixies();
+        return false;
+      }
+      dispatch({ type: "pixies", pixies: list });
       return true;
     },
     async sendToPixie(id: string, text: string): Promise<Session | null> {
@@ -264,13 +298,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
     /** A file that does not exist yet reads as empty, with no hash to name. */
     async readPixieFile(id: string, name: string): Promise<FileState | null> {
-      try {
-        return await api.pixieFile(id, name);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return { text: "", hash: null };
-        report(error);
-        return null;
-      }
+      return attempt(() => pixieFile(id, name));
+    },
+    /** As readPixieFile, for a count on screen: no toast when the Mac cannot answer. */
+    async peekPixieFile(id: string, name: string): Promise<FileState | null> {
+      return quietly(() => pixieFile(id, name));
     },
     /** A stale write resolves to the file as it is now, for the user to choose. */
     async savePixieFile(

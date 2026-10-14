@@ -1,6 +1,7 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import type { Pixie } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { pixie, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
@@ -118,5 +119,113 @@ describe("Pixies section", () => {
     await user.click(screen.getByRole("button", { name: "Back to Projects" }));
 
     expect(screen.getByRole("button", { name: /^Tester/ })).toHaveFocus();
+  });
+
+  describe("Edit order", () => {
+    const three = () => [
+      pixie({ id: "a", name: "Ada", slug: "ada" }),
+      pixie({ id: "b", name: "Bo", slug: "bo", position: 1, hidden: true }),
+      pixie({ id: "c", name: "Cy", slug: "cy", position: 2 }),
+    ];
+    // The order on screen, read from the Move up buttons.
+    const shown = () =>
+      screen
+        .getAllByRole("button", { name: /^Move .* up$/ })
+        .map((b) => b.getAttribute("aria-label")?.slice(5, -3));
+    const inOrder = (list: Pixie[], ids: string[]) =>
+      ids.flatMap((id, position) =>
+        list.filter((p) => p.id === id).map((p) => ({ ...p, position })),
+      );
+
+    async function editOrder(api = fakeApi()) {
+      api.pixies.mockResolvedValue(three());
+      const rendered = await renderApp({ api });
+      await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+      await rendered.user.click(screen.getByRole("button", { name: "Edit order" }));
+      return rendered;
+    }
+
+    it("moves a pixie at once, past the hidden ones, and saves the whole order", async () => {
+      const api = fakeApi();
+      api.reorderPixies.mockImplementation((ids) => Promise.resolve(inOrder(three(), ids)));
+      const { user } = await editOrder(api);
+
+      expect(shown()).toEqual(["Ada", "Cy"]);
+      expect(screen.getByRole("button", { name: "Move Ada up" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Move Cy down" })).toBeDisabled();
+      // While ordering, a row does not open its pixie.
+      expect(screen.queryByRole("button", { name: /^Ada,/ })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Move Cy up" }));
+      expect(shown()).toEqual(["Cy", "Ada"]);
+      expect(api.reorderPixies).toHaveBeenLastCalledWith(["c", "a", "b"]);
+
+      await user.click(screen.getByRole("button", { name: "Move Cy down" }));
+      await waitFor(() => {
+        expect(api.reorderPixies).toHaveBeenLastCalledWith(["a", "c", "b"]);
+      });
+      await waitFor(() => {
+        expect(shown()).toEqual(["Ada", "Cy"]);
+      });
+
+      await user.click(screen.getByRole("button", { name: "Done" }));
+      expect(screen.getByRole("button", { name: /^Ada,/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Edit order" })).toBeInTheDocument();
+    });
+
+    it("sends a quick second move only after the first, keeping both", async () => {
+      const api = fakeApi();
+      let finish: (list: Pixie[]) => void = () => undefined;
+      api.reorderPixies
+        .mockImplementationOnce(
+          (ids) =>
+            new Promise((resolve) => {
+              finish = () => {
+                resolve(inOrder(three(), ids));
+              };
+            }),
+        )
+        .mockImplementation((ids) => Promise.resolve(inOrder(three(), ids)));
+      const { user } = await editOrder(api);
+
+      await user.click(screen.getByRole("button", { name: "Move Cy up" }));
+      await user.click(screen.getByRole("button", { name: "Move Cy down" }));
+      expect(shown()).toEqual(["Ada", "Cy"]);
+      expect(api.reorderPixies).toHaveBeenCalledTimes(1);
+
+      finish([]);
+      await waitFor(() => {
+        expect(api.reorderPixies).toHaveBeenCalledTimes(2);
+      });
+      expect(api.reorderPixies).toHaveBeenLastCalledWith(["a", "c", "b"]);
+      expect(shown()).toEqual(["Ada", "Cy"]);
+    });
+
+    it("puts the order back when the Mac refuses it", async () => {
+      const api = fakeApi();
+      api.reorderPixies.mockRejectedValue(
+        new Error("the order must name every pixie exactly once"),
+      );
+      const { user } = await editOrder(api);
+
+      await user.click(screen.getByRole("button", { name: "Move Cy up" }));
+      expect(
+        await screen.findByText("the order must name every pixie exactly once"),
+      ).toBeInTheDocument();
+      expect(shown()).toEqual(["Ada", "Cy"]);
+      // The list is read again, in case a pixie was added meanwhile.
+      expect(api.pixies).toHaveBeenCalledTimes(2);
+    });
+
+    it("is offered only with two pixies or more to order", async () => {
+      const api = fakeApi();
+      api.pixies.mockResolvedValue([pixie(), pixie({ id: "p2", hidden: true, position: 1 })]);
+      const { user } = await renderApp({ api });
+      await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+      expect(screen.queryByRole("button", { name: "Edit order" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
+      expect(screen.getByRole("button", { name: "Edit order" })).toBeInTheDocument();
+    });
   });
 });

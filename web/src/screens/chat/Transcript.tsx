@@ -73,8 +73,11 @@ export function Transcript({ session, background, focus = null, history, onRetry
   const spoken = useAnnouncement(items, loaded);
   // The user message whose files are being restored to before it.
   const [rewinding, setRewinding] = useState<number | null>(null);
+  // Never in a pixie's chat: each run starts fresh, so earlier runs' checkpoints are gone.
   const onRewind =
-    AT_REST.has(session.state) && session.archived_at === null ? setRewinding : undefined;
+    AT_REST.has(session.state) && session.archived_at === null && session.pixie_id == null
+      ? setRewinding
+      : undefined;
 
   useLayoutEffect(() => {
     const el = box.current;

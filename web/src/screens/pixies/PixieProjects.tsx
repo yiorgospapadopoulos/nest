@@ -4,27 +4,34 @@ import { useStore } from "../../store/context.ts";
 import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
+import { usePending } from "./pending.ts";
 
 interface Props {
   pixie: Pixie;
-  save: (body: UpdatePixieBody) => void;
+  save: (body: UpdatePixieBody) => Promise<unknown>;
 }
 
-/** The projects the pixie works on: every one, or a list picked from the registered repos. */
+/**
+ * The projects the pixie works on: every one, or a list picked from the registered repos.
+ * A quick second change builds on the first, as chips do.
+ */
 export function PixieProjects({ pixie, save }: Props) {
   const { state } = useStore();
   const [picking, setPicking] = useState(false);
-  const chosen = pixie.projects;
+  // Null is every project.
+  const [chosen, choose] = usePending(pixie.projects, (projects) =>
+    save(projects === null ? { all_projects: true } : { projects }),
+  );
   const close = () => {
     setPicking(false);
   };
-  const choice = (label: string, body: UpdatePixieBody) => (
+  const choice = (label: string, projects: string[] | null) => (
     <button
       key={label}
       className="asi"
       role="menuitem"
       onClick={() => {
-        save(body);
+        choose(projects);
         close();
       }}
     >
@@ -46,7 +53,7 @@ export function PixieProjects({ pixie, save }: Props) {
             className="pxx"
             aria-label={`Remove ${name}`}
             onClick={() => {
-              save({ projects: chosen.filter((other) => other !== name) });
+              choose(chosen.filter((other) => other !== name));
             }}
           >
             <Icon name="x" />
@@ -67,10 +74,10 @@ export function PixieProjects({ pixie, save }: Props) {
       </button>
       {picking && (
         <ActionSheet label="Add project" title={<b>Add project</b>} onClose={close}>
-          {chosen !== null && choice("All projects", { all_projects: true })}
+          {chosen !== null && choice("All projects", null)}
           {state.repos
             .filter((repo) => !chosen?.includes(repo.name))
-            .map((repo) => choice(repo.name, { projects: [...(chosen ?? []), repo.name] }))}
+            .map((repo) => choice(repo.name, [...(chosen ?? []), repo.name]))}
         </ActionSheet>
       )}
     </div>

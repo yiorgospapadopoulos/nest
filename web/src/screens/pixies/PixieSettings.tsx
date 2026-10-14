@@ -10,6 +10,7 @@ import type {
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import {
+  AGENT_DEFAULT,
   effortLabel,
   effortOptions,
   labelOf,
@@ -25,13 +26,17 @@ import { AUTONOMY, optionsOf, PROJECT_ACCESS } from "./options.ts";
 // Shown while the pixie keeps the agent default.
 const DEFAULT = "Default";
 
+// Thinking back to the default: none chosen for the pixie.
+const DEFAULT_THINKING: Option<string> = { value: null, label: DEFAULT };
+
 interface Row {
   title: string;
   value: string;
   disabled?: boolean;
   options: Option<string>[];
   checked: string | null;
-  pick: (value: string) => UpdatePixieBody;
+  // Null, from Default, is sent as null: the Mac sets the field back to the default.
+  pick: (value: string | null) => UpdatePixieBody;
 }
 
 interface Props {
@@ -59,7 +64,7 @@ export function PixieSettings({ pixie, save }: Props) {
     {
       title: "Model",
       value: pixie.model === null ? DEFAULT : labelOf("model", pixie.model, models),
-      options: modelOptions(models),
+      options: [AGENT_DEFAULT, ...modelOptions(models)],
       checked: pixie.model,
       pick: (model) => ({ model }),
     },
@@ -72,9 +77,9 @@ export function PixieSettings({ pixie, save }: Props) {
             ? DEFAULT
             : effortLabel(pixie.effort),
       disabled: levels.length === 0,
-      options: effortOptions(levels),
+      options: [DEFAULT_THINKING, ...effortOptions(levels)],
       checked: pixie.effort,
-      pick: (effort) => ({ effort: effort as Effort }),
+      pick: (effort) => ({ effort: effort as Effort | null }),
     },
     {
       title: "Permissions",
@@ -125,8 +130,7 @@ export function PixieSettings({ pixie, save }: Props) {
           options={open.options}
           value={open.checked}
           onPick={(value) => {
-            // Every option has a value: none of these offers "Default" (UpdatePixie skips nulls).
-            save(open.pick(String(value)));
+            save(open.pick(value));
           }}
           onClose={() => {
             setOpen(null);

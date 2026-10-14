@@ -21,19 +21,26 @@ const SKILL_LIST = "pixie-skills";
  * panel. Every change is saved at once; there is no form to submit (D072).
  */
 export function PixieDetails({ pixie }: { pixie: Pixie }) {
-  const { actions } = useStore();
+  const { state, actions } = useStore();
   const { id } = pixie;
+  const update = useCallback(
+    (body: UpdatePixieBody) => actions.updatePixie(id, body),
+    [actions, id],
+  );
   const save = useCallback(
     (body: UpdatePixieBody) => {
-      void actions.updatePixie(id, body);
+      void update(body);
     },
-    [actions, id],
+    [update],
   );
   const [page, setPage] = useState<"soul" | "memory" | null>(null);
   const [confirm, setConfirm] = useState<"reset" | "delete" | null>(null);
   // Bumped when the memory page closes, to count the facts again.
   const [memoryRead, setMemoryRead] = useState(0);
-  const facts = useFactCount(id, memoryRead);
+  // The pixie saves facts during a turn, so a change to the pixie or its chat's state
+  // (a turn ending) counts them again too.
+  const chat = pixie.chat_session_id === null ? undefined : state.sessions[pixie.chat_session_id];
+  const facts = useFactCount(id, `${String(memoryRead)} ${pixie.updated_at} ${chat?.state ?? ""}`);
 
   return (
     <>
@@ -43,7 +50,7 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
       <PixieSettings pixie={pixie} save={save} />
 
       <h2 className="pg-h">Projects</h2>
-      <PixieProjects pixie={pixie} save={save} />
+      <PixieProjects pixie={pixie} save={update} />
 
       <h2 className="pg-h">Skills</h2>
       <div className="lgrp gl pad">
@@ -53,9 +60,7 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
           items={pixie.skills}
           empty="All skills"
           list={SKILL_LIST}
-          onChange={(skills) => {
-            save({ skills });
-          }}
+          save={(skills) => update({ skills })}
         />
         <SkillNames />
       </div>
@@ -67,18 +72,14 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
           label="Never ask for"
           items={pixie.allowed_tools}
           empty="Asks as its permission mode says"
-          onChange={(allowed_tools) => {
-            save({ allowed_tools });
-          }}
+          save={(allowed_tools) => update({ allowed_tools })}
         />
         <h3 className="pxsub">Never allow</h3>
         <ChipList
           label="Never allow"
           items={pixie.disallowed_tools}
           empty="Nothing beyond the git rules"
-          onChange={(disallowed_tools) => {
-            save({ disallowed_tools });
-          }}
+          save={(disallowed_tools) => update({ disallowed_tools })}
         />
       </div>
 
@@ -276,12 +277,15 @@ function SkillNames() {
   );
 }
 
-/** The facts in MEMORY.md, counted again for each new `version`. */
-function useFactCount(id: string, version: number): number | null {
+/**
+ * The facts in MEMORY.md, counted again for each new `version`. A count that cannot be
+ * read keeps the last one, without a toast.
+ */
+function useFactCount(id: string, version: string): number | null {
   const { actions } = useStore();
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {
-    void actions.readPixieFile(id, "memory").then((file) => {
+    void actions.peekPixieFile(id, "memory").then((file) => {
       if (file !== null) setCount(factLines(file.text).length);
     });
   }, [actions, id, version]);
