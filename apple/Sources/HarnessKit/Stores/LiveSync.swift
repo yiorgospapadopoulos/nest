@@ -135,8 +135,8 @@ public final class AppModel {
     public let agents: AgentsStore
     public let pixies: PixiesStore
     public let live: LiveSync
-    /// Where `local()` read the device token, to read it again.
-    var keychain: (store: any TokenStore, token: DeviceToken)?
+    /// Where `local()` got the device token, to ask again.
+    var tokens: (store: any TokenStore, token: DeviceToken)?
     /// The live sync `connect()` started last.
     private var liveTask: Task<Void, Never>?
 
@@ -170,49 +170,66 @@ public final class AppModel {
         live.onConnected = { [visibility] in visibility.resend() }
     }
 
-    /// Before a retry: after the daemon refused the device token, reads it from the
-    /// Keychain again, since the daemon may have stored a new one. Models not built by
-    /// `local()` keep theirs.
-    public func rereadTokenIfRefused() async throws {
-        guard app.connection == .unauthorized, let keychain,
-            let token = try await Self.read(keychain.store)
-        else { return }
-        keychain.token.replace(with: token)
+    /// Whether a device token is in use; false while the daemon was not running to give one.
+    public var hasDeviceToken: Bool { tokens.map { !$0.token.current.isEmpty } ?? true }
+
+    /// Asks the daemon for the device token again when it refused the one in use or none
+    /// was given yet (the daemon may have started since, or made a new token). True when
+    /// the token changed. Models not built by `local()` keep theirs.
+    @discardableResult
+    public func rereadToken() async throws -> Bool {
+        guard let tokens, app.connection == .unauthorized || !hasDeviceToken,
+            let token = try await Self.read(tokens.store), token != tokens.token.current
+        else { return false }
+        tokens.token.replace(with: token)
+        return true
     }
 
-    /// Drops the current connection and connects again at once, with the Keychain's token
-    /// when the daemon refused the one in use. A failed Keychain read is returned, and the
+    /// Drops the current connection and connects again at once, asking the daemon for its
+    /// token first when needed (`rereadToken()`). A failed request is returned, and the
     /// connection runs with the token it has.
     @discardableResult
     public func connect() async -> (any Error)? {
         var failure: (any Error)?
         do {
-            try await rereadTokenIfRefused()
+            try await rereadToken()
         } catch {
             failure = error
         }
         liveTask?.cancel()
-        liveTask = Task { await live.run() }
+        liveTask = Task { await runLive() }
         return failure
     }
 
-    /// The Keychain may ask the user, so it is read away from the main actor.
+    /// Runs the live sync. When the daemon refuses the token, it is asked for again once,
+    /// and a different one connects at once: the daemon started after the app, or made a
+    /// new token. Otherwise the refusal stays for the user's Retry.
+    func runLive() async {
+        await live.run()
+        while app.connection == .unauthorized, !Task.isCancelled,
+            (try? await rereadToken()) == true
+        {
+            await live.run()
+        }
+    }
+
+    /// The socket read blocks, so it runs away from the main actor.
     @concurrent
     private static func read(_ tokens: any TokenStore) async throws -> String? {
         try tokens.deviceToken()
     }
 
-    /// The model for the daemon on this Mac, with the device token from the Keychain;
-    /// nil when the daemon has not stored a token yet.
+    /// The model for the daemon on this Mac, with the device token the daemon gives over its
+    /// socket. Without a running daemon the model starts without a token, so the app shows
+    /// the daemon as unreachable (with the offer to start it), and asks again on connect.
     public static func local(
-        tokens: any TokenStore = KeychainTokenStore(), baseURL: URL = APIClient.defaultBaseURL
-    ) async throws -> AppModel? {
-        guard let value = try await read(tokens) else { return nil }
-        let token = DeviceToken(value)
+        tokens: any TokenStore = SocketTokenStore(), baseURL: URL = APIClient.defaultBaseURL
+    ) async throws -> AppModel {
+        let token = DeviceToken(try await read(tokens) ?? "")
         let model = AppModel(
             api: APIClient(token: token, baseURL: baseURL),
             events: EventStream(token: token, baseURL: baseURL))
-        model.keychain = (tokens, token)
+        model.tokens = (tokens, token)
         return model
     }
 }

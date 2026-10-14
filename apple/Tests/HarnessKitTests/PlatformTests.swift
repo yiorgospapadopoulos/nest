@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import Synchronization
 import Testing
 
@@ -61,63 +60,6 @@ final class StubProtocol: URLProtocol {
 
     @Test func defaultsToTheSharedSession() {
         #expect(URLSessionTransport().session === URLSession.shared)
-    }
-}
-
-@Suite struct KeychainTokenStoreTests {
-    @Test func queriesTheDaemonsGenericPassword() throws {
-        let seen = Mutex<[String: String]>([:])
-        let store = KeychainTokenStore(service: "harness", account: "local-device-token") {
-            query, result in
-            let dictionary = query as NSDictionary
-            seen.withLock {
-                $0["class"] = dictionary[kSecClass] as? String
-                $0["service"] = dictionary[kSecAttrService] as? String
-                $0["account"] = dictionary[kSecAttrAccount] as? String
-                $0["data"] = (dictionary[kSecReturnData] as? Bool).map(String.init)
-            }
-            result?.pointee = Data("tok-abc".utf8) as CFData
-            return errSecSuccess
-        }
-
-        #expect(try store.deviceToken() == "tok-abc")
-        #expect(
-            seen.withLock { $0 } == [
-                "class": kSecClassGenericPassword as String, "service": "harness",
-                "account": "local-device-token", "data": "true",
-            ])
-    }
-
-    @Test func missingItemMeansNoToken() throws {
-        let store = KeychainTokenStore(service: "s", account: "a") { _, _ in errSecItemNotFound }
-        #expect(try store.deviceToken() == nil)
-    }
-
-    @Test func otherKeychainErrorsThrow() {
-        let store = KeychainTokenStore(service: "s", account: "a") { _, _ in errSecAuthFailed }
-        #expect(throws: TokenStoreError.keychain(errSecAuthFailed)) { try store.deviceToken() }
-    }
-
-    @Test func dataThatIsNotTextThrows() {
-        let store = KeychainTokenStore(service: "s", account: "a") { _, result in
-            result?.pointee = Data([0xFF, 0xFE]) as CFData
-            return errSecSuccess
-        }
-        #expect(throws: TokenStoreError.notText) { try store.deviceToken() }
-    }
-
-    /// Reads the real Keychain for an item that cannot exist; nothing is written.
-    @Test func realKeychainReportsAMissingItem() throws {
-        let store = KeychainTokenStore(
-            service: "harness-tests-\(UUID().uuidString)", account: "none",
-            copyMatching: SecItemCopyMatching)
-        #expect(try store.deviceToken() == nil)
-    }
-
-    @Test func defaultsToTheDaemonsItem() {
-        let store = KeychainTokenStore()
-        #expect(store.service == "harness")
-        #expect(store.account == "local-device-token")
     }
 }
 

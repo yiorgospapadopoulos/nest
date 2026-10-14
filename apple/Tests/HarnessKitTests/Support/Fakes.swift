@@ -41,10 +41,10 @@ struct TokenStub: TokenStore {
     }
 }
 
-/// A Keychain whose token changes, as when the daemon stores a new one.
+/// A daemon whose token changes, as when it makes a new one or stops (nil).
 final class ChangingTokens: TokenStore {
     let token: Mutex<String?>
-    /// Whether each read ran on the main thread, where a Keychain prompt would freeze it.
+    /// Whether each read ran on the main thread, where a blocking socket read would freeze it.
     let readsOnMain = Mutex<[Bool]>([])
     let failure = Mutex<TokenStoreError?>(nil)
 

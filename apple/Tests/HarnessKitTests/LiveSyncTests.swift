@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import HarnessKit
@@ -166,44 +167,63 @@ import Testing
         #expect(model.sessions.sessions.isEmpty)
     }
 
-    @Test func aRetryAfterTheTokenWasRefusedReadsTheKeychainAgain() async throws {
-        let keychain = ChangingTokens("old")
-        let model = try #require(try await AppModel.local(tokens: keychain))
+    @Test func aRetryAfterTheTokenWasRefusedAsksTheDaemonAgain() async throws {
+        let daemon = ChangingTokens("old")
+        let model = try await AppModel.local(tokens: daemon)
         let client = try #require(model.api as? APIClient)
         let stream = try #require(model.live.source as? EventStream)
-        keychain.token.withLock { $0 = "new" }
+        daemon.token.withLock { $0 = "new" }
 
         // Only a refused token is read again.
-        try await model.rereadTokenIfRefused()
+        #expect(try await model.rereadToken() == false)
         #expect(client.token == "old")
 
         model.app.connection = .unauthorized
-        try await model.rereadTokenIfRefused()
+        #expect(try await model.rereadToken() == true)
         #expect(client.token == "new")
         #expect(stream.request().value(forHTTPHeaderField: "Authorization") == "Bearer new")
 
-        // A token gone from the Keychain leaves the last one in use.
-        keychain.token.withLock { $0 = nil }
-        try await model.rereadTokenIfRefused()
+        // The same token again is no change.
+        #expect(try await model.rereadToken() == false)
+        // A daemon that stopped (no socket) leaves the last token in use.
+        daemon.token.withLock { $0 = nil }
+        #expect(try await model.rereadToken() == false)
         #expect(stream.token == "new")
-        // The Keychain may show a prompt, so it is never read on the main thread (BUG-81).
-        #expect(keychain.readsOnMain.withLock { $0 } == [false, false, false])
+        // The socket read blocks, so it never runs on the main thread (BUG-81).
+        #expect(daemon.readsOnMain.withLock { $0 } == [false, false, false, false])
     }
 
-    @Test func aModelWithoutTheKeychainKeepsItsToken() async throws {
+    @Test func aModelWithoutATokenSourceKeepsItsToken() async throws {
+        #expect(model.hasDeviceToken)
         model.app.connection = .unauthorized
-        try await model.rereadTokenIfRefused()
+        #expect(try await model.rereadToken() == false)
         #expect(model.app.connection == .unauthorized)
     }
 
-    @Test func theLocalModelReadsTheKeychainToken() async throws {
-        #expect(try await AppModel.local(tokens: TokenStub(token: nil)) == nil)
-        let model = try #require(try await AppModel.local(tokens: TokenStub(token: "tok")))
+    @Test func theLocalModelAsksTheDaemonForTheToken() async throws {
+        let model = try await AppModel.local(tokens: TokenStub(token: "tok"))
         let client = try #require(model.api as? APIClient)
         #expect(client.token == "tok")
         #expect(client.baseURL == APIClient.defaultBaseURL)
         #expect((model.live.source as? EventStream)?.token == "tok")
         #expect(model.settings.store is UserDefaultsStore)
+        #expect(model.hasDeviceToken)
+    }
+
+    /// The daemon is not running: the app starts without a token (and so shows the daemon
+    /// as unreachable, with the offer to start it), then asks again on the next connect.
+    @Test func aModelStartedBeforeTheDaemonAsksForTheTokenWhenConnecting() async throws {
+        let daemon = ChangingTokens(nil)
+        let model = try await AppModel.local(tokens: daemon)
+        let client = try #require(model.api as? APIClient)
+        #expect(!model.hasDeviceToken)
+        #expect(client.token == "")
+
+        daemon.token.withLock { $0 = "tok" }
+        #expect(try await model.rereadToken() == true)
+
+        #expect(client.token == "tok")
+        #expect(model.hasDeviceToken)
     }
 
     @Test func connectingRunsTheLiveSync() async throws {
@@ -212,19 +232,88 @@ import Testing
         try await waitFor { model.app.connection == .connected }
     }
 
-    /// A token the Keychain cannot give is reported, and the connection still runs with
-    /// the one in use.
-    @Test func aRetryWhoseKeychainReadFailsStillConnects() async throws {
-        let keychain = ChangingTokens("old")
-        keychain.failure.withLock { $0 = .keychain(-25293) }
-        model.keychain = (keychain, DeviceToken("old"))
+    /// A token the daemon cannot give is reported, and the connection still runs with the
+    /// one in use.
+    @Test func aRetryWhoseTokenReadFailsStillConnects() async throws {
+        let daemon = ChangingTokens("old")
+        daemon.failure.withLock { $0 = .noAnswer }
+        model.tokens = (daemon, DeviceToken("old"))
         model.app.connection = .unauthorized
 
         let failure = await model.connect()
 
-        #expect(failure as? TokenStoreError == .keychain(-25293))
+        #expect(failure as? TokenStoreError == .noAnswer)
         source.continuation.yield(.connected(resumed: false))
         try await waitFor { model.app.connection == .connected }
+    }
+
+    /// The daemon came up after the app, or made a new token: the refused token is asked for
+    /// again, and a different one connects at once, without a Retry.
+    @Test func aRefusedTokenIsAskedForAgainAndANewOneReconnects() async throws {
+        let source = ReconnectingSource()
+        let model = AppModel(api: api, events: source, preferences: MemoryStore())
+        let daemon = ChangingTokens(nil)
+        let token = DeviceToken("")
+        model.tokens = (daemon, token)
+        let run = Task { await model.runLive() }
+        try await waitFor { source.count == 1 }
+
+        daemon.token.withLock { $0 = "tok" }
+        source.latest?.finish(throwing: EventStreamError.unauthorized)
+        try await waitFor { source.count == 2 }
+        #expect(token.current == "tok")
+
+        source.latest?.yield(.connected(resumed: false))
+        try await waitFor { model.app.connection == .connected }
+        run.cancel()
+        source.latest?.finish()
+        await run.value
+    }
+
+    @Test func aRefusedTokenTheDaemonStillGivesStaysRefused() async throws {
+        let source = ReconnectingSource()
+        let model = AppModel(api: api, events: source, preferences: MemoryStore())
+        model.tokens = (TokenStub(token: "same"), DeviceToken("same"))
+        let run = Task { await model.runLive() }
+        try await waitFor { source.count == 1 }
+
+        source.latest?.finish(throwing: EventStreamError.unauthorized)
+        await run.value
+
+        #expect(model.app.connection == .unauthorized)
+        #expect(source.count == 1)
+    }
+
+    @Test func aRefusedTokenWhoseReadFailsStaysRefused() async throws {
+        let source = ReconnectingSource()
+        let model = AppModel(api: api, events: source, preferences: MemoryStore())
+        let daemon = ChangingTokens("new")
+        daemon.failure.withLock { $0 = .noAnswer }
+        model.tokens = (daemon, DeviceToken("old"))
+        let run = Task { await model.runLive() }
+        try await waitFor { source.count == 1 }
+
+        source.latest?.finish(throwing: EventStreamError.unauthorized)
+        await run.value
+
+        #expect(model.app.connection == .unauthorized)
+        #expect(source.count == 1)
+    }
+}
+
+/// A source whose every `updates()` is a new stream; the test drives the latest one.
+final class ReconnectingSource: EventSource {
+    typealias Continuation = AsyncThrowingStream<EventStreamUpdate, any Error>.Continuation
+    private let streams = Mutex<[Continuation]>([])
+
+    var count: Int { streams.withLock { $0.count } }
+    var latest: Continuation? { streams.withLock { $0.last } }
+
+    func updates() -> AsyncThrowingStream<EventStreamUpdate, any Error> {
+        let (stream, continuation) = AsyncThrowingStream<EventStreamUpdate, any Error>
+            .makeStream()
+        streams.withLock { $0.append(continuation) }
+        return stream
     }
 }
 
