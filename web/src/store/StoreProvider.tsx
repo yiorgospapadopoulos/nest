@@ -6,10 +6,9 @@ import { reportVisibility } from "../pwa/visibility.ts";
 import { createActions } from "./actions.ts";
 import { loadDrafts, loadFoldedTeams, loadShowAutomated, saveDrafts } from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
+import { deviceStorage } from "./legacyKeys.ts";
 import { reduce } from "./reducer.ts";
 import { initialState } from "./state.ts";
-
-const browserStorage = () => window.localStorage;
 
 interface Props {
   api: Api;
@@ -23,7 +22,7 @@ interface Props {
 export function StoreProvider({
   api,
   connect,
-  storage = browserStorage,
+  storage = deviceStorage,
   location = window.location,
   children,
 }: Props) {

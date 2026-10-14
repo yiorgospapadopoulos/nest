@@ -554,7 +554,7 @@ describe("review cards", () => {
     expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeDisabled();
   });
 
-  it("show where the work is pushed and commits harness did not make", async () => {
+  it("show where the work is pushed and commits Nest did not make", async () => {
     const api = withItems([review()]);
     api.diff.mockResolvedValue({
       ...diff(),
@@ -566,16 +566,16 @@ describe("review cards", () => {
     const onCard = card(/Ready for review/);
     expect(await within(onCard).findByText("Pushes to agent/contact")).toBeInTheDocument();
     expect(
-      within(onCard).getByRole("group", { name: "Commits harness did not make" }),
+      within(onCard).getByRole("group", { name: "Commits Nest did not make" }),
     ).toHaveTextContent("0123456Squash old work");
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
 
     expect(await within(sheet).findByText("Pushes to agent/contact")).toBeInTheDocument();
-    const commits = within(sheet).getByRole("group", { name: "Commits harness did not make" });
+    const commits = within(sheet).getByRole("group", { name: "Commits Nest did not make" });
     expect(commits).toHaveTextContent(
-      "These commits are on the branch, but harness did not make them. Check them before publishing.",
+      "These commits are on the branch, but Nest did not make them. Check them before publishing.",
     );
     expect(within(commits).getByRole("listitem")).toHaveTextContent("0123456Squash old work");
     const approve = within(sheet).getByRole("button", { name: "Approve and open PR" });
@@ -852,7 +852,7 @@ describe("review cards", () => {
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
     expect(confirm).toHaveTextContent(
       "origin now pushes to https://github.com/me/new.git instead of " +
-        "https://github.com/me/old.git, the address harness recorded.",
+        "https://github.com/me/old.git, the address Nest recorded.",
     );
     expect(api.session).toHaveBeenCalledWith("s1");
     expect(api.diff).toHaveBeenCalledTimes(2);
@@ -884,7 +884,7 @@ describe("review cards", () => {
     await user.click(await reviewLoaded());
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
     expect(confirm).toHaveTextContent(
-      "origin pushes to git@github.com:me/todo-ui.git. harness pushes only to an address " +
+      "origin pushes to git@github.com:me/todo-ui.git. Nest pushes only to an address " +
         "you confirmed.",
     );
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));

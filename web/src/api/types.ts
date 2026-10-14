@@ -1,4 +1,4 @@
-// The daemon's JSON shapes (daemon/src/harness/**/models.py), field for field.
+// The daemon's JSON shapes (daemon/src/nestd/**/models.py), field for field.
 
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -98,7 +98,7 @@ export interface Session {
   context: ContextUsage | null;
   // Null until the daemon first read the pull request from GitHub.
   pr: PrStatus | null;
-  // Up to three lines about the pull request harness opened.
+  // Up to three lines about the pull request Nest opened.
   pr_summary: string | null;
   // Set while the chat looks stuck.
   stuck: StuckFlag | null;
@@ -110,7 +110,7 @@ export interface Session {
   habit_run_id: string | null;
 }
 
-/** A Claude Code chat of a registered repo that harness does not own (D028). */
+/** A Claude Code chat of a registered repo that Nest does not own (D028). */
 export interface ClaudeChat {
   id: string;
   repo: string;
@@ -126,7 +126,7 @@ export interface ClaudeChat {
   entrypoint: string | null;
   // Started by a program through an Agent SDK; listed only on request.
   automated: boolean;
-  // Archived in harness only (D040); listed with the archived chats.
+  // Archived in Nest only (D040); listed with the archived chats.
   archived: boolean;
 }
 
@@ -309,7 +309,7 @@ export interface ReviewCommit {
 export interface SessionDiff {
   base: string | null;
   head: ReviewHead;
-  // Commits on HEAD that neither the base nor harness's own publishing accounts for.
+  // Commits on HEAD that neither the base nor Nest's own publishing accounts for.
   commits: ReviewCommit[];
   files: FileDiff[];
   stats: DiffStats;
@@ -384,7 +384,7 @@ export interface Attachment {
   created_at: string;
 }
 
-export interface HarnessEvent {
+export interface NestEvent {
   // Null for ephemeral events (text deltas), which are never stored or replayed.
   id: number | null;
   type: string;
@@ -472,7 +472,7 @@ export type SearchHitKind = "title" | "user" | "assistant" | "tool" | "tool_resu
 
 /** A chat title or message matching a search (D035). */
 export interface SearchHit {
-  // A harness session, or a Claude Code chat id for kind "claude_chat".
+  // A Nest session, or a Claude Code chat id for kind "claude_chat".
   session_id: string;
   repo: string;
   title: string;
@@ -664,7 +664,7 @@ export interface PixieSearchHit {
 export interface PixieActivity {
   id: number;
   ts: string;
-  // The harness tool, such as "send_message" or "start_session".
+  // The Nest tool, such as "send_message" or "start_session".
   tool: string;
   session_id: string | null;
   summary: string;

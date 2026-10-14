@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { HarnessEvent, JsonObject } from "../../api/types.ts";
+import type { NestEvent, JsonObject } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { detail, event, habit, pixie, report, session, NOW } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
@@ -10,7 +10,7 @@ const tester = pixie({ id: "p1", name: "Tester", mascot: "owl", chat_session_id:
 const pixieChat = session({ id: "pc", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
 
 /** The app with the pixie and the events of its chat. */
-function withChat(events: HarnessEvent[] = []): FakeApi {
+function withChat(events: NestEvent[] = []): FakeApi {
   const api = fakeApi();
   api.pixies.mockResolvedValue([tester]);
   api.session.mockResolvedValue(detail(pixieChat));

@@ -80,7 +80,7 @@ export async function enablePush(env: PushEnv, server: PushServer): Promise<Push
   if (permission !== "granted") return permission === "denied" ? "denied" : "off";
   const manager = await pushManager(env);
   if (manager === undefined) {
-    throw new Error("harness is still setting up on this device. Reopen it and try again.");
+    throw new Error("Nest is still setting up on this device. Reopen it and try again.");
   }
   await register(manager, await manager.getSubscription(), server);
   return "on";

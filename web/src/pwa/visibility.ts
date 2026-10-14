@@ -1,5 +1,5 @@
 /**
- * Tells the daemon whether harness is on screen, so it refreshes the usage numbers only
+ * Tells the daemon whether Nest is on screen, so it refreshes the usage numbers only
  * while someone can see them (D031). A report lapses on the daemon after 150 s.
  */
 

@@ -1,12 +1,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { ClaudeChat, HarnessEvent, JsonObject, Session } from "../../api/types.ts";
+import type { ClaudeChat, NestEvent, JsonObject, Session } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { claudeChat, detail, event, repo, session } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 
-const HISTORY: HarnessEvent[] = [
+const HISTORY: NestEvent[] = [
   event({
     id: 1,
     session_id: "c1",
@@ -68,7 +68,7 @@ describe("Claude Code chats", () => {
     expect(screen.queryByText("Elsewhere")).not.toBeInTheDocument();
   });
 
-  it("show their history read only and continue in harness", async () => {
+  it("show their history read only and continue in Nest", async () => {
     const { user, api } = await setup([claudeChat({ worktree: "agent-x" })]);
     const adopted = session({
       id: "s9",
@@ -90,7 +90,7 @@ describe("Claude Code chats", () => {
     expect(view.queryByLabelText("Message")).not.toBeInTheDocument();
     expect(api.claudeChatEvents).toHaveBeenCalledWith("c1");
 
-    await user.click(view.getByRole("button", { name: "Continue in harness" }));
+    await user.click(view.getByRole("button", { name: "Continue in Nest" }));
 
     expect(api.adoptClaudeChat).toHaveBeenCalledWith("c1");
     const chat = await screen.findByRole("region", { name: "Tune the hero section" });
@@ -114,7 +114,7 @@ describe("Claude Code chats", () => {
     expect(await view.findByText("No messages yet")).toBeInTheDocument();
     expect(view.getByText("Open in Claude Code")).toBeInTheDocument();
     expect(view.getByText(/Close it there before sending/)).toBeInTheDocument();
-    const button = view.getByRole("button", { name: "Continue in harness" });
+    const button = view.getByRole("button", { name: "Continue in Nest" });
     await user.click(button);
     expect(await screen.findByText("the folder of this chat is gone")).toBeInTheDocument();
     expect(button).toBeEnabled();

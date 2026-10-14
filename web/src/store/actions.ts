@@ -17,7 +17,7 @@ import type {
   Habit,
   HabitBody,
   HabitRun,
-  HarnessEvent,
+  NestEvent,
   MonthUsage,
   NotificationSettings,
   Pixie,
@@ -75,7 +75,7 @@ export type SendResult = "sent" | "failed" | "elsewhere";
 /** Where origin pushes now, when publishing waits for the user to confirm it (I-008). */
 export interface RemotePrompt {
   urls: string[];
-  // The address harness recorded before, when origin changed since.
+  // The address Nest recorded before, when origin changed since.
   confirmed: string | null;
 }
 
@@ -110,7 +110,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // The chats on screen whose last load failed, tried again after a reconnect.
   const failed = new Set<string>();
   // The stored events that arrived during each snapshot request in flight.
-  const arriving = new Set<HarnessEvent[]>();
+  const arriving = new Set<NestEvent[]>();
   // The last save of each pixie, and of the pixie order: the next one waits for it, so a
   // quick second edit reaches the Mac after the first and is the one that stays.
   const saving = new Map<string, Promise<unknown>>();
@@ -175,7 +175,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
    * snapshot may be older than they are. Transcripts already hold them without duplicates.
    */
   async function snapshot<T>(fetch: () => Promise<T>, apply: (loaded: T) => void): Promise<void> {
-    const arrived: HarnessEvent[] = [];
+    const arrived: NestEvent[] = [];
     arriving.add(arrived);
     try {
       apply(await fetch());
@@ -443,7 +443,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     /** A live event from the socket. */
-    receive(event: HarnessEvent): void {
+    receive(event: NestEvent): void {
       if (event.id !== null) {
         for (const arrived of arriving) arrived.push(event);
       }
@@ -714,11 +714,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       await loadClaudeChats();
     },
 
-    claudeChatEvents(id: string): Promise<HarnessEvent[] | null> {
+    claudeChatEvents(id: string): Promise<NestEvent[] | null> {
       return attempt(() => api.claudeChatEvents(id));
     },
 
-    /** Continues the chat in harness: it becomes a session and leaves the Claude Code list. */
+    /** Continues the chat in Nest: it becomes a session and leaves the Claude Code list. */
     async adoptClaudeChat(chat: ClaudeChat): Promise<Session | null> {
       const session = await attempt(() => api.adoptClaudeChat(chat.id));
       if (session === null) return null;
@@ -727,7 +727,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return session;
     },
 
-    /** Archives or restores a Claude Code chat in harness; Claude Code never sees it (D040). */
+    /** Archives or restores a Claude Code chat in Nest; Claude Code never sees it (D040). */
     async archiveClaudeChat(chat: ClaudeChat, archived: boolean): Promise<boolean> {
       const updated = await attempt(() => api.setClaudeChatArchived(chat.id, archived));
       if (updated === null) return false;

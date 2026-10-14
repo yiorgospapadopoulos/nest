@@ -283,7 +283,7 @@
   height: 14px;
   margin-top: 1px;
 }
-/* Where approving pushes, and commits on the branch that harness did not make. */
+/* Where approving pushes, and commits on the branch that Nest did not make. */
 .dpush {
   display: flex;
   align-items: center;

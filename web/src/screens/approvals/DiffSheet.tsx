@@ -58,7 +58,7 @@ export function ReviewSummary({ review }: { review: Review }) {
   );
 }
 
-/** Where approving pushes, and any commits on it that harness did not make. */
+/** Where approving pushes, and any commits on it that Nest did not make. */
 export function ReviewHead({ diff }: { diff: SessionDiff }) {
   return (
     <>
@@ -69,10 +69,10 @@ export function ReviewHead({ diff }: { diff: SessionDiff }) {
         </p>
       )}
       {diff.commits.length > 0 && (
-        <div className="vio" role="group" aria-label="Commits harness did not make">
+        <div className="vio" role="group" aria-label="Commits Nest did not make">
           <p>
             <Icon name="shield" />
-            These commits are on the branch, but harness did not make them. Check them before
+            These commits are on the branch, but Nest did not make them. Check them before
             publishing.
           </p>
           <ul className="dcommits">

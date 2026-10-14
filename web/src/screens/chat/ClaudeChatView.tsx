@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { HarnessEvent } from "../../api/types.ts";
+import type { NestEvent } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts";
 import { Pill } from "../../ui/bits.tsx";
@@ -16,11 +16,11 @@ interface Props {
 const isMessage = (item: TranscriptItem): item is MessageEntry =>
   item.kind !== "approval" && item.kind !== "pixie" && item.kind !== "card";
 
-/** A Claude Code chat's history, read only, until the user continues it in harness. */
+/** A Claude Code chat's history, read only, until the user continues it in Nest. */
 export function ClaudeChatView({ id, onBack, onOpen }: Props) {
   const { state, actions } = useStore();
   const chat = state.claudeChats[id];
-  const [events, setEvents] = useState<HarnessEvent[] | null>(null);
+  const [events, setEvents] = useState<NestEvent[] | null>(null);
   const [adopting, setAdopting] = useState(false);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
 
   useEffect(() => {
     if (chat !== undefined) return;
-    // Continued in harness (here or on another device), or gone from Claude Code.
+    // Continued in Nest (here or on another device), or gone from Claude Code.
     const adopted = Object.values(state.sessions).find((s) => s.provider_session_id === id);
     if (adopted === undefined) onBack();
     else onOpen(adopted.id);
@@ -87,11 +87,11 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
       <div className="comp gl ccfoot">
         <p className="cnote">
           {open
-            ? "Open in Claude Code right now. Close it there before sending from harness."
+            ? "Open in Claude Code right now. Close it there before sending from Nest."
             : "Read only. Continue it here to send messages."}
         </p>
         <button className="b b-pri" disabled={adopting} onClick={() => void continueHere()}>
-          Continue in harness
+          Continue in Nest
         </button>
       </div>
     </Frame>

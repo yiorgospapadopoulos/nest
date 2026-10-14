@@ -4,7 +4,7 @@ import { ApiError } from "../../api/client.ts";
 import type {
   Approval,
   BackgroundItem,
-  HarnessEvent,
+  NestEvent,
   Session,
   TrackedAgent,
 } from "../../api/types.ts";
@@ -26,7 +26,7 @@ import { renderApp } from "../../test/render.tsx";
 
 interface Setup {
   chat?: Session;
-  events?: HarnessEvent[];
+  events?: NestEvent[];
   agents?: TrackedAgent[];
   approvals?: Approval[];
 }
@@ -142,7 +142,7 @@ describe("chat view", () => {
   it("says it is loading until the chat's history arrives", async () => {
     const api = fakeApi();
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
-    let arrive: (events: HarnessEvent[]) => void = () => undefined;
+    let arrive: (events: NestEvent[]) => void = () => undefined;
     api.sessionEvents.mockReturnValue(
       new Promise((resolve) => {
         arrive = resolve;

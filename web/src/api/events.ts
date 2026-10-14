@@ -1,6 +1,6 @@
-import type { HarnessEvent } from "./types.ts";
+import type { NestEvent } from "./types.ts";
 
-// The daemon's close codes (daemon/src/harness/api/routes/events.py).
+// The daemon's close codes (daemon/src/nestd/api/routes/events.py).
 export const UNAUTHENTICATED = 4401;
 export const FORBIDDEN_ORIGIN = 4403;
 
@@ -14,7 +14,7 @@ export interface SocketLike {
 export type SocketFactory = (url: string) => SocketLike;
 
 export interface StreamHandlers {
-  onEvent(event: HarnessEvent): void;
+  onEvent(event: NestEvent): void;
   // `resumed` is false when events may have been missed, so snapshots should be reloaded.
   onOpen(resumed: boolean): void;
   // The socket closed and a reconnect is on its way.
@@ -114,9 +114,9 @@ export class EventStream {
 
   private receive(data: unknown): void {
     if (typeof data !== "string") return;
-    let event: HarnessEvent;
+    let event: NestEvent;
     try {
-      event = JSON.parse(data) as HarnessEvent;
+      event = JSON.parse(data) as NestEvent;
     } catch {
       return;
     }

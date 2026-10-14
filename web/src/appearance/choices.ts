@@ -50,4 +50,4 @@ export const DEFAULT_APPEARANCE: Appearance = {
   glass: "clear",
 };
 
-export const STORAGE_KEY = "harness.appearance";
+export const STORAGE_KEY = "nest.appearance";

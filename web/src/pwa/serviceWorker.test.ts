@@ -92,7 +92,9 @@ describe("service worker", () => {
   it("precaches the shell on install and drops old caches on activate", async () => {
     const { scope, stores, listeners, claim, skipWaiting } = setup();
     installWorker(scope);
-    await scope.caches.open("harness-shell-v0");
+    await scope.caches.open("nest-shell-v0");
+    // The cache from before the rename to Nest (B43).
+    await scope.caches.open("harness-shell-v1");
 
     let pending: Promise<unknown> = Promise.resolve();
     const waitUntil = (p: Promise<unknown>) => {
@@ -374,14 +376,14 @@ describe("push notifications", () => {
 
     await fire(listeners.get("push"), {
       data: pushData({
-        title: "Needs approval · harness",
+        title: "Needs approval · Nest",
         body: "Fix: Bash",
         url: "/inbox",
         tag: "s1",
       }),
     });
 
-    expect(showNotification).toHaveBeenCalledWith("Needs approval · harness", {
+    expect(showNotification).toHaveBeenCalledWith("Needs approval · Nest", {
       body: "Fix: Bash",
       icon: ICON,
       tag: "s1",
@@ -395,23 +397,23 @@ describe("push notifications", () => {
     const { scope, listeners, showNotification } = setup();
     installWorker(scope);
     await fire(listeners.get("push"), { data: null });
-    expect(showNotification).toHaveBeenCalledWith("harness", {
+    expect(showNotification).toHaveBeenCalledWith("Nest", {
       body: "",
       icon: ICON,
       data: { url: "/inbox" },
     });
 
-    expect(parsePush(null)).toEqual({ title: "harness", body: "", url: "/inbox" });
+    expect(parsePush(null)).toEqual({ title: "Nest", body: "", url: "/inbox" });
     expect(
       parsePush({
         json: () => {
           throw new SyntaxError("not json");
         },
       }),
-    ).toEqual({ title: "harness", body: "", url: "/inbox" });
-    expect(parsePush(pushData("text"))).toEqual({ title: "harness", body: "", url: "/inbox" });
+    ).toEqual({ title: "Nest", body: "", url: "/inbox" });
+    expect(parsePush(pushData("text"))).toEqual({ title: "Nest", body: "", url: "/inbox" });
     expect(parsePush(pushData({ title: 3, url: "https://evil.example/x" }))).toEqual({
-      title: "harness",
+      title: "Nest",
       body: "",
       url: "/inbox",
     });

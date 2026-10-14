@@ -84,9 +84,7 @@ export function Projects({
     <>
       <PixieSection onOpen={onOpenPixie} />
       {state.repos.length === 0 && (
-        <p className="sempty">
-          No projects yet. Add one on your Mac with <code>harness</code>.
-        </p>
+        <p className="sempty">No projects yet. Add one in the Nest app on your Mac.</p>
       )}
       <div className="pchips" role="tablist" aria-label="Projects">
         {state.repos.map((repo) => {

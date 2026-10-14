@@ -4,7 +4,7 @@ import type { Draft } from "./state.ts";
 // Choices remembered on this device only. Storage can be unavailable (private browsing,
 // blocked site data); the choice then lasts until the app is reloaded.
 
-export const SHOW_AUTOMATED_KEY = "harness.showAutomatedChats";
+export const SHOW_AUTOMATED_KEY = "nest.showAutomatedChats";
 
 export function loadShowAutomated(storage: () => Storage): boolean {
   try {
@@ -23,7 +23,7 @@ export function saveShowAutomated(storage: () => Storage, on: boolean): void {
 }
 
 // The teams folded in the pixie list (B40), by id.
-export const FOLDED_TEAMS_KEY = "harness.foldedTeams";
+export const FOLDED_TEAMS_KEY = "nest.foldedTeams";
 
 export function loadFoldedTeams(storage: () => Storage): string[] {
   let saved: unknown;
@@ -44,7 +44,7 @@ export function saveFoldedTeams(storage: () => Storage, ids: string[]): void {
 }
 
 // Unsent messages, per chat (see draftKey), so a reload or a closed app keeps them.
-export const DRAFTS_KEY = "harness.drafts";
+export const DRAFTS_KEY = "nest.drafts";
 
 function attachmentOf(value: unknown): Attachment[] {
   if (typeof value !== "object" || value === null) return [];

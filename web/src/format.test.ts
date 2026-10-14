@@ -51,7 +51,7 @@ describe("resetLabel", () => {
 describe("initials", () => {
   it("takes the first letters of the first two words", () => {
     expect(initials("todo-ui")).toBe("TU");
-    expect(initials("harness")).toBe("H");
+    expect(initials("nest")).toBe("N");
     expect(initials("--")).toBe("?");
   });
 });

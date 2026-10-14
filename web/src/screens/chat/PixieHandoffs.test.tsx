@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { HarnessEvent, Session } from "../../api/types.ts";
+import type { NestEvent, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { detail, event, pixie, prStatus, repo, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
@@ -10,7 +10,7 @@ const tester = pixie({ id: "p1", name: "Tester", mascot: "owl", chat_session_id:
 const pixieChat = session({ id: "pc", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
 
 /** The app with these project chats, and the events of whichever chat is opened. */
-function withChats(chats: Session[], events: Record<string, HarnessEvent[]> = {}): FakeApi {
+function withChats(chats: Session[], events: Record<string, NestEvent[]> = {}): FakeApi {
   const api = fakeApi();
   api.pixies.mockResolvedValue([tester]);
   api.repos.mockResolvedValue([repo("todo-ui")]);

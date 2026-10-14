@@ -39,7 +39,7 @@ export const PROJECT_ACCESS: Record<ProjectAccess, Choice> = {
   none: { label: "None", hint: "Works only in its own folder" },
 };
 
-// What each level lets the pixie do with harness tools in its chat runs (B41).
+// What each level lets the pixie do with Nest tools in its chat runs (B41).
 export const AUTONOMY: Record<Autonomy, Choice> = {
   observe: { label: "Observe", hint: "Reads chats in its projects" },
   message: { label: "Message", hint: "Also writes to them, nudges or stops them" },
@@ -72,7 +72,7 @@ export function startedByText(name: string | undefined): string {
   return name === undefined ? "Started by a pixie" : `Started by ${name}`;
 }
 
-/** A harness tool's name as words, as the Mac shows it: "start_session" is "Start session". */
+/** A Nest tool's name as words, as the Mac shows it: "start_session" is "Start session". */
 export function toolWords(name: string): string {
   const words = name.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);

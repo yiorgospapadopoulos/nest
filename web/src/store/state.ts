@@ -8,7 +8,7 @@ import type {
   Connector,
   Habit,
   HabitRun,
-  HarnessEvent,
+  NestEvent,
   ModelOption,
   NotificationSettings,
   Pixie,
@@ -76,7 +76,7 @@ export interface State {
   habitRuns: Record<string, HabitRun[]>;
   // The teams folded in the pixie list; remembered on this device.
   foldedTeams: string[];
-  // Claude Code chats of the projects that harness does not own, by Claude Code session id.
+  // Claude Code chats of the projects that Nest does not own, by Claude Code session id.
   claudeChats: Record<string, ClaudeChat>;
   // List chats programs started through an Agent SDK too; remembered on this device.
   showAutomated: boolean;
@@ -84,7 +84,7 @@ export interface State {
   approvals: Record<string, Approval>;
   tracking: Record<string, Tracking>;
   // Stored events of the chats that were opened, oldest first.
-  transcripts: Record<string, HarnessEvent[]>;
+  transcripts: Record<string, NestEvent[]>;
   history: Record<string, HistoryStatus>;
   // Assistant text streaming in before its message is complete.
   live: Record<string, string>;
@@ -164,14 +164,14 @@ export type Action =
   | { type: "approval"; approval: Approval }
   | { type: "tracking"; id: string; tracking: Tracking }
   | { type: "transcriptOpened"; id: string }
-  | { type: "transcriptLoaded"; id: string; events: HarnessEvent[] }
+  | { type: "transcriptLoaded"; id: string; events: NestEvent[] }
   | { type: "transcriptClosed"; id: string }
   | { type: "historyFailed"; id: string }
   | { type: "queued"; id: string; queued: QueuedMessage[] }
   | { type: "queuedRemoved"; id: string; queuedId: string }
-  | { type: "event"; event: HarnessEvent }
+  | { type: "event"; event: NestEvent }
   // Stored events applied again after a snapshot that may predate them.
-  | { type: "replayed"; events: HarnessEvent[] }
+  | { type: "replayed"; events: NestEvent[] }
   // Ephemeral output (streamed text, thinking) that a refetch made stale.
   | { type: "liveCleared"; id: string }
   | { type: "draftText"; key: string; text: string }

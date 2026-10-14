@@ -34,8 +34,8 @@ export function Pairing() {
       <form className="pair gl" onSubmit={(e) => void submit(e)} aria-labelledby="pair-title">
         <h1 id="pair-title">Pair this iPhone</h1>
         <p>
-          On your Mac, run <code>harness pair</code> or open Pairing in the harness app, then enter
-          the code it shows.
+          On your Mac, run <code>nestd pair</code> or open Pairing in the Nest app, then enter the
+          code it shows.
         </p>
         <label className="flbl" htmlFor="pair-code">
           Pairing code

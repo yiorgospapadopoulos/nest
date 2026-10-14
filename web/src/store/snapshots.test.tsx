@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Approval, ClaudeChat, HarnessEvent, JsonValue } from "../api/types.ts";
+import type { Approval, ClaudeChat, NestEvent, JsonValue } from "../api/types.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import { approval, detail, event, session } from "../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../test/render.tsx";
@@ -26,7 +26,7 @@ describe("a snapshot that loads while live events arrive", () => {
     const api = fakeApi();
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
     api.session.mockResolvedValue(detail(chat));
-    const history = deferred<HarnessEvent[]>();
+    const history = deferred<NestEvent[]>();
     api.sessionEvents.mockReturnValue(history.promise);
     const { user, push } = await renderApp({ api });
     await user.click(screen.getByRole("tab", { name: "Projects" }));
@@ -119,7 +119,7 @@ describe("a closed chat", () => {
 
   it("stays out of memory when its history arrives after it closed", async () => {
     const { api, actions, state } = store();
-    const history = deferred<HarnessEvent[]>();
+    const history = deferred<NestEvent[]>();
     api.sessionEvents.mockReturnValue(history.promise);
     const opening = actions.openChat("s1");
 

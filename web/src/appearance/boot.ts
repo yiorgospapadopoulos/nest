@@ -4,6 +4,9 @@
 
 import { ACCENTS, DEFAULT_APPEARANCE, GLASSES, STORAGE_KEY } from "./choices.ts";
 
+// Where the appearance was saved before the rename to Nest (B43), until the app moves it.
+const LEGACY_STORAGE_KEY = "harness.appearance";
+
 export interface Colors {
   light: string;
   dark: string;
@@ -27,7 +30,10 @@ export function appearanceBootScript(): string {
   const d = DEFAULT_APPEARANCE;
   return `(function () {
   try {
-    var saved = JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}) || "{}") || {};
+    var raw =
+      localStorage.getItem(${JSON.stringify(STORAGE_KEY)}) ||
+      localStorage.getItem(${JSON.stringify(LEGACY_STORAGE_KEY)});
+    var saved = JSON.parse(raw || "{}") || {};
     var root = document.documentElement;
     var pick = function (list, value) {
       return list.indexOf(value) >= 0 ? value : null;

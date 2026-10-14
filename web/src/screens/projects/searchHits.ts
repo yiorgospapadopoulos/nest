@@ -5,7 +5,7 @@ export interface ChatHits {
   id: string;
   repo: string;
   title: string;
-  // A Claude Code chat harness does not own; it opens read only.
+  // A Claude Code chat Nest does not own; it opens read only.
   claude: boolean;
   // The title match, if the title matched.
   titleHit: SearchHit | null;

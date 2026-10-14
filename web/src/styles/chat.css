@@ -1410,7 +1410,7 @@
 .m-from .pxs {
   display: block;
 }
-/* What harness tells a pixie once the chats it started have finished. */
+/* What Nest tells a pixie once the chats it started have finished. */
 .m-rep {
   display: grid;
   gap: 2px;

@@ -1,5 +1,5 @@
 import type { SocketLike } from "../api/events.ts";
-import type { HarnessEvent } from "../api/types.ts";
+import type { NestEvent } from "../api/types.ts";
 
 /** A socket the test drives: open it, push events, close it with a code. */
 export class FakeSocket implements SocketLike {
@@ -17,8 +17,8 @@ export class FakeSocket implements SocketLike {
     this.onopen?.();
   }
 
-  emit(event: Partial<HarnessEvent> & { type: string }): void {
-    const full: HarnessEvent = {
+  emit(event: Partial<NestEvent> & { type: string }): void {
+    const full: NestEvent = {
       id: null,
       ts: "2026-10-06T10:00:00Z",
       session_id: null,

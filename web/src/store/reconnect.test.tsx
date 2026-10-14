@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { HarnessEvent, Session } from "../api/types.ts";
+import type { NestEvent, Session } from "../api/types.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import { detail, event, repo, session } from "../test/fixtures.ts";
 import { renderApp } from "../test/render.tsx";
@@ -8,7 +8,7 @@ import { renderApp } from "../test/render.tsx";
 const said = (id: number, text: string) =>
   event({ id, type: "session.message", payload: { blocks: [{ type: "text", text }] } });
 
-async function openChat(chat: Session, events: HarnessEvent[]) {
+async function openChat(chat: Session, events: NestEvent[]) {
   const api = fakeApi();
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));

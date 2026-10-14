@@ -24,7 +24,7 @@ describe("this device", () => {
     installBrowserPush({ standalone: false, push: false });
     await openAccount();
 
-    expect(await screen.findByText(/Add harness to your Home Screen first/)).toBeInTheDocument();
+    expect(await screen.findByText(/Add Nest to your Home Screen first/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enable notifications" })).not.toBeInTheDocument();
   });
 

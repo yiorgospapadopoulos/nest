@@ -22,7 +22,7 @@ function entry(overrides: Partial<PixieActivity> = {}): PixieActivity {
   };
 }
 
-describe("Pixie harness tools in its details (B41)", () => {
+describe("Pixie Nest tools in its details (B41)", () => {
   it("explains what each autonomy level lets the pixie do", async () => {
     const { user } = await details();
 

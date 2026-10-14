@@ -31,8 +31,8 @@ export const ICON_SIZES = { "icon-192.png": 192, "icon-512.png": 512, "apple-tou
 /** The manifest, plus each icon as `read` returns its file. */
 export function pwaAssets(colors: Colors, read: (fileName: string) => Uint8Array): Asset[] {
   const manifest = {
-    name: "harness",
-    short_name: "harness",
+    name: "Nest",
+    short_name: "Nest",
     description: "Approve, review and steer your coding agents.",
     start_url: "/",
     scope: "/",
@@ -57,7 +57,7 @@ export function pwaAssets(colors: Colors, read: (fileName: string) => Uint8Array
 export function pwa(tokensPath: string, iconsDir: string): Plugin {
   const colors = () => tokenColors(readFileSync(tokensPath, "utf8"));
   return {
-    name: "harness-pwa",
+    name: "nest-pwa",
     transformIndexHtml(html) {
       return html.replace(
         "<!-- theme-color -->",

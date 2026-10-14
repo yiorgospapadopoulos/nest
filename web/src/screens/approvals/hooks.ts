@@ -128,7 +128,7 @@ export function useReview(approval: Approval, session: Session | undefined) {
         ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
       });
       if (typeof result === "object") setRemote({ ...result.remote, message });
-      // Refused: show the branch as it is now, with any commits harness did not make.
+      // Refused: show the branch as it is now, with any commits Nest did not make.
       if (result === "refused" || typeof result === "object") loadDiff();
       return result === "approved";
     });

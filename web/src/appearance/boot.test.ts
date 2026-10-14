@@ -65,6 +65,19 @@ describe("the appearance before first paint", () => {
     expect(booted).toEqual(applied);
   });
 
+  it("uses the appearance saved before the rename until the app moves it (B43)", () => {
+    const storage = memoryStorage();
+    storage.setItem("harness.appearance", JSON.stringify({ theme: "dark", accent: "teal" }));
+    Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+
+    const booted = pageAfter(() => {
+      runInline(appearanceBootScript());
+    });
+
+    expect(booted.attributes).toEqual({ "data-theme": "dark", "data-accent": "teal" });
+    expect(booted.colors).toEqual([COLORS.dark, COLORS.dark]);
+  });
+
   it("leaves the page as it is when storage cannot be read", () => {
     Object.defineProperty(window, "localStorage", {
       configurable: true,

@@ -147,7 +147,7 @@ describe("project settings", () => {
     await user.click(within(sheet).getByRole("button", { name: "Remove project" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove todo-ui?" });
     expect(confirm).toHaveTextContent(
-      "harness forgets this project. Its folder stays on your Mac, untouched.",
+      "Nest forgets this project. Its folder stays on your Mac, untouched.",
     );
     await user.click(within(confirm).getByRole("button", { name: "Remove" }));
 

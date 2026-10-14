@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   Approval,
   BackgroundSummary,
-  HarnessEvent,
+  NestEvent,
   JsonObject,
   Session,
 } from "../../api/types.ts";
@@ -25,7 +25,7 @@ interface Options {
 
 async function openChat(
   chat: Session,
-  events: HarnessEvent[],
+  events: NestEvent[],
   { background, clock, approvals = [] }: Options = {},
 ) {
   const api = fakeApi();
@@ -540,7 +540,7 @@ describe("the background bar of a reopened chat", () => {
     expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
 
-    let finish: (events: HarnessEvent[]) => void = () => undefined;
+    let finish: (events: NestEvent[]) => void = () => undefined;
     api.sessionEvents.mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;

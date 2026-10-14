@@ -13,7 +13,7 @@ import type {
   Habit,
   HabitBody,
   HabitRun,
-  HarnessEvent,
+  NestEvent,
   MergeBody,
   ModelList,
   MonthUsage,
@@ -83,7 +83,7 @@ export interface Api {
   updateRepo(name: string, patch: RepoPatch): Promise<RepoConfig>;
   sessions(archived: boolean): Promise<Session[]>;
   session(id: string): Promise<SessionDetail>;
-  sessionEvents(id: string): Promise<HarnessEvent[]>;
+  sessionEvents(id: string): Promise<NestEvent[]>;
   createSession(body: CreateSessionBody): Promise<Session>;
   // While a turn runs the message is queued (`queued_message`) instead of refused; with
   // `interrupt` the turn is stopped and the message starts right after it.
@@ -102,7 +102,7 @@ export interface Api {
   deleteSession(id: string): Promise<null>;
   search(query: string): Promise<SearchResults>;
   claudeChats(includeAutomated?: boolean): Promise<ClaudeChat[]>;
-  claudeChatEvents(id: string): Promise<HarnessEvent[]>;
+  claudeChatEvents(id: string): Promise<NestEvent[]>;
   adoptClaudeChat(id: string): Promise<Session>;
   setClaudeChatArchived(id: string, archived: boolean): Promise<ClaudeChat>;
   approvals(): Promise<Approval[]>;
@@ -208,7 +208,7 @@ export class HttpApi implements Api {
   }
 
   sessionEvents(id: string) {
-    return this.json<HarnessEvent[]>("GET", `${session(id)}/events`);
+    return this.json<NestEvent[]>("GET", `${session(id)}/events`);
   }
 
   createSession(body: CreateSessionBody) {
@@ -270,7 +270,7 @@ export class HttpApi implements Api {
   }
 
   claudeChatEvents(id: string) {
-    return this.json<HarnessEvent[]>("GET", `${claudeChat(id)}/events`);
+    return this.json<NestEvent[]>("GET", `${claudeChat(id)}/events`);
   }
 
   adoptClaudeChat(id: string) {

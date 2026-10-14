@@ -19,7 +19,7 @@ import { StartedBy } from "../pixies/StartedBy.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
-// continued in harness, or a pixie's page (D072).
+// continued in Nest, or a pixie's page (D072).
 export type ChatTarget =
   | { id: string; event?: number }
   | { draft: string }

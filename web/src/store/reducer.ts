@@ -5,7 +5,7 @@ import type {
   Connector,
   Habit,
   HabitRun,
-  HarnessEvent,
+  NestEvent,
   JsonObject,
   JsonValue,
   LimitWindow,
@@ -213,7 +213,7 @@ export function reduce(state: State, action: Action): State {
 }
 
 /** Fold one live event from the socket into the state. */
-export function applyEvent(state: State, event: HarnessEvent): State {
+export function applyEvent(state: State, event: NestEvent): State {
   const next = withTranscript(state, event);
   const id = event.session_id;
   const p = event.payload;
@@ -402,7 +402,7 @@ function withoutTeam(state: State, id: string): State {
   };
 }
 
-function withTranscript(state: State, event: HarnessEvent): State {
+function withTranscript(state: State, event: NestEvent): State {
   const id = event.session_id;
   if (id === null || event.id === null) return state;
   const events = state.transcripts[id];
@@ -410,7 +410,7 @@ function withTranscript(state: State, event: HarnessEvent): State {
   return { ...state, transcripts: { ...state.transcripts, [id]: [...events, event] } };
 }
 
-function merge(current: HarnessEvent[], loaded: HarnessEvent[]): HarnessEvent[] {
+function merge(current: NestEvent[], loaded: NestEvent[]): NestEvent[] {
   // Every transcript event is a stored one, so ids are never null here.
   const byId = new Map([...loaded, ...current].map((event) => [Number(event.id), event]));
   return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));

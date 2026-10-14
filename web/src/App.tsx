@@ -53,7 +53,7 @@ function Root() {
     case "offline":
       return (
         <Notice title="Can't reach your Mac">
-          Check that the Mac is awake and harness is running.
+          Check that the Mac is awake and Nest is running.
           <button className="b b-pri" onClick={() => void actions.retry()}>
             Try again
           </button>

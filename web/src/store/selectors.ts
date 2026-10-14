@@ -2,7 +2,7 @@ import type {
   Approval,
   BackgroundSummary,
   ClaudeChat,
-  HarnessEvent,
+  NestEvent,
   Pixie,
   PixieReport,
   PixieTeam,
@@ -120,7 +120,7 @@ export function chatGroup(session: Session, status: ChatStatus): ChatGroup {
   return "idle";
 }
 
-/** A harness session, or a Claude Code chat harness can continue (always idle). */
+/** A Nest session, or a Claude Code chat Nest can continue (always idle). */
 export type ChatEntry =
   | { session: Session; chat?: undefined; status: ChatStatus }
   | { chat: ClaudeChat; session?: undefined; status: ChatStatus };
@@ -285,7 +285,7 @@ export function isRunning(state: State, repo: string): boolean {
 }
 
 /** The event each tool call was made in, by tool use id. */
-function callEvents(events: HarnessEvent[]): Map<string, number> {
+function callEvents(events: NestEvent[]): Map<string, number> {
   const calls = new Map<string, number>();
   for (const e of events) {
     if (e.type !== "session.message") continue;
@@ -307,7 +307,7 @@ function callEvents(events: HarnessEvent[]): Map<string, number> {
  */
 export function exchangeBackground(
   summary: BackgroundSummary,
-  events: HarnessEvent[] | undefined,
+  events: NestEvent[] | undefined,
 ): BackgroundSummary {
   const all = events ?? [];
   const message = all.findLast((e) => e.type === "session.user_message");

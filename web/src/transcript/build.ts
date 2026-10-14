@@ -3,7 +3,7 @@ import type {
   Approval,
   HabitSchedule,
   HabitTrigger,
-  HarnessEvent,
+  NestEvent,
   JsonObject,
   JsonValue,
   Pixie,
@@ -72,7 +72,7 @@ export type CardItem = { kind: "card"; key: string } & (
 export type TranscriptItem =
   // `from`: the pixie that sent it into this chat (B41).
   | { kind: "user"; key: string; text: string; attachments: string[]; from?: string }
-  // What harness tells a pixie once the chats it started have finished (B41), or after a
+  // What Nest tells a pixie once the chats it started have finished (B41), or after a
   // habit run reported (B42, titled "Habit report").
   | { kind: "report"; key: string; text: string; title?: string }
   | CardItem
@@ -112,7 +112,7 @@ const TRIGGERS: ReadonlySet<string> = new Set(["stuck", "failed", "review_ready"
  * background task (by tool use id in `running`) still runs.
  */
 export function buildTranscript(
-  events: HarnessEvent[],
+  events: NestEvent[],
   pending: Record<string, Approval>,
   root: string | null,
   running: ReadonlySet<string> = NO_TASKS,
@@ -314,7 +314,7 @@ function endTurn(items: TranscriptItem[], key: string, p: JsonObject, ms: number
  * When the running turn started, for its live timer: its `turn_start` mark, or its user
  * message in history from before the mark existed. Null when no turn runs.
  */
-export function turnStart(events: HarnessEvent[]): string | null {
+export function turnStart(events: NestEvent[]): string | null {
   for (const e of [...events].reverse()) {
     if (e.type === "session.user_message") return e.ts;
     if (e.type !== "session.state") continue;
@@ -485,7 +485,7 @@ function failure(error: string | null): string {
   return error === null ? "Failed" : `Failed: ${error}`;
 }
 
-function systemText(e: HarnessEvent): string | null {
+function systemText(e: NestEvent): string | null {
   const p = e.payload;
   switch (e.type) {
     case "session.setup_failed":

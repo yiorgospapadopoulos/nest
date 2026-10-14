@@ -168,7 +168,7 @@ function RemoveProject({ repo }: { repo: RepoConfig }) {
           title={
             <>
               <b>{`Remove ${repo.name}?`}</b>
-              harness forgets this project. Its folder stays on your Mac, untouched.
+              Nest forgets this project. Its folder stays on your Mac, untouched.
               {count === 1 && " Its chat is deleted too, with its worktree and branch."}
               {count > 1 &&
                 ` Its ${String(count)} chats are deleted too, with their worktrees and branches.`}

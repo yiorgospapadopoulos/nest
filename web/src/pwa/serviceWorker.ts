@@ -5,7 +5,7 @@
 // The worker is registered as a classic script, so the app must never import this module:
 // a module shared by both would be split into a chunk the worker cannot load.
 
-export const CACHE = "harness-shell-v1";
+export const CACHE = "nest-shell-v1";
 // How long a page may take before the cached shell opens instead.
 export const NAVIGATION_TIMEOUT_MS = 4000;
 export const SHELL = [
@@ -46,7 +46,7 @@ export interface NavigateMessage {
 }
 
 // Must match src/pwa/navigate.ts, the app's side.
-export const NAVIGATE = "harness:navigate";
+export const NAVIGATE = "nest:navigate";
 export const ICON = "/icon-192.png";
 
 export interface WorkerScope {
@@ -122,7 +122,7 @@ export function parsePush(data: PushEvent["data"]): PushPayload {
   const text = (key: string) => (typeof fields[key] === "string" ? fields[key] : undefined);
   const tag = text("tag");
   return {
-    title: text("title") ?? "harness",
+    title: text("title") ?? "Nest",
     body: text("body") ?? "",
     url: appPath({ url: text("url") }),
     ...(tag === undefined ? {} : { tag }),

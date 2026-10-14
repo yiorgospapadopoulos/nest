@@ -81,9 +81,9 @@ export function RemoteConfirmation({ review }: { review: Review }) {
               Fix origin on your Mac, then approve again.
             </>
           ) : prompt.confirmed === null ? (
-            `origin pushes to ${url}. harness pushes only to an address you confirmed.`
+            `origin pushes to ${url}. Nest pushes only to an address you confirmed.`
           ) : (
-            `origin now pushes to ${url} instead of ${prompt.confirmed}, the address harness recorded.`
+            `origin now pushes to ${url} instead of ${prompt.confirmed}, the address Nest recorded.`
           )}
         </>
       }

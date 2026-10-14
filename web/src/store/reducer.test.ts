@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { HarnessEvent, JsonValue } from "../api/types.ts";
+import type { NestEvent, JsonValue } from "../api/types.ts";
 import {
   approval,
   connector,
@@ -30,7 +30,7 @@ function loaded(): State {
   });
 }
 
-const apply = (state: State, e: HarnessEvent) => reduce(state, { type: "event", event: e });
+const apply = (state: State, e: NestEvent) => reduce(state, { type: "event", event: e });
 
 describe("reduce", () => {
   it("loads snapshots, keeping only pending approvals", () => {

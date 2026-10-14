@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { HarnessEvent, Session } from "../../api/types.ts";
+import type { NestEvent, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { claudeChat, detail, event, repo, session } from "../../test/fixtures.ts";
@@ -14,7 +14,7 @@ const asked = (id: number, text: string) =>
 
 async function openChat(
   chat: Session = session(),
-  events: HarnessEvent[] = [asked(3, "Add zod"), asked(7, "Now the tests")],
+  events: NestEvent[] = [asked(3, "Add zod"), asked(7, "Now the tests")],
   api: FakeApi = fakeApi(),
 ) {
   api.repos.mockResolvedValue([repo("todo-ui")]);

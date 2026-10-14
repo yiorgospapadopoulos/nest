@@ -41,7 +41,7 @@ describe("pwa assets", () => {
     ]);
     expect(new TextDecoder().decode(assets[2]?.source as Uint8Array)).toBe("icon-512.png");
     expect(manifest).toMatchObject({
-      name: "harness",
+      name: "Nest",
       display: "standalone",
       theme_color: "#eeeeec",
       icons: [
@@ -63,7 +63,7 @@ describe("pwa assets", () => {
     (plugin.generateBundle as (this: unknown) => void).call({ emitFile });
 
     expect(html).toContain('<meta name="theme-color" content="#eeeeec"');
-    expect(html).toContain("<script>(function () {\n  try {\n    var saved = JSON.parse(");
+    expect(html).toContain("<script>(function () {\n  try {\n    var raw =\n");
     expect(emitFile).toHaveBeenCalledTimes(4);
     expect(emitFile).toHaveBeenCalledWith({
       type: "asset",

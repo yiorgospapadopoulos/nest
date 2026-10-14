@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { Approval, HarnessEvent, QueuedMessage, Session } from "../../api/types.ts";
+import type { Approval, NestEvent, QueuedMessage, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import {
@@ -17,7 +17,7 @@ import { renderApp } from "../../test/render.tsx";
 
 interface Setup {
   chat?: Session;
-  events?: HarnessEvent[];
+  events?: NestEvent[];
   approvals?: Approval[];
   queued?: QueuedMessage[];
   api?: FakeApi;

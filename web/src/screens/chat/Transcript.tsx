@@ -347,7 +347,7 @@ function Queued({ message, onCancel }: { message: QueuedMessage; onCancel: () =>
   );
 }
 
-// Pixie calls and cards show only in a harness chat's transcript.
+// Pixie calls and cards show only in a Nest chat's transcript.
 export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" | "card" }>;
 
 interface EntryProps {

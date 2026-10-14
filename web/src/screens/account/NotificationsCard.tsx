@@ -9,9 +9,9 @@ const DEFAULT_QUIET: QuietHours = { start: "22:00", end: "07:00" };
 
 const HINTS: Partial<Record<PushStatus, string>> = {
   install:
-    "Add harness to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.",
+    "Add Nest to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.",
   unsupported: "This browser cannot show notifications.",
-  denied: "Notifications are blocked. Allow them for harness in Settings, Notifications.",
+  denied: "Notifications are blocked. Allow them for Nest in Settings, Notifications.",
 };
 
 /** This device's push subscription, and the daemon's rules shared by every device. */

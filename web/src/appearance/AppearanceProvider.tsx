@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { applyAppearance, loadAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { deviceStorage } from "../store/legacyKeys.ts";
 import { AppearanceContext } from "./context.ts";
 
-const browserStorage = () => window.localStorage;
-
 export function AppearanceProvider({
-  storage = browserStorage,
+  storage = deviceStorage,
   children,
 }: {
   storage?: () => Storage;

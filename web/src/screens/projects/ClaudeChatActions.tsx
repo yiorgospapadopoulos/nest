@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** Archive or unarchive a Claude Code chat; harness keeps that state, Claude Code never sees it. */
+/** Archive or unarchive a Claude Code chat; Nest keeps that state, Claude Code never sees it. */
 export function ClaudeChatActions({ chat, onClose }: Props) {
   const { actions } = useStore();
   const archive = async () => {

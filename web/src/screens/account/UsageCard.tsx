@@ -7,7 +7,7 @@ import { UsageCalendar } from "./UsageCalendar.tsx";
 // Numbers older than this are shown dimmed.
 const STALE_MS = 10 * 60_000;
 
-/** The subscription windows Claude reports, and the month harness counted itself. */
+/** The subscription windows Claude reports, and the month Nest counted itself. */
 export function UsageCard() {
   const { state, actions } = useStore();
   const [refreshing, setRefreshing] = useState(false);
@@ -38,8 +38,8 @@ export function UsageCard() {
         <Meter label="Weekly" window={limits?.seven_day ?? null} now={now} />
         <UsageCalendar />
         <div className="note">
-          Claude reports the 5 hour and weekly limits; harness asks again every few minutes while it
-          is open. Monthly and daily figures are counted by harness.
+          Claude reports the 5 hour and weekly limits; Nest asks again every few minutes while it is
+          open. Monthly and daily figures are counted by Nest.
         </div>
       </div>
     </section>
