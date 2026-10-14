@@ -100,6 +100,17 @@ public enum NotificationPolicy {
         return Set(state.layout.leaves)
     }
 
+    /// On the Pixies tab: the chats of the pixie panes on screen in the focused window.
+    @MainActor
+    public static func visiblePixieChats(app: AppStore, pixies: [Pixie], windowFocused: Bool)
+        -> Set<String>
+    {
+        guard windowFocused else { return [] }
+        let layout = app.pixieState.layout
+        return Set(
+            AppStore.chats(of: layout.maximized.map { [$0] } ?? layout.leaves, among: pixies))
+    }
+
     /// The Dock badge: everything that needs the user (`SessionsStore.attention()`), or
     /// none.
     public static func badge(pending: Int) -> String? {

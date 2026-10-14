@@ -111,6 +111,22 @@ import Testing
         #expect(repos[1].worktree.setupTimeoutSeconds == 300)
     }
 
+    /// B36: a pixie sprite in a pixie colour, or the initials in the default colour.
+    @Test func decodesTheProjectIcon() throws {
+        let repos = Fixture.repos
+        #expect(repos[0].projectIcon == ProjectIcon())
+        #expect(repos[1].projectIcon == ProjectIcon(mascot: .frog, color: "#3DDC84"))
+        // Older daemons send neither key.
+        #expect(Fixture.plainRepo.projectIcon == ProjectIcon())
+        // A sprite this app does not know shows the initials.
+        let json = #"""
+            {"name": "a", "path": "/a", "icon": "dragon", "icon_color": "#000000",
+             "worktree": {"link": [], "setup": [], "setup_timeout_seconds": 900}}
+            """#
+        let repo = try HarnessJSON.decoder.decode(Repo.self, from: Data(json.utf8))
+        #expect(repo.projectIcon == ProjectIcon(mascot: nil, color: "#000000"))
+    }
+
     @Test func aRepoWithoutItsOwnChoiceFollowsTheSharedDefault() throws {
         let json = #"{"link": [], "setup": [], "setup_timeout_seconds": 900, "default": null}"#
         let config = try HarnessJSON.decoder.decode(WorktreeConfig.self, from: Data(json.utf8))

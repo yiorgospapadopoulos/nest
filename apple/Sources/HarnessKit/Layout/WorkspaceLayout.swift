@@ -217,6 +217,16 @@ public struct WorkspaceLayout: Sendable, Hashable {
         return leaves.map { (chat: $0.0, frame: $0.1) }
     }
 
+    /// The pane under a point of a workspace of `size`: the maximized one anywhere in it,
+    /// else the pane whose frame holds the point; none in a gutter or outside.
+    public func pane(at point: CGPoint, in size: CGSize) -> String? {
+        guard CGRect(origin: .zero, size: size).contains(point) else { return nil }
+        if let maximized {
+            return maximized
+        }
+        return paneFrames(in: size).first { $0.frame.contains(point) }?.chat
+    }
+
     /// Opens a chat by click: focus it if open; otherwise add it next to the largest pane
     /// (to its right when both halves stay wide enough to read, else below it); when four are open,
     /// the last pane in reading order shows it instead.

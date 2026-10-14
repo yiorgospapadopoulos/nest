@@ -19,6 +19,16 @@ public final class DraftBook<Draft: AnyObject> {
         return draft
     }
 
+    /// The pane's draft; `prepare` runs once, when it is created.
+    public func draft(for id: String, prepare: (Draft) -> Void) -> Draft {
+        if let draft = drafts[id] {
+            return draft
+        }
+        let draft = draft(for: id)
+        prepare(draft)
+        return draft
+    }
+
     public func remove(_ id: String) {
         drafts[id] = nil
     }

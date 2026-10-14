@@ -68,6 +68,16 @@ public struct ProjectState: Sendable, Hashable {
         pruneTools()
     }
 
+    /// A new chat's first message went: its draft's pane shows the chat, or, for the
+    /// empty workspace's composer, which has no pane, the chat opens in one.
+    public mutating func startChat(fromDraft draft: String, as chat: String, in size: CGSize) {
+        if layout.contains(draft) {
+            replaceChat(draft, with: chat)
+        } else {
+            openChat(chat, in: size)
+        }
+    }
+
     public mutating func closePane(_ id: String) {
         layout.remove(id)
         if selectedChat == id {
@@ -95,6 +105,23 @@ public struct ProjectState: Sendable, Hashable {
         let folder = ToolPane.normalized(folder)
         let open = layout.leaves.compactMap { tools[$0] }
         if let pane = open.first(where: { $0.kind == .terminal && $0.folder == folder }) {
+            view = .workspace
+            layout.open(pane.id, in: size)
+            return (pane, false)
+        }
+        let pane = ToolPane.terminal(in: folder)
+        openTool(pane, in: size)
+        return (pane, true)
+    }
+
+    /// The bottom bar's Terminal button: the project's open terminal pane, whatever
+    /// folder it runs in, focused; else a new one in `folder`. `opened` tells whether its
+    /// shell is new.
+    @discardableResult
+    public mutating func projectTerminal(folder: String, in size: CGSize) -> (
+        pane: ToolPane, opened: Bool
+    ) {
+        if let pane = openTools.first(where: { $0.kind == .terminal }) {
             view = .workspace
             layout.open(pane.id, in: size)
             return (pane, false)
@@ -159,6 +186,8 @@ public final class AppStore {
         static let openProjects = "projects.open"
         static let currentProject = "projects.current"
 
+        static let pixiePanes = "pixies.panes"
+
         static func tools(of project: String) -> String { "projects.tools.\(project)" }
     }
 
@@ -177,6 +206,11 @@ public final class AppStore {
     public private(set) var openProjects: [String]
     public private(set) var currentProject: String?
     public var projects: [String: ProjectState] = [:]
+    /// The Pixies tab's workspace (B37): its panes are pixies, by pixie id, each showing
+    /// the pixie's one ongoing chat. It is kept apart from the projects', so repo reloads,
+    /// `openPanes` and `forgetChat` never touch it; its open pixies are saved in reading
+    /// order and reopen at launch, as a project's terminal and browser panes do.
+    public private(set) var pixieState = ProjectState()
 
     let api: any HarnessAPI
     @ObservationIgnored let store: any KeyValueStore
@@ -189,6 +223,10 @@ public final class AppStore {
         currentProject = store.string(forKey: Key.currentProject)
         for project in openProjects {
             restoreTools(of: project)
+        }
+        let pixies = store.string(forKey: Key.pixiePanes)?.split(separator: "\n") ?? []
+        for pixie in pixies {
+            pixieState.openChat(String(pixie), in: Self.restoreSize)
         }
     }
 
@@ -327,6 +365,40 @@ public final class AppStore {
         }
     }
 
+    // MARK: Pixies tab
+
+    /// Changes the Pixies tab's workspace; the open pixies are saved when they change.
+    public func updatePixies(_ change: (inout ProjectState) -> Void) {
+        let open = pixieState.layout.leaves
+        change(&pixieState)
+        let now = pixieState.layout.leaves
+        if now != open {
+            store.set(now.isEmpty ? nil : now.joined(separator: "\n"), forKey: Key.pixiePanes)
+        }
+    }
+
+    /// Closes the panes of pixies that are gone: `ids` are every pixie there is.
+    public func keepPixies(_ ids: Set<String>) {
+        let gone = pixieState.layout.leaves.filter { !ids.contains($0) }
+        guard !gone.isEmpty else { return }
+        updatePixies { state in
+            for id in gone {
+                state.closePane(id)
+            }
+        }
+    }
+
+    /// The ongoing chats of the pixies open in the Pixies tab.
+    public func openPixieChats(_ pixies: [Pixie]) -> Set<String> {
+        Set(Self.chats(of: pixieState.layout.leaves, among: pixies))
+    }
+
+    /// The chats of the pixies with these ids, in their order; pixies with no chat yet, or
+    /// gone, are left out.
+    static func chats(of ids: [String], among pixies: [Pixie]) -> [String] {
+        ids.compactMap { id in pixies.first { $0.id == id }?.chatSessionID }
+    }
+
     public func openProject(_ name: String, in app: RepoApp) async throws {
         try await api.openRepo(name, in: app)
     }
@@ -348,13 +420,34 @@ public final class AppStore {
     public func changeSettings(
         of name: String, _ change: @escaping @Sendable (inout WorktreeConfig) -> Void
     ) async throws -> Repo? {
+        try await saveSettings(of: name) { repo in
+            var config = repo.worktree
+            change(&config)
+            return RepoPatch(from: repo.worktree, to: config)
+        }
+    }
+
+    /// Changes a project's icon (B36), saved in turn with its other settings like
+    /// `changeSettings`. Nil when the project is gone.
+    @discardableResult
+    public func changeIcon(
+        of name: String, _ change: @escaping @Sendable (inout ProjectIcon) -> Void
+    ) async throws -> Repo? {
+        try await saveSettings(of: name) { repo in
+            var icon = repo.projectIcon
+            change(&icon)
+            return RepoPatch(from: repo.projectIcon, to: icon)
+        }
+    }
+
+    private func saveSettings(
+        of name: String, _ patch: @escaping @Sendable (Repo) -> RepoPatch
+    ) async throws -> Repo? {
         let previous = settingSaves[name]
         let save = Task {
             _ = try? await previous?.value
             guard let repo = repo(name) else { return nil as Repo? }
-            var config = repo.worktree
-            change(&config)
-            let patch = RepoPatch(from: repo.worktree, to: config)
+            let patch = patch(repo)
             guard !patch.isEmpty else { return repo }
             let saved = try await api.updateRepo(name, patch)
             if let index = repos.firstIndex(where: { $0.name == name }) {

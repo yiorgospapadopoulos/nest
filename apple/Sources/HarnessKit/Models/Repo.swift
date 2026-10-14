@@ -9,15 +9,21 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     public var defaultBranch: String?
     public var worktree: WorktreeConfig
     public var git: Bool
+    /// A pixie sprite shown as the project's icon; nil shows its initials (B36).
+    public var icon: Mascot?
+    /// A pixie colour (`#RRGGBB`) for the icon; nil is the default colour.
+    public var iconColor: String?
 
     public var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, path, worktree, git
+        case name, path, worktree, git, icon
         case defaultBranch = "default_branch"
+        case iconColor = "icon_color"
     }
 
-    /// `git` is optional, since older daemons only know git repositories.
+    /// `git` and the icon are optional, since older daemons do not send them. A sprite this
+    /// app does not know shows the initials.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
@@ -25,7 +31,14 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         defaultBranch = try container.decodeIfPresent(String.self, forKey: .defaultBranch)
         worktree = try container.decode(WorktreeConfig.self, forKey: .worktree)
         git = try container.decodeIfPresent(Bool.self, forKey: .git) ?? true
+        icon = try container.decodeIfPresent(Mascot.self, forKey: .icon).flatMap {
+            $0 == .unknown ? nil : $0
+        }
+        iconColor = try container.decodeIfPresent(String.self, forKey: .iconColor)
     }
+
+    /// The project's icon as Project settings edits it.
+    public var projectIcon: ProjectIcon { ProjectIcon(mascot: icon, color: iconColor) }
 
     /// What sits next to the project's name in the toolbar.
     public var badge: ProjectBadge? {
@@ -36,6 +49,20 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     /// Where a new chat works: as chosen, except that a plain folder has no worktrees.
     public func mode(for preferred: SessionMode?) -> SessionMode? {
         git ? preferred : .inPlace
+    }
+}
+
+/// A project's icon: its initials, or a pixie sprite, in the default colour or a pixie
+/// colour (B36).
+public struct ProjectIcon: Sendable, Hashable {
+    /// Nil shows the project's initials.
+    public var mascot: Mascot?
+    /// `#RRGGBB`; nil is the default colour.
+    public var color: String?
+
+    public init(mascot: Mascot? = nil, color: String? = nil) {
+        self.mascot = mascot
+        self.color = color
     }
 }
 
@@ -121,12 +148,18 @@ extension WorktreeConfig {
 public struct RepoPatch: Encodable, Sendable, Hashable {
     /// The worktree default changed; `isDefault` is then the new one, nil following the
     /// agent default.
-    public var changesDefault: Bool
+    public var changesDefault = false
     public var isDefault: Bool?
     public var link: [String]?
     public var setup: [String]?
+    /// The icon's sprite changed; `icon` is then the new one, nil showing the initials.
+    public var changesIcon = false
+    public var icon: Mascot?
+    /// The icon's colour changed; `iconColor` is then the new one, nil the default colour.
+    public var changesIconColor = false
+    public var iconColor: String?
 
-    /// The settings that differ between the two.
+    /// The worktree settings that differ between the two.
     public init(from old: WorktreeConfig, to new: WorktreeConfig) {
         changesDefault = old.isDefault != new.isDefault
         isDefault = new.isDefault
@@ -134,24 +167,38 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
         setup = old.setup == new.setup ? nil : new.setup
     }
 
-    public var isEmpty: Bool { !changesDefault && link == nil && setup == nil }
-
-    enum CodingKeys: String, CodingKey {
-        case link, setup
-        case isDefault = "default"
+    /// The parts of the icon that differ between the two.
+    public init(from old: ProjectIcon, to new: ProjectIcon) {
+        changesIcon = old.mascot != new.mascot
+        icon = new.mascot
+        changesIconColor = old.color != new.color
+        iconColor = new.color
     }
 
+    public var isEmpty: Bool {
+        !changesDefault && link == nil && setup == nil && !changesIcon && !changesIconColor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case link, setup, icon
+        case isDefault = "default"
+        case iconColor = "icon_color"
+    }
+
+    /// A changed value that became nil is sent as null, which clears it.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         if changesDefault {
-            if let isDefault {
-                try container.encode(isDefault, forKey: .isDefault)
-            } else {
-                try container.encodeNil(forKey: .isDefault)
-            }
+            try container.encode(isDefault, forKey: .isDefault)
         }
         try container.encodeIfPresent(link, forKey: .link)
         try container.encodeIfPresent(setup, forKey: .setup)
+        if changesIcon {
+            try container.encode(icon, forKey: .icon)
+        }
+        if changesIconColor {
+            try container.encode(iconColor, forKey: .iconColor)
+        }
     }
 }
 

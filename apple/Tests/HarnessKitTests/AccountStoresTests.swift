@@ -285,8 +285,6 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         let settings = SettingsStore(store: MemoryStore())
         #expect(settings.theme == .auto)
         #expect(settings.accent == .graphite)
-        #expect(settings.bubble == .accent)
-        #expect(settings.glass == DesignTokens.GlassTheme.clear)
         #expect(settings.notifications == NotificationPreferences())
     }
 
@@ -327,47 +325,99 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
 
         settings.theme = .dark
         settings.accent = .teal
-        settings.bubble = .neutral
-        settings.glass = DesignTokens.GlassTheme.smoke
 
-        #expect(
-            memory.values == [
-                "appearance.theme": "dark", "appearance.accent": "teal",
-                "appearance.bubble": "neutral", "appearance.glass": "smoke",
-            ])
+        #expect(memory.values == ["appearance.theme": "dark", "appearance.accent": "teal"])
         let reloaded = SettingsStore(store: memory)
         #expect(reloaded.theme == .dark)
         #expect(reloaded.accent == .teal)
-        #expect(reloaded.bubble == .neutral)
-        #expect(reloaded.glass == DesignTokens.GlassTheme.smoke)
     }
 
-    @Test func everyGlassThemeRoundTrips() {
+    /// The Mac's one look replaced the glass themes, the wallpapers before them and the
+    /// bubble color: what older versions saved stays in the store, unread and untouched.
+    @Test func choicesOfRemovedSettingsAreIgnored() {
+        let leftovers = [
+            "appearance.wallpaper": "sky", "appearance.glass": "smoke",
+            "appearance.bubble": "neutral",
+        ]
+        let memory = MemoryStore(leftovers.merging(["appearance.accent": "rose"]) { $1 })
+        let settings = SettingsStore(store: memory)
+        #expect(settings.accent == .rose)
+        #expect(settings.theme == .auto)
+        settings.theme = .light
+        settings.accent = .moss
+        for (key, value) in leftovers {
+            #expect(memory.values[key] == value)
+        }
+        #expect(SettingsStore(store: memory).accent == .moss)
+    }
+
+    /// The chat background (B39): the global image and visibilities, and each project's
+    /// own, kept between launches.
+    @Test func persistsTheChatBackground() {
         let memory = MemoryStore()
         let settings = SettingsStore(store: memory)
-        for style in DesignTokens.GlassTheme.all {
-            settings.glass = style
-            #expect(SettingsStore(store: memory).glass == style)
-        }
+        #expect(settings.chatBackground == ChatBackgroundSettings())
+
+        settings.chatBackground.image = "/bg/global.png"
+        settings.chatBackground.emptyVisibility = 0.4
+        settings.chatBackground.chatsVisibility = 0.1
+        settings.chatBackground.grain = 0.35
+        settings.chatBackground.projects["todo-ui"] = ChatBackground(
+            image: "/bg/cv.png", emptyVisibility: 0.5, chatsVisibility: 0.06, grain: 0)
+        #expect(memory.values["appearance.background.image"] == "/bg/global.png")
+        #expect(memory.values["appearance.background.empty"] == "0.4")
+        #expect(memory.values["appearance.background.chats"] == "0.1")
+        #expect(memory.values["appearance.background.grain"] == "0.35")
+        #expect(SettingsStore(store: memory).chatBackground == settings.chatBackground)
+
+        settings.chatBackground.image = nil
+        settings.chatBackground.projects = [:]
+        #expect(memory.values["appearance.background.image"] == nil)
+        #expect(SettingsStore(store: memory).chatBackground == settings.chatBackground)
     }
 
-    @Test func aLeftoverWallpaperIsIgnored() {
-        let memory = MemoryStore(["appearance.wallpaper": "sky"])
-        let settings = SettingsStore(store: memory)
-        settings.glass = DesignTokens.GlassTheme.deep
-        #expect(settings.glass == DesignTokens.GlassTheme.deep)
-        #expect(memory.values["appearance.wallpaper"] == "sky")
+    /// Older versions saved no background; a wallpaper or glass theme they saved is not
+    /// an image, and broken values fall back to the defaults.
+    @Test func chatBackgroundDecodesOldAndBrokenPreferences() {
+        let old = SettingsStore(
+            store: MemoryStore(["appearance.wallpaper": "sky", "appearance.glass": "smoke"]))
+        #expect(old.chatBackground == ChatBackgroundSettings())
+
+        let broken = SettingsStore(
+            store: MemoryStore([
+                "appearance.background.image": "  ",
+                "appearance.background.empty": "lots",
+                "appearance.background.chats": "0.9",
+                "appearance.background.grain": "much",
+                "appearance.background.projects": "{not json",
+            ]))
+        #expect(broken.chatBackground.image == nil)
+        #expect(broken.chatBackground.emptyVisibility == 0.24)
+        #expect(broken.chatBackground.chatsVisibility == 0.65)
+        #expect(broken.chatBackground.grain == 1)
+        #expect(broken.chatBackground.projects == [:])
+
+        let partial = SettingsStore(
+            store: MemoryStore([
+                "appearance.background.empty": "0.3",
+                "appearance.background.grain": "0.4",
+                "appearance.background.projects":
+                    #"{"a":{"image":"/a.png"},"b":{"image":""},"c":{"empty":0.2},"d":{"image":"/d.png","empty":0.01,"chats":0.4,"grain":0.8}}"#,
+            ]))
+        #expect(
+            partial.chatBackground.projects == [
+                "a": ChatBackground(
+                    image: "/a.png", emptyVisibility: 0.3, chatsVisibility: 0.24, grain: 0.4),
+                "d": ChatBackground(
+                    image: "/d.png", emptyVisibility: 0.05, chatsVisibility: 0.4, grain: 0.8),
+            ])
     }
 
     @Test func invalidStoredValuesFallBack() {
         let settings = SettingsStore(
-            store: MemoryStore([
-                "appearance.theme": "sepia", "appearance.accent": "purple",
-                "appearance.glass": "sand",
-            ]))
+            store: MemoryStore(["appearance.theme": "sepia", "appearance.accent": "purple"]))
         #expect(settings.theme == .auto)
         #expect(settings.accent == .graphite)
-        #expect(settings.glass == DesignTokens.GlassTheme.clear)
     }
 
     @Test func defaultsToUserDefaults() {
@@ -394,17 +444,13 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(StatusTone.of(.closed, hasReview: false) == .done)
     }
 
-    @Test func statusTonesUseTheFixedColors() {
-        let status = DesignTokens.Status.self
+    /// The Mac look's quiet status colors: one color for a tone's dot and its word, and the
+    /// greys for what no longer runs.
+    @Test func statusTonesUseTheMacLooksColors() {
+        let mac = DesignTokens.Colors.Mac.self
         #expect(
-            StatusTone.allCases.map(\.fill) == [
-                status.Running.fill, status.Waiting.fill, status.Review.fill, status.Failed.fill,
-                status.Interrupted.fill, status.Done.fill,
-            ])
-        #expect(
-            StatusTone.allCases.map(\.text) == [
-                status.Running.text, status.Waiting.text, status.Review.text, status.Failed.text,
-                status.Interrupted.text, status.Done.text,
+            StatusTone.allCases.map(\.themedColor) == [
+                mac.run, mac.wait, mac.ok, mac.bad, mac.textSecondary, mac.textTertiary,
             ])
     }
 }

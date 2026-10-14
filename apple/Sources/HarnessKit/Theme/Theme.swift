@@ -1,29 +1,20 @@
 import Foundation
 
-/// The fixed status colors: running blue, needs you amber, review green, failed red,
-/// interrupted grey-brown, done grey.
+/// The status colors of the Mac look: running, needs you, ready for review and failed in
+/// their quiet colors, interrupted and done in greys. A tone's dot and its word share one
+/// color.
 public enum StatusTone: Sendable, Hashable, CaseIterable {
     case running, waiting, review, failed, interrupted, done
 
-    public var fill: ThemedColor {
-        switch self {
-        case .running: DesignTokens.Status.Running.fill
-        case .waiting: DesignTokens.Status.Waiting.fill
-        case .review: DesignTokens.Status.Review.fill
-        case .failed: DesignTokens.Status.Failed.fill
-        case .interrupted: DesignTokens.Status.Interrupted.fill
-        case .done: DesignTokens.Status.Done.fill
-        }
-    }
-
-    public var text: ThemedColor {
-        switch self {
-        case .running: DesignTokens.Status.Running.text
-        case .waiting: DesignTokens.Status.Waiting.text
-        case .review: DesignTokens.Status.Review.text
-        case .failed: DesignTokens.Status.Failed.text
-        case .interrupted: DesignTokens.Status.Interrupted.text
-        case .done: DesignTokens.Status.Done.text
+    public var themedColor: ThemedColor {
+        typealias Mac = DesignTokens.Colors.Mac
+        return switch self {
+        case .running: Mac.run
+        case .waiting: Mac.wait
+        case .review: Mac.ok
+        case .failed: Mac.bad
+        case .interrupted: Mac.textSecondary
+        case .done: Mac.textTertiary
         }
     }
 

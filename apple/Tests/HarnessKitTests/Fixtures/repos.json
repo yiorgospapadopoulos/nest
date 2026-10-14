@@ -3,6 +3,8 @@
     "name": "todo-ui",
     "path": "/Users/example/projects/todo-ui",
     "default_branch": "main",
+    "icon": null,
+    "icon_color": null,
     "worktree": {
       "default": true,
       "link": [
@@ -18,6 +20,8 @@
     "name": "map-viewer",
     "path": "/Users/example/projects/map-viewer",
     "default_branch": "develop",
+    "icon": "frog",
+    "icon_color": "#3DDC84",
     "worktree": {
       "default": false,
       "link": [],

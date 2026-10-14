@@ -365,3 +365,29 @@ private func fourPanes() -> WorkspaceLayout {
             ? ratio : self.ratio(of: first, split: id) ?? self.ratio(of: second, split: id)
     }
 }
+
+/// Which pane a click lands on, so a click anywhere in a pane focuses it (B37).
+@Suite struct WorkspacePaneAtTests {
+    @Test func aPointFindsThePaneUnderIt() {
+        var layout = WorkspaceLayout()
+        #expect(layout.pane(at: CGPoint(x: 10, y: 10), in: wide) == nil)
+        layout.open("a", in: wide)
+        layout.open("b", in: wide)
+        #expect(layout.pane(at: CGPoint(x: 10, y: 10), in: wide) == "a")
+        #expect(layout.pane(at: CGPoint(x: 990, y: 590), in: wide) == "b")
+        // The gutter between them and points outside belong to no pane.
+        #expect(layout.pane(at: CGPoint(x: 500, y: 300), in: wide) == nil)
+        #expect(layout.pane(at: CGPoint(x: -1, y: 10), in: wide) == nil)
+        #expect(layout.pane(at: CGPoint(x: 10, y: 601), in: wide) == nil)
+    }
+
+    @Test func aMaximizedPaneTakesEveryPoint() {
+        var layout = WorkspaceLayout()
+        layout.open("a", in: wide)
+        layout.open("b", in: wide)
+        layout.toggleMaximize("b")
+        #expect(layout.pane(at: CGPoint(x: 10, y: 10), in: wide) == "b")
+        #expect(layout.pane(at: CGPoint(x: 500, y: 300), in: wide) == "b")
+        #expect(layout.pane(at: CGPoint(x: 1001, y: 300), in: wide) == nil)
+    }
+}

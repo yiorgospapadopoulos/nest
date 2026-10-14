@@ -384,6 +384,27 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                 "todo-ui",
                 RepoPatch(from: WorktreeConfig(setup: ["npm ci"]), to: WorktreeConfig()))
         },
+        RouteCase(
+            "PATCH", "/api/repos/todo-ui", body: ##"{"icon":"frog","icon_color":"#3DDC84"}"##,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: ProjectIcon(), to: ProjectIcon(mascot: .frog, color: "#3DDC84")))
+        },
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"icon":null}"#, response: repoJSON) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(
+                    from: ProjectIcon(mascot: .owl, color: "#3DDC84"),
+                    to: ProjectIcon(color: "#3DDC84")))
+        },
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"icon_color":null}"#, response: repoJSON)
+        {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: ProjectIcon(color: "#3DDC84"), to: ProjectIcon()))
+        },
         RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
             _ = try await $0.linkSuggestions("todo-ui")
         },

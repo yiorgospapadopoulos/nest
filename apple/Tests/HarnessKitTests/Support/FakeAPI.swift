@@ -133,6 +133,12 @@ final class FakeAPI: HarnessAPI {
             }
             state.repos[index].worktree.link = patch.link ?? state.repos[index].worktree.link
             state.repos[index].worktree.setup = patch.setup ?? state.repos[index].worktree.setup
+            if patch.changesIcon {
+                state.repos[index].icon = patch.icon
+            }
+            if patch.changesIconColor {
+                state.repos[index].iconColor = patch.iconColor
+            }
             return state.repos[index]
         }
     }

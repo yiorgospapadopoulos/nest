@@ -108,6 +108,38 @@ import Testing
         #expect(app.repo("todo-ui")?.worktree.link == [".env.local", "y"])
     }
 
+    /// B36: the icon is a project setting too, sent alone and saved in turn with the others.
+    @Test func theIconChangesOnlyWhatChanged() async throws {
+        let app = try await loaded()
+        let gate = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["updateRepo"] = gate.stream }
+        let links = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("a") } }
+        try await waitFor { app.isSavingSettings(of: "todo-ui") }
+        let sprite = Task { try await app.changeIcon(of: "todo-ui") { $0.mascot = .owl } }
+        try await Task.sleep(for: .milliseconds(20))
+        gate.continuation.finish()
+        _ = try await links.value
+        let saved = try await sprite.value
+
+        #expect(saved?.projectIcon == ProjectIcon(mascot: .owl))
+        #expect(app.repo("todo-ui")?.projectIcon == ProjectIcon(mascot: .owl))
+        #expect(app.repo("todo-ui")?.worktree.link == [".env.local", "a"])
+        #expect(api.calls.last == #"updateRepo todo-ui {"icon":"owl"}"#)
+
+        try await app.changeIcon(of: "todo-ui") { $0.color = "#FF8800" }
+        #expect(api.calls.last == ##"updateRepo todo-ui {"icon_color":"#FF8800"}"##)
+        try await app.changeIcon(of: "todo-ui") { $0 = ProjectIcon() }
+        #expect(api.calls.last == #"updateRepo todo-ui {"icon":null,"icon_color":null}"#)
+        #expect(app.repo("todo-ui")?.projectIcon == ProjectIcon())
+
+        // Nothing changed, nothing sent; a project gone meanwhile is left alone.
+        let calls = api.calls.count
+        #expect(try await app.changeIcon(of: "todo-ui") { $0.mascot = nil } == app.repo("todo-ui"))
+        #expect(try await app.changeIcon(of: "gone") { $0.mascot = .cat } == nil)
+        #expect(api.calls.count == calls)
+        #expect(!app.isSavingSettings(of: "todo-ui"))
+    }
+
     @Test func removingByValueSkipsAnEntryAlreadyGone() {
         var config = WorktreeConfig(link: ["a", "b"], setup: ["npm ci", "make", "npm ci"])
         config.removeLink("b")
