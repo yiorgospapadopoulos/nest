@@ -18,6 +18,8 @@ from harness.gitops.runner import GitError, run_command
 from harness.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
+# Project settings outside `[worktree]` that `edit` sets.
+_TOP_LEVEL_KEYS = frozenset({"icon", "icon_color"})
 LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
 
@@ -137,16 +139,25 @@ class RepoService:
         save_repo(self._paths, repo)
         return repo
 
-    async def edit_worktree(self, name: str, changes: dict[str, object]) -> RepoConfig:
-        """Set some `[worktree]` keys (`default`, `link`, `setup`), checked as when the
-        config file is loaded, then save and announce the repo to other devices (IMP-09).
+    async def edit(self, name: str, changes: dict[str, object]) -> RepoConfig:
+        """Set some project settings: the `icon` keys and the `[worktree]` keys (`default`,
+        `link`, `setup`), checked as when the config file is loaded, then save and announce
+        the repo to other devices (IMP-09, B36).
         """
-        current = self.get(name).worktree
+        repo = self.get(name)
+        top = {key: value for key, value in changes.items() if key in _TOP_LEVEL_KEYS}
+        worktree = {key: value for key, value in changes.items() if key not in _TOP_LEVEL_KEYS}
         try:
-            config = WorktreeConfig.model_validate({**current.model_dump(), **changes})
+            repo = RepoConfig.model_validate(
+                {
+                    **repo.model_dump(),
+                    **top,
+                    "worktree": {**repo.worktree.model_dump(), **worktree},
+                }
+            )
         except ValidationError as error:
             raise InvalidRepoError(_problems(error)) from None
-        repo = self.update_worktree_config(name, config)
+        save_repo(self._paths, repo)
         await self._announce(types.REPO_UPDATED, repo)
         return repo
 

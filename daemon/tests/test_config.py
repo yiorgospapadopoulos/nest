@@ -129,6 +129,31 @@ def test_repo_names_must_be_safe_file_names(name: str) -> None:
         RepoConfig(name=name, path=Path("/x"))
 
 
+def test_a_repo_file_may_set_a_pixie_icon_and_colour(paths: AppPaths) -> None:
+    (paths.repos_dir / "a.toml").write_text(
+        'name = "alpha"\npath = "/src/alpha"\nicon = "owl"\nicon_color = "#ff8800"\n',
+        encoding="utf-8",
+    )
+    (paths.repos_dir / "b.toml").write_text('name = "beta"\npath = "/src/beta"\n', encoding="utf-8")
+
+    alpha, beta = load_repos(paths)
+
+    assert (alpha.icon, alpha.icon_color) == ("owl", "#ff8800")
+    assert (beta.icon, beta.icon_color) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "line", ['icon = "dragon"', 'icon_color = "orange"', 'icon_color = "#ff88"']
+)
+def test_an_unknown_repo_icon_or_colour_names_the_file(paths: AppPaths, line: str) -> None:
+    (paths.repos_dir / "bad.toml").write_text(
+        f'name = "bad"\npath = "/src/bad"\n{line}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match=r"bad\.toml: icon"):
+        load_repos(paths)
+
+
 def test_templates_are_loaded_and_validated(paths: AppPaths) -> None:
     (paths.templates_dir / "fix.toml").write_text(
         'name = "fix"\nprompt = "Fix the bug"\nrepo = "alpha"\neffort = "max"\n'

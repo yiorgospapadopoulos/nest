@@ -4,7 +4,7 @@ from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, ConfigDict
 
 from harness.api.deps import Context, RequireDevice
-from harness.config.models import RepoConfig
+from harness.config.models import Color, Mascot, RepoConfig
 from harness.sessions.commands import CommandList
 from harness.sessions.repo_removal import remove_repo
 
@@ -20,8 +20,9 @@ class RegisterRepo(BaseModel):
 
 
 class UpdateRepo(BaseModel):
-    """`[worktree]` keys to set. `link` and `setup` left out (or null) are unchanged;
-    `default` left out is unchanged, and null clears it (BUG-102).
+    """Project settings to set. `link` and `setup` left out (or null) are unchanged;
+    `default`, `icon` and `icon_color` left out are unchanged, and null clears them
+    (BUG-102, B36).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -32,10 +33,17 @@ class UpdateRepo(BaseModel):
     link: list[str] | None = None
     # Commands run in each new worktree after it is created.
     setup: list[str] | None = None
+    # A pixie sprite as the project's icon; null shows its initials.
+    icon: Mascot | None = None
+    # A pixie colour for the icon; null is the default colour.
+    icon_color: Color | None = None
 
     def changes(self) -> dict[str, object]:
         sent = self.model_dump(exclude_unset=True)
-        return {key: value for key, value in sent.items() if value is not None or key == "default"}
+        return {key: value for key, value in sent.items() if value is not None or key in _CLEARABLE}
+
+
+_CLEARABLE = frozenset({"default", "icon", "icon_color"})
 
 
 @router.get("")
@@ -78,7 +86,7 @@ async def link_suggestions(name: str, ctx: Context) -> list[str]:
 
 @router.patch("/{name}")
 async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoConfig:
-    """Edit the worktree default, links and setup (IMP-09, BUG-102); 422 for a link outside
-    the repository. Announced as `repo.updated`.
+    """Edit the worktree default, links and setup (IMP-09, BUG-102) and the icon (B36); 422
+    for a link outside the repository. Announced as `repo.updated`.
     """
-    return await ctx.repos.edit_worktree(name, body.changes())
+    return await ctx.repos.edit(name, body.changes())

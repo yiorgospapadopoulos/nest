@@ -58,6 +58,9 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "default_branch": "main",
         # No origin when it was registered, so a push needs the user's confirmation (D050).
         "remote_url": None,
+        # No icon set: the project shows its initials in the default colour.
+        "icon": None,
+        "icon_color": None,
         # No override: new sessions follow `[agents] default_mode` (D038).
         "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
     }
@@ -214,6 +217,63 @@ async def test_the_whole_worktree_config_is_no_longer_replaced(api: Api, tmp_pat
 
     assert response.status_code == 405
     assert (await api.http.get("/api/repos/project")).json()["worktree"]["default"] is None
+
+
+async def test_the_project_icon_is_set_cleared_or_left_alone(api: Api, tmp_path: Path) -> None:
+    """B36: a pixie sprite in a pixie colour, saved in the repo's config for every device;
+    an explicit null clears a key, a key left out is unchanged.
+    """
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    config = api.ctx.paths.repos_dir / "project.toml"
+
+    sprite = await api.http.patch("/api/repos/project", json={"icon": "frog"})
+    colored = await api.http.patch("/api/repos/project", json={"icon_color": "#3DDC84"})
+    saved = config.read_text(encoding="utf-8")
+    worktree = await api.http.patch("/api/repos/project", json={"default": True})
+    initials = await api.http.patch("/api/repos/project", json={"icon": None})
+    plain = await api.http.patch("/api/repos/project", json={"icon_color": None})
+
+    assert sprite.status_code == 200, sprite.text
+    assert (sprite.json()["icon"], sprite.json()["icon_color"]) == ("frog", None)
+    assert (colored.json()["icon"], colored.json()["icon_color"]) == ("frog", "#3DDC84")
+    assert 'icon = "frog"' in saved
+    assert 'icon_color = "#3DDC84"' in saved
+    assert (worktree.json()["icon"], worktree.json()["icon_color"]) == ("frog", "#3DDC84")
+    assert (initials.json()["icon"], initials.json()["icon_color"]) == (None, "#3DDC84")
+    assert (plain.json()["icon"], plain.json()["icon_color"]) == (None, None)
+    assert plain.json()["worktree"]["default"] is True
+    assert "icon =" not in config.read_text(encoding="utf-8")
+    assert "icon_color =" not in config.read_text(encoding="utf-8")
+    assert (await api.http.get("/api/repos")).json() == [plain.json()]
+    assert await updated_events(api) == [
+        (None, {"name": "project", "repo": response.json()})
+        for response in (sprite, colored, worktree, initials, plain)
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"icon": "dragon"},
+        {"icon": ""},
+        {"icon_color": "red"},
+        {"icon_color": "#12345"},
+        {"icon_color": "#1234567"},
+    ],
+)
+async def test_an_unknown_icon_or_colour_is_refused(
+    api: Api, tmp_path: Path, body: dict[str, object]
+) -> None:
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+
+    refused = await api.http.patch("/api/repos/project", json=body)
+
+    assert refused.status_code == 422
+    fetched = (await api.http.get("/api/repos/project")).json()
+    assert (fetched["icon"], fetched["icon_color"]) == (None, None)
+    assert await updated_events(api) == []
 
 
 async def test_editing_an_unknown_repo(api: Api) -> None:

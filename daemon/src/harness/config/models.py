@@ -18,6 +18,11 @@ PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan", 
 # The modes an approved plan may continue in; `auto` only with a model that supports it.
 PlanApprovalMode = Literal["acceptEdits", "default", "auto"]
 type SessionMode = Literal["worktree", "in_place"]
+# A pixie's sprite and colour (D072); a project's icon reuses them (B36).
+type Mascot = Literal[
+    "invader", "ghost", "cat", "owl", "robot", "frog", "mushroom", "bunny", "crab", "sprout"
+]
+type Color = Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]
 
 
 class _Strict(BaseModel):
@@ -205,6 +210,10 @@ class RepoConfig(_Strict):
     # The only URL harness pushes origin to: recorded at registration or confirmed by the
     # user, so an agent cannot redirect an approved push by editing the git config (D050).
     remote_url: str | None = None
+    # A pixie sprite shown as the project's icon; None shows its initials (B36).
+    icon: Mascot | None = None
+    # None is the default colour.
+    icon_color: Color | None = None
     worktree: WorktreeConfig = Field(default_factory=WorktreeConfig)
 
     @model_validator(mode="after")

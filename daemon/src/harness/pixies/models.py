@@ -5,11 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from harness.config.models import Effort, PermissionMode
+from harness.config.models import Color, Effort, Mascot, PermissionMode
 
-type Mascot = Literal[
-    "invader", "ghost", "cat", "owl", "robot", "frog", "mushroom", "bunny", "crab", "sprout"
-]
 type Background = Literal["plain", "meadow", "dusk", "night", "dawn"]
 # Which harness tools a pixie gets (stage 3); every level includes the ones before it.
 type Autonomy = Literal["observe", "message", "start", "answer"]
@@ -18,7 +15,6 @@ type Autonomy = Literal["observe", "message", "start", "answer"]
 type ProjectAccess = Literal["edit", "read", "none"]
 
 type Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
-type Color = Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]
 
 
 class PixieSettings(BaseModel):
