@@ -77,6 +77,17 @@ public enum EventType {
     public static let pixieDeleted = "pixie.deleted"
     public static let pixieTeamUpdated = "pixie_team.updated"
     public static let pixieTeamDeleted = "pixie_team.deleted"
+    /// A card in a pixie's chat for a chat it started or a pull request it reports (B41).
+    public static let pixieCard = "pixie.card"
+    /// A pixie's habit was made or changed (B42).
+    public static let habitUpdated = "habit.updated"
+    public static let habitDeleted = "habit.deleted"
+    /// A habit run was queued, started or ended.
+    public static let habitRunUpdated = "habit.run_updated"
+    /// A pixie made a report.
+    public static let pixieReport = "pixie.report"
+    /// Reports were marked read, here or on another device.
+    public static let pixieReportRead = "pixie.report_read"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -128,6 +139,12 @@ public enum EventBody: Sendable, Hashable {
     case pixieDeleted(String)
     case pixieTeamUpdated(PixieTeam)
     case pixieTeamDeleted(String)
+    case pixieCard(PixieCard)
+    case habitUpdated(PixieHabit)
+    case habitDeleted(id: String, pixieID: String)
+    case habitRunUpdated(HabitRun)
+    case pixieReport(PixieReport)
+    case pixieReportRead(ids: [String])
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -194,6 +211,17 @@ public enum EventBody: Sendable, Hashable {
             self = .pixieTeamUpdated(try field("team", as: PixieTeam.self))
         case EventType.pixieTeamDeleted:
             self = .pixieTeamDeleted(try field("id", as: String.self))
+        case EventType.pixieCard: self = .pixieCard(try payload.decode(PixieCard.self))
+        case EventType.habitUpdated: self = .habitUpdated(try field("habit", as: PixieHabit.self))
+        case EventType.habitDeleted:
+            self = .habitDeleted(
+                id: try field("id", as: String.self),
+                pixieID: try field("pixie_id", as: String.self))
+        case EventType.habitRunUpdated:
+            self = .habitRunUpdated(try field("run", as: HabitRun.self))
+        case EventType.pixieReport: self = .pixieReport(try field("report", as: PixieReport.self))
+        case EventType.pixieReportRead:
+            self = .pixieReportRead(ids: try field("ids", as: [String].self))
         default: self = .other
         }
     }
@@ -217,9 +245,26 @@ public struct SessionWorkspace: Decodable, Sendable, Hashable {
     }
 }
 
+/// Where a user message came from, when not from the user typing it.
+public enum MessageOrigin: String, UnknownSafeEnum {
+    /// The daemon's report that the chats a pixie started have finished (B41).
+    case reportBack = "report_back"
+    /// A habit run's report, starting a pixie turn so the user can reply in context (B42).
+    case report
+    case unknown
+}
+
 public struct UserMessage: Decodable, Sendable, Hashable {
     public var text: String
     public var attachments: [Attachment]
+    /// The pixie that sent it into this chat with its tools (B41).
+    public var fromPixie: String?
+    public var origin: MessageOrigin?
+
+    enum CodingKeys: String, CodingKey {
+        case text, attachments, origin
+        case fromPixie = "from_pixie"
+    }
 }
 
 /// An agent message; subagent messages carry the Agent tool use id they belong to.
@@ -305,6 +350,8 @@ public enum NoticeKind: String, UnknownSafeEnum {
     /// A chat's pull request is green and mergeable.
     case readyToMerge = "ready_to_merge"
     case stuck
+    /// A pixie's report (B42); the Mac posts these from `pixie.report` events.
+    case pixieReport = "pixie_report"
     case unknown
 }
 
@@ -315,9 +362,12 @@ public struct Notice: Decodable, Sendable, Hashable {
     public var repo: String
     public var title: String
     public var text: String
+    /// The pixie's name, on a pixie's notices such as `pixie_report` (B42).
+    public var pixieName: String?
 
     enum CodingKeys: String, CodingKey {
         case kind, repo, title, text
         case sessionID = "session_id"
+        case pixieName = "pixie_name"
     }
 }

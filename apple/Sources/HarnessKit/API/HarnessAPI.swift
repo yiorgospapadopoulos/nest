@@ -112,6 +112,24 @@ public protocol HarnessAPI: Sendable {
         -> PixieFile
     func pixieNotes(_ id: String) async throws -> [String]
     func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit]
+    /// What the pixie did with its harness tools, newest first (B41).
+    func pixieActivity(_ id: String) async throws -> [PixieActivityEntry]
+    /// The pixie's habits, oldest first (B42).
+    func pixieHabits(_ id: String) async throws -> [PixieHabit]
+    func createHabit(_ pixie: String, _ request: CreateHabitRequest) async throws -> PixieHabit
+    func updateHabit(_ pixie: String, _ habit: String, _ request: UpdateHabitRequest)
+        async throws -> PixieHabit
+    /// Cancels its queued runs too.
+    func deleteHabit(_ pixie: String, _ habit: String) async throws
+    /// Run now: queues a run that ignores lateness and the usage guard.
+    func runHabit(_ pixie: String, _ habit: String) async throws -> HabitRun
+    /// The latest 20 runs, newest first, plus any queued or running.
+    func habitRuns(_ pixie: String, _ habit: String) async throws -> [HabitRun]
+    /// Every pixie's reports, newest first, the latest 200; only unread ones when asked.
+    func pixieReports(unread: Bool) async throws -> [PixieReport]
+    func markReportRead(_ id: String) async throws
+    /// Marks all of a pixie's reports read.
+    func markPixieReportsRead(_ id: String) async throws
     /// A copy right after the original, in its team, with its settings, soul, memory, notes
     /// and archive; not its chat.
     func duplicatePixie(_ id: String) async throws -> Pixie

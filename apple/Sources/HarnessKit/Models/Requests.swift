@@ -296,6 +296,12 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var teamID: String?
     /// True sends `"team_id": null`: the pixie leaves its team. A `teamID` set as well wins.
     public var leavesTeam: Bool
+    /// `PixieLimits.running`.
+    public var maxRunning: Int?
+    /// `PixieLimits.perDay`.
+    public var maxPerDay: Int?
+    /// The least severe report that reaches the phone (B42).
+    public var reportPush: ReportSeverity?
 
     public init(
         name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
@@ -304,7 +310,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
         allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
         clearsModel: Bool = false, clearsEffort: Bool = false, allProjects: Bool? = nil,
-        teamID: String? = nil, leavesTeam: Bool = false
+        teamID: String? = nil, leavesTeam: Bool = false, maxRunning: Int? = nil,
+        maxPerDay: Int? = nil, reportPush: ReportSeverity? = nil
     ) {
         self.name = name
         self.slug = slug
@@ -326,6 +333,9 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         self.allProjects = allProjects
         self.teamID = teamID
         self.leavesTeam = leavesTeam
+        self.maxRunning = maxRunning
+        self.maxPerDay = maxPerDay
+        self.reportPush = reportPush
     }
 
     enum CodingKeys: String, CodingKey {
@@ -337,6 +347,9 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         case disallowedTools = "disallowed_tools"
         case allProjects = "all_projects"
         case teamID = "team_id"
+        case maxRunning = "max_running"
+        case maxPerDay = "max_per_day"
+        case reportPush = "report_push"
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -370,6 +383,91 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         } else if leavesTeam {
             try container.encodeNil(forKey: .teamID)
         }
+        try container.encodeIfPresent(maxRunning, forKey: .maxRunning)
+        try container.encodeIfPresent(maxPerDay, forKey: .maxPerDay)
+        try container.encodeIfPresent(reportPush, forKey: .reportPush)
+    }
+}
+
+/// `POST /api/pixies/{id}/habits`: a habit needs a schedule or at least one trigger.
+public struct CreateHabitRequest: Encodable, Sendable, Hashable {
+    public var name: String
+    public var prompt: String
+    public var schedule: HabitSchedule?
+    public var triggers: [HabitTrigger]
+    public var maxMinutes: Int
+    public var enabled: Bool
+
+    public init(
+        name: String, prompt: String, schedule: HabitSchedule?, triggers: [HabitTrigger],
+        maxMinutes: Int, enabled: Bool = true
+    ) {
+        self.name = name
+        self.prompt = prompt
+        self.schedule = schedule
+        self.triggers = triggers
+        self.maxMinutes = maxMinutes
+        self.enabled = enabled
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, prompt, schedule, triggers, enabled
+        case maxMinutes = "max_minutes"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(prompt, forKey: .prompt)
+        try container.encode(schedule, forKey: .schedule)
+        try container.encode(triggers, forKey: .triggers)
+        try container.encode(maxMinutes, forKey: .maxMinutes)
+        try container.encode(enabled, forKey: .enabled)
+    }
+}
+
+/// `PATCH /api/pixies/{id}/habits/{hid}`: only the fields given change.
+public struct UpdateHabitRequest: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var prompt: String?
+    public var schedule: HabitSchedule?
+    /// True sends `"schedule": null`: the habit runs on its triggers only.
+    public var clearsSchedule: Bool
+    public var triggers: [HabitTrigger]?
+    public var maxMinutes: Int?
+    public var enabled: Bool?
+
+    public init(
+        name: String? = nil, prompt: String? = nil, schedule: HabitSchedule? = nil,
+        clearsSchedule: Bool = false, triggers: [HabitTrigger]? = nil, maxMinutes: Int? = nil,
+        enabled: Bool? = nil
+    ) {
+        self.name = name
+        self.prompt = prompt
+        self.schedule = schedule
+        self.clearsSchedule = clearsSchedule
+        self.triggers = triggers
+        self.maxMinutes = maxMinutes
+        self.enabled = enabled
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, prompt, schedule, triggers, enabled
+        case maxMinutes = "max_minutes"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(prompt, forKey: .prompt)
+        if let schedule {
+            try container.encode(schedule, forKey: .schedule)
+        } else if clearsSchedule {
+            try container.encodeNil(forKey: .schedule)
+        }
+        try container.encodeIfPresent(triggers, forKey: .triggers)
+        try container.encodeIfPresent(maxMinutes, forKey: .maxMinutes)
+        try container.encodeIfPresent(enabled, forKey: .enabled)
     }
 }
 

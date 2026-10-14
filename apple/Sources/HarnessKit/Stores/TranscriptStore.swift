@@ -69,12 +69,21 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         /// A short line such as an interruption, a failure, an opened pull request or a
         /// notice from Claude Code.
         case notice(String)
+        /// The daemon's report to a pixie that the chats it started finished (B41).
+        case reportBack(String)
+        /// A card in a pixie's chat for a chat it started or a pull request (B41).
+        case pixieCard(PixieCard)
+        /// "Report from habit <name>: <title>", the message that starts a pixie's turn
+        /// after a habit run reported (B42).
+        case habitReport(String)
     }
 
     public let id: String
     public var content: Content
     /// The stored event the item came from; nil while text streams.
     public var eventID: Int?
+    /// The pixie that sent a user message into this chat (B41).
+    public var fromPixie: String?
 }
 
 /// A request to show an event of the transcript, such as a search hit's.
@@ -462,7 +471,15 @@ public final class TranscriptStore {
         case .userMessage(let message):
             startTurn(at: event.ts)
             noteUserMessage(event)
-            append(key, .user(text: message.text, attachments: message.attachments), eventID)
+            if message.origin == .reportBack {
+                append(key, .reportBack(message.text), eventID)
+            } else if message.origin == .report {
+                append(key, .habitReport(message.text), eventID)
+            } else {
+                append(
+                    key, .user(text: message.text, attachments: message.attachments), eventID,
+                    fromPixie: message.fromPixie)
+            }
         case .message(let message) where message.parentToolUseID == nil:
             noteTaskStarts(message, eventID)
             endStreaming()
@@ -511,6 +528,8 @@ public final class TranscriptStore {
             append(key, .notice("Opened pull request \(url)"), eventID)
         case .sessionNotice(let text):
             append(key, .notice(text), eventID)
+        case .pixieCard(let card):
+            append(key, .pixieCard(card), eventID)
         default:
             break
         }
@@ -663,8 +682,12 @@ public final class TranscriptStore {
         }
     }
 
-    private func append(_ id: String, _ content: TranscriptItem.Content, _ eventID: Int?) {
-        items.append(TranscriptItem(id: id, content: content, eventID: eventID))
+    private func append(
+        _ id: String, _ content: TranscriptItem.Content, _ eventID: Int?,
+        fromPixie: String? = nil
+    ) {
+        items.append(
+            TranscriptItem(id: id, content: content, eventID: eventID, fromPixie: fromPixie))
     }
 }
 

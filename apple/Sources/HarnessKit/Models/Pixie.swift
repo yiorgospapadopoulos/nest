@@ -11,7 +11,7 @@ public enum PixieBackground: String, Codable, Sendable, CaseIterable, UnknownSaf
     case unknown
 }
 
-/// What a pixie may do on its own; stored now, used in stage 3.
+/// What a pixie may do in harness with its tools; each level includes the ones before (B41).
 public enum Autonomy: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
     case observe, message, start, answer
     case unknown
@@ -50,6 +50,14 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var chatSessionID: String?
     /// The team it is in, if any (B40).
     public var teamID: String?
+    /// How many chats it started may run or wait at once (`PixieLimits.running`, B41).
+    public var maxRunning: Int
+    /// How many chats it may start per local day (`PixieLimits.perDay`).
+    public var maxPerDay: Int
+    /// The least severe report that reaches the phone (B42).
+    public var reportPush: ReportSeverity
+    /// Its unread reports that need action, as the daemon counts them.
+    public var unreadActionReports: Int
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -63,6 +71,10 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
         case disallowedTools = "disallowed_tools"
         case chatSessionID = "chat_session_id"
         case teamID = "team_id"
+        case maxRunning = "max_running"
+        case maxPerDay = "max_per_day"
+        case reportPush = "report_push"
+        case unreadActionReports = "unread_action_reports"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -111,6 +123,9 @@ extension Pixie {
         pixie.disallowedTools = change.disallowedTools ?? disallowedTools
         pixie.hidden = change.hidden ?? hidden
         pixie.teamID = change.teamID ?? (change.leavesTeam ? nil : teamID)
+        pixie.maxRunning = change.maxRunning ?? maxRunning
+        pixie.maxPerDay = change.maxPerDay ?? maxPerDay
+        pixie.reportPush = change.reportPush ?? reportPush
         return pixie
     }
 }
@@ -134,5 +149,63 @@ public struct PixieSearchHit: Codable, Sendable, Hashable {
     public init(file: String, line: String) {
         self.file = file
         self.line = line
+    }
+}
+
+/// One change a pixie made with its harness tools, from `GET /api/pixies/{id}/activity`
+/// (B41).
+public struct PixieActivityEntry: Codable, Sendable, Hashable, Identifiable {
+    public var id: Int
+    public var ts: Date
+    /// The tool's name, such as `start_session`.
+    public var tool: String
+    /// The chat it acted on, if any.
+    public var sessionID: String?
+    public var summary: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, ts, tool, summary
+        case sessionID = "session_id"
+    }
+}
+
+public enum PixieCardKind: String, UnknownSafeEnum {
+    /// A chat the pixie started, with its live state.
+    case session
+    /// A chat's pull request.
+    case pr
+    /// A report it made (B42).
+    case report
+    /// Up to four replies the user can send with one click (B42).
+    case choices
+    /// A habit it proposes; Start creates and enables it (B42).
+    case habitSuggestion = "habit_suggestion"
+    case unknown
+}
+
+/// A card in a pixie's chat, from a `pixie.card` event (B41, B42): a chat or its pull
+/// request by session id, a report by id, reply choices or a suggested habit.
+public struct PixieCard: Codable, Sendable, Hashable {
+    public var kind: PixieCardKind
+    public var sessionID: String?
+    public var reportID: String?
+    public var options: [String]?
+    public var habit: HabitSuggestion?
+
+    public init(
+        kind: PixieCardKind, sessionID: String? = nil, reportID: String? = nil,
+        options: [String]? = nil, habit: HabitSuggestion? = nil
+    ) {
+        self.kind = kind
+        self.sessionID = sessionID
+        self.reportID = reportID
+        self.options = options
+        self.habit = habit
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case kind, options, habit
+        case sessionID = "session_id"
+        case reportID = "report_id"
     }
 }

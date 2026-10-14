@@ -35,6 +35,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         """
     static let pixieJSON = Fixture.text("pixie")
     static let teamJSON = Fixture.text("pixie_team")
+    static let habitJSON = PixieHabitsTests.habitJSON()
+    static let runJSON = PixieHabitsTests.runJSON()
+    static let reportJSON = PixieReportsTests.reportJSON()
     static let claudeChatJSON = """
         {"id": "c1", "repo": "todo-ui", "title": "T", "cwd": "/r", "worktree": null,
          "created_at": "2026-10-06T09:00:00Z", "last_activity_at": "2026-10-06T09:00:00Z",
@@ -216,6 +219,57 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "PATCH", "/api/pixies/p1", body: #"{"team_id":null}"#, response: pixieJSON
         ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(leavesTeam: true)) },
+        RouteCase(
+            "GET", "/api/pixies/p1/activity",
+            response:
+                #"[{"id": 1, "ts": "2026-10-14T21:00:00Z", "tool": "nudge", "session_id": "s1", "summary": "Stuck"}]"#
+        ) { _ = try await $0.pixieActivity("p1") },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"max_per_day":10,"max_running":3}"#,
+            response: pixieJSON
+        ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(maxRunning: 3, maxPerDay: 10)) },
+        RouteCase("GET", "/api/pixies/p1/habits", response: "[\(habitJSON)]") {
+            _ = try await $0.pixieHabits("p1")
+        },
+        RouteCase(
+            "POST", "/api/pixies/p1/habits",
+            body:
+                #"{"enabled":true,"max_minutes":20,"name":"Check","prompt":"Look","schedule":null,"triggers":["failed"]}"#,
+            response: habitJSON
+        ) {
+            _ = try await $0.createHabit(
+                "p1",
+                CreateHabitRequest(
+                    name: "Check", prompt: "Look", schedule: nil, triggers: [.failed],
+                    maxMinutes: 20))
+        },
+        RouteCase(
+            "PATCH", "/api/pixies/p1/habits/h1", body: #"{"enabled":false}"#, response: habitJSON
+        ) { _ = try await $0.updateHabit("p1", "h1", UpdateHabitRequest(enabled: false)) },
+        RouteCase("DELETE", "/api/pixies/p1/habits/h1", response: "") {
+            try await $0.deleteHabit("p1", "h1")
+        },
+        RouteCase("POST", "/api/pixies/p1/habits/h1/run", response: runJSON) {
+            _ = try await $0.runHabit("p1", "h1")
+        },
+        RouteCase("GET", "/api/pixies/p1/habits/h1/runs", response: "[\(runJSON)]") {
+            _ = try await $0.habitRuns("p1", "h1")
+        },
+        RouteCase("GET", "/api/pixie-reports?unread=true", response: "[\(reportJSON)]") {
+            _ = try await $0.pixieReports(unread: true)
+        },
+        RouteCase("GET", "/api/pixie-reports?unread=false", response: "[]") {
+            _ = try await $0.pixieReports(unread: false)
+        },
+        RouteCase("POST", "/api/pixie-reports/rep1/read", response: "") {
+            try await $0.markReportRead("rep1")
+        },
+        RouteCase("POST", "/api/pixies/p1/reports/read", response: "") {
+            try await $0.markPixieReportsRead("p1")
+        },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"report_push":"warn"}"#, response: pixieJSON
+        ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(reportPush: .warn)) },
         RouteCase("POST", "/api/pixies/p1/duplicate", response: pixieJSON) {
             _ = try await $0.duplicatePixie("p1")
         },

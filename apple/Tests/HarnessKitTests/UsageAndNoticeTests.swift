@@ -93,7 +93,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         var preferences = NotificationPreferences()
         let kinds: [NoticeKind] = [
             .needsApproval, .question, .reviewReady, .failed, .finished, .ciFailed,
-            .readyToMerge, .stuck,
+            .readyToMerge, .stuck, .pixieReport,
         ]
         #expect(kinds.allSatisfy(preferences.wants))
         #expect(!preferences.wants(.unknown))
@@ -109,7 +109,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             NotificationPreferences.toggles.map(\.title) == [
                 "Approvals", "Questions", "Work ready for review", "Agent errors",
                 "Finished turns", "Pull request checks failed", "Pull requests ready to merge",
-                "Chats that look stuck", "Sound",
+                "Chats that look stuck", "Pixie reports", "Sound",
             ])
     }
 

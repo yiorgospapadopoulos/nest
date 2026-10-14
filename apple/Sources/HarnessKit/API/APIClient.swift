@@ -364,6 +364,52 @@ public struct APIClient: HarnessAPI {
             "GET", ["pixies", id, "search"], query: [URLQueryItem(name: "q", value: query)])
     }
 
+    public func pixieActivity(_ id: String) async throws -> [PixieActivityEntry] {
+        try await get("pixies", id, "activity")
+    }
+
+    public func pixieHabits(_ id: String) async throws -> [PixieHabit] {
+        try await get("pixies", id, "habits")
+    }
+
+    public func createHabit(_ pixie: String, _ request: CreateHabitRequest) async throws
+        -> PixieHabit
+    {
+        try await call("POST", ["pixies", pixie, "habits"], body: request)
+    }
+
+    public func updateHabit(_ pixie: String, _ habit: String, _ request: UpdateHabitRequest)
+        async throws -> PixieHabit
+    {
+        try await call("PATCH", ["pixies", pixie, "habits", habit], body: request)
+    }
+
+    public func deleteHabit(_ pixie: String, _ habit: String) async throws {
+        try await perform("DELETE", ["pixies", pixie, "habits", habit])
+    }
+
+    public func runHabit(_ pixie: String, _ habit: String) async throws -> HabitRun {
+        try await call("POST", ["pixies", pixie, "habits", habit, "run"])
+    }
+
+    public func habitRuns(_ pixie: String, _ habit: String) async throws -> [HabitRun] {
+        try await get("pixies", pixie, "habits", habit, "runs")
+    }
+
+    public func pixieReports(unread: Bool) async throws -> [PixieReport] {
+        try await call(
+            "GET", ["pixie-reports"],
+            query: [URLQueryItem(name: "unread", value: unread ? "true" : "false")])
+    }
+
+    public func markReportRead(_ id: String) async throws {
+        try await perform("POST", ["pixie-reports", id, "read"])
+    }
+
+    public func markPixieReportsRead(_ id: String) async throws {
+        try await perform("POST", ["pixies", id, "reports", "read"])
+    }
+
     public func duplicatePixie(_ id: String) async throws -> Pixie {
         try await call("POST", ["pixies", id, "duplicate"])
     }

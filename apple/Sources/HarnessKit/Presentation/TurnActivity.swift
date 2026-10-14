@@ -151,10 +151,10 @@ public enum TranscriptGrouping {
         _ items: [TranscriptItem], live: Bool, background: Set<String> = [],
         pixies: Set<String> = []
     ) -> [TranscriptEntry] {
-        // A turn's end line, or a user message starting the next turn.
+        // A turn's end line, or a user message or report starting the next turn.
         let lastEnd = items.lastIndex {
             switch $0.content {
-            case .turnEnd, .user: true
+            case .turnEnd, .user, .reportBack, .habitReport: true
             default: false
             }
         }

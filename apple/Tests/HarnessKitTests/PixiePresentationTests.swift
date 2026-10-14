@@ -48,10 +48,10 @@ import Testing
         #expect(Autonomy.unknown.label == "Unknown")
         #expect(
             Autonomy.allCases.map(\.summary) == [
-                "Reads chats, the inbox and pull requests",
-                "Also sends messages and nudges to chats",
-                "Also starts and closes chats of its own",
-                "Also answers permissions, questions and plans", "",
+                "Reads chats in its projects.",
+                "Also writes to them, nudges or stops them.",
+                "Also starts chats in their own worktree.",
+                "Also answers approvals, questions and plans in chats it started.", "",
             ])
     }
 

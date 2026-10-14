@@ -277,6 +277,11 @@ public final class PixiesStore {
         try await api.searchPixie(id, query: query)
     }
 
+    /// What the pixie did in harness, newest first (B41).
+    public func activity(_ id: String) async throws -> [PixieActivityEntry] {
+        try await api.pixieActivity(id)
+    }
+
     /// A pixie from the daemon: kept aside while its saves run, ignored when older than
     /// the one shown.
     private func receive(_ pixie: Pixie) {

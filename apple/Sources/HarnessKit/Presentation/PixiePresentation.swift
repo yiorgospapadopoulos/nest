@@ -69,7 +69,7 @@ extension ProjectAccess {
 }
 
 extension Autonomy {
-    /// Stored now; the harness tools that use it come with stage 3 (D072).
+    /// What its harness tools may do (B41); the daemon checks it on every call.
     public static var choices: [Autonomy] { [.observe, .message, .start, .answer] }
 
     public var label: String {
@@ -84,10 +84,10 @@ extension Autonomy {
 
     public var summary: String {
         switch self {
-        case .observe: "Reads chats, the inbox and pull requests"
-        case .message: "Also sends messages and nudges to chats"
-        case .start: "Also starts and closes chats of its own"
-        case .answer: "Also answers permissions, questions and plans"
+        case .observe: "Reads chats in its projects."
+        case .message: "Also writes to them, nudges or stops them."
+        case .start: "Also starts chats in their own worktree."
+        case .answer: "Also answers approvals, questions and plans in chats it started."
         case .unknown: ""
         }
     }

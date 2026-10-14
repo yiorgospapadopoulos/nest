@@ -52,6 +52,11 @@ final class FakeAPI: HarnessAPI {
         var pixieFiles: [String: PixieFile] = [:]
         var pixieNotes: [String] = []
         var pixieHits: [PixieSearchHit] = []
+        var pixieActivity: [PixieActivityEntry] = []
+        /// Habits by pixie id, and their runs by habit id (B42).
+        var habits: [String: [PixieHabit]] = [:]
+        var habitRuns: [String: [HabitRun]] = [:]
+        var reports: [PixieReport] = []
         /// Models without Auto: a pixie in Auto moved to one drops to Ask before edits.
         var dropsAutoFor: Set<String> = []
         var agentDefaults = AgentDefaults(
@@ -577,6 +582,86 @@ final class FakeAPI: HarnessAPI {
 
     func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit] {
         try call("searchPixie", "\(id) \(query)") { $0.pixieHits }
+    }
+
+    func pixieActivity(_ id: String) async throws -> [PixieActivityEntry] {
+        try call("pixieActivity", id) { $0.pixieActivity }
+    }
+
+    func pixieHabits(_ id: String) async throws -> [PixieHabit] {
+        try call("pixieHabits", id) { $0.habits[id] ?? [] }
+    }
+
+    func createHabit(_ pixie: String, _ request: CreateHabitRequest) async throws -> PixieHabit {
+        try call("createHabit", "\(pixie) \(request.name)") { state in
+            var habit = Fixture.decode(
+                PixieHabit.self, json: PixieHabitsTests.habitJSON(pixie: pixie))
+            habit.id = "h-new-\(state.habits[pixie, default: []].count)"
+            habit.name = request.name
+            habit.prompt = request.prompt
+            habit.schedule = request.schedule
+            habit.triggers = request.triggers
+            habit.maxMinutes = request.maxMinutes
+            habit.enabled = request.enabled
+            habit.createdAt = habit.createdAt.addingTimeInterval(60)
+            state.habits[pixie, default: []].append(habit)
+            return habit
+        }
+    }
+
+    func updateHabit(_ pixie: String, _ habit: String, _ request: UpdateHabitRequest)
+        async throws -> PixieHabit
+    {
+        try call("updateHabit", "\(pixie) \(habit)") { state in
+            let index = state.habits[pixie]!.firstIndex { $0.id == habit }!
+            var changed = state.habits[pixie]![index]
+            changed.name = request.name ?? changed.name
+            changed.prompt = request.prompt ?? changed.prompt
+            changed.schedule = request.clearsSchedule ? nil : request.schedule ?? changed.schedule
+            changed.triggers = request.triggers ?? changed.triggers
+            changed.maxMinutes = request.maxMinutes ?? changed.maxMinutes
+            changed.enabled = request.enabled ?? changed.enabled
+            changed.updatedAt = changed.updatedAt.addingTimeInterval(1)
+            state.habits[pixie]![index] = changed
+            return changed
+        }
+    }
+
+    func deleteHabit(_ pixie: String, _ habit: String) async throws {
+        try call("deleteHabit", "\(pixie) \(habit)") { state in
+            state.habits[pixie]?.removeAll { $0.id == habit }
+        }
+    }
+
+    func runHabit(_ pixie: String, _ habit: String) async throws -> HabitRun {
+        try call("runHabit", "\(pixie) \(habit)") { state in
+            var run = Fixture.decode(
+                HabitRun.self,
+                json: PixieHabitsTests.runJSON(
+                    habit: habit, outcome: "queued", started: "null", ended: "null",
+                    title: "null"))
+            run.id = "run-\(state.habitRuns[habit, default: []].count)"
+            state.habitRuns[habit, default: []].insert(run, at: 0)
+            return run
+        }
+    }
+
+    func habitRuns(_ pixie: String, _ habit: String) async throws -> [HabitRun] {
+        try call("habitRuns", "\(pixie) \(habit)") { $0.habitRuns[habit] ?? [] }
+    }
+
+    func pixieReports(unread: Bool) async throws -> [PixieReport] {
+        try call("pixieReports", "unread=\(unread)") { state in
+            unread ? state.reports.filter { $0.readAt == nil } : state.reports
+        }
+    }
+
+    func markReportRead(_ id: String) async throws {
+        try call("markReportRead", id) { _ in }
+    }
+
+    func markPixieReportsRead(_ id: String) async throws {
+        try call("markPixieReportsRead", id) { _ in }
     }
 
     /// A copy right after the original, as the daemon makes it; later pixies move down.

@@ -102,6 +102,8 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var stuck: StuckFlag?
     /// The pixie this chat belongs to; such chats stay out of project lists (D072).
     public var pixieID: String?
+    /// The pixie that started this chat with its tools (B41).
+    public var startedByPixie: String?
     /// Only in `GET /api/sessions/{id}`.
     public var tasks: [TrackedTask]?
     public var agents: [TrackedAgent]?
@@ -119,6 +121,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case pr
         case tasks, agents, background, context, queued, stuck
         case pixieID = "pixie_id"
+        case startedByPixie = "started_by_pixie"
         case permissionMode = "permission_mode"
         case baseRef = "base_ref"
         case worktreePath = "worktree_path"

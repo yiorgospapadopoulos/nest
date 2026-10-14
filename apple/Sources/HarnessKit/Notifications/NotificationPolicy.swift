@@ -14,6 +14,8 @@ public struct NotificationPreferences: Sendable, Hashable {
     public var readyToMerge = true
     /// Chats that look stuck (D036).
     public var stuck = true
+    /// What pixies report, from the least severe their `report_push` names (B42).
+    public var pixieReports = true
     public var sound = false
 
     public init() {}
@@ -23,7 +25,8 @@ public struct NotificationPreferences: Sendable, Hashable {
         [
             ("approvals", \.approvals), ("questions", \.questions), ("reviews", \.reviews),
             ("errors", \.errors), ("finished", \.finished), ("ci_failed", \.ciFailed),
-            ("ready_to_merge", \.readyToMerge), ("stuck", \.stuck), ("sound", \.sound),
+            ("ready_to_merge", \.readyToMerge), ("stuck", \.stuck),
+            ("pixie_reports", \.pixieReports), ("sound", \.sound),
         ]
     }
 
@@ -36,7 +39,7 @@ public struct NotificationPreferences: Sendable, Hashable {
             ("Work ready for review", \.reviews), ("Agent errors", \.errors),
             ("Finished turns", \.finished), ("Pull request checks failed", \.ciFailed),
             ("Pull requests ready to merge", \.readyToMerge), ("Chats that look stuck", \.stuck),
-            ("Sound", \.sound),
+            ("Pixie reports", \.pixieReports), ("Sound", \.sound),
         ]
     }
 
@@ -51,6 +54,7 @@ public struct NotificationPreferences: Sendable, Hashable {
         case .ciFailed: ciFailed
         case .readyToMerge: readyToMerge
         case .stuck: stuck
+        case .pixieReport: pixieReports
         case .unknown: false
         }
     }
@@ -74,6 +78,12 @@ public enum NotificationPolicy {
     ) -> NotificationContent? {
         guard preferences.wants(notice.kind), !visibleChats.contains(notice.sessionID) else {
             return nil
+        }
+        // A pixie's report: titled with the pixie, its body the report's title (B42).
+        if notice.kind == .pixieReport {
+            return NotificationContent(
+                title: notice.pixieName ?? source(of: notice, pixies: pixies), body: notice.title,
+                sessionID: notice.sessionID, project: notice.repo, playsSound: preferences.sound)
         }
         return NotificationContent(
             title: "\(source(of: notice, pixies: pixies)) · \(notice.title)", body: notice.text,
@@ -111,9 +121,10 @@ public enum NotificationPolicy {
             AppStore.chats(of: layout.maximized.map { [$0] } ?? layout.leaves, among: pixies))
     }
 
-    /// The Dock badge: everything that needs the user (`SessionsStore.attention()`), or
-    /// none.
-    public static func badge(pending: Int) -> String? {
-        pending > 0 ? "\(pending)" : nil
+    /// The Dock badge: everything that needs the user (`SessionsStore.attention()`) and
+    /// the unread reports that need action (B42), or none.
+    public static func badge(pending: Int, unreadActions: Int = 0) -> String? {
+        let count = pending + unreadActions
+        return count > 0 ? "\(count)" : nil
     }
 }

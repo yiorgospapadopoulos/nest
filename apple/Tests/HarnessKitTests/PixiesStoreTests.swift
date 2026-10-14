@@ -26,7 +26,7 @@ import Testing
                     + ##""permission_mode": "default", "autonomy": "observe", "project_access": "edit", "##
                     + ##""projects": null, "skills": [], "can_call": [], "allowed_tools": [], "##
                     + ##""disallowed_tools": [], "hidden": false, "##
-                    + ##""position": 0, "chat_session_id": null, "##
+                    + ##""position": 0, "chat_session_id": null, "max_running": 2, "max_per_day": 5, "report_push": "action", "unread_action_reports": 0, "##
                     + ##""created_at": "2026-10-13T09:00:00Z", "updated_at": "2026-10-13T09:00:00Z"}}"##
             ))
         // An older copy, such as an event that arrives after a later answer, is ignored.
