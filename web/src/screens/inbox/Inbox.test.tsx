@@ -468,14 +468,14 @@ describe("review cards", () => {
     expect(await screen.findByText("Rejected. Nothing merged")).toBeInTheDocument();
   });
 
-  it("say that rejecting in-place work leaves its changes in the folder", async () => {
+  it("say that rejecting in-place work restores the files Claude edited", async () => {
     const api = withItems([review()], [session({ mode: "in_place", worktree_path: null })]);
     const { user } = await renderApp({ api });
 
     await user.click(screen.getByRole("button", { name: "Reject" }));
 
     expect(await screen.findByRole("alertdialog")).toHaveTextContent(
-      "The chat closes. Its changes stay in your folder.",
+      "The chat closes and the files Claude edited go back to how they were before the chat. Changes made by commands it ran are not undone.",
     );
   });
 

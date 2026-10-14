@@ -44,7 +44,7 @@ export function RejectConfirmation({ review }: { review: Review }) {
         <>
           <b>Reject this work?</b>
           {review.inPlace
-            ? "The chat closes. Its changes stay in your folder."
+            ? "The chat closes and the files Claude edited go back to how they were before the chat. Changes made by commands it ran are not undone."
             : "The chat closes and its worktree and branch are removed. Nothing is merged."}
         </>
       }
