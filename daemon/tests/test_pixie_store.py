@@ -67,18 +67,27 @@ async def test_an_unknown_chat_session_is_not_a_slug_conflict(
     assert "pixies.slug" not in str(raised.value)
 
 
-async def test_create_re_raises_other_integrity_errors(
-    db: Database, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_create_re_raises_other_integrity_errors(db: Database, clock: FakeClock) -> None:
     store = PixieStore(db, clock)
 
-    async def refuse(sql: str, params: tuple[object, ...] = ()) -> int:
-        raise sqlite3.IntegrityError("FOREIGN KEY constraint failed")
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY") as raised:
+        await store.create_after(PixieSettings(name="Tester"), "tester", 0, "no-such-team")
 
-    monkeypatch.setattr(db, "execute", refuse)
+    assert not isinstance(raised.value, DuplicateSlugError)
+    assert await store.list_pixies() == []
 
-    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
-        await store.create(PixieSettings(name="Tester"), "tester")
+
+async def test_create_after_moves_the_later_pixies_down(db: Database, clock: FakeClock) -> None:
+    store = PixieStore(db, clock)
+    a, b, c = [await store.create(PixieSettings(name=n), n.lower()) for n in ("A", "B", "C")]
+
+    copy, moved = await store.create_after(PixieSettings(name="A 2"), "a-2", a.position, None)
+    last, none_moved = await store.create_after(PixieSettings(name="Z"), "z", 3, None)
+
+    assert copy.position == 1
+    assert moved == [b.id, c.id]
+    assert (last.position, none_moved) == (4, [])
+    assert [p.id for p in await store.list_pixies()] == [a.id, copy.id, b.id, c.id, last.id]
 
 
 async def test_chat_sessions_lists_the_current_and_the_archived_chats(

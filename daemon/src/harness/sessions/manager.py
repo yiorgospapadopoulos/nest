@@ -61,6 +61,7 @@ from harness.sessions.rules import (
 )
 from harness.sessions.states import StateWriter
 from harness.sessions.store import SessionStore
+from harness.sessions.subagents import ChatAgentsSource
 from harness.sessions.titles import short_title
 from harness.sessions.turns import TurnRunner
 from harness.sessions.updates import save_changes, set_git_violation
@@ -110,6 +111,7 @@ class SessionManager:
         files: FileIndex | None = None,
         models: ModelLookup | None = None,
         extras: RunExtrasSource | None = None,
+        agents: ChatAgentsSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038).
@@ -144,6 +146,7 @@ class SessionManager:
             queue=queue,
             clock=clock,
             extras=extras,
+            agents=agents,
         )
         self._live: dict[str, LiveSession] = {}
         # Set when the daemon stops its agents: no message starts a turn after that.

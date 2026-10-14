@@ -1,7 +1,7 @@
 """Provider-neutral agent types, so engines other than Claude (Codex) can plug in later."""
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
@@ -198,6 +198,22 @@ class AgentTool:
 
 
 @dataclass(frozen=True)
+class Subagent:
+    """A subagent the run's agent can call by name, such as a pixie (B40). Left out
+    (None or empty): the calling chat's model and thinking, and every skill and tool.
+    """
+
+    description: str
+    prompt: str
+    permission_mode: PermissionMode
+    model: str | None = None
+    effort: Effort | None = None
+    skills: tuple[str, ...] = ()
+    # Permission rules for tools it never gets.
+    disallowed_tools: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SessionSpec:
     cwd: Path
     # None passes no mode, so Claude Code's own setting (`defaultMode`) applies (IMP-06).
@@ -217,6 +233,8 @@ class SessionSpec:
     # Permission rules that never prompt, and ones added to the git rules (D072).
     allowed_tools: tuple[str, ...] = ()
     disallowed_tools: tuple[str, ...] = ()
+    # Subagents by the name the agent calls them with; fixed for the run's life (B40).
+    subagents: Mapping[str, Subagent] = field(default_factory=dict[str, Subagent])
 
 
 @dataclass(frozen=True)

@@ -78,3 +78,7 @@ USAGE_UPDATED: Final = "usage.updated"
 # or deleted, `{pixie_id}`. Clients replace or drop their copy.
 PIXIE_UPDATED: Final = "pixie.updated"
 PIXIE_DELETED: Final = "pixie.deleted"
+# Pixie teams (B40); global. A team was created or changed (a new leader too), `{team}`
+# with the whole team, or deleted, `{id}`; its pixies are announced first, without it.
+PIXIE_TEAM_UPDATED: Final = "pixie_team.updated"
+PIXIE_TEAM_DELETED: Final = "pixie_team.deleted"

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from claude_agent_sdk import (
+    AgentDefinition,
     AssistantMessage,
     ClaudeAgentOptions,
     PermissionResultAllow,
@@ -42,6 +43,7 @@ from harness.providers.base import (
     QuestionRequest,
     SessionSpec,
     SlashCommand,
+    Subagent,
     UserInput,
 )
 from harness.providers.claude import ClaudeProvider, ClaudeRun, build_options
@@ -907,3 +909,46 @@ async def test_a_user_server_named_like_the_tool_server_is_not_auto_allowed(tmp_
 
     assert isinstance(result, PermissionResultDeny)
     assert [r.tool_name for r in handler.requests] == ["mcp__pixie__x"]
+
+
+async def test_subagents_become_agent_definitions(tmp_path: Path) -> None:
+    spec = SessionSpec(
+        cwd=tmp_path,
+        permission_mode="default",
+        subagents={
+            "tester": Subagent(
+                description="Tester: you test.",
+                prompt="You test.",
+                model="opus",
+                effort="high",
+                skills=("review",),
+                permission_mode="acceptEdits",
+                disallowed_tools=("Bash(rm:*)", "Edit"),
+            ),
+            "plain": Subagent(description="Plain", prompt="Plain.", permission_mode="default"),
+        },
+    )
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+
+    assert options.agents == {
+        "tester": AgentDefinition(
+            description="Tester: you test.",
+            prompt="You test.",
+            model="opus",
+            effort="high",
+            skills=["review"],
+            permissionMode="acceptEdits",
+            disallowedTools=["Bash(rm:*)", "Edit"],
+        ),
+        # Left out: the chat's model and thinking, and every skill and tool.
+        "plain": AgentDefinition(description="Plain", prompt="Plain.", permissionMode="default"),
+    }
+
+
+async def test_no_subagents_passes_none(tmp_path: Path) -> None:
+    spec = SessionSpec(cwd=tmp_path, permission_mode="default")
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+
+    assert options.agents is None

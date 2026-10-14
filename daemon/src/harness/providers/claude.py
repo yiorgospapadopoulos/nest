@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from claude_agent_sdk import (
+    AgentDefinition,
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ContextUsageResponse,
@@ -37,6 +38,7 @@ from harness.providers.base import (
     ProviderEventSink,
     RewindResult,
     SessionSpec,
+    Subagent,
     UserInput,
 )
 from harness.providers.claude_commands import context_usage, described_catalog
@@ -217,6 +219,7 @@ def build_options(
         disallowed_tools=[*GIT_WRITE_RULES, *spec.disallowed_tools],
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,
+        agents={name: _agent(sub) for name, sub in spec.subagents.items()} or None,
         hooks={"PreToolUse": pre_tool_use},
         env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
         stderr=stderr,
@@ -354,6 +357,18 @@ async def _review_plan(
         updated_permissions=[
             PermissionUpdate(type="setMode", mode=decision.mode, destination="session")
         ]
+    )
+
+
+def _agent(subagent: Subagent) -> AgentDefinition:
+    return AgentDefinition(
+        description=subagent.description,
+        prompt=subagent.prompt,
+        model=subagent.model,
+        effort=subagent.effort,
+        skills=list(subagent.skills) or None,
+        permissionMode=subagent.permission_mode,
+        disallowedTools=list(subagent.disallowed_tools) or None,
     )
 
 

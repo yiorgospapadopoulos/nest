@@ -8,7 +8,7 @@ from uuid import uuid4
 from harness.clock import Clock
 from harness.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotFoundError
 from harness.pixies.models import Pixie, PixieSettings
-from harness.storage.db import Database
+from harness.storage.db import Database, Transaction
 
 _JSON = ("projects", "skills", "can_call", "allowed_tools", "disallowed_tools")
 
@@ -19,20 +19,49 @@ class PixieStore:
         self._clock = clock
 
     async def create(self, settings: PixieSettings, slug: str) -> Pixie:
+        async with self._db.transaction() as tx:
+            row = await tx.fetch_one("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM pixies")
+            position = row["next"] if row is not None else 0
+            return await self._insert(tx, settings, slug, position, None)
+
+    async def create_after(
+        self, settings: PixieSettings, slug: str, position: int, team_id: str | None
+    ) -> tuple[Pixie, list[str]]:
+        """A pixie right after the one at `position`: the later ones move down one place.
+        Returns it and the ids of the pixies that moved.
+        """
+        now = _column("updated_at", self._clock.now())
+        async with self._db.transaction() as tx:
+            rows = await tx.fetch_all("SELECT id FROM pixies WHERE position > ?", (position,))
+            await tx.execute(
+                "UPDATE pixies SET position = position + 1, updated_at = ? WHERE position > ?",
+                (now, position),
+            )
+            pixie = await self._insert(tx, settings, slug, position + 1, team_id)
+        return pixie, [row["id"] for row in rows]
+
+    async def _insert(
+        self,
+        tx: Transaction,
+        settings: PixieSettings,
+        slug: str,
+        position: int,
+        team_id: str | None,
+    ) -> Pixie:
         now = self._clock.now()
-        row = await self._db.fetch_one("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM pixies")
         pixie = Pixie(
             **settings.model_dump(),
             id=uuid4().hex,
             slug=slug,
-            position=row["next"] if row is not None else 0,
+            position=position,
+            team_id=team_id,
             chat_session_id=None,
             created_at=now,
             updated_at=now,
         )
         values = {name: _column(name, value) for name, value in pixie.model_dump().items()}
         try:
-            await self._db.execute(
+            await tx.execute(
                 f"INSERT INTO pixies ({', '.join(values)})"  # noqa: S608
                 f" VALUES ({', '.join('?' for _ in values)})",
                 tuple(values.values()),
@@ -56,6 +85,13 @@ class PixieStore:
 
     async def list_pixies(self) -> list[Pixie]:
         rows = await self._db.fetch_all("SELECT * FROM pixies ORDER BY position, rowid")
+        return [_pixie(row) for row in rows]
+
+    async def members(self, team_id: str) -> list[Pixie]:
+        """The team's pixies, in pixie order."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM pixies WHERE team_id = ? ORDER BY position, rowid", (team_id,)
+        )
         return [_pixie(row) for row in rows]
 
     async def slugs(self) -> set[str]:

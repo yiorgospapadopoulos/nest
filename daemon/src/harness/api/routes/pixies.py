@@ -44,9 +44,10 @@ async def get_pixie(pixie_id: str, ctx: Context) -> Pixie:
 
 @router.patch("/{pixie_id}")
 async def update_pixie(pixie_id: str, body: UpdatePixie, ctx: Context) -> Pixie:
-    """`"model": null` or `"effort": null` sets it back to the default. 422 when the model
-    does not run in the chosen mode; a pixie in Auto moved to a model without it asks
-    again (`default`), as a chat does.
+    """`"model": null` or `"effort": null` sets it back to the default; `"team_id": null`
+    leaves the team (404 for an unknown team). 422 when the model does not run in the
+    chosen mode; a pixie in Auto moved to a model without it asks again (`default`), as a
+    chat does.
     """
     return await ctx.pixies.update(pixie_id, body)
 
@@ -56,6 +57,14 @@ async def delete_pixie(pixie_id: str, ctx: Context) -> Response:
     """Stops and deletes its chats and removes its soul, memory and notes."""
     await ctx.pixies.delete(pixie_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{pixie_id}/duplicate", status_code=status.HTTP_201_CREATED)
+async def duplicate_pixie(pixie_id: str, ctx: Context) -> Pixie:
+    """A copy right after the original, in its team: "<name> 2" with slug `<slug>-2` (the
+    next free number), every setting, the soul, memory, notes and archive; no chat.
+    """
+    return await ctx.pixies.duplicate(pixie_id)
 
 
 @router.post("/{pixie_id}/messages", status_code=status.HTTP_202_ACCEPTED)

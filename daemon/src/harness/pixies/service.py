@@ -8,8 +8,10 @@ from harness.clock import Clock
 from harness.config.models import AgentDefaults
 from harness.events import types
 from harness.events.bus import EventBus
+from harness.pixies.errors import DuplicateSlugError
 from harness.pixies.files import PixieFiles
 from harness.pixies.models import (
+    NAME_MAX,
     CreatePixie,
     FileText,
     Pixie,
@@ -18,8 +20,9 @@ from harness.pixies.models import (
     UpdatePixie,
     WriteFile,
 )
-from harness.pixies.slugs import RESERVED_SLUGS, check_slug, slugify
+from harness.pixies.slugs import check_slug, free_slug, slugify
 from harness.pixies.store import PixieStore
+from harness.pixies.teams import TeamService
 from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.manager import SessionManager
 from harness.sessions.models import SendResult, Session, SessionState, UpdateSession
@@ -52,6 +55,7 @@ class PixieService:
         self,
         store: PixieStore,
         files: PixieFiles,
+        teams: TeamService,
         sessions: SessionManager,
         bus: EventBus,
         clock: Clock,
@@ -59,6 +63,7 @@ class PixieService:
     ) -> None:
         self._store = store
         self._files = files
+        self._teams = teams
         self._sessions = sessions
         self._bus = bus
         self._clock = clock
@@ -74,7 +79,7 @@ class PixieService:
 
     async def create(self, request: CreatePixie) -> Pixie:
         slug = request.slug or await self._free_slug(slugify(request.name))
-        check_slug(slug)
+        await self._check_slug(slug)
         await self._sessions.fitting_mode(
             request.model or self._defaults().model,
             request.permission_mode,
@@ -94,7 +99,7 @@ class PixieService:
         return pixie
 
     async def update(self, pixie_id: str, request: UpdatePixie) -> Pixie:
-        changes = request.model_dump(exclude_none=True, exclude={"all_projects"})
+        changes = request.model_dump(exclude_none=True, exclude={"all_projects", "team_id"})
         cleared = {
             name
             for name in _CLEARABLE
@@ -104,8 +109,12 @@ class PixieService:
         if request.all_projects:
             changes["projects"] = None
         if "slug" in changes:
-            check_slug(changes["slug"])
+            await self._check_slug(changes["slug"])
         before = await self._store.get(pixie_id)
+        if "team_id" in request.model_fields_set:
+            if request.team_id is not None:
+                await self._teams.get(request.team_id)  # unknown: nothing changes
+            changes["team_id"] = request.team_id
         default_model = self._defaults().model
         mode = await self._sessions.fitting_mode(
             changes.get("model", before.model) or default_model,
@@ -129,8 +138,34 @@ class PixieService:
                 await self._sessions.set_pixie_controls(chat, controls)
         if chat is not None and (cleared or any(name in changes for name in _RUN_SHAPING)):
             self._sessions.refresh_run(chat)
+        if pixie.team_id != before.team_id:
+            await self._teams.member_moved(pixie.id, before.team_id, pixie.team_id)
         await self._announce(pixie)
         return pixie
+
+    async def duplicate(self, pixie_id: str) -> Pixie:
+        """A copy right after the original, in its team (never as leader): every setting,
+        the soul, memory, notes and archive, but not the chat or the workdir's files.
+        Each pixie that moved down is announced (B40).
+        """
+        original = await self._store.get(pixie_id)
+        names = {pixie.name for pixie in await self._store.list_pixies()}
+        settings = PixieSettings.model_validate(
+            original.model_dump(include=set(PixieSettings.model_fields))
+        ).model_copy(update={"name": _copy_name(original.name, names)})
+        copy, moved = await self._store.create_after(
+            settings, await self._free_slug(original.slug), original.position, original.team_id
+        )
+        try:
+            self._files.copy(original.id, copy.id)
+        except OSError:
+            await self._store.delete(copy.id)
+            self._files.remove(copy.id)
+            raise
+        for moved_id in moved:
+            await self._announce(await self._store.get(moved_id))
+        await self._announce(copy)
+        return copy
 
     async def reorder(self, ids: list[str]) -> list[Pixie]:
         """Puts the pixies in this order; each one that moved is announced."""
@@ -148,6 +183,10 @@ class PixieService:
             await self._store.set_chat(pixie_id, None)
             for session_id in chats:
                 await self._sessions.purge(session_id)
+            if pixie.team_id is not None:
+                # Its team gets a new leader first, if it led it.
+                await self._store.update(pixie_id, team_id=None)
+                await self._teams.member_moved(pixie_id, pixie.team_id, None)
             await self._store.delete(pixie_id)
             self._files.remove(pixie.id)
             await self._bus.publish(types.PIXIE_DELETED, {"pixie_id": pixie_id})
@@ -219,12 +258,25 @@ class PixieService:
         return chat
 
     async def _free_slug(self, base: str) -> str:
-        taken = await self._store.slugs() | RESERVED_SLUGS
-        slug, n = base, 2
-        while slug in taken:
-            suffix = f"-{n}"
-            slug, n = base[: 32 - len(suffix)] + suffix, n + 1
-        return slug
+        return free_slug(base, await self._store.slugs() | await self._teams.handles())
+
+    async def _check_slug(self, slug: str) -> None:
+        """A valid slug that no team uses; a pixie using it is the store's conflict."""
+        check_slug(slug)
+        if slug in await self._teams.handles():
+            msg = f"a team called @{slug} already exists"
+            raise DuplicateSlugError(msg)
 
     async def _announce(self, pixie: Pixie) -> None:
         await self._bus.publish(types.PIXIE_UPDATED, {"pixie": pixie.model_dump(mode="json")})
+
+
+def _copy_name(name: str, taken: set[str]) -> str:
+    """`<name> 2`, or the next free number, trimmed to fit a name's length."""
+    n = 2
+    while True:
+        suffix = f" {n}"
+        candidate = name[: NAME_MAX - len(suffix)].rstrip() + suffix
+        if candidate not in taken:
+            return candidate
+        n += 1

@@ -13,6 +13,7 @@ from harness.attachments.store import Attachment
 from harness.config.models import Effort, PermissionMode
 from harness.providers.base import AgentRun
 from harness.sessions.errors import SessionBusyError
+from harness.sessions.subagents import NO_AGENTS, ChatAgents
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ class LiveSession:
     # The model and permission mode the run has now, to bring it to the saved ones (D048).
     run_model: str | None = None
     run_mode: PermissionMode | None = None
+    # The subagents and teams the run opened with; another set needs a new run (B40).
+    run_agents: ChatAgents = NO_AGENTS
     # Held while the saved model and mode are read and sent to the run, so the last saved win.
     controls: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Held while the state moves between running and waiting, so two prompts opening at

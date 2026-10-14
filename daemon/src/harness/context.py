@@ -34,10 +34,13 @@ from harness.notifications.notifier import Notifier
 from harness.notifications.subscriptions import PushSubscriptionStore
 from harness.notifications.vapid import VapidKeys
 from harness.paths import AppPaths
+from harness.pixies.agents import PixieAgents
 from harness.pixies.files import PixieFiles
 from harness.pixies.runtime import PixieRuntime
 from harness.pixies.service import PixieService
 from harness.pixies.store import PixieStore
+from harness.pixies.team_store import TeamStore
+from harness.pixies.teams import TeamService
 from harness.providers.base import AgentProvider
 from harness.providers.claude import ClaudeProvider
 from harness.prs.monitor import PrMonitor
@@ -89,6 +92,7 @@ class AppContext:
     stuck: StuckWatcher
     engine: EngineInfo
     pixies: PixieService
+    teams: TeamService
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -142,6 +146,7 @@ class AppContext:
         )
         pixie_files = PixieFiles(paths.pixies_dir)
         pixie_runtime = PixieRuntime(pixie_store, pixie_files, repos, bus, clock)
+        team_store = TeamStore(db, clock)
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -168,10 +173,13 @@ class AppContext:
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
             extras=pixie_runtime.extras,
+            agents=PixieAgents(pixie_store, pixie_files, team_store).for_session,
         )
+        teams = TeamService(team_store, pixie_store, bus)
         pixies = PixieService(
             pixie_store,
             pixie_files,
+            teams,
             sessions,
             bus,
             clock,
@@ -263,6 +271,7 @@ class AppContext:
             ),
             engine=engine,
             pixies=pixies,
+            teams=teams,
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None

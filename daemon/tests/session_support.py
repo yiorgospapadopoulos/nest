@@ -23,6 +23,7 @@ from harness.sessions.manager import SessionManager
 from harness.sessions.models import CreateSession, Session, SessionState
 from harness.sessions.queue import MessageQueue
 from harness.sessions.store import SessionStore
+from harness.sessions.subagents import ChatAgentsSource
 from harness.storage.db import Database
 from harness.worktrees.manager import WorktreeManager
 from tests.async_support import until
@@ -65,7 +66,12 @@ class Env:
         self.models: list[ModelOption] | None = None
         self.manager = self.build(timedelta(hours=1))
 
-    def build(self, idle_close: timedelta, extras: RunExtrasSource | None = None) -> SessionManager:
+    def build(
+        self,
+        idle_close: timedelta,
+        extras: RunExtrasSource | None = None,
+        agents: ChatAgentsSource | None = None,
+    ) -> SessionManager:
         return SessionManager(
             store=self.store,
             bus=self.bus,
@@ -82,6 +88,7 @@ class Env:
             queue=self.queue,
             models=self.find_model,
             extras=extras,
+            agents=agents,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

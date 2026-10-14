@@ -10,7 +10,20 @@ class PixieNotFoundError(NotFoundError):
 
 
 class DuplicateSlugError(ConflictError):
+    """The slug or handle is taken by a pixie or a team: they share one namespace."""
+
+
+class TeamNotFoundError(NotFoundError):
     pass
+
+
+class LeaderNotMemberError(ConflictError):
+    """A team's leader must be one of its members."""
+
+    code = "leader_not_member"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
 
 
 class InvalidSlugError(InvalidInputError):

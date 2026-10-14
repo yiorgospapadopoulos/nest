@@ -31,6 +31,7 @@ from harness.sessions.rules import attachment_summary, require_cwd, user_input
 from harness.sessions.sink import SessionSink
 from harness.sessions.states import StateWriter
 from harness.sessions.store import SessionStore
+from harness.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource
 from harness.sessions.updates import set_git_violation
 from harness.sessions.workspace import prepare_worktree
 from harness.worktrees.manager import WorktreeManager
@@ -84,10 +85,14 @@ class TurnRunner:
         queue: MessageQueue,
         clock: Clock,
         extras: RunExtrasSource | None = None,
+        agents: ChatAgentsSource | None = None,
     ) -> None:
-        """`on_mode` records a permission mode the engine switched to itself."""
+        """`on_mode` records a permission mode the engine switched to itself; `agents`
+        gives a project chat's run its subagents (B40).
+        """
         self._on_mode = on_mode
         self._extras = extras
+        self._agents = agents
         self._repos = repos
         self._queue = queue
         self._clock = clock
@@ -179,7 +184,8 @@ class TurnRunner:
         run = await self._ensure_run(live, session, cwd)
         live.baseline = await snapshot_refs(cwd)
         live.turn_active = True
-        await run.send(user_input(text, attachments))
+        # Teams the message calls get their instruction; the chat shows what was typed.
+        await run.send(user_input(live.run_agents.message(text), attachments))
 
     async def agent_active(self, live: LiveSession) -> None:
         # A turn the agent starts on its own waits while the daemon publishes its work or
@@ -380,7 +386,8 @@ class TurnRunner:
         while a run opens apply once it is open, so the saved ones always win (D048).
         """
         dirs = await self._attachments.file_dirs(session.id)
-        while (run := live.run) is None or not _fits(live, session, dirs):
+        agents = await self._chat_agents(session)
+        while (run := live.run) is None or not _fits(live, session, dirs, agents):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
             # sets it again, and the loop opens another run with that change.
@@ -404,6 +411,7 @@ class TurnRunner:
                 skills=extras.skills if extras else (),
                 allowed_tools=extras.allowed_tools if extras else (),
                 disallowed_tools=extras.disallowed_tools if extras else (),
+                subagents=agents.subagents,
             )
             sink = SessionSink(
                 live, self._bus, self._store, self, self._hooks, session.provider_session_id
@@ -414,6 +422,7 @@ class TurnRunner:
             live.run_bypass = mode == BYPASS
             live.run_model = session.model
             live.run_mode = mode
+            live.run_agents = agents
             # A new effort or bypass chosen while it opened needs another run.
             session = await self._store.get(session.id)
         await self.apply_controls(live)
@@ -427,6 +436,12 @@ class TurnRunner:
             msg = f"pixie chat {session.id} has no run extras source"
             raise RuntimeError(msg)
         return await self._extras(session)
+
+    async def _chat_agents(self, session: Session) -> ChatAgents:
+        """The pixies a project chat may call; a pixie's own chat gets none (B40)."""
+        if session.pixie_id is not None or self._agents is None:
+            return NO_AGENTS
+        return await self._agents(session)
 
     async def _harness_prompt(self, session: Session) -> str:
         git = await self._repos.has_git(session.repo)
@@ -457,13 +472,18 @@ def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
         live.unsent = unsent
 
 
-def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...]) -> bool:
+def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...], agents: ChatAgents) -> bool:
     """Whether the live run can take the session's next message as it is."""
-    # A new attachment folder, a new effort, or bypass for a run that did not open in it
-    # needs a new run (D046), but waits while background tasks run: closing would stop
-    # them. Until then the agent asks before reading a new folder's files.
+    # A new attachment folder, a new effort, another set of subagents (B40), or bypass for
+    # a run that did not open in it needs a new run (D046), but waits while background
+    # tasks run: closing would stop them. Until then the agent asks before reading a new
+    # folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
-    same = set(dirs) <= set(live.run_dirs) and live.run_effort == session.effort
+    same = (
+        set(dirs) <= set(live.run_dirs)
+        and live.run_effort == session.effort
+        and live.run_agents.fingerprint == agents.fingerprint
+    )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 
 

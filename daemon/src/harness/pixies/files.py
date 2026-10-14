@@ -43,6 +43,18 @@ class PixieFiles:
         (folder / SOUL_FILE).write_text(_normal(soul), encoding="utf-8")
         (folder / MEMORY_FILE).write_text(MEMORY_HEADER, encoding="utf-8")
 
+    def copy(self, source_id: str, target_id: str) -> None:
+        """A new pixie's folder with the soul, memory, notes and archive of another; its
+        workdir starts empty (B40).
+        """
+        source = self._folder(source_id)
+        target = self._root / _checked(target_id)
+        for sub in ("notes", "archive"):
+            shutil.copytree(source / sub, target / sub)
+        (target / "workdir").mkdir()
+        for name in (SOUL_FILE, MEMORY_FILE):
+            shutil.copy2(source / name, target / name)
+
     def remove(self, pixie_id: str) -> None:
         shutil.rmtree(self._root / _checked(pixie_id), ignore_errors=True)
 

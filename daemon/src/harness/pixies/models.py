@@ -14,7 +14,10 @@ type Autonomy = Literal["observe", "message", "start", "answer"]
 # or neither (its workdir only).
 type ProjectAccess = Literal["edit", "read", "none"]
 
-type Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+NAME_MAX = 40
+type Name = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX)
+]
 
 
 class PixieSettings(BaseModel):
@@ -52,7 +55,8 @@ class CreatePixie(PixieSettings):
 
 class UpdatePixie(BaseModel):
     """Fields left out (or null) are unchanged, except that an explicit null `model` or
-    `effort` sets it back to the default; `projects` uses `all_projects` to clear.
+    `effort` sets it back to the default and an explicit null `team_id` leaves the team;
+    `projects` uses `all_projects` to clear.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -75,6 +79,8 @@ class UpdatePixie(BaseModel):
     allowed_tools: list[str] | None = None
     disallowed_tools: list[str] | None = None
     hidden: bool | None = None
+    # A team's id to join it (B40).
+    team_id: str | None = None
 
 
 class PixieOrder(BaseModel):
@@ -88,7 +94,42 @@ class Pixie(PixieSettings):
     id: str
     slug: str
     position: int
+    # Its team, if any (B40).
+    team_id: str | None = None
     chat_session_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateTeam(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name
+    # Derived from the name when left out; one namespace with pixie slugs.
+    handle: str | None = None
+
+
+class UpdateTeam(BaseModel):
+    """Fields left out (or null) are unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Name | None = None
+    handle: str | None = None
+    # Must be one of the team's members.
+    leader_id: str | None = None
+
+
+class PixieTeam(BaseModel):
+    """Pixies that are called together with `@handle` (B40). Its members are the pixies
+    whose `team_id` is its id; the leader is one of them, None only without members.
+    """
+
+    id: str
+    name: str
+    handle: str
+    leader_id: str | None
+    position: int
     created_at: datetime
     updated_at: datetime
 

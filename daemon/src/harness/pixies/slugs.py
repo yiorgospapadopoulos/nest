@@ -1,4 +1,6 @@
-"""A pixie's slug is its `@` handle and its subagent name, so it must be safe and unique."""
+"""A pixie's slug is its `@` handle and its subagent name, so it must be safe and unique.
+Team handles follow the same rules, in the same namespace (B40).
+"""
 
 import re
 import unicodedata
@@ -17,6 +19,18 @@ def slugify(name: str) -> str:
     ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")[:32].rstrip("-")
     return slug or FALLBACK
+
+
+def free_slug(base: str, taken: set[str]) -> str:
+    """`base`, or `base-2`, `base-3`... trimmed to fit: the first that is neither taken nor
+    reserved.
+    """
+    taken = taken | RESERVED_SLUGS
+    slug, n = base, 2
+    while slug in taken:
+        suffix = f"-{n}"
+        slug, n = base[: 32 - len(suffix)] + suffix, n + 1
+    return slug
 
 
 def check_slug(slug: str) -> None:
