@@ -40,10 +40,10 @@ describe("project settings", () => {
     });
     await user.click(within(modes).getByRole("button", { name: "Agent default" }));
 
-    const worktree = repo("todo-ui").worktree;
-    expect(api.updateWorktree.mock.calls).toEqual([
-      ["todo-ui", { ...worktree, default: false }],
-      ["todo-ui", { ...worktree, default: null }],
+    // Only the changed key, so a save never overwrites another device's links or setup.
+    expect(api.updateRepo.mock.calls).toEqual([
+      ["todo-ui", { default: false }],
+      ["todo-ui", { default: null }],
     ]);
     await waitFor(() => {
       expect(pressed()).toEqual(["Agent default"]);
@@ -65,6 +65,22 @@ describe("project settings", () => {
     });
     expect(await screen.findByText("Saved todo-ui")).toBeInTheDocument();
     expect(links).toHaveValue(".env\n.env.local");
+  });
+
+  it("send only the field that changed, and nothing when none did", async () => {
+    const { user, api, sheet } = await openSettings();
+    const setup = within(sheet).getByLabelText("Setup commands");
+
+    await user.type(within(sheet).getByLabelText("Linked files"), "  ");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved todo-ui")).toBeInTheDocument();
+    expect(api.updateRepo).not.toHaveBeenCalled();
+
+    await user.type(setup, "make setup");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(api.updateRepo.mock.calls).toEqual([["todo-ui", { setup: ["make setup"] }]]);
+    });
   });
 
   it("keep what was typed when saving is refused", async () => {
@@ -96,7 +112,7 @@ describe("project settings", () => {
       },
     };
     const api = fakeApi();
-    api.updateWorktree.mockRejectedValueOnce(new ApiError(500, "Could not write the config"));
+    api.updateRepo.mockRejectedValueOnce(new ApiError(500, "Could not write the config"));
     const { user, sheet } = await openSettings([configured], undefined, api);
 
     expect(within(sheet).getByLabelText("Linked files")).toHaveValue(".env");

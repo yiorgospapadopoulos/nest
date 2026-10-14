@@ -27,7 +27,6 @@ import type {
   SessionDiff,
   UpdateSessionBody,
   UsageLimits,
-  WorktreeConfig,
 } from "./types.ts";
 
 // The daemon's code for a message refused because Claude Code has the chat open.
@@ -62,7 +61,6 @@ export interface Api {
   repos(): Promise<RepoConfig[]>;
   // Unregisters the project (its folder stays); `purge` deletes its chats first.
   removeRepo(name: string, purge: boolean): Promise<null>;
-  updateWorktree(name: string, worktree: WorktreeConfig): Promise<RepoConfig>;
   updateRepo(name: string, patch: RepoPatch): Promise<RepoConfig>;
   sessions(archived: boolean): Promise<Session[]>;
   session(id: string): Promise<SessionDetail>;
@@ -147,10 +145,6 @@ export class HttpApi implements Api {
 
   removeRepo(name: string, purge: boolean) {
     return this.json<null>("DELETE", `${repo(name)}?purge_sessions=${String(purge)}`);
-  }
-
-  updateWorktree(name: string, worktree: WorktreeConfig) {
-    return this.json<RepoConfig>("PUT", `${repo(name)}/worktree`, worktree);
   }
 
   updateRepo(name: string, patch: RepoPatch) {

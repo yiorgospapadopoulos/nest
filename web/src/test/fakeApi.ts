@@ -32,9 +32,6 @@ export function fakeApi(): FakeApi {
     }),
     repos: vi.fn<Api["repos"]>().mockResolvedValue([repo("todo-ui")]),
     removeRepo: vi.fn<Api["removeRepo"]>().mockResolvedValue(null),
-    updateWorktree: vi
-      .fn<Api["updateWorktree"]>()
-      .mockImplementation((name, worktree) => Promise.resolve({ ...repo(name), worktree })),
     updateRepo: vi
       .fn<Api["updateRepo"]>()
       .mockImplementation((name, patch) =>

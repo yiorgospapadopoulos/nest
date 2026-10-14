@@ -21,6 +21,8 @@ export function ViolationNotice({ review }: { review: Review }) {
           role="switch"
           aria-checked={review.acknowledged}
           aria-labelledby={id}
+          // What was checked is the loaded review; a new one asks again.
+          disabled={review.diff === null}
           onClick={() => {
             review.setAcknowledged(!review.acknowledged);
           }}
@@ -87,7 +89,11 @@ export function RemoteConfirmation({ review }: { review: Review }) {
       }
     >
       {single && (
-        <button className="asi mid" onClick={() => void review.pushThere(prompt.message, url)}>
+        <button
+          className="asi mid"
+          disabled={!review.ready}
+          onClick={() => void review.pushThere(prompt.message, url)}
+        >
           Push there
         </button>
       )}

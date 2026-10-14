@@ -130,10 +130,10 @@ const calls: Call[] = [
   ["diff", (a) => a.diff("s1"), "GET", "/api/sessions/s1/diff", undefined],
   [
     "approve",
-    (a) => a.approve("s1", { commit_message: "m" }),
+    (a) => a.approve("s1", { commit_message: "m", expected_fingerprint: "f1" }),
     "POST",
     "/api/sessions/s1/approve",
-    { commit_message: "m" },
+    { commit_message: "m", expected_fingerprint: "f1" },
   ],
   ["reject", (a) => a.reject("s1"), "POST", "/api/sessions/s1/reject", undefined],
   [
@@ -217,16 +217,10 @@ const calls: Call[] = [
   ],
   [
     "worktree default",
-    (a) =>
-      a.updateWorktree("todo-ui", {
-        default: false,
-        link: [".env"],
-        setup: [],
-        setup_timeout_seconds: 900,
-      }),
-    "PUT",
-    "/api/repos/todo-ui/worktree",
-    { default: false, link: [".env"], setup: [], setup_timeout_seconds: 900 },
+    (a) => a.updateRepo("todo-ui", { default: false }),
+    "PATCH",
+    "/api/repos/todo-ui",
+    { default: false },
   ],
   [
     "links and setup",
@@ -316,7 +310,9 @@ describe("HttpApi", () => {
     };
     const { api } = setup(409, body);
 
-    await expect(api.approve("s1", { commit_message: "m" })).rejects.toMatchObject({
+    await expect(
+      api.approve("s1", { commit_message: "m", expected_fingerprint: "f1" }),
+    ).rejects.toMatchObject({
       code: "remote_changed",
       data: body,
     });

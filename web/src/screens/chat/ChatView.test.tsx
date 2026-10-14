@@ -544,14 +544,21 @@ describe("inline approvals", () => {
       }),
     );
     const box = screen.getByRole("group", { name: "Ready for review" });
+    // Where it pushes shows on the card itself.
+    expect(await within(box).findByText("Pushes to agent/contact")).toBeInTheDocument();
 
     await user.click(within(box).getByRole("button", { name: "Approve and open PR" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
-    await user.click(within(confirm).getByRole("button", { name: "Push there" }));
+    const pushThere = within(confirm).getByRole("button", { name: "Push there" });
+    await waitFor(() => {
+      expect(pushThere).toBeEnabled();
+    });
+    await user.click(pushThere);
 
-    // The diff loaded after the refusal pins the HEAD the push uses.
+    // The diff loaded after the refusal pins what the push publishes.
     expect(api.approve).toHaveBeenLastCalledWith("s1", {
       commit_message: "Validate contact form",
+      expected_fingerprint: "f1ngerprint",
       expected_head: "c0ffee0000000000000000000000000000000000",
       confirm_remote_url: "https://github.com/me/todo-ui.git",
     });
@@ -626,12 +633,15 @@ describe("inline review of work with the agent's own git changes", () => {
     const approve = within(box).getByRole("button", { name: "Approve and open PR" });
 
     expect(approve).toBeDisabled();
+    await within(box).findByText("Pushes to agent/contact");
     await user.click(within(box).getByRole("switch", { name: "I checked, publish anyway" }));
     await user.click(approve);
 
     expect(api.approve).toHaveBeenCalledWith("s1", {
       commit_message: "Validate contact form",
       acknowledge_violation: true,
+      expected_fingerprint: "f1ngerprint",
+      expected_head: "c0ffee0000000000000000000000000000000000",
     });
   });
 });

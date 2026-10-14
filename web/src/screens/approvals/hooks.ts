@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { mergeOf, permissionOf, planOf, reviewOf } from "../../api/payloads.ts";
 import type { Approval, ApproveBody, PlanMode, Session, SessionDiff } from "../../api/types.ts";
 import type { RemotePrompt } from "../../store/actions.ts";
@@ -63,30 +63,53 @@ export function usePlan(approval: Approval) {
   };
 }
 
-// Not asked for yet (undefined), loading (null), failed, or loaded.
-type DiffState = SessionDiff | null | "failed" | undefined;
+interface DiffAnswer {
+  // The request it answers.
+  request: object | null;
+  diff: SessionDiff | null;
+  failed: boolean;
+}
 
-/** The session's diff, loaded on demand; only the latest request's answer is kept. */
-function useDiff(sessionId: string) {
+/**
+ * The session's diff, loaded when the approval is shown, again whenever the approval or the
+ * session changes, and on request. Only the latest request's answer is kept; the previous
+ * diff stays on screen while it loads, and a failed load drops it.
+ */
+function useDiff(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
-  const [diff, setDiff] = useState<DiffState>(undefined);
-  const latest = useRef(0);
-  const loadDiff = useCallback(async () => {
-    latest.current += 1;
-    const request = latest.current;
-    setDiff(null);
-    const loaded = await actions.diff(sessionId);
-    if (request === latest.current) setDiff(loaded ?? "failed");
-  }, [actions, sessionId]);
-  return { diff, loadDiff };
+  const [reloads, setReloads] = useState(0);
+  const request = useMemo(() => ({ approval, session, reloads }), [approval, session, reloads]);
+  const [answer, setAnswer] = useState<DiffAnswer>({ request: null, diff: null, failed: false });
+  useEffect(() => {
+    let current = true;
+    void actions.diff(approval.session_id).then((diff) => {
+      if (current) setAnswer({ request, diff, failed: diff === null });
+    });
+    return () => {
+      current = false;
+    };
+  }, [actions, approval.session_id, request]);
+  const loadDiff = useCallback(() => {
+    setReloads((n) => n + 1);
+  }, []);
+  return {
+    diff: answer.diff,
+    loading: answer.request !== request,
+    failed: answer.failed,
+    loadDiff,
+  };
 }
 
 export function useReview(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
-  const { diff, loadDiff } = useDiff(approval.session_id);
-  // The agent changed git refs itself: publishing waits until the user says they checked.
-  const [acknowledged, setAcknowledged] = useState(false);
+  const { diff, loading, failed, loadDiff } = useDiff(approval, session);
+  // What approving would publish: the reviewed HEAD and the daemon's hash of the review.
+  const reviewed = diff === null ? null : `${diff.head.commit ?? ""} ${diff.fingerprint}`;
+  // The agent changed git refs itself: publishing waits until the user says they checked,
+  // and asks again when the review they checked changes.
+  const [checked, setChecked] = useState<string | null>(null);
+  const acknowledged = checked !== null && checked === reviewed;
   // Reject asks first, from a button or a swipe.
   const [rejecting, setRejecting] = useState(false);
   // Publishing waits for the push address to be confirmed, with the message it was for.
@@ -94,24 +117,30 @@ export function useReview(approval: Approval, session: Session | undefined) {
   const view = reviewOf(approval);
   const inPlace = session?.mode === "in_place";
   const violation = session?.git_violation === true;
-  const publish = (message: string, confirmUrl?: string) =>
-    run(async () => {
+  // Approving sends what the user saw, so it waits for the diff, and for any reload of it.
+  const ready = diff !== null && !loading;
+  const publish = async (message: string, confirmUrl?: string) => {
+    // A swipe can come before the diff has loaded: nothing to publish yet.
+    if (diff === null || loading) return;
+    await run(async () => {
       const result = await actions.approveReview(approval, {
-        ...body(message.trim() || approval.title),
+        ...body(diff, message.trim() || approval.title),
         ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
       });
       if (typeof result === "object") setRemote({ ...result.remote, message });
       // Refused: show the branch as it is now, with any commits harness did not make.
-      if (result === "refused" || typeof result === "object") void loadDiff();
+      if (result === "refused" || typeof result === "object") loadDiff();
       return result === "approved";
     });
-  const body = (message: string): ApproveBody => ({
+  };
+  const body = (seen: SessionDiff, message: string): ApproveBody => ({
     commit_message: message,
     // In-place work is pushed without a pull request, committing only the changed files.
     ...(inPlace ? { files: view.paths, open_pr: false } : {}),
     ...(violation && acknowledged ? { acknowledge_violation: true } : {}),
-    // Seen in the diff: publish that HEAD only, or be told it moved.
-    ...(typeof diff === "object" && diff?.head.commit ? { expected_head: diff.head.commit } : {}),
+    // Publish exactly what was reviewed, or be told it changed.
+    expected_fingerprint: seen.fingerprint,
+    ...(seen.head.commit === null ? {} : { expected_head: seen.head.commit }),
   });
   return {
     view,
@@ -119,12 +148,16 @@ export function useReview(approval: Approval, session: Session | undefined) {
     inPlace,
     violation,
     acknowledged,
-    setAcknowledged,
+    setAcknowledged: (on: boolean) => {
+      setChecked(on ? reviewed : null);
+    },
     // Approving would be refused until the violation is acknowledged.
     blocked: violation && !acknowledged,
+    ready,
     title: session?.title ?? approval.title,
     approveLabel: inPlace ? "Approve and push" : "Approve and open PR",
     diff,
+    diffFailed: failed,
     loadDiff,
     approve: (message: string) => publish(message),
     remote,

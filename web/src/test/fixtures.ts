@@ -246,6 +246,7 @@ export function diff(): SessionDiff {
     base: "abc",
     head: { commit: "c0ffee0000000000000000000000000000000000", branch: "agent/contact" },
     commits: [],
+    fingerprint: "f1ngerprint",
     stats: { files: 2, additions: 2, deletions: 1 },
     files: [
       {

@@ -126,6 +126,16 @@ describe("Projects", () => {
     expect(row(/Validate contact form, Idle/)).toHaveFocus();
   });
 
+  it("returns focus to New chat after leaving a new chat unsent", async () => {
+    const { user } = await openProjects([session()]);
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+    await screen.findByRole("region", { name: "New chat" });
+
+    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
+
+    expect(screen.getByRole("button", { name: "New chat in todo-ui" })).toHaveFocus();
+  });
+
   it("opens actions with long-press, swipe, context menu and the dots button", async () => {
     const { user, api } = await openProjects([session()]);
     const target = row(/Validate contact form, Idle/);

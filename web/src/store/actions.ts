@@ -17,6 +17,7 @@ import type {
   MonthUsage,
   NotificationSettings,
   RepoConfig,
+  RepoPatch,
   ResolveBody,
   RewindPreview,
   SearchResults,
@@ -235,10 +236,6 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       dispatch({ type: "transcriptClosed", id });
     },
 
-    /**
-     * After a reconnect that could not resume from a cursor, events may have been missed:
-     * reload the snapshots and the chats on screen. Stored events merge without duplicates.
-     */
     /** Loads again an open chat whose history could not be loaded. */
     reloadChat: (id: string) => fetchChat(id),
 
@@ -247,6 +244,10 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       await Promise.all([...failed].map((id) => fetchChat(id)));
     },
 
+    /**
+     * After a reconnect that could not resume from a cursor, events may have been missed:
+     * reload the snapshots and the chats on screen. Stored events merge without duplicates.
+     */
     async resync(): Promise<void> {
       await Promise.all([load(), ...[...onScreen].map((id) => fetchChat(id, true))]);
     },
@@ -311,9 +312,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
     /** Where the project's new chats work: a worktree, in place, or the agent default (null). */
     async setWorktreeDefault(repo: RepoConfig, value: boolean | null): Promise<boolean> {
-      const updated = await attempt(() =>
-        api.updateWorktree(repo.name, { ...repo.worktree, default: value }),
-      );
+      const updated = await attempt(() => api.updateRepo(repo.name, { default: value }));
       if (updated === null) return false;
       dispatch({ type: "repo", repo: updated });
       return true;
@@ -321,9 +320,17 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
     /** The files linked into the project's worktrees and the commands run in new ones. */
     async saveRepoSetup(repo: RepoConfig, link: string[], setup: string[]): Promise<boolean> {
-      const updated = await attempt(() => api.updateRepo(repo.name, { link, setup }));
-      if (updated === null) return false;
-      dispatch({ type: "repo", repo: updated });
+      // Only what changed, so it never overwrites a change made meanwhile on another device.
+      const same = (a: string[], b: string[]) => a.join("\n") === b.join("\n");
+      const patch: RepoPatch = {
+        ...(same(link, repo.worktree.link) ? {} : { link }),
+        ...(same(setup, repo.worktree.setup) ? {} : { setup }),
+      };
+      if (Object.keys(patch).length > 0) {
+        const updated = await attempt(() => api.updateRepo(repo.name, patch));
+        if (updated === null) return false;
+        dispatch({ type: "repo", repo: updated });
+      }
       toast(`Saved ${repo.name}`);
       return true;
     },

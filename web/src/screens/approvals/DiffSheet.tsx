@@ -17,14 +17,18 @@ export function DiffSheet({ review, onClose, footer }: Props) {
   const { diff, loadDiff } = review;
 
   useEffect(() => {
-    void loadDiff();
+    loadDiff();
   }, [loadDiff]);
 
   return (
     <Sheet title={review.title} onClose={onClose} full footer={footer}>
-      {(diff === null || diff === undefined) && <p className="note">Loading changes...</p>}
-      {diff === "failed" && <p className="note">The changes could not be loaded.</p>}
-      {typeof diff === "object" && diff !== null && (
+      {diff === null &&
+        (review.diffFailed ? (
+          <p className="note">The changes could not be loaded.</p>
+        ) : (
+          <p className="note">Loading changes...</p>
+        ))}
+      {diff !== null && (
         <>
           <ReviewHead diff={diff} />
           <div className="dsum">
@@ -37,6 +41,20 @@ export function DiffSheet({ review, onClose, footer }: Props) {
         </>
       )}
     </Sheet>
+  );
+}
+
+/** On a review card: where approving pushes and what is on the branch, once loaded. */
+export function ReviewSummary({ review }: { review: Review }) {
+  if (review.diff !== null) return <ReviewHead diff={review.diff} />;
+  if (!review.diffFailed) return null;
+  return (
+    <p className="note">
+      The changes could not be loaded.{" "}
+      <button className="lnk" onClick={review.loadDiff}>
+        Try again
+      </button>
+    </p>
   );
 }
 

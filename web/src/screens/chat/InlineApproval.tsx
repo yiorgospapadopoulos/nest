@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Approval, Session } from "../../api/types.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
-import { DiffSheet, ReviewHead } from "../approvals/DiffSheet.tsx";
+import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { useMerge, usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
@@ -107,10 +107,14 @@ function InlineReview({ approval, session }: Props) {
       <div className="crr">
         <DiffStats {...review.view} />
       </div>
-      {typeof review.diff === "object" && review.diff !== null && <ReviewHead diff={review.diff} />}
+      <ReviewSummary review={review} />
       <ViolationNotice review={review} />
       <div className="acts">
-        <button className="b b-ok" disabled={review.busy || review.blocked} onClick={approve}>
+        <button
+          className="b b-ok"
+          disabled={review.busy || review.blocked || !review.ready}
+          onClick={approve}
+        >
           {review.approveLabel}
         </button>
         <button
@@ -130,7 +134,11 @@ function InlineReview({ approval, session }: Props) {
           }}
           footer={
             <>
-              <button className="b b-ok" disabled={review.busy || review.blocked} onClick={approve}>
+              <button
+                className="b b-ok"
+                disabled={review.busy || review.blocked || !review.ready}
+                onClick={approve}
+              >
                 {review.approveLabel}
               </button>
               <button className="b b-no" disabled={review.busy} onClick={review.askReject}>

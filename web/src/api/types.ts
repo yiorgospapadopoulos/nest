@@ -288,7 +288,8 @@ export interface DiffStats {
   deletions: number;
 }
 
-// The commit and branch a publish would use; null when HEAD is detached or unborn.
+// The commit and branch a publish would use. The commit is null when HEAD is detached or
+// unborn (no commits yet); the branch is null only when HEAD is detached.
 export interface ReviewHead {
   commit: string | null;
   branch: string | null;
@@ -306,6 +307,8 @@ export interface SessionDiff {
   commits: ReviewCommit[];
   files: FileDiff[];
   stats: DiffStats;
+  // A hash of everything shown; approving sends it back as `expected_fingerprint`.
+  fingerprint: string;
 }
 
 export interface DayUsage {
@@ -424,6 +427,8 @@ export interface ApproveBody {
   acknowledge_violation?: boolean;
   // The HEAD the user reviewed; the daemon refuses with `head_changed` if it moved.
   expected_head?: string;
+  // The reviewed diff's fingerprint; the daemon refuses with `review_changed` if it differs.
+  expected_fingerprint: string;
   // The push address the user confirmed after a `remote_not_confirmed` or `remote_changed`.
   confirm_remote_url?: string;
 }
@@ -439,8 +444,9 @@ export interface RewindPreview {
   error: string | null;
 }
 
-/** A project's links and setup commands (`PATCH /api/repos/{name}`). */
+/** Project settings to change (`PATCH /api/repos/{name}`); only the keys sent change. */
 export interface RepoPatch {
+  default?: boolean | null;
   link?: string[];
   setup?: string[];
 }

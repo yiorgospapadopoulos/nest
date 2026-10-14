@@ -742,6 +742,10 @@ a.b {
 .sw[aria-checked="true"]::after {
   transform: translateX(20px);
 }
+.sw:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 /* A note under a group, lined up with the group's text. */
 .gnote {
   margin: 8px 16px 0;

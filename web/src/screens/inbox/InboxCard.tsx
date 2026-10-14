@@ -3,7 +3,7 @@ import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon, type IconName } from "../../ui/Icon.tsx";
-import { DiffSheet, ReviewHead } from "../approvals/DiffSheet.tsx";
+import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
@@ -134,6 +134,7 @@ function ReviewCard({
         onApprove={() => {
           // Never publish unchecked git changes with a swipe: show the chat instead.
           if (review.blocked) onOpenChat(approval.session_id);
+          // Does nothing until the changes are loaded: nothing is reviewed yet.
           else void review.approve(message);
         }}
         onReject={review.askReject}
@@ -153,9 +154,7 @@ function ReviewCard({
           View changes
           <Icon name="chevr" />
         </button>
-        {typeof review.diff === "object" && review.diff !== null && (
-          <ReviewHead diff={review.diff} />
-        )}
+        <ReviewSummary review={review} />
         <ViolationNotice review={review} />
         {feedback === null ? (
           <>
@@ -174,7 +173,7 @@ function ReviewCard({
             <div className="acts">
               <button
                 className="b b-ok"
-                disabled={review.busy || review.blocked}
+                disabled={review.busy || review.blocked || !review.ready}
                 onClick={() => void review.approve(message)}
               >
                 {review.approveLabel}
@@ -241,7 +240,7 @@ function ReviewCard({
             <>
               <button
                 className="b b-ok"
-                disabled={review.busy || review.blocked}
+                disabled={review.busy || review.blocked || !review.ready}
                 onClick={() => void review.approve(message)}
               >
                 {review.approveLabel}
