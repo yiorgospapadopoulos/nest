@@ -1,11 +1,10 @@
 import HarnessKit
 import SwiftUI
 
-/// The window's sheets and popovers, drawn over its content: a scrim and a glass sheet,
+/// The window's sheets and popovers, drawn over its content: a scrim and a sheet,
 /// or the usage popover under its button. Esc or a click outside closes them.
 struct OverlayLayer: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         if let overlay = shell.overlay {
@@ -17,7 +16,7 @@ struct OverlayLayer: View {
                     UsagePopover()
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, UsagePopover.trailingInset)
-                        .padding(.top, glass.spacing.stripHeight + 8)
+                        .padding(.top, Metrics.stripHeight + 8)
                         .transition(.opacity.combined(with: .offset(y: -6)))
                 } else {
                     Palette.scrim
@@ -59,7 +58,7 @@ struct OverlayLayer: View {
     }
 }
 
-/// A glass sheet with a title, a close button and scrolling content.
+/// A sheet with a title, a close button and scrolling content.
 struct SheetFrame<Content: View>: View {
     let title: String
     var width: Double = 580
@@ -68,28 +67,30 @@ struct SheetFrame<Content: View>: View {
     var scrollTarget: String?
     @ViewBuilder let content: () -> Content
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(title)
-                    .font(.ui(TypeSize.headline, .bold))
+                    .font(.ui(TypeSize.body, .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     shell.close()
                 } label: {
-                    Image(systemName: Icon.close).font(.system(size: 12, weight: .medium))
+                    Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
                 }
-                .buttonStyle(.harness(.ghost, iconOnly: true))
+                .buttonStyle(.harness(.plain, iconOnly: true))
+                .foregroundStyle(Palette.t3)
                 .accessibilityLabel("Close \(title.lowercased())")
             }
-            .padding(EdgeInsets(top: 14, leading: 22, bottom: 12, trailing: 14))
-            .overlay(alignment: .bottom) { Rectangle().fill(Palette.hair).frame(height: 1) }
+            .padding(.leading, 18)
+            .padding(.trailing, 10)
+            .frame(height: 42)
+            .overlay(alignment: .bottom) { Separator() }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) { content() }
-                        .padding(EdgeInsets(top: 4, leading: 22, bottom: 20, trailing: 22))
+                        .padding(EdgeInsets(top: 2, leading: 18, bottom: 16, trailing: 18))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .scrollIndicators(.never)
@@ -106,24 +107,22 @@ struct SheetFrame<Content: View>: View {
         .frame(width: width)
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .sheetGlass(radius: glass.sheetRadius)
-        .shadow(color: glass.shadow, radius: 30, y: 18)
+        .sheetSurface()
     }
 }
 
-/// An uppercase section head of a sheet.
+/// A small grey section label of a sheet, over its rows.
 struct SheetSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title.uppercased())
-                .font(.ui(TypeSize.caption, .bold))
-                .tracking(0.66)
+            Text(title)
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
-                .padding(.top, 18)
-                .padding(.bottom, 6)
+                .padding(.top, 14)
+                .padding(.bottom, 2)
             content()
         }
     }
@@ -137,46 +136,41 @@ struct SheetRow<Control: View>: View {
     @ViewBuilder let control: () -> Control
 
     var body: some View {
-        HStack(spacing: 14) {
-            Text(label).font(.ui(TypeSize.body))
+        HStack(spacing: 12) {
+            Text(label).font(.ui(TypeSize.ui))
             Spacer(minLength: 8)
             control()
         }
-        .padding(.vertical, 9)
+        .frame(minHeight: 32)
+        .padding(.vertical, 2)
         .overlay(alignment: .top) {
             if !first {
-                Rectangle().fill(Palette.hair).frame(height: 1)
+                Separator()
             }
         }
     }
 }
 
-/// A small segmented control, as the mockup's `.mseg`.
+/// A small segmented control: flat segments, the chosen one on the selection fill.
 struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selection: Value
     let select: (Value) -> Void
-    @Environment(\.glass) private var glass
+    @Environment(\.accentColors) private var accent
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(options, id: \.0) { value, title in
                 let on = value == selection
                 Button {
                     select(value)
                 } label: {
                     Text(title)
-                        .font(.ui(TypeSize.small, .semibold))
+                        .font(.ui(TypeSize.button))
                         .foregroundStyle(on ? Palette.t1 : Palette.t2)
-                        .padding(.horizontal, 11)
-                        .frame(height: 26)
-                        .background {
-                            if on {
-                                glass.rounded(glass.radius.small)
-                                    .fill(glass.surface)
-                                    .shadow(color: glass.shadow, radius: 1.5, y: 1)
-                            }
-                        }
+                        .padding(.horizontal, 9)
+                        .frame(height: Metrics.buttonHeight)
+                        .background(on ? accent.selection : .clear, in: .rounded(Radius.button))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -184,7 +178,5 @@ struct Segmented<Value: Hashable>: View {
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .padding(2)
-        .background(Palette.fill, in: glass.rounded(glass.radius.small + 2))
     }
 }

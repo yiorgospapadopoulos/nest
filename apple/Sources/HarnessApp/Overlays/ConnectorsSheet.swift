@@ -3,34 +3,42 @@ import HarnessKit
 import SwiftUI
 
 /// The MCP servers and claude.ai connectors Claude Code reported, with their status and
-/// where to set them up; harness cannot sign in on the user's behalf.
+/// where to set them up; harness cannot sign in on the user's behalf. The same list is a
+/// section of Settings.
 struct ConnectorsSheet: View {
+    var body: some View {
+        SheetFrame(title: "Connectors") { ConnectorsList() }
+    }
+}
+
+/// The connectors, grouped, under a line on where they come from.
+struct ConnectorsList: View {
+    /// Space above the first line.
+    var top = 12.0
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let sections = shell.model.connectors.sections
-        SheetFrame(title: "Connectors") {
-            Text(
-                "These come from your Claude Code setup. Agents in harness can use the connected ones."
-            )
-            .font(.ui(TypeSize.callout))
-            .foregroundStyle(Palette.t2)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 12)
-            if sections.isEmpty {
-                Text(
-                    "Claude Code has not reported any yet. They appear after an agent's first turn."
-                )
-                .font(.ui(TypeSize.small))
-                .foregroundStyle(Palette.t3)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
-            }
-            ForEach(sections) { section in
-                ConnectorGroup(section: section)
-            }
-        }
+        Text(
+            "These come from your Claude Code setup. Agents in harness can use the connected ones."
+        )
+        .font(.ui(TypeSize.ui))
+        .foregroundStyle(Palette.t2)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, top)
         .task { try? await shell.model.connectors.load() }
+        if sections.isEmpty {
+            Text(
+                "Claude Code has not reported any yet. They appear after an agent's first turn."
+            )
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t3)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+        }
+        ForEach(sections) { section in
+            ConnectorGroup(section: section)
+        }
     }
 }
 
@@ -54,22 +62,19 @@ private struct ConnectorGroup: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: Icon.chevron)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(open ? 0 : -90))
-                    Text(section.title.uppercased()).tracking(0.66)
+                    Text(section.title)
+                    Text("\(section.connectors.count)").monospacedDigit()
                     if let attention = section.attention {
-                        Label(attention, systemImage: Icon.warning)
-                            .labelStyle(TightLabelStyle())
-                            .foregroundStyle(StatusTone.waiting.textColor)
-                            .lineLimit(1)
+                        StatusLabel(tone: .waiting, label: attention)
                     }
                     Spacer(minLength: 8)
-                    Text("\(section.connectors.count)").fontWeight(.semibold).monospacedDigit()
                 }
-                .font(.ui(TypeSize.caption, .bold))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
-                .padding(.top, 18)
-                .padding(.bottom, 6)
+                .padding(.top, 14)
+                .padding(.bottom, 2)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -98,21 +103,21 @@ private struct ConnectorRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Text(String(connector.displayName.prefix(1)).uppercased())
-                    .font(.ui(TypeSize.caption, .bold))
+                    .font(.ui(10, .semibold))
                     .foregroundStyle(Palette.t2)
-                    .frame(width: 26, height: 26)
-                    .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 18, height: 18)
+                    .background(Palette.soft, in: .rounded(Radius.chip))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(connector.displayName).font(.ui(TypeSize.body)).lineLimit(1)
+                    Text(connector.displayName).font(.ui(TypeSize.ui)).lineLimit(1)
                     if state == .failed, let error = connector.error {
                         Text(error)
-                            .font(.ui(TypeSize.caption))
-                            .foregroundStyle(StatusTone.failed.textColor)
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(StatusTone.failed.color)
                             .lineLimit(2)
                     }
                 }
                 Spacer(minLength: 8)
-                StatusPill(tone: state.tone, label: state.label, hollow: false)
+                StatusLabel(tone: state.tone, label: state.label, hollow: false)
                 if state != .connected {
                     Button(
                         connector.managedOnClaudeAI
@@ -134,16 +139,16 @@ private struct ConnectorRow: View {
                 Text(
                     "Run /mcp in Claude Code to set up \(connector.displayName); harness picks it up on the next turn."
                 )
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
-                .padding(.leading, 36)
+                .padding(.leading, 28)
                 .transition(.opacity)
             }
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 7)
         .overlay(alignment: .top) {
             if !first {
-                Rectangle().fill(Palette.hair).frame(height: 1)
+                Separator()
             }
         }
     }

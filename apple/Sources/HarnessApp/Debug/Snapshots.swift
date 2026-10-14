@@ -100,11 +100,11 @@
                 return
             }
             if only == "b26" {
-                try await renderModelsGlassAndPanes(model, shell, controller, folder)
+                try await renderModelsAndPanes(model, shell, controller, folder)
                 return
             }
-            if only == "b27" {
-                try await renderGlassThemes(model, shell, controller, folder)
+            if only == "b36" {
+                try await renderLook(model, shell, controller, folder)
                 return
             }
             if only == "b28" {
@@ -125,6 +125,10 @@
             }
             if only == "b35" {
                 try await renderPixies(model, shell, controller, folder)
+                return
+            }
+            if only == "b39" {
+                try await renderChatBackground(model, shell, controller, folder)
                 return
             }
 
@@ -247,7 +251,7 @@
             try await renderConveniences(model, shell, controller, folder)
             try await renderToolsAndPullRequests(model, shell, controller, folder)
             try await renderSearchAndStuck(model, shell, controller, folder)
-            try await renderGlassThemes(model, shell, controller, folder)
+            try await renderLook(model, shell, controller, folder)
             try await renderArchiveConnectorsAndPlainFolders(model, shell, controller, folder)
             try await renderTurnActivity(model, shell, controller, folder)
             try await renderExchangeBar(model, shell, controller, folder)
@@ -403,20 +407,21 @@
 
             (model.api as? SampleAPI)?.restorePixies()
             try await model.pixies.load()
-            // Every pixie hidden: the tab offers to show them.
+            // Every pixie hidden: the empty workspace offers to show them.
             for pixie in model.pixies.pixies {
                 try await model.pixies.update(pixie.id, UpdatePixieRequest(hidden: true))
             }
-            shell.selectPixie(nil)
             try await pair(controller, "pixies-all-hidden", folder)
             shell.showsHiddenPixies = true
             try await pair(controller, "pixies-hidden-shown", folder)
             shell.showsHiddenPixies = false
             (model.api as? SampleAPI)?.restorePixies()
             try await model.pixies.load()
+            // B37: no pixie open yet; the workspace offers them and New pixie.
+            try await pair(controller, "pixies-workspace-empty", folder)
             // Watcher's chat runs; live events would have brought it.
             try await model.sessions.fetch("p2")
-            shell.selectPixie("reviewer")
+            shell.openPixie("reviewer")
             shell.pixieDetailsOpen = false
             try await pair(controller, "pixie-chat", folder)
             shell.pixieDetailsOpen = true
@@ -433,6 +438,31 @@
                 model.activity.enqueue(queued, session: sent.session.id)
             }
             try await pair(controller, "pixie-chat-queued", folder)
+
+            // B37: pixies as panes. Two side by side, then the focused one's details.
+            shell.pixieDetailsOpen = false
+            shell.openPixie("watcher")
+            try await pair(controller, "pixies-two-panes", folder)
+            // A click anywhere in another pane focuses it; a click outside an inline field
+            // ends it and Escape cancels it.
+            try await snap(controller, "pixies-click-focus-light", .aqua, folder) { host in
+                await checkClicksFocusPanes(in: host, shell: shell)
+                await checkInlineEditEnds(in: host, shell: shell)
+            }
+            shell.pixieDetailsOpen = true
+            try await pair(controller, "pixies-two-panes-details", folder)
+            // A third pixie dropped below Watcher splits its pane top and bottom.
+            let scout = try await model.pixies.create(
+                CreatePixieRequest(
+                    name: "Scout", mascot: .frog, color: "#4CAF50", background: .meadow))
+            shell.pixieDetailsOpen = false
+            shell.perform(.chat(scout.id), onto: "watcher", zone: .split(.bottom))
+            try await pair(controller, "pixies-three-panes", folder)
+            shell.toggleMaximize("watcher")
+            try await pair(controller, "pixies-three-maximized", folder)
+            shell.toggleMaximize("watcher")
+            try await model.pixies.delete(scout.id)
+            shell.keepPixiePanes()
         }
 
         /// B29: a running turn with its timer, thinking, a running agents group and a
@@ -695,9 +725,185 @@
             try await pair(controller, "b28-init-chat", folder)
         }
 
-        /// B27: every glass theme in light and dark over the sample desktop, two chats side
-        /// by side with the ocean accent, and the Settings sheet with its Glass row.
-        private static func renderGlassThemes(
+        /// B39: the empty project workspace (the approved design's empty session) plain, with text and
+        /// an attachment, and in worktree mode; the usage chip in amber and red; the chat
+        /// background (the approved design's dither at a grain) chosen in Settings, with a project's own
+        /// image, behind the empty workspace (also at grain 0) and hazed once chats are open,
+        /// in full screen and in the Pixies tab; the Account and Connectors sections of
+        /// Settings. With an image the whole window shows it, blurred under the chrome.
+        private static func renderChatBackground(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
+            try await pair(controller, "b39-workspace-empty", folder)
+            let draft = shell.startDraft()
+            draft.text = "Add a print stylesheet so the CV fits on two A4 pages"
+            draft.attachments = [
+                PendingAttachment(
+                    filename: "cv-print-mockup.png",
+                    uploaded: try SampleData.decode([
+                        "id": "a1", "filename": "cv-print-mockup.png", "media_type": "image/png",
+                        "size": 184_000,
+                    ]))
+            ]
+            try await pair(controller, "b39-start-composer-typed", folder)
+            draft.text = ""
+            draft.attachments = []
+            let mode = draft.mode
+            draft.mode = .worktree
+            try await pair(controller, "b39-start-composer-worktree", folder)
+            draft.mode = mode
+            for (percent, name) in [(0.85, "amber"), (0.95, "red")] {
+                let now = Date()
+                model.usage.apply(
+                    try SampleData.decode([
+                        "id": 9_000, "type": EventType.usageUpdated, "ts": SampleData.iso(now),
+                        "payload": [
+                            "five_hour": [
+                                "utilization": percent,
+                                "resets_at": SampleData.iso(now + 2 * 3600 + 5 * 60 + 30),
+                            ],
+                            "seven_day": [
+                                "utilization": 0.41,
+                                "resets_at": SampleData.iso(now + 3 * 86_400 + 30),
+                            ],
+                        ],
+                    ]))
+                try await pair(controller, "b39-usage-\(name)", folder)
+            }
+            try await model.usage.load()
+
+            let image = try sampleBackgroundImage()
+            model.settings.chatBackground.image = image.path
+            model.settings.chatBackground.emptyVisibility = 0.4
+            model.settings.chatBackground.chatsVisibility = 0.12
+            for blur in [0, ChatBackground.workspaceBlur(hasChats: true)] {
+                _ = await BackdropRenderer.shared.image(for: .init(path: image.path, blur: blur))
+            }
+            _ = await BackdropRenderer.shared.image(
+                for: .init(path: image.path, blur: ChatBackground.chromeBlur, dithered: false))
+            try await pair(controller, "b39-workspace-empty-background", folder)
+            // Grain 0: the plain image.
+            model.settings.chatBackground.grain = 0
+            try await pair(controller, "b39-workspace-empty-background-grain-0", folder)
+            model.settings.chatBackground.grain = 1
+            let workspace = CGSize(width: 828, height: 790)
+            for id in ["c1", "c2"] {
+                try await model.transcripts.transcript(for: id).load()
+            }
+            model.app.update("todo-ui") { state in
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c1")
+            }
+            try await pair(controller, "b39-workspace-chats-background", folder)
+            // Full screen: the tab strip starts at the window's edge (no traffic lights).
+            try await pair(controller, "b39-fullscreen-background", folder) { _ in
+                NotificationCenter.default.post(
+                    name: NSWindow.didEnterFullScreenNotification, object: nil)
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            NotificationCenter.default.post(
+                name: NSWindow.didExitFullScreenNotification, object: nil)
+            // The Pixies tab shows the global image too: empty, then with two pixie panes.
+            shell.openPixies()
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b39-pixies-empty-background", folder)
+            try await model.sessions.fetch("p2")
+            shell.openPixie("reviewer")
+            shell.openPixie("watcher")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b39-pixies-panes-background", folder)
+            shell.selectProject("todo-ui")
+            shell.show(.settings)
+            try await pair(controller, "b39-settings-background", folder)
+            model.settings.chatBackground.projects["todo-ui"] = model.settings.chatBackground
+                .newProjectBackground(image: image.path)
+            try await pair(controller, "b39-settings-project-background", folder)
+            model.settings.chatBackground = ChatBackgroundSettings()
+            try await pair(controller, "b39-settings-no-background", folder)
+            shell.close()
+            try await pairView(
+                VStack(alignment: .leading, spacing: 0) {
+                    AccountSection()
+                    SheetSection(title: "Connectors") { ConnectorsList(top: 4) }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 16)
+                .frame(width: 580)
+                .environment(shell),
+                "b39-settings-account-connectors", folder)
+        }
+
+        /// A busy, photo-like picture for the chat background snapshots: overlapping leaves
+        /// in pinks, deep reds and greys over a gradient, like the wallpaper of the approved design
+        /// reference screenshots; the same every time. Written to a temporary file.
+        private static func sampleBackgroundImage() throws -> URL {
+            // 2048 pixels wide, as the effect draws a large photo.
+            let size = NSSize(width: 2048, height: 1280)
+            let image = NSImage(size: size, flipped: false) { rect in
+                NSGradient(colors: [
+                    NSColor(srgbRed: 0.35, green: 0.06, blue: 0.16, alpha: 1),
+                    NSColor(srgbRed: 0.93, green: 0.40, blue: 0.58, alpha: 1),
+                    NSColor(srgbRed: 0.86, green: 0.84, blue: 0.86, alpha: 1),
+                ])?.draw(in: rect, angle: 60)
+                var seed: UInt64 = 39
+                func random() -> Double {
+                    seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                    return Double(seed >> 11) / Double(UInt64(1) << 53)
+                }
+                let colors: [(Double, Double, Double)] = [
+                    (0.98, 0.45, 0.64), (0.85, 0.25, 0.45), (0.55, 0.10, 0.25),
+                    (0.30, 0.05, 0.12), (0.80, 0.78, 0.80), (0.55, 0.53, 0.56),
+                    (1.00, 0.70, 0.80),
+                ]
+                for _ in 0..<140 {
+                    let (r, g, b) = colors[Int(random() * Double(colors.count))]
+                    let leaf = NSBezierPath()
+                    let length = 230 + random() * 540
+                    let width = 40 + random() * 115
+                    leaf.move(to: NSPoint(x: 0, y: 0))
+                    leaf.curve(
+                        to: NSPoint(x: length, y: 0),
+                        controlPoint1: NSPoint(x: length * 0.3, y: width),
+                        controlPoint2: NSPoint(x: length * 0.7, y: width))
+                    leaf.curve(
+                        to: NSPoint(x: 0, y: 0),
+                        controlPoint1: NSPoint(x: length * 0.7, y: -width * 0.4),
+                        controlPoint2: NSPoint(x: length * 0.3, y: -width * 0.4))
+                    var transform = AffineTransform(
+                        translationByX: random() * size.width, byY: random() * size.height)
+                    transform.rotate(byDegrees: random() * 360)
+                    leaf.transform(using: transform)
+                    let shade = 0.75 + random() * 0.25
+                    NSGradient(
+                        starting: NSColor(srgbRed: r, green: g, blue: b, alpha: 0.95),
+                        ending: NSColor(
+                            srgbRed: r * shade * 0.6, green: g * shade * 0.6, blue: b * shade * 0.6,
+                            alpha: 0.95))?
+                        .draw(in: leaf, angle: random() * 360)
+                }
+                return true
+            }
+            guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+                let png = bitmap.representation(using: .png, properties: [:])
+            else { throw CocoaError(.fileWriteUnknown) }
+            let url = FileManager.default.temporaryDirectory.appending(
+                path: "harness-b39-background.png")
+            try png.write(to: url)
+            return url
+        }
+
+        /// B36: the Mac look in light and dark: two chats side by side as in the mockup, the
+        /// board, the Settings sheet, Project settings' icon picker, the base components with a second accent, and panes at
+        /// the widths a window gives them.
+        private static func renderLook(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
@@ -715,26 +921,28 @@
                 state.openChat("c2", in: workspace)
                 state.focusPane("c1")
             }
-            let accent = shell.settings.accent
-            shell.settings.accent = .ocean
-            for style in DesignTokens.GlassTheme.all {
-                shell.settings.glass = style
-                try await pair(controller, "b27-glass-\(style.name)", folder)
-            }
-            shell.settings.accent = accent
-            for style in [DesignTokens.GlassTheme.clear, DesignTokens.GlassTheme.smoke] {
-                shell.settings.glass = style
-                shell.show(.settings)
-                try await pair(controller, "b27-settings-\(style.name)", folder)
-                shell.close()
-            }
-            shell.settings.glass = DesignTokens.GlassTheme.default
+            try await pair(controller, "b36-workspace", folder)
+            model.app.update("todo-ui") { $0.view = .board }
+            try await pair(controller, "b36-board", folder)
+            model.app.update("todo-ui") { $0.view = .workspace }
+            shell.show(.settings)
+            try await pair(controller, "b36-settings", folder)
+            // The icon picker with a sprite chosen, and with the initials.
+            shell.show(.project("todo-ui"))
+            try await pair(controller, "b36-project-icon-sprite", folder)
+            shell.show(.project("weather-forecast"))
+            try await pair(controller, "b36-project-icon-initials", folder)
+            shell.close()
+            try await pairView(LookSampler(), "b36-components", folder)
+            try await pairView(
+                LookSampler().environment(\.accentColors, AccentColors(accent: .ocean)),
+                "b36-components-ocean", folder)
             try await renderPaneWidths(model, shell, controller, folder)
         }
 
         /// Panes at the widths a 1440 by 900 window with both side panels gives them: two
-        /// side by side, three, four (one a browser), and one at the 280 point minimum,
-        /// in Clear light and Smoke dark. Nothing may spill out of its pane.
+        /// side by side, three, four (one a browser), and one at the 280 point minimum, in
+        /// light and dark. Nothing may spill out of its pane.
         private static func renderPaneWidths(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -797,22 +1005,18 @@
                 }
                 let frames = shell.projectState.layout.paneFrames(in: workspace)
                 print("\(name): \(frames.map { "\($0.chat) \(Int($0.frame.width))" })")
-                for (style, suffix, appearance) in [
-                    (DesignTokens.GlassTheme.clear, "clear-light", NSAppearance.Name.aqua),
-                    (DesignTokens.GlassTheme.smoke, "smoke-dark", .darkAqua),
-                ] {
-                    shell.settings.glass = style
-                    try await snap(controller, "b27-panes-\(name)-\(suffix)", appearance, folder)
+                let appearances = [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)]
+                for (suffix, appearance) in appearances {
+                    try await snap(controller, "b36-panes-\(name)-\(suffix)", appearance, folder)
                 }
             }
-            shell.settings.glass = DesignTokens.GlassTheme.default
         }
 
         /// B26: the model list and thinking levels as the menus show them, Settings' agent
         /// defaults and account, the account row, a new chat starting from the defaults,
-        /// the see-through window over a sample desktop, and a
+        /// two chats side by side, and a
         /// browser pane beside two chats with a check that it stays inside its slot.
-        private static func renderModelsGlassAndPanes(
+        private static func renderModelsAndPanes(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
@@ -846,9 +1050,6 @@
                 .padding(.bottom, 12)
                 .frame(width: 580)
                 .environment(shell), "b26-settings-agents", folder)
-            try await pairView(
-                AccountRow().frame(width: 248).padding(10).environment(shell),
-                "b26-account-row", folder)
 
             // A new chat: the composer starts from the shared defaults.
             let workspace = CGSize(width: 828, height: 790)
@@ -862,7 +1063,7 @@
             shell.newChat()
             try await pair(controller, "b26-new-chat-desktop", folder)
 
-            // The see-through window over a busy desktop.
+            // Two chats side by side.
             for id in ["c1", "c2"] {
                 try await model.transcripts.transcript(for: id).load()
             }
@@ -872,7 +1073,7 @@
                 state.openChat("c2", in: workspace)
                 state.focusPane("c1")
             }
-            try await pair(controller, "b26-glass-desktop", folder)
+            try await pair(controller, "b26-two-chats", folder)
             shell.show(.settings)
             try await pair(controller, "b26-settings-sheet", folder)
             shell.close()
@@ -903,6 +1104,83 @@
                 checkPlatformViewsStayInPanes(in: host)
             }
             model.app.update("todo-ui") { $0.layout.toggleMaximize("c1") }
+        }
+
+        /// Clicks each pane's header, an empty part of its transcript and its text through
+        /// the app's event path, and prints whether every click focused that pane (B37).
+        private static func checkClicksFocusPanes(in host: NSView, shell: Shell) async {
+            guard let workspace = shell.workspaceFrame else {
+                print("click focus check: FAILED (no workspace frame)")
+                return
+            }
+            let frames = shell.workspaceState.layout.paneFrames(in: workspace.size)
+            var results: [String] = []
+            let spots: [(String, Double, Double)] = [
+                ("header", 0.5, 20), ("empty", 0.5, -240), ("text", 0.2, 130),
+            ]
+            for (name, across, down) in spots {
+                for pane in frames {
+                    let frame = pane.frame.offsetBy(dx: workspace.minX, dy: workspace.minY)
+                    let y = down > 0 ? frame.minY + down : frame.maxY + down
+                    send(
+                        host, .leftMouseDown,
+                        at: CGPoint(x: frame.minX + frame.width * across, y: y))
+                    await Task.yield()
+                    let focused = shell.workspaceState.layout.focused
+                    results.append(
+                        "\(name) \(pane.chat): \(focused == pane.chat ? "ok" : "FAILED (\(focused ?? "none"))")"
+                    )
+                }
+            }
+            print("click focus check: " + results.joined(separator: ", "))
+        }
+
+        /// Opens a stand-in inline edit over the details panel and prints whether a click
+        /// inside keeps it, a click outside ends it keeping the text, and Escape cancels it.
+        private static func checkInlineEditEnds(in host: NSView, shell: Shell) async {
+            var ends: [Bool] = []
+            let frame = CGRect(x: host.bounds.width - 200, y: 300, width: 180, height: 24)
+            func open() {
+                shell.inlineEdit = InlineEdit(id: UUID(), frame: frame) { ends.append($0) }
+            }
+            open()
+            send(host, .leftMouseDown, at: CGPoint(x: frame.midX, y: frame.midY))
+            let keptInside = ends.isEmpty && shell.inlineEdit != nil
+            send(host, .leftMouseDown, at: CGPoint(x: frame.midX, y: frame.maxY + 200))
+            let endedOutside = ends == [true] && shell.inlineEdit == nil
+            open()
+            send(host, .keyDown, at: .zero)
+            let cancelledByEscape = ends == [true, false] && shell.inlineEdit == nil
+            let ok = keptInside && endedOutside && cancelledByEscape
+            print(
+                "inline edit check: "
+                    + (ok
+                        ? "ok"
+                        : "FAILED (inside \(keptInside), outside \(endedOutside), escape \(cancelledByEscape))")
+            )
+        }
+
+        /// Sends a click (`at` in top-left coordinates) or Escape through the app, which
+        /// runs its event monitors; the offscreen window never becomes key, so no view
+        /// inside takes it.
+        private static func send(_ host: NSView, _ type: NSEvent.EventType, at point: CGPoint) {
+            guard let window = host.window else { return }
+            let location = host.convert(point, to: nil)
+            let event =
+                type == .keyDown
+                ? NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+                    charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)
+                : NSEvent.mouseEvent(
+                    with: type, location: location, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: 1, pressure: 1)
+            if let event {
+                NSApp.sendEvent(event)
+            }
         }
 
         /// Prints whether each web view and terminal lies inside its pane's container and
@@ -1352,8 +1630,9 @@
         /// The real daemon's data in the B09 sheets; only reads.
         static func renderLive(to folder: URL) async throws {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            guard let model = try await AppModel.local() else {
-                print("no device token")
+            let model = try await AppModel.local()
+            guard model.hasDeviceToken else {
+                print("no device token: the daemon is not running")
                 return
             }
             model.app.connection = .connected
@@ -1401,8 +1680,8 @@
             _ view: some View, _ name: String, _ folder: URL
         ) async throws {
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                let content = view.background(GlassPalette.standard.surface)
-                    .background(Palette.page)
+                let content = view.background(Palette.sheet)
+                    .background(Palette.windowOpaque)
                     .environment(\.reducedMotion, true)
                 let window = NSWindow(
                     contentRect: CGRect(origin: CGPoint(x: -30_000, y: -30_000), size: .zero),
@@ -1522,7 +1801,7 @@
             prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             // Far off screen and fully transparent: nothing shows up on the user's display.
-            let window = NSWindow(
+            let window = SnapshotWindow(
                 contentRect: CGRect(origin: CGPoint(x: -30_000, y: -30_000), size: size),
                 styleMask: [.borderless], backing: .buffered, defer: false)
             window.alphaValue = 0
@@ -1531,7 +1810,7 @@
             let host = NSHostingView(
                 rootView: RootView()
                     .environment(controller)
-                    .environment(\.flatGlass, true)
+                    .environment(\.offscreen, true)
                     .environment(\.revealsHoverControls, revealsHoverControls))
             host.frame = CGRect(origin: .zero, size: size)
             window.contentView = host
@@ -1548,6 +1827,121 @@
             // Drop the views so earlier windows stop updating while later ones render.
             window.contentView = nil
             print("wrote \(name).png")
+        }
+    }
+
+    /// A snapshot window that counts as a main window, as the app's is, so the shell's
+    /// event monitor reads clicks sent to it.
+    private final class SnapshotWindow: NSWindow {
+        override var canBecomeMain: Bool { true }
+    }
+
+    /// Every base component of the Mac look on the window's surfaces, for snapshots.
+    private struct LookSampler: View {
+        var body: some View {
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        ProjectIcon(name: "todo-ui", mascot: .cat, color: "#E2A16F", size: 15)
+                        Text("todo-ui").font(.ui(TypeSize.reading, .semibold))
+                    }
+                    .frame(height: 30)
+                    SectionLabel(text: "Needs you", count: 3).padding(.top, 8)
+                    row(.waiting, "Validate contact form with zod", "2m", selected: true)
+                    row(.review, "Dark mode polish", "27m")
+                    SectionLabel(text: "Running", count: 1).padding(.top, 8)
+                    row(.running, "Update publications from BibTeX", "9m")
+                    SectionLabel(text: "Done").padding(.top, 8)
+                    row(.done, "Add project thumbnails", "2d")
+                    Spacer(minLength: 12)
+                    HStack(spacing: 8) {
+                        Avatar(name: "Sam Rivera")
+                        Text("Sam Rivera").font(.ui(TypeSize.ui))
+                    }
+                }
+                .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 6))
+                .frame(width: 236)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .sideSurface()
+                Separator(axis: .vertical)
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 8) {
+                        Text("Validate contact form").font(.ui(TypeSize.ui, .medium))
+                        Spacer()
+                        StatusLabel(tone: .waiting, label: "Needs approval")
+                        StatusLabel(tone: .running, label: "Running")
+                        StuckBadge(
+                            flag: StuckFlag(
+                                reason: .silent, since: .now, details: "No output for 12 min"))
+                    }
+                    Separator()
+                    HStack(spacing: 6) {
+                        Text("Posts to").font(.ui(TypeSize.reading))
+                        CodeChip(text: "app/api/contact/route.ts", link: true)
+                        CodeChip(text: "zod")
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            StatusDot(tone: .waiting)
+                            Text("Permission needed")
+                        }
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(StatusTone.waiting.color)
+                        Text("Bash  npm install zod").font(.mono(12))
+                        HStack(spacing: 6) {
+                            Button("Approve") {}.buttonStyle(.harness(.primary))
+                            Button("Reject") {}.buttonStyle(.harness(.soft))
+                            Button("Always allow") {}.buttonStyle(.harness(.plain))
+                            Button("Delete") {}.buttonStyle(.harness(.danger))
+                            Button("Discard") {}.buttonStyle(.harness(.destructive))
+                        }
+                    }
+                    .padding(EdgeInsets(top: 11, leading: 13, bottom: 11, trailing: 13))
+                    .softFill()
+                    HStack(spacing: 14) {
+                        Chip(icon: Icon.branch, text: "main")
+                        Chip(text: "Sonnet")
+                        Chip(text: "Medium")
+                        CountBadge(count: 3, urgent: true)
+                        CountBadge(count: 2)
+                        Meter(value: 0.3).frame(width: 34)
+                        ProgressRing(value: 0.3)
+                    }
+                    HStack(spacing: 10) {
+                        ForEach(Array(Mascot.allCases.prefix(4)), id: \.self) { mascot in
+                            ProjectIcon(name: "p", mascot: mascot, color: "#6FBF73")
+                        }
+                        ProjectIcon(name: "weather-forecast")
+                        ProjectIcon(name: "map-viewer", size: 22)
+                    }
+                    Text("A sheet")
+                        .font(.ui(TypeSize.ui))
+                        .padding(14)
+                        .sheetSurface()
+                }
+                .padding(18)
+                .frame(width: 520)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .paneSurface()
+            }
+            .frame(height: 420)
+            .foregroundStyle(Palette.t1)
+            .background(Palette.windowOpaque)
+        }
+
+        private func row(
+            _ tone: StatusTone, _ title: String, _ time: String, selected: Bool = false
+        ) -> some View {
+            HStack(spacing: 8) {
+                StatusDot(tone: tone)
+                Text(title).lineLimit(1)
+                Spacer(minLength: 0)
+                Text(time).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t3)
+            }
+            .font(.ui(TypeSize.ui))
+            .padding(.horizontal, 10)
+            .frame(height: Metrics.rowHeight)
+            .listRow(selected: selected)
         }
     }
 #endif

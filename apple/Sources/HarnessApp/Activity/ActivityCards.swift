@@ -31,13 +31,13 @@ private struct AgentGroup: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                StatusDot(tone: shell.tone(of: session), pulses: false)
+            HStack(spacing: 6) {
+                StatusDot(tone: shell.tone(of: session), size: 5)
                 ChatLink(chat: session.id, title: session.title)
             }
-            .font(.ui(TypeSize.label, .bold))
-            .foregroundStyle(Palette.t2)
-            .padding(EdgeInsets(top: 10, leading: 4, bottom: 5, trailing: 4))
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .padding(EdgeInsets(top: 6, leading: 14, bottom: 2, trailing: 14))
             ForEach(shell.activity.agents(session: session.id)) { agent in
                 AgentRow(session: session.id, agent: agent)
             }
@@ -53,36 +53,34 @@ private struct CommandRow: View {
     let command: BackgroundItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 9) {
-                StatusDot(tone: .running, pulses: false)
-                Image(systemName: Icon.terminal)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Palette.t2)
-                Text(command.name)
-                    .font(.mono(11.5))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(command.startedAt.map { Elapsed.short(from: $0, to: context.date) } ?? "")
-                        .font(.ui(TypeSize.caption))
-                        .monospacedDigit()
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            StatusDot(tone: .running)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Image(systemName: Icon.terminal)
+                        .font(.system(size: 9))
                         .foregroundStyle(Palette.t3)
+                    Text(command.name)
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Palette.t1)
+                        .lineLimit(1)
                 }
-                .padding(.trailing, 21)
+                Text(command.description ?? "Background command")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .lineLimit(1)
             }
-            Text(command.description ?? "Background command")
-                .font(.ui(TypeSize.label))
-                .foregroundStyle(Palette.t2)
-                .lineLimit(1)
-                .padding(.leading, 17)
-                .padding(.trailing, 21)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text(command.startedAt.map { Elapsed.short(from: $0, to: context.date) } ?? "")
+                    .font(.ui(TypeSize.meta))
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.t3)
+            }
         }
-        .foregroundStyle(Palette.t1)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.bottom, 5)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
         .help(command.name)
     }
 }
@@ -103,44 +101,38 @@ private struct AgentRow: View {
                     }
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 9) {
-                        StatusDot(tone: tone, hollow: agent.status == .unknown, pulses: false)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    StatusDot(tone: tone, hollow: agent.status == .unknown)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(agent.isMain ? "main" : agent.name)
-                            .font(.ui(TypeSize.callout, .semibold))
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t1)
                             .lineLimit(1)
-                        Spacer(minLength: 4)
-                        TimelineView(.periodic(from: .now, by: 30)) { context in
-                            Text(elapsed(at: context.date))
-                                .font(.ui(TypeSize.caption))
-                                .monospacedDigit()
-                                .foregroundStyle(Palette.t3)
-                        }
-                        Image(systemName: Icon.chevron)
-                            .font(.system(size: 9, weight: .semibold))
+                        Text(agent.activity ?? agent.description ?? statusText)
+                            .font(.mono(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
-                            .rotationEffect(.degrees(expanded ? 0 : -90))
-                            .frame(width: 12)
+                            .lineLimit(1)
                     }
-                    Text(agent.activity ?? agent.description ?? statusText)
-                        .font(.mono(10.5))
-                        .foregroundStyle(Palette.t2)
-                        .lineLimit(1)
-                        .padding(.leading, 17)
-                        .padding(.trailing, 21)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        Text(elapsed(at: context.date))
+                            .font(.ui(TypeSize.meta))
+                            .monospacedDigit()
+                            .foregroundStyle(Palette.t3)
+                    }
                 }
-                .foregroundStyle(Palette.t1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowHoverStyle())
+            .padding(.horizontal, 6)
+            .accessibilityAddTraits(expanded ? .isSelected : [])
             if expanded {
                 StepList(agent: agent)
             }
         }
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.bottom, 5)
     }
 
     private var tone: StatusTone {
@@ -172,39 +164,40 @@ private struct StepList: View {
 
     var body: some View {
         let steps = shell.activity.recentSteps(of: agent)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             if steps.isEmpty {
-                Text("No steps yet").font(.ui(TypeSize.caption)).foregroundStyle(Palette.t3)
+                Text("No steps yet").font(.ui(TypeSize.meta)).foregroundStyle(Palette.t3)
             }
             ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
                 let last = index == steps.count - 1
                 HStack(spacing: 6) {
                     if last && agent.status == .running && step.result == nil {
-                        Spinner(size: 11, lineWidth: 1.5)
+                        Spinner(size: 9, lineWidth: 1.5)
                     } else {
                         Image(systemName: Icon.tool(ToolSummary.kind(of: step.tool)))
-                            .font(.system(size: 10))
+                            .font(.system(size: 9))
                             .foregroundStyle(Palette.t3)
-                            .frame(width: 12)
+                            .frame(width: 10)
                     }
-                    Text(step.tool).font(.ui(TypeSize.caption, .semibold))
+                    Text(step.tool).font(.ui(TypeSize.meta, .medium)).foregroundStyle(Palette.t2)
                     Text(step.arg)
-                        .font(.mono(10.5))
-                        .foregroundStyle(Palette.t2)
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let result = step.result {
                         Text(result)
-                            .font(.ui(10.5))
+                            .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                             .lineLimit(1)
                     }
                 }
             }
         }
-        .padding(EdgeInsets(top: 6, leading: 27, bottom: 10, trailing: 10))
-        .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
+        .padding(.leading, 10)
+        .overlay(alignment: .leading) { Separator(axis: .vertical) }
+        .padding(EdgeInsets(top: 2, leading: 28, bottom: 8, trailing: 14))
     }
 }
 
@@ -221,6 +214,7 @@ struct NeedsCard: View {
         VStack(alignment: .leading, spacing: 8) {
             if pending.isEmpty && failed.isEmpty && stuck.isEmpty {
                 EmptyCard(icon: Icon.check, text: "Nothing needs you.", tone: .review)
+                    .padding(.horizontal, -10)
                     .transition(.opacity)
             }
             // As on the iPhone: approvals, failed checks, then stuck chats.
@@ -264,30 +258,29 @@ private struct StuckCard: View {
         if let flag = session.stuck {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    Image(systemName: Icon.warning).font(.system(size: 11, weight: .semibold))
+                    StatusDot(tone: .waiting)
                     Text("Stuck")
                     Spacer(minLength: 8)
                     ChatLink(chat: session.id, title: session.title)
-                        .font(.ui(TypeSize.caption, .medium))
                         .foregroundStyle(Palette.t3)
                         .frame(maxWidth: 170, alignment: .trailing)
                 }
-                .font(.ui(TypeSize.caption, .bold))
-                .foregroundStyle(StatusTone.waiting.textColor)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(StatusTone.waiting.color)
                 HStack(alignment: .firstTextBaseline) {
                     Text(flag.reason.label)
-                        .font(.ui(TypeSize.small, .semibold))
+                        .font(.ui(TypeSize.ui, .medium))
                     Spacer(minLength: 6)
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         Text("for \(Elapsed.short(from: flag.since, to: context.date))")
-                            .font(.ui(TypeSize.caption))
+                            .font(.ui(TypeSize.meta))
                             .monospacedDigit()
                             .foregroundStyle(Palette.t3)
                     }
                 }
-                .padding(.top, 7)
+                .padding(.top, 5)
                 Text(flag.details)
-                    .font(.ui(TypeSize.small))
+                    .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 3)
@@ -297,19 +290,19 @@ private struct StuckCard: View {
                     } label: {
                         Label("Send a nudge", systemImage: Icon.send).grows(.panel)
                     }
-                    .buttonStyle(.card(.primary))
+                    .buttonStyle(.harness(.primary))
                     .help("Stops the turn and sends \"\(flag.nudge)\"")
                     Button("Interrupt") { shell.interrupt(session.id) }
-                        .buttonStyle(.card(.ghost))
+                        .buttonStyle(.harness(.plain))
                         .fixedSize()
                         .help("Stops the turn")
                 }
             }
             .foregroundStyle(Palette.t1)
             .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .softFill()
         }
     }
 }
@@ -320,7 +313,7 @@ struct GoalsCard: View {
 
     var body: some View {
         let chats = shell.projectState.layout.leaves.compactMap(shell.sessions.session)
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 0) {
             if chats.isEmpty {
                 EmptyCard(icon: Icon.goals, text: "No open chats", tone: nil)
             }
@@ -348,55 +341,46 @@ private struct GoalRow: View {
                     }
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 9) {
-                        StatusDot(
-                            tone: shell.tone(of: session), hollow: shell.isHollow(session),
-                            pulses: false)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    StatusDot(tone: shell.tone(of: session), hollow: shell.isHollow(session))
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(session.title)
-                            .font(.ui(TypeSize.callout, .semibold))
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(Palette.t1)
                             .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(
+                            hasTasks
+                                ? "\(nowText) · \(goals.completed) of \(goals.tasks.count)"
+                                : "No tasks yet"
+                        )
+                        .font(.ui(TypeSize.meta))
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.t3)
+                        .lineLimit(1)
                         if hasTasks {
-                            Image(systemName: Icon.chevron)
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Palette.t3)
-                                .rotationEffect(.degrees(expanded ? 0 : -90))
-                                .frame(width: 12)
+                            Meter(value: goals.progress, height: 2).padding(.top, 2)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     if hasTasks {
-                        VStack(spacing: 4) {
-                            Meter(value: goals.progress)
-                            HStack {
-                                Text(nowText)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("\(goals.completed) of \(goals.tasks.count)")
-                                    .monospacedDigit()
-                            }
-                        }
-                        .font(.ui(10.5))
-                        .foregroundStyle(Palette.t3)
-                        .padding(.leading, 17)
-                    } else {
-                        Text("No tasks yet")
-                            .font(.ui(10.5))
+                        Image(systemName: Icon.chevron)
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(Palette.t3)
-                            .padding(.leading, 17)
+                            .rotationEffect(.degrees(expanded ? 0 : -90))
+                            .frame(width: 12)
                     }
                 }
-                .foregroundStyle(Palette.t1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowHoverStyle())
+            .padding(.horizontal, 6)
             if expanded && hasTasks {
                 Checklist(goals: goals)
             }
         }
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var nowText: String {
@@ -411,51 +395,43 @@ private struct Checklist: View {
     let goals: Goals
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(goals.tasks.enumerated()), id: \.element.id) { index, task in
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
                     mark(task.status)
+                        .frame(width: 10)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                     Text("\(index + 1)")
-                        .font(.mono(10.5, .semibold))
+                        .font(.mono(10))
                         .foregroundStyle(Palette.t3)
-                        .frame(height: 16)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(task.subject)
-                            .font(.ui(TypeSize.small))
-                            .foregroundStyle(task.status == .completed ? Palette.t2 : Palette.t1)
+                            .font(.ui(TypeSize.ui))
+                            .foregroundStyle(task.status == .completed ? Palette.t3 : Palette.t1)
                         if task.status == .inProgress, let active = task.activeForm {
                             Text(active)
-                                .font(.mono(10.5))
-                                .foregroundStyle(StatusTone.running.textColor)
+                                .font(.mono(TypeSize.meta))
+                                .foregroundStyle(StatusTone.running.color)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, task.status == .inProgress ? 6 : 2)
-                .padding(.vertical, task.status == .inProgress ? 6 : 5)
-                .background(
-                    task.status == .inProgress ? StatusTone.running.soft : .clear,
-                    in: RoundedRectangle(cornerRadius: 8)
-                )
-                .padding(.horizontal, task.status == .inProgress ? -4 : 0)
+                .padding(.vertical, 3)
             }
         }
-        .padding(EdgeInsets(top: 6, leading: 10, bottom: 10, trailing: 10))
-        .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
+        .padding(EdgeInsets(top: 0, leading: 28, bottom: 8, trailing: 14))
     }
 
     @ViewBuilder private func mark(_ status: TaskStatus) -> some View {
         switch status {
         case .completed:
             Image(systemName: Icon.check)
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(.white)
-                .frame(width: 16, height: 16)
-                .background(StatusTone.review.color, in: Circle())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(StatusTone.review.color)
         case .inProgress:
-            Spinner(size: 16)
+            Spinner(size: 9, lineWidth: 1.5)
         default:
-            Circle().strokeBorder(Palette.t3, lineWidth: 1.5).frame(width: 16, height: 16)
+            Circle().strokeBorder(Palette.t3, lineWidth: 1).frame(width: 8, height: 8)
         }
     }
 }
@@ -466,15 +442,16 @@ struct EmptyCard: View {
     let tone: StatusTone?
 
     var body: some View {
-        VStack(spacing: 4) {
+        HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundStyle(tone?.textColor ?? Palette.t3)
+                .font(.system(size: 10))
+                .foregroundStyle(tone?.color ?? Palette.t3)
             Text(text)
         }
-        .font(.ui(TypeSize.small))
+        .font(.ui(TypeSize.ui))
         .foregroundStyle(Palette.t3)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }

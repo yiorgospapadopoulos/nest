@@ -24,7 +24,7 @@ struct PixieFilePage: View {
         VStack(spacing: 0) {
             PanelPageHeader(title: title, back: back, close: close) {
                 Button("Save") { save(hash: file?.hash) }
-                    .buttonStyle(.harness(.primary, height: 24))
+                    .buttonStyle(.harness(.primary))
                     .disabled(file == nil || saving)
                     .keyboardShortcut("s")
             }
@@ -40,8 +40,8 @@ struct PixieFilePage: View {
                 .padding(.top, 10)
             }
             TextEditor(text: $text)
-                .font(.mono(12))
-                .lineSpacing(3)
+                .font(.mono(TypeSize.meta))
+                .lineSpacing(4)
                 .foregroundStyle(Palette.t1)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
@@ -117,7 +117,7 @@ struct PanelPageHeader<Trailing: View>: View {
         VStack(spacing: 0) {
             ZStack {
                 Text(title)
-                    .font(.ui(TypeSize.body, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
                     .padding(.horizontal, 84)
@@ -125,15 +125,15 @@ struct PanelPageHeader<Trailing: View>: View {
                     Button(action: close) {
                         Label(back, systemImage: Icon.chevronLeft)
                     }
-                    .buttonStyle(.harness(.ghost, height: 26))
+                    .buttonStyle(.harness(.plain))
                     .help("Back to \(back)")
                     Spacer(minLength: 8)
                     trailing()
                 }
             }
             .padding(.horizontal, 8)
-            .frame(height: 44)
-            Rectangle().fill(Palette.hair).frame(height: 1)
+            .frame(height: Metrics.headerHeight)
+            Separator()
         }
     }
 }
@@ -143,29 +143,26 @@ private struct StaleNote: View {
     let pixie: String
     let reload: () -> Void
     let keepMine: () -> Void
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Changed meanwhile", systemImage: Icon.warning)
-                .labelStyle(TightLabelStyle())
-                .font(.ui(TypeSize.callout, .semibold))
-                .foregroundStyle(StatusTone.waiting.textColor)
+            StatusLabel(tone: .waiting, label: "Changed meanwhile")
             Text("The file changed after you opened it, perhaps by \(pixie).")
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t1)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
                 Button("Reload", action: reload)
-                    .buttonStyle(.harness(height: 24))
+                    .buttonStyle(.harness())
                 Button("Keep mine", action: keepMine)
-                    .buttonStyle(.harness(.primary, height: 24))
+                    .buttonStyle(.harness(.primary))
             }
             .padding(.top, 2)
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(StatusTone.waiting.soft, in: glass.rounded(glass.radius.item))
+        .softFill()
         .accessibilityElement(children: .contain)
     }
 }

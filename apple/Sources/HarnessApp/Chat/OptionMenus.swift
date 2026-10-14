@@ -15,16 +15,13 @@ struct QuietMenu<Items: View>: View {
             items()
         } label: {
             Text(title)
-                .font(.ui(TypeSize.callout, .medium))
+                .font(.ui(TypeSize.button))
                 .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, fit.compact ? 4 : 7)
-                .frame(height: 26)
-                .background(
-                    hovering ? Palette.fill : .clear,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
+                .padding(.horizontal, fit.compact ? 4 : 6)
+                .frame(height: Metrics.buttonHeight)
+                .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.button))
                 .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -221,6 +218,116 @@ struct ModeMenu: View {
                     checked: draft.mode == .inPlace
                 ) { draft.mode = .inPlace }
             }
+        }
+    }
+}
+
+/// A chip under the empty workspace's composer, the approved design's pill: 26 points tall, 6 point
+/// corners, a 10 percent fill (15 while hovered), 11 point text and a small chevron at 50
+/// percent.
+struct PillMenu<Leading: View, Items: View>: View {
+    let title: String
+    let help: String
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let items: () -> Items
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            items()
+        } label: {
+            HStack(spacing: 4) {
+                leading()
+                Text(title)
+                    .font(.ui(11))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: Icon.chevron)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Ink.content(0.5))
+            }
+            .foregroundStyle(Ink.content(1))
+            .padding(.horizontal, 6)
+            .frame(height: 26)
+            .background(Ink.content(hovering ? 0.15 : 0.1), in: .rounded(6))
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { hovering = $0 }
+        .help(help)
+        .accessibilityLabel("\(help): \(title)")
+    }
+}
+
+/// The model chip, with Claude's mark.
+struct ModelPill: View {
+    let chat: String
+    let model: String?
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        PillMenu(title: shell.agents.label(for: model), help: "Model") {
+            ClaudeMark(size: 16)
+        } items: {
+            ModelItems(current: model) { shell.setModel($0, for: chat) }
+        }
+    }
+}
+
+struct EffortPill: View {
+    let chat: String
+    let model: String?
+    let effort: Effort?
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        PillMenu(title: effort?.label ?? "Default", help: "Thinking") {
+            EmptyView()
+        } items: {
+            ThinkingItems(model: model, effort: effort) { level in
+                if let level {
+                    shell.setEffort(level, for: chat)
+                }
+            }
+        }
+    }
+}
+
+/// The permission chip, with the approved design's mode icons: a lock to ask, a pencil to accept
+/// edits, sparkles for auto, an amber shield to bypass; a plan icon for plan mode.
+struct PermissionPill: View {
+    let chat: String
+    let model: String?
+    let mode: PermissionMode?
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        PillMenu(title: PermissionMode.label(mode), help: "Permission mode") {
+            Image(systemName: icon)
+                .font(.system(size: 10.5))
+                .foregroundStyle(mode == .bypassPermissions ? Self.amber : Ink.content(1))
+        } items: {
+            PermissionItems(modes: shell.agents.permissionModes(for: model), current: mode) {
+                shell.setPermission($0, for: chat)
+            }
+        }
+    }
+
+    /// Tailwind's amber-400 at 90 percent.
+    static let amber = Color(.sRGB, red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)
+        .opacity(0.9)
+
+    private var icon: String {
+        switch mode {
+        case .acceptEdits: "pencil"
+        case .auto: "sparkles"
+        case .bypassPermissions: "shield"
+        case .plan: Icon.plan
+        case .default, .unknown, nil: "lock"
         }
     }
 }

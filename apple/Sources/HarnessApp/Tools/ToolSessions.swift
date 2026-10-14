@@ -45,20 +45,20 @@ final class ToolSessions {
 
 /// A container for a pane's AppKit content that reports clicks, so a click into the
 /// terminal or the page focuses its pane like a click anywhere else in a pane. It clips
-/// its content to its bounds (rounding the bottom corners when asked), since SwiftUI's
-/// clip shapes do not reach AppKit views and views no longer clip by default, and it
-/// keeps the content exactly its own size.
+/// its content to its bounds, since SwiftUI's clip shapes do not reach AppKit views and
+/// views no longer clip by default, and it keeps the content exactly its own size.
 final class PaneContentView: NSView {
     var onClick: (() -> Void)?
 
-    init(bottomRadius: CGFloat = 0) {
+    init() {
         super.init(frame: .zero)
         wantsLayer = true
         clipsToBounds = true
         layer?.masksToBounds = true
-        layer?.cornerRadius = bottomRadius
+        // The pane's panel is rounded and SwiftUI's clip does not reach AppKit content: its
+        // bottom corners (the header covers the top) round with the panel, inside its ring.
+        layer?.cornerRadius = PaneColors.radius - 1
         layer?.cornerCurve = .continuous
-        // Unflipped: the bottom corners are the ones at minimum y.
         layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
     }
 

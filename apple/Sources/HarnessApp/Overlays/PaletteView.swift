@@ -5,19 +5,17 @@ import SwiftUI
 /// command; arrows move, Return runs, Esc closes.
 struct PaletteView: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
         let query = Binding(get: { shell.palette.query }, set: { shell.searchPalette($0) })
         let visible = shell.palette.visible
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: Icon.search).font(.system(size: 17)).foregroundStyle(Palette.t3)
+            HStack(spacing: 9) {
+                Image(systemName: Icon.search).font(.system(size: 13)).foregroundStyle(Palette.t3)
                 TextField("Search chats and messages, or run a command", text: query)
                     .textFieldStyle(.plain)
-                    .font(.ui(TypeSize.headline))
+                    .font(.ui(TypeSize.body))
                     .focused($focused)
                     .onKeyPress(.downArrow) { move(1) }
                     .onKeyPress(.upArrow) { move(-1) }
@@ -34,17 +32,14 @@ struct PaletteView: View {
                     .accessibilityLabel("Search chats, messages and commands")
             }
             .padding(.horizontal, 16)
-            .frame(height: 54)
-            .overlay(alignment: .bottom) {
-                Rectangle().fill(focused ? accent.accent : Palette.hair).frame(
-                    height: focused ? 2 : 1)
-            }
+            .frame(height: 44)
+            .overlay(alignment: .bottom) { Separator() }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if visible.isEmpty && !shell.palette.indexing {
                             Text("No matches")
-                                .font(.ui(TypeSize.body))
+                                .font(.ui(TypeSize.ui))
                                 .foregroundStyle(Palette.t3)
                                 .frame(maxWidth: .infinity)
                                 .padding(20)
@@ -52,10 +47,10 @@ struct PaletteView: View {
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
                             if index == 0 || visible[index - 1].group != item.group {
                                 Text(item.group.rawValue)
-                                    .font(.ui(TypeSize.caption, .bold))
+                                    .font(.ui(TypeSize.meta))
                                     .foregroundStyle(Palette.t3)
                                     .padding(
-                                        EdgeInsets(top: 8, leading: 10, bottom: 4, trailing: 10))
+                                        EdgeInsets(top: 8, leading: 10, bottom: 3, trailing: 10))
                             }
                             PaletteRow(item: item, selected: index == shell.palette.selection)
                                 .id(item.id)
@@ -78,16 +73,15 @@ struct PaletteView: View {
                     ProgressView().controlSize(.mini)
                     Text("Indexing history…")
                 }
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16))
-                .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
+                .padding(EdgeInsets(top: 8, leading: 16, bottom: 9, trailing: 16))
+                .overlay(alignment: .top) { Separator() }
             }
         }
         .frame(width: 620)
-        .sheetGlass(radius: glass.paletteRadius)
-        .shadow(color: glass.shadow, radius: 30, y: 18)
+        .sheetSurface()
         .onAppear { focused = true }
     }
 
@@ -107,17 +101,16 @@ private struct PaletteRow: View {
         Button {
             shell.run(item.action)
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 glyph
-                    .frame(width: 26, height: 26)
-                    .background(
-                        selected ? .clear : Palette.fill, in: RoundedRectangle(cornerRadius: 8))
+                    .foregroundStyle(Palette.t2)
+                    .frame(width: 16, height: 16)
                 if item.group == .messages {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(snippet).lineLimit(2)
                         Text("\(item.title) · \(item.subtitle)")
-                            .font(.ui(TypeSize.caption))
-                            .foregroundStyle(secondary)
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,18 +118,17 @@ private struct PaletteRow: View {
                     Text(item.title).lineLimit(1)
                     Spacer(minLength: 10)
                     Text(item.subtitle)
-                        .font(.ui(TypeSize.small))
-                        .foregroundStyle(secondary)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
                         .lineLimit(1)
                 }
             }
-            .font(.ui(TypeSize.body))
-            .foregroundStyle(selected ? accent.onAccent : Palette.t1)
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t1)
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                selected ? accent.accent : .clear, in: RoundedRectangle(cornerRadius: 12)
-            )
+            .padding(.vertical, 6)
+            .frame(minHeight: 30)
+            .background(selected ? accent.selection : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -149,16 +141,12 @@ private struct PaletteRow: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var secondary: Color {
-        selected ? accent.onAccent.opacity(0.75) : Palette.t3
-    }
-
     /// The hit's text with the matched words bold.
     private var snippet: AttributedString {
         item.snippet.reduce(into: AttributedString()) { text, part in
             var piece = AttributedString(part.text)
             if part.matched {
-                piece.font = .ui(TypeSize.body, .bold)
+                piece.font = .ui(TypeSize.ui, .semibold)
             }
             text += piece
         }
@@ -167,9 +155,9 @@ private struct PaletteRow: View {
     @ViewBuilder private var glyph: some View {
         switch item.glyph {
         case .status(let tone, let hollow):
-            StatusDot(tone: tone, hollow: hollow, pulses: false)
+            StatusDot(tone: tone, hollow: hollow)
         default:
-            Image(systemName: symbol).font(.system(size: 13))
+            Image(systemName: symbol).font(.system(size: 11))
         }
     }
 

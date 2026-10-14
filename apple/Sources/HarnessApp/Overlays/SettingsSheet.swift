@@ -1,8 +1,9 @@
 import HarnessKit
 import SwiftUI
 
-/// Settings: appearance, defaults for new chats, the usage refresh, Claude Code chats,
-/// stuck chats, notifications, paired devices and the account.
+/// Settings: appearance and the chat background, defaults for new chats, the usage
+/// refresh, Claude Code chats, stuck chats, notifications, paired devices, the account and
+/// its connectors.
 struct SettingsSheet: View {
     @Environment(Shell.self) private var shell
 
@@ -17,6 +18,7 @@ struct SettingsSheet: View {
             NotificationsSection()
             DevicesSection()
             AccountSection()
+            SheetSection(title: "Connectors") { ConnectorsList(top: 4) }
         }
     }
 }
@@ -29,18 +31,18 @@ struct AccountSection: View {
         let agents = shell.agents
         SheetSection(title: "Account") {
             HStack(spacing: 12) {
-                Avatar(name: shell.accountName, size: 44)
+                Avatar(name: shell.accountName, size: 32)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(shell.accountName).font(.ui(TypeSize.subhead, .bold))
-                    Text(agents.plan).font(.ui(TypeSize.small)).foregroundStyle(Palette.t2)
+                    Text(shell.accountName).font(.ui(TypeSize.ui, .medium))
+                    Text(agents.plan).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t2)
                     if let email = agents.email {
                         Text(email)
-                            .font(.ui(TypeSize.small))
+                            .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                             .textSelection(.enabled)
                     }
                     Text("Signed in through Claude Code")
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                 }
             }
@@ -61,18 +63,8 @@ private struct AppearanceSection: View {
                     selection: settings.theme
                 ) { settings.theme = $0 }
             }
-            SheetRow(label: "Glass") {
-                HStack(spacing: 8) {
-                    ForEach(DesignTokens.GlassTheme.all, id: \.name) { style in
-                        GlassChoice(style: style, selected: settings.glass == style) {
-                            settings.glass = style
-                        }
-                    }
-                }
-                .fixedSize()
-            }
             SheetRow(label: "Accent") {
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     ForEach(AccentName.allCases, id: \.self) { name in
                         Swatch(name: name, selected: settings.accent == name) {
                             settings.accent = name
@@ -80,12 +72,171 @@ private struct AppearanceSection: View {
                     }
                 }
             }
-            SheetRow(label: "Your messages") {
-                Segmented(
-                    options: [(BubbleStyle.accent, "Accent"), (.neutral, "Neutral")],
-                    selection: settings.bubble
-                ) { settings.bubble = $0 }
+            ChatBackgroundRows()
+        }
+    }
+}
+
+/// The chat background, as the approved design's: an image behind the chat panes with its
+/// visibility while no chat is open and once chats are open, and the current project's
+/// own image in place of it.
+private struct ChatBackgroundRows: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let background = shell.settings.chatBackground
+        SheetRow(label: "Background") {
+            ImageButtons(hasImage: background.image != nil) {
+                shell.chooseChatBackground()
+            } remove: {
+                shell.removeChatBackground()
             }
+        }
+        if let image = background.image {
+            let global = background.background(for: nil) ?? ChatBackground(image: image)
+            BackgroundPreview(background: global)
+            BackgroundRows(background: global) { changed in
+                shell.settings.chatBackground.emptyVisibility = changed.emptyVisibility
+                shell.settings.chatBackground.chatsVisibility = changed.chatsVisibility
+                shell.settings.chatBackground.grain = changed.grain
+            }
+        }
+        if let project = shell.project {
+            let own = background.projects[project]
+            SheetRow(label: "Background in \(project)") {
+                HStack(spacing: 8) {
+                    Text(own == nil ? "Follows the global background" : "Its own image")
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                    ImageButtons(hasImage: own != nil, removeTitle: "Use global") {
+                        shell.chooseChatBackground(for: project)
+                    } remove: {
+                        shell.removeChatBackground(for: project)
+                    }
+                }
+            }
+            if let own {
+                BackgroundPreview(background: own)
+                BackgroundRows(background: own) { changed in
+                    shell.settings.chatBackground.projects[project] = changed
+                }
+            }
+        }
+        Text("An image behind your chat panes. It stays on this Mac.")
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .padding(.bottom, 4)
+    }
+}
+
+/// Choose an image, or Change and Remove once there is one.
+private struct ImageButtons: View {
+    let hasImage: Bool
+    var removeTitle = "Remove"
+    let choose: () -> Void
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if hasImage {
+                Button("Change", action: choose).buttonStyle(.harness(.soft))
+                Button(removeTitle, action: remove).buttonStyle(.harness(.danger))
+            } else {
+                Button(action: choose) {
+                    Label("Choose an image", systemImage: "photo.badge.plus")
+                }
+                .buttonStyle(.harness(.soft))
+            }
+        }
+    }
+}
+
+/// The image as an empty workspace shows it, over the window's base color.
+private struct BackgroundPreview: View {
+    let background: ChatBackground
+
+    var body: some View {
+        let shape = RoundedRectangle.rounded(Radius.card)
+        let visibility = background.emptyVisibility
+        Palette.windowOpaque
+            .overlay {
+                GrainedImage(path: background.image, grain: background.grain)
+                    .opacity(visibility)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text("Empty preview at \(Self.percent(visibility))")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .padding(8)
+            }
+            .frame(height: 120)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Palette.divider))
+            .padding(.vertical, 6)
+            .accessibilityElement(children: .combine)
+    }
+
+    static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+}
+
+/// The visibility sliders, "Empty" and "With chats", and the grain: 0 percent the plain
+/// image, 100 the approved design's full dither.
+private struct BackgroundRows: View {
+    let background: ChatBackground
+    let change: (ChatBackground) -> Void
+
+    var body: some View {
+        let visibility = ChatBackground.minVisibility...ChatBackground.maxVisibility
+        SheetRow(label: "Empty") {
+            PercentSlider(
+                label: "Empty background visibility", value: background.emptyVisibility,
+                range: visibility
+            ) { value in update { $0.emptyVisibility = ChatBackground.clamp(value) } }
+        }
+        SheetRow(label: "With chats") {
+            PercentSlider(
+                label: "Background visibility with chats", value: background.chatsVisibility,
+                range: visibility
+            ) { value in update { $0.chatsVisibility = ChatBackground.clamp(value) } }
+        }
+        SheetRow(label: "Grain") {
+            PercentSlider(label: "Background grain", value: background.grain, range: 0...1) {
+                value in update { $0.grain = ChatBackground.clampGrain(value) }
+            }
+        }
+    }
+
+    private func update(_ apply: (inout ChatBackground) -> Void) {
+        var next = background
+        apply(&next)
+        change(next)
+    }
+}
+
+/// A slider in whole percent, with the value beside it.
+private struct PercentSlider: View {
+    let label: String
+    let value: Double
+    let range: ClosedRange<Double>
+    let change: (Double) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Slider(
+                value: Binding(get: { value * 100 }, set: { change(($0).rounded() / 100) }),
+                in: range.lowerBound * 100...range.upperBound * 100
+            )
+            .controlSize(.small)
+            .tint(Palette.t2)
+            .frame(width: 160)
+            .accessibilityLabel(label)
+            Text(BackgroundPreview.percent(value))
+                .font(.ui(TypeSize.meta))
+                .monospacedDigit()
+                .foregroundStyle(Palette.t2)
+                .frame(width: 32, alignment: .trailing)
         }
     }
 }
@@ -100,19 +251,19 @@ private struct Swatch: View {
         Button(action: pick) {
             Circle()
                 .fill(Color(accent.fill))
-                .overlay(Circle().strokeBorder(.black.opacity(0.12)))
+                .overlay(Circle().strokeBorder(Palette.divider))
                 .overlay {
                     if selected {
                         Image(systemName: Icon.check)
-                            .font(.system(size: 11, weight: .heavy))
+                            .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(Color(accent.on))
                     }
                 }
-                .frame(width: 26, height: 26)
+                .frame(width: 16, height: 16)
                 .padding(3)
                 .overlay {
                     if selected {
-                        Circle().strokeBorder(Palette.t1, lineWidth: 1.5)
+                        Circle().strokeBorder(Palette.t2, lineWidth: 1)
                     }
                 }
         }
@@ -121,79 +272,6 @@ private struct Swatch: View {
         .help(name.rawValue.capitalized)
         .accessibilityLabel(name.rawValue.capitalized)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// A glass theme's preview: a small pane of that glass over a bit of desktop, with the
-/// theme's name under it.
-private struct GlassChoice: View {
-    let style: GlassStyle
-    let selected: Bool
-    let pick: () -> Void
-
-    var body: some View {
-        Button(action: pick) {
-            VStack(spacing: 4) {
-                GlassSample()
-                    .environment(\.glass, GlassPalette.of(style))
-                    .frame(width: 62, height: 38)
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(Palette.hair)
-                    )
-                    .padding(2)
-                    .overlay {
-                        if selected {
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .strokeBorder(Palette.t1, lineWidth: 1.5)
-                        }
-                    }
-                Text(style.displayName)
-                    .font(.ui(TypeSize.caption, selected ? .semibold : .regular))
-                    .lineLimit(1)
-                    .foregroundStyle(selected ? Palette.t1 : Palette.t2)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .help(style.summary)
-        .accessibilityLabel("\(style.displayName) glass")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// The mockup's `.wpt` preview: a cool desktop with a warm spot, under a pane of glass
-/// drawn flat with the theme's tint, edges and shadow.
-private struct GlassSample: View {
-    @Environment(\.glass) private var glass
-    @Environment(\.colorScheme) private var scheme
-
-    private static let sky = Color(red: 0.77, green: 0.83, blue: 0.88)
-    private static let moss = Color(red: 0.62, green: 0.70, blue: 0.61)
-    private static let sun = Color(red: 0.95, green: 0.62, blue: 0.35)
-    private static let night = Color(red: 0.07, green: 0.10, blue: 0.15)
-    private static let nightMoss = Color(red: 0.14, green: 0.20, blue: 0.16)
-    private static let ember = Color(red: 0.55, green: 0.35, blue: 0.22)
-
-    var body: some View {
-        let dark = scheme == .dark
-        let shape = glass.rounded(min(glass.radius.pane, 7))
-        ZStack {
-            LinearGradient(
-                colors: dark ? [Self.night, Self.nightMoss] : [Self.sky, Self.moss],
-                startPoint: .top, endPoint: .bottom)
-            Circle()
-                .fill(dark ? Self.ember : Self.sun)
-                .frame(width: 22, height: 22)
-                .offset(x: 14, y: -6)
-            shape
-                .fill(glass.tint)
-                .overlay(GlassEdges(shape: shape))
-                .shadow(color: glass.shadow, radius: 3, y: 3)
-                .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
-        }
     }
 }
 
@@ -240,9 +318,9 @@ struct AgentDefaultsSection: View {
                 ) { mode in change { try await agents.setDefaultMode(mode) } }
             }
             Text("Shared with harness on your iPhone.")
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
-                .padding(.bottom, 6)
+                .padding(.bottom, 4)
         }
     }
 
@@ -257,10 +335,10 @@ struct AgentDefaultsSection: View {
     }
 }
 
-/// A fill-backed menu button, as the mockup's `.dd`.
+/// A small soft menu button: the value and a chevron.
 struct DropdownMenu<Items: View>: View {
     let title: String
-    var width: Double = 170
+    var width: Double = 160
     @ViewBuilder let items: () -> Items
     @State private var hovering = false
 
@@ -268,20 +346,18 @@ struct DropdownMenu<Items: View>: View {
         Menu {
             items()
         } label: {
-            HStack(spacing: 10) {
-                Text(title).font(.ui(TypeSize.callout, .semibold))
+            HStack(spacing: 8) {
+                Text(title).font(.ui(TypeSize.button)).lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: Icon.chevron)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Palette.t3)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Palette.t2)
             }
             .foregroundStyle(Palette.t1)
-            .padding(.leading, 12)
-            .padding(.trailing, 10)
-            .frame(width: width, height: 30)
-            .background(
-                hovering ? Palette.fill2 : Palette.fill, in: RoundedRectangle(cornerRadius: 9)
-            )
+            .padding(.leading, 9)
+            .padding(.trailing, 8)
+            .frame(width: width, height: Metrics.buttonHeight)
+            .background(hovering ? Palette.selection : Palette.soft, in: .rounded(Radius.button))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -311,7 +387,7 @@ private struct UsageSection: View {
             Text(
                 "While harness is on screen, a tiny check (about 400 tokens) keeps the 5 hour and weekly limits current. Refresh in the usage popover asks at once."
             )
-            .font(.ui(TypeSize.small))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.bottom, 6)
@@ -342,7 +418,7 @@ private struct ClaudeChatsSection: View {
                     .accessibilityLabel("Show automated chats")
             }
             Text("Chats that scripts and scheduled tasks started in Claude Code.")
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .padding(.bottom, 6)
         }
@@ -372,7 +448,7 @@ struct StuckSection: View {
             Text(
                 "A running chat counts as stuck after any of these. Stuck chats show a badge and a card in Needs you with Send a nudge."
             )
-            .font(.ui(TypeSize.small))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.bottom, 6)
@@ -411,27 +487,26 @@ private struct DevicesSection: View {
             ForEach(Array(devices.devices.enumerated()), id: \.element.id) { index, device in
                 HStack(spacing: 10) {
                     Image(systemName: device.isLocal ? Icon.laptop : Icon.phone)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Palette.t2)
-                        .frame(width: 26, height: 26)
-                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 8))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.t3)
+                        .frame(width: 18)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(device.name).font(.ui(TypeSize.body))
+                        Text(device.name).font(.ui(TypeSize.ui))
                         Text(devices.lastSeenText(device))
-                            .font(.ui(TypeSize.caption))
+                            .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                     }
                     Spacer()
                     if devices.canRevoke(device) {
                         Button("Revoke") { revoking = device }
-                            .buttonStyle(.card(.danger))
+                            .buttonStyle(.harness(.danger))
                             .disabled(devices.revoking.contains(device.id))
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
                 .overlay(alignment: .top) {
                     if index > 0 {
-                        Rectangle().fill(Palette.hair).frame(height: 1)
+                        Separator()
                     }
                 }
             }
@@ -440,7 +515,7 @@ private struct DevicesSection: View {
             } else {
                 HStack {
                     Text("Use harness on your iPhone with a one-time code.")
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                     Spacer()
                     Button {
@@ -448,7 +523,7 @@ private struct DevicesSection: View {
                     } label: {
                         Label("Pair a device", systemImage: Icon.plus)
                     }
-                    .buttonStyle(.harness(.plain))
+                    .buttonStyle(.harness(.soft))
                     .disabled(devices.isCreatingCode)
                 }
                 .padding(.top, 8)
@@ -508,34 +583,34 @@ private struct PairingCodeView: View {
         let devices = shell.model.devices
         VStack(spacing: 8) {
             Text(code.code)
-                .font(.system(size: 34, weight: .bold, design: .monospaced))
-                .tracking(6)
+                .font(.mono(26, .semibold))
+                .tracking(5)
                 .textSelection(.enabled)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(devices.expiryText(at: context.date))
-                    .font(.ui(TypeSize.small, .semibold))
+                    .font(.ui(TypeSize.meta))
                     .monospacedDigit()
                     .foregroundStyle(
                         devices.secondsLeft(at: context.date) > 0
-                            ? Palette.t2 : StatusTone.failed.textColor)
+                            ? Palette.t2 : StatusTone.failed.color)
             }
             Text("Open your tailnet address in Safari on the iPhone, then enter this code.")
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .multilineTextAlignment(.center)
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button("New code") {
                     Task { try? await devices.createPairingCode() }
                 }
-                .buttonStyle(.harness(.ghost))
+                .buttonStyle(.harness(.plain))
                 Button("Done") { devices.clearPairingCode() }
-                    .buttonStyle(.harness(.plain))
+                    .buttonStyle(.harness(.soft))
             }
             .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.vertical, 14)
+        .softFill()
         .padding(.top, 8)
         .id(Self.id)
     }

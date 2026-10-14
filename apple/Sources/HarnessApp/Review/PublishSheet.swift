@@ -22,7 +22,7 @@ struct PublishSheet: View {
                 content(approval, form)
             } else {
                 Text("This review was already resolved.")
-                    .font(.ui(TypeSize.small))
+                    .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)
                     .padding(.vertical, 20)
             }
@@ -68,7 +68,7 @@ struct PublishSheet: View {
         let loaded = shell.approvals.isReviewLoaded(approval)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(approval.title).font(.ui(TypeSize.body, .semibold)).lineLimit(1)
+                Text(approval.title).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
                 Spacer()
                 if let review = approval.review {
                     DiffStat(
@@ -82,15 +82,15 @@ struct PublishSheet: View {
             }
             if let loadFailure {
                 Text(loadFailure)
-                    .font(.ui(TypeSize.caption, .medium))
-                    .foregroundStyle(StatusTone.failed.textColor)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(StatusTone.failed.color)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
             } else if !loaded {
                 HStack(spacing: 8) {
                     Spinner()
                     Text("Reading the changes…")
-                        .font(.ui(TypeSize.caption))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                 }
                 .padding(.top, 8)
@@ -120,7 +120,7 @@ struct PublishSheet: View {
                 Text(
                     "This chat works in the project folder, so its files are committed on the current branch without a pull request."
                 )
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -136,10 +136,10 @@ struct PublishSheet: View {
                     shell.pushThere(approval, form.wrappedValue, url: url)
                 }
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Spacer()
                 Button("Cancel") { shell.close() }
-                    .buttonStyle(.harness(.plain))
+                    .buttonStyle(.harness(.soft))
                 Button {
                     shell.publish(approval, form.wrappedValue)
                 } label: {
@@ -151,7 +151,7 @@ struct PublishSheet: View {
                             systemImage: Icon.pullRequest)
                     }
                 }
-                .buttonStyle(.harness(.approve))
+                .buttonStyle(.harness(.primary))
                 .disabled(running || !loaded || !form.wrappedValue.canSubmit)
                 .keyboardShortcut(.defaultAction)
             }
@@ -166,10 +166,10 @@ private struct FieldLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.ui(TypeSize.label, .semibold))
-            .foregroundStyle(Palette.t2)
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
             .padding(.top, 12)
-            .padding(.bottom, 5)
+            .padding(.bottom, 4)
     }
 }
 
@@ -178,7 +178,6 @@ private struct SheetTextField: View {
     @Binding var text: String
     let lines: Int
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -187,15 +186,14 @@ private struct SheetTextField: View {
             .overlay(alignment: .topLeading) { Placeholder(text: placeholder, shown: text.isEmpty) }
             .lineLimit(lines...max(lines, 6))
             .textFieldStyle(.plain)
-            .font(.ui(TypeSize.body))
+            .font(.ui(TypeSize.ui))
             .focused($focused)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(glass.subtle, in: glass.rounded(glass.radius.item))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Palette.soft, in: .rounded(Radius.row))
             .overlay(
-                glass.rounded(glass.radius.item)
-                    .strokeBorder(
-                        focused ? accent.accent : Palette.hair, lineWidth: focused ? 2 : 1)
+                RoundedRectangle.rounded(Radius.row)
+                    .strokeBorder(focused ? accent.focus : .clear, lineWidth: 1)
             )
     }
 }
@@ -207,47 +205,45 @@ private struct StepList: View {
     let pushThere: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(progress.steps) { step in
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        mark(step.state).frame(width: 16, height: 16)
-                        Text(step.kind.title).font(.ui(TypeSize.callout, .semibold))
+                        mark(step.state).frame(width: 12, height: 12)
+                        Text(step.kind.title).font(.ui(TypeSize.ui))
                         Spacer()
                         Text(label(step.state))
-                            .font(.ui(TypeSize.caption))
+                            .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                     }
                     if case .failed(let output) = step.state {
                         Text(output)
-                            .font(.mono(TypeSize.caption))
-                            .foregroundStyle(StatusTone.failed.textColor)
+                            .font(.mono(TypeSize.meta))
+                            .foregroundStyle(StatusTone.failed.color)
                             .textSelection(.enabled)
-                            .padding(8)
+                            .padding(.leading, 20)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                StatusTone.failed.soft, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
             }
             if let failure = progress.failure, progress.failedStep != nil {
                 Text(failure.message)
-                    .font(.ui(TypeSize.caption))
+                    .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
                 Text(
                     "The review stays open. Fix the cause and try again; finished steps are skipped."
                 )
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             } else if let failure = progress.failure {
                 // Refused before any step ran: the daemon's reason, and what to do.
                 Text(failure.message)
-                    .font(.ui(TypeSize.caption, .medium))
-                    .foregroundStyle(StatusTone.failed.textColor)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(StatusTone.failed.color)
                     .fixedSize(horizontal: false, vertical: true)
                 if case .approveRefused(_, let reason, _) = failure, let hint = reason.hint {
                     Text(hint)
-                        .font(.ui(TypeSize.caption))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                 }
                 if let remote = failure.pushRemote {
@@ -255,29 +251,26 @@ private struct StepList: View {
                 }
             }
         }
-        .padding(12)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .softFill()
         .padding(.top, 14)
     }
 
     @ViewBuilder private func mark(_ state: PublishStepState) -> some View {
         switch state {
         case .pending:
-            Circle().strokeBorder(Palette.t3, lineWidth: 1.5)
+            Circle().strokeBorder(Palette.t3, lineWidth: 1).frame(width: 8, height: 8)
         case .running:
-            Spinner(size: 16)
+            Spinner(size: 10, lineWidth: 1.5)
         case .done:
             Image(systemName: Icon.check)
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(.white)
-                .frame(width: 16, height: 16)
-                .background(StatusTone.review.color, in: Circle())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(StatusTone.review.color)
         case .failed:
             Image(systemName: Icon.close)
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(.white)
-                .frame(width: 16, height: 16)
-                .background(StatusTone.failed.color, in: Circle())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(StatusTone.failed.color)
         }
     }
 
@@ -301,18 +294,18 @@ private struct RemoteConfirmation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(remote.summary)
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             ForEach(remote.urls, id: \.self) { url in
                 Text(url)
-                    .font(.mono(TypeSize.small, .semibold))
+                    .font(.mono(TypeSize.meta, .medium))
                     .textSelection(.enabled)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             if let previous = remote.confirmedURL {
                 Text("Confirmed before: \(previous)")
-                    .font(.ui(TypeSize.caption))
+                    .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -323,7 +316,7 @@ private struct RemoteConfirmation: View {
                 } label: {
                     Label("Push there", systemImage: Icon.send)
                 }
-                .buttonStyle(.card(.approve))
+                .buttonStyle(.harness(.primary))
                 .fixedSize()
                 .help("Approve again and remember this address for the project")
             }

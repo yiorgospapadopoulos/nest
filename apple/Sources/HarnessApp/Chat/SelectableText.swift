@@ -6,6 +6,8 @@ extension NSAttributedString.Key {
     static let blockDecoration = NSAttributedString.Key("harness.blockDecoration")
     /// Text that is shown but left out when copying, such as diff line numbers.
     static let notCopied = NSAttributedString.Key("harness.notCopied")
+    /// An `NSColor` drawn as a small rounded chip behind the range: inline code.
+    static let inlineChip = NSAttributedString.Key("harness.inlineChip")
 }
 
 /// A fill behind whole lines of text, the full width of the view.
@@ -62,6 +64,24 @@ struct SelectableText: NSViewRepresentable {
         let size = view.fit(width: offered ?? 100_000)
         guard let offered, !hugsWidth else { return size }
         return CGSize(width: offered, height: size.height)
+    }
+}
+
+/// How far an inline code chip reaches past its glyphs on one side.
+enum InlineChip {
+    /// Into a space or past a line's end: the chip's full padding.
+    static let room: CGFloat = 2.5
+    /// Against punctuation or a letter: barely past the glyph, so the neighbour sits as
+    /// close as after a plain word.
+    static let tight: CGFloat = 1
+
+    /// The padding next to the character at `index` of `text`: full room when it is a
+    /// space or a line break, or outside the text; tight otherwise.
+    static func pad(nextTo index: Int, in text: NSString) -> CGFloat {
+        guard index >= 0, index < text.length else { return room }
+        let character = text.character(at: index)
+        guard let scalar = Unicode.Scalar(character) else { return tight }
+        return CharacterSet.whitespacesAndNewlines.contains(scalar) ? room : tight
     }
 }
 
@@ -148,6 +168,43 @@ final class MessageTextView: NSTextView {
                 stroke.setStroke()
                 path.lineWidth = 1
                 path.stroke()
+            }
+        }
+        drawInlineChips(in: rect, manager: manager, origin: origin)
+    }
+
+    /// Inline code chips: a rounded fill around the glyphs of each line the range covers,
+    /// as tall as the font rather than the line, so the line spacing stays clear. The chip
+    /// adds no width to the text: it reaches into a neighbouring space (or a line's end)
+    /// and stays tight against neighbouring punctuation, which hugs it as after a word.
+    private func drawInlineChips(in rect: NSRect, manager: NSLayoutManager, origin: NSPoint) {
+        guard let storage = textStorage, let container = textContainer else { return }
+        let text = storage.string as NSString
+        storage.enumerateAttribute(
+            .inlineChip, in: NSRange(location: 0, length: storage.length)
+        ) { value, range, _ in
+            guard let color = value as? NSColor else { return }
+            let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+            let ascender = font?.ascender ?? 10
+            let descender = font?.descender ?? -3
+            let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            let before = InlineChip.pad(nextTo: range.location - 1, in: text)
+            let after = InlineChip.pad(nextTo: NSMaxRange(range), in: text)
+            manager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, lineGlyphs, _ in
+                let part = NSIntersectionRange(lineGlyphs, glyphs)
+                guard part.length > 0 else { return }
+                let bounds = manager.boundingRect(forGlyphRange: part, in: container)
+                let baseline = fragment.minY + manager.location(forGlyphAt: part.location).y
+                // A chip that wraps keeps the full room at the line breaks.
+                let leading = part.location == glyphs.location ? before : InlineChip.room
+                let trailing = NSMaxRange(part) == NSMaxRange(glyphs) ? after : InlineChip.room
+                let chip = CGRect(
+                    x: bounds.minX - leading, y: baseline - ascender - 1.5,
+                    width: bounds.width + leading + trailing, height: ascender - descender + 3
+                ).offsetBy(dx: origin.x, dy: origin.y)
+                guard chip.intersects(rect) else { return }
+                color.setFill()
+                NSBezierPath(roundedRect: chip, xRadius: Radius.chip, yRadius: Radius.chip).fill()
             }
         }
     }

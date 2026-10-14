@@ -106,7 +106,7 @@ private final class ProcessRelay: @preconcurrency LocalProcessTerminalViewDelega
 final class HarnessTerminalView: LocalProcessTerminalView {
     override init(frame: CGRect) {
         super.init(frame: frame)
-        font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
         optionAsMetaKey = false
         applyTheme()
     }
@@ -122,13 +122,12 @@ final class HarnessTerminalView: LocalProcessTerminalView {
 
     private func applyTheme() {
         let dark = effectiveAppearance.isDark
-        let colors = DesignTokens.Colors.self
-        nativeForegroundColor = .resolved(colors.Text.primary, dark: dark)
-        // SwiftTerm paints cells opaquely, so the code surface is laid over the page color.
-        nativeBackgroundColor = .resolved(colors.Surface.code, over: colors.Page.base, dark: dark)
-        caretColor = .resolved(colors.Text.secondary, dark: dark)
-        selectedTextBackgroundColor = .resolved(colors.Fill.strong, dark: dark)
-            .withAlphaComponent(dark ? 0.35 : 0.2)
+        let mac = DesignTokens.Colors.Mac.self
+        nativeForegroundColor = .resolved(mac.textPrimary, dark: dark)
+        // SwiftTerm paints cells opaquely, so the panel's fill is laid over the window's.
+        nativeBackgroundColor = PaneColors.opaqueFill(dark: dark)
+        caretColor = .resolved(mac.textSecondary, dark: dark)
+        selectedTextBackgroundColor = .resolved(mac.selection, over: mac.windowOpaque, dark: dark)
     }
 }
 
@@ -167,19 +166,19 @@ struct TerminalPaneView: View {
         VStack(spacing: 0) {
             ToolPaneHeader(pane: pane.id, title: pane.title) {
                 Image(systemName: Icon.terminal)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.t2)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.t3)
                 Text(pane.title)
-                    .font(.ui(13.5, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(pane.folder ?? "")
                 Spacer(minLength: 0)
             }
-            Rectangle().fill(Palette.hair).frame(height: 1)
+            Rectangle().fill(Palette.divider).frame(height: 1)
             TerminalHost(session: session) { shell.focusPane(pane.id) }
-                .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 2))
+                .padding(EdgeInsets(top: 8, leading: 14, bottom: 6, trailing: 4))
                 .overlay(alignment: .bottom) {
                     if session.exited {
                         ExitedBar { session.start() }
@@ -197,14 +196,14 @@ private struct ExitedBar: View {
     var body: some View {
         HStack(spacing: 10) {
             Text("The shell exited.")
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
             Button("Start a new shell", action: restart)
-                .buttonStyle(.harness(.primary, height: 24))
+                .buttonStyle(.harness(.primary))
         }
         .padding(.horizontal, 12)
-        .frame(height: 38)
-        .controlGlass()
+        .frame(height: 36)
+        .sheetSurface(radius: Radius.card)
         .padding(.bottom, 12)
     }
 }
@@ -218,17 +217,18 @@ struct ToolPaneHeader<Content: View>: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             GripDots()
                 .foregroundStyle(Palette.t3)
-                .frame(width: 22, height: 26)
+                .frame(width: 14, height: 24)
                 .contentShape(Rectangle())
                 .help("Drag to swap")
             content()
             PaneButtons(pane: pane)
         }
-        .frame(height: 28)
-        .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 8))
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(height: Metrics.headerHeight)
         .background {
             Color.clear
                 .contentShape(Rectangle())

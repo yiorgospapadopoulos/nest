@@ -11,14 +11,13 @@ struct BackgroundBar: View {
     let chat: String
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let all = shell.activity.background(session: chat)
         let summary = shell.model.transcripts.existing(chat)?.exchange(of: all) ?? all
         if !summary.isEmpty {
             let expanded = shell.projectState.expandedBackground.contains(chat)
-            let shape = glass.rounded(glass.radius.card)
+            let shape = RoundedRectangle.rounded(Radius.card)
             VStack(spacing: 0) {
                 if expanded {
                     ScrollView {
@@ -32,37 +31,36 @@ struct BackgroundBar: View {
                     .frame(maxHeight: Self.listHeight)
                     .fixedSize(horizontal: false, vertical: true)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12)))
-                    Rectangle().fill(Palette.hair).frame(height: 1)
+                    Rectangle().fill(Palette.divider).frame(height: 1)
                 }
                 Button {
                     shell.update { $0.toggleBackground(chat) }
                 } label: {
                     HStack(spacing: 8) {
-                        StatusDot(tone: summary.running > 0 ? .running : .done, size: 7)
+                        StatusDot(tone: summary.running > 0 ? .running : .done)
                         Text(summary.label)
-                            .font(.ui(TypeSize.callout, .medium))
+                            .font(.ui(TypeSize.ui))
                             .monospacedDigit()
                             .foregroundStyle(Palette.t2)
                             .shimmer(summary.running > 0)
                         Spacer(minLength: 4)
                         Image(systemName: Icon.chevron)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8, weight: .medium))
                             .foregroundStyle(Palette.t3)
                             .rotationEffect(.degrees(expanded ? 0 : 180))
                     }
                     .padding(.horizontal, 12)
-                    .frame(height: 30)
+                    .frame(height: 28)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(RowHoverStyle(radius: glass.radius.card))
+                .buttonStyle(RowHoverStyle(radius: Radius.card))
                 .help(expanded ? "Hide background tasks" : "Show background tasks")
                 .accessibilityLabel(summary.label)
                 .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             }
-            .background(shape.fill(glass.tint))
+            .background(shape.fill(Palette.soft))
             .clipShape(shape)
-            .overlay(GlassEdges(shape: shape))
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .padding(.bottom, 6)
         }
     }
@@ -76,10 +74,7 @@ private struct BackgroundSection: View {
     var body: some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title.uppercased())
-                    .font(.ui(TypeSize.caption, .semibold))
-                    .tracking(0.4)
-                    .foregroundStyle(Palette.t3)
+                SectionLabel(text: title)
                 ForEach(items) { item in
                     BackgroundRow(item: item)
                 }
@@ -96,19 +91,19 @@ private struct BackgroundRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(tone: tone, size: 7, pulses: false)
+            StatusDot(tone: tone)
             Image(systemName: item.kind == .bash ? Icon.terminal : Icon.agent)
-                .font(.system(size: 11))
-                .foregroundStyle(Palette.t2)
-                .frame(width: 14)
+                .font(.system(size: 10))
+                .foregroundStyle(Palette.t3)
+                .frame(width: 12)
             Text(item.name)
-                .font(.ui(TypeSize.callout, .semibold))
+                .font(.ui(TypeSize.ui, .medium))
                 .foregroundStyle(Palette.t1)
                 .lineLimit(1)
                 .layoutPriority(1)
             Text(item.description ?? "")
-                .font(.mono(11))
-                .foregroundStyle(Palette.t2)
+                .font(.mono(TypeSize.meta))
+                .foregroundStyle(Palette.t3)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Group {
@@ -127,7 +122,7 @@ private struct BackgroundRow: View {
 
     private func duration(at now: Date) -> some View {
         Text(item.duration(at: now) ?? statusText)
-            .font(.ui(TypeSize.caption))
+            .font(.ui(TypeSize.meta))
             .monospacedDigit()
             .foregroundStyle(Palette.t3)
     }

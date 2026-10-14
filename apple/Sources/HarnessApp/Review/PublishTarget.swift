@@ -11,32 +11,34 @@ struct PublishTarget: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let target = diff.pushTarget {
                     Label(target, systemImage: Icon.pullRequest)
-                        .font(.ui(TypeSize.label, .medium))
+                        .labelStyle(TightLabelStyle())
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                 }
                 if !diff.commits.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: Icon.warning)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10, weight: .medium))
                             Text(SessionDiff.foreignCommitsWarning)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .font(.ui(TypeSize.label, .medium))
-                        .foregroundStyle(StatusTone.failed.textColor)
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(StatusTone.failed.color)
                         ForEach(diff.commits) { commit in
                             HStack(spacing: 8) {
-                                Text(commit.shortSHA).font(.mono(TypeSize.caption))
+                                Text(commit.shortSHA).font(.mono(TypeSize.meta))
                                     .foregroundStyle(Palette.t3)
-                                Text(commit.subject).font(.ui(TypeSize.label))
+                                Text(commit.subject).font(.ui(TypeSize.ui))
                                     .lineLimit(1)
                             }
                             .textSelection(.enabled)
                         }
                     }
-                    .padding(9)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(StatusTone.failed.soft, in: RoundedRectangle(cornerRadius: 10))
+                    .softFill()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

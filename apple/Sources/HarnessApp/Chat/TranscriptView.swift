@@ -28,7 +28,7 @@ struct TranscriptView: View {
         let entries = store?.entries(live: inFlight, background: background) ?? []
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 11) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     if store?.hasOlder == true {
                         PageButton(title: "Load earlier messages") {
                             try await store?.loadOlder()
@@ -73,7 +73,7 @@ struct TranscriptView: View {
                         EmptyTranscript()
                     }
                 }
-                .padding(EdgeInsets(top: 14, leading: 16, bottom: 10, trailing: 16))
+                .padding(EdgeInsets(top: 18, leading: 20, bottom: 12, trailing: 20))
             }
             .onChange(of: scrollTarget) { _, target in
                 if let target {
@@ -225,27 +225,28 @@ private struct UserBubble: View {
     let attachments: [Attachment]
     /// Restores the files to before this message, while the chat is idle.
     let rewind: (() -> Void)?
-    @Environment(\.accentColors) private var accent
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             if !text.isEmpty {
-                let color = NSColor(accent.bubbleText)
+                let color = NSColor(Palette.Mac.textPrimary)
                 SelectableText(key: "\(color)\n\(text)", hugsWidth: true) {
-                    TextStyling.plain(text, font: TextStyling.ui(TypeSize.callout), color: color)
+                    TextStyling.plain(
+                        text, font: TextStyling.ui(TypeSize.reading), color: color, lineSpacing: 3)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(accent.bubble, in: bubbleShape)
-                .overlay(bubbleShape.stroke(Palette.hair))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(Palette.raised, in: .rounded(Radius.bubble))
                 .overlay(alignment: .leading) {
                     if let rewind, hovering || reveal {
                         Button(action: rewind) {
-                            Image(systemName: Icon.rewind).font(.system(size: 11))
+                            Image(systemName: Icon.rewind)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.t3)
                         }
-                        .buttonStyle(.harness(.ghost, height: 22, iconOnly: true))
+                        .buttonStyle(.harness(.plain, height: 22, iconOnly: true))
                         .help("Restore files to before this message")
                         .accessibilityLabel("Restore files to before this message")
                         .offset(x: -30)
@@ -261,12 +262,6 @@ private struct UserBubble: View {
         .padding(.leading, 48)
         .onHover { hovering = $0 }
     }
-
-    private var bubbleShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 16, bottomLeadingRadius: 16, bottomTrailingRadius: 6,
-            topTrailingRadius: 16, style: .continuous)
-    }
 }
 
 /// Assistant text: headings, paragraphs, lists and code blocks as one selectable text.
@@ -274,7 +269,6 @@ struct MarkdownText: View {
     let text: String
     /// Off inside a message that has its own Copy button.
     var copyable = true
-    @Environment(\.accentColors) private var accent
 
     var body: some View {
         if copyable {
@@ -287,7 +281,7 @@ struct MarkdownText: View {
     }
 
     private var content: some View {
-        SelectableText(key: text, linkColor: NSColor(accent.accent)) {
+        SelectableText(key: text, linkColor: NSColor(Palette.Mac.link)) {
             TextStyling.message(RichText.paragraphs(text))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -336,7 +330,7 @@ private struct CommandBlock: View {
         HStack(alignment: .top, spacing: 8) {
             SelectableText(key: command) {
                 TextStyling.plain(
-                    command, font: TextStyling.mono(11), color: TextStyling.primary,
+                    command, font: TextStyling.mono(TypeSize.meta), color: TextStyling.primary,
                     lineSpacing: 3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -358,14 +352,13 @@ private struct CommandBlock: View {
                     .help("Run the command in a terminal pane in the chat's folder")
                 }
             }
-            .buttonStyle(HarnessButtonStyle(kind: .ghost, height: 22, fontSize: TypeSize.caption))
+            .buttonStyle(.harness(.plain, height: 22))
             .fixedSize()
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
         .padding(.vertical, 4)
-        .background(Palette.codeBackground, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.hair))
+        .softFill()
     }
 }
 
@@ -374,12 +367,11 @@ private struct CommandBlock: View {
 private struct QueuedBubble: View {
     let message: QueuedMessage
     let cancel: () -> Void
-    @Environment(\.accentColors) private var accent
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(spacing: 4) {
-                Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
+                Image(systemName: "clock").font(.system(size: 9))
                 Text("Queued")
                 Button(action: cancel) {
                     Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
@@ -388,20 +380,17 @@ private struct QueuedBubble: View {
                 .help("Cancel this message")
                 .accessibilityLabel("Cancel queued message")
             }
-            .font(.ui(TypeSize.caption, .medium))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             Text(message.text)
-                .font(.ui(TypeSize.callout))
-                .foregroundStyle(accent.bubbleText)
+                .font(.ui(TypeSize.reading))
+                .lineSpacing(3)
+                .foregroundStyle(Palette.t2)
                 .textSelection(.enabled)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(accent.bubble, in: bubbleShape)
-                .overlay(
-                    bubbleShape.stroke(
-                        Palette.hair, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                )
-                .opacity(0.6)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(Palette.raised, in: .rounded(Radius.bubble))
+                .opacity(0.7)
             ForEach(message.attachments) { attachment in
                 Chip(icon: Icon.attach, text: attachment.filename)
                     .opacity(0.6)
@@ -411,12 +400,6 @@ private struct QueuedBubble: View {
         .padding(.leading, 48)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Queued: \(message.text)")
-    }
-
-    private var bubbleShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 16, bottomLeadingRadius: 16, bottomTrailingRadius: 6,
-            topTrailingRadius: 16, style: .continuous)
     }
 }
 
@@ -438,9 +421,11 @@ private struct HoverCopy: ViewModifier {
                     Button {
                         shell.copyText(text)
                     } label: {
-                        Image(systemName: Icon.copy).font(.system(size: 11))
+                        Image(systemName: Icon.copy)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.t3)
                     }
-                    .buttonStyle(.harness(.ghost, height: 22, iconOnly: true))
+                    .buttonStyle(.harness(.plain, height: 22, iconOnly: true))
                     .padding(.top, 2)
                     .help("Copy")
                     .accessibilityLabel("Copy")
@@ -460,7 +445,7 @@ extension View {
 /// text (redacted) cannot open.
 private struct ThinkingRow: View {
     static let font = NSFontManager.shared.convert(
-        TextStyling.ui(TypeSize.small), toHaveTrait: .italicFontMask)
+        TextStyling.ui(TypeSize.ui), toHaveTrait: .italicFontMask)
 
     let id: String
     let text: String
@@ -474,17 +459,19 @@ private struct ThinkingRow: View {
             Button {
                 toggle(id, in: shell)
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "brain").font(.system(size: 11))
+                HStack(spacing: 7) {
+                    Image(systemName: "brain").font(.system(size: 10))
+                        .frame(width: 12)
                     Text(TurnText.thought(durationMS: durationMS))
                     if expandable {
                         Image(systemName: Icon.chevron)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8, weight: .medium))
                             .rotationEffect(.degrees(expanded ? 0 : -90))
                     }
                 }
-                .font(.ui(TypeSize.small, .medium))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t3)
+                .frame(minHeight: 21)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -496,7 +483,7 @@ private struct ThinkingRow: View {
                     TextStyling.plain(
                         text, font: Self.font, color: TextStyling.secondary)
                 }
-                .padding(.leading, 17)
+                .padding(.leading, 19)
             }
         }
     }
@@ -513,24 +500,27 @@ private struct ToolGroupRow: View {
 
     var body: some View {
         let expanded = shell.expandedItems.contains(group.id)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             Button {
                 toggle(group.id, in: shell)
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     Image(systemName: Icon.tool(dominantKind))
-                        .font(.system(size: 11))
-                        .frame(width: 14)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Palette.t3)
+                        .frame(width: 12)
                     Text(group.summary)
+                        .foregroundStyle(Palette.t2)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .shimmer(group.isRunning)
                     Image(systemName: Icon.chevron)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(Palette.t3)
                         .rotationEffect(.degrees(expanded ? 0 : -90))
                 }
-                .font(.ui(TypeSize.small, .medium))
-                .foregroundStyle(Palette.t3)
+                .font(.ui(TypeSize.ui))
+                .frame(minHeight: 21)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -538,7 +528,7 @@ private struct ToolGroupRow: View {
             .accessibilityLabel(group.summary)
             .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             if expanded {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(group.items) { item in
                         TranscriptRow(item: item, chat: chat)
                             .background {
@@ -548,10 +538,7 @@ private struct ToolGroupRow: View {
                             }
                     }
                 }
-                .padding(.leading, 10)
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(Palette.hair).frame(width: 1).padding(.leading, 6)
-                }
+                .padding(.leading, 14)
             }
         }
     }
@@ -574,36 +561,45 @@ private struct ToolRow: View {
         let expanded = shell.expandedItems.contains(id)
         let output = call.result.map { $0.trimmingCharacters(in: .newlines) } ?? ""
         let expandable = !output.isEmpty
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: Icon.tool(ToolSummary.kind(of: call.name)))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Palette.t2)
-                    .frame(width: 14)
+        let kind = ToolSummary.kind(of: call.name)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Image(systemName: Icon.tool(kind))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.t3)
+                    .frame(width: 12)
                 Text(call.name)
-                    .font(.ui(TypeSize.small, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
+                    .foregroundStyle(Palette.t1)
                     .fixedSize()
                 Text(ToolSummary.argument(of: call))
-                    .font(.mono(TypeSize.caption))
-                    .foregroundStyle(Palette.t2)
+                    .font(.mono(TypeSize.meta))
+                    .foregroundStyle(kind == .read || kind == .edit ? Palette.link : Palette.t2)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(1)
-                Text(ToolSummary.result(of: call))
-                    .font(.ui(TypeSize.caption))
-                    .foregroundStyle(call.isError ? StatusTone.failed.textColor : Palette.t3)
-                    .lineLimit(1)
-                    .fixedSize()
+                let note = ToolSummary.result(of: call)
+                if kind == .edit && note == "done" {
+                    Image(systemName: Icon.check)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(StatusTone.review.color)
+                        .accessibilityLabel("done")
+                } else if !note.isEmpty {
+                    Text(call.isError ? note : "\u{00B7} \(note)")
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(call.isError ? StatusTone.failed.color : Palette.t3)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
                 if expandable {
                     Image(systemName: Icon.chevron)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(Palette.t3)
                         .rotationEffect(.degrees(expanded ? 0 : -90))
                 }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .frame(minHeight: 21)
             .contentShape(Rectangle())
             .pointerStyle(expandable ? .link : nil)
             .onTapGesture {
@@ -614,22 +610,21 @@ private struct ToolRow: View {
             if expanded {
                 let shown =
                     output.count > Self.outputLimit
-                    ? output.prefix(Self.outputLimit) + "\n…" : output
+                    ? output.prefix(Self.outputLimit) + "\n\u{2026}" : output
                 SelectableText(key: shown) {
                     TextStyling.plain(
-                        shown, font: TextStyling.mono(TypeSize.caption),
+                        shown, font: TextStyling.mono(TypeSize.meta),
                         color: TextStyling.secondary, lineSpacing: 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(
-                    EdgeInsets(top: 8, leading: 32, bottom: 10, trailing: HoverCopy.gutter + 4)
+                    EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: HoverCopy.gutter + 4)
                 )
                 .hoverCopy(output)
-                .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
+                .softFill()
+                .padding(.leading, 19)
             }
         }
-        .foregroundStyle(Palette.t1)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
@@ -685,13 +680,13 @@ struct DiffStat: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("+\(additions)").foregroundStyle(Palette.addedText)
-            Text("-\(deletions)").foregroundStyle(Palette.removedText)
+            Text("+\(additions)").foregroundStyle(StatusTone.review.color)
+            Text("-\(deletions)").foregroundStyle(StatusTone.failed.color)
             Text(files == 1 ? "1 file" : "\(files) files")
-                .font(.ui(TypeSize.label, .medium))
                 .foregroundStyle(Palette.t3)
         }
-        .font(.mono(TypeSize.label, .semibold))
+        .font(.ui(TypeSize.meta))
+        .monospacedDigit()
     }
 }
 
@@ -700,12 +695,11 @@ struct SystemLine: View {
 
     var body: some View {
         Text(text)
-            .font(.ui(TypeSize.caption))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 10)
-            .padding(.vertical, 3)
-            .background(Palette.fill, in: Capsule())
+            .padding(.vertical, 2)
     }
 }
 
@@ -719,12 +713,12 @@ private struct WorkingLine: View {
             BlinkingDots()
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(TurnText.working(since: since, at: context.date, thinking: thinking))
-                    .font(.ui(TypeSize.caption))
+                    .font(.ui(TypeSize.meta))
                     .monospacedDigit()
                     .foregroundStyle(Palette.t3)
             }
         }
-        .foregroundStyle(Palette.t2)
+        .foregroundStyle(Palette.t3)
     }
 }
 
@@ -734,7 +728,7 @@ private struct TurnEndLine: View {
 
     var body: some View {
         Text(TurnText.ended(end))
-            .font(.ui(TypeSize.caption))
+            .font(.ui(TypeSize.meta))
             .monospacedDigit()
             .foregroundStyle(Palette.t3)
     }
@@ -750,7 +744,7 @@ struct BlinkingDots: View {
                 ForEach(0..<3) { index in
                     let phase = (time - Double(index) * 0.2) / 1.2 * 2 * .pi
                     Circle()
-                        .frame(width: 4, height: 4)
+                        .frame(width: 3.5, height: 3.5)
                         .opacity(reduceMotion ? 0.6 : 0.625 + 0.375 * sin(phase))
                 }
             }
@@ -764,11 +758,8 @@ private struct Highlight: View {
     let accent: AccentColors
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(accent.soft)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(accent.line)
-            )
+        RoundedRectangle.rounded(Radius.card)
+            .fill(accent.selection)
             .padding(-6)
             .transition(.opacity)
             .allowsHitTesting(false)
@@ -791,7 +782,7 @@ private struct PageButton: View {
         } label: {
             Label(title, systemImage: "ellipsis")
         }
-        .buttonStyle(HarnessButtonStyle(kind: .ghost, height: 24, fontSize: TypeSize.caption))
+        .buttonStyle(.harness(.plain))
         .disabled(loading)
         .frame(maxWidth: .infinity)
     }
@@ -800,32 +791,28 @@ private struct PageButton: View {
 /// Scrolls back to the newest content and resumes following it.
 private struct JumpToLatest: View {
     let action: () -> Void
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: action) {
             Label("Jump to latest", systemImage: "arrow.down")
-                .font(.ui(TypeSize.small, .medium))
-                .padding(.horizontal, 12)
-                .frame(height: 28)
-                .controlGlass()
+                .font(.ui(TypeSize.ui))
+                .labelStyle(TightLabelStyle())
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+                .sheetSurface(radius: Radius.card)
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .foregroundStyle(Palette.t1)
-        .shadow(color: glass.shadow.opacity(0.5), radius: 8, y: 4)
     }
 }
 
 private struct EmptyTranscript: View {
-    @Environment(\.accentColors) private var accent
-
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: Icon.spark).font(.system(size: 24)).foregroundStyle(accent.accent)
-            Text("New chat").font(.ui(TypeSize.callout, .semibold)).foregroundStyle(Palette.t3)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        Text("New chat")
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t3)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 60)
     }
 }

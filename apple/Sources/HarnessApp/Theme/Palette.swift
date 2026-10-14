@@ -26,77 +26,102 @@ extension Color {
     }
 }
 
-/// The design tokens as SwiftUI colors, named after the mockup's variables. The glass
-/// colors follow the theme: see `GlassPalette`.
+/// The Mac look's colors, the one place views take them from. Each follows the window's
+/// light or dark appearance by itself; only the accent is a choice (`AccentColors`).
 enum Palette {
-    typealias Tokens = DesignTokens.Colors
+    typealias Mac = DesignTokens.Colors.Mac
 
-    static let t1 = Color(Tokens.Text.primary)
-    static let t2 = Color(Tokens.Text.secondary)
-    static let t3 = Color(Tokens.Text.tertiary)
-    static let hair = Color(Tokens.Line.hairline)
-    static let hair2 = Color(Tokens.Line.strong)
-    static let fill = Color(Tokens.Fill.subtle)
-    static let fill2 = Color(Tokens.Fill.strong)
-    static let codeBackground = Color(Tokens.Surface.code)
-    static let scrim = Color(Tokens.Surface.scrim)
-    static let page = Color(Tokens.Page.base)
-    static let approve = Color(Tokens.Signal.approve)
-    static let runningRing = Color(Tokens.Signal.runningRing)
-    static let attentionGlow = Color(Tokens.Signal.attentionGlow)
-    static let addedText = Color(Tokens.Diff.addedText)
-    static let removedText = Color(Tokens.Diff.removedText)
+    /// The window's tint over the desktop's blur.
+    static let window = Color(Mac.window)
+    /// The window's tint at full strength: fullscreen, Reduce Transparency and offscreen
+    /// snapshots.
+    static let windowOpaque = Color(Mac.windowOpaque)
+    /// Over the blurred chat background image under the window's chrome.
+    static let backdropTint = Color(Mac.backdropTint)
+    /// Sidebar, right panel and other side surfaces: darker than the panes.
+    static let side = Color(Mac.side)
+    /// The board and other reading surfaces: the window's base.
+    static let pane = Color(Mac.pane)
+    /// A chat, terminal or browser pane: a soft card in light, the base in dark.
+    static let chatPane = Color(Mac.chatPane)
+    /// Sheets, popovers, menus, the palette and floating banners.
+    static let sheet = Color(Mac.sheet)
+    /// A selected row, tab or segment with the default accent; see `AccentColors.selection`.
+    static let selection = Color(Mac.selection)
+    /// The composer's field.
+    static let composer = Color(Mac.composer)
+    /// Cards, inline code, fields and soft buttons.
+    static let soft = Color(Mac.soft)
+    /// Hovered rows and buttons.
+    static let hover = Color(Mac.hover)
+    /// The user's message and the tracks of bars.
+    static let raised = Color(Mac.raised)
+    /// 1 point lines between areas and sections.
+    static let divider = Color(Mac.divider)
+    /// The faint lines behind panes; see `scanlines()`.
+    static let scanline = Color(Mac.scanline)
+    /// Text that matters: titles, messages, values.
+    static let t1 = Color(Mac.textPrimary)
+    /// Most other text: subtitles, tool calls, buttons without a fill.
+    static let t2 = Color(Mac.textSecondary)
+    /// Labels, metadata, times and icons.
+    static let t3 = Color(Mac.textTertiary)
+    /// File paths and links.
+    static let link = Color(Mac.link)
 
-    /// Text on the amber badge.
-    static let onWaiting = Color(red: 0.169, green: 0.09, blue: 0)
+    /// Dims the window behind a sheet.
+    static let scrim = Color(DesignTokens.Colors.Surface.scrim)
+    /// Added and removed lines of a diff, readable on their tinted rows.
+    static let addedText = Color(DesignTokens.Colors.Diff.addedText)
+    static let removedText = Color(DesignTokens.Colors.Diff.removedText)
+    /// The amber glow of a background tab that needs the user (the tab strip's look before
+    /// B36; the restyled strip uses a thin `StatusTone.waiting` outline instead).
+    static let attentionGlow = Color(DesignTokens.Colors.Signal.attentionGlow)
 }
 
 extension StatusTone {
-    var color: Color { Color(fill) }
-    var textColor: Color { Color(text) }
-
-    var soft: Color {
-        switch self {
-        case .running: Color(DesignTokens.Status.Running.soft)
-        case .waiting: Color(DesignTokens.Status.Waiting.soft)
-        case .review: Color(DesignTokens.Status.Review.soft)
-        case .failed: Color(DesignTokens.Status.Failed.soft)
-        case .interrupted: Color(DesignTokens.Status.Interrupted.soft)
-        case .done: Color(DesignTokens.Status.Done.soft)
-        }
-    }
+    /// The tone's dot and its quiet word.
+    var color: Color { Color(themedColor) }
+    /// A faint wash of the tone, for the few fills that need one, such as a drop target or
+    /// an error row; status itself is a dot and a word, never a tinted pill.
+    var soft: Color { color.opacity(0.14) }
 }
 
-/// The colors that follow the user's accent and bubble choice.
+/// The colors that follow the user's accent: primary buttons, selection and focus. The
+/// default accent, graphite, is the look's own button and selection colors.
 struct AccentColors {
+    /// The primary button's fill.
     var accent: Color
+    /// Text and icons on the primary button.
     var onAccent: Color
-    var bubble: Color
-    var bubbleText: Color
+    /// Selected rows, tabs and segments.
+    var selection: Color
+    /// Focus rings and drop targets.
+    var focus: Color
 
-    /// Selection and drop zone tint.
-    var soft: Color { accent.opacity(0.12) }
-    /// The focused pane's ring.
-    var line: Color { accent.opacity(0.42) }
-
-    init(accent name: AccentName, bubble style: BubbleStyle) {
-        let accent = Theme.accent(name)
-        self.accent = Color(accent.fill)
-        onAccent = Color(accent.on)
-        let neutral = style == .neutral
-        bubble = Color(neutral ? DesignTokens.Colors.Surface.neutralBubble : accent.fill)
-        bubbleText = Color(neutral ? DesignTokens.Colors.Text.primary : accent.on)
+    init(accent name: AccentName) {
+        if name == .graphite {
+            accent = Color(Palette.Mac.button)
+            onAccent = Color(Palette.Mac.buttonText)
+            selection = Palette.selection
+            focus = Palette.t3
+        } else {
+            let colors = Theme.accent(name)
+            accent = Color(colors.fill)
+            onAccent = Color(colors.on)
+            selection = accent.opacity(0.16)
+            focus = accent.opacity(0.6)
+        }
     }
 
-    static let graphite = AccentColors(accent: .graphite, bubble: .accent)
+    static let graphite = AccentColors(accent: .graphite)
 }
 
 extension EnvironmentValues {
     @Entry var accentColors = AccentColors.graphite
-    /// Snapshots draw glass as flat tinted fills, since offscreen rendering has no backdrop.
-    @Entry var flatGlass = false
-    /// The window shows the desktop through its glass, so reading surfaces tint denser.
-    @Entry var seeThrough = false
+    /// Offscreen snapshots: nothing is behind the window, so it draws opaque, and AppKit
+    /// views that cannot render offscreen are left out.
+    @Entry var offscreen = false
     /// The pane sits under a maximized one: its AppKit content (a web view or terminal)
     /// must hide, since transparency alone neither hides it reliably nor stops its clicks.
     @Entry var paneHidden = false
@@ -111,7 +136,9 @@ extension EnvironmentValues {
     @Entry var revealsHoverControls = false
 }
 
-/// Type sizes from the tokens.
+/// Type sizes from the tokens. The look's text: `ui` for controls and lists, `reading`
+/// for transcript text, `meta` for labels, times and mono code, `button` for buttons and
+/// chips.
 enum TypeSize {
     typealias Size = DesignTokens.Typography.Size
     static let micro = Size.micro
@@ -122,6 +149,52 @@ enum TypeSize {
     static let body = Size.body
     static let subhead = Size.subhead
     static let headline = Size.headline
+
+    static let ui = Size.small
+    static let reading = Size.callout
+    static let meta = Size.caption
+    static let button = Size.label
+}
+
+/// Corner radii of the look, in points.
+enum Radius {
+    typealias Tokens = DesignTokens.Radius
+    /// Inline code and other small chips.
+    static let chip = Tokens.macChip
+    /// Buttons and segments.
+    static let button = Tokens.macButton
+    /// List rows and tabs.
+    static let row = Tokens.macRow
+    /// Soft-fill cards.
+    static let card = Tokens.macCard
+    /// The user's message.
+    static let bubble = Tokens.macBubble
+    /// Sheets, popovers and the palette.
+    static let sheet = Tokens.macSheet
+}
+
+/// Fixed heights of the look, in points.
+enum Metrics {
+    typealias Tokens = DesignTokens.Spacing
+    /// The project tab strip.
+    static let stripHeight = Tokens.macStripHeight
+    /// The project toolbar.
+    static let toolbarHeight = Tokens.macToolbarHeight
+    /// A pane's or column's header.
+    static let headerHeight = Tokens.macHeaderHeight
+    /// A list row.
+    static let rowHeight = Tokens.macRowHeight
+    /// A small button.
+    static let buttonHeight = Tokens.macButtonHeight
+    /// One scanline every this many points.
+    static let scanlinePeriod = Tokens.macScanlinePeriod
+}
+
+extension Shape where Self == RoundedRectangle {
+    /// The continuous rounded rectangle every rounded element uses.
+    static func rounded(_ radius: Double) -> RoundedRectangle {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+    }
 }
 
 extension Font {

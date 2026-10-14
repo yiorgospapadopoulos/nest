@@ -63,33 +63,26 @@ enum Icon {
     }
 }
 
-/// A status dot; idle is a hollow ring and running pulses.
+/// A small status dot in the tone's color; idle is a hollow ring. No glow and no pulse.
 struct StatusDot: View {
     let tone: StatusTone
     var hollow = false
-    var size: Double = 8
-    var pulses = true
-    @Environment(\.reducedMotion) private var reduceMotion
+    var size: Double = 6
 
     var body: some View {
         Circle()
             .fill(hollow ? Color.clear : tone.color)
             .overlay {
                 if hollow {
-                    Circle().strokeBorder(tone.color, lineWidth: 1.5)
+                    Circle().strokeBorder(tone.color, lineWidth: 1.2)
                 }
             }
             .frame(width: size, height: size)
-            .background {
-                if tone == .running && pulses && !reduceMotion {
-                    PulseRing(color: Palette.runningRing, size: size)
-                }
-            }
             .accessibilityHidden(true)
     }
 }
 
-/// The running dot's expanding ring.
+/// An expanding ring around a recording button.
 struct PulseRing: View {
     let color: Color
     let size: Double
@@ -106,128 +99,106 @@ struct PulseRing: View {
     }
 }
 
-/// A status capsule: dot and label on the tone's soft fill.
-struct StatusPill: View {
+/// Status as a dot and a quiet colored word, such as "Needs approval" in a pane header.
+struct StatusLabel: View {
     let tone: StatusTone
     let label: String
     var hollow = false
     var showsLabel = true
-    @Environment(\.glass) private var glass
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             StatusDot(tone: tone, hollow: hollow)
             if showsLabel {
                 Text(label).lineLimit(1)
             }
         }
-        .font(.ui(TypeSize.label, .semibold))
-        .foregroundStyle(tone.textColor)
-        .padding(.leading, 8)
-        .padding(.trailing, showsLabel ? 9 : 7)
-        .frame(height: 22)
-        .background(tone.soft, in: glass.control)
+        .font(.ui(TypeSize.meta))
+        .foregroundStyle(tone.color)
         .fixedSize()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
     }
 }
 
-/// An amber "Stuck" capsule on a chat that looks stuck, with the reason as its tooltip.
+/// A quiet amber "Stuck" on a chat that looks stuck, with the reason as its tooltip.
 struct StuckBadge: View {
     let flag: StuckFlag
 
     var body: some View {
         Text("Stuck")
-            .font(.ui(TypeSize.caption, .bold))
-            .foregroundStyle(Palette.onWaiting)
-            .padding(.horizontal, 6)
-            .frame(height: 16)
-            .background(StatusTone.waiting.color, in: Capsule())
+            .font(.ui(TypeSize.meta, .medium))
+            .foregroundStyle(StatusTone.waiting.color)
             .fixedSize()
             .help(flag.help)
             .accessibilityLabel("Stuck: \(flag.details)")
     }
 }
 
-/// A small rounded chip such as the branch name.
+/// A quiet inline label with an optional icon and no fill, such as the branch, or the
+/// composer's model, effort and mode.
 struct Chip: View {
-    let icon: String
+    var icon: String?
     let text: String
     var mono = false
-    @Environment(\.glass) private var glass
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 10, weight: .medium))
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon).font(.system(size: 10, weight: .medium))
+            }
             Text(text)
-                .font(mono ? .mono(10.5) : .ui(TypeSize.label))
+                .font(mono ? .mono(TypeSize.meta) : .ui(TypeSize.button))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .foregroundStyle(Palette.t2)
-        .padding(.horizontal, 8)
-        .frame(height: 22)
-        .background(Palette.fill, in: glass.rounded(glass.radius.small))
         .help(text)
     }
 }
 
-/// A project's colored mark with its initials.
-struct ProjectMarkView: View {
-    let name: String
-    var size: Double = 18
-
-    static let colors: [Color] = [
-        Color(red: 0.549, green: 0.482, blue: 0.404),
-        Color(red: 0.431, green: 0.541, blue: 0.420),
-        Color(red: 0.365, green: 0.498, blue: 0.608),
-        Color(red: 0.412, green: 0.451, blue: 0.498),
-    ]
+/// Inline code or a path as a small soft chip in mono, optionally in the link color.
+struct CodeChip: View {
+    let text: String
+    var link = false
 
     var body: some View {
-        let color = Self.colors[ProjectMark.colorIndex(for: name, count: Self.colors.count)]
-        Text(Initials.of(name))
-            .font(.system(size: size * 0.55, weight: .heavy))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(color, in: RoundedRectangle(cornerRadius: size / 3, style: .continuous))
-            .overlay(alignment: .top) {
-                RoundedRectangle(cornerRadius: size / 3, style: .continuous)
-                    .stroke(.white.opacity(0.35), lineWidth: 0.5)
-                    .mask(alignment: .top) { Rectangle().frame(height: 1.5) }
-            }
-            .accessibilityHidden(true)
+        Text(text)
+            .font(.mono(TypeSize.meta))
+            .foregroundStyle(link ? Palette.link : Palette.t1)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Palette.soft, in: .rounded(Radius.chip))
     }
 }
 
-/// The user's round avatar.
+/// The user's round avatar: initials on the selection fill.
 struct Avatar: View {
     let name: String
-    var size: Double = 30
-
-    var body: some View {
-        Text(Initials.of(name))
-            .font(.system(size: size * 0.37, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(Color(red: 0.482, green: 0.427, blue: 0.376), in: Circle())
-            .accessibilityHidden(true)
-    }
-}
-
-/// A count capsule; amber when it needs the user.
-struct CountBadge: View {
-    let count: Int
-    var urgent = false
     var size: Double = 20
 
     var body: some View {
+        Text(Initials.of(name))
+            .font(.system(size: size * 0.45, weight: .semibold))
+            .foregroundStyle(Palette.t1)
+            .frame(width: size, height: size)
+            .background(Palette.selection, in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// A count as a plain number: amber when it needs the user, grey otherwise.
+struct CountBadge: View {
+    let count: Int
+    var urgent = false
+
+    var body: some View {
         Text("\(count)")
-            .font(.system(size: size >= 20 ? 11 : 10, weight: urgent ? .heavy : .bold))
+            .font(.ui(TypeSize.meta))
             .monospacedDigit()
-            .foregroundStyle(urgent ? Palette.onWaiting : Palette.t2)
-            .padding(.horizontal, size >= 20 ? 6 : 4)
-            .frame(minWidth: size, minHeight: size - 2, maxHeight: size - 2)
-            .background(urgent ? StatusTone.waiting.color : Palette.fill2, in: Capsule())
+            .foregroundStyle(urgent ? StatusTone.waiting.color : Palette.t3)
     }
 }
 
@@ -255,21 +226,20 @@ struct Spinner: View {
     }
 }
 
-/// A thin progress bar.
+/// A thin progress bar: grey on a raised track unless given a color.
 struct Meter: View {
     let value: Double
-    var height: Double = 4
+    var height: Double = 3
     var color: Color?
-    @Environment(\.accentColors) private var accent
 
     var body: some View {
         Capsule()
-            .fill(Palette.fill2)
+            .fill(Palette.raised)
             .frame(height: height)
             .overlay(alignment: .leading) {
                 GeometryReader { geometry in
                     Capsule()
-                        .fill(color ?? accent.accent)
+                        .fill(color ?? Palette.t2)
                         .frame(width: geometry.size.width * min(max(value, 0), 1))
                 }
             }
@@ -277,93 +247,92 @@ struct Meter: View {
     }
 }
 
-/// A progress ring, as the usage button shows it.
+/// A small progress ring, as the usage button shows it.
 struct ProgressRing: View {
     let value: Double
-    @Environment(\.accentColors) private var accent
 
     var body: some View {
         ZStack {
-            Circle().stroke(Palette.fill2, lineWidth: 3.5)
+            Circle().stroke(Palette.divider, lineWidth: 2)
             Circle()
                 .trim(from: 0, to: min(max(value, 0), 1))
-                .stroke(accent.accent, lineWidth: 3.5)
+                .stroke(Palette.t2, lineWidth: 2)
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 15, height: 15)
-        .padding(1.5)
+        .frame(width: 12, height: 12)
+        .padding(1)
         .accessibilityHidden(true)
     }
 }
 
-/// Buttons of the mockup: `.b` in ghost, plain, primary and destructive variants, in the
-/// theme's control shape (pills, or Smoke's rounded rectangles).
+/// The look's buttons, flat and small: `primary` filled in the accent, `soft` on a soft
+/// fill, `plain` text only; `danger` is soft with red text and `destructive` filled red.
 struct HarnessButtonStyle: ButtonStyle {
     enum Kind {
-        case ghost, plain, primary, approve, danger, destructive
+        case primary, soft, plain, danger, destructive
     }
 
-    var kind = Kind.plain
-    var height: Double = 28
+    var kind = Kind.soft
+    var height: Double = Metrics.buttonHeight
     var iconOnly = false
-    var fontSize: Double = TypeSize.callout
     @Environment(\.accentColors) private var accent
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.glass) private var glass
 
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .font(.ui(fontSize, .semibold))
+                .font(.ui(height > 26 ? TypeSize.ui : TypeSize.button, weight))
                 .labelStyle(TightLabelStyle())
                 .foregroundStyle(foreground)
-                .padding(.horizontal, iconOnly ? 0 : (height < 28 ? 10 : 12))
+                .padding(.horizontal, iconOnly ? 0 : (kind == .plain ? 6 : 9))
                 .frame(width: iconOnly ? height : nil, height: height)
-                .background(background(hovering: hovering), in: glass.control)
-                .contentShape(glass.control)
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .opacity(isEnabled ? 1 : 0.35)
+                .background(background(hovering: hovering), in: .rounded(Radius.button))
+                .contentShape(.rounded(Radius.button))
+                .opacity(configuration.isPressed ? 0.75 : isEnabled ? 1 : 0.35)
                 .pointerStyle(isEnabled ? .link : nil)
         }
     }
 
+    private var weight: Font.Weight {
+        kind == .primary || kind == .destructive ? .medium : .regular
+    }
+
     private var foreground: Color {
         switch kind {
-        case .ghost: Palette.t2
-        case .plain: Palette.t1
         case .primary: accent.onAccent
-        case .approve, .destructive: .white
-        case .danger: StatusTone.failed.textColor
+        case .soft: Palette.t1
+        case .plain: Palette.t2
+        case .danger: StatusTone.failed.color
+        case .destructive: .white
         }
     }
 
     private func background(hovering: Bool) -> Color {
         switch kind {
-        case .ghost: hovering ? Palette.fill : .clear
-        case .plain: hovering ? Palette.fill2.opacity(1.4) : Palette.fill2
-        case .primary: hovering ? accent.accent.opacity(0.9) : accent.accent
-        case .approve: Palette.approve
-        case .danger: StatusTone.failed.soft
-        case .destructive: StatusTone.failed.color
+        case .primary: hovering ? accent.accent.opacity(0.85) : accent.accent
+        case .soft: hovering ? Palette.selection : Palette.soft
+        case .plain: hovering ? Palette.hover : .clear
+        case .danger: hovering ? StatusTone.failed.soft : Palette.soft
+        case .destructive:
+            hovering ? StatusTone.failed.color.opacity(0.85) : StatusTone.failed.color
         }
     }
 }
 
 extension ButtonStyle where Self == HarnessButtonStyle {
     static func harness(
-        _ kind: HarnessButtonStyle.Kind = .plain, height: Double = 28, iconOnly: Bool = false
+        _ kind: HarnessButtonStyle.Kind = .soft, height: Double = Metrics.buttonHeight,
+        iconOnly: Bool = false
     ) -> HarnessButtonStyle {
-        HarnessButtonStyle(
-            kind: kind, height: height, iconOnly: iconOnly,
-            fontSize: height < 28 ? TypeSize.label : TypeSize.callout)
+        HarnessButtonStyle(kind: kind, height: height, iconOnly: iconOnly)
     }
 }
 
-/// Icon and title with the mockup's 6 point gap.
+/// Icon and title with a 6 point gap.
 struct TightLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 6) {
-            configuration.icon.font(.system(size: 12, weight: .medium))
+            configuration.icon.font(.system(size: 11, weight: .medium))
             configuration.title
         }
     }
@@ -379,13 +348,72 @@ struct HoverReader<Content: View>: View {
     }
 }
 
-/// The small uppercase-free section header of the sidebar and cards.
+/// A small grey section label, such as "Running" over the sidebar's running chats, with
+/// its count on the right when given one.
 struct SectionLabel: View {
     let text: String
+    var count: Int?
 
     var body: some View {
-        Text(text)
-            .font(.ui(TypeSize.caption, .bold))
-            .foregroundStyle(Palette.t3)
+        HStack(spacing: 6) {
+            Text(text)
+            if let count {
+                Spacer(minLength: 0)
+                Text("\(count)").monospacedDigit()
+            }
+        }
+        .font(.ui(TypeSize.meta))
+        .foregroundStyle(Palette.t3)
+    }
+}
+
+/// A 1 point line between areas or sections, horizontal by default.
+struct Separator: View {
+    var axis = Axis.horizontal
+
+    var body: some View {
+        Rectangle()
+            .fill(Palette.divider)
+            .frame(width: axis == .vertical ? 1 : nil, height: axis == .horizontal ? 1 : nil)
+            .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// A list row's background: the accent's selection when selected, the hover fill while
+    /// hovered, nothing otherwise.
+    func listRow(selected: Bool = false, radius: Double = Radius.row) -> some View {
+        modifier(ListRowBackground(selected: selected, radius: radius))
+    }
+}
+
+private struct ListRowBackground: ViewModifier {
+    let selected: Bool
+    let radius: Double
+    @Environment(\.accentColors) private var accent
+
+    func body(content: Content) -> some View {
+        HoverReader { hovering in
+            content.background(
+                selected ? accent.selection : hovering ? Palette.hover : .clear,
+                in: .rounded(radius))
+        }
+    }
+}
+
+/// Buttons laid out as list rows: primary text, the hover fill while hovered or pressed.
+struct RowHoverStyle: ButtonStyle {
+    var radius = Radius.row
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverReader { hovering in
+            configuration.label
+                .foregroundStyle(Palette.t1)
+                .background(
+                    hovering || configuration.isPressed ? Palette.hover : .clear,
+                    in: .rounded(radius)
+                )
+                .pointerStyle(.link)
+        }
     }
 }

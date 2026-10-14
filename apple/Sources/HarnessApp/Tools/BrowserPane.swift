@@ -126,7 +126,7 @@ private struct WebHost: NSViewRepresentable {
     let focus: () -> Void
 
     func makeNSView(context: Context) -> PaneContentView {
-        let container = PaneContentView(bottomRadius: context.environment.glass.radius.pane)
+        let container = PaneContentView()
         container.onClick = focus
         container.show(session.view)
         return container
@@ -136,7 +136,6 @@ private struct WebHost: NSViewRepresentable {
         container.onClick = focus
         container.show(session.view)
         container.isHidden = context.environment.paneHidden
-        container.layer?.cornerRadius = context.environment.glass.radius.pane
     }
 
     func sizeThatFits(
@@ -151,7 +150,6 @@ private struct WebHost: NSViewRepresentable {
 struct BrowserPaneView: View {
     let pane: ToolPane
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let id = pane.id
@@ -163,21 +161,19 @@ struct BrowserPaneView: View {
             {
                 BrowserToolbar(session: session)
             }
-            Rectangle().fill(Palette.hair).frame(height: 1)
+            Rectangle().fill(Palette.divider).frame(height: 1)
             ZStack {
                 if session.url == nil {
                     StartPage(session: session)
                 } else {
+                    // Inside the panel's 1 point ring.
                     WebHost(session: session) { shell.focusPane(id) }
+                        .padding([.horizontal, .bottom], 1)
                     if let failure = session.failure {
                         LoadFailure(text: failure) { session.reload() }
                     }
                 }
             }
-            .clipShape(
-                UnevenRoundedRectangle(
-                    bottomLeadingRadius: glass.radius.pane,
-                    bottomTrailingRadius: glass.radius.pane, style: .continuous))
         }
         .modifier(PaneChrome(pane: pane.id))
     }
@@ -211,7 +207,7 @@ private struct BrowserToolbar: View {
                     Placeholder(text: "Address, localhost port or search", shown: text.isEmpty)
                 }
                 .textFieldStyle(.plain)
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .focused($editing)
                 .onSubmit {
                     session.go(text)
@@ -219,19 +215,21 @@ private struct BrowserToolbar: View {
                 }
                 .padding(.horizontal, 9)
                 .frame(height: 24)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 7))
+                .background(Palette.soft, in: .rounded(Radius.row))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7)
-                        .strokeBorder(editing ? accent.accent : .clear, lineWidth: 1.5)
+                    RoundedRectangle.rounded(Radius.row)
+                        .strokeBorder(editing ? accent.focus : .clear, lineWidth: 1)
                 )
                 .padding(.leading, 4)
                 .frame(minWidth: 60)
             Button {
                 showsServers.toggle()
             } label: {
-                Image(systemName: Icon.server).font(.system(size: 11, weight: .medium))
+                Image(systemName: Icon.server)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.t3)
             }
-            .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+            .buttonStyle(.harness(.plain, iconOnly: true))
             .help("Local servers")
             .accessibilityLabel("Local servers")
             .popover(isPresented: $showsServers, arrowEdge: .bottom) {
@@ -252,9 +250,11 @@ private struct BrowserToolbar: View {
         _ icon: String, _ label: String, enabled: Bool, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            Image(systemName: icon)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(Palette.t3)
         }
-        .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+        .buttonStyle(.harness(.plain, iconOnly: true))
         .disabled(!enabled)
         .help(label)
         .accessibilityLabel(label)
@@ -269,15 +269,13 @@ struct LocalServerList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Local servers")
-                .font(.ui(TypeSize.caption, .bold))
-                .foregroundStyle(Palette.t3)
+            SectionLabel(text: "Local servers")
                 .padding(.horizontal, 8)
                 .padding(.bottom, 4)
             if let servers {
                 if servers.isEmpty {
                     Text("Nothing is listening on localhost")
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                         .padding(8)
                 }
@@ -288,19 +286,19 @@ struct LocalServerList: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: Icon.globe)
-                                .font(.system(size: 11))
+                                .font(.system(size: 10))
                                 .foregroundStyle(Palette.t3)
                             Text("localhost:\(String(server.port))")
-                                .font(.mono(11.5, .medium))
-                                .foregroundStyle(Palette.t1)
+                                .font(.mono(TypeSize.meta))
+                                .foregroundStyle(Palette.link)
                             Spacer(minLength: 8)
                             Text(server.process)
-                                .font(.ui(TypeSize.small))
+                                .font(.ui(TypeSize.ui))
                                 .foregroundStyle(Palette.t3)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 8)
-                        .frame(height: 28)
+                        .frame(height: Metrics.rowHeight)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(RowHoverStyle())
@@ -310,7 +308,7 @@ struct LocalServerList: View {
                     ProgressView().controlSize(.small)
                     Text("Looking for servers")
                 }
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
                 .padding(8)
             }
@@ -322,24 +320,20 @@ struct LocalServerList: View {
 /// An empty browser: what to type, and the local servers to open.
 private struct StartPage: View {
     let session: BrowserSession
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             Image(systemName: Icon.globe)
-                .font(.system(size: 24))
-                .foregroundStyle(accent.accent)
-                .frame(width: 56, height: 56)
-                .panelGlass(radius: glass.radius.pane)
+                .font(.system(size: 18, weight: .light))
+                .foregroundStyle(Palette.t3)
             Text("Type an address, a localhost port such as 3000, or pick a local server")
-                .font(.ui(TypeSize.callout))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
                 .multilineTextAlignment(.center)
             LocalServerList(session: session) {}
                 .frame(maxWidth: 300)
                 .padding(8)
-                .background(Palette.fill, in: glass.rounded(glass.radius.card))
+                .softFill()
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -353,17 +347,17 @@ private struct LoadFailure: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: Icon.warning)
-                .font(.system(size: 22))
-                .foregroundStyle(StatusTone.failed.textColor)
+                .font(.system(size: 18))
+                .foregroundStyle(StatusTone.failed.color)
             Text(text)
-                .font(.ui(TypeSize.callout))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
                 .multilineTextAlignment(.center)
             Button("Try again", action: retry)
-                .buttonStyle(.harness(height: 26))
+                .buttonStyle(.harness(.soft))
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Palette.page)
+        .background(Palette.windowOpaque)
     }
 }

@@ -13,17 +13,17 @@ struct PRChip: View {
             showsDetails.toggle()
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: Icon.pullRequest).font(.system(size: 10, weight: .medium))
+                Image(systemName: Icon.pullRequest).font(.system(size: 9, weight: .medium))
                 Text("#\(String(pr.number))")
-                    .font(.ui(TypeSize.label, .semibold))
+                    .font(.ui(TypeSize.meta))
                     .monospacedDigit()
-                StatusDot(tone: dot.tone, hollow: dot.hollow, size: 7, pulses: false)
+                StatusDot(tone: dot.tone, hollow: dot.hollow)
             }
             .foregroundStyle(Palette.t2)
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .background(Palette.fill, in: Capsule())
-            .contentShape(Capsule())
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .background(Palette.soft, in: .rounded(Radius.chip))
+            .contentShape(.rounded(Radius.chip))
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
@@ -49,13 +49,13 @@ struct PRDetails: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(pr.title)
-                    .font(.ui(TypeSize.body, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(
                     "#\(String(pr.number)) · \(PRBadge.stateLabel(pr.state)) · \(PRBadge.checksSummary(pr.checks))"
                 )
-                .font(.ui(TypeSize.label))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             }
             if !pr.checks.items.isEmpty {
@@ -64,8 +64,8 @@ struct PRDetails: View {
                         CheckRow(check: check)
                     }
                 }
-                .padding(4)
-                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.vertical, 2)
+                .softFill()
             }
             HStack(spacing: 6) {
                 Button {
@@ -80,7 +80,7 @@ struct PRDetails: View {
                         Text("Refresh")
                     }
                 }
-                .buttonStyle(.card(.plain))
+                .buttonStyle(.harness(.soft))
                 .disabled(refreshing)
                 .help("Read the pull request from GitHub now")
                 Spacer(minLength: 0)
@@ -89,7 +89,7 @@ struct PRDetails: View {
                 } label: {
                     Label("Open on GitHub", systemImage: Icon.open)
                 }
-                .buttonStyle(.card(.ghost))
+                .buttonStyle(.harness(.plain))
             }
         }
         .padding(14)
@@ -104,15 +104,15 @@ private struct CheckRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(tone: tone, hollow: check.state == .skipped, size: 7, pulses: false)
+            StatusDot(tone: tone, hollow: check.state == .skipped)
             Text(check.name)
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t1)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(label)
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             if let url = check.url {
                 Button {
@@ -120,13 +120,13 @@ private struct CheckRow: View {
                 } label: {
                     Image(systemName: Icon.open).font(.system(size: 10))
                 }
-                .buttonStyle(.harness(.ghost, height: 20, iconOnly: true))
+                .buttonStyle(.harness(.plain, height: 20, iconOnly: true))
                 .help("Open the run")
                 .accessibilityLabel("Open \(check.name)")
             }
         }
-        .padding(.horizontal, 6)
-        .frame(minHeight: 26)
+        .padding(.horizontal, 8)
+        .frame(minHeight: Metrics.rowHeight)
     }
 
     private var tone: StatusTone {
@@ -165,11 +165,11 @@ struct MergeBody: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text("#\(String(proposal.number))")
-                            .font(.ui(TypeSize.small, .semibold))
+                            .font(.ui(TypeSize.ui))
                             .foregroundStyle(Palette.t3)
                             .monospacedDigit()
                         Text(proposal.title)
-                            .font(.ui(TypeSize.callout, .semibold))
+                            .font(.ui(TypeSize.ui, .medium))
                             .foregroundStyle(Palette.t1)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -183,13 +183,13 @@ struct MergeBody: View {
                 HStack(spacing: 6) {
                     StatusDot(
                         tone: proposal.checks.state == .success ? .review : .done,
-                        hollow: proposal.checks.state != .success, size: 7, pulses: false)
+                        hollow: proposal.checks.state != .success)
                     Text(
                         proposal.checks.state == .success
                             ? "Checks passed: \(PRBadge.checksSummary(proposal.checks))"
                             : PRBadge.checksSummary(proposal.checks))
                 }
-                .font(.ui(TypeSize.label))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t2)
                 .padding(.top, 5)
             }
@@ -200,7 +200,7 @@ struct MergeBody: View {
                     } label: {
                         Label("Merge (squash)", systemImage: Icon.merge).grows(style)
                     }
-                    .buttonStyle(.card(.approve))
+                    .buttonStyle(.harness(.primary))
                     Menu {
                         ForEach(MergeMethod.allCases, id: \.self) { method in
                             Button(method.label) { shell.merge(approval, method: method) }
@@ -209,14 +209,14 @@ struct MergeBody: View {
                         Image(systemName: Icon.chevron).font(.system(size: 9, weight: .bold))
                     }
                     .menuStyle(.button)
-                    .buttonStyle(.card(.approve))
+                    .buttonStyle(.harness(.primary))
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .help("Merge method")
                     .accessibilityLabel("Merge method")
                 }
                 Button("Dismiss") { shell.dismiss(approval) }
-                    .buttonStyle(.card(.ghost))
+                    .buttonStyle(.harness(.plain))
                     .fixedSize()
                     .help("Hide this until the pull request changes")
             }
@@ -233,28 +233,27 @@ struct ChecksFailedCard: View {
         let failing = session.pr?.failingChecks ?? []
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: Icon.warning).font(.system(size: 11, weight: .semibold))
+                StatusDot(tone: .failed)
                 Text("Checks failed")
                 Spacer(minLength: 8)
                 ChatLink(chat: session.id, title: session.title)
-                    .font(.ui(TypeSize.caption, .medium))
                     .foregroundStyle(Palette.t3)
                     .frame(maxWidth: 150, alignment: .trailing)
             }
-            .font(.ui(TypeSize.caption, .bold))
-            .foregroundStyle(StatusTone.failed.textColor)
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(StatusTone.failed.color)
             if let pr = session.pr {
                 Text("#\(String(pr.number)) \(pr.title)")
-                    .font(.ui(TypeSize.small, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .lineLimit(1)
                     .padding(.top, 7)
             }
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(failing, id: \.self) { name in
                     HStack(spacing: 7) {
-                        StatusDot(tone: .failed, size: 7, pulses: false)
+                        StatusDot(tone: .failed)
                         Text(name)
-                            .font(.mono(10.5))
+                            .font(.mono(TypeSize.meta))
                             .foregroundStyle(Palette.t2)
                             .lineLimit(1)
                     }
@@ -267,19 +266,19 @@ struct ChecksFailedCard: View {
                 } label: {
                     Label("Send to agent", systemImage: Icon.send).grows(.panel)
                 }
-                .buttonStyle(.card(.primary))
+                .buttonStyle(.harness(.primary))
                 .help("harness reads the failing checks' logs and sends them to the chat")
                 if let pr = session.pr {
                     Button("Open on GitHub") { shell.openOnGitHub(pr.url) }
-                        .buttonStyle(.card(.ghost))
+                        .buttonStyle(.harness(.plain))
                         .fixedSize()
                 }
             }
         }
         .foregroundStyle(Palette.t1)
         .padding(.horizontal, 12)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .softFill()
     }
 }

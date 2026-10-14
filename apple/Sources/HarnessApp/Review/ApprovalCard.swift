@@ -3,8 +3,8 @@ import HarnessKit
 import SwiftUI
 
 /// A pending approval with its actions: a permission prompt, Claude's questions or work
-/// to review. The Needs you card shows it on a fill with the chat's name; the transcript
-/// shows a compact version on the kind's soft color.
+/// to review, on a soft fill under a quiet coloured label. The Needs you card adds the
+/// chat's name; the transcript shows a compact version.
 struct ApprovalCard: View {
     enum Style {
         case panel, inline
@@ -32,17 +32,15 @@ struct ApprovalCard: View {
             .disabled(busy)
         }
         .foregroundStyle(Palette.t1)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
+        .padding(.horizontal, style == .panel ? 12 : 13)
+        .padding(.vertical, style == .panel ? 10 : 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            style == .panel ? Palette.fill : tone.soft,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .softFill()
     }
 
     private func header(_ tone: StatusTone) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            StatusDot(tone: tone)
             Text(title)
             if shell.approvals.busy.contains(approval.id) {
                 ProgressView().controlSize(.mini)
@@ -58,23 +56,13 @@ struct ApprovalCard: View {
                         ChatLink(chat: approval.sessionID, title: approval.title)
                     }
                 }
-                .font(.ui(TypeSize.caption, .medium))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .frame(maxWidth: 150, alignment: .trailing)
             }
         }
-        .font(.ui(TypeSize.caption, .bold))
-        .foregroundStyle(tone.textColor)
-    }
-
-    private var icon: String {
-        switch approval.kind {
-        case .question: Icon.question
-        case .review: Icon.check
-        case .plan: Icon.plan
-        case .merge: Icon.merge
-        case .permission, .unknown: Icon.shield
-        }
+        .font(.ui(TypeSize.meta))
+        .foregroundStyle(tone.color)
     }
 
     private var title: String {
@@ -104,16 +92,17 @@ private struct PermissionBody: View {
                     text:
                         "\(permission.tool) \(ToolSummary.argument(tool: permission.tool, input: permission.input))"
                 )
-                .padding(.vertical, 6)
+                .padding(.top, 7)
+                .padding(.bottom, 5)
                 if let title = permission.title {
                     Text(title)
-                        .font(.ui(TypeSize.label))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                         .lineSpacing(1.5)
                 }
                 if let reason = permission.reason {
                     Text(reason)
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t3)
                         .lineSpacing(1.5)
                         .fixedSize(horizontal: false, vertical: true)
@@ -140,7 +129,7 @@ private struct PermissionBody: View {
                     always
                 }
             }
-            .padding(.top, 9)
+            .padding(.top, 10)
         }
     }
 
@@ -148,9 +137,9 @@ private struct PermissionBody: View {
         Button {
             shell.allow(approval)
         } label: {
-            Label("Approve", systemImage: Icon.check).grows(style)
+            Text("Approve").grows(style)
         }
-        .buttonStyle(.card(.approve))
+        .buttonStyle(.harness(.primary))
     }
 
     private var reject: some View {
@@ -159,14 +148,14 @@ private struct PermissionBody: View {
         } label: {
             Text("Reject").grows(style)
         }
-        .buttonStyle(.card(.danger))
+        .buttonStyle(.harness(.soft))
     }
 
     private var always: some View {
         Button(approval.permission?.alwaysAllowTitle ?? "Always allow") {
             shell.allow(approval, always: true)
         }
-        .buttonStyle(.card(.ghost))
+        .buttonStyle(.harness(.plain))
         .fixedSize()
         .help(approval.permission?.alwaysAllowHelp ?? "Allow this tool for the rest of the chat")
     }
@@ -181,8 +170,6 @@ private struct PlanBody: View {
     let approval: Approval
     let style: ApprovalCard.Style
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let note = Binding(
@@ -198,8 +185,7 @@ private struct PlanBody: View {
                     plan
                 }
             }
-            .background(glass.subtle, in: glass.rounded(glass.radius.item))
-            .overlay(glass.rounded(glass.radius.item).strokeBorder(Palette.hair))
+            .background(Palette.soft, in: .rounded(Radius.row))
             .padding(.top, 8)
             let model = shell.sessions.session(approval.sessionID)?.model
             Segmented(
@@ -216,16 +202,16 @@ private struct PlanBody: View {
                 Button {
                     shell.approvePlan(approval)
                 } label: {
-                    Label("Approve plan", systemImage: Icon.check).grows(style)
+                    Text("Approve plan").grows(style)
                 }
-                .buttonStyle(.card(.approve))
+                .buttonStyle(.harness(.primary))
                 .help("Continue with this plan in the mode chosen above")
                 Button {
                     shell.keepPlanning(approval)
                 } label: {
                     Text("Keep planning").grows(style)
                 }
-                .buttonStyle(.card(.plain))
+                .buttonStyle(.harness(.soft))
                 .help("Send Claude back to planning, with the note if you wrote one")
             }
         }
@@ -233,7 +219,7 @@ private struct PlanBody: View {
 
     private var plan: some View {
         let text = approval.plan?.plan ?? ""
-        return SelectableText(key: text, linkColor: NSColor(accent.accent)) {
+        return SelectableText(key: text, linkColor: NSColor(Palette.Mac.link)) {
             TextStyling.message(RichText.paragraphs(text))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -247,14 +233,14 @@ struct CommandBox: View {
 
     var body: some View {
         Text(text)
-            .font(.mono(TypeSize.small, .semibold))
+            .font(.mono(TypeSize.ui))
+            .foregroundStyle(Palette.t1)
             .lineSpacing(2)
             .textSelection(.enabled)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.codeBackground, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Palette.hair))
+            .background(Palette.soft, in: .rounded(Radius.button))
     }
 }
 
@@ -271,7 +257,7 @@ private struct QuestionBody: View {
             ForEach(questions, id: \.question) { question in
                 VStack(alignment: .leading, spacing: 0) {
                     Text(question.question)
-                        .font(.ui(TypeSize.body, .semibold))
+                        .font(.ui(TypeSize.reading, .medium))
                         .padding(.top, 6)
                         .padding(.bottom, 2)
                     OptionList(approval: approval, question: question)
@@ -286,10 +272,10 @@ private struct QuestionBody: View {
                 } label: {
                     Text("Send answer").grows(style)
                 }
-                .buttonStyle(.card(.primary))
+                .buttonStyle(.harness(.primary))
                 .disabled(!shell.approvals.canSubmitAnswers(approval))
                 Button("Dismiss") { shell.dismiss(approval) }
-                    .buttonStyle(.card(.ghost))
+                    .buttonStyle(.harness(.plain))
                     .fixedSize()
                     .help("Let Claude continue without an answer")
             }
@@ -302,13 +288,12 @@ private struct OptionList: View {
     let question: Question
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let chosen = shell.approvals.selection(for: approval, question: question)
         let typing = !shell.approvals.freeAnswer(for: approval, question: question)
             .trimmingCharacters(in: .whitespaces).isEmpty
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             ForEach(question.options, id: \.label) { option in
                 let on = chosen.contains(option.label) && !typing
                 Button {
@@ -319,19 +304,16 @@ private struct OptionList: View {
                         mark(on: on, multiple: question.multiSelect)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
-                                Text(option.label).font(.ui(TypeSize.small, .semibold))
+                                Text(option.label).font(.ui(TypeSize.ui, .medium))
                                 if option.recommended {
                                     Text("Recommended")
-                                        .font(.ui(TypeSize.micro, .bold))
-                                        .foregroundStyle(StatusTone.review.textColor)
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 1)
-                                        .background(StatusTone.review.soft, in: Capsule())
+                                        .font(.ui(TypeSize.meta))
+                                        .foregroundStyle(StatusTone.review.color)
                                 }
                             }
                             if let description = option.description {
                                 Text(description)
-                                    .font(.ui(TypeSize.caption))
+                                    .font(.ui(TypeSize.meta))
                                     .foregroundStyle(Palette.t2)
                                     .multilineTextAlignment(.leading)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -343,11 +325,7 @@ private struct OptionList: View {
                     .padding(.horizontal, 9)
                     .padding(.vertical, 7)
                     .background(
-                        on ? accent.soft : glass.subtle, in: glass.rounded(glass.radius.item)
-                    )
-                    .overlay(
-                        glass.rounded(glass.radius.item)
-                            .strokeBorder(on ? accent.accent : Palette.hair)
+                        on ? accent.selection : Palette.soft, in: .rounded(Radius.row)
                     )
                     .contentShape(Rectangle())
                 }
@@ -360,10 +338,10 @@ private struct OptionList: View {
     }
 
     @ViewBuilder private func mark(on: Bool, multiple: Bool) -> some View {
-        RoundedRectangle(cornerRadius: multiple ? 4 : 7, style: .continuous)
-            .strokeBorder(on ? accent.accent : Palette.t3, lineWidth: on ? 4 : 1.5)
-            .frame(width: 14, height: 14)
-            .padding(.top, 1)
+        RoundedRectangle(cornerRadius: multiple ? 3 : 6, style: .continuous)
+            .strokeBorder(on ? accent.accent : Palette.t3, lineWidth: on ? 4 : 1.2)
+            .frame(width: 12, height: 12)
+            .padding(.top, 1.5)
     }
 }
 
@@ -400,7 +378,7 @@ private struct ReviewBody: View {
         VStack(alignment: .leading, spacing: 0) {
             if style == .panel {
                 Text(approval.title)
-                    .font(.ui(TypeSize.body, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .padding(.top, 6)
             }
             HStack(spacing: 8) {
@@ -421,7 +399,7 @@ private struct ReviewBody: View {
             if style == .panel {
                 if let summary = review?.summary {
                     Text(summary)
-                        .font(.ui(TypeSize.label))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                         .lineSpacing(1.5)
                         .fixedSize(horizontal: false, vertical: true)
@@ -438,7 +416,7 @@ private struct ReviewBody: View {
                         shell.sendFeedback(approval, text: feedback)
                     }
                     Button("Send") { shell.sendFeedback(approval, text: feedback) }
-                        .buttonStyle(.card(.plain))
+                        .buttonStyle(.harness(.soft))
                         .fixedSize()
                         .disabled(feedback.trimmingCharacters(in: .whitespaces).isEmpty)
                         .help("Send feedback to the chat")
@@ -457,20 +435,19 @@ private struct ReviewBody: View {
                     Button {
                         shell.show(.publish(approval.id))
                     } label: {
-                        Label(
+                        Text(
                             session?.mode == .inPlace
-                                ? "Approve and commit" : "Approve and open PR",
-                            systemImage: Icon.pullRequest
+                                ? "Approve and commit" : "Approve and open PR"
                         )
                         .grows(style)
                     }
-                    .buttonStyle(.card(.approve))
+                    .buttonStyle(.harness(.primary))
                     .disabled(!git || (violation && !acknowledged))
                     .help(git ? "" : "Not a git repository: nothing to commit")
                     Button("Reject") {
                         withAnimation(.smooth(duration: 0.2)) { confirmingReject = true }
                     }
-                    .buttonStyle(.card(.danger))
+                    .buttonStyle(.harness(.soft))
                 }
             }
         }
@@ -500,14 +477,14 @@ struct ViolationNotice: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.ui(TypeSize.label, .medium))
-            .foregroundStyle(StatusTone.failed.textColor)
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(StatusTone.failed.color)
             Toggle("I checked, publish anyway", isOn: binding)
                 .toggleStyle(SwitchRowStyle())
-                .font(.ui(TypeSize.label))
+                .font(.ui(TypeSize.ui))
         }
         .padding(9)
-        .background(StatusTone.failed.soft, in: RoundedRectangle(cornerRadius: 10))
+        .background(StatusTone.failed.soft, in: .rounded(Radius.row))
         .padding(.top, 8)
     }
 }
@@ -526,23 +503,24 @@ private struct FileList: View {
                 HStack(spacing: 7) {
                     Image(systemName: Icon.file).font(.system(size: 10)).foregroundStyle(Palette.t3)
                     Text(path)
-                        .font(.mono(10.5))
-                        .foregroundStyle(Palette.t2)
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Palette.link)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let file {
                         HStack(spacing: 3) {
-                            Text("+\(file.additions)").foregroundStyle(Palette.addedText)
-                            Text("-\(file.deletions)").foregroundStyle(Palette.removedText)
+                            Text("+\(file.additions)").foregroundStyle(StatusTone.review.color)
+                            Text("-\(file.deletions)").foregroundStyle(StatusTone.failed.color)
                         }
-                        .font(.mono(10.5, .semibold))
+                        .font(.ui(TypeSize.meta))
+                        .monospacedDigit()
                     }
                 }
             }
             if paths.count > Self.shown {
                 Text("and \(paths.count - Self.shown) more files")
-                    .font(.ui(TypeSize.caption))
+                    .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
             }
         }
@@ -558,16 +536,16 @@ struct RejectConfirmation: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Reject this work?").font(.ui(TypeSize.body, .semibold))
+            Text("Reject this work?").font(.ui(TypeSize.ui, .medium))
             Text(RejectConsequence.of(mode))
-                .font(.ui(TypeSize.label))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
                 Button(action: reject) { Text("Reject").frame(maxWidth: .infinity) }
-                    .buttonStyle(.card(.destructive))
+                    .buttonStyle(.harness(.destructive))
                 Button(action: cancel) { Text("Cancel").frame(maxWidth: .infinity) }
-                    .buttonStyle(.card(.plain))
+                    .buttonStyle(.harness(.soft))
             }
             .padding(.top, 5)
         }
@@ -604,7 +582,7 @@ struct ActionRow<Content: View>: View {
             HStack(spacing: 6) { content() }
             VStack(alignment: .leading, spacing: 6) { content() }
         }
-        .padding(.top, 9)
+        .padding(.top, 10)
     }
 }
 
@@ -614,7 +592,6 @@ struct CardField: View {
     @Binding var text: String
     var submit: (() -> Void)?
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -622,16 +599,15 @@ struct CardField: View {
             .accessibilityLabel(placeholder)
             .overlay(alignment: .leading) { Placeholder(text: placeholder, shown: text.isEmpty) }
             .textFieldStyle(.plain)
-            .font(.ui(TypeSize.small))
+            .font(.ui(TypeSize.ui))
             .focused($focused)
             .onSubmit { submit?() }
             .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(glass.subtle, in: glass.rounded(glass.radius.small + 2))
+            .padding(.vertical, 6)
+            .background(Palette.soft, in: .rounded(Radius.button))
             .overlay(
-                glass.rounded(glass.radius.small + 2)
-                    .strokeBorder(
-                        focused ? accent.accent : Palette.hair, lineWidth: focused ? 2 : 1)
+                RoundedRectangle.rounded(Radius.button)
+                    .strokeBorder(focused ? accent.focus : Palette.divider, lineWidth: 1)
             )
     }
 }
@@ -652,19 +628,16 @@ struct Placeholder: View {
     }
 }
 
-/// Underlined accent text, such as "View changes".
+/// Text in the link color, such as "View changes"; underlined while hovered.
 struct LinkButtonStyle: ButtonStyle {
-    @Environment(\.accentColors) private var accent
-
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .font(.ui(TypeSize.small))
-                .foregroundStyle(accent.accent)
-                .underline()
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(Palette.link)
+                .underline(hovering)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .background(hovering ? Palette.fill : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .contentShape(Rectangle())
                 .pointerStyle(.link)
         }
@@ -689,7 +662,7 @@ struct Switch: View {
     var body: some View {
         Button(action: toggle) {
             Capsule()
-                .fill(isOn ? StatusTone.review.color : Palette.fill2)
+                .fill(isOn ? StatusTone.review.color : Palette.selection)
                 .frame(width: 38, height: 22)
                 .overlay(alignment: isOn ? .trailing : .leading) {
                     Circle()
@@ -708,15 +681,9 @@ struct Switch: View {
 }
 
 extension View {
-    /// The Needs you card's main buttons share the row; the transcript's keep their size.
+    /// A card's main buttons keep their own small size, in the panel and the transcript
+    /// alike (the look's flat buttons, B36); the style stays for the callers.
     func grows(_ style: ApprovalCard.Style) -> some View {
-        fixedSize().frame(maxWidth: style == .panel ? .infinity : nil)
-    }
-}
-
-extension ButtonStyle where Self == HarnessButtonStyle {
-    /// The card's smaller buttons (26 points, 12 point text).
-    static func card(_ kind: HarnessButtonStyle.Kind) -> HarnessButtonStyle {
-        HarnessButtonStyle(kind: kind, height: 26, fontSize: TypeSize.small)
+        fixedSize()
     }
 }

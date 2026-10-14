@@ -1,14 +1,18 @@
 import HarnessKit
 import SwiftUI
 
-/// The project's chats as four columns: Running, Waiting on you, Ready for review, Done.
+/// The project's chats as four columns: Running, Waiting on you, Ready for review, Done,
+/// split by dividers over the pane's scanlines.
 struct BoardView: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let columns = shell.sessions.board(in: shell.project ?? "")
-        HStack(spacing: 10) {
+        HStack(spacing: 0) {
             ForEach(BoardColumn.allCases, id: \.self) { column in
+                if column != BoardColumn.allCases.first {
+                    Separator(axis: .vertical)
+                }
                 ColumnView(column: column, sessions: columns[column] ?? [])
             }
         }
@@ -29,27 +33,24 @@ extension BoardColumn {
 private struct ColumnView: View {
     let column: BoardColumn
     let sessions: [Session]
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {
-                StatusDot(tone: column.tone, pulses: false)
-                Text(column.title).font(.ui(TypeSize.callout, .semibold))
-                Spacer()
-                Text("\(sessions.count)")
-                    .font(.ui(TypeSize.label, .semibold))
-                    .foregroundStyle(Palette.t3)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 1)
-                    .background(Palette.fill, in: Capsule())
+                StatusDot(tone: column.tone)
+                Text(column.title)
+                Text("\(sessions.count)").monospacedDigit()
+                Spacer(minLength: 0)
             }
-            .padding(EdgeInsets(top: 4, leading: 6, bottom: 10, trailing: 6))
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .padding(.horizontal, 14)
+            .frame(height: Metrics.headerHeight)
             ScrollView {
                 LazyVStack(spacing: 8) {
                     if sessions.isEmpty {
                         Text("Nothing here")
-                            .font(.ui(TypeSize.small))
+                            .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                             .padding(.vertical, 18)
                     }
@@ -57,105 +58,110 @@ private struct ColumnView: View {
                         BoardCard(session: session)
                     }
                 }
-                .padding(2)
+                .padding(.horizontal, 10)
+                .padding(.top, 2)
+                .padding(.bottom, 10)
             }
             .scrollIndicators(.never)
         }
-        .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .panelGlass(radius: glass.radius.panel, tint: .clear, raised: false)
     }
 }
 
 private struct BoardCard: View {
     let session: Session
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
-    @State private var hovering = false
 
     var body: some View {
         let goals = shell.activity.goals(session: session.id)
         let approval = shell.approvals.pending(session: session.id).first
-        VStack(alignment: .leading, spacing: 8) {
+        let tone = shell.tone(of: session)
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                StatusDot(
-                    tone: shell.tone(of: session), hollow: shell.isHollow(session), pulses: false)
                 Text(shell.statusLabel(of: session))
+                    .foregroundStyle(Self.wordColor(tone))
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     Text(Elapsed.short(from: session.updatedAt, to: context.date)).monospacedDigit()
                 }
             }
-            .font(.ui(TypeSize.caption))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             Text(session.title)
-                .font(.ui(TypeSize.body, .semibold))
+                .font(.ui(TypeSize.reading, .medium))
                 .foregroundStyle(Palette.t1)
-                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
             if let pr = session.pr {
                 PRChip(session: session.id, pr: pr)
             }
             detail(approval: approval)
             if !goals.tasks.isEmpty {
                 Text("\(goals.completed) of \(goals.tasks.count) tasks")
-                    .font(.ui(TypeSize.caption))
+                    .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)
             }
             Button {
                 shell.openChat(session.id)
             } label: {
-                Label("Open", systemImage: Icon.open)
-                    .frame(maxWidth: .infinity)
+                Text("Open")
             }
-            .buttonStyle(.harness(height: 24))
+            .buttonStyle(.harness())
+            .padding(.top, 3)
+            .accessibilityLabel("Open \(session.title)")
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .panelGlass(radius: glass.radius.card)
-        .offset(y: hovering ? -2 : 0)
-        .onHover { hover in withAnimation(.smooth(duration: 0.2)) { hovering = hover } }
+        .softFill()
+    }
+
+    /// The status word: coloured only when it needs the user or waits for review.
+    static func wordColor(_ tone: StatusTone) -> Color {
+        switch tone {
+        case .waiting, .review, .failed: tone.color
+        default: Palette.t3
+        }
     }
 
     @ViewBuilder private func detail(approval: Approval?) -> some View {
         if session.state == .running || session.state == .starting {
-            LiveBox(icon: nil, text: shell.liveActivity(of: session.id), waiting: false)
+            LiveLine(icon: nil, text: shell.liveActivity(of: session.id))
         } else if let approval, approval.kind != .review, approval.kind != .merge {
             let text =
                 approval.question?.questions.first?.question
                 ?? approval.permission.map {
-                    "\($0.tool) \(ToolSummary.argument(tool: $0.tool, input: $0.input))"
+                    "\($0.tool)  \(ToolSummary.argument(tool: $0.tool, input: $0.input))"
                 } ?? (approval.kind == .plan ? "Plan ready for review" : approval.title)
-            LiveBox(
+            LiveLine(
                 icon: approval.kind == .question
                     ? Icon.question : approval.kind == .plan ? Icon.plan : Icon.shield,
-                text: text, waiting: true)
+                text: text)
         } else if let review = approval?.review {
             DiffStat(additions: review.additions, deletions: review.deletions, files: review.files)
         }
     }
 }
 
-/// One line of what the agent is doing, or what it waits for.
-private struct LiveBox: View {
+/// One mono line of what the agent is doing, or what it waits for.
+private struct LiveLine: View {
     let icon: String?
     let text: String
-    let waiting: Bool
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             if let icon {
-                Image(systemName: icon).font(.system(size: 11))
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.t3)
             } else {
-                Spinner()
+                Spinner(size: 10, lineWidth: 1.5)
             }
-            Text(text).lineLimit(1).truncationMode(.tail)
+            Text(text)
+                .foregroundStyle(icon == nil ? Palette.t3 : Palette.t2)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .font(.mono(TypeSize.caption))
-        .foregroundStyle(waiting ? StatusTone.waiting.textColor : Palette.t2)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .font(.mono(TypeSize.meta))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            waiting ? StatusTone.waiting.soft : Palette.fill, in: RoundedRectangle(cornerRadius: 8))
     }
 }

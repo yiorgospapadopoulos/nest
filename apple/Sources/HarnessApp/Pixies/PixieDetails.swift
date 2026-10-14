@@ -47,9 +47,10 @@ struct PixieDetails: View {
             VStack(alignment: .leading, spacing: 0) {
                 PixieIdentity(pixie: pixie)
                 PixieLook(pixie: pixie)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 8)
+                SectionBreak()
                 PixieSettings(pixie: pixie)
-                    .padding(.top, 16)
 
                 DetailHeading(title: "Projects")
                 PixieProjects(pixie: pixie)
@@ -59,12 +60,12 @@ struct PixieDetails: View {
                     ChipList(
                         label: "Skill", add: "Add skill", items: pixie.skills, empty: "All skills"
                     ) { save(UpdatePixieRequest(skills: $0)) }
-                    .padding(10)
+                    .padding(.horizontal, 8)
                 }
 
                 DetailHeading(title: "Tools")
                 DetailGroup {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 5) {
                         DetailSubheading(title: "Never ask for")
                         ChipList(
                             label: "Never ask for", items: pixie.allowedTools,
@@ -77,28 +78,27 @@ struct PixieDetails: View {
                             empty: "Nothing beyond the git rules"
                         ) { save(UpdatePixieRequest(disallowedTools: $0)) }
                     }
-                    .padding(10)
+                    .padding(.horizontal, 8)
                 }
 
+                SectionBreak()
                 DetailGroup {
                     DrillInRow(title: "Soul", about: "Who this pixie is and the rules it follows") {
                         shell.pixiePanel = .soul
                     }
-                    DetailDivider()
                     DrillInRow(
                         title: "Habits", about: "Recurring tasks this pixie runs on its own",
                         value: "Coming soon")
-                    DetailDivider()
                     DrillInRow(
                         title: "Memory", about: "Facts and preferences this pixie remembers",
                         value: facts
                     ) { shell.pixiePanel = .memory }
                 }
-                .padding(.top, 18)
 
+                SectionBreak()
                 DetailGroup {
                     HStack {
-                        Text("Hidden").font(.ui(TypeSize.callout))
+                        Text("Hidden").font(.ui(TypeSize.ui)).foregroundStyle(Palette.t1)
                         Spacer()
                         Toggle(
                             "Hidden",
@@ -111,24 +111,22 @@ struct PixieDetails: View {
                         .labelsHidden()
                         .pointerStyle(.link)
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 38)
+                    .padding(.horizontal, 8)
+                    .frame(height: Metrics.rowHeight + 2)
                 }
-                .padding(.top, 18)
                 DetailNote(text: "A hidden pixie leaves the Pixies list. Its chat stays.")
 
+                SectionBreak()
                 DetailGroup {
                     DangerRow(
                         title: "Reset conversation", about: "Clear all messages and start fresh"
                     ) {
                         confirming = .reset
                     }
-                    DetailDivider()
                     DangerRow(title: "Delete pixie", about: nil) { confirming = .delete }
                 }
-                .padding(.top, 18)
             }
-            .padding(EdgeInsets(top: 18, leading: 14, bottom: 18, trailing: 14))
+            .padding(EdgeInsets(top: 18, leading: 6, bottom: 14, trailing: 6))
         }
         .scrollIndicators(.never)
         // Read quietly, again when the pixie changes or its chat ends a turn (it may have
@@ -194,11 +192,11 @@ private struct PixieIdentity: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
-            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 96)
+        VStack(spacing: 2) {
+            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 72)
                 .padding(.bottom, 10)
             if editing == .name {
-                InlineField(label: "Name", initial: pixie.name, font: .ui(TypeSize.headline, .bold))
+                InlineField(label: "Name", initial: pixie.name, font: .ui(TypeSize.body, .semibold))
                 {
                     editing = nil
                     if let name = $0, !name.isEmpty, name != pixie.name {
@@ -207,11 +205,11 @@ private struct PixieIdentity: View {
                 }
             } else {
                 EditableText(text: pixie.name, label: "Edit name") { editing = .name }
-                    .font(.ui(TypeSize.headline, .bold))
+                    .font(.ui(TypeSize.body, .semibold))
                     .foregroundStyle(Palette.t1)
             }
             if editing == .slug {
-                InlineField(label: "Slug", initial: pixie.slug, font: .ui(TypeSize.callout)) {
+                InlineField(label: "Slug", initial: pixie.slug, font: .ui(TypeSize.ui)) {
                     editing = nil
                     guard let slug = $0, !slug.isEmpty, slug != pixie.slug else { return }
                     Task { refused = await shell.setPixieSlug(pixie.id, slug) }
@@ -221,13 +219,13 @@ private struct PixieIdentity: View {
                     refused = nil
                     editing = .slug
                 }
-                .font(.ui(TypeSize.callout))
-                .foregroundStyle(Palette.t2)
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(Palette.t3)
             }
             if let refused {
                 Text(refused)
-                    .font(.ui(TypeSize.small))
-                    .foregroundStyle(StatusTone.failed.textColor)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(StatusTone.failed.color)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -248,12 +246,9 @@ private struct EditableText: View {
             Text(text)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(
-                    hovering ? Palette.fill : .clear,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                )
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.button))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -264,19 +259,21 @@ private struct EditableText: View {
     }
 }
 
-/// A field that edits in place: Return or leaving it ends the edit, Escape cancels it.
-/// `done` gets the trimmed text, or nil when cancelled.
+/// A field that edits in place: Return, leaving it or a click outside it ends the edit,
+/// Escape cancels it. Opening another one ends this one. `done` gets the trimmed text, or
+/// nil when cancelled.
 struct InlineField: View {
     let label: String
     let initial: String
-    var font = Font.ui(TypeSize.callout)
+    var font = Font.ui(TypeSize.ui)
     var center = true
     let done: (String?) -> Void
     @State private var text = ""
     @State private var ended = false
+    @State private var id = UUID()
     @FocusState private var focused: Bool
+    @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         TextField(label, text: $text)
@@ -284,14 +281,30 @@ struct InlineField: View {
             .font(font)
             .multilineTextAlignment(center ? .center : .leading)
             .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(glass.surface, in: glass.rounded(glass.radius.small))
-            .overlay(glass.rounded(glass.radius.small).stroke(accent.accent, lineWidth: 1.5))
+            .frame(height: 24)
+            .background(Palette.soft, in: .rounded(Radius.button))
+            .overlay(
+                RoundedRectangle.rounded(Radius.button).strokeBorder(accent.focus, lineWidth: 1)
+            )
             .focused($focused)
             .onAppear {
                 text = initial
                 focused = true
+                // A click outside it, or Escape wherever focus is, reaches it through the
+                // shell; a field still open is ended first.
+                shell.inlineEdit?.end(true)
+                shell.inlineEdit = InlineEdit(id: id, frame: .zero) { keep in
+                    end(keep ? text : nil)
+                }
             }
+            .onGeometryChange(for: CGRect.self) {
+                $0.frame(in: .global)
+            } action: { frame in
+                if shell.inlineEdit?.id == id {
+                    shell.inlineEdit?.frame = frame
+                }
+            }
+            .onDisappear { release() }
             .onSubmit { end(text) }
             .onExitCommand { end(nil) }
             .onChange(of: focused) { _, now in
@@ -305,7 +318,14 @@ struct InlineField: View {
     private func end(_ value: String?) {
         guard !ended else { return }
         ended = true
+        release()
         done(value?.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func release() {
+        if shell.inlineEdit?.id == id {
+            shell.inlineEdit = nil
+        }
     }
 }
 
@@ -315,9 +335,9 @@ private struct PixieLook: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4
+                columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 5), spacing: 2
             ) {
                 ForEach(Mascot.choices, id: \.self) { mascot in
                     MascotChoice(mascot: mascot, color: pixie.color, on: pixie.mascot == mascot) {
@@ -325,7 +345,7 @@ private struct PixieLook: View {
                     }
                 }
             }
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 ForEach(PixieColors.presets, id: \.self) { color in
                     ColorDot(color: color, on: pixie.color.uppercased() == color) {
                         save(UpdatePixieRequest(color: color))
@@ -336,7 +356,7 @@ private struct PixieLook: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(PixieBackground.choices, id: \.self) { background in
                     BackgroundChoice(background: background, on: pixie.background == background) {
                         save(UpdatePixieRequest(background: background))
@@ -356,23 +376,17 @@ private struct MascotChoice: View {
     let color: String
     let on: Bool
     let pick: () -> Void
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: pick) {
             HoverReader { hovering in
-                SpriteView(mascot: mascot, color: color, size: 30)
+                SpriteView(mascot: mascot, color: color, size: 20)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 40)
+                    .frame(height: 28)
                     .background(
-                        on ? Palette.fill2 : hovering ? Palette.fill : .clear,
-                        in: glass.rounded(glass.radius.item)
+                        on ? Palette.selection : hovering ? Palette.soft : .clear,
+                        in: .rounded(Radius.row)
                     )
-                    .overlay {
-                        if on {
-                            glass.rounded(glass.radius.item).strokeBorder(Palette.hair2)
-                        }
-                    }
                     .contentShape(Rectangle())
             }
         }
@@ -394,12 +408,11 @@ private struct ColorDot: View {
         Button(action: pick) {
             Circle()
                 .fill(Color(hex: color))
-                .overlay(Circle().strokeBorder(.black.opacity(0.12)))
-                .frame(width: 18, height: 18)
-                .padding(2.5)
+                .frame(width: 14, height: 14)
+                .padding(3)
                 .overlay {
                     if on {
-                        Circle().strokeBorder(Palette.t1, lineWidth: 1.5)
+                        Circle().strokeBorder(Palette.t2, lineWidth: 1)
                     }
                 }
                 .contentShape(Circle())
@@ -426,7 +439,7 @@ private struct CustomColorDot: View {
             // The picker's own well takes the click, under the rainbow.
             ColorPicker("Custom colour", selection: picked, supportsOpacity: false)
                 .labelsHidden()
-                .frame(width: 23, height: 23)
+                .frame(width: 20, height: 20)
                 .clipShape(Circle())
             Circle()
                 .fill(
@@ -434,12 +447,11 @@ private struct CustomColorDot: View {
                         colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
                         center: .center)
                 )
-                .overlay(Circle().strokeBorder(.black.opacity(0.12)))
-                .frame(width: 18, height: 18)
-                .padding(2.5)
+                .frame(width: 14, height: 14)
+                .padding(3)
                 .overlay {
                     if on {
-                        Circle().strokeBorder(Palette.t1, lineWidth: 1.5)
+                        Circle().strokeBorder(Palette.t2, lineWidth: 1)
                     }
                 }
                 .allowsHitTesting(false)
@@ -471,28 +483,26 @@ private struct BackgroundChoice: View {
     let background: PixieBackground
     let on: Bool
     let pick: () -> Void
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Button(action: pick) {
-            VStack(spacing: 4) {
-                glass.rounded(glass.radius.small)
-                    .fill(Palette.fill)
+            VStack(spacing: 3) {
+                RoundedRectangle.rounded(Radius.chip)
+                    .fill(Palette.soft)
                     .overlay(
                         PixieBackdrop(background: background).clipShape(
-                            glass.rounded(glass.radius.small))
+                            RoundedRectangle.rounded(Radius.chip))
                     )
-                    .overlay(glass.rounded(glass.radius.small).strokeBorder(Palette.hair2))
-                    .frame(height: 30)
+                    .frame(height: 18)
                     .padding(2)
                     .overlay {
                         if on {
-                            glass.rounded(glass.radius.small + 2).strokeBorder(
-                                Palette.t1, lineWidth: 1.5)
+                            RoundedRectangle.rounded(Radius.chip + 2).strokeBorder(
+                                Palette.t2, lineWidth: 1)
                         }
                     }
                 Text(background.label)
-                    .font(.ui(TypeSize.caption, on ? .semibold : .regular))
+                    .font(.ui(TypeSize.meta))
                     .foregroundStyle(on ? Palette.t1 : Palette.t3)
             }
             .frame(maxWidth: .infinity)
@@ -528,7 +538,6 @@ private struct PixieSettings: View {
                     ) { save(UpdatePixieRequest(clearsModel: true)) }
                 ) { save(UpdatePixieRequest(model: $0.value)) }
             }
-            DetailDivider()
             PickerRow(
                 title: "Thinking",
                 value: levels.isEmpty ? "Not available" : pixie.effort?.label ?? "Default",
@@ -538,7 +547,6 @@ private struct PixieSettings: View {
                     save(UpdatePixieRequest(effort: $0, clearsEffort: $0 == nil))
                 }
             }
-            DetailDivider()
             PickerRow(title: "Permissions", value: pixie.permissionMode.label) {
                 // Auto only where the model offers it, as in any chat.
                 PermissionItems(
@@ -549,7 +557,6 @@ private struct PixieSettings: View {
                     }
                 }
             }
-            DetailDivider()
             PickerRow(title: "Project files", value: pixie.projectAccess.label) {
                 Section("Project files") {
                     ForEach(ProjectAccess.choices, id: \.self) { access in
@@ -560,7 +567,6 @@ private struct PixieSettings: View {
                     }
                 }
             }
-            DetailDivider()
             PickerRow(title: "Autonomy", value: pixie.autonomy.label) {
                 Section("Autonomy") {
                     ForEach(Autonomy.choices, id: \.self) { autonomy in
@@ -591,22 +597,21 @@ private struct PickerRow<Items: View>: View {
         Menu {
             items()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(title)
-                    .font(.ui(TypeSize.callout))
                     .foregroundStyle(Palette.t1)
                 Spacer(minLength: 8)
                 Text(value)
-                    .font(.ui(TypeSize.callout))
                     .foregroundStyle(Palette.t2)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Palette.t3)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Palette.t2)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(hovering && enabled ? Palette.fill : .clear)
+            .font(.ui(TypeSize.ui))
+            .padding(.horizontal, 8)
+            .frame(height: Metrics.rowHeight + 2)
+            .background(hovering && enabled ? Palette.soft : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -630,24 +635,21 @@ private struct PixieProjects: View {
             if let chosen {
                 if chosen.isEmpty {
                     DetailLine(text: "No projects", dim: true)
-                    DetailDivider()
                 }
                 ForEach(chosen, id: \.self) { name in
-                    HStack(spacing: 9) {
-                        ProjectMarkView(name: name)
-                        Text(name).font(.ui(TypeSize.callout)).lineLimit(1)
+                    HStack(spacing: 8) {
+                        ProjectIcon(name: name, size: 14)
+                        Text(name).font(.ui(TypeSize.ui)).foregroundStyle(Palette.t1).lineLimit(1)
                         Spacer(minLength: 4)
                         RemoveButton(label: "Remove \(name)") {
                             save(UpdatePixieRequest(projects: chosen.filter { $0 != name }))
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    DetailDivider()
+                    .padding(.horizontal, 8)
+                    .frame(height: Metrics.rowHeight + 2)
                 }
             } else {
                 DetailLine(text: "All projects", dim: false)
-                DetailDivider()
             }
             AddMenuRow(title: "Add project") {
                 if chosen != nil {
@@ -679,14 +681,14 @@ private struct AddMenuRow<Items: View>: View {
             items()
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: Icon.plus).font(.system(size: 11, weight: .semibold))
-                Text(title).font(.ui(TypeSize.callout))
+                Image(systemName: Icon.plus).font(.system(size: 10, weight: .medium))
+                Text(title).font(.ui(TypeSize.ui))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(hovering ? Palette.fill : .clear)
+            .padding(.horizontal, 8)
+            .frame(height: Metrics.rowHeight + 2)
+            .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -707,33 +709,33 @@ private struct ChipList: View {
     let empty: String
     let change: ([String]) -> Void
     @State private var adding = false
-    @Environment(\.glass) private var glass
 
     var body: some View {
         FlowLayout(spacing: 6) {
             if items.isEmpty && !adding {
                 Text(empty)
-                    .font(.ui(TypeSize.small))
+                    .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)
-                    .frame(height: 24)
+                    .frame(height: 22)
             }
             ForEach(items, id: \.self) { item in
                 HStack(spacing: 3) {
                     Text(item)
-                        .font(.mono(11))
+                        .font(.mono(TypeSize.meta))
                         .foregroundStyle(Palette.t1)
                         .lineLimit(1)
                     RemoveButton(label: "Remove \(item)") {
                         change(items.filter { $0 != item })
                     }
                 }
-                .padding(.leading, 8)
+                .padding(.leading, 7)
                 .padding(.trailing, 2)
-                .frame(height: 24)
-                .background(Palette.fill2, in: glass.rounded(glass.radius.small))
+                .frame(height: 22)
+                .background(Palette.soft, in: .rounded(Radius.button))
             }
             if adding {
-                InlineField(label: label, initial: "", font: .mono(11), center: false) { text in
+                InlineField(label: label, initial: "", font: .mono(TypeSize.meta), center: false) {
+                    text in
                     adding = false
                     if let text, !text.isEmpty, !items.contains(text) {
                         change(items + [text])
@@ -746,7 +748,7 @@ private struct ChipList: View {
                 } label: {
                     Label("Add", systemImage: Icon.plus)
                 }
-                .buttonStyle(.harness(.ghost, height: 24))
+                .buttonStyle(.harness(.plain))
                 .accessibilityLabel(add ?? "Add to \(label)")
             }
         }
@@ -822,32 +824,32 @@ private struct DrillInRow: View {
             open?()
         } label: {
             HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.ui(TypeSize.callout, .semibold))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t1)
                     Text(about)
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if let value {
                     Text(value)
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                         .lineLimit(1)
                         .fixedSize()
                 }
                 if open != nil {
                     Image(systemName: Icon.chevronRight)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Palette.t3)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.t2)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(hovering && open != nil ? Palette.fill : .clear)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(hovering && open != nil ? Palette.soft : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -870,18 +872,18 @@ private struct DangerRow: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.ui(TypeSize.callout, .semibold))
-                    .foregroundStyle(StatusTone.failed.textColor)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(StatusTone.failed.color)
                 if let about {
                     Text(about)
-                        .font(.ui(TypeSize.small))
+                        .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(hovering ? StatusTone.failed.soft : .clear)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(hovering ? StatusTone.failed.soft : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -907,30 +909,45 @@ struct RemoveButton: View {
     }
 }
 
-/// The rows of one part of the details, on an inset fill.
+/// The rows of one part of the details: plain rows, no fill.
 struct DetailGroup<Content: View>: View {
     @ViewBuilder let content: () -> Content
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0, content: content)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.fill, in: glass.rounded(glass.radius.card))
-            .clipShape(glass.rounded(glass.radius.card))
     }
 }
 
-struct DetailHeading: View {
-    let title: String
+/// A 1 point line across the whole panel between parts of the details; the panel's
+/// content is inset by `inset`, which the line undoes.
+struct SectionBreak: View {
+    static let inset = 6.0
 
     var body: some View {
-        Text(title.uppercased())
-            .font(.ui(TypeSize.caption, .bold))
-            .tracking(0.66)
-            .foregroundStyle(Palette.t3)
-            .padding(.leading, 4)
-            .padding(.top, 18)
-            .padding(.bottom, 6)
+        Separator()
+            .padding(.horizontal, -Self.inset)
+            .padding(.vertical, 8)
+    }
+}
+
+/// A small grey section label, after a line across the panel unless it opens the page.
+struct DetailHeading: View {
+    let title: String
+    var divided = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if divided {
+                SectionBreak()
+            }
+            Text(title)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t3)
+                .padding(.horizontal, 8)
+                .padding(.top, divided ? 2 : 12)
+                .padding(.bottom, 4)
+        }
     }
 }
 
@@ -939,14 +956,8 @@ struct DetailSubheading: View {
 
     var body: some View {
         Text(title)
-            .font(.ui(TypeSize.small, .semibold))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t2)
-    }
-}
-
-struct DetailDivider: View {
-    var body: some View {
-        Rectangle().fill(Palette.hair).frame(height: 1).padding(.leading, 12)
     }
 }
 
@@ -957,10 +968,10 @@ struct DetailLine: View {
 
     var body: some View {
         Text(text)
-            .font(.ui(TypeSize.callout))
+            .font(.ui(TypeSize.ui))
             .foregroundStyle(dim ? Palette.t3 : Palette.t1)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
+            .padding(.horizontal, 8)
+            .frame(height: Metrics.rowHeight + 2)
     }
 }
 
@@ -970,10 +981,10 @@ struct DetailNote: View {
 
     var body: some View {
         Text(text)
-            .font(.ui(TypeSize.small))
+            .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 4)
-            .padding(.top, 6)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
     }
 }

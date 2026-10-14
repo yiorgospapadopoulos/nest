@@ -6,7 +6,6 @@ import SwiftUI
 struct PixieMemoryPage: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
     @State private var file: LoadedFile?
     @State private var fact = ""
     @State private var notes: [String]?
@@ -22,11 +21,12 @@ struct PixieMemoryPage: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    DetailHeading(title: "Facts")
+                    DetailHeading(title: "Facts", divided: false)
                     if let file {
                         facts(in: file)
                         addField(file)
-                            .padding(.top, 8)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 6)
                     }
 
                     DetailHeading(title: "Notes")
@@ -35,10 +35,7 @@ struct PixieMemoryPage: View {
                             if notes.isEmpty {
                                 DetailLine(text: "No notes yet", dim: true)
                             }
-                            ForEach(Array(notes.enumerated()), id: \.element) { index, note in
-                                if index > 0 {
-                                    DetailDivider()
-                                }
+                            ForEach(notes, id: \.self) { note in
                                 NoteRow(name: note) { shell.pixiePanel = .note(note) }
                             }
                         }
@@ -47,10 +44,11 @@ struct PixieMemoryPage: View {
                     DetailHeading(title: "Search")
                     TextField("Search memory and notes", text: $query)
                         .textFieldStyle(.plain)
-                        .font(.ui(TypeSize.callout))
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                        .background(Palette.fill, in: glass.rounded(glass.radius.item))
+                        .font(.ui(TypeSize.ui))
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background(Palette.soft, in: .rounded(Radius.button))
+                        .padding(.horizontal, 8)
                         .onSubmit(search)
                         .accessibilityLabel("Search memory")
                     if let hits {
@@ -58,23 +56,20 @@ struct PixieMemoryPage: View {
                             if hits.isEmpty {
                                 DetailLine(text: "No matches", dim: true)
                             }
-                            ForEach(Array(hits.enumerated()), id: \.offset) { index, hit in
-                                if index > 0 {
-                                    DetailDivider()
-                                }
+                            ForEach(Array(hits.enumerated()), id: \.offset) { _, hit in
                                 Text("\(hit.file): \(hit.line)")
-                                    .font(.ui(TypeSize.small))
+                                    .font(.ui(TypeSize.ui))
                                     .foregroundStyle(Palette.t1)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .textSelection(.enabled)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
                             }
                         }
-                        .padding(.top, 8)
+                        .padding(.top, 6)
                     }
                 }
-                .padding(EdgeInsets(top: 0, leading: 14, bottom: 18, trailing: 14))
+                .padding(EdgeInsets(top: 0, leading: 6, bottom: 14, trailing: 6))
             }
             .scrollIndicators(.never)
         }
@@ -94,20 +89,17 @@ struct PixieMemoryPage: View {
             if facts.isEmpty {
                 DetailLine(text: "No facts yet", dim: true)
             }
-            ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
-                if index > 0 {
-                    DetailDivider()
-                }
+            ForEach(facts, id: \.id) { fact in
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(fact.text)
-                            .font(.ui(TypeSize.callout))
+                            .font(.ui(TypeSize.ui))
                             .foregroundStyle(Palette.t1)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                         if !fact.date.isEmpty {
                             Text(fact.date)
-                                .font(.ui(TypeSize.caption))
+                                .font(.ui(TypeSize.meta))
                                 .monospacedDigit()
                                 .foregroundStyle(Palette.t3)
                         }
@@ -117,8 +109,8 @@ struct PixieMemoryPage: View {
                         write(PixieMemory.removing(line: fact.line, from: file.text), over: file)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
             }
         }
     }
@@ -127,14 +119,14 @@ struct PixieMemoryPage: View {
         HStack(spacing: 6) {
             TextField("Add fact", text: $fact)
                 .textFieldStyle(.plain)
-                .font(.ui(TypeSize.callout))
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(Palette.fill, in: glass.rounded(glass.radius.item))
+                .font(.ui(TypeSize.ui))
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Palette.soft, in: .rounded(Radius.button))
                 .onSubmit { add(to: file) }
                 .accessibilityLabel("Add fact")
             Button("Add") { add(to: file) }
-                .buttonStyle(.harness(.primary, height: 30))
+                .buttonStyle(.harness(.primary, height: 24))
                 .disabled(fact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
@@ -189,20 +181,20 @@ private struct NoteRow: View {
         Button(action: open) {
             HStack(spacing: 8) {
                 Image(systemName: Icon.file)
-                    .font(.system(size: 11))
+                    .font(.system(size: 10))
                     .foregroundStyle(Palette.t3)
                 Text(name)
-                    .font(.ui(TypeSize.callout))
+                    .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Image(systemName: Icon.chevronRight)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Palette.t3)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Palette.t2)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(hovering ? Palette.fill : .clear)
+            .padding(.horizontal, 8)
+            .frame(height: Metrics.rowHeight + 2)
+            .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.row))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

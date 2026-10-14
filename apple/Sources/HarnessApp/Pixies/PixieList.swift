@@ -1,14 +1,11 @@
 import HarnessKit
 import SwiftUI
 
-/// The pixies down the left, as the sidebar lists chats, with New pixie. Drag a pixie onto
-/// another to put it there; Move Up and Move Down in its menu do the same by keyboard.
+/// The pixies down the left, as the sidebar lists chats, with New pixie. A click opens a
+/// pixie's pane; drag one onto the workspace to split it like a chat, or onto another
+/// pixie to put it there. Move Up and Move Down in its menu reorder by keyboard.
 struct PixieList: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
-    /// The pixie being dragged, for where the drop line shows.
-    @State private var dragged: String?
 
     var body: some View {
         let pixies = shell.listedPixies
@@ -16,44 +13,41 @@ struct PixieList: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Pixies")
-                    .font(.ui(TypeSize.subhead, .bold))
-                CountBadge(count: shell.pixies.visible.count, size: 18)
+                    .font(.ui(TypeSize.reading, .semibold))
+                    .foregroundStyle(Palette.t1)
+                CountBadge(count: shell.pixies.visible.count)
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 6)
-            .frame(height: 28)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 8)
+            .frame(height: 30)
 
             Button {
                 shell.createPixie(CreatePixieRequest(name: "New pixie"), details: true)
             } label: {
-                Label("New pixie", systemImage: Icon.plus)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(
-                        accent.accent,
-                        in: glass.rounded(min(glass.radius.item + 1, glass.radius.control))
-                    )
-                    .foregroundStyle(accent.onAccent)
-                    .font(.ui(TypeSize.callout, .semibold))
-                    .labelStyle(TightLabelStyle())
-                    .contentShape(Rectangle())
+                HStack(spacing: 8) {
+                    Image(systemName: Icon.plus).font(.system(size: 11, weight: .medium))
+                    Text("New pixie")
+                    Spacer(minLength: 0)
+                }
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(Palette.t2)
+                .padding(.horizontal, 10)
+                .frame(height: Metrics.rowHeight)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .pointerStyle(.link)
+            .buttonStyle(RowHoverStyle())
+            .padding(.top, 2)
             .padding(.bottom, 8)
 
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: 0) {
                     let ids = pixies.map(\.id)
                     ForEach(pixies) { pixie in
-                        PixieRow(pixie: pixie, listed: ids, dragged: $dragged)
+                        PixieRow(pixie: pixie, listed: ids)
                     }
                 }
-                .padding(.horizontal, 4)
             }
             .scrollIndicators(.never)
-            .padding(.horizontal, -4)
 
             if hidden > 0 {
                 Button {
@@ -63,73 +57,62 @@ struct PixieList: View {
                         shell.showsHiddenPixies ? "Hide hidden" : "Show hidden (\(hidden))",
                         systemImage: shell.showsHiddenPixies ? "eye.slash" : "eye")
                 }
-                .buttonStyle(.harness(.ghost, height: 26))
+                .buttonStyle(.harness(.plain))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 4)
             }
         }
-        .padding(EdgeInsets(top: 12, leading: 10, bottom: 10, trailing: 10))
+        .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 6))
         .frame(width: Sidebar.width)
         .frame(maxHeight: .infinity, alignment: .top)
-        .panelGlass(radius: glass.radius.panel)
-        // A drag that ends outside the list leaves nothing behind.
-        .onDisappear { dragged = nil }
+        .sideSurface()
     }
 }
 
-/// A pixie: its sprite, name and @slug; the sprite glows in its colour while its chat
-/// runs, and a count shows what waits for the user.
+/// A pixie: its sprite, name and @slug; a dot while its chat runs, and a count of what
+/// waits for the user. Selected while its pane has focus, softly filled while it is open.
 private struct PixieRow: View {
     let pixie: Pixie
     /// The listed pixies' ids, in order.
     let listed: [String]
-    @Binding var dragged: String?
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
-    @Environment(\.reducedMotion) private var reduceMotion
     @State private var hovering = false
     /// Another pixie is dragged over this one.
     @State private var targeted = false
 
-    /// What a drag carries: "pixie:<id>", so other text dropped here is ignored.
-    static func payload(_ id: String) -> String { Pixie.repoPrefix + id }
-
     var body: some View {
-        let selected = shell.shownPixie?.id == pixie.id
+        let state = shell.app.pixieState
+        let selected = state.layout.focused == pixie.id
+        let open = state.layout.contains(pixie.id)
         let chat = pixie.chatSessionID.flatMap(shell.sessions.session)
         let running = chat.map { $0.state == .running || $0.state == .starting } ?? false
         let waiting = shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
-        HStack(spacing: 10) {
-            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 28)
-                .background {
-                    if running {
-                        RunningGlow(color: Color(hex: pixie.color), reduceMotion: reduceMotion)
-                    }
-                }
-                .frame(width: 30)
+        HStack(spacing: 8) {
+            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 16)
+                .frame(width: 18)
                 .opacity(pixie.hidden ? 0.5 : 1)
-            VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
                 Text(pixie.name)
-                    .font(.ui(TypeSize.callout, selected ? .semibold : .regular))
-                    .foregroundStyle(Palette.t1)
-                    .lineLimit(1)
+                    .foregroundStyle(pixie.hidden ? Palette.t2 : Palette.t1)
+                    .layoutPriority(1)
                 Text(pixie.hidden ? "@\(pixie.slug) · Hidden" : "@\(pixie.slug)")
-                    .font(.ui(TypeSize.caption))
                     .foregroundStyle(Palette.t3)
-                    .lineLimit(1)
             }
+            .font(.ui(TypeSize.ui))
+            .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             if waiting > 0 {
-                CountBadge(count: waiting, urgent: true, size: 18)
+                CountBadge(count: waiting, urgent: true)
             } else if running {
-                StatusDot(tone: .running, size: 7)
+                StatusDot(tone: .running)
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .frame(height: 30)
         .background(
-            selected ? accent.soft : hovering ? Palette.fill : .clear,
-            in: glass.rounded(glass.radius.item)
+            selected ? accent.selection : (open || hovering) ? Palette.soft : .clear,
+            in: .rounded(Radius.row)
         )
         .contentShape(Rectangle())
         .overlay(alignment: dropsBelow ? .bottom : .top) {
@@ -142,29 +125,22 @@ private struct PixieRow: View {
             }
         }
         .pointerStyle(.link)
-        .onHover { inside in
-            hovering = inside
-            // No hover arrives while a drag runs: one now means the drag ended, dropped
-            // elsewhere or cancelled, which SwiftUI does not report.
-            if inside {
-                dragged = nil
-            }
-        }
-        .onTapGesture { shell.selectPixie(pixie.id) }
+        .onHover { hovering = $0 }
+        .onTapGesture { shell.openPixie(pixie.id) }
+        // The same drag as a sidebar chat's, so the workspace takes it like one.
         .onDrag {
-            dragged = pixie.id
-            return NSItemProvider(object: Self.payload(pixie.id) as NSString)
+            shell.dragging = .chat(pixie.id)
+            return .chat(pixie.id)
         } preview: {
             SpriteView(mascot: pixie.mascot, color: pixie.color, size: 28)
                 .padding(6)
-                .background(glass.surface, in: glass.rounded(glass.radius.item))
+                .background(Palette.sheet, in: .rounded(Radius.row))
         }
-        .onDrop(of: [.plainText], isTargeted: $targeted) { providers in
-            drop(providers)
-        }
+        .onDrop(of: [.harnessChat], isTargeted: $targeted) { _ in drop() }
+        .opacity(dragged == pixie.id ? 0.45 : 1)
         .contextMenu {
             Button {
-                shell.selectPixie(pixie.id)
+                shell.openPixie(pixie.id)
                 withAnimation(.smooth(duration: 0.22)) { shell.pixieDetailsOpen = true }
             } label: {
                 Label("Details", systemImage: Icon.rightPanel)
@@ -177,12 +153,18 @@ private struct PixieRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(pixie.name), @\(pixie.slug)\(running ? ", running" : "")\(waiting > 0 ? ", \(waiting) need you" : "")"
+            "\(pixie.name), @\(pixie.slug)\(running ? ", running" : "")\(waiting > 0 ? ", \(waiting) need you" : "")\(open ? ", open" : "")"
         )
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { shell.selectPixie(pixie.id) }
+        .accessibilityAction { shell.openPixie(pixie.id) }
         .accessibilityAction(named: "Move Up") { shell.movePixie(pixie.id, by: -1) }
         .accessibilityAction(named: "Move Down") { shell.movePixie(pixie.id, by: 1) }
+    }
+
+    /// The listed pixie being dragged, for where the drop line shows.
+    private var dragged: String? {
+        guard case .chat(let id) = shell.dragging, listed.contains(id) else { return nil }
+        return id
     }
 
     /// A pixie dragged down the list lands below this one, else above it.
@@ -193,41 +175,11 @@ private struct PixieRow: View {
         return from < to
     }
 
-    private func drop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        let target = pixie.id
-        // Called on a background queue: nonisolated, then back to the main actor.
-        _ = provider.loadObject(ofClass: NSString.self) { @Sendable text, _ in
-            guard let text = text as? String, let id = Pixie.id(ofRepo: text) else { return }
-            Task { @MainActor in shell.movePixie(id, onto: target) }
-        }
-        dragged = nil
+    /// A listed pixie dropped here takes this one's place.
+    private func drop() -> Bool {
+        guard let dragged else { return false }
+        shell.movePixie(dragged, onto: pixie.id)
+        shell.dragging = nil
         return true
-    }
-}
-
-/// A soft halo in the pixie's colour behind its sprite; steady with Reduce Motion.
-private struct RunningGlow: View {
-    let color: Color
-    let reduceMotion: Bool
-
-    var body: some View {
-        if reduceMotion {
-            halo(strong: true)
-        } else {
-            PhaseAnimator([false, true]) { strong in
-                halo(strong: strong)
-            } animation: { _ in
-                .easeInOut(duration: DesignTokens.Motion.Duration.attention / 2)
-            }
-        }
-    }
-
-    private func halo(strong: Bool) -> some View {
-        Circle()
-            .fill(color.opacity(strong ? 0.38 : 0.18))
-            .frame(width: 34, height: 34)
-            .blur(radius: strong ? 7 : 5)
-            .allowsHitTesting(false)
     }
 }

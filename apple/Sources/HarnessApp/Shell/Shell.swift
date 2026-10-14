@@ -56,6 +56,16 @@ struct PaneDrag: Equatable {
     var location: CGPoint
 }
 
+/// An inline field being edited, such as a pixie detail's Add field: a click outside its
+/// frame ends the edit, keeping the text, and Escape cancels it.
+struct InlineEdit {
+    let id: UUID
+    /// In the window's content coordinates, top-left origin.
+    var frame: CGRect
+    /// Ends the edit; false cancels it.
+    let end: (_ keep: Bool) -> Void
+}
+
 struct Toast: Identifiable, Equatable {
     enum Kind {
         case done, failed, info
@@ -82,7 +92,8 @@ enum Overlay: Equatable {
     case rewind
 }
 
-/// What the pixie page's right-hand panel shows: the details, or a page opened from them.
+/// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
+/// page opened from them.
 enum PixiePanel: Equatable {
     case details
     case soul
@@ -127,6 +138,11 @@ final class Shell {
 
     /// The workspace's size, for the layout engine's click-to-open rule.
     @ObservationIgnored var workspaceSize = CGSize(width: 900, height: 700)
+    /// Where the workspace on screen places its panes, in the window's content coordinates
+    /// (top-left origin), so a click anywhere in a pane focuses it.
+    @ObservationIgnored var workspaceFrame: CGRect?
+    /// The inline field being edited, if any.
+    @ObservationIgnored var inlineEdit: InlineEdit?
     /// Each open pane's size, to place drops within it.
     @ObservationIgnored var paneSizes: [String: CGSize] = [:]
     @ObservationIgnored private let drafts = DraftBook { ComposerDraft() }
@@ -156,9 +172,7 @@ final class Shell {
 
     /// The Pixies tab is showing in place of a project.
     var pixiesOpen = false
-    /// The pixie whose page shows in the Pixies tab.
-    var pixie: String?
-    /// The details panel beside the pixie's chat.
+    /// The details panel on the right of the Pixies tab, for the focused pixie pane.
     var pixieDetailsOpen = false
     /// The list shows hidden pixies too, so they can be opened and shown again.
     var showsHiddenPixies = false
@@ -168,6 +182,10 @@ final class Shell {
     var projectState: ProjectState { project.map(app.state(of:)) ?? ProjectState() }
     var repo: Repo? { project.flatMap(app.repo) }
 
+    /// The workspace on screen: the Pixies tab's (its panes are pixies) or the current
+    /// project's. The pane views and their actions work on this one.
+    var workspaceState: ProjectState { pixiesOpen ? app.pixieState : projectState }
+
     func update(_ change: (inout ProjectState) -> Void) {
         withAnimation(.smooth(duration: 0.22)) {
             app.update(nil, change)
@@ -175,12 +193,33 @@ final class Shell {
         syncTools()
     }
 
+    /// Changes the workspace on screen, animated.
+    func updateWorkspace(_ change: (inout ProjectState) -> Void) {
+        withAnimation(.smooth(duration: 0.22)) {
+            changeWorkspace(change)
+        }
+        syncTools()
+    }
+
+    /// Changes the workspace on screen. Focusing another pixie brings back its details.
+    private func changeWorkspace(_ change: (inout ProjectState) -> Void) {
+        guard pixiesOpen else {
+            app.update(nil, change)
+            return
+        }
+        let focused = app.pixieState.layout.focused
+        app.updatePixies(change)
+        if app.pixieState.layout.focused != focused {
+            pixiePanel = .details
+        }
+    }
+
     /// Ends the shells and web views of tool panes no project shows any more, such as a
-    /// removed project's, and releases the transcripts of closed panes; a closed tab
-    /// keeps its panes.
+    /// removed project's, and releases the transcripts of closed panes and pixie panes;
+    /// a closed tab keeps its panes.
     func syncTools() {
         tools.keep(Set(app.projects.values.flatMap { $0.tools.keys }))
-        model.transcripts.keep(app.openPanes)
+        model.transcripts.keep(app.openPanes.union(app.openPixieChats(pixies.pixies)))
     }
 
     // MARK: Tabs
@@ -214,13 +253,10 @@ final class Shell {
 
     // MARK: Pixies
 
-    /// Cmd-0: the Pixies tab, on the pixie shown last or the first one.
+    /// Cmd-0: the Pixies tab, with the pixie panes it had.
     func openPixies() {
         close()
         pixiesOpen = true
-        if shownPixie == nil {
-            selectPixie(listedPixies.first?.id)
-        }
     }
 
     /// The pixies the list shows: the visible ones, or all while hidden ones are shown.
@@ -228,29 +264,48 @@ final class Shell {
         showsHiddenPixies ? pixies.pixies : pixies.visible
     }
 
-    /// The pixie the page shows: the selected one while it exists, else the first listed.
+    /// The pixie of the focused pane in the Pixies tab, whose details the right panel shows.
     var shownPixie: Pixie? {
-        pixies.pixies.first { $0.id == pixie } ?? listedPixies.first
+        app.pixieState.layout.focused.flatMap(pixie)
     }
 
-    func selectPixie(_ id: String?) {
-        guard pixie != id else { return }
-        pixie = id
-        pixiePanel = .details
+    func pixie(_ id: String) -> Pixie? {
+        pixies.pixies.first { $0.id == id }
     }
 
-    /// A notification or approval of a pixie's chat: the pixie's page, on its chat.
+    /// A pixie clicked in the list: opens its pane in the Pixies tab, or focuses it.
+    func openPixie(_ id: String) {
+        pixiesOpen = true
+        let size = workspaceSize
+        updateWorkspace { $0.openChat(id, in: size) }
+    }
+
+    /// A pixie pane's Details button: shows that pixie's details, or hides them when they
+    /// show already.
+    func togglePixieDetails(_ id: String) {
+        let showing = pixieDetailsOpen && app.pixieState.layout.focused == id
+        focusPane(id)
+        withAnimation(.smooth(duration: 0.22)) { pixieDetailsOpen = !showing }
+    }
+
+    /// Closes the panes of pixies that were deleted, here or on another device.
+    func keepPixiePanes() {
+        app.keepPixies(Set(pixies.pixies.map(\.id)))
+        syncTools()
+    }
+
+    /// A notification or approval of a pixie's chat: the Pixies tab, on the pixie's pane.
     func revealPixie(_ id: String) {
         close()
-        pixiesOpen = true
-        selectPixie(id)
+        openPixie(id)
     }
 
-    /// New pixie and the starters; New pixie opens its details to set it up.
+    /// New pixie and the starters open the new pixie's pane; New pixie also opens its
+    /// details to set it up.
     func createPixie(_ request: CreatePixieRequest, details: Bool) {
         run("Could not create the pixie") {
             let created = try await self.pixies.create(request)
-            self.selectPixie(created.id)
+            self.openPixie(created.id)
             withAnimation(.smooth(duration: 0.22)) { self.pixieDetailsOpen = details }
         }
     }
@@ -307,9 +362,7 @@ final class Shell {
         run("Could not delete the pixie") {
             let name = self.pixies.pixies.first { $0.id == id }?.name ?? "The pixie"
             try await self.pixies.delete(id)
-            if self.pixie == id {
-                self.selectPixie(self.listedPixies.first?.id)
-            }
+            self.keepPixiePanes()
             self.show("Deleted \(name)", kind: .done)
         }
     }
@@ -438,13 +491,30 @@ final class Shell {
         draftCount += 1
         let id = "\(Self.draftPrefix)\(draftCount)"
         let draft = draft(for: id)
+        takeDefaults(draft)
+        openChat(id)
+        return draft
+    }
+
+    /// The empty workspace's composer (B39): a new chat's draft for the current project,
+    /// with the new-chat defaults; its first message opens the chat in a pane.
+    var startDraftID: String { "\(Self.draftPrefix)start-\(project ?? "")" }
+
+    func startDraft() -> ComposerDraft {
+        drafts.draft(for: startDraftID) { takeDefaults($0) }
+    }
+
+    /// The saved defaults arrived after the start draft was made from the standard ones.
+    func startDefaultsLoaded() {
+        takeDefaults(startDraft())
+    }
+
+    private func takeDefaults(_ draft: ComposerDraft) {
         let defaults = agents.current
         draft.model = defaults.model
         draft.effort = defaults.effort
         draft.permission = defaults.permissionMode
         draft.mode = repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode
-        openChat(id)
-        return draft
     }
 
     /// A plain folder's Init: a new chat with the git setup request written, not sent.
@@ -455,18 +525,12 @@ final class Shell {
         draft.wantsFocus = true
     }
 
-    /// Cmd-W: closes the open sheet, else the focused pane (a pixie's details), else the
-    /// window.
+    /// Cmd-W: closes the open sheet, else the focused pane (a chat's or a pixie's), else
+    /// the window.
     func closeFocused() {
         if overlay != nil {
             close()
-        } else if pixiesOpen {
-            if pixieDetailsOpen {
-                withAnimation(.smooth(duration: 0.22)) { pixieDetailsOpen = false }
-            } else {
-                NSApp.keyWindow?.performClose(nil)
-            }
-        } else if let focused = projectState.layout.focused {
+        } else if let focused = workspaceState.layout.focused {
             closePane(focused)
         } else {
             NSApp.keyWindow?.performClose(nil)
@@ -485,33 +549,40 @@ final class Shell {
     }
 
     func closePane(_ id: String) {
-        update { $0.closePane(id) }
+        updateWorkspace { $0.closePane(id) }
         if isDraft(id) {
             drafts.remove(id)
         }
     }
 
     func toggleMaximize(_ id: String) {
-        update { $0.layout.toggleMaximize(id) }
+        updateWorkspace { $0.layout.toggleMaximize(id) }
     }
 
     func focusPane(_ id: String) {
-        guard projectState.layout.focused != id || projectState.selectedChat != id else { return }
-        app.update { $0.focusPane(id) }
+        let state = workspaceState
+        guard state.layout.focused != id || state.selectedChat != id else { return }
+        changeWorkspace { $0.focusPane(id) }
+    }
+
+    /// A gutter dragged between two panes of the workspace on screen.
+    func resize(split: Int, ratio: Double) {
+        let size = workspaceSize
+        changeWorkspace { $0.layout.resize(split: split, ratio: ratio, in: size) }
     }
 
     func perform(_ item: DragItem, onto pane: String?, zone: DropZone) {
         switch zone {
         case .swap:
             if let pane {
-                update { $0.layout.swap(item.chat, pane) }
+                updateWorkspace { $0.layout.swap(item.chat, pane) }
             }
         case .open:
-            update { $0.dropChat(item.chat, onto: nil, side: .right) }
+            updateWorkspace { $0.dropChat(item.chat, onto: nil, side: .right) }
         case .replace:
-            update { $0.dropChat(item.chat, onto: pane, side: .right) }
+            updateWorkspace { $0.dropChat(item.chat, onto: pane, side: .right) }
         case .split(let side):
-            update { $0.dropChat(item.chat, onto: pane, side: side) }
+            updateWorkspace { $0.dropChat(item.chat, onto: pane, side: side) }
         case .none:
             break
         }
@@ -546,7 +617,7 @@ final class Shell {
 
     /// Hit-tested against the visible panes; a maximized pane has nothing to swap with.
     private func paneDropHit(_ pane: String, at location: CGPoint) -> DropHit? {
-        let layout = projectState.layout
+        let layout = workspaceState.layout
         guard layout.maximized == nil else { return nil }
         return DropZone.hit(
             at: location, placements: layout.placements(in: workspaceSize), dragged: pane,
@@ -586,20 +657,59 @@ final class Shell {
     private func watch(_ event: NSEvent) -> Bool {
         switch event.type {
         case .keyDown:
-            // Escape (key code 53) is swallowed only when it cancels a pane drag.
-            guard event.keyCode == 53, paneDrag != nil else { return true }
+            // Escape (key code 53) is swallowed only when it cancels a pane drag or an
+            // inline edit.
+            guard event.keyCode == 53 else { return true }
+            if let edit = inlineEdit {
+                inlineEdit = nil
+                edit.end(false)
+                return false
+            }
+            guard paneDrag != nil else { return true }
             paneDragCancelled = true
             clearDrag()
             return false
         case .leftMouseDown:
             paneDragCancelled = false
             clearDrag()
+            if let point = Self.contentPoint(of: event) {
+                endInlineEdit(outside: point)
+                focusPane(at: point)
+            }
         default:
             if NSEvent.pressedMouseButtons == 0 {
                 clearDrag()
             }
         }
         return true
+    }
+
+    /// Where a click landed in its window's content, top-left origin; nil for a click in
+    /// a menu, popover or other window that is not a main window.
+    private static func contentPoint(of event: NSEvent) -> CGPoint? {
+        guard let window = event.window, window.canBecomeMain, let view = window.contentView
+        else { return nil }
+        let point = view.convert(event.locationInWindow, from: nil)
+        return view.isFlipped ? point : CGPoint(x: point.x, y: view.bounds.height - point.y)
+    }
+
+    /// A click outside the inline field being edited ends the edit, as leaving it does.
+    private func endInlineEdit(outside point: CGPoint) {
+        guard let edit = inlineEdit, !edit.frame.contains(point) else { return }
+        inlineEdit = nil
+        edit.end(true)
+    }
+
+    /// A click anywhere in a pane of the workspace on screen focuses it, whatever view
+    /// inside takes the click (text views and terminals keep theirs from SwiftUI).
+    private func focusPane(at point: CGPoint) {
+        let showsWorkspace =
+            pixiesOpen ? !pixies.pixies.isEmpty : project != nil && projectState.view == .workspace
+        guard overlay == nil, showsWorkspace, let frame = workspaceFrame else { return }
+        let local = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        if let pane = workspaceState.layout.pane(at: local, in: frame.size) {
+            focusPane(pane)
+        }
     }
 
     // MARK: Composer
@@ -654,7 +764,10 @@ final class Shell {
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
-        app.update(repo) { $0.replaceChat(draftID, with: session.id) }
+        let size = workspaceSize
+        withAnimation(.smooth(duration: 0.22)) {
+            app.update(repo) { $0.startChat(fromDraft: draftID, as: session.id, in: size) }
+        }
         return session.id
     }
 
@@ -756,6 +869,14 @@ final class Shell {
         pixiesOpen = false
         let size = workspaceSize
         update { $0.openTool(.terminal(in: path), in: size) }
+    }
+
+    /// The bottom bar's Terminal button: the project's terminal pane, or a new one in the
+    /// project folder.
+    func openProjectTerminal() {
+        guard let path = repo?.path else { return }
+        let size = workspaceSize
+        update { $0.projectTerminal(folder: path, in: size) }
     }
 
     func newBrowser(url: String? = nil) {

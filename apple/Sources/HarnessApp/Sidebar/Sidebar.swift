@@ -1,13 +1,13 @@
 import HarnessKit
 import SwiftUI
 
-/// The project's chats, grouped, with New chat and the account row; folds into a rail.
+/// The project's chats, grouped, with New chat; folds into a rail. Settings opens from the
+/// app menu (Cmd-comma); the account and connectors live in Settings (B39).
 struct Sidebar: View {
-    static let width = 252.0
-    static let railWidth = 56.0
+    static let width = 236.0
+    static let railWidth = 48.0
 
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let collapsed = shell.projectState.leftCollapsed
@@ -20,7 +20,7 @@ struct Sidebar: View {
         }
         .frame(width: collapsed ? Self.railWidth : Self.width)
         .frame(maxHeight: .infinity)
-        .panelGlass(radius: glass.radius.panel)
+        .sideSurface()
         .confirmationDialog(
             "Delete this chat?", isPresented: deleteBinding, titleVisibility: .visible
         ) {
@@ -46,55 +46,58 @@ struct Sidebar: View {
 
 private struct SidebarFull: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let project = shell.project ?? ""
         let groups = shell.sidebarGroups(in: project)
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                ProjectMarkView(name: project, size: 22)
+                ProjectIcon(project: project, repo: shell.app.repo(project), size: 15)
                 Text(project)
-                    .font(.ui(TypeSize.subhead, .bold))
+                    .font(.ui(TypeSize.reading, .semibold))
+                    .foregroundStyle(Palette.t1)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     shell.update { $0.leftCollapsed = true }
                 } label: {
-                    Image(systemName: Icon.leftPanel).font(.system(size: 14))
+                    Image(systemName: Icon.leftPanel).font(.system(size: 13))
+                        .foregroundStyle(Palette.t3)
                 }
-                .buttonStyle(.harness(.ghost, iconOnly: true))
+                .buttonStyle(.harness(.plain, iconOnly: true))
                 .help("Collapse sidebar")
                 .accessibilityLabel("Collapse sidebar")
             }
-            .padding(.leading, 6)
-            .padding(.bottom, 10)
+            .padding(.leading, 8)
+            .padding(.trailing, 2)
+            .frame(height: 30)
 
             Button {
                 shell.newChat()
             } label: {
-                Label("New chat", systemImage: Icon.plus)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(
-                        accent.accent,
-                        in: glass.rounded(min(glass.radius.item + 1, glass.radius.control))
-                    )
-                    .foregroundStyle(accent.onAccent)
-                    .font(.ui(TypeSize.callout, .semibold))
-                    .labelStyle(TightLabelStyle())
-                    .contentShape(Rectangle())
+                HStack(spacing: 8) {
+                    Image(systemName: Icon.plus)
+                        .font(.system(size: 11, weight: .regular))
+                        .frame(width: 10)
+                    Text("New chat")
+                    Spacer(minLength: 0)
+                    Text("⌘N").font(.ui(10.5)).foregroundStyle(Palette.t3)
+                }
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(Palette.t2)
+                .padding(.horizontal, 10)
+                .frame(height: Metrics.rowHeight)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .pointerStyle(.link)
-            .padding(.bottom, 4)
+            .buttonStyle(RowHoverStyle())
+            .padding(.top, 2)
+            .help("New chat (⌘N)")
 
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: []) {
                     if groups.isEmpty {
                         Text("No chats yet")
-                            .font(.ui(TypeSize.small))
+                            .font(.ui(TypeSize.ui))
                             .foregroundStyle(Palette.t3)
                             .padding(.vertical, 22)
                     }
@@ -102,14 +105,10 @@ private struct SidebarFull: View {
                         GroupSection(group: group, project: project)
                     }
                 }
-                .padding(.horizontal, 4)
             }
             .scrollIndicators(.never)
-            .padding(.horizontal, -4)
-
-            AccountRow()
         }
-        .padding(EdgeInsets(top: 12, leading: 10, bottom: 10, trailing: 10))
+        .padding(EdgeInsets(top: 8, leading: 6, bottom: 4, trailing: 6))
     }
 }
 
@@ -133,8 +132,9 @@ private struct GroupSection: View {
             } label: {
                 header {
                     Image(systemName: Icon.chevron)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(open ? 0 : -90))
+                        .frame(width: 8)
                 }
             }
             .buttonStyle(.plain)
@@ -142,7 +142,7 @@ private struct GroupSection: View {
             .accessibilityLabel("Archived, \(group.entries.count)")
             ArchivedRows(open: open) { rows }
         } else {
-            header { marker }
+            header { EmptyView() }
             rows
         }
     }
@@ -150,85 +150,21 @@ private struct GroupSection: View {
     private var rows: some View {
         ForEach(group.entries) { entry in
             switch entry {
-            case .session(let session): ChatRow(session: session)
+            case .session(let session):
+                ChatRow(session: session, finished: group.kind == .done)
             case .claudeChat(let chat): ClaudeChatRow(chat: chat)
             }
         }
     }
 
-    @ViewBuilder private var marker: some View {
-        switch group.kind {
-        case .pinned: Image(systemName: Icon.pin).font(.system(size: 10, weight: .semibold))
-        case .needsYou: StatusDot(tone: .waiting, pulses: false)
-        case .running: StatusDot(tone: .running, pulses: false)
-        case .idle: StatusDot(tone: .done, hollow: true)
-        case .done, .archived: StatusDot(tone: .done)
-        }
-    }
-
+    /// A small grey label with the group's count; Archived leads with its chevron.
     private func header<Marker: View>(@ViewBuilder marker: () -> Marker) -> some View {
         HStack(spacing: 6) {
             marker()
-            Text(group.kind.title)
-            Spacer()
-            Text("\(group.entries.count)").fontWeight(.semibold)
+            SectionLabel(text: group.kind.title, count: group.entries.count)
         }
-        .font(.ui(TypeSize.caption, .bold))
-        .foregroundStyle(Palette.t3)
-        .padding(EdgeInsets(top: 12, leading: 8, bottom: 4, trailing: 8))
+        .padding(EdgeInsets(top: 12, leading: 10, bottom: 4, trailing: 10))
         .contentShape(Rectangle())
-    }
-}
-
-/// The user's account (opens Connectors in B09) and the Settings gear.
-struct AccountRow: View {
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Button {
-                shell.show(.connectors)
-            } label: {
-                HStack(spacing: 9) {
-                    Avatar(name: shell.accountName)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(shell.accountName)
-                            .font(.ui(TypeSize.callout, .semibold))
-                            .foregroundStyle(Palette.t1)
-                            .lineLimit(1)
-                        Text(shell.agents.plan)
-                            .font(.ui(TypeSize.caption))
-                            .foregroundStyle(Palette.t3)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(RowHoverStyle())
-            .padding(.vertical, -4)
-            .padding(.leading, -4)
-            .help("Connectors")
-            SettingsButton()
-        }
-        .padding(EdgeInsets(top: 10, leading: 4, bottom: 0, trailing: 2))
-        .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
-        .padding(.top, 8)
-    }
-}
-
-struct SettingsButton: View {
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        Button {
-            shell.show(.settings)
-        } label: {
-            Image(systemName: Icon.gear).font(.system(size: 14))
-        }
-        .buttonStyle(.harness(.ghost, iconOnly: true))
-        .help("Settings")
-        .accessibilityLabel("Settings")
     }
 }
 
@@ -270,20 +206,21 @@ private struct SidebarRail: View {
             Button {
                 shell.update { $0.leftCollapsed = false }
             } label: {
-                Image(systemName: Icon.leftPanel).font(.system(size: 14))
+                Image(systemName: Icon.leftPanel).font(.system(size: 13))
+                    .foregroundStyle(Palette.t3)
             }
-            .buttonStyle(.harness(.ghost, iconOnly: true))
+            .buttonStyle(.harness(.plain, iconOnly: true))
             .help("Expand sidebar")
             .accessibilityLabel("Expand sidebar")
             Button {
                 shell.newChat()
             } label: {
-                Image(systemName: Icon.plus).font(.system(size: 13, weight: .semibold))
+                Image(systemName: Icon.plus).font(.system(size: 12))
             }
-            .buttonStyle(.harness(.primary, iconOnly: true))
+            .buttonStyle(.harness(.soft, iconOnly: true))
             .help("New chat")
             .accessibilityLabel("New chat")
-            Rectangle().fill(Palette.hair2).frame(width: 24, height: 1).padding(.vertical, 4)
+            Separator().frame(width: 24).padding(.vertical, 4)
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(entries) { entry in
@@ -294,23 +231,8 @@ private struct SidebarRail: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            VStack(spacing: 8) {
-                Button {
-                    shell.show(.connectors)
-                } label: {
-                    Avatar(name: shell.accountName)
-                }
-                .buttonStyle(.plain)
-                .pointerStyle(.link)
-                .help("\(shell.accountName), Connectors")
-                SettingsButton()
-            }
-            .padding(.top, 10)
-            .frame(width: 36)
-            .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
         }
-        .padding(.vertical, 12)
-        .padding(.bottom, -2)
+        .padding(.vertical, 10)
     }
 }
 
@@ -319,28 +241,21 @@ private struct RailChat: View {
     let isOpen: Bool
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @State private var hovering = false
 
     var body: some View {
         let tone = tone
-        let shape = glass.rounded(min(glass.radius.item + 2, 12))
+        let shape = RoundedRectangle.rounded(Radius.row)
         Text(Initials.of(entry.title))
-            .font(.ui(TypeSize.label, .bold))
-            .foregroundStyle(Palette.t1)
-            .frame(width: 36, height: 36)
+            .font(.ui(TypeSize.meta, .medium))
+            .foregroundStyle(isOpen ? Palette.t1 : Palette.t2)
+            .frame(width: 30, height: 30)
             .background(
-                isOpen ? accent.soft : hovering ? Palette.fill2 : Palette.fill, in: shape
+                isOpen ? accent.selection : hovering ? Palette.soft : .clear, in: shape
             )
-            .overlay {
-                if isOpen {
-                    shape.strokeBorder(accent.accent, lineWidth: 1.5)
-                }
-            }
             .overlay(alignment: .topTrailing) {
-                StatusDot(tone: tone, hollow: hollow, size: 10, pulses: false)
-                    .background(Circle().fill(glass.surface).padding(-2))
-                    .offset(x: 2, y: -2)
+                StatusDot(tone: tone, hollow: hollow)
+                    .offset(x: -3, y: 3)
             }
             .overlay(alignment: .bottomTrailing) {
                 if case .claudeChat = entry {

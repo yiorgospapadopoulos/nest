@@ -4,9 +4,10 @@ import SwiftUI
 /// A chat in the sidebar: status dot, title and elapsed time; click opens it, drag splits.
 struct ChatRow: View {
     let session: Session
+    /// A row of the Done group: its name is grey, whatever its status.
+    var finished = false
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @State private var hovering = false
     @FocusState private var renameFocused: Bool
 
@@ -23,12 +24,11 @@ struct ChatRow: View {
         let isOpen = state.layout.contains(session.id)
         let isSelected = state.selectedChat == session.id
         let tone = shell.tone(of: session)
-        return HStack(spacing: 9) {
+        return HStack(spacing: 8) {
             StatusDot(tone: tone, hollow: shell.isHollow(session))
-                .frame(width: 10)
             Text(session.title)
-                .font(.ui(TypeSize.callout, isOpen ? .semibold : .regular))
-                .foregroundStyle(Palette.t1)
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let stuck = session.stuck {
@@ -37,26 +37,26 @@ struct ChatRow: View {
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 HStack(spacing: 4) {
                     if session.pinned {
-                        Image(systemName: Icon.pin).font(.system(size: 9))
+                        Image(systemName: Icon.pin).font(.system(size: 8))
                     }
                     Text(Elapsed.short(from: session.updatedAt, to: context.date))
                         .monospacedDigit()
                 }
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             }
             .opacity(hovering ? 0 : 1)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, glass.spacing.rowPaddingY)
+        .padding(.horizontal, 10)
+        .frame(height: Metrics.rowHeight)
         .background(
-            isSelected ? accent.soft : (isOpen || hovering) ? Palette.fill : .clear,
-            in: glass.rounded(glass.radius.item)
+            isSelected ? accent.selection : (isOpen || hovering) ? Palette.soft : .clear,
+            in: .rounded(Radius.row)
         )
         .overlay(alignment: .trailing) {
             if hovering {
                 RowActionsMenu(title: session.title) { ChatActions(session: session) }
-                    .padding(.trailing, 5)
+                    .padding(.trailing, 3)
             }
         }
         .contentShape(Rectangle())
@@ -83,12 +83,13 @@ struct ChatRow: View {
         @Bindable var shell = shell
         return TextField("Rename chat", text: $shell.renameText)
             .textFieldStyle(.plain)
-            .font(.ui(TypeSize.callout))
-            .padding(.horizontal, 9)
-            .frame(height: 32)
-            .background(glass.surface, in: glass.rounded(glass.radius.item))
-            .overlay(glass.rounded(glass.radius.item).stroke(accent.accent, lineWidth: 2))
-            .padding(.vertical, 2)
+            .font(.ui(TypeSize.ui))
+            .padding(.horizontal, 10)
+            .frame(height: Metrics.rowHeight)
+            .background(Palette.soft, in: .rounded(Radius.row))
+            .overlay(
+                RoundedRectangle.rounded(Radius.row).strokeBorder(accent.focus, lineWidth: 1)
+            )
             .focused($renameFocused)
             .onAppear { renameFocused = true }
             .onSubmit { shell.commitRename(save: true) }
@@ -105,18 +106,16 @@ struct ChatRow: View {
 struct RowActionsMenu<Actions: View>: View {
     let title: String
     @ViewBuilder let actions: () -> Actions
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Menu {
             actions()
         } label: {
             Image(systemName: Icon.more)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Palette.t2)
-                .frame(width: 24, height: 24)
-                .background(glass.surface, in: glass.rounded(glass.radius.small))
-                .shadow(color: glass.shadow, radius: 1.5, y: 1)
+                .frame(width: 20, height: 20)
+                .background(Palette.soft, in: .rounded(Radius.button))
                 .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -191,21 +190,18 @@ extension View {
 struct DragGhost: View {
     let title: String
     let tone: StatusTone
-    @Environment(\.glass) private var glass
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(tone: tone, pulses: false)
+            StatusDot(tone: tone)
             Text(title)
-                .font(.ui(TypeSize.callout, .semibold))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t1)
                 .lineLimit(1)
         }
-        .padding(.leading, 11)
-        .padding(.trailing, 14)
-        .frame(height: 36)
-        .background(glass.surface, in: glass.rounded(glass.radius.item))
-        .overlay(glass.rounded(glass.radius.item).stroke(glass.stroke))
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .sheetSurface(radius: Radius.row)
         .rotationEffect(.degrees(-2))
     }
 }

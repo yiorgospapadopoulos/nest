@@ -4,50 +4,64 @@ import SwiftUI
 /// The bar over the project: name menu, branch, view switch and activity panel toggle.
 struct ProjectToolbar: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let state = shell.projectState
         HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                ProjectMenu()
-                switch shell.repo?.badge {
-                case .branch(let branch): Chip(icon: Icon.branch, text: branch)
-                case .initGit: InitGitButton()
-                case nil: EmptyView()
-                }
+            ProjectMenu()
+            switch shell.repo?.badge {
+            case .branch(let branch): BranchLabel(branch: branch)
+            case .initGit: InitGitButton()
+            case nil: EmptyView()
             }
             ViewSwitch(view: state.view) { view in shell.update { $0.view = view } }
+                .padding(.leading, 6)
             if state.layout.maximized != nil && state.view == .workspace {
                 Button {
                     shell.update { $0.layout.restore() }
                 } label: {
                     Label("Restore", systemImage: Icon.restore)
                 }
-                .buttonStyle(.harness(height: 24))
+                .buttonStyle(.harness(.plain))
             }
             Spacer()
             Button {
                 shell.update { $0.rightCollapsed.toggle() }
             } label: {
-                Image(systemName: Icon.rightPanel).font(.system(size: 14))
+                Image(systemName: Icon.rightPanel).font(.system(size: 13))
+                    .foregroundStyle(state.rightCollapsed ? Palette.t3 : Palette.t2)
             }
-            .buttonStyle(.harness(.ghost, iconOnly: true))
-            .foregroundStyle(state.rightCollapsed ? Palette.t2 : Palette.t1)
+            .buttonStyle(.harness(.plain, iconOnly: true))
             .help("Activity panel")
             .accessibilityLabel("Activity panel")
             .accessibilityAddTraits(state.rightCollapsed ? [] : .isSelected)
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 2)
-        .frame(height: glass.spacing.toolbarHeight)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .frame(height: Metrics.toolbarHeight)
+    }
+}
+
+/// The current branch, small and grey after the project's name.
+private struct BranchLabel: View {
+    let branch: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: Icon.branch).font(.system(size: 9.5))
+            Text(branch).lineLimit(1).truncationMode(.middle)
+        }
+        .font(.ui(TypeSize.meta))
+        .foregroundStyle(Palette.t3)
+        .help(branch)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Branch \(branch)")
     }
 }
 
 /// A plain folder's place for the branch: starts a chat that sets it up with git.
 private struct InitGitButton: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Button {
@@ -55,14 +69,14 @@ private struct InitGitButton: View {
         } label: {
             HoverReader { hovering in
                 HStack(spacing: 5) {
-                    Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
-                    Text("Init").font(.ui(TypeSize.label))
+                    Image(systemName: Icon.branch).font(.system(size: 9.5))
+                    Text("Init").font(.ui(TypeSize.meta))
                 }
                 .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
-                .padding(.horizontal, 8)
-                .frame(height: 22)
+                .padding(.horizontal, 7)
+                .frame(height: 20)
                 .background(
-                    hovering ? Palette.fill2 : Palette.fill, in: glass.rounded(glass.radius.small)
+                    hovering ? Palette.selection : Palette.soft, in: .rounded(Radius.button)
                 )
                 .contentShape(Rectangle())
             }
@@ -125,15 +139,15 @@ private struct ProjectMenu: View {
         } label: {
             HStack(spacing: 5) {
                 Text(shell.project ?? "")
-                    .font(.ui(TypeSize.body, .bold))
+                    .font(.ui(TypeSize.ui, .semibold))
                     .foregroundStyle(Palette.t1)
                 Image(systemName: Icon.chevron)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(Palette.t3)
             }
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(hovering ? Palette.fill : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 6)
+            .frame(height: Metrics.buttonHeight)
+            .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.button))
             .contentShape(Rectangle())
         }
         .menuStyle(.button)
@@ -142,7 +156,7 @@ private struct ProjectMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }
-        .padding(.leading, -8)
+        .padding(.leading, -6)
         .accessibilityLabel("Project \(shell.project ?? "")")
     }
 }
@@ -151,38 +165,32 @@ private struct ProjectMenu: View {
 private struct ViewSwitch: View {
     let view: ProjectView
     let select: (ProjectView) -> Void
-    @Environment(\.glass) private var glass
+    @Environment(\.accentColors) private var accent
 
     var body: some View {
-        HStack(spacing: 0) {
-            segment(.workspace, "Workspace", Icon.workspace)
-            segment(.board, "Board", Icon.board)
+        HStack(spacing: 2) {
+            segment(.workspace, "Workspace")
+            segment(.board, "Board")
         }
-        .padding(2)
-        .background(Palette.fill, in: glass.rounded(glass.radius.small + 2))
     }
 
-    private func segment(_ value: ProjectView, _ title: String, _ icon: String) -> some View {
+    private func segment(_ value: ProjectView, _ title: String) -> some View {
         let selected = view == value
         return Button {
             select(value)
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 12))
+            HoverReader { hovering in
                 Text(title)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(selected ? Palette.t1 : Palette.t2)
+                    .padding(.horizontal, 9)
+                    .frame(height: Metrics.buttonHeight)
+                    .background(
+                        selected ? accent.selection : hovering ? Palette.soft : .clear,
+                        in: .rounded(Radius.button)
+                    )
+                    .contentShape(Rectangle())
             }
-            .font(.ui(TypeSize.small, .semibold))
-            .foregroundStyle(selected ? Palette.t1 : Palette.t2)
-            .padding(.horizontal, 11)
-            .frame(height: 26)
-            .background {
-                if selected {
-                    glass.rounded(glass.radius.small)
-                        .fill(glass.surface)
-                        .shadow(color: glass.shadow, radius: 1.5, y: 1)
-                }
-            }
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)

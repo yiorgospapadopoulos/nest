@@ -2,16 +2,18 @@ import HarnessKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The project's split workspace: up to four panes placed by the layout engine. Panes
-/// are keyed by chat, so closing, opening or swapping one keeps the others' views (and
-/// their transcripts) alive instead of rebuilding the split tree.
+/// The split workspace of the project, or of the Pixies tab (B37): up to four panes
+/// placed by the layout engine. Panes are keyed by chat (or pixie), so closing, opening or
+/// swapping one keeps the others' views (and their transcripts) alive instead of
+/// rebuilding the split tree. Each pane is its own rounded panel, `PanePanel.inset` from
+/// the area's edges and `PanePanel.gap` apart.
 struct WorkspaceView: View {
     /// The coordinate space of pane placements, where pane drags are followed.
     static let space = "workspace"
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let layout = shell.projectState.layout
+        let layout = shell.workspaceState.layout
         GeometryReader { geometry in
             let size = geometry.size
             let maximized = layout.maximized
@@ -23,7 +25,8 @@ struct WorkspaceView: View {
                     let hidden = maximized != nil && maximized != placement.chat
                     let frame =
                         maximized == placement.chat
-                        ? CGRect(origin: .zero, size: size) : placement.frame
+                        ? CGRect(origin: .zero, size: size)
+                        : PanePanel.frame(placement.frame, in: size)
                     PaneContent(pane: placement.chat)
                         .frame(width: frame.width, height: frame.height)
                         .position(x: frame.midX, y: frame.midY)
@@ -37,9 +40,10 @@ struct WorkspaceView: View {
                 }
                 if maximized == nil {
                     ForEach(layout.gutterFrames(in: size), id: \.split) { gutter in
+                        let frame = PanePanel.gap(gutter)
                         Gutter(gutter: gutter)
-                            .frame(width: gutter.frame.width, height: gutter.frame.height)
-                            .position(x: gutter.frame.midX, y: gutter.frame.midY)
+                            .frame(width: frame.width, height: frame.height)
+                            .position(x: frame.midX, y: frame.midY)
                             .zIndex(2)
                     }
                 }
@@ -48,20 +52,59 @@ struct WorkspaceView: View {
             .coordinateSpace(.named(Self.space))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onGeometryChange(for: CGSize.self) {
-            $0.size
+        // The frame inside the padding: the one the layout places the panes in.
+        .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .global)
         } action: {
-            shell.workspaceSize = $0
+            shell.workspaceSize = $0.size
+            shell.workspaceFrame = $0
         }
+        .padding(PanePanel.inset)
     }
 }
 
-/// A chat, terminal or browser pane, by the kind its id tells.
+/// The gaps of the separated panes. The layout engine keeps `WorkspaceLayout.gutter`
+/// between panes; each pane reaches into it on the sides it shares with another pane so
+/// the gap between them is `gap`.
+enum PanePanel {
+    /// Around the panes, from the workspace area's edges.
+    static let inset = 8.0
+    /// Between two panes.
+    static let gap = 8.0
+    private static let reach = (WorkspaceLayout.gutter - gap) / 2
+
+    static func frame(_ frame: CGRect, in size: CGSize) -> CGRect {
+        let minX = frame.minX > 0.5 ? frame.minX - reach : frame.minX
+        let minY = frame.minY > 0.5 ? frame.minY - reach : frame.minY
+        let maxX = frame.maxX < size.width - 0.5 ? frame.maxX + reach : frame.maxX
+        let maxY = frame.maxY < size.height - 0.5 ? frame.maxY + reach : frame.maxY
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// The gutter's grab area: the visible gap between the two panes, never over them.
+    static func gap(_ gutter: GutterFrame) -> CGRect {
+        gutter.direction == .row
+            ? gutter.frame.insetBy(dx: reach, dy: 0) : gutter.frame.insetBy(dx: 0, dy: reach)
+    }
+}
+
+/// A chat, terminal or browser pane, by the kind its id tells; on the Pixies tab, a
+/// pixie's pane.
 private struct PaneContent: View {
     let pane: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
+        if shell.pixiesOpen {
+            if let pixie = shell.pixie(pane) {
+                PixiePane(pixie: pixie)
+            }
+        } else {
+            projectPane
+        }
+    }
+
+    @ViewBuilder private var projectPane: some View {
         switch PaneKind(paneID: pane) {
         case .chat:
             PaneView(chat: pane)
@@ -91,7 +134,8 @@ private struct PaneDragGhost: View {
     }
 }
 
-/// The space between two panes; dragging it resizes them within the engine's minimums.
+/// The gap between two panes; a short handle shows while the pointer is over it, and
+/// dragging it resizes the panes within the engine's minimums.
 private struct Gutter: View {
     let gutter: GutterFrame
     @Environment(Shell.self) private var shell
@@ -105,14 +149,10 @@ private struct Gutter: View {
         let active = hovering || startRatio != nil
         Rectangle()
             .fill(.clear)
-            .frame(
-                width: row ? WorkspaceLayout.gutter : nil,
-                height: row ? nil : WorkspaceLayout.gutter
-            )
             .overlay {
                 Capsule()
-                    .fill(active ? accent.accent : Palette.t3)
-                    .frame(width: row ? 4 : 44, height: row ? 44 : 4)
+                    .fill(accent.focus)
+                    .frame(width: row ? 3 : 36, height: row ? 36 : 3)
                     .opacity(active ? 1 : 0)
             }
             .contentShape(Rectangle())
@@ -138,49 +178,64 @@ private struct Gutter: View {
     }
 
     private func resize(to newRatio: Double) {
-        let size = shell.workspaceSize
-        shell.app.update { $0.layout.resize(split: gutter.split, ratio: newRatio, in: size) }
+        shell.resize(split: gutter.split, ratio: newRatio)
     }
 }
 
-/// Shown before any chat is open; accepts a dropped chat.
+/// Shown before any chat (or, on the Pixies tab, any pixie) is open; accepts a dropped
+/// chat or pixie. A project's is the approved design's empty session: "What should we work on in
+/// <project>?" over the composer, whose first message starts a chat in the project.
 private struct EmptyWorkspace: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let targeted = shell.dropHighlight != nil && shell.dropHighlight?.pane == nil
-        let shape = glass.rounded(glass.radius.panel + 2)
-        VStack(spacing: 8) {
-            Image(systemName: Icon.workspace)
-                .font(.system(size: 24))
-                .foregroundStyle(accent.accent)
-                .frame(width: 56, height: 56)
-                .panelGlass(radius: glass.radius.panel - 2)
-            Text("Drag chats here to work on them side by side")
-                .font(.ui(16, .semibold))
-                .foregroundStyle(Palette.t1)
-            Button {
-                shell.newChat()
-            } label: {
-                Label("New chat", systemImage: Icon.plus)
+        Group {
+            if shell.pixiesOpen {
+                NoPixiePanes()
+            } else {
+                StartSession()
             }
-            .buttonStyle(.harness(.primary))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(shape.fill(glass.subtle))
-        .overlay(
-            shape.strokeBorder(
-                targeted ? accent.line : Palette.hair2,
-                style: StrokeStyle(lineWidth: 2, dash: [6, 5]))
-        )
+        .contentShape(Rectangle())
         .overlay {
             if targeted {
                 DropHighlightView(zone: .open, size: nil)
             }
         }
         .onDrop(of: [.harnessChat], delegate: PaneDropDelegate(pane: nil, shell: shell))
+    }
+}
+
+/// A column up to 896 points wide, centred: the 18 point question, then the composer.
+private struct StartSession: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let project = shell.project
+        let draft = shell.startDraft()
+        VStack(alignment: .leading, spacing: 0) {
+            Text(project.map { "What should we work on in \($0)?" } ?? "What should we work on?")
+                .font(.ui(18))
+                .foregroundStyle(Ink.content(1))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 16)
+                .accessibilityAddTraits(.isHeader)
+            Composer(start: shell.startDraftID)
+                .id(shell.startDraftID)
+        }
+        .frame(maxWidth: 896)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 48)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: shell.agents.defaults == nil) { _, missing in
+            if !missing && draft.text.isEmpty {
+                shell.startDefaultsLoaded()
+            }
+        }
     }
 }
 
@@ -226,7 +281,7 @@ struct PaneDropDelegate: DropDelegate {
     }
 
     private func zone(for item: DragItem, at point: CGPoint) -> DropZone {
-        let layout = shell.projectState.layout
+        let layout = shell.workspaceState.layout
         let target = pane.map {
             DropZone.Target(
                 isDraggedChat: $0 == item.chat, draggedIsOpen: layout.contains(item.chat),
@@ -241,13 +296,12 @@ struct PaneDropDelegate: DropDelegate {
     }
 }
 
-/// The glass highlight over the part of a pane a drop would take, with its label.
+/// The highlight over the part of a pane a drop would take, with its label.
 struct DropHighlightView: View {
     let zone: DropZone
     /// The pane's size; nil fills the whole space.
     let size: CGSize?
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
         GeometryReader { geometry in
@@ -260,20 +314,20 @@ struct DropHighlightView: View {
     }
 
     private func highlight(_ rect: CGRect) -> some View {
-        let shape = glass.rounded(glass.radius.card)
+        let shape = RoundedRectangle.rounded(Radius.card)
         return ZStack {
-            shape.fill(accent.soft)
-            shape.strokeBorder(accent.accent, lineWidth: 2)
+            shape.fill(accent.selection)
+            shape.strokeBorder(accent.focus, lineWidth: 1)
             HStack(spacing: 6) {
                 Image(systemName: zone == .replace ? Icon.open : Icon.workspace)
-                    .foregroundStyle(accent.accent)
+                    .foregroundStyle(Palette.t2)
                 Text(zone.label)
             }
-            .font(.ui(TypeSize.callout, .semibold))
+            .font(.ui(TypeSize.ui, .medium))
             .foregroundStyle(Palette.t1)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-            .controlGlass()
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .sheetSurface(radius: Radius.card)
         }
         .frame(width: rect.width, height: rect.height)
         .offset(x: rect.minX, y: rect.minY)

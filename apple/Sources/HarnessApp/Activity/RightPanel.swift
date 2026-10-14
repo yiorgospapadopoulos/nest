@@ -8,7 +8,6 @@ struct RightPanel: View {
     static let railWidth = 56.0
 
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let state = shell.projectState
@@ -18,16 +17,20 @@ struct RightPanel: View {
                 ActivityRail(counts: counts)
                     .frame(width: Self.railWidth)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .panelGlass(radius: glass.radius.panel)
             } else {
-                VStack(spacing: glass.spacing.gap) {
+                VStack(spacing: 0) {
                     ForEach(RightCard.allCases, id: \.self) { card in
+                        if card != RightCard.allCases.first {
+                            Separator()
+                        }
                         CardView(card: card, open: state.openCards.contains(card), counts: counts)
                     }
                 }
                 .frame(width: Self.width)
             }
         }
+        .frame(maxHeight: .infinity)
+        .sideSurface()
         .task(id: inFlightKey) { await loadActivity() }
     }
 
@@ -103,35 +106,29 @@ private struct CardView: View {
     let open: Bool
     let counts: PanelCounts
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(spacing: 0) {
             Button {
                 shell.update { $0.toggleCard(card) }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: card.icon)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Palette.t2)
-                        .frame(width: 16)
+                HStack(spacing: 7) {
                     Text(card.title)
-                        .font(.ui(TypeSize.body, .semibold))
-                        .foregroundStyle(Palette.t1)
                     CountBadge(
                         count: counts.count(card), urgent: card == .needsYou && counts.needs > 0)
                     Spacer()
                     Image(systemName: Icon.chevron)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Palette.t3)
+                        .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(open ? 0 : -90))
                 }
-                .padding(.leading, 14)
-                .padding(.trailing, 12)
-                .frame(height: 44)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t3)
+                .padding(.horizontal, 14)
+                .frame(height: Metrics.headerHeight)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle(radius: glass.radius.pane))
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
             .accessibilityLabel("\(card.title), \(counts.count(card))")
             .accessibilityAddTraits(open ? .isSelected : [])
             if open {
@@ -139,19 +136,17 @@ private struct CardView: View {
                     Group {
                         switch card {
                         case .agents: AgentsCard()
-                        case .needsYou: NeedsCard()
+                        case .needsYou: NeedsCard().padding(.horizontal, 10)
                         case .goals: GoalsCard()
                         }
                     }
-                    .padding(.horizontal, 10)
                     .padding(.bottom, 10)
                 }
                 .scrollIndicators(.never)
                 .transition(.opacity)
             }
         }
-        .frame(maxHeight: open ? .infinity : 44, alignment: .top)
-        .panelGlass(radius: glass.radius.pane)
+        .frame(maxHeight: open ? .infinity : Metrics.headerHeight, alignment: .top)
     }
 }
 
@@ -160,35 +155,35 @@ private struct ActivityRail: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Button {
                 shell.update { $0.rightCollapsed = false }
             } label: {
-                Image(systemName: Icon.rightPanel).font(.system(size: 15))
+                Image(systemName: Icon.rightPanel).font(.system(size: 13))
             }
             .buttonStyle(RailButtonStyle())
             .help("Expand panel")
             .accessibilityLabel("Expand panel")
-            Rectangle().fill(Palette.hair2).frame(width: 24, height: 1).padding(.vertical, 4)
+            Separator().frame(width: 24).padding(.vertical, 4)
             ForEach(RightCard.allCases, id: \.self) { card in
                 let count = counts.count(card)
                 Button {
                     shell.update { $0.showCard(card) }
                 } label: {
-                    Image(systemName: card.icon).font(.system(size: 15))
+                    Image(systemName: card.icon).font(.system(size: 13))
                 }
                 .buttonStyle(RailButtonStyle())
                 .overlay(alignment: .topTrailing) {
                     if count > 0 {
-                        CountBadge(count: count, urgent: card == .needsYou, size: 17)
-                            .offset(x: 5, y: -5)
+                        CountBadge(count: count, urgent: card == .needsYou)
+                            .offset(x: 6, y: -4)
                     }
                 }
                 .help(card.title)
                 .accessibilityLabel("\(card.title), \(count)")
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 }
 
@@ -196,11 +191,11 @@ struct RailButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
-                .frame(width: 38, height: 38)
+                .foregroundStyle(hovering ? Palette.t1 : Palette.t3)
+                .frame(width: 30, height: 30)
                 .background(
-                    hovering ? Palette.fill2 : Palette.fill,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    hovering || configuration.isPressed ? Palette.soft : .clear,
+                    in: .rounded(Radius.row)
                 )
                 .contentShape(Rectangle())
                 .pointerStyle(.link)

@@ -11,7 +11,7 @@ struct PaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             PaneHeader(chat: chat)
-            Rectangle().fill(Palette.hair).frame(height: 1)
+            Rectangle().fill(Palette.divider).frame(height: 1)
             if shell.isDraft(chat) {
                 NewChatPlaceholder()
             } else {
@@ -34,36 +34,64 @@ struct PaneView: View {
     }
 }
 
-/// What every pane shares, whatever it shows: the glass, the focus ring, the drop
-/// targets and highlights while something is dragged, and focus on click. The content
-/// lays out to the pane's slot and is clipped to it, so nothing spills into a neighbour.
+/// What every pane shares, whatever it shows: its rounded panel with the scanlines inside,
+/// the ring that marks focus or a chat that needs the user, the drop targets and
+/// highlights while something is dragged. A click anywhere in it focuses it
+/// (`Shell.watch`, which sees the click before any view inside takes it). The content lays out to
+/// the pane's slot and is clipped to the panel, so nothing spills into a neighbour.
 struct PaneChrome: ViewModifier {
     let pane: String
+    /// The chat whose state rings the pane: the pane's own, or a pixie's ongoing chat
+    /// (none before its first message).
+    let chat: String?
+    /// A pixie's backdrop, tinting the panel under its scanlines.
+    let backdrop: PixieBackground?
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
     @Environment(\.paneSize) private var size
 
+    init(pane: String) {
+        self.init(pane: pane, chat: pane, backdrop: nil)
+    }
+
+    init(pane: String, chat: String?, backdrop: PixieBackground?) {
+        self.pane = pane
+        self.chat = chat
+        self.backdrop = backdrop
+    }
+
     func body(content: Content) -> some View {
-        let layout = shell.projectState.layout
-        let focused = layout.focused == pane
-        let shape = glass.rounded(glass.radius.pane)
+        let layout = shell.workspaceState.layout
+        let waiting =
+            chat.flatMap(shell.sessions.session).map { shell.tone(of: $0) == .waiting } ?? false
+        let focused = layout.focused == pane && layout.leaves.count > 1
+        let shape = RoundedRectangle.rounded(PaneColors.radius)
         content
             .frame(width: size?.width, height: size?.height)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(shape)
-            .panelGlass(radius: glass.radius.pane, tint: .reading)
-            .overlay {
-                if focused && layout.leaves.count > 1 {
-                    shape.strokeBorder(accent.line, lineWidth: 1.5).allowsHitTesting(false)
+            .background {
+                ZStack {
+                    PaneColors.fill
+                    if let backdrop {
+                        PixieBackdrop(background: backdrop).opacity(0.5)
+                    }
+                    Scanlines()
                 }
+            }
+            .clipShape(shape)
+            .overlay {
+                // A chat that needs the user rings amber; the focused pane rings in the
+                // accent's focus color; the rest keep a faint ring.
+                shape.strokeBorder(
+                    waiting ? PaneColors.waitingRing : focused ? accent.focus : PaneColors.ring,
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
             }
             .overlay {
                 if shell.dragging != nil && shell.dragging?.chat != pane {
-                    shape.inset(by: 6)
-                        .strokeBorder(
-                            accent.line, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
-                        )
+                    RoundedRectangle.rounded(PaneColors.radius - 6).inset(by: 6)
+                        .strokeBorder(accent.focus, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                         .allowsHitTesting(false)
                 }
             }
@@ -78,13 +106,43 @@ struct PaneChrome: ViewModifier {
             } action: { size in
                 shell.paneSizes[pane] = size
             }
-            .simultaneousGesture(TapGesture().onEnded { shell.focusPane(pane) })
             .onDrop(of: [.harnessChat], delegate: PaneDropDelegate(pane: pane, shell: shell))
             .transition(.scale(scale: 0.97).combined(with: .opacity))
     }
 }
 
-/// Grip, status, title, branch, elapsed, maximize and close; drag it to swap panes.
+/// The separated pane panel's colors (B36 "separated chat panes"): the fill and ring from
+/// the tokens (B39), and the amber ring of a chat that needs the user.
+enum PaneColors {
+    static let radius = 16.0
+    static let fill = Palette.chatPane
+    static let ring = Palette.divider
+    static let waitingRing = themed(
+        light: (176 / 255, 109 / 255, 6 / 255, 0.40), dark: (231 / 255, 162 / 255, 62 / 255, 0.45))
+    /// The fill as AppKit sees it laid over the opaque window, for views that paint
+    /// opaquely such as the terminal.
+    static func opaqueFill(dark: Bool) -> NSColor {
+        let mac = DesignTokens.Colors.Mac.self
+        let fill = dark ? mac.chatPane.dark : mac.chatPane.light
+        let base = dark ? mac.windowOpaque.dark : mac.windowOpaque.light
+        func mix(_ x: Double, _ y: Double) -> Double { x * fill.alpha + y * (1 - fill.alpha) }
+        return NSColor(
+            srgbRed: mix(fill.red, base.red), green: mix(fill.green, base.green),
+            blue: mix(fill.blue, base.blue), alpha: 1)
+    }
+
+    private typealias Components = (Double, Double, Double, Double)
+
+    private static func themed(light: Components, dark: Components) -> Color {
+        Color(
+            nsColor: NSColor(name: nil) { @Sendable appearance in
+                let c = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+                return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: c.3)
+            })
+    }
+}
+
+/// Grip, title, status, branch, elapsed, menu, maximize and close; drag it to swap panes.
 private struct PaneHeader: View {
     let chat: String
     @Environment(Shell.self) private var shell
@@ -100,27 +158,18 @@ private struct PaneHeader: View {
         let tone = session.map(shell.tone(of:)) ?? .done
         let lastActivity = session?.updatedAt ?? claudeChat?.lastActivityAt
         let width = size?.width ?? 600
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             GripDots()
                 .foregroundStyle(Palette.t3)
-                .frame(width: 22, height: 26)
+                .frame(width: 14, height: 24)
                 .contentShape(Rectangle())
                 .help("Drag to swap")
-            if let session {
-                StatusPill(
-                    tone: tone, label: shell.statusLabel(of: session),
-                    hollow: shell.isHollow(session), showsLabel: fit.showsStatusLabel
-                )
-                .allowsHitTesting(false)
-                if let stuck = session.stuck {
-                    StuckBadge(flag: stuck)
-                }
-            } else if shell.isClaudeChatPane(chat) {
+            if shell.isClaudeChatPane(chat) && session == nil {
                 ClaudeCodeMarker()
                     .allowsHitTesting(false)
             }
             Text(title)
-                .font(.ui(13.5, .semibold))
+                .font(.ui(TypeSize.ui, .medium))
                 .foregroundStyle(Palette.t1)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -128,10 +177,21 @@ private struct PaneHeader: View {
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)
             Spacer(minLength: 0)
+            if let session {
+                StatusLabel(
+                    tone: tone, label: shell.statusLabel(of: session),
+                    hollow: shell.isHollow(session), showsLabel: fit.showsStatusLabel
+                )
+                .allowsHitTesting(false)
+                if let stuck = session.stuck {
+                    StuckBadge(flag: stuck)
+                }
+            }
             if let branch = session?.branch ?? claudeChat?.worktree, fit.showsBranch,
                 shell.repo?.git != false
             {
                 Chip(icon: Icon.branch, text: branch, mono: true)
+                    .foregroundStyle(Palette.t3)
                     .frame(maxWidth: width * 0.4, alignment: .trailing)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minWidth: min(110, width * 0.25))
@@ -139,7 +199,7 @@ private struct PaneHeader: View {
             if let lastActivity, fit.showsElapsed {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
                     Text(Elapsed.short(from: lastActivity, to: context.date))
-                        .font(.ui(TypeSize.caption))
+                        .font(.ui(TypeSize.meta))
                         .monospacedDigit()
                         .foregroundStyle(Palette.t3)
                 }
@@ -167,8 +227,9 @@ private struct PaneHeader: View {
             }
             PaneButtons(pane: chat)
         }
-        .frame(height: 28)
-        .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 8))
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(height: Metrics.headerHeight)
         // The double click lives behind the header's content, so the maximize and close
         // buttons never wait to see whether a second click follows.
         .background {
@@ -211,22 +272,25 @@ struct PaneButtons: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let maximized = shell.projectState.layout.maximized == pane
+        let maximized = shell.workspaceState.layout.maximized == pane
         Button {
             shell.toggleMaximize(pane)
         } label: {
             Image(systemName: maximized ? Icon.restore : Icon.maximize)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Palette.t3)
         }
-        .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+        .buttonStyle(.harness(.plain, iconOnly: true))
         .help(maximized ? "Restore" : "Maximize")
         .accessibilityLabel(maximized ? "Restore" : "Maximize")
         Button {
             shell.closePane(pane)
         } label: {
-            Image(systemName: Icon.close).font(.system(size: 11, weight: .medium))
+            Image(systemName: Icon.close)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Palette.t3)
         }
-        .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+        .buttonStyle(.harness(.plain, iconOnly: true))
         .help("Close")
         .accessibilityLabel("Close pane")
     }
@@ -239,12 +303,13 @@ struct PaneMenu<Items: View>: View {
     var body: some View {
         Menu(content: items) {
             Image(systemName: Icon.more)
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 24, height: 24)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Palette.t3)
+                .frame(width: Metrics.buttonHeight, height: Metrics.buttonHeight)
                 .contentShape(Rectangle())
         }
         .menuStyle(.button)
-        .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+        .buttonStyle(.harness(.plain, iconOnly: true))
         .menuIndicator(.hidden)
         .fixedSize()
         .help("More")
@@ -255,11 +320,11 @@ struct PaneMenu<Items: View>: View {
 /// Six dots, two by three: the handle that drags a pane.
 struct GripDots: View {
     var body: some View {
-        Grid(horizontalSpacing: 3, verticalSpacing: 3) {
+        Grid(horizontalSpacing: 2.5, verticalSpacing: 2.5) {
             ForEach(0..<3, id: \.self) { _ in
                 GridRow {
-                    Circle().frame(width: 3, height: 3)
-                    Circle().frame(width: 3, height: 3)
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
                 }
             }
         }
@@ -269,18 +334,11 @@ struct GripDots: View {
 
 /// The empty transcript of a chat that starts with its first message.
 private struct NewChatPlaceholder: View {
-    @Environment(\.accentColors) private var accent
-
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: Icon.spark)
-                .font(.system(size: 24))
-                .foregroundStyle(accent.accent)
-            Text("New chat")
-                .font(.ui(TypeSize.callout, .semibold))
-                .foregroundStyle(Palette.t2)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Text("New chat")
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t3)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -289,12 +347,11 @@ private struct NewChatPlaceholder: View {
 private struct ContinueBar: View {
     let pane: String
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let chat = shell.claudeChat(inPane: pane)
         let adopting = chat.map { shell.adopting.contains($0.id) } ?? false
-        let shape = glass.rounded(glass.radius.card)
+        let shape = RoundedRectangle.rounded(Radius.card)
         VStack(alignment: .leading, spacing: 8) {
             if chat?.openInClaudeCode == true {
                 Label {
@@ -302,8 +359,8 @@ private struct ContinueBar: View {
                 } icon: {
                     Image(systemName: Icon.warning)
                 }
-                .font(.ui(TypeSize.label))
-                .foregroundStyle(StatusTone.waiting.textColor)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(StatusTone.waiting.color)
                 .labelStyle(TightLabelStyle())
             }
             HStack(spacing: 10) {
@@ -312,7 +369,7 @@ private struct ContinueBar: View {
                         ? "This Claude Code chat is no longer listed."
                         : "Started in Claude Code. Read-only until you continue it here."
                 )
-                .font(.ui(TypeSize.small))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
@@ -332,11 +389,9 @@ private struct ContinueBar: View {
                 .help("Turn it into a harness chat in its own folder; the next message resumes it")
             }
         }
-        .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 10))
-        .background(shape.fill(glass.reading))
-        .overlay(GlassEdges(shape: shape))
-        .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
-        .padding(.horizontal, 10)
-        .padding(.bottom, 10)
+        .padding(EdgeInsets(top: 10, leading: 13, bottom: 10, trailing: 10))
+        .background(shape.fill(Palette.soft))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
     }
 }

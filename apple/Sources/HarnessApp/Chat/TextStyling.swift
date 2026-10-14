@@ -5,13 +5,13 @@ import HarnessKit
 /// styles applied to `RichText` paragraphs and to plain output.
 enum TextStyling {
     typealias Colors = DesignTokens.Colors
+    typealias Mac = DesignTokens.Colors.Mac
 
-    static let primary = NSColor(Colors.Text.primary)
-    static let secondary = NSColor(Colors.Text.secondary)
-    static let tertiary = NSColor(Colors.Text.tertiary)
-    static let codeBackground = NSColor(Colors.Surface.code)
-    static let inlineCodeBackground = NSColor(Colors.Fill.strong)
-    static let hairline = NSColor(Colors.Line.hairline)
+    static let primary = NSColor(Mac.textPrimary)
+    static let secondary = NSColor(Mac.textSecondary)
+    static let tertiary = NSColor(Mac.textTertiary)
+    /// Code blocks and inline code: the look's soft fill, no border.
+    static let codeBackground = NSColor(Mac.soft)
 
     static func ui(_ size: Double, _ weight: NSFont.Weight = .regular) -> NSFont {
         .systemFont(ofSize: size, weight: weight)
@@ -23,9 +23,11 @@ enum TextStyling {
 
     // MARK: Messages
 
-    private static let blockGap: CGFloat = 8
+    private static let blockGap: CGFloat = 9
     private static let listGap: CGFloat = 3
     private static let codePadding: CGFloat = 8
+    /// Reading text at about 1.6 line height, as the mockup sets it.
+    private static let lineSpacing: CGFloat = 4.5
     private static let codeInset: CGFloat = 10
     private static let listIndent: CGFloat = 16
 
@@ -63,7 +65,7 @@ enum TextStyling {
                 result.addAttribute(
                     .blockDecoration,
                     value: BlockDecoration(
-                        fill: codeBackground, stroke: hairline, radius: 9, outset: codePadding),
+                        fill: codeBackground, radius: Radius.card, outset: codePadding),
                     range: range)
             }
             applyParagraphStyle(
@@ -75,15 +77,15 @@ enum TextStyling {
 
     private static func baseFont(_ role: RichParagraph.Role) -> NSFont {
         switch role {
-        case .body, .listItem: ui(TypeSize.callout)
-        case .heading(let level): ui(level <= 2 ? TypeSize.subhead : TypeSize.body, .bold)
-        case .code: mono(11)
+        case .body, .listItem: ui(TypeSize.reading)
+        case .heading(let level): ui(level <= 2 ? TypeSize.body : TypeSize.reading, .semibold)
+        case .code: mono(TypeSize.meta)
         }
     }
 
     private static func style(for role: RichParagraph.Role) -> NSMutableParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = 3
+        style.lineSpacing = role.isCode ? 3 : lineSpacing
         switch role {
         case .body, .heading:
             break
@@ -122,8 +124,8 @@ enum TextStyling {
         var font = base
         var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: primary]
         if run.style.contains(.code), !inCodeBlock {
-            font = mono(base.pointSize - 1)
-            attributes[.backgroundColor] = inlineCodeBackground
+            font = mono(TypeSize.meta)
+            attributes[.inlineChip] = codeBackground
         }
         var traits: NSFontDescriptor.SymbolicTraits = []
         if run.style.contains(.bold) { traits.insert(.bold) }

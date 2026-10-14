@@ -9,45 +9,43 @@ struct UsagePopover: View {
     static let trailingInset = 190.0
 
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         let usage = shell.model.usage
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("USAGE")
-                    .font(.ui(TypeSize.small, .bold))
-                    .tracking(0.7)
-                    .foregroundStyle(Palette.t3)
+                Text("Usage")
+                    .font(.ui(TypeSize.ui, .semibold))
+                    .foregroundStyle(Palette.t1)
                 Spacer(minLength: 0)
                 RefreshControl()
             }
-            .frame(height: 24)
-            .padding(.bottom, 8)
+            .frame(height: Metrics.buttonHeight)
+            .padding(.bottom, 10)
             LimitRow(title: "5 hour window", window: usage.limits?.fiveHour)
             LimitRow(title: "Weekly", window: usage.limits?.sevenDay)
             Text("This month")
-                .font(.ui(TypeSize.small, .semibold))
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t3)
                 .padding(.top, 2)
             HStack(spacing: 6) {
                 Total(value: "\(usage.totalSessions)", label: "Sessions")
                 Total(value: UsageText.tokens(usage.totalTokens), label: "Total tokens")
             }
-            .padding(.top, 6)
+            .padding(.top, 4)
             .padding(.bottom, 12)
             UsageCalendar()
                 .padding(.bottom, 10)
             Text(footnote(probes: usage.probesText))
-                .font(.ui(TypeSize.label))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .lineSpacing(1.5)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(Palette.t1)
         .padding(14)
-        .frame(width: 360)
-        .sheetGlass(radius: glass.radius.panel)
-        .shadow(color: glass.shadow, radius: 24, y: 14)
+        .frame(width: 340)
+        .sheetSurface()
         .task { try? await usage.loadMonth() }
     }
 
@@ -88,7 +86,7 @@ private struct RefreshControl: View {
                     }
                 }
             }
-            .buttonStyle(.harness(.ghost, height: 24))
+            .buttonStyle(.harness(.plain))
             .disabled(usage.isRefreshing)
             .help("Ask Claude for the limits now")
         }
@@ -97,7 +95,7 @@ private struct RefreshControl: View {
     @ViewBuilder private func note(_ text: String?) -> some View {
         if let text {
             Text(text)
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .monospacedDigit()
                 .foregroundStyle(Palette.t3)
                 .lineLimit(1)
@@ -114,16 +112,17 @@ private struct LimitRow: View {
         let usage = shell.model.usage
         TimelineView(.everyMinute) { context in
             let stale = UsageText.isStale(window, now: context.date)
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(title).foregroundStyle(Palette.t2)
                     Spacer()
                     Text(UsageText.percent(window))
-                        .fontWeight(.bold)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
                         .opacity(stale ? 0.5 : 1)
                 }
-                .font(.ui(TypeSize.callout))
-                Meter(value: window?.utilization ?? 0, height: 6)
+                .font(.ui(TypeSize.ui))
+                Meter(value: window?.utilization ?? 0, height: 3)
                     .opacity(stale ? 0.5 : 1)
                 HStack {
                     Text(usage.resetText(window))
@@ -136,7 +135,7 @@ private struct LimitRow: View {
                                 stale ? "More than 10 minutes old" : "When Claude last reported it")
                     }
                 }
-                .font(.ui(TypeSize.caption))
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
             }
             .padding(.bottom, 12)
@@ -151,13 +150,13 @@ private struct Total: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.ui(TypeSize.headline, .bold))
-            Text(label).font(.ui(10.5)).foregroundStyle(Palette.t3)
+            Text(value).font(.ui(TypeSize.body, .semibold)).monospacedDigit()
+            Text(label).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t3)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10))
+        .softFill()
     }
 }
 
@@ -185,7 +184,7 @@ private struct UsageCalendar: View {
                     try await usage.showPreviousMonth()
                 }
                 Text(usage.monthTitle)
-                    .font(.ui(TypeSize.body, .bold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .frame(maxWidth: .infinity)
                 navigation(Icon.chevronRight, "Next month") { try await usage.showNextMonth() }
                     .disabled(!usage.canShowNextMonth)
@@ -193,7 +192,7 @@ private struct UsageCalendar: View {
             LazyVGrid(columns: columns, spacing: 3) {
                 ForEach(UsageText.weekdayHeads, id: \.self) { head in
                     Text(head)
-                        .font(.ui(TypeSize.micro, .semibold))
+                        .font(.ui(TypeSize.micro))
                         .foregroundStyle(Palette.t3)
                         .padding(.bottom, 2)
                 }
@@ -201,11 +200,11 @@ private struct UsageCalendar: View {
                     if let cell {
                         DayCell(cell: cell, peak: usage.peakDayTokens, hovered: $hovered)
                     } else {
-                        Color.clear.frame(height: 40)
+                        Color.clear.frame(height: 36)
                     }
                 }
             }
-            .frame(minHeight: 40 * 5 + 30, alignment: .top)
+            .frame(minHeight: 36 * 5 + 30, alignment: .top)
         }
         .overlayPreferenceValue(HoveredDayKey.self) { anchor in
             GeometryReader { geometry in
@@ -232,9 +231,9 @@ private struct UsageCalendar: View {
         Button {
             Task { try? await action() }
         } label: {
-            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
         }
-        .buttonStyle(.harness(.ghost, height: 24, iconOnly: true))
+        .buttonStyle(.harness(.plain, iconOnly: true))
         .accessibilityLabel(label)
     }
 }
@@ -248,7 +247,7 @@ private struct DayCell: View {
     var body: some View {
         let shade = UsageText.shade(tokens: cell.tokens, peak: peak)
         let strong = UsageText.isStrong(shade: shade)
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let shape = RoundedRectangle.rounded(Radius.button)
         VStack(alignment: .leading, spacing: 0) {
             Text("\(cell.day.day)")
                 .font(.ui(TypeSize.micro))
@@ -263,17 +262,17 @@ private struct DayCell: View {
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .topLeading)
         .background {
             if cell.isFuture {
-                shape.strokeBorder(Palette.hair)
+                shape.strokeBorder(Palette.divider)
             } else {
-                shape.fill(Palette.fill).overlay(shape.fill(accent.accent.opacity(shade)))
+                shape.fill(Palette.soft).overlay(shape.fill(accent.accent.opacity(shade)))
             }
         }
         .overlay {
             if cell.isToday {
-                shape.strokeBorder(Palette.t1, lineWidth: 1.5)
+                shape.strokeBorder(Palette.t2, lineWidth: 1)
             }
         }
         .contentShape(shape)
@@ -294,15 +293,14 @@ private struct DayCell: View {
 
 private struct DayTip: View {
     let detail: (title: String, detail: String)
-    @Environment(\.glass) private var glass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(detail.title).font(.ui(TypeSize.label, .semibold)).foregroundStyle(Palette.t1)
-            Text(detail.detail).font(.ui(TypeSize.caption)).foregroundStyle(Palette.t2)
+            Text(detail.title).font(.ui(TypeSize.ui, .medium)).foregroundStyle(Palette.t1)
+            Text(detail.detail).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t2)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .sheetGlass(radius: min(glass.radius.item, 9))
+        .sheetSurface(radius: Radius.card)
     }
 }

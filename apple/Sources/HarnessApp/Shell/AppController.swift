@@ -9,8 +9,6 @@ final class AppController {
     enum Phase: Equatable {
         case loading
         case ready
-        /// The daemon has not stored this Mac's device token yet.
-        case noToken
         case failed(String)
     }
 
@@ -18,7 +16,7 @@ final class AppController {
     private(set) var shell: Shell?
     /// Starts the daemon's launchd service when the daemon cannot be reached.
     let service: ServiceStarter
-    /// The device token is being read for the first start.
+    /// The device token is being asked for, for the first start.
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
     @ObservationIgnored private var visibility: VisibilityMonitor?
@@ -58,14 +56,12 @@ final class AppController {
         }
     }
 
-    /// Reads the device token (away from the main thread, as the Keychain may ask) and
-    /// builds the window's model.
+    /// Asks the daemon for the device token (away from the main thread) and builds the
+    /// window's model. A daemon that is not running gives none: the window opens showing it
+    /// as unreachable, with the offer to start the service, and asks again on connect.
     private func open() async {
         do {
-            guard let model = try await AppModel.local() else {
-                phase = .noToken
-                return
-            }
+            let model = try await AppModel.local()
             let shell = Shell(model: model)
             self.shell = shell
             phase = .ready
@@ -74,8 +70,6 @@ final class AppController {
             visibility = VisibilityMonitor(reporter: model.visibility)
             visibility?.start()
             connect()
-        } catch TokenStoreError.keychain(let status) {
-            phase = .failed("The Keychain refused to share the device token (status \(status)).")
         } catch {
             phase = .failed(Shell.describe(error))
         }
@@ -91,13 +85,13 @@ final class AppController {
         }
     }
 
-    /// Drops the current connection and connects again at once, with the Keychain's
-    /// token when the daemon refused the one in use (`AppModel.connect()`).
+    /// Drops the current connection and connects again at once, asking the daemon for its
+    /// token first when it refused the one in use or gave none yet (`AppModel.connect()`).
     func connect() {
         guard let shell else { return }
         Task {
             if let failure = await shell.model.connect() {
-                shell.show(failure, doing: "Could not read the device token")
+                shell.show(failure, doing: "Could not get the device token")
             }
         }
     }

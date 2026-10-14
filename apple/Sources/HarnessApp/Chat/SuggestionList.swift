@@ -5,20 +5,17 @@ import SwiftUI
 /// move the highlight, Tab or Return insert it, Esc closes the list.
 struct SuggestionList: View {
     static let visibleRows = 7
-    static let rowHeight: CGFloat = 30
+    static let rowHeight: CGFloat = Metrics.rowHeight
 
     let list: CompletionList
     let active: Int
     let pick: (Completion) -> Void
     @Environment(\.accentColors) private var accent
-    @Environment(\.glass) private var glass
 
     var body: some View {
-        let shape = glass.rounded(glass.radius.card)
         VStack(alignment: .leading, spacing: 2) {
             Text(list.title)
-                .font(.ui(TypeSize.micro, .bold))
-                .textCase(.uppercase)
+                .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .padding(.horizontal, 8)
                 .padding(.top, 2)
@@ -42,9 +39,7 @@ struct SuggestionList: View {
             }
         }
         .padding(6)
-        .background(shape.fill(glass.surface))
-        .overlay(GlassEdges(shape: shape))
-        .background(GlassDepth(shape: shape, shadow: glass.style.shadow.panel))
+        .sheetSurface(radius: Radius.card)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(list.title)
     }
@@ -62,7 +57,7 @@ struct SuggestionList: View {
                 Text(item.label)
                     .font(
                         list.trigger.kind == .file
-                            ? .mono(TypeSize.small) : .ui(TypeSize.small, .semibold)
+                            ? .mono(TypeSize.meta) : .ui(TypeSize.ui, .medium)
                     )
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
@@ -70,14 +65,14 @@ struct SuggestionList: View {
                     .layoutPriority(1)
                 if let hint = item.hint {
                     Text(hint)
-                        .font(.mono(TypeSize.caption))
+                        .font(.mono(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                         .lineLimit(1)
                 }
                 if let detail = item.detail {
                     Text(detail)
-                        .font(.ui(TypeSize.caption))
-                        .foregroundStyle(Palette.t2)
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(Palette.t3)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -86,8 +81,7 @@ struct SuggestionList: View {
             .padding(.horizontal, 8)
             .frame(height: Self.rowHeight)
             .background(
-                on ? accent.soft : .clear,
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                on ? accent.selection : .clear, in: .rounded(Radius.row)
             )
             .contentShape(Rectangle())
         }

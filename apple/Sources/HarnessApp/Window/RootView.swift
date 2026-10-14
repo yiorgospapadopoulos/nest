@@ -15,12 +15,6 @@ struct RootView: View {
                 }
             case .loading:
                 StartupView(title: "Starting", message: nil, retry: nil)
-            case .noToken:
-                StartupView(
-                    title: "harness is not set up on this Mac yet",
-                    message:
-                        "Start the harness daemon once; it stores this Mac's device token in the Keychain.",
-                    retry: controller.start)
             case .failed(let message):
                 StartupView(
                     title: "harness could not start", message: message, retry: controller.start)
@@ -28,35 +22,31 @@ struct RootView: View {
         }
         .frame(minWidth: 1000, minHeight: 640)
         // Under the title bar too, so the top band matches the rest of the window.
-        .background { SeeThroughWindow(material: glass.window.material).ignoresSafeArea() }
-        .environment(\.glass, glass)
-    }
-
-    /// The theme from Settings; the default until the shell is ready.
-    private var glass: GlassPalette {
-        GlassPalette.of(controller.shell?.settings.glass ?? DesignTokens.GlassTheme.default)
+        .background { SeeThroughWindow().ignoresSafeArea() }
     }
 }
 
-/// The window shell: the theme's frost over the desktop, project tabs and the current
-/// project.
+/// The window shell: one frosted slab over the desktop holding the project tabs and the
+/// current project, its areas meeting edge to edge at 1 point separators.
 struct ShellView: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
     @Environment(AppController.self) private var controller
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.flatGlass) private var snapshot
+    @Environment(\.offscreen) private var snapshot
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var fullScreen = false
+    @State private var windowSize = CGSize.zero
 
     var body: some View {
         let settings = shell.settings
+        // Offscreen there is no desktop to show through: the window draws opaque.
         let backdrop = WindowBackdrop.of(
-            reduceTransparency: reduceTransparency, fullScreen: fullScreen)
+            reduceTransparency: reduceTransparency || snapshot, fullScreen: fullScreen)
         ZStack(alignment: .top) {
-            WindowBackground(backdrop: backdrop)
+            WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
             VStack(spacing: 0) {
-                TabStrip()
+                TabStrip(fullScreen: fullScreen)
+                Separator()
                 ProjectBody()
             }
             VStack(spacing: 8) {
@@ -66,17 +56,22 @@ struct ShellView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .padding(.top, glass.spacing.stripHeight + 12)
+            .padding(.top, Metrics.stripHeight + 12)
             OverlayLayer()
         }
         .ignoresSafeArea()
-        .environment(\.accentColors, AccentColors(accent: settings.accent, bubble: settings.bubble))
+        .onGeometryChange(for: CGSize.self) {
+            $0.size
+        } action: {
+            windowSize = $0
+        }
+        .windowSpace(size: windowSize)
+        .environment(\.accentColors, AccentColors(accent: settings.accent))
         // Continuous animations stop while nobody can see the window (IMP-11).
         .environment(
             \.reducedMotion,
             systemReduceMotion || snapshot || !shell.model.visibility.isVisible
         )
-        .environment(\.seeThrough, backdrop.isSeeThrough)
         .preferredColorScheme(colorScheme(settings.theme))
         .onReceive(
             NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)
@@ -115,42 +110,48 @@ struct ShellView: View {
     }
 }
 
-/// The Pixies tab, or the current project's toolbar, sidebar, workspace or board, and
-/// activity panel.
+/// The Pixies tab, or the current project's toolbar, sidebar, workspace or board and
+/// activity panel; both over the bottom bar.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         Group {
             if shell.pixiesOpen {
-                PixiesView()
+                VStack(spacing: 0) {
+                    PixiesView()
+                    StatusBar()
+                }
             } else if shell.project == nil {
                 NoProjectView()
             } else {
                 VStack(spacing: 0) {
                     ProjectToolbar()
-                    HStack(spacing: glass.spacing.gap) {
+                    Separator()
+                    HStack(spacing: 0) {
                         Sidebar()
+                        Separator(axis: .vertical)
+                        // The board sits on the pane surface; the workspace's panels float
+                        // on the bare window, which shows in the gaps between them.
                         Group {
                             if shell.projectState.view == .board {
                                 BoardView()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .paneSurface()
                             } else {
                                 WorkspaceView()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .chatBackdrop()
                             }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Separator(axis: .vertical)
                         RightPanel()
                     }
+                    StatusBar()
                 }
-                .padding(
-                    EdgeInsets(
-                        top: 0, leading: glass.spacing.gap, bottom: glass.spacing.gap,
-                        trailing: glass.spacing.gap))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(glass.shell)
     }
 }
 
@@ -161,9 +162,9 @@ private struct NoProjectView: View {
         VStack(spacing: 10) {
             Image(systemName: Icon.folder).font(.system(size: 26)).foregroundStyle(Palette.t2)
             Text(shell.app.connection == .connected ? "No projects yet" : "Connecting to harness")
-                .font(.ui(16, .semibold))
+                .font(.ui(TypeSize.reading, .semibold))
             Text("Open a git repository with the + next to the tabs.")
-                .font(.ui(TypeSize.callout))
+                .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t3)
         }
     }
@@ -186,7 +187,7 @@ private struct ConnectionBanner: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: Icon.warning)
-                            .foregroundStyle(StatusTone.waiting.textColor)
+                            .foregroundStyle(StatusTone.waiting.color)
                     }
                     Text(starting ? "Starting the harness service" : message)
                         .foregroundStyle(Palette.t1)
@@ -200,11 +201,11 @@ private struct ConnectionBanner: View {
                             .help("Start or restart the harness daemon's background service")
                     }
                 }
-                .font(.ui(TypeSize.callout, .semibold))
+                .font(.ui(TypeSize.ui, .medium))
                 .padding(.leading, 16)
                 .padding(.trailing, 6)
                 .frame(height: 36)
-                .controlGlass()
+                .sheetSurface(radius: Radius.card)
                 if unreachable {
                     ServiceNote(state: service.state)
                 }
@@ -254,18 +255,17 @@ private struct ConnectionBanner: View {
 private struct ServiceNote: View {
     let state: ServiceStartState
     @Environment(Shell.self) private var shell
-    @Environment(\.glass) private var glass
 
     var body: some View {
         switch state {
         case .notInstalled(let command):
             note {
                 Text("The harness service is not installed. Install it once in Terminal:")
-                    .font(.ui(TypeSize.callout, .semibold))
+                    .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
                 HStack(spacing: 8) {
                     Text(command)
-                        .font(.mono(11.5))
+                        .font(.mono(TypeSize.meta))
                         .foregroundStyle(Palette.t1)
                         .textSelection(.enabled)
                         .lineLimit(3)
@@ -273,7 +273,7 @@ private struct ServiceNote: View {
                         .padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
-                            Palette.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            Palette.soft, in: .rounded(Radius.card))
                     Button {
                         shell.copyText(command)
                     } label: {
@@ -283,7 +283,7 @@ private struct ServiceNote: View {
                     .help("Copy the command")
                 }
                 Text("Then choose Start harness service again.")
-                    .font(.ui(TypeSize.label))
+                    .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
             }
         case .failed(let reason):
@@ -294,8 +294,8 @@ private struct ServiceNote: View {
                     Image(systemName: Icon.warning)
                 }
                 .labelStyle(TightLabelStyle())
-                .font(.ui(TypeSize.callout))
-                .foregroundStyle(StatusTone.failed.textColor)
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(StatusTone.failed.color)
             }
         case .idle, .starting, .started:
             EmptyView()
@@ -306,7 +306,7 @@ private struct ServiceNote: View {
         VStack(alignment: .leading, spacing: 8, content: content)
             .padding(14)
             .frame(width: 560, alignment: .leading)
-            .sheetGlass(radius: glass.radius.card)
+            .sheetSurface(radius: Radius.card)
             .transition(.opacity)
     }
 }
@@ -319,11 +319,11 @@ private struct ToastView: View {
             Image(systemName: icon).foregroundStyle(color)
             Text(toast.text).lineLimit(2)
         }
-        .font(.ui(TypeSize.callout, .semibold))
+        .font(.ui(TypeSize.ui, .medium))
         .foregroundStyle(Palette.t1)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .controlGlass()
+        .sheetSurface(radius: Radius.card)
         .allowsHitTesting(false)
     }
 
@@ -337,9 +337,9 @@ private struct ToastView: View {
 
     private var color: Color {
         switch toast.kind {
-        case .done: StatusTone.review.textColor
-        case .failed: StatusTone.failed.textColor
-        case .info: StatusTone.waiting.textColor
+        case .done: StatusTone.review.color
+        case .failed: StatusTone.failed.color
+        case .info: StatusTone.waiting.color
         }
     }
 }
@@ -348,12 +348,12 @@ private struct StartupView: View {
     let title: String
     let message: String?
     let retry: (() -> Void)?
-    @Environment(\.glass) private var glass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         ZStack {
-            WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency))
+            WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency || offscreen))
             VStack(spacing: 10) {
                 if retry == nil {
                     ProgressView().controlSize(.small)
@@ -361,7 +361,7 @@ private struct StartupView: View {
                 Text(title).font(.ui(TypeSize.headline, .semibold))
                 if let message {
                     Text(message)
-                        .font(.ui(TypeSize.callout))
+                        .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t2)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 360)
@@ -371,7 +371,7 @@ private struct StartupView: View {
                 }
             }
             .padding(28)
-            .panelGlass(radius: glass.sheetRadius)
+            .sheetSurface()
         }
     }
 }
