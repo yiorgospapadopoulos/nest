@@ -126,7 +126,7 @@ def gate_worktree_add(
     run = runner._run  # pyright: ignore[reportPrivateUsage]
 
     async def gated(
-        argv: Sequence[str], cwd: Path, time_limit: float
+        argv: Sequence[str], cwd: Path, time_limit: float, *rest: int | None
     ) -> tuple[int | None, bytes, bytes]:
         # After the hardening options (I-009), wherever they end.
         if any(list(argv[i : i + 2]) == ["worktree", "add"] for i in range(1, len(argv))):
@@ -134,7 +134,7 @@ def gate_worktree_add(
             await release.wait()
             if fail:
                 return 128, b"", b"fatal: no space left"
-        return await run(argv, cwd, time_limit)
+        return await run(argv, cwd, time_limit, *rest)
 
     monkeypatch.setattr(runner, "_run", gated)
     return started, release

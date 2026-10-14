@@ -97,6 +97,29 @@ async def test_a_log_that_cannot_be_read_is_named(api: Api) -> None:
     assert "could not read the log (HTTP 404: Not Found)" in await sent_text(api, session_id)
 
 
+async def test_a_check_of_another_repository_is_not_read(api: Api) -> None:
+    """SEC-18: only logs of the pull request's own repository are read."""
+    elsewhere = "https://github.com/other/private/actions/runs/99/job/22"
+    checks = [
+        check_run("sneaky", conclusion="FAILURE", url=elsewhere),
+        check_run("test", conclusion="FAILURE", url=actions_job(11).replace("me/repo", "Me/Repo")),
+    ]
+    session_id = await opened(api, pr_json(statusCheckRollup=checks))
+    api.runner.job_logs = {"11": "boom\n", "22": "private\n"}
+    api.provider.script(reply("Looking."))
+
+    sent = await api.http.post(f"/api/sessions/{session_id}/ci-feedback")
+    await reach(api, session_id, "idle", results=2)
+
+    assert sent.status_code == 202
+    text = await sent_text(api, session_id)
+    assert "private\n" not in text
+    assert f"another repository than the pull request's. See {elsewhere}" in text
+    assert "boom" in text
+    calls = [call for call in api.runner.gh_calls() if call[1:3] == ("run", "view")]
+    assert calls == [("gh", "run", "view", "--job", "11", "--log-failed", "--repo", "Me/Repo")]
+
+
 async def test_nothing_failing_is_a_readable_conflict(api: Api) -> None:
     session_id = await opened(api, pr_json(statusCheckRollup=[check_run("unit")]))
 

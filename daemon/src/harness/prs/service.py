@@ -82,13 +82,13 @@ class PullRequests:
         message, which starts a turn or is queued like any other (IMP-08).
         """
         session = await self._sessions.get(session_id)
-        _require_pr(session)
+        url = _require_pr(session)
         session = await self.monitor.refresh(session)
         failing = [] if session.pr is None else session.pr.checks.items
         failing = [check for check in failing if check.state == "failure"]
         if not failing:
             raise NoFailingChecksError
-        text = await feedback(self._run, self._cwd, failing)
+        text = await feedback(self._run, self._cwd, failing, repo_of(url))
         return await self._sessions.send(session_id, text, [])
 
     async def merge(self, session_id: str, request: MergeRequest) -> Session:
