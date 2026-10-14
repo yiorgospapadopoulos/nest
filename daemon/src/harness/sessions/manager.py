@@ -31,6 +31,7 @@ from harness.sessions.errors import (
     DirtyCheckoutError,
     NoTurnInProgressError,
     NoWorkspaceError,
+    PixieChatError,
     SessionBusyError,
 )
 from harness.sessions.extras import RunExtrasSource
@@ -77,6 +78,10 @@ NO_CHECKPOINT = (
 NO_RUN_TO_PREVIEW = (
     "Claude Code is not running for this chat, so the files to restore cannot be listed. "
     "Send a message to start it again, then try again."
+)
+NO_PIXIE_RESTORE = (
+    "Files cannot be restored in a pixie's chat: each of its runs starts fresh, so the "
+    "earlier ones' checkpoints are gone."
 )
 
 # The engine's entry for a model (None is Claude Code's default), or None when unknown.
@@ -230,7 +235,10 @@ class SessionManager:
         permission_mode: PermissionMode,
         attachment_ids: list[str],
     ) -> Session:
-        """A pixie's chat: in place in its workdir, with no project, review or git (D072)."""
+        """A pixie's chat: in place in its workdir, with no project, review or git (D072).
+        Refused (422) when the model does not run in the pixie's mode, as for any chat.
+        """
+        await self._require_mode(model, permission_mode)
         attachments = await self._attachments.for_session(attachment_ids, None)
         session = await self._store.create(
             NewSession(
@@ -257,6 +265,22 @@ class SessionManager:
             lambda: self._turns.guard(live, self._turns.start(live, session, None, attachments))
         )
         return session
+
+    async def set_pixie_controls(self, session_id: str, controls: dict[str, object]) -> None:
+        """Save a pixie's new title, model, effort or mode on its chat as they are, null
+        included (back to the default), and apply them to the live run. The pixie service
+        has checked them; a new effort opens a new run next turn (D072).
+        """
+        session = await self._store.get(session_id)
+        changes = {
+            name: value for name, value in controls.items() if getattr(session, name) != value
+        }
+        if not changes:
+            return
+        await self._save_changes(session_id, changes)
+        live = self._live.get(session_id)
+        if live is not None and {"model", "permission_mode"} & changes.keys():
+            await self._turns.apply_controls(live)
 
     def refresh_run(self, session_id: str) -> None:
         """What a pixie chat's run is opened with changed: its next turn opens a fresh run.
@@ -431,6 +455,9 @@ class SessionManager:
         as it is (IMP-02, BUG-104). A preview never starts Claude Code (BUG-94).
         """
         session = await self._store.get(session_id)
+        if session.pixie_id is not None:
+            # Each pixie run starts fresh, so an earlier run's checkpoints cannot be restored.
+            raise PixieChatError(NO_PIXIE_RESTORE)
         require_open(session)
         checkpoint = await self._store.checkpoint(session_id, event_id)
         if checkpoint is None:
@@ -649,19 +676,37 @@ class SessionManager:
         return default if effort_problem(option, default) is None else None
 
     async def _fitting_mode(self, session: Session, request: UpdateSession) -> UpdateSession:
-        """`request`, refused (422) when its model and mode do not fit. A chat in Auto
-        moved to a model without it asks again (`default`) instead (BUG-86).
+        """`request`, refused (422) when its model and mode do not fit (`fitting_mode`)."""
+        mode = await self.fitting_mode(
+            request.model or session.model,
+            request.permission_mode,
+            session.permission_mode,
+            model_changed=request.model is not None,
+        )
+        return request.model_copy(update={"permission_mode": mode})
+
+    async def fitting_mode(
+        self,
+        model: str | None,
+        chosen: PermissionMode | None,
+        current: PermissionMode,
+        *,
+        model_changed: bool,
+    ) -> PermissionMode | None:
+        """The mode to save as a chat's or pixie's model and mode change: `chosen`,
+        refused (422) when `model` does not run in it. With none chosen, one in Auto moved
+        to a model without it asks again (`default`) instead (BUG-86); otherwise None,
+        which keeps the mode it has.
         """
-        model = request.model or session.model
         if (
-            request.model is not None
-            and request.permission_mode is None
-            and session.permission_mode == AUTO
+            model_changed
+            and chosen is None
+            and current == AUTO
             and await self._mode_problem(model, AUTO)
         ):
-            return request.model_copy(update={"permission_mode": DEFAULT_MODE})
-        await self._require_mode(model, request.permission_mode)
-        return request
+            return DEFAULT_MODE
+        await self._require_mode(model, chosen)
+        return chosen
 
     async def _require_mode(self, model: str | None, mode: PermissionMode | None) -> None:
         """422 when the engine's list knows the model and it does not run in `mode`."""

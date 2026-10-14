@@ -55,7 +55,9 @@ class CreatePixie(PixieSettings):
 
 
 class UpdatePixie(BaseModel):
-    """Fields left out (or null) are unchanged; `projects` uses `all_projects` to clear."""
+    """Fields left out (or null) are unchanged, except that an explicit null `model` or
+    `effort` sets it back to the default; `projects` uses `all_projects` to clear.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -77,6 +79,13 @@ class UpdatePixie(BaseModel):
     allowed_tools: list[str] | None = None
     disallowed_tools: list[str] | None = None
     hidden: bool | None = None
+
+
+class PixieOrder(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Every pixie's id, each once, in the new order.
+    ids: list[str]
 
 
 class Pixie(PixieSettings):

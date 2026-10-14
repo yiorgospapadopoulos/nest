@@ -21,6 +21,10 @@ class InvalidFileNameError(InvalidInputError):
     pass
 
 
+class InvalidOrderError(InvalidInputError):
+    """A new order must name every pixie exactly once."""
+
+
 class StaleFileError(ConflictError):
     """The file changed since the writer read it; carries the current text."""
 

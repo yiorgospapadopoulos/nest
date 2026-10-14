@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from harness.pixies.errors import DuplicateSlugError, PixieNotFoundError
+from harness.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotFoundError
 from harness.pixies.models import PixieSettings
 from harness.pixies.store import PixieStore
 from harness.storage.db import Database
@@ -105,3 +105,30 @@ async def test_name_is_none_for_a_missing_pixie(db: Database, clock: FakeClock) 
 
     assert await store.name(pixie.id) == "Tester"
     assert await store.name("gone") is None
+
+
+async def test_reorder_moves_every_pixie_and_names_the_moved_ones(
+    db: Database, clock: FakeClock
+) -> None:
+    store = PixieStore(db, clock)
+    a, b, c = [await store.create(PixieSettings(name=n), n.lower()) for n in ("A", "B", "C")]
+
+    moved = await store.reorder([b.id, a.id, c.id])
+    listed = await store.list_pixies()
+
+    assert moved == [b.id, a.id]
+    assert [(p.id, p.position) for p in listed] == [(b.id, 0), (a.id, 1), (c.id, 2)]
+
+
+@pytest.mark.parametrize("order", [[0, 1], [0, 1, 1], [0, 1, 2, 2], [0, 1, 3]])
+async def test_reorder_must_name_every_pixie_once(
+    db: Database, clock: FakeClock, order: list[int]
+) -> None:
+    store = PixieStore(db, clock)
+    ids = [(await store.create(PixieSettings(name=n), n.lower())).id for n in ("A", "B", "C")]
+    named = [*ids, "nope"]
+
+    with pytest.raises(InvalidOrderError):
+        await store.reorder([named[i] for i in order])
+
+    assert [p.id for p in await store.list_pixies()] == ids

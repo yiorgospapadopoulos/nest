@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 
@@ -23,10 +24,12 @@ async def fixed_extras(session: Session) -> RunExtras:
 
 
 @pytest.fixture
-async def env(tmp_path: Path, db: Database, clock: FakeClock) -> Env:
+async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[Env]:
     environment = Env(tmp_path, db, clock)
     environment.manager = environment.build(timedelta(hours=1), extras=fixed_extras)
-    return environment
+    yield environment
+    # Stops the chats' runs and idle timers before the loop closes.
+    await environment.manager.shutdown()
 
 
 def idle(env: Env, session_id: str, turns: int = 1) -> bool:
@@ -104,8 +107,11 @@ async def test_a_pixie_chat_without_an_extras_source_fails_loudly(
     bare = Env(tmp_path, db, clock)
     session = await create(bare)
 
-    with pytest.raises(RuntimeError, match=f"pixie chat {session.id} has no run extras source"):
-        await bare.manager._turns._pixie_extras(session)  # type: ignore[attr-defined]
+    try:
+        with pytest.raises(RuntimeError, match=f"pixie chat {session.id} has no run extras source"):
+            await bare.manager._turns._pixie_extras(session)  # type: ignore[attr-defined]
+    finally:
+        await bare.manager.shutdown()
 
 
 async def test_refreshing_a_chat_without_a_run_does_nothing(env: Env) -> None:

@@ -103,7 +103,8 @@ async def preview_rewind(
     session_id: str, ctx: Context, message: Annotated[int, Query(ge=1)]
 ) -> RewindResult:
     """What restoring files to before the user message of event `message` would change;
-    `can_rewind` false with `error` when it cannot. 409 unless the chat is idle (IMP-02).
+    `can_rewind` false with `error` when it cannot. 409 unless the chat is idle (IMP-02),
+    and 409 `pixie_chat` for a pixie's chat (D072).
     """
     return await ctx.sessions.rewind(session_id, message, dry_run=True)
 
@@ -112,7 +113,8 @@ async def preview_rewind(
 async def rewind(session_id: str, body: RewindRequest, ctx: Context) -> RewindResult:
     """Restore the files the agent changed since that message to how they were before it,
     then note it in the chat (`session.notice` of kind `files_restored`). Only files: the
-    conversation stays. 409 unless the chat is idle, or `cannot_rewind` with the reason.
+    conversation stays. 409 unless the chat is idle, or `cannot_rewind` with the reason,
+    or `pixie_chat` for a pixie's chat.
     """
     return await ctx.sessions.rewind(session_id, body.message, dry_run=False)
 

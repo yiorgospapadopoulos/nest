@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from harness.clock import Clock
-from harness.pixies.errors import DuplicateSlugError, PixieNotFoundError
+from harness.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotFoundError
 from harness.pixies.models import Pixie, PixieSettings
 from harness.storage.db import Database
 
@@ -75,6 +75,26 @@ class PixieStore:
             _check_slug_conflict(error, str(changes.get("slug")))
             raise
         return await self.get(pixie_id)
+
+    async def reorder(self, ids: list[str]) -> list[str]:
+        """Positions 0..n-1 in the order of `ids`, which names every pixie once; returns
+        the ids whose position changed. Read and written in one transaction, so a pixie
+        created meanwhile makes the order incomplete instead of sharing a position.
+        """
+        now = _column("updated_at", self._clock.now())
+        async with self._db.transaction() as tx:
+            rows = await tx.fetch_all("SELECT id, position FROM pixies")
+            positions = {row["id"]: row["position"] for row in rows}
+            if len(set(ids)) != len(ids) or set(ids) != positions.keys():
+                msg = "the order must name every pixie exactly once"
+                raise InvalidOrderError(msg)
+            moved = [(pos, pid) for pos, pid in enumerate(ids) if positions[pid] != pos]
+            for position, pid in moved:
+                await tx.execute(
+                    "UPDATE pixies SET position = ?, updated_at = ? WHERE id = ?",
+                    (position, now, pid),
+                )
+        return [pid for _, pid in moved]
 
     async def chat_sessions(self, pixie_id: str) -> list[str]:
         """Every session of the pixie: its current chat and the ones a reset archived."""

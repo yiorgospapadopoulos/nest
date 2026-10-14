@@ -1,10 +1,12 @@
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 
 from harness.context import AppContext
+from harness.errors import InvalidInputError
 from harness.events import types
 from harness.pixies.errors import (
     DuplicateSlugError,
@@ -17,6 +19,7 @@ from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.models import UpdateSession
 from tests.api_support import build_context
 from tests.async_support import until
+from tests.fake_engine import FakeInfoFactory, server_info
 from tests.fake_provider import FakeProvider, hang, reply
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -27,10 +30,21 @@ def provider() -> FakeProvider:
 
 
 @pytest.fixture
+def engine() -> FakeInfoFactory:
+    return FakeInfoFactory()
+
+
+@pytest.fixture
 async def ctx(
-    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, provider: FakeProvider
+    tmp_path: Path,
+    clock: FakeClock,
+    secrets: FakeSecretStore,
+    provider: FakeProvider,
+    engine: FakeInfoFactory,
 ) -> AsyncIterator[AppContext]:
-    context = await build_context(tmp_path, clock, secrets, provider=provider)
+    context = await build_context(
+        tmp_path, clock, secrets, provider=provider, engine_factory=engine
+    )
     yield context
     await context.sessions.shutdown()
     await context.db.close()
@@ -358,3 +372,121 @@ async def test_files_of_an_unknown_pixie_are_not_found(ctx: AppContext, pixie_id
         await ctx.pixies.notes(pixie_id)
     with pytest.raises(PixieNotFoundError):
         await ctx.pixies.search(pixie_id, "x")
+
+
+async def test_reorder_announces_only_the_pixies_that_moved(ctx: AppContext) -> None:
+    a, b, c = [await ctx.pixies.create(CreatePixie(name=n)) for n in ("A", "B", "C")]
+    before = await ctx.db.fetch_one("SELECT MAX(id) AS id FROM events")
+    assert before is not None
+
+    ordered = await ctx.pixies.reorder([c.id, b.id, a.id])
+    rows = await ctx.db.fetch_all(
+        "SELECT type, payload FROM events WHERE id > ? ORDER BY id", (before["id"],)
+    )
+
+    assert [(p.id, p.position) for p in ordered] == [(c.id, 0), (b.id, 1), (a.id, 2)]
+    assert [row["type"] for row in rows] == [types.PIXIE_UPDATED, types.PIXIE_UPDATED]
+    announced = [json.loads(row["payload"])["pixie"] for row in rows]
+    assert [(p["id"], p["position"]) for p in announced] == [(c.id, 0), (a.id, 2)]
+
+
+async def know_models(ctx: AppContext, engine: FakeInfoFactory) -> None:
+    """Default and Haiku do not run in Auto; Opus does."""
+    engine.info = server_info("default", "opus", "haiku", auto=("opus",))
+    assert await ctx.engine.refresh()
+
+
+async def test_null_model_and_effort_go_back_to_the_default(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"), reply("again"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester", model="opus", effort="high"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    kept = await ctx.pixies.update(pixie.id, UpdatePixie.model_validate({"mascot": "ghost"}))
+    await ctx.pixies.update(pixie.id, UpdatePixie(model="opus"))  # no change for the chat
+    cleared = await ctx.pixies.update(
+        pixie.id, UpdatePixie.model_validate({"model": None, "effort": None})
+    )
+    session = await ctx.sessions.get(chat.id)
+    await ctx.pixies.send(pixie.id, "more", [])
+    await until(lambda: len(provider.runs) == 2)
+
+    assert (kept.model, kept.effort) == ("opus", "high")
+    assert (cleared.model, cleared.effort) == (None, None)
+    assert (session.model, session.effort) == (None, None)
+    assert (provider.runs[1].spec.model, provider.runs[1].spec.effort) == (None, None)
+
+
+async def test_a_cleared_model_reaches_the_chat_as_the_default_model(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"))
+    ctx.settings.agents = ctx.settings.agents.model_copy(update={"model": "sonnet"})
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester", model="opus"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    await ctx.pixies.update(pixie.id, UpdatePixie.model_validate({"model": None}))
+
+    assert (await ctx.sessions.get(chat.id)).model == "sonnet"
+
+
+async def test_a_model_without_auto_moves_an_auto_pixie_to_ask(
+    ctx: AppContext, provider: FakeProvider, engine: FakeInfoFactory
+) -> None:
+    await know_models(ctx, engine)
+    provider.script(reply("hi"))
+    pixie = await ctx.pixies.create(
+        CreatePixie(name="Tester", model="opus", permission_mode="auto")
+    )
+    other = await ctx.pixies.create(CreatePixie(name="Other", model="opus", permission_mode="auto"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    moved = await ctx.pixies.update(pixie.id, UpdatePixie(model="haiku"))
+    cleared = await ctx.pixies.update(other.id, UpdatePixie.model_validate({"model": None}))
+    session = await ctx.sessions.get(chat.id)
+
+    assert (moved.model, moved.permission_mode) == ("haiku", "default")
+    assert (session.model, session.permission_mode) == ("haiku", "default")
+    assert (cleared.model, cleared.permission_mode) == (None, "default")
+
+
+async def test_auto_is_refused_for_a_model_without_it(
+    ctx: AppContext, engine: FakeInfoFactory
+) -> None:
+    await know_models(ctx, engine)
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester", model="haiku"))
+
+    with pytest.raises(InvalidInputError, match="Haiku does not support Auto mode"):
+        await ctx.pixies.update(pixie.id, UpdatePixie(permission_mode="auto"))
+    with pytest.raises(InvalidInputError, match="Default does not support Auto mode"):
+        await ctx.pixies.update(
+            pixie.id, UpdatePixie.model_validate({"model": None, "permission_mode": "auto"})
+        )
+    with pytest.raises(InvalidInputError, match="Haiku does not support Auto mode"):
+        await ctx.pixies.create(CreatePixie(name="Other", model="haiku", permission_mode="auto"))
+    allowed = await ctx.pixies.update(pixie.id, UpdatePixie(model="opus", permission_mode="auto"))
+
+    assert (allowed.model, allowed.permission_mode) == ("opus", "auto")
+    assert [p.name for p in await ctx.pixies.list_pixies()] == ["Tester"]
+
+
+async def test_a_chat_does_not_start_in_a_mode_its_model_lacks(
+    ctx: AppContext, engine: FakeInfoFactory
+) -> None:
+    await know_models(ctx, engine)
+    pixie = await ctx.pixies.create(
+        CreatePixie(name="Tester", model="opus", permission_mode="auto")
+    )
+    # The model list changed since the pixie was saved.
+    engine.info = server_info("default", "opus", "haiku")
+    assert await ctx.engine.refresh()
+
+    with pytest.raises(InvalidInputError, match="Opus does not support Auto mode"):
+        await ctx.pixies.send(pixie.id, "hello", [])
+
+    assert (await ctx.pixies.get(pixie.id)).chat_session_id is None
+    assert await ctx.db.fetch_all("SELECT id FROM sessions") == []

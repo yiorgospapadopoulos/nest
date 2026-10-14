@@ -42,12 +42,16 @@ class CannotRewindError(ConflictError):
 
 
 class PixieChatError(ConflictError):
-    """A pixie's chat goes with its pixie: reset or delete the pixie instead (D072)."""
+    """What a pixie's chat does not allow: it goes with its pixie (reset or delete the
+    pixie instead), and its files cannot be restored (D072).
+    """
 
     code = "pixie_chat"
 
-    def __init__(self) -> None:
-        super().__init__("this is a pixie's chat; reset or delete the pixie instead")
+    def __init__(
+        self, detail: str = "this is a pixie's chat; reset or delete the pixie instead"
+    ) -> None:
+        super().__init__(detail)
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code}

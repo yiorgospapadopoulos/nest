@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -6,10 +7,11 @@ import pytest
 from harness.events import types
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import edit, reply
+from tests.fake_engine import server_info
+from tests.fake_provider import FakeRun, edit, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import git
-from tests.test_api_sessions import notified
+from tests.test_api_sessions import notified, reach
 
 
 @pytest.fixture
@@ -61,6 +63,29 @@ async def test_messages_and_reset(api: Api) -> None:
     assert sent.json()["pixie_id"] == pid
     assert reset.json()["chat_session_id"] is None
     assert sessions.json() == []
+
+
+async def test_a_message_sent_while_the_pixie_works_comes_back_queued(api: Api) -> None:
+    gate = asyncio.Event()
+
+    async def slow(run: FakeRun) -> None:
+        await gate.wait()
+        await reply("first")(run)
+
+    api.provider.script(slow, reply("second"))
+    pid = (await api.http.post("/api/pixies", json={"name": "Tester"})).json()["id"]
+
+    first = await api.http.post(f"/api/pixies/{pid}/messages", json={"text": "go"})
+    chat_id = first.json()["id"]
+    await reach(api, chat_id, "running")
+    queued = await api.http.post(f"/api/pixies/{pid}/messages", json={"text": "and this"})
+    gate.set()
+    await reach(api, chat_id, "idle", results=2)
+
+    assert first.json()["queued_message"] is None
+    assert queued.status_code == 202
+    assert queued.json()["id"] == chat_id
+    assert queued.json()["queued_message"]["text"] == "and this"
 
 
 async def test_a_pixie_turn_notifies_finished_without_a_review(api: Api) -> None:
@@ -133,3 +158,64 @@ async def test_a_pixie_chat_is_not_deleted_as_a_session(api: Api, query: str) ->
     assert refused.json()["code"] == "pixie_chat"
     assert after.json()["state"] == "idle"
     assert (await api.http.get(f"/api/pixies/{pid}")).json()["chat_session_id"] == chat["id"]
+
+
+async def test_files_of_a_pixie_chat_cannot_be_restored(api: Api) -> None:
+    api.provider.script(reply("hi"))
+    pid = (await api.http.post("/api/pixies", json={"name": "Tester"})).json()["id"]
+    chat = (await api.http.post(f"/api/pixies/{pid}/messages", json={"text": "go"})).json()
+    await notified(api, chat["id"], "finished")
+    events = (await api.http.get(f"/api/sessions/{chat['id']}/events")).json()
+    message = next(e["id"] for e in events if e["type"] == types.SESSION_USER_MESSAGE)
+
+    preview = await api.http.get(f"/api/sessions/{chat['id']}/rewind", params={"message": message})
+    restore = await api.http.post(f"/api/sessions/{chat['id']}/rewind", json={"message": message})
+
+    assert [preview.status_code, restore.status_code] == [409, 409]
+    assert [preview.json()["code"], restore.json()["code"]] == ["pixie_chat", "pixie_chat"]
+    assert "pixie" in restore.json()["detail"]
+
+
+async def test_reorder(api: Api) -> None:
+    ids = [(await api.http.post("/api/pixies", json={"name": n})).json()["id"] for n in ("A", "B")]
+
+    ordered = await api.http.put("/api/pixies/order", json={"ids": ids[::-1]})
+    missing = await api.http.put("/api/pixies/order", json={"ids": ids[:1]})
+    twice = await api.http.put("/api/pixies/order", json={"ids": [*ids, ids[0]]})
+    listed = await api.http.get("/api/pixies")
+
+    assert ordered.status_code == 200
+    assert [(p["id"], p["position"]) for p in ordered.json()] == [(ids[1], 0), (ids[0], 1)]
+    assert [missing.status_code, twice.status_code] == [422, 422]
+    assert [p["id"] for p in listed.json()] == ids[::-1]
+
+
+async def test_an_explicit_null_clears_the_model_and_effort(api: Api) -> None:
+    pid = (
+        await api.http.post("/api/pixies", json={"name": "T", "model": "opus", "effort": "high"})
+    ).json()["id"]
+
+    kept = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": "ghost"})
+    cleared = await api.http.patch(f"/api/pixies/{pid}", json={"model": None, "effort": None})
+
+    assert (kept.json()["model"], kept.json()["effort"]) == ("opus", "high")
+    assert (cleared.json()["model"], cleared.json()["effort"]) == (None, None)
+
+
+async def test_auto_needs_a_model_that_supports_it(api: Api) -> None:
+    api.engine.info = server_info("default", "opus", "haiku", auto=("opus",))
+    assert await api.ctx.engine.refresh()
+    pid = (
+        await api.http.post(
+            "/api/pixies", json={"name": "T", "model": "opus", "permission_mode": "auto"}
+        )
+    ).json()["id"]
+
+    refused = await api.http.patch(
+        f"/api/pixies/{pid}", json={"model": "haiku", "permission_mode": "auto"}
+    )
+    moved = await api.http.patch(f"/api/pixies/{pid}", json={"model": "haiku"})
+
+    assert refused.status_code == 422
+    assert refused.json() == {"detail": "Haiku does not support Auto mode"}
+    assert (moved.json()["model"], moved.json()["permission_mode"]) == ("haiku", "default")

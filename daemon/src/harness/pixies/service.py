@@ -22,7 +22,7 @@ from harness.pixies.slugs import RESERVED_SLUGS, check_slug, slugify
 from harness.pixies.store import PixieStore
 from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.manager import SessionManager
-from harness.sessions.models import Session, SessionState, UpdateSession
+from harness.sessions.models import SendResult, Session, SessionState, UpdateSession
 
 DEFAULT_SOUL = (
     "You are a helpful pixie. Describe here who you are, what you do, how you like to work "
@@ -30,6 +30,8 @@ DEFAULT_SOUL = (
 )
 # Changing these on a pixie changes its open chat as well.
 _CONTROLS = ("model", "effort", "permission_mode")
+# An explicit null sets these back to the default; for the other fields null is no change.
+_CLEARABLE = ("model", "effort")
 # Changing these changes what the chat's run is opened with, so its next turn opens a new one.
 _RUN_SHAPING = (
     "name",
@@ -73,6 +75,12 @@ class PixieService:
     async def create(self, request: CreatePixie) -> Pixie:
         slug = request.slug or await self._free_slug(slugify(request.name))
         check_slug(slug)
+        await self._sessions.fitting_mode(
+            request.model or self._defaults().model,
+            request.permission_mode,
+            request.permission_mode,
+            model_changed=False,
+        )
         settings = PixieSettings.model_validate(request.model_dump(exclude={"slug", "soul"}))
         pixie = await self._store.create(settings, slug)
         try:
@@ -87,23 +95,51 @@ class PixieService:
 
     async def update(self, pixie_id: str, request: UpdatePixie) -> Pixie:
         changes = request.model_dump(exclude_none=True, exclude={"all_projects"})
+        cleared = {
+            name
+            for name in _CLEARABLE
+            if name in request.model_fields_set and getattr(request, name) is None
+        }
+        changes |= dict.fromkeys(cleared)
         if request.all_projects:
             changes["projects"] = None
         if "slug" in changes:
             check_slug(changes["slug"])
+        before = await self._store.get(pixie_id)
+        default_model = self._defaults().model
+        mode = await self._sessions.fitting_mode(
+            changes.get("model", before.model) or default_model,
+            changes.get("permission_mode"),
+            before.permission_mode,
+            model_changed="model" in changes,
+        )
+        if mode is not None:
+            changes["permission_mode"] = mode
         pixie = await self._store.update(pixie_id, **changes)
         chat = pixie.chat_session_id
         controls = {name: changes[name] for name in _CONTROLS if name in changes}
+        if "model" in controls:
+            # The chat runs the default model by name, as a new chat would (`send`).
+            controls["model"] = pixie.model or default_model
         if "name" in changes:
             controls["title"] = changes["name"]
         if controls and chat is not None:
             # A chat that is gone has nothing to change; the pixie's row already did.
             with suppress(SessionNotFoundError):
-                await self._sessions.update(chat, UpdateSession(**controls))
-        if chat is not None and any(name in changes for name in _RUN_SHAPING):
+                await self._sessions.set_pixie_controls(chat, controls)
+        if chat is not None and (cleared or any(name in changes for name in _RUN_SHAPING)):
             self._sessions.refresh_run(chat)
         await self._announce(pixie)
         return pixie
+
+    async def reorder(self, ids: list[str]) -> list[Pixie]:
+        """Puts the pixies in this order; each one that moved is announced."""
+        moved = set(await self._store.reorder(ids))
+        pixies = await self._store.list_pixies()
+        for pixie in pixies:
+            if pixie.id in moved:
+                await self._announce(pixie)
+        return pixies
 
     async def delete(self, pixie_id: str) -> None:
         async with self._lock(pixie_id):
@@ -118,7 +154,9 @@ class PixieService:
         # Only now: a send that waited on the lock still finds it and sees no pixie.
         self._locks.pop(pixie_id, None)
 
-    async def send(self, pixie_id: str, text: str, attachment_ids: list[str]) -> Session:
+    async def send(self, pixie_id: str, text: str, attachment_ids: list[str]) -> SendResult:
+        """Starts the pixie's chat, or sends to the open one; `queued_message` is set when the
+        message waits for the running turn."""
         async with self._lock(pixie_id):
             pixie = await self._store.get(pixie_id)
             chat = await self._open_chat(pixie)
@@ -136,7 +174,7 @@ class PixieService:
                 attachment_ids=attachment_ids,
             )
             await self._announce(await self._store.set_chat(pixie.id, session.id))
-            return session
+            return SendResult(**session.model_dump())
 
     async def reset(self, pixie_id: str) -> Pixie:
         async with self._lock(pixie_id):

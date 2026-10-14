@@ -9,11 +9,12 @@ from harness.pixies.models import (
     CreatePixie,
     FileText,
     Pixie,
+    PixieOrder,
     SearchHit,
     UpdatePixie,
     WriteFile,
 )
-from harness.sessions.models import SendMessage, Session
+from harness.sessions.models import SendMessage, SendResult
 
 router = APIRouter(prefix="/api/pixies", dependencies=[RequireDevice])
 
@@ -28,6 +29,14 @@ async def create_pixie(body: CreatePixie, ctx: Context) -> Pixie:
     return await ctx.pixies.create(body)
 
 
+@router.put("/order")
+async def reorder_pixies(body: PixieOrder, ctx: Context) -> list[Pixie]:
+    """Names every pixie once, in the new order (422 otherwise); returns them in it.
+    Publishes `pixie.updated` for each pixie whose position changed.
+    """
+    return await ctx.pixies.reorder(body.ids)
+
+
 @router.get("/{pixie_id}")
 async def get_pixie(pixie_id: str, ctx: Context) -> Pixie:
     return await ctx.pixies.get(pixie_id)
@@ -35,6 +44,10 @@ async def get_pixie(pixie_id: str, ctx: Context) -> Pixie:
 
 @router.patch("/{pixie_id}")
 async def update_pixie(pixie_id: str, body: UpdatePixie, ctx: Context) -> Pixie:
+    """`"model": null` or `"effort": null` sets it back to the default. 422 when the model
+    does not run in the chosen mode; a pixie in Auto moved to a model without it asks
+    again (`default`), as a chat does.
+    """
     return await ctx.pixies.update(pixie_id, body)
 
 
@@ -46,8 +59,9 @@ async def delete_pixie(pixie_id: str, ctx: Context) -> Response:
 
 
 @router.post("/{pixie_id}/messages", status_code=status.HTTP_202_ACCEPTED)
-async def send_to_pixie(pixie_id: str, body: SendMessage, ctx: Context) -> Session:
-    """Starts the pixie's chat with this message, or sends it to the open one."""
+async def send_to_pixie(pixie_id: str, body: SendMessage, ctx: Context) -> SendResult:
+    """Starts the pixie's chat with this message, or sends it to the open one; while a turn
+    runs the message is queued and comes back as `queued_message`."""
     return await ctx.pixies.send(pixie_id, body.text, body.attachment_ids)
 
 
