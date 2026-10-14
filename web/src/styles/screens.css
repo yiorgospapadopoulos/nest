@@ -1778,12 +1778,6 @@ div.pxr:active {
 .pxrow-d:active {
   background: var(--fill);
 }
-.pxrow-d.off {
-  cursor: default;
-}
-.pxrow-d.off:active {
-  background: transparent;
-}
 .pxdt {
   flex: 1;
   min-width: 0;
@@ -1880,4 +1874,156 @@ div.pxr:active {
   padding: 10px 12px;
   resize: vertical;
   font-family: var(--mono);
+}
+
+/* A pixie's limits (B41): a number between Fewer and More. */
+.pxnum {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-right: -10px;
+}
+.pxnum button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 1.1765rem;
+  cursor: pointer;
+}
+.pxnum button:disabled {
+  color: var(--t3);
+  opacity: 0.5;
+  cursor: default;
+}
+.pxnum output {
+  min-width: 2.5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* A pixie's habits (B42): name, schedule, triggers, last and next run, and an on switch. */
+.pxhabs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pxhab {
+  gap: 12px;
+}
+.pxhabb {
+  min-height: 44px;
+  border: 0;
+  padding: 10px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pxhabm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--t3);
+}
+.pxhabnew {
+  display: flex;
+  margin: 16px auto 0;
+}
+.pxhabe {
+  margin-top: 0;
+}
+.pxchk input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+/* Unread reports that need action, on the Pixies heading and a pixie's row (B42). */
+.pxalert {
+  min-width: 19px;
+  height: 19px;
+  border-radius: 10px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--st-fail);
+  color: var(--on-accent);
+  font-size: 0.6471rem;
+  font-weight: 800;
+}
+.pg-h .pxalert {
+  margin-left: 6px;
+}
+.ck-k.sev-warn {
+  --sev: var(--st-wait);
+}
+.ck-k.sev-action {
+  --sev: var(--st-fail);
+}
+.ck-k .pxsev {
+  margin-left: auto;
+}
+/* A pixie's activity log: tool and time, the summary, then the chat. */
+.pxact {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pxact .srow {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.pxacth {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pxacth b {
+  font-size: 0.7647rem;
+  color: var(--t1);
+}
+.pxdt .pxact-t {
+  color: var(--t1);
+}
+.pxlnk {
+  justify-self: start;
+  max-width: 100%;
+  min-height: 44px;
+  margin: -12px 0 -10px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.7647rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+/* "Started by Tester" in a chat row (B41). */
+.pxby {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.pxby .pxs {
+  display: block;
+}
+.rby {
+  flex: 0 1 auto;
+  max-width: 40%;
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+.rby > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

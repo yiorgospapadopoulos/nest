@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
 import type { Mascot, Pixie, PixieTeam } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { pixieList, teamList } from "../../store/selectors.ts";
+import { pixieList, teamList, unreadActions } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { useRowGestures } from "../projects/rowGestures.ts";
 import { NameSheet } from "./NameSheet.tsx";
 import { usePending } from "./pending.ts";
+import { actionText } from "./options.ts";
 import { PixieActions } from "./PixieActions.tsx";
 import type { PixieTab } from "./PixieView.tsx";
 import { Sprite } from "./Sprite.tsx";
@@ -66,6 +67,8 @@ export function PixieSection({ onOpen }: Props) {
     return p === undefined || (p.hidden && !showHidden) ? [] : [p];
   });
   const hidden = pixieList(state, true).length - pixieList(state).length;
+  // Unread action reports of the pixies (B42).
+  const alerts = unreadActions(state);
   const teams = teamList(state);
   const groups: Group[] = [
     ...teams.map((team) => ({ team, pixies: pixies.filter((p) => p.team_id === team.id) })),
@@ -107,6 +110,7 @@ export function PixieSection({ onOpen }: Props) {
           running={
             p.chat_session_id !== null && state.sessions[p.chat_session_id]?.state === "running"
           }
+          alerts={unreadActions(state, p.id)}
           onOpen={onOpen}
           onActions={() => {
             setMenu({ pixie: p.id });
@@ -127,6 +131,11 @@ export function PixieSection({ onOpen }: Props) {
       <h2 className="pg-h" id="pixies-title">
         Pixies
         <span className="gc">{pixies.length}</span>
+        {alerts > 0 && (
+          <span className="pxalert" aria-label={actionText(alerts)}>
+            {alerts}
+          </span>
+        )}
         {(ordering || pixies.length > 1) && (
           <button
             className="lnk pxordb"
@@ -312,12 +321,14 @@ interface RowProps {
   pixie: Pixie;
   leader: boolean;
   running: boolean;
+  // Its unread action reports.
+  alerts: number;
   onOpen: (id: string, tab: PixieTab) => void;
   onActions: () => void;
 }
 
 /** A pixie: tap opens it; long-press, swipe left or the dots button show its menu. */
-function PixieRow({ pixie: p, leader, running, onOpen, onActions }: RowProps) {
+function PixieRow({ pixie: p, leader, running, alerts, onOpen, onActions }: RowProps) {
   const gestures = useRowGestures(() => {
     onOpen(p.id, "chat");
   }, onActions);
@@ -325,16 +336,21 @@ function PixieRow({ pixie: p, leader, running, onOpen, onActions }: RowProps) {
     <div className="lrow">
       <button
         className="row pxr"
-        aria-label={`${p.name}, @${p.slug}${leader ? ", leader" : ""}${running ? ", running" : ""}`}
+        aria-label={`${p.name}, @${p.slug}${leader ? ", leader" : ""}${running ? ", running" : ""}${alerts > 0 ? `, ${actionText(alerts)}` : ""}`}
         data-chat={`pixie:${p.id}`}
         {...gestures}
       >
         <Sprite mascot={p.mascot} color={p.color} size={28} />
         <span className="rt">{p.name}</span>
-        {(leader || running) && (
+        {(leader || running || alerts > 0) && (
           <span className="rm">
             {leader && <span className="pxlead">Leader</span>}
             {running && <span className="prun" />}
+            {alerts > 0 && (
+              <span className="pxalert" aria-hidden="true">
+                {alerts}
+              </span>
+            )}
           </span>
         )}
         <span className="rm pxslug">@{p.slug}</span>

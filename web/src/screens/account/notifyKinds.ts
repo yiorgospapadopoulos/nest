@@ -10,4 +10,5 @@ export const KINDS: { kind: NotifyKind; label: string }[] = [
   { kind: "ci_failed", label: "Pull request checks failed" },
   { kind: "ready_to_merge", label: "Pull requests ready to merge" },
   { kind: "stuck", label: "Chats that look stuck" },
+  { kind: "pixie_report", label: "Pixie reports" },
 ];

@@ -14,10 +14,14 @@ import type {
   CreatePixieBody,
   CommandList,
   CreateSessionBody,
+  Habit,
+  HabitBody,
+  HabitRun,
   HarnessEvent,
   MonthUsage,
   NotificationSettings,
   Pixie,
+  PixieActivity,
   PixieSearchHit,
   PixieTeam,
   RepoConfig,
@@ -27,6 +31,7 @@ import type {
   SearchResults,
   Session,
   SessionDiff,
+  UpdateHabitBody,
   UpdatePixieBody,
   UpdateSessionBody,
   UpdateTeamBody,
@@ -187,6 +192,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     ]);
     if (pixies !== null) dispatch({ type: "pixies", pixies });
     if (teams !== null) dispatch({ type: "teams", teams });
+    // Read ones too: a report card in a pixie's chat shows any report (B42).
+    const reports = await quietly(() => api.pixieReports(false));
+    if (reports !== null) dispatch({ type: "reports", reports });
   }
 
   async function loadClaudeChats(): Promise<void> {
@@ -376,8 +384,62 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     async pixieNotes(id: string): Promise<string[]> {
       return (await quietly(() => api.pixieNotes(id))) ?? [];
     },
+    /** The pixie's activity log, newest first; null when the Mac cannot answer. */
+    async pixieActivity(id: string): Promise<PixieActivity[] | null> {
+      return quietly(() => api.pixieActivity(id));
+    },
     async searchPixie(id: string, query: string): Promise<PixieSearchHit[]> {
       return (await quietly(() => api.searchPixie(id, query))) ?? [];
+    },
+    /** The pixie's habits, kept live from then on; null when the Mac cannot answer. */
+    async loadHabits(pixieId: string): Promise<Habit[] | null> {
+      const habits = await quietly(() => api.habits(pixieId));
+      if (habits !== null) dispatch({ type: "habits", pixieId, habits });
+      return habits;
+    },
+    async createHabit(pixieId: string, body: HabitBody): Promise<Habit | null> {
+      const created = await attempt(() => api.createHabit(pixieId, body));
+      if (created !== null) dispatch({ type: "habit", habit: created });
+      return created;
+    },
+    async updateHabit(pixieId: string, id: string, body: UpdateHabitBody): Promise<boolean> {
+      const updated = await attempt(() => api.updateHabit(pixieId, id, body));
+      if (updated === null) return false;
+      dispatch({ type: "habit", habit: updated });
+      return true;
+    },
+    async deleteHabit(pixieId: string, id: string): Promise<boolean> {
+      const done = await attempt(() => api.deleteHabit(pixieId, id).then(() => true));
+      if (done === null) return false;
+      dispatch({ type: "habitRemoved", pixieId, id });
+      return true;
+    },
+    /** Run now: queued at once, whatever the usage. */
+    async runHabit(pixieId: string, id: string): Promise<boolean> {
+      const run = await attempt(() => api.runHabit(pixieId, id));
+      if (run === null) return false;
+      dispatch({ type: "habitRun", run });
+      toast("Run queued");
+      return true;
+    },
+    /** A habit's history, kept live from then on; null when the Mac cannot answer. */
+    async loadHabitRuns(pixieId: string, habitId: string): Promise<HabitRun[] | null> {
+      const runs = await quietly(() => api.habitRuns(pixieId, habitId));
+      if (runs !== null) dispatch({ type: "habitRuns", habitId, runs });
+      return runs;
+    },
+    async readReport(id: string): Promise<boolean> {
+      const done = await attempt(() => api.readReport(id).then(() => true));
+      if (done === null) return false;
+      dispatch({ type: "reportsRead", ids: [id], at: new Date().toISOString() });
+      return true;
+    },
+    /** Every report of the pixie read, as when its page opens; no toast on failure. */
+    async readPixieReports(pixieId: string, unread: string[]): Promise<void> {
+      const done = await quietly(() => api.readPixieReports(pixieId).then(() => true));
+      if (done !== null) {
+        dispatch({ type: "reportsRead", ids: unread, at: new Date().toISOString() });
+      }
     },
 
     /** A live event from the socket. */

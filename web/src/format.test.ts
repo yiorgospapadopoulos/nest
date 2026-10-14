@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, initials, percent, prLabel, resetLabel, tokens } from "./format.ts";
+import { activityTime, ago, initials, percent, prLabel, resetLabel, tokens } from "./format.ts";
 
 const now = new Date("2026-10-06T12:00:00Z");
 
@@ -60,5 +60,13 @@ describe("prLabel", () => {
   it("takes the number from a pull request URL", () => {
     expect(prLabel("https://github.com/me/repo/pull/42")).toBe("#42");
     expect(prLabel("https://example.com/merge-requests/3")).toBe("PR");
+  });
+});
+
+describe("activityTime", () => {
+  it("shows the time today and the day before that", () => {
+    const at = new Date(2026, 9, 14, 18, 30);
+    expect(activityTime(at.toISOString(), new Date(2026, 9, 14, 21, 0))).toBe("18:30");
+    expect(activityTime(at.toISOString(), new Date(2026, 9, 15, 9, 0))).toBe("14 Oct 18:30");
   });
 });

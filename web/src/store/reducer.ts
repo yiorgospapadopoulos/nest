@@ -3,11 +3,14 @@ import type {
   Approval,
   BackgroundSummary,
   Connector,
+  Habit,
+  HabitRun,
   HarnessEvent,
   JsonObject,
   JsonValue,
   LimitWindow,
   Pixie,
+  PixieReport,
   PixieTeam,
   RepoConfig,
   Session,
@@ -101,6 +104,22 @@ export function reduce(state: State, action: Action): State {
       const folded = action.folded ? [...others, action.id] : others;
       return folded.length === state.foldedTeams.length ? state : { ...state, foldedTeams: folded };
     }
+    case "reports":
+      return { ...state, reports: Object.fromEntries(action.reports.map((r) => [r.id, r])) };
+    case "report":
+      return { ...state, reports: { ...state.reports, [action.report.id]: action.report } };
+    case "reportsRead":
+      return reportsRead(state, action.ids, action.at);
+    case "habits":
+      return { ...state, habits: { ...state.habits, [action.pixieId]: action.habits } };
+    case "habit":
+      return upsertHabit(state, action.habit);
+    case "habitRemoved":
+      return removeHabit(state, action.pixieId, action.id);
+    case "habitRuns":
+      return { ...state, habitRuns: { ...state.habitRuns, [action.habitId]: action.runs } };
+    case "habitRun":
+      return upsertRun(state, action.run);
     case "claudeChats":
       return {
         ...state,
@@ -274,6 +293,16 @@ export function applyEvent(state: State, event: HarnessEvent): State {
     }
     case "pixie_team.deleted":
       return withoutTeam(next, str(p.id) ?? "");
+    case "pixie.report":
+      return reduce(next, { type: "report", report: p.report as unknown as PixieReport });
+    case "pixie.report_read":
+      return reportsRead(next, list(p.ids).map(String), event.ts);
+    case "habit.updated":
+      return upsertHabit(next, p.habit as unknown as Habit);
+    case "habit.deleted":
+      return removeHabit(next, str(p.pixie_id) ?? "", str(p.id) ?? "");
+    case "habit.run_updated":
+      return upsertRun(next, p.run as unknown as HabitRun);
     case "connectors.updated":
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
@@ -283,12 +312,79 @@ export function applyEvent(state: State, event: HarnessEvent): State {
   }
 }
 
-/** The state without the pixie and its saved draft. */
+/** The state without the pixie, its saved draft, habits and reports. */
 function withoutPixie(state: State, id: string): State {
   return {
     ...state,
     pixies: omit(state.pixies, id),
     drafts: omit(state.drafts, draftKey({ pixie: id })),
+    habits: omit(state.habits, id),
+    reports: Object.fromEntries(Object.entries(state.reports).filter(([, r]) => r.pixie_id !== id)),
+  };
+}
+
+/** Reports not read yet among `ids` read at `at`; others keep when they were read. */
+function reportsRead(state: State, ids: string[], at: string): State {
+  const unread = ids.flatMap((id) => {
+    const report = state.reports[id];
+    return report?.read_at === null ? [report] : [];
+  });
+  if (unread.length === 0) return state;
+  const reports = { ...state.reports };
+  for (const report of unread) reports[report.id] = { ...report, read_at: at };
+  return { ...state, reports };
+}
+
+/** A habit in its pixie's list, when that list was loaded: a partial list would mislead. */
+function upsertHabit(state: State, habit: Habit): State {
+  const habits = state.habits[habit.pixie_id];
+  if (habits === undefined) return state;
+  const known = habits.some((h) => h.id === habit.id);
+  return {
+    ...state,
+    habits: {
+      ...state.habits,
+      [habit.pixie_id]: known
+        ? habits.map((h) => (h.id === habit.id ? habit : h))
+        : [...habits, habit],
+    },
+  };
+}
+
+function removeHabit(state: State, pixieId: string, id: string): State {
+  const habits = state.habits[pixieId];
+  if (habits === undefined) return state;
+  return {
+    ...state,
+    habits: { ...state.habits, [pixieId]: habits.filter((h) => h.id !== id) },
+    habitRuns: omit(state.habitRuns, id),
+  };
+}
+
+/** A run in its habit's open history (a new one first) and as that habit's last run. */
+function upsertRun(state: State, run: HabitRun): State {
+  const runs = state.habitRuns[run.habit_id];
+  const habits = state.habits[run.pixie_id];
+  return {
+    ...state,
+    habitRuns:
+      runs === undefined
+        ? state.habitRuns
+        : {
+            ...state.habitRuns,
+            [run.habit_id]: runs.some((r) => r.id === run.id)
+              ? runs.map((r) => (r.id === run.id ? run : r))
+              : [run, ...runs],
+          },
+    habits:
+      habits === undefined
+        ? state.habits
+        : {
+            ...state.habits,
+            [run.pixie_id]: habits.map((h) =>
+              h.id === run.habit_id ? { ...h, last_run: run } : h,
+            ),
+          },
   };
 }
 

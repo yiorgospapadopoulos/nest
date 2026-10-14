@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { NAVIGATE } from "../pwa/navigate.ts";
 import { fakeApi } from "../test/fakeApi.ts";
@@ -60,7 +60,10 @@ describe("deep links", () => {
     await renderApp({ api, ready: false });
 
     expect(await screen.findByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/pixie/p1");
+    // The address follows the redirect once the page shows.
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/pixie/p1");
+    });
   });
 
   it("shows an empty page for a pixie it does not know", async () => {

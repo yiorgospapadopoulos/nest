@@ -6,10 +6,13 @@ import type {
   BackgroundSummary,
   ClaudeChat,
   Connector,
+  Habit,
+  HabitRun,
   HarnessEvent,
   ModelOption,
   NotificationSettings,
   Pixie,
+  PixieReport,
   PixieTeam,
   QueuedMessage,
   RepoConfig,
@@ -65,6 +68,12 @@ export interface State {
   pixies: Record<string, Pixie>;
   // Teams of pixies by id (B40).
   teams: Record<string, PixieTeam>;
+  // The pixies' reports by id, the latest the Mac keeps (B42).
+  reports: Record<string, PixieReport>;
+  // Each pixie's habits, by pixie id, once its list was asked for.
+  habits: Record<string, Habit[]>;
+  // A habit's runs, newest first, by habit id, while its history was asked for.
+  habitRuns: Record<string, HabitRun[]>;
   // The teams folded in the pixie list; remembered on this device.
   foldedTeams: string[];
   // Claude Code chats of the projects that harness does not own, by Claude Code session id.
@@ -102,6 +111,9 @@ export const initialState: State = {
   sessions: {},
   pixies: {},
   teams: {},
+  reports: {},
+  habits: {},
+  habitRuns: {},
   foldedTeams: [],
   claudeChats: {},
   showAutomated: false,
@@ -137,6 +149,14 @@ export type Action =
   | { type: "team"; team: PixieTeam }
   | { type: "teamRemoved"; id: string }
   | { type: "teamFolded"; id: string; folded: boolean }
+  | { type: "reports"; reports: PixieReport[] }
+  | { type: "report"; report: PixieReport }
+  | { type: "reportsRead"; ids: string[]; at: string }
+  | { type: "habits"; pixieId: string; habits: Habit[] }
+  | { type: "habit"; habit: Habit }
+  | { type: "habitRemoved"; pixieId: string; id: string }
+  | { type: "habitRuns"; habitId: string; runs: HabitRun[] }
+  | { type: "habitRun"; run: HabitRun }
   | { type: "claudeChats"; chats: ClaudeChat[] }
   | { type: "claudeChat"; chat: ClaudeChat }
   | { type: "claudeChatRemoved"; id: string }

@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Pixie, UpdatePixieBody } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import { ActivityPage } from "./ActivityPage.tsx";
 import { ChipList } from "./ChipList.tsx";
 import { Confirm } from "./Confirm.tsx";
 import { FilePage } from "./FilePage.tsx";
+import { HabitsPage } from "./HabitsPage.tsx";
 import { InlineInput } from "./InlineInput.tsx";
 import { factLines } from "./memory.ts";
 import { MemoryPage } from "./MemoryPage.tsx";
+import { PixieLimits } from "./PixieLimits.tsx";
 import { PixieLook } from "./PixieLook.tsx";
 import { PixieProjects } from "./PixieProjects.tsx";
 import { PixieSettings } from "./PixieSettings.tsx";
@@ -20,7 +23,14 @@ const SKILL_LIST = "pixie-skills";
  * Everything that sets a pixie up, in one scrolling panel laid out like the approved design's Details
  * panel. Every change is saved at once; there is no form to submit (D072).
  */
-export function PixieDetails({ pixie }: { pixie: Pixie }) {
+export function PixieDetails({
+  pixie,
+  onOpenChat,
+}: {
+  pixie: Pixie;
+  // A chat named in its activity log.
+  onOpenChat: (sessionId: string) => void;
+}) {
   const { state, actions } = useStore();
   const { id } = pixie;
   const update = useCallback(
@@ -33,7 +43,7 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
     },
     [update],
   );
-  const [page, setPage] = useState<"soul" | "memory" | null>(null);
+  const [page, setPage] = useState<"soul" | "habits" | "memory" | "activity" | null>(null);
   const [confirm, setConfirm] = useState<"reset" | "delete" | null>(null);
   // Bumped when the memory page closes, to count the facts again.
   const [memoryRead, setMemoryRead] = useState(0);
@@ -41,6 +51,8 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
   // (a turn ending) counts them again too.
   const chat = pixie.chat_session_id === null ? undefined : state.sessions[pixie.chat_session_id];
   const facts = useFactCount(id, `${String(memoryRead)} ${pixie.updated_at} ${chat?.state ?? ""}`);
+  // Counted on the Habits row once the pixie's page loaded them, then kept live.
+  const habits = state.habits[id];
 
   return (
     <>
@@ -48,6 +60,9 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
       <PixieLook pixie={pixie} save={save} />
 
       <PixieSettings pixie={pixie} save={save} />
+
+      <h2 className="pg-h">Chats it starts</h2>
+      <PixieLimits pixie={pixie} save={update} />
 
       <h2 className="pg-h">Projects</h2>
       <PixieProjects pixie={pixie} save={update} />
@@ -91,8 +106,15 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
             setPage("soul");
           }}
         />
-        <DrillIn title="Habits" about="Recurring tasks this pixie runs on its own">
-          Coming soon
+        <DrillIn
+          title="Habits"
+          about="Recurring tasks this pixie runs on its own"
+          onOpen={() => {
+            setPage("habits");
+          }}
+        >
+          {habits !== undefined &&
+            `${String(habits.length)} ${habits.length === 1 ? "habit" : "habits"}`}
         </DrillIn>
         <DrillIn
           title="Memory"
@@ -103,6 +125,13 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
         >
           {facts !== null && `${String(facts)} ${facts === 1 ? "fact" : "facts"}`}
         </DrillIn>
+        <DrillIn
+          title="Activity"
+          about="What it did in your chats"
+          onOpen={() => {
+            setPage("activity");
+          }}
+        />
       </div>
 
       <div className="lgrp gl pxgap">
@@ -175,6 +204,24 @@ export function PixieDetails({ pixie }: { pixie: Pixie }) {
           pixie={pixie}
           name="soul"
           title="Soul"
+          onClose={() => {
+            setPage(null);
+          }}
+        />
+      )}
+      {page === "habits" && (
+        <HabitsPage
+          pixie={pixie}
+          onOpenChat={onOpenChat}
+          onClose={() => {
+            setPage(null);
+          }}
+        />
+      )}
+      {page === "activity" && (
+        <ActivityPage
+          pixie={pixie}
+          onOpenChat={onOpenChat}
           onClose={() => {
             setPage(null);
           }}
@@ -295,7 +342,7 @@ function useFactCount(id: string, version: string): number | null {
 interface DrillInProps {
   title: string;
   about: string;
-  onOpen?: () => void;
+  onOpen: () => void;
   children?: ReactNode;
 }
 
@@ -310,9 +357,7 @@ function DrillIn({ title, about, onOpen, children }: DrillInProps) {
       <span className="pxn">{children}</span>
     </>
   );
-  return onOpen === undefined ? (
-    <div className="pxrow-d off">{body}</div>
-  ) : (
+  return (
     <button className="pxrow-d" onClick={onOpen}>
       {body}
       <Icon name="chevr" className="chv" />

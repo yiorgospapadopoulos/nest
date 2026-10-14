@@ -5,6 +5,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { InboxCard } from "./InboxCard.tsx";
 import { CiFailureCard } from "./PrCards.tsx";
+import { ReportCard } from "./ReportCard.tsx";
 import { StuckCard } from "./StuckCard.tsx";
 
 // A pixie chat's repo; its items are grouped under the pixie (D072).
@@ -15,7 +16,10 @@ interface Props {
   onOpenPixie: (id: string) => void;
 }
 
-/** Every approval, question, review, merge, failed check and stuck chat, by project. */
+/**
+ * Every approval, question, review, merge, failed check and stuck chat by project, and
+ * pixies' unread warn and action reports under the pixie.
+ */
 export function Inbox({ onOpenChat, onOpenPixie }: Props) {
   const { state } = useStore();
   const heading = (repo: string) => {
@@ -63,7 +67,10 @@ export function Inbox({ onOpenChat, onOpenPixie }: Props) {
           <h2 className="pg-h" id={`inbox-${group.repo}`}>
             {heading(group.repo)}
             <span className="gc">
-              {group.items.length + group.failures.length + group.stuck.length}
+              {group.items.length +
+                group.failures.length +
+                group.stuck.length +
+                group.reports.length}
             </span>
           </h2>
           {group.items.map((approval) => (
@@ -71,6 +78,9 @@ export function Inbox({ onOpenChat, onOpenPixie }: Props) {
           ))}
           {group.failures.map((failure) => (
             <CiFailureCard key={failure.session.id} failure={failure} onOpenChat={onOpenChat} />
+          ))}
+          {group.reports.map((report) => (
+            <ReportCard key={report.id} report={report} onOpenPixie={onOpenPixie} />
           ))}
           {group.stuck.map(({ session, stuck }) => (
             <StuckCard

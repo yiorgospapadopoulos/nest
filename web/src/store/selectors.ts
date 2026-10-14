@@ -4,6 +4,7 @@ import type {
   ClaudeChat,
   HarnessEvent,
   Pixie,
+  PixieReport,
   PixieTeam,
   PrStatus,
   Session,
@@ -11,6 +12,9 @@ import type {
 } from "../api/types.ts";
 import { list, obj, str } from "../api/payloads.ts";
 import type { State } from "./state.ts";
+
+// A pixie chat's repo, under which its inbox items group (D072).
+const PIXIE_REPO = "pixie:";
 
 export type Tone = "run" | "wait" | "rev" | "fail" | "done" | "idle" | "int";
 
@@ -167,6 +171,8 @@ export interface InboxGroup {
   failures: CiFailure[];
   // Chats that look stuck, for Interrupt and "Send a nudge".
   stuck: StuckChat[];
+  // A pixie's unread warn and action reports, newest first (B42).
+  reports: PixieReport[];
 }
 
 export interface StuckChat {
@@ -231,7 +237,8 @@ export function inboxGroups(state: State): InboxGroup[] {
   );
   const failed = failures(state);
   const stuck = stuckChats(state);
-  const repos = [...new Set([...items, ...failed, ...stuck].map((x) => x.repo))].sort(
+  const reports = inboxReports(state);
+  const repos = [...new Set([...items, ...failed, ...stuck, ...reports].map((x) => x.repo))].sort(
     (a, b) => rank(a) - rank(b) || a.localeCompare(b),
   );
   return repos.map((repo) => ({
@@ -239,7 +246,26 @@ export function inboxGroups(state: State): InboxGroup[] {
     items: items.filter((a) => a.repo === repo),
     failures: failed.filter((f) => f.repo === repo),
     stuck: stuck.filter((s) => s.repo === repo),
+    reports: reports.filter((r) => r.repo === repo).map((r) => r.report),
   }));
+}
+
+/** Unread warn and action reports, newest first, under their pixie's chat repo. */
+function inboxReports(state: State): { repo: string; report: PixieReport }[] {
+  return Object.values(state.reports)
+    .filter((r) => r.read_at === null && r.severity !== "info")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((report) => ({ repo: `${PIXIE_REPO}${report.pixie_id}`, report }));
+}
+
+/** Unread action reports, of one pixie or of all. */
+export function unreadActions(state: State, pixieId?: string): number {
+  return Object.values(state.reports).filter(
+    (r) =>
+      r.read_at === null &&
+      r.severity === "action" &&
+      (pixieId === undefined || r.pixie_id === pixieId),
+  ).length;
 }
 
 export function needsCount(state: State, repo?: string): number {
@@ -247,7 +273,8 @@ export function needsCount(state: State, repo?: string): number {
   return (
     Object.values(state.approvals).filter(mine).length +
     failures(state).filter(mine).length +
-    stuckChats(state).filter(mine).length
+    stuckChats(state).filter(mine).length +
+    inboxReports(state).filter(mine).length
   );
 }
 

@@ -158,7 +158,22 @@ describe("notification rules", () => {
           ci_failed: false,
           ready_to_merge: false,
           stuck: false,
+          pixie_report: true,
         },
+      }),
+    );
+  });
+
+  it("switches pixie reports off (B42)", async () => {
+    installBrowserPush();
+    const api = fakeApi();
+    const { user } = await openAccount(api);
+
+    await user.click(await screen.findByRole("switch", { name: "Pixie reports" }));
+    expect(toggle("Pixie reports")).not.toBeChecked();
+    expect(api.saveNotificationSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kinds: expect.objectContaining({ pixie_report: false }) as unknown,
       }),
     );
   });

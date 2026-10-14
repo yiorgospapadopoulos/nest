@@ -10,13 +10,18 @@ import type {
   CreatePixieBody,
   CreateTeamBody,
   CreateSessionBody,
+  Habit,
+  HabitBody,
+  HabitRun,
   HarnessEvent,
   MergeBody,
   ModelList,
   MonthUsage,
   NotificationSettings,
   Pixie,
+  PixieActivity,
   PixieFile,
+  PixieReport,
   PixieSearchHit,
   PixieTeam,
   PushReport,
@@ -31,6 +36,7 @@ import type {
   Session,
   SessionDetail,
   SessionDiff,
+  UpdateHabitBody,
   UpdatePixieBody,
   UpdateSessionBody,
   UpdateTeamBody,
@@ -42,6 +48,8 @@ export const OPEN_ELSEWHERE = "open_in_claude_code";
 
 const pixiePath = (id: string) => `/api/pixies/${encodeURIComponent(id)}`;
 const teamPath = (id: string) => `/api/pixie-teams/${encodeURIComponent(id)}`;
+const habitPath = (pixie: string, id: string) =>
+  `${pixiePath(pixie)}/habits/${encodeURIComponent(id)}`;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -136,12 +144,25 @@ export interface Api {
   pixieFile(id: string, name: string): Promise<PixieFile>;
   savePixieFile(id: string, name: string, text: string, hash: string | null): Promise<PixieFile>;
   pixieNotes(id: string): Promise<string[]>;
+  pixieActivity(id: string): Promise<PixieActivity[]>;
   searchPixie(id: string, q: string): Promise<PixieSearchHit[]>;
   duplicatePixie(id: string): Promise<Pixie>;
   teams(): Promise<PixieTeam[]>;
   createTeam(body: CreateTeamBody): Promise<PixieTeam>;
   updateTeam(id: string, body: UpdateTeamBody): Promise<PixieTeam>;
   deleteTeam(id: string): Promise<null>;
+  habits(pixieId: string): Promise<Habit[]>;
+  createHabit(pixieId: string, body: HabitBody): Promise<Habit>;
+  updateHabit(pixieId: string, id: string, body: UpdateHabitBody): Promise<Habit>;
+  deleteHabit(pixieId: string, id: string): Promise<null>;
+  // Queues a run at once, whatever the usage; 202 with the run.
+  runHabit(pixieId: string, id: string): Promise<HabitRun>;
+  habitRuns(pixieId: string, id: string): Promise<HabitRun[]>;
+  // Newest first, the latest 200; `unread` only those not read yet.
+  pixieReports(unread: boolean): Promise<PixieReport[]>;
+  readReport(id: string): Promise<unknown>;
+  // Marks every report of the pixie read.
+  readPixieReports(pixieId: string): Promise<unknown>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -417,6 +438,11 @@ export class HttpApi implements Api {
     return this.json<string[]>("GET", `${pixiePath(id)}/notes`);
   }
 
+  /** What the pixie did in chats, newest first; the latest 200 are kept (B41). */
+  pixieActivity(id: string) {
+    return this.json<PixieActivity[]>("GET", `${pixiePath(id)}/activity`);
+  }
+
   searchPixie(id: string, q: string) {
     return this.json<PixieSearchHit[]>("GET", `${pixiePath(id)}/search?q=${encodeURIComponent(q)}`);
   }
@@ -441,6 +467,45 @@ export class HttpApi implements Api {
   /** Its pixies stay, without a team. */
   deleteTeam(id: string) {
     return this.json<null>("DELETE", teamPath(id));
+  }
+
+  /** Ordered by when they were created (B42). */
+  habits(pixieId: string) {
+    return this.json<Habit[]>("GET", `${pixiePath(pixieId)}/habits`);
+  }
+
+  createHabit(pixieId: string, body: HabitBody) {
+    return this.json<Habit>("POST", `${pixiePath(pixieId)}/habits`, body);
+  }
+
+  updateHabit(pixieId: string, id: string, body: UpdateHabitBody) {
+    return this.json<Habit>("PATCH", habitPath(pixieId, id), body);
+  }
+
+  /** Its queued runs are cancelled. */
+  deleteHabit(pixieId: string, id: string) {
+    return this.json<null>("DELETE", habitPath(pixieId, id));
+  }
+
+  runHabit(pixieId: string, id: string) {
+    return this.json<HabitRun>("POST", `${habitPath(pixieId, id)}/run`);
+  }
+
+  /** The latest 20 ended runs, newest first, and any queued or running. */
+  habitRuns(pixieId: string, id: string) {
+    return this.json<HabitRun[]>("GET", `${habitPath(pixieId, id)}/runs`);
+  }
+
+  pixieReports(unread: boolean) {
+    return this.json<PixieReport[]>("GET", `/api/pixie-reports?unread=${String(unread)}`);
+  }
+
+  readReport(id: string) {
+    return this.json<unknown>("POST", `/api/pixie-reports/${encodeURIComponent(id)}/read`);
+  }
+
+  readPixieReports(pixieId: string) {
+    return this.json<unknown>("POST", `${pixiePath(pixieId)}/reports/read`);
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

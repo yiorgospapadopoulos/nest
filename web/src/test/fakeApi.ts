@@ -6,6 +6,8 @@ import {
   commandList,
   detail,
   diff,
+  habit,
+  habitRun,
   limits,
   modelList,
   month,
@@ -108,11 +110,29 @@ export function fakeApi(): FakeApi {
     pixieFile: vi.fn<Api["pixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
     savePixieFile: vi.fn<Api["savePixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
     pixieNotes: vi.fn<Api["pixieNotes"]>().mockResolvedValue([]),
+    pixieActivity: vi.fn<Api["pixieActivity"]>().mockResolvedValue([]),
     searchPixie: vi.fn<Api["searchPixie"]>().mockResolvedValue([]),
     duplicatePixie: vi.fn<Api["duplicatePixie"]>().mockResolvedValue(pixie({ id: "p2" })),
     teams: vi.fn<Api["teams"]>().mockResolvedValue([]),
     createTeam: vi.fn<Api["createTeam"]>().mockResolvedValue(team()),
     updateTeam: vi.fn<Api["updateTeam"]>().mockResolvedValue(team()),
     deleteTeam: vi.fn<Api["deleteTeam"]>().mockResolvedValue(null),
+    habits: vi.fn<Api["habits"]>().mockResolvedValue([]),
+    createHabit: vi
+      .fn<Api["createHabit"]>()
+      .mockImplementation((pixieId, body) =>
+        Promise.resolve(habit({ ...body, pixie_id: pixieId })),
+      ),
+    updateHabit: vi
+      .fn<Api["updateHabit"]>()
+      .mockImplementation((pixieId, id, body) =>
+        Promise.resolve(habit({ ...body, id, pixie_id: pixieId })),
+      ),
+    deleteHabit: vi.fn<Api["deleteHabit"]>().mockResolvedValue(null),
+    runHabit: vi.fn<Api["runHabit"]>().mockResolvedValue(habitRun({ outcome: "queued" })),
+    habitRuns: vi.fn<Api["habitRuns"]>().mockResolvedValue([]),
+    pixieReports: vi.fn<Api["pixieReports"]>().mockResolvedValue([]),
+    readReport: vi.fn<Api["readReport"]>().mockResolvedValue(null),
+    readPixieReports: vi.fn<Api["readPixieReports"]>().mockResolvedValue(null),
   };
 }

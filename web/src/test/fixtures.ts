@@ -6,6 +6,8 @@ import type {
   CommandList,
   Connector,
   Effort,
+  Habit,
+  HabitRun,
   HarnessEvent,
   ModelList,
   ModelOption,
@@ -14,6 +16,7 @@ import type {
   PrCheck,
   PrStatus,
   Pixie,
+  PixieReport,
   PixieTeam,
   QueuedMessage,
   RepoConfig,
@@ -70,6 +73,8 @@ export function session(overrides: Partial<Session> = {}): Session {
     pr_summary: null,
     stuck: null,
     pixie_id: null,
+    started_by_pixie: null,
+    habit_run_id: null,
     ...overrides,
   };
 }
@@ -93,11 +98,65 @@ export function pixie(overrides: Partial<Pixie> = {}): Pixie {
     allowed_tools: [],
     disallowed_tools: [],
     hidden: false,
+    max_running: 2,
+    max_per_day: 5,
+    report_push: "action",
     position: 0,
     chat_session_id: null,
     team_id: null,
+    unread_action_reports: 0,
     created_at: "2026-10-13T09:00:00Z",
     updated_at: "2026-10-13T09:00:00Z",
+    ...overrides,
+  };
+}
+
+export function habitRun(overrides: Partial<HabitRun> = {}): HabitRun {
+  return {
+    id: "r1",
+    habit_id: "h1",
+    pixie_id: "p1",
+    session_id: "hs1",
+    due_at: "2026-10-14T07:00:00Z",
+    started_at: "2026-10-14T07:00:05Z",
+    ended_at: "2026-10-14T07:02:35Z",
+    outcome: "reported",
+    reason: null,
+    report_title: "Two chats are stuck",
+    ...overrides,
+  };
+}
+
+export function habit(overrides: Partial<Habit> = {}): Habit {
+  return {
+    id: "h1",
+    pixie_id: "p1",
+    name: "Morning check",
+    prompt: "Look at yesterday's chats and report anything stuck.",
+    schedule: { kind: "weekdays", time: "09:00" },
+    triggers: [],
+    max_minutes: 20,
+    enabled: true,
+    created_at: "2026-10-14T06:00:00Z",
+    updated_at: "2026-10-14T06:00:00Z",
+    next_due_at: null,
+    last_run: null,
+    ...overrides,
+  };
+}
+
+export function report(overrides: Partial<PixieReport> = {}): PixieReport {
+  return {
+    id: "rep1",
+    pixie_id: "p1",
+    severity: "action",
+    title: "CI is failing on main",
+    body: "Two runs failed on the lint step.",
+    link: null,
+    habit_id: null,
+    run_id: null,
+    created_at: "2026-10-14T07:02:30Z",
+    read_at: null,
     ...overrides,
   };
 }
@@ -388,6 +447,7 @@ export function notificationSettings(
       ci_failed: false,
       ready_to_merge: false,
       stuck: false,
+      pixie_report: true,
     },
     quiet_hours: null,
     ntfy: { enabled: false, server: "https://ntfy.sh", topic: null, click_base_url: null },

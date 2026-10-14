@@ -227,4 +227,41 @@ describe("tap targets", () => {
     // A segmented control's segments.
     reach(await screen.findByRole("button", { name: "In place" }), "height");
   });
+
+  it("are at least 44 points for pixie limits, activity links and cards", async () => {
+    const chat = session({ id: "s1", title: "Check the form" });
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+    api.session.mockResolvedValue(detail({ ...chat, id: "pc", pixie_id: "p1" }));
+    api.sessionEvents.mockResolvedValue([
+      {
+        id: 1,
+        session_id: "pc",
+        type: "pixie.card",
+        ts: "x",
+        payload: { kind: "session", session_id: "s1" },
+      },
+    ]);
+    api.pixieActivity.mockResolvedValue([
+      { id: 1, ts: "2026-10-14T10:00:00Z", tool: "nudge", session_id: "s1", summary: "Nudged" },
+    ]);
+    const { user } = await openPixie(api, pixie({ chat_session_id: "pc" }));
+
+    const open = within(await screen.findByRole("group", { name: /^Chat:/ })).getByRole("button", {
+      name: "Open",
+    });
+    expect(hitBox(open).height).toBeGreaterThanOrEqual(TAP);
+    expect(hitBox(open).width).toBeGreaterThanOrEqual(TAP);
+
+    await user.click(screen.getByRole("tab", { name: "Details" }));
+    for (const name of ["Running chats at once", "New chats per day"]) {
+      for (const step of within(screen.getByRole("group", { name })).getAllByRole("button")) {
+        expect(box(step)).toEqual({ width: TAP, height: TAP });
+      }
+    }
+    await user.click(screen.getByRole("button", { name: /^Activity/ }));
+    const link = await screen.findByRole("button", { name: "Check the form" });
+    expect(box(link).height).toBeGreaterThanOrEqual(TAP);
+  });
 });

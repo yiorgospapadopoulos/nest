@@ -18,7 +18,18 @@ function setup() {
 }
 
 describe("pixie actions", () => {
-  it("loads pixies and teams, each quietly on failure", async () => {
+  it("reports refused habit changes and changes nothing (B42)", async () => {
+    const { api, dispatched, actions } = setup();
+    api.updateHabit.mockRejectedValueOnce(new Error("no"));
+    api.deleteHabit.mockRejectedValueOnce(new Error("no"));
+    api.runHabit.mockRejectedValueOnce(new Error("no"));
+    expect(await actions.updateHabit("p1", "h1", { enabled: false })).toBe(false);
+    expect(await actions.deleteHabit("p1", "h1")).toBe(false);
+    expect(await actions.runHabit("p1", "h1")).toBe(false);
+    expect(dispatched.map((a) => a.type)).toEqual(["toast", "toast", "toast"]);
+  });
+
+  it("loads pixies, teams and their reports, each quietly on failure", async () => {
     const { api, dispatched, actions } = setup();
     api.pixies.mockResolvedValueOnce([pixie()]);
     api.teams.mockResolvedValueOnce([team()]);
@@ -26,11 +37,13 @@ describe("pixie actions", () => {
     expect(dispatched).toEqual([
       { type: "pixies", pixies: [pixie()] },
       { type: "teams", teams: [team()] },
+      { type: "reports", reports: [] },
     ]);
     api.pixies.mockRejectedValueOnce(new Error("down"));
     api.teams.mockRejectedValueOnce(new Error("down"));
+    api.pixieReports.mockRejectedValueOnce(new Error("down"));
     await actions.loadPixies();
-    expect(dispatched).toHaveLength(2);
+    expect(dispatched).toHaveLength(3);
   });
 
   it("creates, renames, leads and deletes teams", async () => {
@@ -138,7 +151,7 @@ describe("pixie actions", () => {
     const { api, dispatched, actions } = setup();
     api.pixies.mockRejectedValueOnce(new Error("no pixies"));
     await actions.load();
-    expect(dispatched.map((a) => a.type)).toEqual(["loaded", "claudeChats", "teams"]);
+    expect(dispatched.map((a) => a.type)).toEqual(["loaded", "claudeChats", "teams", "reports"]);
   });
 
   it("reads a pixie file, empty when it does not exist", async () => {

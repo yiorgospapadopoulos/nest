@@ -104,6 +104,10 @@ export interface Session {
   stuck: StuckFlag | null;
   // Set for a pixie's chat (D072).
   pixie_id: string | null;
+  // The pixie that started this chat, if one did (B41).
+  started_by_pixie: string | null;
+  // Set for a habit run's chat (B42): it has the pixie's pixie_id but is not its chat.
+  habit_run_id: string | null;
 }
 
 /** A Claude Code chat of a registered repo that harness does not own (D028). */
@@ -461,7 +465,8 @@ export type NotifyKind =
   | "finished"
   | "ci_failed"
   | "ready_to_merge"
-  | "stuck";
+  | "stuck"
+  | "pixie_report";
 
 export type SearchHitKind = "title" | "user" | "assistant" | "tool" | "tool_result" | "claude_chat";
 
@@ -585,6 +590,11 @@ export interface PixieSettings {
   allowed_tools: string[];
   disallowed_tools: string[];
   hidden: boolean;
+  // Chats it started that may run or wait at once (1 to 20), and start per local day (1 to 100).
+  max_running: number;
+  max_per_day: number;
+  // The least severe report pushed to the phone (B42).
+  report_push: ReportSeverity;
 }
 
 export interface Pixie extends PixieSettings {
@@ -594,6 +604,8 @@ export interface Pixie extends PixieSettings {
   chat_session_id: string | null;
   // The team it belongs to, if any; one team per pixie (B40).
   team_id: string | null;
+  // Its reports of severity "action" not read yet (B42).
+  unread_action_reports: number;
   created_at: string;
   updated_at: string;
 }
@@ -647,3 +659,84 @@ export interface PixieSearchHit {
   file: string;
   line: string;
 }
+
+/** A changing call a pixie made in a chat (B41). */
+export interface PixieActivity {
+  id: number;
+  ts: string;
+  // The harness tool, such as "send_message" or "start_session".
+  tool: string;
+  session_id: string | null;
+  summary: string;
+}
+
+export type ReportSeverity = "info" | "warn" | "action";
+
+/** What a pixie reported, from its chat or a habit run (B42). */
+export interface PixieReport {
+  id: string;
+  pixie_id: string;
+  severity: ReportSeverity;
+  title: string;
+  body: string;
+  link: string | null;
+  habit_id: string | null;
+  run_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+/** When a habit runs, in the Mac's local time; weekday 0 is Monday. */
+export type HabitSchedule =
+  | { kind: "hourly"; minute: number }
+  | { kind: "daily"; time: string }
+  | { kind: "weekdays"; time: string }
+  | { kind: "weekly"; weekday: number; time: string };
+
+export type HabitTrigger = "stuck" | "failed" | "review_ready" | "ci_failed";
+
+export type HabitOutcome =
+  "queued" | "running" | "reported" | "quiet" | "failed" | "stalled" | "timed_out" | "skipped";
+
+export interface HabitRun {
+  id: string;
+  habit_id: string;
+  pixie_id: string;
+  // The run's own chat, read only.
+  session_id: string | null;
+  due_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  outcome: HabitOutcome;
+  // Such as "usage" or "late" for a skipped run.
+  reason: string | null;
+  report_title: string | null;
+}
+
+/** A recurring or triggered task a pixie runs in a fresh background chat (B42). */
+export interface Habit {
+  id: string;
+  pixie_id: string;
+  name: string;
+  prompt: string;
+  schedule: HabitSchedule | null;
+  triggers: HabitTrigger[];
+  max_minutes: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  next_due_at: string | null;
+  last_run: HabitRun | null;
+}
+
+// A habit needs a schedule or at least one trigger (422 otherwise).
+export interface HabitBody {
+  name: string;
+  prompt: string;
+  schedule?: HabitSchedule | null;
+  triggers?: HabitTrigger[];
+  max_minutes?: number;
+  enabled?: boolean;
+}
+
+export type UpdateHabitBody = Partial<HabitBody>;

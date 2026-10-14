@@ -10,6 +10,7 @@ import {
   plan,
   prStatus,
   question,
+  report,
   repo,
   review,
   session,
@@ -26,6 +27,7 @@ import {
   isRunning,
   needsCount,
   nudgeText,
+  unreadActions,
   pendingFor,
   availablePixies,
   availableTeams,
@@ -145,6 +147,34 @@ describe("inbox", () => {
     ]);
     expect(needsCount(s)).toBe(5);
     expect(needsCount(s, "todo-ui")).toBe(2);
+  });
+
+  it("adds unread warn and action reports under their pixie, newest first (B42)", () => {
+    const s: State = {
+      ...state([], [approval({ id: "a", repo: "pixie:p1" })]),
+      reports: Object.fromEntries(
+        [
+          report({ id: "old", created_at: "2026-10-14T07:00:00Z" }),
+          report({ id: "new", severity: "warn", created_at: "2026-10-14T08:00:00Z" }),
+          report({ id: "info", severity: "info" }),
+          report({ id: "read", read_at: NOW }),
+          report({ id: "other", pixie_id: "p2" }),
+        ].map((r) => [r.id, r]),
+      ),
+    };
+
+    expect(inboxGroups(s).map((g) => [g.repo, g.items.length, g.reports.map((r) => r.id)])).toEqual(
+      [
+        ["pixie:p1", 1, ["new", "old"]],
+        ["pixie:p2", 0, ["other"]],
+      ],
+    );
+    expect(needsCount(s)).toBe(4);
+    expect(needsCount(s, "pixie:p2")).toBe(1);
+    // Only unread action reports count on the pixie.
+    expect(unreadActions(s, "p1")).toBe(1);
+    expect(unreadActions(s, "p3")).toBe(0);
+    expect(unreadActions(s)).toBe(2);
   });
 
   it("adds open pull requests whose checks failed, oldest change first", () => {

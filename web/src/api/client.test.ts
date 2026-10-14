@@ -291,6 +291,7 @@ const calls: Call[] = [
     { text: "x", hash: "h" },
   ],
   ["pixieNotes", (a) => a.pixieNotes("p1"), "GET", "/api/pixies/p1/notes", undefined],
+  ["pixieActivity", (a) => a.pixieActivity("p 1"), "GET", "/api/pixies/p%201/activity", undefined],
   [
     "searchPixie",
     (a) => a.searchPixie("p1", "a b"),
@@ -321,6 +322,45 @@ const calls: Call[] = [
     { leader_id: "p1" },
   ],
   ["deleteTeam", (a) => a.deleteTeam("t1"), "DELETE", "/api/pixie-teams/t1", undefined],
+  ["habits", (a) => a.habits("p 1"), "GET", "/api/pixies/p%201/habits", undefined],
+  [
+    "createHabit",
+    (a) => a.createHabit("p1", { name: "Check", prompt: "Look", triggers: ["stuck"] }),
+    "POST",
+    "/api/pixies/p1/habits",
+    { name: "Check", prompt: "Look", triggers: ["stuck"] },
+  ],
+  [
+    "updateHabit",
+    (a) => a.updateHabit("p1", "h 1", { enabled: false }),
+    "PATCH",
+    "/api/pixies/p1/habits/h%201",
+    { enabled: false },
+  ],
+  [
+    "deleteHabit",
+    (a) => a.deleteHabit("p1", "h1"),
+    "DELETE",
+    "/api/pixies/p1/habits/h1",
+    undefined,
+  ],
+  ["runHabit", (a) => a.runHabit("p1", "h1"), "POST", "/api/pixies/p1/habits/h1/run", undefined],
+  ["habitRuns", (a) => a.habitRuns("p1", "h1"), "GET", "/api/pixies/p1/habits/h1/runs", undefined],
+  [
+    "pixieReports",
+    (a) => a.pixieReports(false),
+    "GET",
+    "/api/pixie-reports?unread=false",
+    undefined,
+  ],
+  ["readReport", (a) => a.readReport("r 1"), "POST", "/api/pixie-reports/r%201/read", undefined],
+  [
+    "readPixieReports",
+    (a) => a.readPixieReports("p1"),
+    "POST",
+    "/api/pixies/p1/reports/read",
+    undefined,
+  ],
 ];
 
 describe("HttpApi", () => {

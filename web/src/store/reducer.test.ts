@@ -4,12 +4,15 @@ import {
   approval,
   connector,
   event,
+  habit,
+  habitRun,
   NO_BACKGROUND,
   NOW,
   pixie,
   prStatus,
   question,
   queuedMessage,
+  report,
   repo,
   review,
   session,
@@ -526,5 +529,115 @@ describe("live events", () => {
       { type: "pixies", pixies: [pixie({ id: "a" })] },
     );
     expect(Object.keys(state.drafts)).toEqual(["pixie:a", "session:s1"]);
+  });
+
+  it("keeps reports, adds new ones and marks them read (B42)", () => {
+    let state = reduce(initialState, {
+      type: "reports",
+      reports: [report({ id: "a" }), report({ id: "b" })],
+    });
+    state = apply(
+      state,
+      event({ type: "pixie.report", payload: { report: report({ id: "c" }) } as never }),
+    );
+    expect(Object.keys(state.reports)).toEqual(["a", "b", "c"]);
+
+    state = apply(
+      state,
+      event({ type: "pixie.report_read", ts: NOW, payload: { ids: ["a", "gone"] } }),
+    );
+    expect(state.reports.a?.read_at).toBe(NOW);
+    expect(state.reports.b?.read_at).toBeNull();
+    // A report read already keeps when it was read.
+    state = reduce(state, { type: "reportsRead", ids: ["a", "b"], at: "2026-10-15T00:00:00Z" });
+    expect(state.reports.a?.read_at).toBe(NOW);
+    expect(state.reports.b?.read_at).toBe("2026-10-15T00:00:00Z");
+    expect(apply(state, event({ type: "pixie.report_read", payload: {} })).reports).toBe(
+      state.reports,
+    );
+  });
+
+  it("keeps the habits of pixies whose list was loaded, live (B42)", () => {
+    let state = reduce(initialState, {
+      type: "habits",
+      pixieId: "p1",
+      habits: [habit({ id: "h1" })],
+    });
+    state = apply(
+      state,
+      event({ type: "habit.updated", payload: { habit: habit({ id: "h2" }) } as never }),
+    );
+    state = apply(
+      state,
+      event({
+        type: "habit.updated",
+        payload: { habit: habit({ id: "h1", name: "Renamed" }) } as never,
+      }),
+    );
+    // A pixie whose list is not loaded gets no partial list.
+    state = apply(
+      state,
+      event({
+        type: "habit.updated",
+        payload: { habit: habit({ id: "h9", pixie_id: "p2" }) } as never,
+      }),
+    );
+    expect(state.habits.p1?.map((h) => [h.id, h.name])).toEqual([
+      ["h1", "Renamed"],
+      ["h2", "Morning check"],
+    ]);
+    expect(state.habits.p2).toBeUndefined();
+
+    state = apply(state, event({ type: "habit.deleted", payload: { id: "h1", pixie_id: "p1" } }));
+    state = apply(state, event({ type: "habit.deleted", payload: { id: "h9", pixie_id: "p2" } }));
+    state = apply(state, event({ type: "habit.deleted", payload: {} }));
+    expect(state.habits.p1?.map((h) => h.id)).toEqual(["h2"]);
+    expect(state.habits.p2).toBeUndefined();
+  });
+
+  it("follows habit runs in the history and the habit's last run (B42)", () => {
+    let state = reduce(initialState, {
+      type: "habits",
+      pixieId: "p1",
+      habits: [habit({ id: "h1" }), habit({ id: "h2" })],
+    });
+    state = reduce(state, {
+      type: "habitRuns",
+      habitId: "h1",
+      runs: [habitRun({ id: "r1" })],
+    });
+    const queued = habitRun({ id: "r2", outcome: "queued", started_at: null });
+    state = apply(state, event({ type: "habit.run_updated", payload: { run: queued } as never }));
+    state = apply(
+      state,
+      event({
+        type: "habit.run_updated",
+        payload: { run: { ...queued, outcome: "running" } },
+      }),
+    );
+    expect(state.habitRuns.h1?.map((r) => [r.id, r.outcome])).toEqual([
+      ["r2", "running"],
+      ["r1", "reported"],
+    ]);
+    expect(state.habits.p1?.[0]?.last_run?.outcome).toBe("running");
+    expect(state.habits.p1?.[1]?.last_run).toBeNull();
+
+    // A run of a habit whose history is not open, of a pixie whose list is not loaded.
+    const other = habitRun({ id: "r3", habit_id: "h7", pixie_id: "p2" });
+    state = apply(state, event({ type: "habit.run_updated", payload: { run: other } as never }));
+    expect(state.habitRuns.h7).toBeUndefined();
+    expect(state.habits.p2).toBeUndefined();
+  });
+
+  it("forgets a deleted pixie's habits and reports (B42)", () => {
+    let state = reduce(initialState, { type: "pixies", pixies: [pixie({ id: "p1" })] });
+    state = reduce(state, { type: "habits", pixieId: "p1", habits: [habit()] });
+    state = reduce(state, {
+      type: "reports",
+      reports: [report({ id: "a" }), report({ id: "b", pixie_id: "p2" })],
+    });
+    state = apply(state, event({ type: "pixie.deleted", payload: { pixie_id: "p1" } }));
+    expect(state.habits.p1).toBeUndefined();
+    expect(Object.keys(state.reports)).toEqual(["b"]);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Session } from "../../api/types.ts";
+import type { Pixie, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
 import { Pill } from "../../ui/bits.tsx";
@@ -15,6 +15,7 @@ import { GoalsStrip } from "./GoalsStrip.tsx";
 import { PrChip } from "./PrChip.tsx";
 import { Transcript } from "./Transcript.tsx";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
+import { StartedBy } from "../pixies/StartedBy.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
@@ -35,7 +36,9 @@ interface Props {
 export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
   const { state } = useStore();
   // A pixie's chat shows on its page, also when opened by its address or an inbox card.
-  const pixieOfChat = "id" in target ? state.sessions[target.id]?.pixie_id : undefined;
+  // A habit run's chat has the pixie too, but shows on its own, read only (B42).
+  const opened = "id" in target ? state.sessions[target.id] : undefined;
+  const pixieOfChat = opened?.habit_run_id == null ? opened?.pixie_id : undefined;
   useEffect(() => {
     if (pixieOfChat != null) onOpenPixie(pixieOfChat);
   }, [pixieOfChat, onOpenPixie]);
@@ -44,7 +47,13 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
   }
   if ("pixie" in target) {
     return (
-      <PixieView id={target.pixie} tab={target.tab} onBack={onBack} onOpenPixie={onOpenPixie} />
+      <PixieView
+        id={target.pixie}
+        tab={target.tab}
+        onBack={onBack}
+        onOpenPixie={onOpenPixie}
+        onOpenChat={onOpen}
+      />
     );
   }
   return "draft" in target ? (
@@ -69,6 +78,7 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
       focus={target.event ?? null}
       onBack={onBack}
       onOpenPixie={onOpenPixie}
+      onOpenChat={onOpen}
     />
   );
 }
@@ -78,11 +88,13 @@ function SessionChat({
   focus,
   onBack,
   onOpenPixie,
+  onOpenChat,
 }: {
   id: string;
   focus: number | null;
   onBack: () => void;
   onOpenPixie: (id: string) => void;
+  onOpenChat: (sessionId: string) => void;
 }) {
   const { state, actions } = useStore();
   const session = state.sessions[id];
@@ -114,7 +126,7 @@ function SessionChat({
   return (
     <Frame
       title={session.title}
-      back={session.repo}
+      back={session.habit_run_id == null ? session.repo : runBack(state.pixies, session)}
       onBack={onBack}
       tools={
         <>
@@ -151,12 +163,17 @@ function SessionChat({
         history={history ?? "loading"}
         onRetry={() => void actions.reloadChat(id)}
         onOpenPixie={onOpenPixie}
+        onOpenChat={onOpenChat}
       />
       {/* Until the history is in, the latest exchange and so its tasks are unknown. */}
       {history === "loaded" && (
         <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
       )}
-      <Composer session={session} />
+      {session.habit_run_id == null ? (
+        <Composer session={session} />
+      ) : (
+        <p className="note pxrun">A habit run. Its chat is read only.</p>
+      )}
       {sheet === "agents" && (
         <AgentsSheet
           agents={tracking.agents}
@@ -178,6 +195,11 @@ function SessionChat({
   );
 }
 
+/** A habit run's chat goes back to its pixie's name rather than its "pixie:" repo. */
+function runBack(pixies: Record<string, Pixie>, session: Session): string {
+  return Object.values(pixies).find((p) => p.id === session.pixie_id)?.name ?? "Pixie";
+}
+
 function Details({ session, label, tone }: { session: Session } & Parameters<typeof Pill>[0]) {
   return (
     <div className="ch-r2">
@@ -189,6 +211,9 @@ function Details({ session, label, tone }: { session: Session } & Parameters<typ
         </span>
       )}
       <PrChip session={session} />
+      {session.started_by_pixie !== null && (
+        <StartedBy id={session.started_by_pixie} className="chip" />
+      )}
     </div>
   );
 }

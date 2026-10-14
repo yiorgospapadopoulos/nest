@@ -25,6 +25,7 @@ import { usePageVisible } from "../../ui/visible.ts";
 import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
+import { PixieCard } from "./PixieCard.tsx";
 import { RewindSheet } from "./RewindSheet.tsx";
 
 // Within this many pixels of the bottom, new output is followed. Anywhere else the
@@ -50,6 +51,8 @@ interface Props {
   onRetry: () => void;
   // A pixie's page, from a call to it.
   onOpenPixie: (id: string) => void;
+  // A chat, from a card a pixie posted (B41).
+  onOpenChat: (sessionId: string) => void;
 }
 
 export function Transcript({
@@ -59,6 +62,7 @@ export function Transcript({
   history,
   onRetry,
   onOpenPixie,
+  onOpenChat,
 }: Props) {
   const loaded = history === "loaded";
   const { state, actions } = useStore();
@@ -169,6 +173,7 @@ export function Transcript({
               running={running}
               onRewind={onRewind}
               onOpenPixie={onOpenPixie}
+              onOpenChat={onOpenChat}
             />
           ))}
           {live && <div className="m-a">{live}</div>}
@@ -220,6 +225,8 @@ function newsOf(item: TranscriptItem): string | null {
       return item.text;
     case "approval":
       return "Needs your approval";
+    case "report":
+      return item.title ?? "Chats finished";
     default:
       return null;
   }
@@ -302,15 +309,21 @@ interface ItemProps {
   running: ReadonlySet<string>;
   onRewind: ((eventId: number) => void) | undefined;
   onOpenPixie: (id: string) => void;
+  onOpenChat: (sessionId: string) => void;
 }
 
-function Item({ item, session, running, onRewind, onOpenPixie }: ItemProps) {
+function Item({ item, session, running, onRewind, onOpenPixie, onOpenChat }: ItemProps) {
   const ev = item.key.replace(/\..*$/, "");
   switch (item.kind) {
     case "approval":
       return <InlineApproval approval={item.approval} session={session} />;
     case "pixie":
       return <PixieCall item={item} ev={ev} running={running} onOpenPixie={onOpenPixie} />;
+    case "card":
+      // Only a pixie's chat holds cards.
+      return session.pixie_id == null ? null : (
+        <PixieCard item={item} ev={ev} pixieId={session.pixie_id} onOpenChat={onOpenChat} />
+      );
     default:
       return <MessageItem item={item} ev={ev} running={running} onRewind={onRewind} />;
   }
@@ -334,8 +347,8 @@ function Queued({ message, onCancel }: { message: QueuedMessage; onCancel: () =>
   );
 }
 
-// Pixie calls show only in a harness chat's transcript.
-export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" }>;
+// Pixie calls and cards show only in a harness chat's transcript.
+export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" | "card" }>;
 
 interface EntryProps {
   item: MessageEntry;
@@ -356,23 +369,41 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
           {item.attachments.length > 0 && <small>{item.attachments.join(", ")}</small>}
         </div>
       );
-      if (onRewind === undefined) return bubble;
+      const from = item.from === undefined ? null : <FromPixie id={item.from} />;
+      if (onRewind === undefined) {
+        return (
+          <>
+            {from}
+            {bubble}
+          </>
+        );
+      }
       return (
-        <div className="m-ur">
-          <button
-            className="rwd"
-            aria-label="Restore files to before this message"
-            aria-haspopup="dialog"
-            onClick={() => {
-              onRewind(Number(item.key));
-            }}
-          >
-            <Icon name="restore" />
-          </button>
-          {bubble}
-        </div>
+        <>
+          {from}
+          <div className="m-ur">
+            <button
+              className="rwd"
+              aria-label="Restore files to before this message"
+              aria-haspopup="dialog"
+              onClick={() => {
+                onRewind(Number(item.key));
+              }}
+            >
+              <Icon name="restore" />
+            </button>
+            {bubble}
+          </div>
+        </>
       );
     }
+    case "report":
+      return (
+        <div className="m-sys m-rep" data-ev={ev}>
+          <b>{item.title ?? "Chats finished"}</b>
+          <span>{item.text}</span>
+        </div>
+      );
     case "assistant":
       return (
         <div className="m-a" data-ev={ev}>
@@ -460,6 +491,22 @@ function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
           <div className="pxans">{busy ? "running" : (call.detail ?? call.result)}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** "from Tester" with its mascot, above a message a pixie sent into this chat (B41). */
+function FromPixie({ id }: { id: string }) {
+  const { state } = useStore();
+  const pixie = state.pixies[id];
+  return (
+    <div className="m-from">
+      {pixie !== undefined && (
+        <span aria-hidden="true">
+          <Sprite mascot={pixie.mascot} color={pixie.color} size={14} />
+        </span>
+      )}
+      <span>{pixie === undefined ? "from a pixie" : `from ${pixie.name}`}</span>
     </div>
   );
 }

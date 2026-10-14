@@ -349,7 +349,7 @@ describe("Pixie details", () => {
     expect(screen.queryByRole("textbox", { name: "Never allow" })).not.toBeInTheDocument();
   });
 
-  it("opens the soul, counts memory facts and says habits are coming", async () => {
+  it("opens the soul, counts memory facts and habits", async () => {
     const api = fakeApi();
     api.pixieFile.mockImplementation((_id, name) =>
       Promise.resolve(
@@ -364,7 +364,7 @@ describe("Pixie details", () => {
     const { user } = await details(api);
 
     expect(await screen.findByRole("button", { name: /^Memory.*2 facts/ })).toBeInTheDocument();
-    expect(screen.getByText("Coming soon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Habits.*0 habits/ })).toBeInTheDocument();
     expect(screen.getByText("Who this pixie is and the rules it follows")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Soul/ }));
     expect(await screen.findByDisplayValue("Be kind.")).toBeInTheDocument();

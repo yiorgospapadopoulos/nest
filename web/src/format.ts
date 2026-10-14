@@ -32,6 +32,14 @@ export function clockTime(at: Date): string {
   return at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** "18:30" today, otherwise "14 Oct 18:30", in the local time zone. */
+export function activityTime(iso: string, now: Date): string {
+  const at = new Date(iso);
+  const time = clockTime(at);
+  if (at.toDateString() === now.toDateString()) return time;
+  return `${at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${time}`;
+}
+
 /** "Resets 18:30" today, otherwise "Resets Mon 09:00". */
 export function resetLabel(iso: string | null, now: Date): string {
   if (iso === null) return "Reset time unknown";

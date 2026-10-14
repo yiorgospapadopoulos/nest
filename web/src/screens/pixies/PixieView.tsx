@@ -20,12 +20,14 @@ interface Props {
   onBack: () => void;
   // Another pixie's page, from a call to it in the chat.
   onOpenPixie: (id: string) => void;
+  // A chat it started or named, from a card or its activity log.
+  onOpenChat: (sessionId: string) => void;
   tab?: PixieTab | undefined;
 }
 
 /** A pixie's page: its one ongoing chat, and the details that set it up (D072). */
-export function PixieView({ id, onBack, onOpenPixie, tab: first = "chat" }: Props) {
-  const { state } = useStore();
+export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "chat" }: Props) {
+  const { state, actions } = useStore();
   const pixie = state.pixies[id];
   const [tab, setTab] = useState<PixieTab>(first);
   // Pixies load after the rest, so one not known yet may still come; one that goes is deleted.
@@ -35,6 +37,23 @@ export function PixieView({ id, onBack, onOpenPixie, tab: first = "chat" }: Prop
     if (pixie !== undefined) seen.current = true;
     else if (seen.current) onBack();
   }, [pixie, onBack]);
+
+  // For the Habits row, report cards and suggested habits (B42).
+  useEffect(() => {
+    void actions.loadHabits(id);
+  }, [actions, id]);
+
+  // Opening the pixie reads its reports, and so does one arriving while it is open.
+  const unread = Object.values(state.reports)
+    .filter((r) => r.pixie_id === id && r.read_at === null)
+    .map((r) => r.id)
+    .join(" ");
+  const flagged = (pixie?.unread_action_reports ?? 0) > 0;
+  useEffect(() => {
+    if (unread !== "" || flagged) {
+      void actions.readPixieReports(id, unread === "" ? [] : unread.split(" "));
+    }
+  }, [actions, id, unread, flagged]);
 
   if (pixie === undefined) {
     return (
@@ -72,17 +91,28 @@ export function PixieView({ id, onBack, onOpenPixie, tab: first = "chat" }: Prop
       <div className={`pxbg pxbg-${pixie.background}`} aria-hidden="true" />
       {tab === "chat" ? (
         // A new chat (after the first message or a reset) is a fresh transcript.
-        <PixieChat key={pixie.chat_session_id ?? "none"} pixie={pixie} onOpenPixie={onOpenPixie} />
+        <PixieChat
+          key={pixie.chat_session_id ?? "none"}
+          pixie={pixie}
+          onOpenPixie={onOpenPixie}
+          onOpenChat={onOpenChat}
+        />
       ) : (
         <div className="pxd" id="pixie-panel" role="tabpanel" aria-labelledby="pixie-tab-details">
-          <PixieDetails pixie={pixie} />
+          <PixieDetails pixie={pixie} onOpenChat={onOpenChat} />
         </div>
       )}
     </Frame>
   );
 }
 
-function PixieChat({ pixie, onOpenPixie }: { pixie: Pixie; onOpenPixie: (id: string) => void }) {
+interface ChatProps {
+  pixie: Pixie;
+  onOpenPixie: (id: string) => void;
+  onOpenChat: (sessionId: string) => void;
+}
+
+function PixieChat({ pixie, onOpenPixie, onOpenChat }: ChatProps) {
   const { state, actions } = useStore();
   const chatId = pixie.chat_session_id;
   const session = chatId === null ? undefined : state.sessions[chatId];
@@ -114,6 +144,7 @@ function PixieChat({ pixie, onOpenPixie }: { pixie: Pixie; onOpenPixie: (id: str
           history={state.history[session.id] ?? "loading"}
           onRetry={() => void actions.reloadChat(session.id)}
           onOpenPixie={onOpenPixie}
+          onOpenChat={onOpenChat}
         />
       )}
       <Composer pixie={pixie.id} chat={session} />
