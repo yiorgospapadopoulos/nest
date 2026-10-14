@@ -31,7 +31,9 @@ class RecordingModule:
         self._log.append("stop")
 
 
-def make_paths(tmp_path: Path, modules: list[str] | None = None) -> AppPaths:
+def make_paths(
+    tmp_path: Path, modules: list[str] | None = None, token_socket: Path | None = None
+) -> AppPaths:
     # No web build, so API tests never depend on whether web/dist exists in the checkout.
     paths = AppPaths(
         config_dir=tmp_path / "config",
@@ -39,6 +41,7 @@ def make_paths(tmp_path: Path, modules: list[str] | None = None) -> AppPaths:
         web_dist=tmp_path / "web",
         claude_dir=tmp_path / "claude",
         claude_account_file=tmp_path / "claude.json",
+        token_socket=token_socket,
     )
     if modules is not None:
         paths.config_dir.mkdir(parents=True)
@@ -58,10 +61,11 @@ async def build_context(
     push_transport: httpx.AsyncBaseTransport | None = None,
     probe_factory: FakeProbeFactory | None = None,
     engine_factory: FakeInfoFactory | None = None,
+    token_socket: Path | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
-        make_paths(tmp_path, ["recorder"] if log is not None else None),
+        make_paths(tmp_path, ["recorder"] if log is not None else None, token_socket),
         secrets,
         clock,
         {"recorder": lambda: RecordingModule(record)},

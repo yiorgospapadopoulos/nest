@@ -14,6 +14,7 @@ from harness.approvals.store import ApprovalStore
 from harness.attachments.store import AttachmentStore
 from harness.auth.devices import DeviceService
 from harness.auth.secrets import SecretStore
+from harness.auth.token_socket import TokenSocket
 from harness.claude_sessions.archive import ChatArchive
 from harness.claude_sessions.catalog import ClaudeChats
 from harness.claude_sessions.live import LiveChats
@@ -88,6 +89,8 @@ class AppContext:
     stuck: StuckWatcher
     engine: EngineInfo
     pixies: PixieService
+    # None when the paths name no socket, as in tests.
+    token_socket: TokenSocket | None
 
     @classmethod
     async def build(
@@ -202,12 +205,13 @@ class AppContext:
             transport=push_transport,
             zone=zone,
         )
+        devices = DeviceService(db, clock, secrets)
         context = cls(
             paths=paths,
             settings=settings,
             db=db,
             bus=bus,
-            devices=DeviceService(db, clock, secrets),
+            devices=devices,
             modules=ModuleRegistry(module_factories),
             clock=clock,
             repos=repos,
@@ -259,6 +263,10 @@ class AppContext:
             ),
             engine=engine,
             pixies=pixies,
+            # Each request gets the current token: a revoked local device is given a new one.
+            token_socket=None
+            if paths.token_socket is None
+            else TokenSocket(paths.token_socket, devices.ensure_local_device),
         )
         return context
 

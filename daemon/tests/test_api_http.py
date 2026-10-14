@@ -1,3 +1,6 @@
+import asyncio
+import shutil
+import tempfile
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
@@ -79,6 +82,44 @@ async def test_lifespan_starts_and_stops_enabled_modules(
         assert log == ["start 8765", "stop"]
     finally:
         await ctx.close()
+
+
+async def ask_socket(path: Path) -> bytes:
+    reader, writer = await asyncio.open_unix_connection(path)
+    answer = await reader.read()
+    writer.close()
+    await writer.wait_closed()
+    return answer
+
+
+def gone(path: Path) -> bool:
+    return not path.exists()
+
+
+async def test_lifespan_serves_the_local_token_on_its_socket(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
+) -> None:
+    """D075: the Mac app asks the running daemon; a revoked local device gets a new token."""
+    # Unix socket paths are limited to about 104 bytes; pytest's tmp_path can be longer.
+    root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
+    path = root / "data" / "token.sock"
+    ctx = await build_context(tmp_path, clock, secrets, token_socket=path)
+    app = create_app(ctx)
+    try:
+        async with app.router.lifespan_context(app):
+            first = local_token(secrets)
+            assert await ask_socket(path) == f"{first}\n".encode()
+            (local,) = await ctx.devices.list_devices()
+            await ctx.devices.revoke(local.id)
+
+            rotated = (await ask_socket(path)).decode().strip()
+
+            assert rotated != first
+            assert await ctx.devices.authenticate(rotated) is not None
+        assert gone(path)
+    finally:
+        await ctx.close()
+        shutil.rmtree(root)
 
 
 async def test_unknown_enabled_module_fails_startup(

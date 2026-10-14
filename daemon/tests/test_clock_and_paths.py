@@ -58,6 +58,17 @@ def test_the_claude_account_file_follows_home_and_claude_codes_setting(tmp_path:
     assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).claude_account_file is None
 
 
+def test_the_token_socket_lives_in_the_data_folder(tmp_path: Path) -> None:
+    """The Mac app reads its token there (D075); paths built in tests serve none."""
+    env = {"HARNESS_DATA_DIR": str(tmp_path / "dat")}
+
+    assert AppPaths.from_env({}, home=tmp_path).token_socket == (
+        tmp_path / "Library" / "Application Support" / "harness" / "token.sock"
+    )
+    assert AppPaths.from_env(env, home=tmp_path).token_socket == tmp_path / "dat" / "token.sock"
+    assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).token_socket is None
+
+
 def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     paths = AppPaths(config_dir=tmp_path / "c", data_dir=tmp_path / "d")
 

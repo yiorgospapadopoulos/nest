@@ -41,6 +41,8 @@ def create_app(ctx: AppContext) -> FastAPI:
         await ctx.approvals.expire_stale()
         await ctx.sessions.recover()
         await ctx.tracking.stop_stale()
+        if ctx.token_socket is not None:
+            await ctx.token_socket.start()
         try:
             await ctx.modules.start_enabled(ctx.settings.modules.enabled, ctx)
             await ctx.notifications.start()
@@ -52,6 +54,9 @@ def create_app(ctx: AppContext) -> FastAPI:
             await ctx.engine.start()
             yield
         finally:
+            # First, so nothing asks for the token from a daemon that is going away.
+            if ctx.token_socket is not None:
+                await ctx.token_socket.stop()
             await ctx.engine.stop()
             await ctx.stuck.stop()
             await ctx.search.stop()

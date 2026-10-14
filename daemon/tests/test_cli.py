@@ -1,5 +1,7 @@
 import io
 import logging
+import shutil
+import tempfile
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
@@ -39,11 +41,11 @@ class Recorder:
 
 
 class Harness:
-    def __init__(self, tmp_path: Path) -> None:
+    def __init__(self, tmp_path: Path, data_dir: Path) -> None:
         self.home = tmp_path / "home"
         self.env = {
             "HARNESS_CONFIG_DIR": str(tmp_path / "config"),
-            "HARNESS_DATA_DIR": str(tmp_path / "data"),
+            "HARNESS_DATA_DIR": str(data_dir),
         }
         self.paths = AppPaths.from_env(self.env, self.home)
         self.recorder = Recorder()
@@ -71,7 +73,11 @@ class Harness:
 def cli(tmp_path: Path) -> Iterator[Harness]:
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
-    yield Harness(tmp_path)
+    # Short, since `serve` opens the token socket in the data folder (D075) and Unix socket
+    # paths are limited to about 104 bytes; pytest's tmp_path can be longer.
+    data_root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
+    yield Harness(tmp_path, data_root / "data")
+    shutil.rmtree(data_root)
     root.handlers[:] = handlers
     root.setLevel(level)
 

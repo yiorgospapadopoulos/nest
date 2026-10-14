@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
 
+from harness.auth.token_socket import SOCKET_NAME
+
 CONFIG_DIR_ENV = "HARNESS_CONFIG_DIR"
 DATA_DIR_ENV = "HARNESS_DATA_DIR"
 WEB_DIST_ENV = "HARNESS_WEB_DIST"
@@ -25,6 +27,9 @@ class AppPaths:
     claude_dir: Path | None = None
     # Claude Code's own settings file, read only for the account name (D039). None reads nothing.
     claude_account_file: Path | None = None
+    # Where the daemon hands this Mac's device token to the Mac app (D075). None serves
+    # none, so tests never open a socket by accident.
+    token_socket: Path | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], home: Path) -> Self:
@@ -40,6 +45,7 @@ class AppPaths:
         return cls(
             config_dir=Path(config_dir),
             data_dir=Path(data_dir),
+            token_socket=Path(data_dir) / SOCKET_NAME,
             web_dist=Path(web_dist),
             claude_dir=Path(claude_dir),
             claude_account_file=account_file,
