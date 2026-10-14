@@ -1,0 +1,237 @@
+[
+  {
+    "id": 10,
+    "type": "session.created",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "session": {
+        "repo": "todo-ui",
+        "title": "Validate contact form with zod",
+        "prompt": "Validate the contact form on the server with zod and show inline errors.",
+        "mode": "worktree",
+        "cwd": "/Users/example/.local/share/nest/worktrees/todo-ui/contact-zod-3f2a",
+        "model": "sonnet",
+        "effort": "medium",
+        "permission_mode": "acceptEdits",
+        "provider": "claude",
+        "base_ref": "9c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d",
+        "id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+        "state": "waiting",
+        "worktree_path": "/Users/example/.local/share/nest/worktrees/todo-ui/contact-zod-3f2a",
+        "branch": "agent/contact-zod-3f2a",
+        "provider_session_id": "0e6d2b8c-1f3a-4c5d-9e7f-8a9b0c1d2e3f",
+        "git_violation": false,
+        "created_at": "2026-10-06T09:12:30.482113Z",
+        "updated_at": "2026-10-06T09:14:02Z",
+        "last_error": null,
+        "commit_sha": null,
+        "pr_url": null,
+        "allowed_tools": [
+          "Bash"
+        ],
+        "pinned": true,
+        "archived_at": null
+      }
+    }
+  },
+  {
+    "id": 11,
+    "type": "session.state",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "state": "starting",
+      "error": null
+    }
+  },
+  {
+    "id": 12,
+    "type": "session.user_message",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "text": "Validate the contact form on the server with zod.",
+      "attachments": [
+        {
+          "id": "att1",
+          "filename": "form.png",
+          "media_type": "image/png",
+          "size": 20480
+        }
+      ]
+    }
+  },
+  {
+    "id": 13,
+    "type": "session.state",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "state": "running",
+      "error": null
+    }
+  },
+  {
+    "id": 14,
+    "type": "session.message",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "blocks": [
+        {
+          "type": "thinking",
+          "text": "The route posts JSON."
+        },
+        {
+          "type": "text",
+          "text": "I'll read the route first."
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_01",
+          "name": "Read",
+          "input": {
+            "file_path": "app/api/contact/route.ts"
+          }
+        }
+      ],
+      "parent_tool_use_id": null
+    }
+  },
+  {
+    "id": 15,
+    "type": "session.message",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "blocks": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01",
+          "content": "export async function POST() {}",
+          "is_error": false
+        }
+      ],
+      "parent_tool_use_id": null
+    }
+  },
+  {
+    "id": 16,
+    "type": "session.message",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "blocks": [
+        {
+          "type": "text",
+          "text": "Exploring usages."
+        }
+      ],
+      "parent_tool_use_id": "toolu_09"
+    }
+  },
+  {
+    "id": 17,
+    "type": "approval.created",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "approval": {
+        "id": "ap-perm",
+        "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+        "repo": "todo-ui",
+        "title": "Validate contact form with zod",
+        "kind": "permission",
+        "status": "pending",
+        "payload": {
+          "tool": "Bash",
+          "input": {
+            "command": "npm install zod",
+            "description": "Install zod"
+          },
+          "title": "Allow Bash: npm install zod?"
+        },
+        "resolution": null,
+        "created_at": "2026-10-06T09:13:00.100000Z",
+        "resolved_at": null
+      }
+    }
+  },
+  {
+    "id": 18,
+    "type": "approval.resolved",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "approval": {
+        "id": "ap-perm",
+        "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+        "repo": "todo-ui",
+        "title": "Validate contact form with zod",
+        "kind": "permission",
+        "status": "resolved",
+        "payload": {
+          "tool": "Bash",
+          "input": {
+            "command": "npm install zod",
+            "description": "Install zod"
+          },
+          "title": "Allow Bash: npm install zod?"
+        },
+        "resolution": {
+          "behavior": "allow",
+          "message": null,
+          "always": false
+        },
+        "created_at": "2026-10-06T09:13:00.100000Z",
+        "resolved_at": "2026-10-06T09:13:30Z"
+      }
+    }
+  },
+  {
+    "id": 19,
+    "type": "session.message",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "blocks": [
+        {
+          "type": "text",
+          "text": "Validation added."
+        }
+      ],
+      "parent_tool_use_id": null
+    }
+  },
+  {
+    "id": 20,
+    "type": "session.result",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "is_error": false,
+      "subtype": "success",
+      "duration_ms": 41250,
+      "num_turns": 6,
+      "cost_usd": null,
+      "errors": [],
+      "tokens": {
+        "input_tokens": 10,
+        "output_tokens": 20,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 5
+      }
+    }
+  },
+  {
+    "id": 21,
+    "type": "session.state",
+    "ts": "2026-10-06T09:12:30.5Z",
+    "session_id": "5b8f3c2a9d1e4f60a7b8c9d0e1f2a3b4",
+    "payload": {
+      "state": "idle",
+      "error": null
+    }
+  }
+]

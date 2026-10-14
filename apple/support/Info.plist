@@ -5,17 +5,17 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>harness</string>
+	<string>Nest</string>
 	<key>CFBundleExecutable</key>
-	<string>harness</string>
+	<string>Nest</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.harness.app</string>
+	<string>local.nest.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>harness</string>
+	<string>Nest</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -36,11 +36,11 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>harness listens to your voice only while you dictate a message.</string>
+	<string>Nest listens to your voice only while you dictate a message.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>harness turns your dictation into text for the message field.</string>
+	<string>Nest turns your dictation into text for the message field.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -49,9 +49,9 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>harness chat</string>
+			<string>Nest chat</string>
 			<key>UTTypeIdentifier</key>
-			<string>local.harness.app.chat</string>
+			<string>local.nest.app.chat</string>
 		</dict>
 	</array>
 </dict>

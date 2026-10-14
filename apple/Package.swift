@@ -3,27 +3,27 @@
 import PackageDescription
 
 let package = Package(
-    name: "Harness",
+    name: "Nest",
     platforms: [.macOS(.v26)],
     products: [
-        .library(name: "HarnessKit", targets: ["HarnessKit"]),
-        .executable(name: "HarnessApp", targets: ["HarnessApp"]),
+        .library(name: "NestKit", targets: ["NestKit"]),
+        .executable(name: "NestApp", targets: ["NestApp"]),
     ],
     dependencies: [
-        // The terminal panes' emulator (MIT); the app target only, HarnessKit stays free of
+        // The terminal panes' emulator (MIT); the app target only, NestKit stays free of
         // dependencies. 1.12 and later compile Metal shaders, which need Xcode's separately
         // downloaded Metal Toolchain.
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.11.0")
     ],
     targets: [
-        .target(name: "HarnessKit"),
+        .target(name: "NestKit"),
         .executableTarget(
-            name: "HarnessApp",
-            dependencies: ["HarnessKit", .product(name: "SwiftTerm", package: "SwiftTerm")]
+            name: "NestApp",
+            dependencies: ["NestKit", .product(name: "SwiftTerm", package: "SwiftTerm")]
         ),
         .testTarget(
-            name: "HarnessKitTests",
-            dependencies: ["HarnessKit"],
+            name: "NestKitTests",
+            dependencies: ["NestKit"],
             resources: [.copy("Fixtures")]
         ),
     ],
