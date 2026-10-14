@@ -46,6 +46,9 @@ class TurnOutput:
         self.shown = False
         # The echo carries the message's id, the checkpoint its files restore to (IMP-02).
         self.awaiting_replay = False
+        # Harness set the run's mode: the start-up report, made before that may have taken
+        # effect, no longer says the mode the run works in (BUG-90).
+        self.mode_set = False
 
 
 async def translate(
@@ -57,7 +60,8 @@ async def translate(
             await sink.connectors(mcp_servers(message.data.get("mcp_servers")))
             await _report_commands(init_catalog(message.data), sink)
             # The mode the run works in; Claude Code's own when it opened without one.
-            await _report_mode(message.data, sink)
+            if not output.mode_set:
+                await _report_mode(message.data, sink)
         case SystemMessage(subtype="commands_changed"):
             await _report_commands(described_catalog(message.data), sink)
         case SystemMessage(subtype="status"):
@@ -150,9 +154,12 @@ async def _notice(
 def _is_replay(message: UserMessage, output: TurnOutput) -> bool:
     """Whether `message` is the engine's echo of the user message just sent: the first
     user message after it from the main agent, with an id, that answers no tool and is not
-    a local command's output.
+    a local command's output. A message the engine injected (a task notification, a
+    scheduled prompt) says where it came from (BUG-93).
     """
     if not output.awaiting_replay or message.uuid is None or message.parent_tool_use_id:
+        return False
+    if message.origin is not None and message.origin.get("kind") != "human":
         return False
     if isinstance(message.content, str):
         return not _command_output(message.content)

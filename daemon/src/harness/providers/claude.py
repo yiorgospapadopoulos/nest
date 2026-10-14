@@ -243,6 +243,7 @@ class ClaudeRun:
         await self._client.set_model(model)
 
     async def set_permission_mode(self, mode: PermissionMode) -> None:
+        self._output.mode_set = True
         await self._client.set_permission_mode(mode)
 
     async def connector_statuses(self) -> list[McpServer]:

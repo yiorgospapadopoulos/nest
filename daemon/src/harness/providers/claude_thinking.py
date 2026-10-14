@@ -23,10 +23,15 @@ class ThinkingTimer:
         self._last: float | None = None
 
     def stream(self, event: dict[str, Any]) -> bool | None:
-        """Follow a main-agent stream event; True when thinking starts, False when it ends."""
+        """Follow a main-agent stream event; True when thinking starts, False when it ends,
+        also when a new response drops a block that never ended (BUG-91).
+        """
         match event.get("type"):
             case "message_start":
+                open_block = bool(self._started)
                 self._drop()
+                if open_block:
+                    return False
             case "content_block_start" if event.get("content_block", {}).get("type") in _THINKING:
                 self._started[event.get("index", 0)] = self._now()
                 return True

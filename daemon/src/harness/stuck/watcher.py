@@ -169,6 +169,9 @@ class StuckWatcher:
             _note_calls(turn, event)
         if event.type == types.SESSION_THINKING:
             turn.thinking = event.payload.get("active") is True
+        elif _main_output(event):
+            # Output after thinking ends it, also when its end was never reported (BUG-91).
+            turn.thinking = False
         await self._evaluate(session_id, turn)
 
     async def _end(self, session_id: str) -> None:
@@ -222,6 +225,13 @@ class StuckWatcher:
                 await self.tick()
             except Exception as error:
                 logger.warning("stuck check failed (%s)", type(error).__name__)
+
+
+def _main_output(event: Event) -> bool:
+    """Text, a message or a notice from the main agent's turn (a subagent's runs beside)."""
+    if event.type == types.SESSION_MESSAGE:
+        return event.payload.get("parent_tool_use_id") is None
+    return event.type in (types.SESSION_DELTA, types.SESSION_NOTICE)
 
 
 def _note_prompt(turn: _Turn, event: Event) -> None:
