@@ -28,6 +28,12 @@
             model: "opus", effort: .high, permissionMode: .default, mode: .inPlace)
         /// What approving answers instead of the failed push, when set.
         private var approveRefusal: APIError?
+        /// Diff reads waiting for `releaseDiffs()`, while diffs are held; nil otherwise.
+        private var diffWaiters: [CheckedContinuation<Void, Never>]?
+        /// Reading events fails, as while the daemon is unreachable.
+        private var eventsFail = false
+        /// A restore preview finds no file changed since the message.
+        private var nothingToRestore = false
 
         init(now: Date = Date()) {
             self.now = now
@@ -62,10 +68,14 @@
 
         func removeRepo(_ name: String, purgeSessions: Bool) async throws {}
 
-        func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo {
+        func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {
             let all = try await repos()
             var repo = all.first { $0.name == name } ?? all[0]
-            repo.worktree = config
+            if patch.changesDefault {
+                repo.worktree.isDefault = patch.isDefault
+            }
+            repo.worktree.link = patch.link ?? repo.worktree.link
+            repo.worktree.setup = patch.setup ?? repo.worktree.setup
             return repo
         }
 
@@ -116,6 +126,9 @@
         func sessionEvents(_ id: String, after: Int, before: Int?, limit: Int?) async throws
             -> [Event]
         {
+            if lock.withLock({ eventsFail }) {
+                throw APIError.transport("Could not connect to the server.")
+            }
             let range = (events[id] ?? lock.withLock { adoptedEvents[id] } ?? []).filter {
                 ($0.id ?? 0) > after && ($0.id ?? 0) < (before ?? .max)
             }
@@ -208,7 +221,10 @@
         func interrupt(_ id: String) async throws {}
 
         func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
-            RewindPreview(
+            if lock.withLock({ nothingToRestore }) {
+                return RewindPreview(canRewind: true)
+            }
+            return RewindPreview(
                 canRewind: true, files: ["src/App.tsx", "src/styles.css"], insertions: 12,
                 deletions: 4)
         }
@@ -222,12 +238,42 @@
         }
 
         func diff(_ sessionID: String) async throws -> SessionDiff {
-            try SampleData.diff()
+            await withCheckedContinuation { continuation in
+                let held = lock.withLock {
+                    diffWaiters?.append(continuation)
+                    return diffWaiters != nil
+                }
+                if !held {
+                    continuation.resume()
+                }
+            }
+            return try SampleData.diff()
         }
 
         /// Approving answers this refusal from now on, as when origin's address changed.
         func refuseApprove(with error: APIError) {
             lock.withLock { approveRefusal = error }
+        }
+
+        /// Diffs load only after `releaseDiffs()`.
+        func holdDiffs() {
+            lock.withLock { diffWaiters = [] }
+        }
+
+        func releaseDiffs() {
+            let waiters = lock.withLock {
+                defer { diffWaiters = nil }
+                return diffWaiters ?? []
+            }
+            waiters.forEach { $0.resume() }
+        }
+
+        func failEvents(_ fail: Bool) {
+            lock.withLock { eventsFail = fail }
+        }
+
+        func previewNothingToRestore(_ nothing: Bool) {
+            lock.withLock { nothingToRestore = nothing }
         }
 
         /// Pushing fails, so snapshots show a failed step with git's output.

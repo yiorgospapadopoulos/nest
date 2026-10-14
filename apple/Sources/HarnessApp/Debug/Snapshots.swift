@@ -115,6 +115,10 @@
                 try await renderTurnActivity(model, shell, controller, folder)
                 return
             }
+            if only == "b34" {
+                try await renderReviewFixes(model, shell, controller, folder)
+                return
+            }
             if only == "b33" {
                 try await renderImprovements(model, shell, controller, folder)
                 return
@@ -195,7 +199,11 @@
 
             // B09: approvals, diff review, palette, usage, settings, connectors, pairing.
             try await model.devices.load()
-            try await model.approvals.loadDiff(session: "c3")
+            if let review = model.approvals.pending.first(where: {
+                $0.sessionID == "c3" && $0.kind == .review
+            }) {
+                try await model.approvals.loadDiff(for: review)
+            }
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
                 state.openChat("c4", in: workspace)
@@ -205,9 +213,12 @@
             try await pair(controller, "needs-you", folder)
             model.app.update("todo-ui") { $0.openCards = Set(RightCard.allCases) }
             let review = model.approvals.pending.first { $0.kind == .review }!
+            // The sheets read the diff again as they open; they are shown once it is in.
             shell.show(.diff(review.id))
+            try await model.approvals.loadDiff(for: review)
             try await pair(controller, "diff-sheet", folder)
             shell.show(.publish(review.id))
+            try await model.approvals.loadDiff(for: review)
             try await pair(controller, "publish-sheet", folder)
             let form = model.approvals.publishForm(for: review, session: nil)
             _ = try? await model.approvals.publish(review, form)
@@ -237,6 +248,7 @@
             try await renderTurnActivity(model, shell, controller, folder)
             try await renderExchangeBar(model, shell, controller, folder)
             try await renderImprovements(model, shell, controller, folder)
+            try await renderReviewFixes(model, shell, controller, folder)
         }
 
         /// B33: Always allow with Claude Code's rule, how a plan goes on, project settings,
@@ -245,6 +257,9 @@
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
+            // Earlier sections resolve every approval but one for their own cards; this
+            // one starts from the sample's full list, as when it renders on its own.
+            try await model.approvals.load()
             let workspace = CGSize(width: 828, height: 790)
             model.app.openProject("todo-ui")
             model.app.update("todo-ui") { state in
@@ -286,10 +301,87 @@
                         urls: ["git@github.com:me/todo-ui-new.git"],
                         confirmedURL: "git@github.com:me/todo-ui.git")))
             shell.show(.publish(review.id))
+            try await model.approvals.loadDiff(for: review)
             _ = try? await model.approvals.publish(
                 review, model.approvals.publishForm(for: review, session: nil))
             try await pair(controller, "b33-push-there", folder)
             shell.close()
+        }
+
+        /// B34: the publish sheet while it reads the changes and after a review_changed
+        /// refusal, Restore with nothing to restore, a chat that could not catch up, and a
+        /// new chat leaving Auto for a model without it.
+        private static func renderReviewFixes(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let sample = model.api as? SampleAPI
+            try await model.approvals.load()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.openProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c3", in: workspace)
+                state.rightCollapsed = false
+                state.openCards = [.needsYou]
+            }
+
+            let review = model.approvals.pending.first { $0.kind == .review }!
+            sample?.holdDiffs()
+            // The sheet's own read waits, so it shows the changes loading.
+            shell.show(.publish(review.id))
+            try await pair(controller, "b34-publish-reading", folder)
+            sample?.releaseDiffs()
+            await waitUntil { model.approvals.isReviewLoaded(review) }
+
+            sample?.refuseApprove(
+                with: .approveRefused(
+                    "The changes are different from the review you saw. Open the review again.",
+                    reason: .reviewChanged))
+            _ = try? await model.sessions.publish(
+                review, model.approvals.publishForm(for: review, session: nil))
+            await waitUntil { model.approvals.isReviewLoaded(review) }
+            try await pair(controller, "b34-publish-review-changed", folder)
+            shell.close()
+
+            if let message = model.transcripts.transcript(for: "c3").items.first(where: {
+                if case .user = $0.content { true } else { false }
+            })?.eventID {
+                sample?.previewNothingToRestore(true)
+                shell.startRewind("c3", message: message)
+                await waitUntil { shell.rewinding?.isLoading == false }
+                try await pair(controller, "b34-nothing-to-restore", folder)
+                sample?.previewNothingToRestore(false)
+                shell.close()
+            }
+
+            let transcript = model.transcripts.transcript(for: "c3")
+            sample?.failEvents(true)
+            await transcript.catchUp(missed: true)
+            try await pair(controller, "b34-catch-up-failed", folder)
+            sample?.failEvents(false)
+            await transcript.retryCatchUp()
+
+            // A new chat on Opus with Auto as the agent default, moved to Haiku.
+            try await model.agents.setDefaultModel("opus")
+            try await model.agents.setDefaultPermissionMode(.auto)
+            model.app.update("todo-ui") { $0.layout = WorkspaceLayout() }
+            let draft = shell.newChat()
+            let chat = model.app.state(of: "todo-ui").layout.leaves.first(where: shell.isDraft)!
+            if let haiku = model.agents.info(for: "haiku") {
+                shell.setModel(haiku, for: chat)
+            }
+            try await pair(controller, "b34-new-chat-haiku", folder)
+            let modes = model.agents.permissionModes(for: draft.model)
+            try await pairView(
+                MenuPreview(
+                    title: "Permission mode",
+                    rows: modes.map { mode in
+                        MenuPreview.Row(
+                            title: mode.label, detail: mode.summary,
+                            checked: mode == draft.permission)
+                    }
+                ).frame(width: 340), "b34-new-chat-permission-menu", folder)
         }
 
         /// B29: a running turn with its timer, thinking, a running agents group and a
