@@ -21,8 +21,8 @@ from nestd.sessions.files import FileIndex
 from nestd.sessions.git_audit import snapshot_refs, with_own_changes
 from nestd.worktrees.manager import WorktreeManager
 from tests.fakes import FakeClock
-from tests.git_support import commit_file, git, init_repo
-from tests.nested_support import add_nested_repo, plant_filter
+from tests.git_support import git, init_repo
+from tests.nested_support import add_nested_repo
 
 
 def marker_script(path: Path, marker: Path, body: str = "") -> Path:
