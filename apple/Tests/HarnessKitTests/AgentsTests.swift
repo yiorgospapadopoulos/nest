@@ -246,6 +246,23 @@ import Testing
         #expect(store.permission(nil, afterSwitchingTo: "haiku") == nil)
     }
 
+    /// A new chat whose model has no Auto falls back to a mode it names, never to
+    /// Claude Code's own setting: the daemon would start it with the agent default then
+    /// (audit BUG-87).
+    @Test func aNewChatLeavingAutoTakesAConcreteMode() async throws {
+        let store = AgentsStore(api: api)
+        await store.load()
+        try await store.setDefaultPermissionMode(.acceptEdits)
+        #expect(store.newChatPermission(.auto, afterSwitchingTo: "haiku") == .acceptEdits)
+        #expect(store.newChatPermission(.auto, afterSwitchingTo: "opus") == .auto)
+        #expect(store.newChatPermission(.plan, afterSwitchingTo: "haiku") == .plan)
+        try await store.setDefaultPermissionMode(.auto)
+        #expect(store.newChatPermission(.auto, afterSwitchingTo: "haiku") == .default)
+        try await store.setDefaultPermissionMode(nil)
+        #expect(store.newChatPermission(.auto, afterSwitchingTo: "sonnet") == .default)
+        #expect(store.newChatPermission(nil, afterSwitchingTo: "haiku") == nil)
+    }
+
     @Test func switchingTheDefaultModelDropsAutoWhereItIsMissing() async throws {
         let store = AgentsStore(api: api)
         await store.load()

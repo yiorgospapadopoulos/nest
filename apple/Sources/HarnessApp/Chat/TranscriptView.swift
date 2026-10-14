@@ -58,6 +58,14 @@ struct TranscriptView: View {
                     ForEach(shell.activity.queued(session: chat)) { message in
                         QueuedBubble(message: message) { shell.cancelQueued(message, in: chat) }
                     }
+                    if let failure = store?.catchUpFailure {
+                        // Live events wait until the missed ones load (audit BUG-101).
+                        VStack(spacing: 4) {
+                            SystemLine(text: "\(TranscriptStore.catchUpFailedText): \(failure)")
+                            PageButton(title: "Retry") { await store?.retryCatchUp() }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                     if let loadError {
                         SystemLine(text: loadError)
                             .frame(maxWidth: .infinity)
@@ -127,7 +135,10 @@ struct TranscriptView: View {
         follow = ScrollFollow()
         let transcript = shell.model.transcripts.transcript(for: chat)
         store = transcript
-        if transcript.needsLoad {
+        if transcript.isLoaded && transcript.needsLoad {
+            // Behind after a failed catch-up: its own line says so if it fails again.
+            await transcript.retryCatchUp()
+        } else if transcript.needsLoad {
             do {
                 try await transcript.load()
                 loadError = nil

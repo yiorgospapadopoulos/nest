@@ -40,6 +40,13 @@ import Testing
         #expect(SafeLink.url("mailto:me@example.com") != nil)
         #expect(SafeLink.url("file:///tmp/x.command") == nil)
         #expect(SafeLink.url("ssh://host") == nil)
+        // Schemes that run script or open apps stay text, whatever their case (audit M-8).
+        for link in [
+            "javascript:alert(1)", "JavaScript:alert(1)", "vbscript:msgbox(1)",
+            "data:text/html,<script>alert(1)</script>", "x-apple.systempreferences:", "tel:123",
+        ] {
+            #expect(SafeLink.url(link) == nil, "\(link)")
+        }
         #expect(SafeLink.url("no scheme") == nil)
         #expect(SafeLink.url("") == nil)
     }

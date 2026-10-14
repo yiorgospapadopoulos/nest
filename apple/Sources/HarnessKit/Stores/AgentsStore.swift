@@ -85,7 +85,19 @@ public final class AgentsStore {
     }
 
     /// The mode a new chat keeps after switching to this model: Auto only where the model
-    /// offers it, else Claude Code's own setting.
+    /// offers it, else the agent default when it names another mode, else Ask before edits.
+    /// Never Claude Code's own setting (nil): the daemon starts a chat without a mode with
+    /// the agent default (audit BUG-87).
+    public func newChatPermission(_ current: PermissionMode?, afterSwitchingTo model: String?)
+        -> PermissionMode?
+    {
+        guard current == .auto, !supportsAuto(model) else { return current }
+        let fallback = self.current.permissionMode
+        return fallback == nil || fallback == .auto ? .default : fallback
+    }
+
+    /// The agent default's mode after switching the default model: Auto only where the
+    /// model offers it, else Claude Code's own setting.
     public func permission(_ current: PermissionMode?, afterSwitchingTo model: String?)
         -> PermissionMode?
     {

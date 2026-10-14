@@ -248,6 +248,22 @@ struct UIRules: Decodable {
         #expect(sessions.attention(of: "todo-ui") == rule.notWithPending.count + 2 + 2)
     }
 
+    /// Failed checks count in every state the rule does not exclude, so a table that
+    /// excludes fewer states fails here too, not only one that excludes more (audit W-5).
+    @Test func checksFailedCountInEveryStateTheRuleAllows() {
+        let states: [SessionState] = [
+            .starting, .running, .waiting, .idle, .interrupted, .failed, .closed,
+        ]
+        for state in states {
+            var session = Fixture.session("s-\(state.rawValue)", state: state)
+            session.pr = Self.pr(changed: "2026-10-06T08:00:00Z")
+            sessions.insert(session)
+        }
+        let counted = Set(sessions.checksFailed(in: "todo-ui").map(\.state))
+        #expect(counted == Set(states).subtracting(rules.badge.checksFailed.notInStates))
+        #expect(!counted.isEmpty)
+    }
+
     @Test func approvalsStayOldestFirst() async throws {
         let first = approval(.permission, for: "s1", index: 1)
         var second = approval(.question, for: "s1", index: 2)

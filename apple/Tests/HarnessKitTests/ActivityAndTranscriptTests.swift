@@ -317,6 +317,56 @@ import Testing
             ])
     }
 
+    /// A failed catch-up says so in the chat, with Retry, instead of freezing it
+    /// silently (audit BUG-101).
+    @Test func aFailedCatchUpSaysSoAndCanBeRetried() async throws {
+        let transcript = TranscriptStore(sessionID: sessionID, api: api)
+        try await transcript.load()
+        #expect(transcript.catchUpFailure == nil)
+        api.fail("sessionEvents", with: APIError.transport("The daemon is not running"))
+
+        await transcript.catchUp(missed: true)
+        #expect(transcript.catchUpFailure == "The daemon is not running")
+        #expect(TranscriptStore.catchUpFailedText == "Could not catch up with this chat")
+
+        await transcript.retryCatchUp()
+        #expect(transcript.catchUpFailure == "The daemon is not running")
+        #expect(transcript.needsLoad)
+
+        api.set {
+            $0.failures = [:]
+            $0.events[sessionID, default: []].append(
+                Fixture.event(
+                    EventType.sessionMessage,
+                    #"{"blocks": [{"type": "text", "text": "back"}], "parent_tool_use_id": null}"#,
+                    id: 40, session: sessionID))
+        }
+        await transcript.retryCatchUp()
+        #expect(transcript.catchUpFailure == nil)
+        #expect(!transcript.needsLoad)
+        #expect(transcript.lastEventID == 40)
+        #expect(transcript.items.last?.content == .assistant("back", streaming: false))
+    }
+
+    /// A first load that fails is the view's to report; only a catch-up of a loaded chat
+    /// shows the line, and it goes once a load succeeds.
+    @Test func onlyACatchUpOfALoadedChatReportsAFailure() async throws {
+        let transcript = TranscriptStore(sessionID: sessionID, api: api)
+        api.fail("sessionEvents", with: CancellationError())
+        await transcript.catchUp(missed: true)
+        #expect(transcript.catchUpFailure == nil)
+        #expect(!transcript.isLoaded)
+
+        api.set { $0.failures = [:] }
+        try await transcript.load()
+        api.fail("sessionEvents", with: CancellationError())
+        await transcript.catchUp(missed: true)
+        #expect(transcript.catchUpFailure == CancellationError().localizedDescription)
+        api.set { $0.failures = [:] }
+        try await transcript.load()
+        #expect(transcript.catchUpFailure == nil)
+    }
+
     /// A transcript that never loaded keeps only the stored events it will apply, not
     /// every streamed delta (audit BUG-80).
     @Test func aTranscriptNotLoadedYetHoldsNoDeltas() {

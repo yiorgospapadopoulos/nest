@@ -106,24 +106,52 @@ public struct URLSessionWebSocketConnector: WebSocketConnector {
     }
 }
 
-/// The wait for a socket to open, ended once by whichever answer comes first.
-private final class Opening: Sendable {
-    private let waiter = Mutex<CheckedContinuation<Void, any Error>?>(nil)
+/// The wait for a socket to open, ended once by whichever answer comes first. An answer
+/// that comes before the wait starts (the timer runs on its own task) is kept for it
+/// (audit BUG-103).
+final class Opening: Sendable {
+    private enum State {
+        case idle
+        case waiting(CheckedContinuation<Void, any Error>)
+        case answered(Result<Void, any Error>)
+        case done
+    }
+
+    private let state = Mutex(State.idle)
+
+    var isWaiting: Bool {
+        state.withLock { if case .waiting = $0 { true } else { false } }
+    }
 
     func start(_ continuation: CheckedContinuation<Void, any Error>) {
-        waiter.withLock { $0 = continuation }
+        let early: Result<Void, any Error>? = state.withLock { state in
+            guard case .answered(let result) = state else {
+                state = .waiting(continuation)
+                return nil
+            }
+            state = .done
+            return result
+        }
+        if let early {
+            continuation.resume(with: early)
+        }
     }
 
     func finish(_ error: (any Error)?) {
-        let continuation = waiter.withLock { waiter in
-            defer { waiter = nil }
-            return waiter
+        let result: Result<Void, any Error> = error.map { .failure($0) } ?? .success(())
+        let continuation: CheckedContinuation<Void, any Error>? = state.withLock { state in
+            switch state {
+            case .idle:
+                state = .answered(result)
+                return nil
+            case .waiting(let continuation):
+                state = .done
+                return continuation
+            case .answered, .done:
+                return nil
+            }
         }
-        if let error {
-            continuation?.resume(throwing: error)
-        } else {
-            continuation?.resume()
-        }
+        continuation?.resume(with: result)
     }
 }
 

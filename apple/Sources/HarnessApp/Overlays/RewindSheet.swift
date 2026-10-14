@@ -60,9 +60,7 @@ struct RewindSheet: View {
                 Button {
                     shell.confirmRewind()
                 } label: {
-                    Label(
-                        flow.isRestoring ? "Restoring…" : "Restore files",
-                        systemImage: Icon.rewind)
+                    Label(flow.restoreLabel, systemImage: Icon.rewind)
                 }
                 .buttonStyle(.harness(.destructive))
                 .disabled(!flow.canRestore)

@@ -607,7 +607,8 @@ final class Shell {
             let draft = draft(for: chat)
             draft.model = info.value
             draft.effort = agents.effort(draft.effort, afterSwitchingTo: info.value)
-            draft.permission = agents.permission(draft.permission, afterSwitchingTo: info.value)
+            draft.permission = agents.newChatPermission(
+                draft.permission, afterSwitchingTo: info.value)
         } else {
             let current = sessions.session(chat)?.effort
             let effort = agents.effort(current, afterSwitchingTo: info.value)
@@ -627,11 +628,12 @@ final class Shell {
         }
     }
 
-    /// Nil (drafts only) leaves the mode to Claude Code's own setting.
+    /// Menus offer only named modes; a nil is ignored.
     func setPermission(_ mode: PermissionMode?, for chat: String) {
+        guard let mode else { return }
         if isDraft(chat) {
             draft(for: chat).permission = mode
-        } else if let mode {
+        } else {
             run("Could not change the permission mode") {
                 try await self.sessions.setPermissionMode(chat, mode)
             }
@@ -941,10 +943,12 @@ final class Shell {
 
     // MARK: Project settings
 
-    /// Saves a project's worktree default, links and setup commands.
-    func saveWorktree(_ config: WorktreeConfig, of project: String) {
+    /// Changes a project's worktree default, links or setup commands; saves run in turn.
+    func changeSettings(
+        of project: String, _ change: @escaping @Sendable (inout WorktreeConfig) -> Void
+    ) {
         run("Could not save the project settings") {
-            try await self.app.saveWorktree(config, of: project)
+            try await self.app.changeSettings(of: project, change)
         }
     }
 

@@ -78,15 +78,30 @@ public final class RewindFlow {
         self.api = api
     }
 
-    /// The daemon restores files only while the chat is idle.
+    /// The daemon restores files while no turn runs: idle, after Stop or a failure, and
+    /// not in an archived chat (audit BUG-104).
     public static func isAvailable(for session: Session?) -> Bool {
-        session.map { $0.state == .idle && !$0.isArchived } ?? false
+        guard let session, !session.isArchived else { return false }
+        return [.idle, .interrupted, .failed].contains(session.state)
     }
 
     public var isLoading: Bool { preview == nil && failure == nil }
 
-    /// The preview says the files can go back, and no restore runs.
-    public var canRestore: Bool { preview?.canRewind == true && !isRestoring }
+    /// The Restore button's title.
+    public var restoreLabel: String {
+        if isRestoring {
+            return "Restoring…"
+        }
+        return preview?.canRewind == true && preview?.filesChanged == 0
+            ? "Nothing to restore" : "Restore files"
+    }
+
+    /// The preview says the files can go back, some file would change, and no restore
+    /// runs.
+    public var canRestore: Bool {
+        guard let preview else { return false }
+        return preview.canRewind && preview.filesChanged > 0 && !isRestoring
+    }
 
     public func load() async {
         do {

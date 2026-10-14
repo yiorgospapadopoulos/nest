@@ -242,14 +242,52 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
         #expect(task.state.withLock { $0.cancelledWith } == nil)
     }
 
-    @Test func aConnectThatNeverOpensTimesOut() async {
+    @Test func aConnectThatNeverOpensTimesOut() async throws {
         task.state.withLock { $0.pingHangs = true }
         let sleeper = FakeSleeper()
         let task = task
+        let request = request
         let connector = URLSessionWebSocketConnector(timeout: 7, sleeper: sleeper) { _ in task }
-        await #expect(throws: URLError(.timedOut)) { _ = try await connector.connect(request) }
+        let connecting = Task { try await connector.connect(request) }
+        // Without the timeout the connect would wait for ever: after a while the socket is
+        // closed instead, so the test fails with another error rather than hanging.
+        let watchdog = Task {
+            try await Task.sleep(for: .seconds(5))
+            task.cancel(with: .goingAway, reason: nil)
+        }
+        defer { watchdog.cancel() }
+        await #expect(throws: URLError(.timedOut)) { _ = try await connecting.value }
         #expect(sleeper.delays.withLock { $0 } == [7])
         #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
+    }
+
+    /// The timeout can fire before the wait for the socket starts; that answer is kept, not
+    /// lost, so the connect still ends (audit BUG-103).
+    @Test func anAnswerBeforeTheWaitStartsIsKept() async {
+        struct Late: Error {}
+        let opening = Opening()
+        opening.finish(URLError(.timedOut))
+        opening.finish(nil)
+        // Ends a wait that missed the early answer, so the test fails instead of hanging.
+        let watchdog = Task {
+            try await Task.sleep(for: .seconds(5))
+            opening.finish(Late())
+        }
+        defer { watchdog.cancel() }
+        await #expect(throws: URLError(.timedOut)) {
+            try await withCheckedThrowingContinuation { opening.start($0) }
+        }
+    }
+
+    @Test func onlyTheFirstAnswerEndsTheWait() async throws {
+        let opening = Opening()
+        let waiting = Task {
+            try await withCheckedThrowingContinuation { opening.start($0) }
+        }
+        try await waitUntil { opening.isWaiting }
+        opening.finish(nil)
+        opening.finish(URLError(.timedOut))
+        try await waiting.value
     }
 
     @Test func theDefaultConnectorWaitsTenSecondsAtMost() {

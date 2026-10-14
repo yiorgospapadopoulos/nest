@@ -17,6 +17,12 @@ public enum AttachmentFile {
         if let size = values.fileSize, size > maximumSize {
             throw AttachmentFileError.tooLarge
         }
+        return try readCapped(file)
+    }
+
+    /// Reads at most one byte past the limit and refuses the file then: it may have grown
+    /// since its size was checked.
+    static func readCapped(_ file: URL) throws -> Data {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         // Nothing to read from an empty file.

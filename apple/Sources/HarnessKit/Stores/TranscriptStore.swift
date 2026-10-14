@@ -165,15 +165,38 @@ public final class TranscriptStore {
         }
     }
 
+    /// What the chat shows while `catchUpFailure` is set, with Retry.
+    public static let catchUpFailedText = "Could not catch up with this chat"
+
+    /// Why the last catch-up of the loaded transcript failed; live events wait meanwhile,
+    /// so the chat says so instead of freezing silently (audit BUG-101).
+    public private(set) var catchUpFailure: String?
+
     /// Loads again after a connect: when the last load failed, and, when the connection
     /// may have missed events (`missed`), the ones after the newest loaded. A transcript
     /// with newer pages still to load gets them with those pages.
     public func catchUp(missed: Bool) async {
         guard loads == 0, !isLoaded || behind || (missed && source == .session && !hasNewer)
         else { return }
+        await loadMissed()
+    }
+
+    /// Retry after a failed catch-up.
+    public func retryCatchUp() async {
+        guard loads == 0 else { return }
+        await loadMissed()
+    }
+
+    private func loadMissed() async {
         // Until the load succeeds, events may be missing before the live ones.
         behind = isLoaded
-        try? await load()
+        do {
+            try await load()
+        } catch {
+            if isLoaded {
+                catchUpFailure = (error as? APIError)?.message ?? error.localizedDescription
+            }
+        }
     }
 
     /// Opening the transcript should load it: it never loaded, or a catch-up failed.
@@ -322,6 +345,7 @@ public final class TranscriptStore {
         isLoaded = true
         knowsExchange = true
         behind = false
+        catchUpFailure = nil
     }
 
     /// Runs a load while live events wait, so that none is lost meanwhile and none is

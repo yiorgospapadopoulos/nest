@@ -348,7 +348,7 @@ private struct ControlRow: View {
                 effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
             PermissionMenu(
                 chat: chat, model: isDraft ? draft.model : session?.model,
-                mode: isDraft ? draft.permission : session?.permissionMode, isDraft: isDraft)
+                mode: isDraft ? draft.permission : session?.permissionMode)
             if isDraft && shell.repo?.git != false {
                 ModeMenu(draft: draft)
             } else if let context = session?.context, let label = fit.context.label(context) {

@@ -150,9 +150,9 @@ struct ThinkingItems: View {
 struct PermissionMenu: View {
     let chat: String
     let model: String?
+    /// Nil only for a new chat whose agent default leaves it to Claude Code; menus do not
+    /// offer it, as the daemon would start the chat with the agent default (audit BUG-87).
     let mode: PermissionMode?
-    /// A new chat can leave the mode to Claude Code's own setting (nil).
-    let isDraft: Bool
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
 
@@ -160,16 +160,15 @@ struct PermissionMenu: View {
         let label =
             fit.compact ? PermissionMode.shortLabel(mode) : PermissionMode.label(mode)
         QuietMenu(title: label, help: "Permission mode") {
-            PermissionItems(
-                modes: shell.agents.permissionModes(for: model), current: mode,
-                offersDefault: isDraft
-            ) { shell.setPermission($0, for: chat) }
+            PermissionItems(modes: shell.agents.permissionModes(for: model), current: mode) {
+                shell.setPermission($0, for: chat)
+            }
         }
     }
 }
 
 /// The permission modes with their descriptions: Auto only for models that offer it,
-/// and Claude Code default (nil) where `offersDefault` is set.
+/// and Claude Code default (nil) where `offersDefault` is set (agent defaults only).
 struct PermissionItems: View {
     let modes: [PermissionMode]
     let current: PermissionMode?
