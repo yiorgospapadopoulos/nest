@@ -368,6 +368,7 @@ public enum DesignTokens {
             public static let attention: Double = 2.6
         }
         public enum Easing {
+            public static let glide = CubicBezier(x1: 0.2, y1: 0.9, x2: 0.25, y2: 1)
         }
     }
 }

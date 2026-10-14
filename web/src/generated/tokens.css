@@ -87,6 +87,7 @@
   --typography-size-headline: 17px;
   --motion-duration-pulse: 1800ms;
   --motion-duration-attention: 2600ms;
+  --motion-easing-glide: cubic-bezier(0.2, 0.9, 0.25, 1);
   --glass-backdrop-blur: 10px;
   --glass-backdrop-saturation: 160%;
   --glass-radius-window: 24px;

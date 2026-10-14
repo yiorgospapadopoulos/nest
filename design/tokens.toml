@@ -303,3 +303,5 @@ pulse = 1800
 attention = 2600
 
 [motion.easing]
+# Sheets, chats and cards sliding in the iPhone app.
+glide = [0.2, 0.9, 0.25, 1]
