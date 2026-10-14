@@ -90,6 +90,8 @@ enum Overlay: Equatable {
     case project(String)
     /// Restoring files to before a message (`Shell.rewinding`).
     case rewind
+    /// A habit run's transcript, read-only, by session id (B42).
+    case habitRun(String)
 }
 
 /// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
@@ -98,8 +100,16 @@ enum PixiePanel: Equatable {
     case details
     case soul
     case memory
+    /// What the pixie did with its harness tools (B41).
+    case activity
     /// A note of the memory page, by name.
     case note(String)
+    /// Its habits (B42).
+    case habits
+    /// New habit (nil) or Edit, by habit id.
+    case habit(String?)
+    /// A habit's latest runs, by habit id.
+    case habitHistory(String)
 }
 
 /// The window's model: the daemon's stores plus the transient state of the views, and
@@ -166,6 +176,8 @@ final class Shell {
     var completions: CompletionStore { model.completions }
     var agents: AgentsStore { model.agents }
     var pixies: PixiesStore { model.pixies }
+    var reports: PixieReportsStore { model.reports }
+    var habits: HabitsStore { model.habits }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
@@ -478,6 +490,92 @@ final class Shell {
                 show(error, doing: "Could not send")
             }
         }
+    }
+
+    /// A choice tapped on a pixie's choices card: its text, sent as the user's reply.
+    func sendChoice(_ text: String, to pixie: String) {
+        Task {
+            do {
+                let sent = try await pixies.send(pixie, text: text)
+                sessions.insert(sent.session)
+                if let queued = sent.queuedMessage {
+                    activity.enqueue(queued, session: sent.session.id)
+                }
+            } catch {
+                show(error, doing: "Could not send")
+            }
+        }
+    }
+
+    // MARK: Habits and reports (B42)
+
+    /// Saves a new habit or the changes to one; true once the daemon took it.
+    func saveHabit(_ draft: HabitDraft, editing habit: PixieHabit?, of pixie: String) async
+        -> Bool
+    {
+        do {
+            if let habit {
+                try await habits.update(habit.id, in: pixie, draft.update(from: habit))
+            } else {
+                try await habits.create(in: pixie, draft.create)
+            }
+            return true
+        } catch {
+            show(error, doing: "Could not save the habit")
+            return false
+        }
+    }
+
+    func setHabit(_ habit: PixieHabit, enabled: Bool) {
+        run(enabled ? "Could not resume the habit" : "Could not pause the habit") {
+            try await self.habits.setEnabled(habit.id, in: habit.pixieID, enabled)
+        }
+    }
+
+    func runHabitNow(_ habit: PixieHabit) {
+        run("Could not run the habit") {
+            try await self.habits.runNow(habit.id, in: habit.pixieID)
+            self.show("\(habit.name) is queued to run", kind: .done)
+        }
+    }
+
+    func deleteHabit(_ habit: PixieHabit) {
+        run("Could not delete the habit") {
+            try await self.habits.delete(habit.id, in: habit.pixieID)
+            if self.pixiePanel != .habits {
+                self.pixiePanel = .habits
+            }
+        }
+    }
+
+    /// Start on a suggested habit: creates it, enabled.
+    func startSuggestedHabit(_ suggestion: HabitSuggestion, for pixie: String) async -> Bool {
+        do {
+            try await habits.create(in: pixie, HabitDraft(suggestion: suggestion).create)
+            return true
+        } catch {
+            show(error, doing: "Could not start the habit")
+            return false
+        }
+    }
+
+    /// Opens a habit run's transcript, read-only.
+    func openHabitRun(_ session: String) {
+        withAnimation(.smooth(duration: 0.18)) { overlay = .habitRun(session) }
+    }
+
+    /// An inbox entry's Open: the pixie, with its reports read.
+    func openReport(_ report: PixieReport) {
+        revealPixie(report.pixieID)
+        markReportsRead(of: report.pixieID)
+    }
+
+    func dismissReport(_ report: PixieReport) {
+        run("Could not dismiss the report") { try await self.reports.markRead(report.id) }
+    }
+
+    func markReportsRead(of pixie: String) {
+        run("Could not mark the reports read") { try await self.reports.markPixieRead(pixie) }
     }
 
     // MARK: Session presentation

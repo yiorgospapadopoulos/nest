@@ -52,6 +52,8 @@ struct OverlayLayer: View {
             ProjectSettingsSheet(project: name).padding(.top, 70)
         case .rewind:
             RewindSheet().padding(.top, 70)
+        case .habitRun(let session):
+            HabitRunSheet(session: session).padding(.top, 60)
         case .usage:
             EmptyView()
         }

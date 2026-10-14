@@ -26,6 +26,12 @@ struct PixiePane: View {
         .modifier(
             PaneChrome(pane: pixie.id, chat: pixie.chatSessionID, backdrop: pixie.background)
         )
+        // Its reports are read once its pane is on screen, as reports arrive too (B42).
+        .task(id: ReadKey(unread: shell.reports.unread(of: pixie.id), visible: visible)) {
+            if visible && shell.reports.unread(of: pixie.id) > 0 {
+                shell.markReportsRead(of: pixie.id)
+            }
+        }
         // The daemon lists no pixie chats: read this one so its state and context show.
         .task(id: pixie.chatSessionID) {
             guard let chat = pixie.chatSessionID, shell.sessions.session(chat) == nil else {
@@ -34,6 +40,14 @@ struct PixiePane: View {
             try? await shell.sessions.fetch(chat)
         }
     }
+
+    /// The app is on screen.
+    private var visible: Bool { shell.model.visibility.isVisible }
+}
+
+private struct ReadKey: Hashable {
+    let unread: Int
+    let visible: Bool
 }
 
 /// Grip, sprite, name, @slug and the chat's status, then Details, maximize and close;

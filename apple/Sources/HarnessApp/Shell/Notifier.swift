@@ -23,19 +23,25 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         shell.model.live.onNotice = { [weak self] notice in self?.post(notice) }
     }
 
-    private func post(_ notice: Notice) {
+    /// The chats on screen; on the Pixies tab, those of the pixie panes on screen.
+    private var visibleChats: Set<String> {
         let focused = NSApp.isActive && NSApp.keyWindow != nil
-        // On the Pixies tab the chats in view are those of the pixie panes on screen.
-        let visible =
-            shell.pixiesOpen
+        return shell.pixiesOpen
             ? NotificationPolicy.visiblePixieChats(
                 app: shell.app, pixies: shell.pixies.pixies, windowFocused: focused)
             : NotificationPolicy.visibleChats(app: shell.app, windowFocused: focused)
+    }
+
+    private func post(_ notice: Notice) {
         guard
             let content = NotificationPolicy.content(
-                for: notice, preferences: shell.settings.notifications, visibleChats: visible,
-                pixies: shell.model.pixies.pixies)
+                for: notice, preferences: shell.settings.notifications,
+                visibleChats: visibleChats, pixies: shell.model.pixies.pixies)
         else { return }
+        deliver(content)
+    }
+
+    private func deliver(_ content: NotificationContent) {
         let message = UNMutableNotificationContent()
         message.title = content.title
         message.body = content.body

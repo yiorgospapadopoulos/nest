@@ -176,6 +176,15 @@ private struct PaneHeader: View {
                 .frame(minWidth: 24, alignment: .leading)
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)
+            if let session,
+                let startedBy = PixieLabels.startedBy(
+                    session, pixies: shell.pixies.pixies)
+            {
+                StartedByLabel(label: startedBy, compact: !fit.showsBranch)
+                    .frame(maxWidth: 160, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(0.2)
+            }
             Spacer(minLength: 0)
             if let session {
                 StatusLabel(

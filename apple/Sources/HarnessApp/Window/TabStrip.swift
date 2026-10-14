@@ -181,7 +181,10 @@ private struct PixiesTab: View {
 
     var body: some View {
         let isCurrent = shell.pixiesOpen
-        let attention = shell.approvals.pending.count { Pixie.id(ofRepo: $0.repo) != nil }
+        // The pixies' pending approvals and unread reports that need action (B42).
+        let attention =
+            shell.approvals.pending.count { Pixie.id(ofRepo: $0.repo) != nil }
+            + shell.reports.unreadActions()
         let running = shell.pixies.visible.contains { pixie in
             let state = pixie.chatSessionID.flatMap(shell.sessions.session)?.state
             return state == .running || state == .starting

@@ -32,6 +32,10 @@
         private var pixieFiles: [String: String] = [:]
         /// Messages sent to a pixie's chat while it works, by chat id.
         private var pixieQueues: [String: [QueuedMessage]] = [:]
+        /// Reviewer's habits and their runs by habit id, and every pixie's reports (B42).
+        private var habitList: [PixieHabit] = []
+        private var runList: [String: [HabitRun]] = [:]
+        private var reportList: [PixieReport] = []
         /// What approving answers instead of the failed push, when set.
         private var approveRefusal: APIError?
         /// Diff reads waiting for `releaseDiffs()`, while diffs are held; nil otherwise.
@@ -52,6 +56,9 @@
             chatEvents = data.claudeEvents
             pixieList = Self.samplePixies(now: now)
             pixieFiles = Self.samplePixieFiles
+            habitList = Self.sampleHabits(now: now)
+            runList = Self.sampleRuns(now: now)
+            reportList = Self.sampleReports(now: now)
         }
 
         /// Four git repositories and a plain folder, "recipes". todo-ui and map-viewer show
@@ -565,7 +572,9 @@
                     "project_access": "read", "projects": NSNull(), "skills": [String](),
                     "can_call": [String](), "allowed_tools": [String](),
                     "disallowed_tools": [String](), "hidden": false, "position": position,
-                    "chat_session_id": chat, "created_at": SampleData.iso(now - 86_400 * 5),
+                    "chat_session_id": chat, "max_running": 2, "max_per_day": 5,
+                    "report_push": "action", "unread_action_reports": 0,
+                    "created_at": SampleData.iso(now - 86_400 * 5),
                     "updated_at": SampleData.iso(now - 3600),
                 ]
                 return try! SampleData.decode(object)
@@ -782,6 +791,222 @@
                 .split(separator: "\n")
                 .filter { $0.hasPrefix("- ") && $0.localizedCaseInsensitiveContains(query) }
                 .map { PixieSearchHit(file: "MEMORY.md", line: String($0)) }
+        }
+
+        /// Reviewer's log: a chat it started, a nudge, a message and a pull request card.
+        func pixieActivity(_ id: String) async throws -> [PixieActivityEntry] {
+            guard id == "reviewer" else { return [] }
+            let rows: [(Int, Double, String, String?, String)] = [
+                (4, 4, "card", "c9", "Posted the RSS feed pull request"),
+                (3, 12, "send_message", "c4", "Asked it to keep the menu button 44 points high"),
+                (2, 35, "nudge", "c2", "Stopped repeating the BibTeX parse; try the cached file"),
+                (1, 60 * 26, "start_session", "c4", "Fix mobile nav overflow on 360px phones"),
+            ]
+            return try rows.map { id, minutes, tool, session, summary in
+                try decode([
+                    "id": id, "ts": SampleData.iso(now - minutes * 60), "tool": tool,
+                    "session_id": session.map { $0 as Any } ?? NSNull(), "summary": summary,
+                ])
+            }
+        }
+
+        // MARK: Habits and reports (B42)
+
+        /// Reviewer's three habits: a weekday pull request check, a watch on stuck and
+        /// failed chats, and a paused weekly tidy-up.
+        private static func sampleHabits(now: Date) -> [PixieHabit] {
+            let rows: [(String, String, String, Any, [String], Bool, Any, Any)] = [
+                (
+                    "h-morning", "Morning PR check",
+                    "Look at my open pull requests. Report the ones with failing checks or waiting reviews.",
+                    ["kind": "weekdays", "time": "09:00"], ["ci_failed"], true,
+                    SampleData.iso(now + 3600 * 15),
+                    sampleRun(
+                        "r-6", "h-morning", "reported", now: now, minutes: 180, length: 125,
+                        title: "2 pull requests fail their checks")
+                ),
+                (
+                    "h-watch", "Stuck chat watch",
+                    "When a chat is stuck or fails, read its last turn and say what went wrong.",
+                    NSNull(), ["stuck", "failed"], true, NSNull(),
+                    sampleRun("r-w1", "h-watch", "quiet", now: now, minutes: 50, length: 40)
+                ),
+                (
+                    "h-tidy", "Weekly tidy-up",
+                    "List chats idle for a week and suggest which to close.",
+                    ["kind": "weekly", "weekday": 4, "time": "17:00"], [String](), false, NSNull(),
+                    sampleRun(
+                        "r-t1", "h-tidy", "skipped", now: now, minutes: 60 * 24 * 4, length: nil,
+                        reason: "late")
+                ),
+            ]
+            return rows.enumerated().map { index, row in
+                let (id, name, prompt, schedule, triggers, enabled, next, last) = row
+                return try! SampleData.decode([
+                    "id": id, "pixie_id": "reviewer", "name": name, "prompt": prompt,
+                    "schedule": schedule, "triggers": triggers, "max_minutes": 20,
+                    "enabled": enabled,
+                    "created_at": SampleData.iso(now - 86_400 * Double(5 - index)),
+                    "updated_at": SampleData.iso(now - 3600), "next_due_at": next,
+                    "last_run": last,
+                ])
+            }
+        }
+
+        /// A run as the daemon sends it, `minutes` ago and `length` seconds long.
+        private static func sampleRun(
+            _ id: String, _ habit: String, _ outcome: String, now: Date, minutes: Double,
+            length: Double?, title: String? = nil, reason: String? = nil
+        ) -> [String: Any] {
+            let start = now - minutes * 60
+            return [
+                "id": id, "habit_id": habit, "pixie_id": "reviewer",
+                "session_id": length == nil ? NSNull() : "hs-\(id)",
+                "due_at": SampleData.iso(start),
+                "started_at": length == nil ? NSNull() : SampleData.iso(start),
+                "ended_at": length.map { SampleData.iso(start + $0) } ?? NSNull(),
+                "outcome": outcome, "reason": reason ?? NSNull(),
+                "report_title": title ?? NSNull(),
+            ]
+        }
+
+        /// The morning check's history: reports, quiet days, a skip and a time-out.
+        private static func sampleRuns(now: Date) -> [String: [HabitRun]] {
+            let day = 60.0 * 24
+            let runs = [
+                sampleRun(
+                    "r-6", "h-morning", "reported", now: now, minutes: 180, length: 125,
+                    title: "2 pull requests fail their checks"),
+                sampleRun("r-5", "h-morning", "quiet", now: now, minutes: 180 + day, length: 64),
+                sampleRun(
+                    "r-4", "h-morning", "skipped", now: now, minutes: 180 + day * 2, length: nil,
+                    reason: "usage"),
+                sampleRun(
+                    "r-3", "h-morning", "timed_out", now: now, minutes: 180 + day * 3,
+                    length: 1200),
+                sampleRun(
+                    "r-2", "h-morning", "reported", now: now, minutes: 180 + day * 4, length: 98,
+                    title: "The RSS feed pull request waits for your review"),
+                sampleRun(
+                    "r-1", "h-morning", "failed", now: now, minutes: 180 + day * 5, length: 12,
+                    reason: "The session ended with an error"),
+            ]
+            return ["h-morning": try! SampleData.decode(runs)]
+        }
+
+        /// Reviewer's report from this morning's check, and two unread ones from Watcher
+        /// for the inbox.
+        private static func sampleReports(now: Date) -> [PixieReport] {
+            let rows: [(String, String, String, String, String, String?, Any, Double, Bool)] = [
+                (
+                    "rep-ci", "reviewer", "action", "2 pull requests fail their checks",
+                    "Add an RSS feed (#41) fails the build on Node 20, and Dark mode (#38) fails one snapshot test. Both need a look before review.",
+                    "https://github.com/robin/todo-ui/pulls", "h-morning", 178, true
+                ),
+                (
+                    "rep-build", "watcher", "action", "The nightly build broke on main",
+                    "map-viewer's build fails at the type check since this morning's merge.",
+                    nil, NSNull(), 35, false
+                ),
+                (
+                    "rep-flaky", "watcher", "warn", "The test suite is flaky again",
+                    "Three of the last ten runs failed on the same network test.", nil, NSNull(),
+                    90, false
+                ),
+            ]
+            return rows.map { id, pixie, severity, title, body, link, habit, minutes, read in
+                try! SampleData.decode([
+                    "id": id, "pixie_id": pixie, "severity": severity, "title": title,
+                    "body": body, "link": link ?? NSNull(), "habit_id": habit,
+                    "run_id": NSNull(), "created_at": SampleData.iso(now - minutes * 60),
+                    "read_at": read ? SampleData.iso(now - 60) : NSNull(),
+                ])
+            }
+        }
+
+        func pixieHabits(_ id: String) async throws -> [PixieHabit] {
+            lock.withLock { habitList.filter { $0.pixieID == id } }
+        }
+
+        func createHabit(_ pixie: String, _ request: CreateHabitRequest) async throws
+            -> PixieHabit
+        {
+            lock.withLock {
+                var habit = habitList[0]
+                habit.id = "h-\(habitList.count + 1)"
+                habit.pixieID = pixie
+                habit.name = request.name
+                habit.prompt = request.prompt
+                habit.schedule = request.schedule
+                habit.triggers = request.triggers
+                habit.maxMinutes = request.maxMinutes
+                habit.enabled = request.enabled
+                habit.lastRun = nil
+                habit.nextDueAt = request.schedule == nil ? nil : now + 3600
+                habit.createdAt = now
+                habitList.append(habit)
+                return habit
+            }
+        }
+
+        func updateHabit(_ pixie: String, _ habit: String, _ request: UpdateHabitRequest)
+            async throws -> PixieHabit
+        {
+            try lock.withLock {
+                guard let index = habitList.firstIndex(where: { $0.id == habit }) else {
+                    throw APIError.notFound("unknown habit")
+                }
+                var changed = habitList[index]
+                changed.name = request.name ?? changed.name
+                changed.prompt = request.prompt ?? changed.prompt
+                changed.schedule =
+                    request.clearsSchedule ? nil : request.schedule ?? changed.schedule
+                changed.triggers = request.triggers ?? changed.triggers
+                changed.maxMinutes = request.maxMinutes ?? changed.maxMinutes
+                changed.enabled = request.enabled ?? changed.enabled
+                changed.updatedAt = Date()
+                habitList[index] = changed
+                return changed
+            }
+        }
+
+        func deleteHabit(_ pixie: String, _ habit: String) async throws {
+            lock.withLock { habitList.removeAll { $0.id == habit } }
+        }
+
+        func runHabit(_ pixie: String, _ habit: String) async throws -> HabitRun {
+            try lock.withLock {
+                let run: HabitRun = try SampleData.decode(
+                    Self.sampleRun(
+                        "r-now-\(runList[habit, default: []].count)", habit, "queued", now: now,
+                        minutes: 0, length: nil))
+                runList[habit, default: []].insert(run, at: 0)
+                return run
+            }
+        }
+
+        func habitRuns(_ pixie: String, _ habit: String) async throws -> [HabitRun] {
+            lock.withLock { runList[habit] ?? [] }
+        }
+
+        func pixieReports(unread: Bool) async throws -> [PixieReport] {
+            lock.withLock { unread ? reportList.filter(\.isUnread) : reportList }
+        }
+
+        func markReportRead(_ id: String) async throws {
+            lock.withLock {
+                for index in reportList.indices where reportList[index].id == id {
+                    reportList[index].readAt = now
+                }
+            }
+        }
+
+        func markPixieReportsRead(_ id: String) async throws {
+            lock.withLock {
+                for index in reportList.indices where reportList[index].pixieID == id {
+                    reportList[index].readAt = reportList[index].readAt ?? now
+                }
+            }
         }
 
         func createPairingCode() async throws -> PairingCode {

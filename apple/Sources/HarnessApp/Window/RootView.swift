@@ -94,9 +94,13 @@ struct ShellView: View {
                 controller.service.reset()
             }
         }
-        .onChange(of: shell.sessions.attention(), initial: true) { _, count in
+        // What needs the user, and the pixies' unread reports that need action (B42).
+        .onChange(
+            of: [shell.sessions.attention(), shell.reports.unreadActions()], initial: true
+        ) { _, counts in
             if !snapshot {
-                NSApp.dockTile.badgeLabel = NotificationPolicy.badge(pending: count)
+                NSApp.dockTile.badgeLabel = NotificationPolicy.badge(
+                    pending: counts[0], unreadActions: counts[1])
             }
         }
     }

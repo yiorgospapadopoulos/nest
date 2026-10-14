@@ -28,6 +28,7 @@ struct TranscriptView: View {
         let pixies = PixieCalls.slugs(shell.pixies.pixies)
         let entries =
             store?.entries(live: inFlight, background: background, pixies: pixies) ?? []
+        let answered = PixieCards.answered(items)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -39,12 +40,14 @@ struct TranscriptView: View {
                     ForEach(entries) { entry in
                         switch entry {
                         case .item(let item):
-                            TranscriptRow(item: item, chat: chat)
-                                .background {
-                                    if highlighted == item.id {
-                                        Highlight(accent: accent)
-                                    }
+                            TranscriptRow(
+                                item: item, chat: chat, answered: answered.contains(item.id)
+                            )
+                            .background {
+                                if highlighted == item.id {
+                                    Highlight(accent: accent)
                                 }
+                            }
                         case .tools(let group):
                             ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
                         case .pixieCall(let call):
@@ -198,19 +201,27 @@ struct TranscriptView: View {
 private struct TranscriptRow: View {
     let item: TranscriptItem
     let chat: String
+    /// A choices card with a user message after it.
+    var answered = false
     @Environment(Shell.self) private var shell
 
     var body: some View {
         switch item.content {
         case .user(let text, let attachments):
             let canRewind = RewindFlow.isAvailable(for: shell.sessions.session(chat))
-            UserBubble(
-                text: text, attachments: attachments,
-                mentions: MentionHighlights.find(
-                    in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams),
-                rewind: item.eventID.flatMap { event in
-                    canRewind ? { shell.startRewind(chat, message: event) } : nil
-                })
+            VStack(alignment: .trailing, spacing: 4) {
+                if let from = item.fromPixie {
+                    FromPixieLabel(label: PixieLabels.from(from, pixies: shell.pixies.pixies))
+                }
+                UserBubble(
+                    text: text, attachments: attachments,
+                    mentions: MentionHighlights.find(
+                        in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams),
+                    rewind: item.eventID.flatMap { event in
+                        canRewind ? { shell.startRewind(chat, message: event) } : nil
+                    })
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         case .assistant(let text, _):
             AssistantText(text: text, chat: chat)
         case .thinking(let text, let duration):
@@ -227,6 +238,12 @@ private struct TranscriptRow: View {
                 .frame(maxWidth: .infinity)
         case .turnEnd(let end):
             TurnEndLine(end: end)
+        case .reportBack(let text):
+            ReportBackRow(text: text)
+        case .pixieCard(let card):
+            PixieCardView(card: card, chat: chat, answered: answered)
+        case .habitReport(let text):
+            HabitReportRow(text: text)
         }
     }
 }

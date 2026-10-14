@@ -35,6 +35,7 @@ struct PixieList: View {
 
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    ReportsInbox()
                     ForEach(sections.teams) { section in
                         TeamSection(section: section)
                     }
@@ -245,7 +246,9 @@ private struct PixieRow: View {
         let open = state.layout.contains(pixie.id)
         let chat = pixie.chatSessionID.flatMap(shell.sessions.session)
         let running = chat.map { $0.state == .running || $0.state == .starting } ?? false
-        let waiting = shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
+        let waiting =
+            shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
+            + shell.reports.unreadActions(of: pixie.id)
         let showsMenu = hovering || (reveal && selected)
         HStack(spacing: 8) {
             SpriteView(mascot: pixie.mascot, color: pixie.color, size: 16)

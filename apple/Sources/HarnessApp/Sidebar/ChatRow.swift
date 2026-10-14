@@ -24,6 +24,7 @@ struct ChatRow: View {
         let isOpen = state.layout.contains(session.id)
         let isSelected = state.selectedChat == session.id
         let tone = shell.tone(of: session)
+        let startedBy = PixieLabels.startedBy(session, pixies: shell.pixies.pixies)
         return HStack(spacing: 8) {
             StatusDot(tone: tone, hollow: shell.isHollow(session))
             Text(session.title)
@@ -31,6 +32,9 @@ struct ChatRow: View {
                 .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if let startedBy {
+                StartedByMark(label: startedBy)
+            }
             if let stuck = session.stuck {
                 StuckBadge(flag: stuck)
             }
@@ -73,7 +77,7 @@ struct ChatRow: View {
         .opacity(shell.dragging == .chat(session.id) ? 0.45 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(session.title), \(shell.statusLabel(of: session))\(session.stuck == nil ? "" : ", stuck")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
+            "\(session.title), \(shell.statusLabel(of: session))\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { shell.openChat(session.id) }

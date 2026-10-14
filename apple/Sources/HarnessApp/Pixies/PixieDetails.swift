@@ -18,10 +18,18 @@ struct PixieDetailsPanel: View {
                 }
             case .memory:
                 PixieMemoryPage(pixie: pixie)
+            case .activity:
+                PixieActivityPage(pixie: pixie)
             case .note(let note):
                 PixieFilePage(pixie: pixie, name: "notes/\(note)", title: note, back: "Memory") {
                     shell.pixiePanel = .memory
                 }
+            case .habits:
+                PixieHabitsPage(pixie: pixie)
+            case .habit(let id):
+                HabitEditor(pixie: pixie, habitID: id)
+            case .habitHistory(let id):
+                HabitHistoryPage(pixie: pixie, habitID: id)
             }
         }
         .id("\(pixie.id)/\(shell.pixiePanel)")
@@ -51,9 +59,32 @@ struct PixieDetails: View {
                     .padding(.horizontal, 8)
                 SectionBreak()
                 PixieSettings(pixie: pixie)
+                DetailNote(text: "\(pixie.autonomy.label): \(pixie.autonomy.summary)")
+
+                DetailHeading(title: "Limits")
+                PixieLimitRows(pixie: pixie)
+                DetailNote(text: "For the chats it starts on its own.")
 
                 DetailHeading(title: "Projects")
                 PixieProjects(pixie: pixie)
+
+                DetailHeading(title: "Reports")
+                DetailGroup {
+                    PickerRow(title: ReportSeverity.pushTitle, value: pixie.reportPush.pushLabel) {
+                        Section(ReportSeverity.pushTitle) {
+                            ForEach(ReportSeverity.pushChoices, id: \.self) { severity in
+                                OptionItem(
+                                    title: severity.pushLabel, detail: "",
+                                    checked: pixie.reportPush == severity
+                                ) { save(UpdatePixieRequest(reportPush: severity)) }
+                            }
+                        }
+                    }
+                }
+                DetailNote(
+                    text:
+                        "Which reports reach the iPhone. Every report shows in its chat; warnings and actions also in Reports."
+                )
 
                 DetailHeading(title: "Skills")
                 DetailGroup {
@@ -88,11 +119,15 @@ struct PixieDetails: View {
                     }
                     DrillInRow(
                         title: "Habits", about: "Recurring tasks this pixie runs on its own",
-                        value: "Coming soon")
+                        value: habitCount
+                    ) { shell.pixiePanel = .habits }
                     DrillInRow(
                         title: "Memory", about: "Facts and preferences this pixie remembers",
                         value: facts
                     ) { shell.pixiePanel = .memory }
+                    DrillInRow(
+                        title: "Activity", about: "What it did in your chats with its tools"
+                    ) { shell.pixiePanel = .activity }
                 }
 
                 SectionBreak()
@@ -135,6 +170,9 @@ struct PixieDetails: View {
             if let memory = try? await shell.pixies.file(pixie.id, name: "memory") {
                 facts = PixieMemory.count(memory.text)
             }
+            if shell.habits.habits(of: pixie.id) == nil {
+                try? await shell.habits.load(pixie.id)
+            }
         }
         .confirmationDialog(
             confirming == .delete ? "Delete \(pixie.name)?" : "Reset conversation?",
@@ -154,6 +192,13 @@ struct PixieDetails: View {
             case .reset: Text("The chat is archived. Soul and memory stay.")
             case .delete: Text("Its chat, soul, memory and notes are removed.")
             }
+        }
+    }
+
+    /// "2 habits", once read.
+    private var habitCount: String? {
+        shell.habits.habits(of: pixie.id).map {
+            $0.count == 1 ? "1 habit" : "\($0.count) habits"
         }
     }
 
@@ -585,8 +630,59 @@ private struct PixieSettings: View {
     }
 }
 
+/// Running chats at once and new chats per day, each a value with a stepper, saved at
+/// once within the daemon's ranges.
+private struct PixieLimitRows: View {
+    let pixie: Pixie
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        DetailGroup {
+            LimitRow(
+                title: PixieLimits.runningTitle, value: pixie.maxRunning,
+                range: PixieLimits.running
+            ) { shell.updatePixie(pixie.id, UpdatePixieRequest(maxRunning: $0)) }
+            LimitRow(
+                title: PixieLimits.perDayTitle, value: pixie.maxPerDay, range: PixieLimits.perDay
+            ) { shell.updatePixie(pixie.id, UpdatePixieRequest(maxPerDay: $0)) }
+        }
+    }
+}
+
+private struct LimitRow: View {
+    let title: String
+    let value: Int
+    let range: ClosedRange<Int>
+    let save: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .foregroundStyle(Palette.t1)
+            Spacer(minLength: 8)
+            Text(String(value))
+                .monospacedDigit()
+                .foregroundStyle(Palette.t2)
+            Stepper(
+                title,
+                value: Binding(
+                    get: { value },
+                    set: { save(PixieLimits.clamp($0, to: range)) }),
+                in: range
+            )
+            .labelsHidden()
+            .controlSize(.mini)
+        }
+        .font(.ui(TypeSize.ui))
+        .padding(.horizontal, 8)
+        .frame(height: Metrics.rowHeight + 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
+    }
+}
+
 /// A title on the left and the value on the right; a click opens the choices.
-private struct PickerRow<Items: View>: View {
+struct PickerRow<Items: View>: View {
     let title: String
     let value: String
     var enabled = true
@@ -756,7 +852,7 @@ private struct ChipList: View {
 }
 
 /// Lays its views out in rows, wrapping to the next row when one is full.
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing = 6.0
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -811,8 +907,8 @@ private struct FlowLayout: Layout {
 }
 
 /// A row that opens a page: title, a line about it, a count or note, and a chevron. With
-/// no action it is shown dimmed, as Habits is for now.
-private struct DrillInRow: View {
+/// no action it is shown dimmed.
+struct DrillInRow: View {
     let title: String
     let about: String
     var value: String?
