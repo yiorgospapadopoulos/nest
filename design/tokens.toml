@@ -30,6 +30,51 @@ scrim = { light = "rgba(236,238,246,0.34)", dark = "rgba(0,0,0,0.3)" }
 # User message bubble when the "neutral" bubble color is chosen instead of the accent.
 neutral_bubble = { light = "rgba(255,255,255,0.92)", dark = "rgba(255,255,255,0.12)" }
 
+# The Mac app's look (D073), with the approved design's darker, crisper values (B39): a #171717 base
+# and #ebebeb content in dark; lines, fills and secondary text are the content color at
+# the approved design's strengths (lines 7 percent, fills 3 to 10, text 55 and 40), drawn here over the
+# base; light mode keeps its own colors at the same strengths. The iPhone app does not use
+# these. CSS: --mac-<name>; Swift: DesignTokens.Colors.Mac.
+[colors.mac]
+# The window: a tint over the desktop's blur, and the same color opaque for fullscreen,
+# Reduce Transparency and offscreen snapshots.
+window = { light = "rgba(248,248,246,0.36)", dark = "rgba(23,23,23,0.36)" }
+window_opaque = { light = "#f8f8f6", dark = "#171717" }
+# Sidebar and right panel darker than the panes (the approved design: the base mixed 10 percent toward
+# black); the board on the base; chat panes a soft card in light, the base in dark.
+side = { light = "rgba(0,0,0,0.02)", dark = "rgba(0,0,0,0.1)" }
+pane = { light = "rgba(255,255,255,0.25)", dark = "rgba(0,0,0,0)" }
+chat_pane = { light = "rgba(255,255,255,0.55)", dark = "rgba(0,0,0,0)" }
+# With a chat background image (B39), the window's chrome lays this over the blurred image,
+# leaving a deep tint of its colors.
+backdrop_tint = { light = "rgba(248,248,246,0.82)", dark = "rgba(23,23,23,0.82)" }
+# Sheets, popovers, menus and floating banners, over the window's content: the base with
+# the approved design's 2 percent popover fill.
+sheet = { light = "rgba(251,251,250,0.98)", dark = "rgba(27,27,27,0.98)" }
+selection = { light = "rgba(28,28,29,0.06)", dark = "rgba(235,235,235,0.1)" }
+# Faint fills: the composer, cards and fields, hovered rows, and the user's message and bar
+# tracks.
+composer = { light = "rgba(28,28,29,0.03)", dark = "rgba(235,235,235,0.03)" }
+soft = { light = "rgba(28,28,29,0.045)", dark = "rgba(235,235,235,0.045)" }
+hover = { light = "rgba(28,28,29,0.05)", dark = "rgba(235,235,235,0.07)" }
+raised = { light = "rgba(28,28,29,0.06)", dark = "rgba(235,235,235,0.1)" }
+divider = { light = "rgba(28,28,29,0.07)", dark = "rgba(235,235,235,0.07)" }
+scanline = { light = "rgba(0,0,0,0.03)", dark = "rgba(255,255,255,0.022)" }
+# Content, then the content at 55 and 52 percent over the base: icons, meta lines and tool
+# lines read about as bright as secondary text (raised from 40 percent, B39).
+text_primary = { light = "#1c1c1d", dark = "#ebebeb" }
+text_secondary = { light = "#7f7f7f", dark = "#8c8c8c" }
+text_tertiary = { light = "#868585", dark = "#858585" }
+link = { light = "#0a6fd6", dark = "#4ea7ff" }
+# Status: needs you, running, done well, failed.
+wait = { light = "#b06d06", dark = "#e7a23e" }
+run = { light = "#4b59d6", dark = "#7f8cff" }
+ok = { light = "#23843c", dark = "#4fc76f" }
+bad = { light = "#cf3b30", dark = "#ff6b5f" }
+# The primary button with the default (graphite) accent; other accents color it instead.
+button = { light = "#1c1c1d", dark = "rgba(255,255,255,0.88)" }
+button_text = { light = "#ffffff", dark = "#1b1b1c" }
+
 [colors.diff]
 added_fill = { light = "rgba(34,165,89,0.13)", dark = "rgba(53,208,122,0.15)" }
 added_text = { light = "#14723a", dark = "#6be3a0" }
@@ -272,11 +317,24 @@ stops = [
     { color = { light = "#acb5c0", dark = "#3a424d" }, center = [50, 100], size = [60, 60], fade = 70 },
 ]
 
-# Radii and spacing now come from the glass themes; these tables stay, empty, as the token
-# file's schema requires them.
+# The iPhone app's radii and spacing come from the glass themes; these are the Mac's, in
+# points.
 [radius]
+mac_chip = 4
+mac_button = 5
+mac_row = 6
+mac_card = 8
+mac_bubble = 9
+mac_sheet = 12
 
 [spacing]
+mac_strip_height = 38
+mac_toolbar_height = 34
+mac_header_height = 34
+mac_row_height = 26
+mac_button_height = 22
+# One scanline every this many points.
+mac_scanline_period = 3
 
 [typography.family]
 system = ["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"]

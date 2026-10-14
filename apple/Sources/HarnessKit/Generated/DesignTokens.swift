@@ -145,6 +145,32 @@ public enum DesignTokens {
             public static let scrim = ThemedColor(light: RGBA(red: 0.92549, green: 0.933333, blue: 0.964706, alpha: 0.34), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.3))
             public static let neutralBubble = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.92), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.12))
         }
+        public enum Mac {
+            public static let window = ThemedColor(light: RGBA(red: 0.972549, green: 0.972549, blue: 0.964706, alpha: 0.36), dark: RGBA(red: 0.090196, green: 0.090196, blue: 0.090196, alpha: 0.36))
+            public static let windowOpaque = ThemedColor(light: RGBA(red: 0.972549, green: 0.972549, blue: 0.964706, alpha: 1), dark: RGBA(red: 0.090196, green: 0.090196, blue: 0.090196, alpha: 1))
+            public static let side = ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.02), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.1))
+            public static let pane = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.25), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0))
+            public static let chatPane = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.55), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0))
+            public static let backdropTint = ThemedColor(light: RGBA(red: 0.972549, green: 0.972549, blue: 0.964706, alpha: 0.82), dark: RGBA(red: 0.090196, green: 0.090196, blue: 0.090196, alpha: 0.82))
+            public static let sheet = ThemedColor(light: RGBA(red: 0.984314, green: 0.984314, blue: 0.980392, alpha: 0.98), dark: RGBA(red: 0.105882, green: 0.105882, blue: 0.105882, alpha: 0.98))
+            public static let selection = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.06), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.1))
+            public static let composer = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.03), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.03))
+            public static let soft = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.045), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.045))
+            public static let hover = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.05), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.07))
+            public static let raised = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.06), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.1))
+            public static let divider = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 0.07), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 0.07))
+            public static let scanline = ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.03), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.022))
+            public static let textPrimary = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 1), dark: RGBA(red: 0.921569, green: 0.921569, blue: 0.921569, alpha: 1))
+            public static let textSecondary = ThemedColor(light: RGBA(red: 0.498039, green: 0.498039, blue: 0.498039, alpha: 1), dark: RGBA(red: 0.54902, green: 0.54902, blue: 0.54902, alpha: 1))
+            public static let textTertiary = ThemedColor(light: RGBA(red: 0.52549, green: 0.521569, blue: 0.521569, alpha: 1), dark: RGBA(red: 0.521569, green: 0.521569, blue: 0.521569, alpha: 1))
+            public static let link = ThemedColor(light: RGBA(red: 0.039216, green: 0.435294, blue: 0.839216, alpha: 1), dark: RGBA(red: 0.305882, green: 0.654902, blue: 1, alpha: 1))
+            public static let wait = ThemedColor(light: RGBA(red: 0.690196, green: 0.427451, blue: 0.023529, alpha: 1), dark: RGBA(red: 0.905882, green: 0.635294, blue: 0.243137, alpha: 1))
+            public static let run = ThemedColor(light: RGBA(red: 0.294118, green: 0.34902, blue: 0.839216, alpha: 1), dark: RGBA(red: 0.498039, green: 0.54902, blue: 1, alpha: 1))
+            public static let ok = ThemedColor(light: RGBA(red: 0.137255, green: 0.517647, blue: 0.235294, alpha: 1), dark: RGBA(red: 0.309804, green: 0.780392, blue: 0.435294, alpha: 1))
+            public static let bad = ThemedColor(light: RGBA(red: 0.811765, green: 0.231373, blue: 0.188235, alpha: 1), dark: RGBA(red: 1, green: 0.419608, blue: 0.372549, alpha: 1))
+            public static let button = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.88))
+            public static let buttonText = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 1), dark: RGBA(red: 0.105882, green: 0.105882, blue: 0.109804, alpha: 1))
+        }
         public enum Diff {
             public static let addedFill = ThemedColor(light: RGBA(red: 0.133333, green: 0.647059, blue: 0.34902, alpha: 0.13), dark: RGBA(red: 0.207843, green: 0.815686, blue: 0.478431, alpha: 0.15))
             public static let addedText = ThemedColor(light: RGBA(red: 0.078431, green: 0.447059, blue: 0.227451, alpha: 1), dark: RGBA(red: 0.419608, green: 0.890196, blue: 0.627451, alpha: 1))
@@ -339,8 +365,20 @@ public enum DesignTokens {
         public static let `default` = stone
     }
     public enum Radius {
+        public static let macChip: Double = 4
+        public static let macButton: Double = 5
+        public static let macRow: Double = 6
+        public static let macCard: Double = 8
+        public static let macBubble: Double = 9
+        public static let macSheet: Double = 12
     }
     public enum Spacing {
+        public static let macStripHeight: Double = 38
+        public static let macToolbarHeight: Double = 34
+        public static let macHeaderHeight: Double = 34
+        public static let macRowHeight: Double = 26
+        public static let macButtonHeight: Double = 22
+        public static let macScanlinePeriod: Double = 3
     }
     public enum Typography {
         public enum Family {
