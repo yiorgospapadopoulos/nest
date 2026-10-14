@@ -132,6 +132,7 @@ private func end(_ id: String) -> TranscriptItem {
             switch entry {
             case .item(let item): item.id
             case .tools(let group): "[\(group.items.map(\.id).joined(separator: " "))]"
+            case .pixieCall(let call): "@\(call.slug)"
             }
         }
     }
@@ -219,6 +220,7 @@ private func end(_ id: String) -> TranscriptItem {
                 case .item(let item):
                     if case .tool(let call) = item.content { [call] } else { [] }
                 case .tools(let group): group.calls
+                case .pixieCall(let call): [call.call]
                 }
             }.filter(\.stopped).map(\.id)
         }

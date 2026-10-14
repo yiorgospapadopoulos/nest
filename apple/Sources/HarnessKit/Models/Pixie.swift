@@ -48,6 +48,8 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var hidden: Bool
     public var position: Int
     public var chatSessionID: String?
+    /// The team it is in, if any (B40).
+    public var teamID: String?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -60,6 +62,28 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
         case allowedTools = "allowed_tools"
         case disallowedTools = "disallowed_tools"
         case chatSessionID = "chat_session_id"
+        case teamID = "team_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+/// Pixies called together with one `@handle`: the leader plans who does what (B40).
+/// Members are the pixies whose `teamID` is its id, in pixie order.
+public struct PixieTeam: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    /// Unique across pixie slugs and team handles.
+    public var handle: String
+    /// One of its members; nil only while it has none.
+    public var leaderID: String?
+    public var position: Int
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, handle, position
+        case leaderID = "leader_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -86,6 +110,7 @@ extension Pixie {
         pixie.allowedTools = change.allowedTools ?? allowedTools
         pixie.disallowedTools = change.disallowedTools ?? disallowedTools
         pixie.hidden = change.hidden ?? hidden
+        pixie.teamID = change.teamID ?? (change.leavesTeam ? nil : teamID)
         return pixie
     }
 }

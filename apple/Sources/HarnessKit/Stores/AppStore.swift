@@ -187,6 +187,7 @@ public final class AppStore {
         static let currentProject = "projects.current"
 
         static let pixiePanes = "pixies.panes"
+        static let foldedTeams = "pixies.foldedTeams"
 
         static func tools(of project: String) -> String { "projects.tools.\(project)" }
     }
@@ -211,6 +212,8 @@ public final class AppStore {
     /// `openPanes` and `forgetChat` never touch it; its open pixies are saved in reading
     /// order and reopen at launch, as a project's terminal and browser panes do.
     public private(set) var pixieState = ProjectState()
+    /// The teams folded in the Pixies list, by id; remembered on this Mac only (B40).
+    public private(set) var foldedTeams: Set<String> = []
 
     let api: any HarnessAPI
     @ObservationIgnored let store: any KeyValueStore
@@ -228,6 +231,8 @@ public final class AppStore {
         for pixie in pixies {
             pixieState.openChat(String(pixie), in: Self.restoreSize)
         }
+        foldedTeams = Set(
+            store.string(forKey: Key.foldedTeams)?.split(separator: "\n").map(String.init) ?? [])
     }
 
     /// Loads the repos; tabs of repos that are gone close and their terminal and browser
@@ -375,6 +380,24 @@ public final class AppStore {
         if now != open {
             store.set(now.isEmpty ? nil : now.joined(separator: "\n"), forKey: Key.pixiePanes)
         }
+    }
+
+    /// Opens a pixie's pane in the Pixies tab and focuses it, or focuses it when it is
+    /// open: a click in the list, or a pixie call's name in a chat. A workspace not
+    /// measured yet (no area, as while the tab is coming on screen) places it by the size
+    /// a restored window uses.
+    public func openPixie(_ id: String, in size: CGSize) {
+        let measured = size.width > 0 && size.height > 0 ? size : Self.restoreSize
+        updatePixies { $0.openChat(id, in: measured) }
+    }
+
+    /// Folds a team's section in the Pixies list, or unfolds it.
+    public func toggleTeamFold(_ id: String) {
+        if foldedTeams.remove(id) == nil {
+            foldedTeams.insert(id)
+        }
+        let saved = foldedTeams.sorted().joined(separator: "\n")
+        store.set(saved.isEmpty ? nil : saved, forKey: Key.foldedTeams)
     }
 
     /// Closes the panes of pixies that are gone: `ids` are every pixie there is.

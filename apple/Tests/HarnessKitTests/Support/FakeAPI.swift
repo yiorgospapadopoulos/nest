@@ -45,6 +45,7 @@ final class FakeAPI: HarnessAPI {
             displayName: "Sam", email: "me@example.com", plan: "Claude Max",
             organization: nil)
         var pixies: [Pixie] = []
+        var teams: [PixieTeam] = []
         /// What a pixie file save answers with a `staleFile` error, when set.
         var staleFile: PixieFile?
         /// Pixie files by name.
@@ -576,6 +577,72 @@ final class FakeAPI: HarnessAPI {
 
     func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit] {
         try call("searchPixie", "\(id) \(query)") { $0.pixieHits }
+    }
+
+    /// A copy right after the original, as the daemon makes it; later pixies move down.
+    func duplicatePixie(_ id: String) async throws -> Pixie {
+        try call("duplicatePixie", id) { state in
+            let index = state.pixies.firstIndex { $0.id == id }!
+            var copy = state.pixies[index]
+            copy.id = "\(id)-copy"
+            copy.slug = "\(copy.slug)-2"
+            copy.name = "\(copy.name) 2"
+            copy.position = copy.position + 1
+            copy.updatedAt = Date(timeIntervalSince1970: 2_000_000_000)
+            for later in state.pixies.indices where state.pixies[later].position >= copy.position {
+                state.pixies[later].position += 1
+            }
+            state.pixies.insert(copy, at: index + 1)
+            return copy
+        }
+    }
+
+    func pixieTeams() async throws -> [PixieTeam] {
+        try call("pixieTeams") { $0.teams }
+    }
+
+    func createPixieTeam(_ request: CreatePixieTeamRequest) async throws -> PixieTeam {
+        try call("createPixieTeam", request.name) { state in
+            var team = Fixture.decode(PixieTeam.self, "pixie_team")
+            team.id = "team-\(state.teams.count)"
+            team.name = request.name
+            team.handle = request.handle ?? request.name.lowercased()
+            team.leaderID = nil
+            team.position = state.teams.count
+            state.teams.append(team)
+            return team
+        }
+    }
+
+    /// Refuses a leader that is not a member, as the daemon does.
+    func updatePixieTeam(_ id: String, _ request: UpdatePixieTeamRequest) async throws
+        -> PixieTeam
+    {
+        let answer: Result<PixieTeam, APIError> = try call("updatePixieTeam", id) { state in
+            let index = state.teams.firstIndex { $0.id == id }!
+            if let leader = request.leaderID,
+                !state.pixies.contains(where: { $0.id == leader && $0.teamID == id })
+            {
+                return .failure(.conflict("leader_not_member", files: []))
+            }
+            var team = state.teams[index]
+            team.name = request.name ?? team.name
+            team.handle = request.handle ?? team.handle
+            team.leaderID = request.leaderID ?? team.leaderID
+            team.updatedAt = team.updatedAt.addingTimeInterval(1)
+            state.teams[index] = team
+            return .success(team)
+        }
+        return try answer.get()
+    }
+
+    func deletePixieTeam(_ id: String) async throws {
+        try call("deletePixieTeam", id) { state in
+            state.teams.removeAll { $0.id == id }
+            for index in state.pixies.indices where state.pixies[index].teamID == id {
+                state.pixies[index].teamID = nil
+            }
+        }
     }
 
     func createPairingCode() async throws -> PairingCode {

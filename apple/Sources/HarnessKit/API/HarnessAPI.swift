@@ -112,6 +112,16 @@ public protocol HarnessAPI: Sendable {
         -> PixieFile
     func pixieNotes(_ id: String) async throws -> [String]
     func searchPixie(_ id: String, query: String) async throws -> [PixieSearchHit]
+    /// A copy right after the original, in its team, with its settings, soul, memory, notes
+    /// and archive; not its chat.
+    func duplicatePixie(_ id: String) async throws -> Pixie
+    /// The teams, in their order.
+    func pixieTeams() async throws -> [PixieTeam]
+    func createPixieTeam(_ request: CreatePixieTeamRequest) async throws -> PixieTeam
+    func updatePixieTeam(_ id: String, _ request: UpdatePixieTeamRequest) async throws
+        -> PixieTeam
+    /// Its pixies stay, without a team.
+    func deletePixieTeam(_ id: String) async throws
 
     func createPairingCode() async throws -> PairingCode
     func devices() async throws -> [Device]

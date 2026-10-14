@@ -61,6 +61,22 @@ public struct Completion: Sendable, Hashable, Identifiable {
     /// The composer's text and caret once this entry is picked.
     public let text: String
     public let caret: Int
+    /// The pixie or team this entry calls; nil for a command or a file.
+    public var mention: PixieMention? = nil
+}
+
+/// A titled run of the suggestion list: Pixies, then Files.
+public struct CompletionSection: Sendable, Hashable, Identifiable {
+    public struct Row: Sendable, Hashable {
+        /// Its place in the whole list, which the highlight counts.
+        public let index: Int
+        public let item: Completion
+    }
+
+    public let title: String
+    public let rows: [Row]
+
+    public var id: String { title }
 }
 
 /// The suggestions for the token at the caret.
@@ -69,6 +85,21 @@ public struct CompletionList: Sendable, Hashable {
     public let items: [Completion]
 
     public var title: String { trigger.kind == .command ? "Commands" : "Files" }
+
+    /// An "@" list in titled runs: the pixies and teams, then the files; a list of
+    /// commands has none.
+    public var sections: [CompletionSection] {
+        guard trigger.kind == .file else { return [] }
+        let rows = items.enumerated().map {
+            CompletionSection.Row(index: $0.offset, item: $0.element)
+        }
+        let pixies = rows.filter { $0.item.mention != nil }
+        let files = rows.filter { $0.item.mention == nil }
+        return [
+            pixies.isEmpty ? nil : CompletionSection(title: "Pixies", rows: pixies),
+            files.isEmpty ? nil : CompletionSection(title: title, rows: files),
+        ].compactMap { $0 }
+    }
 
     /// Commands whose name starts with the query first, then those containing it.
     public static func commands(
@@ -86,6 +117,23 @@ public struct CompletionList: Sendable, Hashable {
                 detail: command.description, text: result.text, caret: result.caret)
         }
         return CompletionList(trigger: trigger, items: items)
+    }
+
+    /// The pixies and teams a chat may call, each inserted as "@slug" or "@handle", then
+    /// the files.
+    public static func mentions(
+        _ mentions: [PixieMention], files: [String], for trigger: CompletionTrigger,
+        in text: String
+    ) -> CompletionList {
+        let called = mentions.map { mention in
+            let result = trigger.replacing(in: text, with: "@\(mention.token)")
+            let soul: String? = if case .pixie(_, let soul) = mention { soul } else { nil }
+            return Completion(
+                id: mention.id, label: mention.name, hint: "@\(mention.token)", detail: soul,
+                text: result.text, caret: result.caret, mention: mention)
+        }
+        return CompletionList(
+            trigger: trigger, items: called + Self.files(files, for: trigger, in: text).items)
     }
 
     /// The daemon's ranked paths, each inserted as "@path".

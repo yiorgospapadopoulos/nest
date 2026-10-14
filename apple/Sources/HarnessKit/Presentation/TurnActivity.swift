@@ -113,15 +113,28 @@ public struct ToolGroup: Sendable, Hashable, Identifiable {
     }
 }
 
-/// A transcript row: an item, or a group of tool calls.
+/// An agent call of a pixie, shown as its own row with the pixie's mascot and name (B40).
+public struct PixieCallEntry: Sendable, Hashable, Identifiable {
+    /// The transcript item of the call; its id is the tool use id.
+    public let id: String
+    public let call: ToolCall
+    /// The pixie's slug, the call's subagent name.
+    public let slug: String
+    /// It has no answer and its turn is open, or its background task runs.
+    public let isRunning: Bool
+}
+
+/// A transcript row: an item, a group of tool calls, or a pixie's call.
 public enum TranscriptEntry: Sendable, Hashable, Identifiable {
     case item(TranscriptItem)
     case tools(ToolGroup)
+    case pixieCall(PixieCallEntry)
 
     public var id: String {
         switch self {
         case .item(let item): item.id
         case .tools(let group): group.id
+        case .pixieCall(let call): call.id
         }
     }
 }
@@ -132,9 +145,11 @@ public enum TranscriptGrouping {
     /// the session's turn is running, so calls after the last turn end can still run.
     /// `background` holds the tool use ids of background tasks still running: a call that
     /// started one runs until it ends (D045). Other calls without a result that can no
-    /// longer run are marked stopped (D054).
+    /// longer run are marked stopped (D054). An agent call of one of the `pixies` (by
+    /// slug) is a row of its own, never grouped (B40).
     public static func entries(
-        _ items: [TranscriptItem], live: Bool, background: Set<String> = []
+        _ items: [TranscriptItem], live: Bool, background: Set<String> = [],
+        pixies: Set<String> = []
     ) -> [TranscriptEntry] {
         // A turn's end line, or a user message starting the next turn.
         let lastEnd = items.lastIndex {
@@ -173,6 +188,10 @@ public enum TranscriptGrouping {
 
         for (index, item) in items.enumerated() {
             switch item.content {
+            case .tool(let call) where pixies.contains(call.subagentType ?? ""):
+                flush()
+                let open = live && index > (lastEnd ?? -1)
+                entries.append(.pixieCall(pixieCall(call, open: open, background: background)))
             case .tool:
                 run.append(item)
                 runIsOpen = index > (lastEnd ?? -1)
@@ -185,6 +204,18 @@ public enum TranscriptGrouping {
         }
         flush()
         return entries
+    }
+
+    /// A pixie's call, marked stopped once it can no longer run, as a lone call is.
+    private static func pixieCall(_ call: ToolCall, open: Bool, background: Set<String>)
+        -> PixieCallEntry
+    {
+        var shown = call
+        let working = background.contains(call.id)
+        shown.stopped = call.result == nil && !open && !working
+        return PixieCallEntry(
+            id: call.id, call: shown, slug: call.subagentType!,
+            isRunning: working || open && call.result == nil)
     }
 
     /// The group an item was folded into, if any.

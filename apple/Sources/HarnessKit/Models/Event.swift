@@ -75,6 +75,8 @@ public enum EventType {
     public static let repoRemoved = "repo.removed"
     public static let pixieUpdated = "pixie.updated"
     public static let pixieDeleted = "pixie.deleted"
+    public static let pixieTeamUpdated = "pixie_team.updated"
+    public static let pixieTeamDeleted = "pixie_team.deleted"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -124,6 +126,8 @@ public enum EventBody: Sendable, Hashable {
     case workspace(SessionWorkspace)
     case pixieUpdated(Pixie)
     case pixieDeleted(String)
+    case pixieTeamUpdated(PixieTeam)
+    case pixieTeamDeleted(String)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -186,6 +190,10 @@ public enum EventBody: Sendable, Hashable {
             self = .workspace(try payload.decode(SessionWorkspace.self))
         case EventType.pixieUpdated: self = .pixieUpdated(try field("pixie", as: Pixie.self))
         case EventType.pixieDeleted: self = .pixieDeleted(try field("pixie_id", as: String.self))
+        case EventType.pixieTeamUpdated:
+            self = .pixieTeamUpdated(try field("team", as: PixieTeam.self))
+        case EventType.pixieTeamDeleted:
+            self = .pixieTeamDeleted(try field("id", as: String.self))
         default: self = .other
         }
     }

@@ -10,6 +10,36 @@ public struct ToolCall: Sendable, Hashable {
     public var isError: Bool
     /// Its turn ended without a result and no background task of it runs (D054).
     public var stopped = false
+    /// An agent call's own messages, from `session.message` events naming it as their
+    /// parent: what a pixie call shows when opened (B40).
+    public var steps: [CallStep] = []
+
+    /// The subagent an agent call ran, such as a pixie's slug; nil for other tools.
+    public var subagentType: String? {
+        guard ToolSummary.kind(of: name) == .agent else { return nil }
+        return input["subagent_type"]?.stringValue
+    }
+}
+
+/// A line of what a subagent did: its text, or a tool it called.
+public struct CallStep: Sendable, Hashable, Identifiable {
+    public enum Kind: Sendable, Hashable {
+        case text(String)
+        case tool(name: String, input: JSONValue)
+    }
+
+    public let id: String
+    public let kind: Kind
+
+    /// The text, or a tool call as one plain line: "Read src/app.ts".
+    public var line: String {
+        switch kind {
+        case .text(let text): text
+        case .tool(let name, let input):
+            [name, ToolSummary.argument(tool: name, input: input)].filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }
+    }
 }
 
 /// How a turn ended: how long it worked, and whether it was interrupted or failed.
@@ -104,7 +134,7 @@ public final class TranscriptStore {
     /// `visibleItems` and `entries(live:background:)` as last computed for these items.
     @ObservationIgnored private var visibleCache: [TranscriptItem]?
     @ObservationIgnored private var entriesCache:
-        (live: Bool, background: Set<String>, entries: [TranscriptEntry])?
+        (live: Bool, background: Set<String>, pixies: Set<String>, entries: [TranscriptEntry])?
     /// The latest user message is known: a load reached the newest events or looked it up,
     /// or one arrived live (nothing newer can come any other way).
     private var knowsExchange = false
@@ -223,14 +253,19 @@ public final class TranscriptStore {
     }
 
     /// The transcript's rows (`TranscriptGrouping.entries`), kept until the items, the
-    /// turn's liveness or the running background tasks change.
-    public func entries(live: Bool, background: Set<String> = []) -> [TranscriptEntry] {
+    /// turn's liveness, the running background tasks or the pixies' slugs change.
+    public func entries(live: Bool, background: Set<String> = [], pixies: Set<String> = [])
+        -> [TranscriptEntry]
+    {
         let visible = visibleItems
-        if let cached = entriesCache, cached.live == live, cached.background == background {
+        if let cached = entriesCache, cached.live == live, cached.background == background,
+            cached.pixies == pixies
+        {
             return cached.entries
         }
-        let entries = TranscriptGrouping.entries(visible, live: live, background: background)
-        entriesCache = (live, background, entries)
+        let entries = TranscriptGrouping.entries(
+            visible, live: live, background: background, pixies: pixies)
+        entriesCache = (live, background, pixies, entries)
         return entries
     }
 
@@ -463,6 +498,9 @@ public final class TranscriptStore {
             append(key, .notice(error.map { "Failed: \($0)" } ?? "Failed"), eventID)
         case .message(let message):
             noteTaskStarts(message, eventID)
+            if let parent = message.parentToolUseID {
+                addSteps(message.blocks, to: parent, key: key)
+            }
         case .agentTask(let task):
             if task.phase == .finished, let tool = task.toolUseID, let eventID {
                 taskEnds[tool] = eventID
@@ -501,6 +539,26 @@ public final class TranscriptStore {
         case .unknown:
             break
         }
+    }
+
+    /// A subagent's text and tool calls go with its agent call; its thinking and the
+    /// results of its own tools are not shown. A call this page does not hold drops them.
+    private func addSteps(_ blocks: [MessageBlock], to parent: String, key: String) {
+        guard let index = items.firstIndex(where: { $0.id == parent }),
+            case .tool(var call) = items[index].content, ToolSummary.kind(of: call.name) == .agent
+        else { return }
+        for (offset, block) in blocks.enumerated() {
+            let id = "\(key)-\(offset)"
+            switch block {
+            case .text(let text) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                call.steps.append(CallStep(id: id, kind: .text(text)))
+            case .toolUse(_, let name, let input):
+                call.steps.append(CallStep(id: id, kind: .tool(name: name, input: input)))
+            default:
+                break
+            }
+        }
+        items[index].content = .tool(call)
     }
 
     private func stream(_ text: String) {

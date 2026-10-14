@@ -364,6 +364,28 @@ public struct APIClient: HarnessAPI {
             "GET", ["pixies", id, "search"], query: [URLQueryItem(name: "q", value: query)])
     }
 
+    public func duplicatePixie(_ id: String) async throws -> Pixie {
+        try await call("POST", ["pixies", id, "duplicate"])
+    }
+
+    public func pixieTeams() async throws -> [PixieTeam] {
+        try await get("pixie-teams")
+    }
+
+    public func createPixieTeam(_ request: CreatePixieTeamRequest) async throws -> PixieTeam {
+        try await call("POST", ["pixie-teams"], body: request)
+    }
+
+    public func updatePixieTeam(_ id: String, _ request: UpdatePixieTeamRequest) async throws
+        -> PixieTeam
+    {
+        try await call("PATCH", ["pixie-teams", id], body: request)
+    }
+
+    public func deletePixieTeam(_ id: String) async throws {
+        try await perform("DELETE", ["pixie-teams", id])
+    }
+
     /// A name such as `notes/ideas` is one path segment per slash.
     private static func filePath(_ id: String, _ name: String) -> [String] {
         ["pixies", id, "files"] + name.split(separator: "/").map(String.init)

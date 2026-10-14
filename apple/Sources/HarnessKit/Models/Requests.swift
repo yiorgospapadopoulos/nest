@@ -292,6 +292,10 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var clearsEffort: Bool
     /// True sets `projects` back to every project.
     public var allProjects: Bool?
+    /// The team to join.
+    public var teamID: String?
+    /// True sends `"team_id": null`: the pixie leaves its team. A `teamID` set as well wins.
+    public var leavesTeam: Bool
 
     public init(
         name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
@@ -299,7 +303,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
         projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
         allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
-        clearsModel: Bool = false, clearsEffort: Bool = false, allProjects: Bool? = nil
+        clearsModel: Bool = false, clearsEffort: Bool = false, allProjects: Bool? = nil,
+        teamID: String? = nil, leavesTeam: Bool = false
     ) {
         self.name = name
         self.slug = slug
@@ -319,6 +324,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         self.clearsModel = clearsModel
         self.clearsEffort = clearsEffort
         self.allProjects = allProjects
+        self.teamID = teamID
+        self.leavesTeam = leavesTeam
     }
 
     enum CodingKeys: String, CodingKey {
@@ -329,6 +336,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         case allowedTools = "allowed_tools"
         case disallowedTools = "disallowed_tools"
         case allProjects = "all_projects"
+        case teamID = "team_id"
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -357,6 +365,41 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(disallowedTools, forKey: .disallowedTools)
         try container.encodeIfPresent(hidden, forKey: .hidden)
         try container.encodeIfPresent(allProjects, forKey: .allProjects)
+        if let teamID {
+            try container.encode(teamID, forKey: .teamID)
+        } else if leavesTeam {
+            try container.encodeNil(forKey: .teamID)
+        }
+    }
+}
+
+/// `POST /api/pixie-teams`; the daemon derives the handle from the name when it is nil.
+public struct CreatePixieTeamRequest: Encodable, Sendable, Hashable {
+    public var name: String
+    public var handle: String?
+
+    public init(name: String, handle: String? = nil) {
+        self.name = name
+        self.handle = handle
+    }
+}
+
+/// `PATCH /api/pixie-teams/{id}`; nil fields are left unchanged. The leader must be a
+/// member.
+public struct UpdatePixieTeamRequest: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var handle: String?
+    public var leaderID: String?
+
+    public init(name: String? = nil, handle: String? = nil, leaderID: String? = nil) {
+        self.name = name
+        self.handle = handle
+        self.leaderID = leaderID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, handle
+        case leaderID = "leader_id"
     }
 }
 

@@ -52,19 +52,24 @@ public final class CompletionStore {
     }
 
     /// The suggestions for the token at the caret; nil when nothing is being completed.
-    /// Files need a session, so a new chat only completes commands.
-    public func suggestions(text: String, caret: Int, session: String?, repo: String)
-        -> CompletionList?
-    {
+    /// Files need a session, so a new chat completes commands, and pixies where
+    /// `mentions` offers them: the pixies and teams the chat may call, which "@" lists
+    /// before the files, filtered by what was typed (B40).
+    public func suggestions(
+        text: String, caret: Int, session: String?, repo: String,
+        mentions: [PixieMention]? = nil
+    ) -> CompletionList? {
         guard let trigger = CompletionTrigger.at(text, caret: caret) else { return nil }
         switch trigger.kind {
         case .command:
             let known = commands[Self.source(session: session, repo: repo)] ?? []
             return .commands(known, for: trigger, in: text)
         case .file:
-            guard let session else { return nil }
+            guard session != nil || mentions != nil else { return nil }
             let files = found.flatMap { $0.session == session ? $0.files : nil } ?? []
-            return .files(files, for: trigger, in: text)
+            guard let mentions else { return .files(files, for: trigger, in: text) }
+            let matching = PixieMentions.matching(mentions, query: trigger.query)
+            return .mentions(matching, files: files, for: trigger, in: text)
         }
     }
 

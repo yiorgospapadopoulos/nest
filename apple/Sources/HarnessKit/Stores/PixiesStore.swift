@@ -6,6 +6,12 @@ import Observation
 public final class PixiesStore {
     /// Every pixie, hidden ones too, sorted by position.
     public private(set) var pixies: [Pixie] = []
+    /// The teams, sorted by position (B40).
+    public private(set) var teams: [PixieTeam] = []
+    /// The first line of each pixie's soul, by pixie id, once read (`loadSoulLines`).
+    public private(set) var soulLines: [String: String] = [:]
+    /// Pixies whose soul was asked for or read.
+    private var soulsAsked: Set<String> = []
 
     let api: any HarnessAPI
 
@@ -33,7 +39,9 @@ public final class PixiesStore {
     }
 
     public func load() async throws {
+        async let loadedTeams = api.pixieTeams()
         pixies = Self.sorted(try await api.pixies())
+        teams = Self.sorted(try await loadedTeams)
     }
 
     public func apply(_ event: Event) {
@@ -42,8 +50,14 @@ public final class PixiesStore {
         case .pixieDeleted(let id):
             pixies.removeAll { $0.id == id }
             confirmed[id] = nil
+        case .pixieTeamUpdated(let team): receive(team)
+        case .pixieTeamDeleted(let id): forgetTeam(id)
         default: break
         }
+    }
+
+    public func team(_ id: String) -> PixieTeam? {
+        teams.first { $0.id == id }
     }
 
     // MARK: Actions
@@ -139,6 +153,96 @@ public final class PixiesStore {
         pixies.removeAll { $0.id == id }
     }
 
+    /// The copy shows right under the original; the pixies after it move down one, as
+    /// the daemon moves them.
+    @discardableResult
+    public func duplicate(_ id: String) async throws -> Pixie {
+        let copy = try await api.duplicatePixie(id)
+        pixies = pixies.map { pixie in
+            var pixie = pixie
+            if pixie.id != copy.id && pixie.position >= copy.position {
+                pixie.position += 1
+            }
+            return pixie
+        }
+        return store(copy)
+    }
+
+    // MARK: Teams
+
+    @discardableResult
+    public func createTeam(name: String, handle: String? = nil) async throws -> PixieTeam {
+        let team = try await api.createPixieTeam(CreatePixieTeamRequest(name: name, handle: handle))
+        receive(team)
+        return team
+    }
+
+    /// Renames it, changes its handle or its leader once the daemon agrees.
+    @discardableResult
+    public func updateTeam(_ id: String, _ request: UpdatePixieTeamRequest) async throws
+        -> PixieTeam
+    {
+        let team = try await api.updatePixieTeam(id, request)
+        receive(team)
+        return team
+    }
+
+    /// Its pixies stay, without a team.
+    public func deleteTeam(_ id: String) async throws {
+        try await api.deletePixieTeam(id)
+        forgetTeam(id)
+    }
+
+    /// Joins the pixie to a team, or with nil takes it out of its team.
+    public func setTeam(_ id: String, to team: String?) async throws {
+        try await update(id, UpdatePixieRequest(teamID: team, leavesTeam: team == nil))
+    }
+
+    /// A pixie dropped on another one: it joins the other's team (or leaves its own) when
+    /// they differ, then takes the other's place.
+    public func place(_ id: String, onto target: String) async throws {
+        guard let pixie = pixies.first(where: { $0.id == id }),
+            let other = pixies.first(where: { $0.id == target })
+        else { return }
+        if pixie.teamID != other.teamID {
+            try await setTeam(id, to: other.teamID)
+        }
+        try await move(id, onto: target)
+    }
+
+    /// Reads the souls of these pixies not read yet, for the first lines the `@` list
+    /// shows. A pixie whose soul could not be read is asked for again next time.
+    public func loadSoulLines(_ ids: [String]) async {
+        for id in ids where !soulsAsked.contains(id) {
+            soulsAsked.insert(id)
+            do {
+                let file = try await api.pixieFile(id, name: "soul")
+                soulLines[id] = PixieSoul.firstLine(file.text)
+            } catch {
+                soulsAsked.remove(id)
+            }
+        }
+    }
+
+    private func receive(_ team: PixieTeam) {
+        if let shown = self.team(team.id), shown.updatedAt > team.updatedAt {
+            return
+        }
+        teams = Self.sorted(teams.filter { $0.id != team.id } + [team])
+    }
+
+    /// A deleted team: its pixies show without one until the daemon's events arrive.
+    private func forgetTeam(_ id: String) {
+        teams.removeAll { $0.id == id }
+        pixies = pixies.map { pixie in
+            var pixie = pixie
+            if pixie.teamID == id {
+                pixie.teamID = nil
+            }
+            return pixie
+        }
+    }
+
     /// The pixie's chat after the message; the caller keeps it in the sessions store.
     /// The chat comes with the queued message when it was busy.
     public func send(_ id: String, text: String) async throws -> SentMessage {
@@ -157,7 +261,12 @@ public final class PixiesStore {
     public func save(_ id: String, name: String, text: String, hash: String?) async throws
         -> PixieFile
     {
-        try await api.savePixieFile(id, name: name, text: text, hash: hash)
+        let saved = try await api.savePixieFile(id, name: name, text: text, hash: hash)
+        if name == "soul" {
+            soulLines[id] = PixieSoul.firstLine(saved.text)
+            soulsAsked.insert(id)
+        }
+        return saved
     }
 
     public func notes(_ id: String) async throws -> [String] {
@@ -224,6 +333,10 @@ public final class PixiesStore {
     }
 
     private static func sorted(_ list: [Pixie]) -> [Pixie] {
+        list.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
+    }
+
+    private static func sorted(_ list: [PixieTeam]) -> [PixieTeam] {
         list.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
     }
 }

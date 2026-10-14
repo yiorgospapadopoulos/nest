@@ -34,6 +34,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         {"model": "opus", "effort": "high", "permission_mode": "default", "mode": "in_place"}
         """
     static let pixieJSON = Fixture.text("pixie")
+    static let teamJSON = Fixture.text("pixie_team")
     static let claudeChatJSON = """
         {"id": "c1", "repo": "todo-ui", "title": "T", "cwd": "/r", "worktree": null,
          "created_at": "2026-10-06T09:00:00Z", "last_activity_at": "2026-10-06T09:00:00Z",
@@ -209,6 +210,34 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "GET", "/api/pixies/p1/search?q=a%20b",
             response: #"[{"file": "MEMORY.md", "line": "- x"}]"#
         ) { _ = try await $0.searchPixie("p1", query: "a b") },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"team_id":"t1"}"#, response: pixieJSON
+        ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(teamID: "t1")) },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"team_id":null}"#, response: pixieJSON
+        ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(leavesTeam: true)) },
+        RouteCase("POST", "/api/pixies/p1/duplicate", response: pixieJSON) {
+            _ = try await $0.duplicatePixie("p1")
+        },
+        RouteCase("GET", "/api/pixie-teams", response: "[" + teamJSON + "]") {
+            _ = try await $0.pixieTeams()
+        },
+        RouteCase(
+            "POST", "/api/pixie-teams", body: #"{"handle":"qa","name":"QA"}"#, response: teamJSON
+        ) { _ = try await $0.createPixieTeam(CreatePixieTeamRequest(name: "QA", handle: "qa")) },
+        RouteCase("POST", "/api/pixie-teams", body: #"{"name":"QA"}"#, response: teamJSON) {
+            _ = try await $0.createPixieTeam(CreatePixieTeamRequest(name: "QA"))
+        },
+        RouteCase(
+            "PATCH", "/api/pixie-teams/t1", body: #"{"handle":"qa-2","leader_id":"p2","name":"Q"}"#,
+            response: teamJSON
+        ) {
+            _ = try await $0.updatePixieTeam(
+                "t1", UpdatePixieTeamRequest(name: "Q", handle: "qa-2", leaderID: "p2"))
+        },
+        RouteCase("DELETE", "/api/pixie-teams/t1", response: "") {
+            try await $0.deletePixieTeam("t1")
+        },
         RouteCase("GET", "/api/sessions/s1/diff", response: Fixture.text("diff")) {
             _ = try await $0.diff("s1")
         },
