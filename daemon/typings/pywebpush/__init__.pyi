@@ -1,4 +1,4 @@
-# The parts of pywebpush that harness uses; the package ships no type information.
+# The parts of pywebpush that Nest uses; the package ships no type information.
 from collections.abc import Mapping
 
 class WebPushException(Exception): ...  # noqa: N818 (upstream name)

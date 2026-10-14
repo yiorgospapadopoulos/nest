@@ -1,6 +1,6 @@
 from typing import Any
 
-from harness.providers.claude_thinking import ThinkingTimer
+from nestd.providers.claude_thinking import ThinkingTimer
 
 
 class Ticker:

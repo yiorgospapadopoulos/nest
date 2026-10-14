@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.providers.base import Subagent
-from harness.sessions.extras import RunExtras
-from harness.sessions.models import Session, SessionState
-from harness.sessions.subagents import ChatAgents, TeamCall
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.providers.base import Subagent
+from nestd.sessions.extras import RunExtras
+from nestd.sessions.models import Session, SessionState
+from nestd.sessions.subagents import ChatAgents, TeamCall
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, background, reply
 from tests.fakes import FakeClock

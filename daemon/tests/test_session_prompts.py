@@ -2,13 +2,13 @@ import asyncio
 
 import pytest
 
-from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
-from harness.approvals.queue import ApprovalQueue
-from harness.approvals.store import ApprovalStore
-from harness.config.models import PermissionMode
-from harness.events.bus import EventBus
-from harness.notifications.notifier import Notifier
-from harness.providers.base import (
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.approvals.queue import ApprovalQueue
+from nestd.approvals.store import ApprovalStore
+from nestd.config.models import PermissionMode
+from nestd.events.bus import EventBus
+from nestd.notifications.notifier import Notifier
+from nestd.providers.base import (
     PermissionDecision,
     PermissionRequest,
     PlanDecision,
@@ -18,9 +18,9 @@ from harness.providers.base import (
     QuestionOption,
     QuestionRequest,
 )
-from harness.sessions.prompts import SessionPrompts
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.sessions.prompts import SessionPrompts
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session

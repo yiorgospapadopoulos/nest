@@ -7,8 +7,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from harness.config.models import PermissionMode
-from harness.providers.base import (
+from nestd.config.models import PermissionMode
+from nestd.providers.base import (
     AgentTask,
     ApprovalHandler,
     CommandCatalog,

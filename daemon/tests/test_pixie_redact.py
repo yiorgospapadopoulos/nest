@@ -1,6 +1,6 @@
 import pytest
 
-from harness.pixies.redact import redact
+from nestd.pixies.redact import redact
 
 
 @pytest.mark.parametrize(

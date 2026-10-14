@@ -5,14 +5,14 @@ from datetime import timedelta
 
 import pytest
 
-from harness.auth.devices import (
+from nestd.auth.devices import (
     LOCAL_DEVICE_ACCOUNT,
     LOCAL_DEVICE_NAME,
     DeviceService,
     InvalidPairingCodeError,
     PairingLockedError,
 )
-from harness.storage.db import Database
+from nestd.storage.db import Database
 from tests.fakes import FakeClock, FakeSecretStore
 
 

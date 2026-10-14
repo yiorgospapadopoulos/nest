@@ -3,8 +3,8 @@ from typing import Any, cast
 
 from pydantic import JsonValue
 
-from harness.providers.base import AgentTool, ToolRefusedError
-from harness.providers.claude_tools import (
+from nestd.providers.base import AgentTool, ToolRefusedError
+from nestd.providers.claude_tools import (
     TOOL_SERVER,
     own_tool_names,
     to_sdk_tool,

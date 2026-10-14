@@ -1,7 +1,7 @@
 [project]
-name = "harness"
+name = "nestd"
 version = "0.1.0"
-description = "Daemon for harness, a personal agent manager."
+description = "Daemon for Nest, a personal agent manager."
 authors = [
     { name = "Yiorgos Papadopoulos" }
 ]
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-harness = "harness.cli:main"
+nestd = "nestd.cli:main"
 
 [dependency-groups]
 dev = [
@@ -59,7 +59,7 @@ typeCheckingMode = "strict"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = [
-    "--cov=harness",
+    "--cov=nestd",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-fail-under=100",
@@ -71,4 +71,4 @@ filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]
 
 [tool.coverage.run]
 branch = true
-omit = ["*/harness/__main__.py"]
+omit = ["*/nestd/__main__.py"]

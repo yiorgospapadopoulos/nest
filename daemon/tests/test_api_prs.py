@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from harness.events import types
-from harness.gitops.runner import CommandError
-from harness.sessions.store import SessionStore
+from nestd.events import types
+from nestd.gitops.runner import CommandError
+from nestd.sessions.store import SessionStore
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import hang

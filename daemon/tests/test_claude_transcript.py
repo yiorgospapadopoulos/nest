@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.claude_sessions.transcript import parse_transcript, read_transcript
-from harness.events import types
+from nestd.claude_sessions.transcript import parse_transcript, read_transcript
+from nestd.events import types
 from tests.claude_support import Entry, assistant, simple_chat, text, user
 
 

@@ -7,16 +7,16 @@ from datetime import timedelta
 import pytest
 from pydantic import JsonValue
 
-from harness.config.models import StuckSettings
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.events.models import Event
-from harness.notifications.notifier import Notifier
-from harness.sessions.models import Session
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
-from harness.stuck.models import StuckFlag
-from harness.stuck.watcher import StuckWatcher
+from nestd.config.models import StuckSettings
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.events.models import Event
+from nestd.notifications.notifier import Notifier
+from nestd.sessions.models import Session
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
+from nestd.stuck.models import StuckFlag
+from nestd.stuck.watcher import StuckWatcher
 from tests.async_support import until
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session

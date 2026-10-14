@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from py_vapid import Vapid02
 
-from harness.notifications.vapid import VAPID_ACCOUNT, VapidKeys
+from nestd.notifications.vapid import VAPID_ACCOUNT, VapidKeys
 from tests.fakes import START, FakeSecretStore
 
 

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.providers.base import McpServer, ResultInfo
-from harness.sessions import turns
-from harness.sessions.models import Session, SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.providers.base import McpServer, ResultInfo
+from nestd.sessions import turns
+from nestd.sessions.models import Session, SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import background, crash, reply
 from tests.fakes import FakeClock

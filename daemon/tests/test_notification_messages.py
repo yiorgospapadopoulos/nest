@@ -3,12 +3,12 @@ from datetime import time
 import pytest
 from pydantic import JsonValue
 
-from harness.config.models import NotificationKinds, NotificationSettings, QuietHours
-from harness.events.bus import EventBus
-from harness.notifications.messages import TEST_NOTICE, Notice, notice_from_event
-from harness.notifications.notifier import Notifier
-from harness.notifications.rules import in_quiet_hours, should_send
-from harness.storage.db import Database
+from nestd.config.models import NotificationKinds, NotificationSettings, QuietHours
+from nestd.events.bus import EventBus
+from nestd.notifications.messages import TEST_NOTICE, Notice, notice_from_event
+from nestd.notifications.notifier import Notifier
+from nestd.notifications.rules import in_quiet_hours, should_send
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 
@@ -16,7 +16,7 @@ def event(kind: str = "needs_approval", **changes: JsonValue) -> dict[str, JsonV
     payload: dict[str, JsonValue] = {
         "kind": kind,
         "session_id": "s/1",
-        "repo": "harness",
+        "repo": "nest",
         "title": "Fix login",
         "text": "Approve Bash: npm test",
     }
@@ -47,7 +47,7 @@ def test_each_kind_links_to_where_it_is_handled(
     assert notice is not None
     assert notice == Notice(
         kind=kind,
-        title=f"{label} · harness",
+        title=f"{label} · nest",
         body="Fix login: Approve Bash: npm test",
         url=url,
         tag="session-s/1",

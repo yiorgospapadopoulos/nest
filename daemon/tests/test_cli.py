@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 
-from harness.auth.devices import LOCAL_DEVICE_ACCOUNT
-from harness.auth.secrets import KeychainSecretStore
-from harness.cli import main
-from harness.clock import SystemClock
-from harness.paths import AppPaths
-from harness.runtime import Runtime, default_runtime
-from harness.server import run_uvicorn
-from harness.service.launchd import LABEL, CommandResult, run_command
+from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
+from nestd.auth.secrets import KeychainSecretStore
+from nestd.cli import main
+from nestd.clock import SystemClock
+from nestd.paths import AppPaths
+from nestd.runtime import Runtime, default_runtime
+from nestd.server import run_uvicorn
+from nestd.service.launchd import LABEL, CommandResult, run_command
 from tests.fakes import FakeClock, FakeSecretStore
 
 
@@ -40,13 +40,10 @@ class Recorder:
             self.served.append(port)
 
 
-class Harness:
-    def __init__(self, tmp_path: Path, data_dir: Path) -> None:
-        self.home = tmp_path / "home"
-        self.env = {
-            "HARNESS_CONFIG_DIR": str(tmp_path / "config"),
-            "HARNESS_DATA_DIR": str(data_dir),
-        }
+class Rig:
+    def __init__(self, home: Path, env: dict[str, str]) -> None:
+        self.home = home
+        self.env = env
         self.paths = AppPaths.from_env(self.env, self.home)
         self.recorder = Recorder()
         self.secrets = FakeSecretStore()
@@ -70,14 +67,33 @@ class Harness:
 
 
 @pytest.fixture
-def cli(tmp_path: Path) -> Iterator[Harness]:
+def cli(tmp_path: Path) -> Iterator[Rig]:
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
     # Short, since `serve` opens the token socket in the data folder (D075) and Unix socket
     # paths are limited to about 104 bytes; pytest's tmp_path can be longer.
     data_root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
-    yield Harness(tmp_path, data_root / "data")
+    env = {"NEST_CONFIG_DIR": str(tmp_path / "config"), "NEST_DATA_DIR": str(data_root / "data")}
+    yield Rig(tmp_path / "home", env)
     shutil.rmtree(data_root)
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
+
+@pytest.fixture
+def moving() -> Iterator[Rig]:
+    """B43: no variables, so the default folders are used, with harness's still there."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    home = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
+    old_config = home / ".config" / "harness"
+    (old_config / "repos").mkdir(parents=True)
+    (old_config / "settings.toml").write_text("[server]\nport = 9200\n", encoding="utf-8")
+    old_data = home / "Library" / "Application Support" / "harness"
+    old_data.mkdir(parents=True)
+    (old_data / "attachments").mkdir()
+    yield Rig(home, {})
+    shutil.rmtree(home)
     root.handlers[:] = handlers
     root.setLevel(level)
 
@@ -92,7 +108,7 @@ def test_default_runtime_uses_the_real_system() -> None:
     assert runtime.serve is run_uvicorn
 
 
-def test_serve_uses_configured_port_and_runs_the_app(cli: Harness) -> None:
+def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:
     assert cli.run("serve") == 0
 
     assert cli.recorder.served == [8765]
@@ -100,24 +116,24 @@ def test_serve_uses_configured_port_and_runs_the_app(cli: Harness) -> None:
     assert cli.paths.db_path.is_file()
 
 
-def test_serve_port_flag_overrides_settings(cli: Harness) -> None:
+def test_serve_port_flag_overrides_settings(cli: Rig) -> None:
     assert cli.run("serve", "--port", "9100") == 0
 
     assert cli.recorder.served == [9100]
 
 
-def test_config_errors_are_reported_without_a_traceback(cli: Harness) -> None:
+def test_config_errors_are_reported_without_a_traceback(cli: Rig) -> None:
     cli.paths.config_dir.mkdir(parents=True)
     cli.paths.settings_file.write_text("[server\n", encoding="utf-8")
 
     assert cli.run("serve") == 1
 
-    assert cli.err.getvalue().startswith("harness: ")
+    assert cli.err.getvalue().startswith("nestd: ")
     assert "settings.toml: invalid TOML" in cli.err.getvalue()
     assert cli.recorder.served == []
 
 
-def test_service_install(cli: Harness) -> None:
+def test_service_install(cli: Rig) -> None:
     assert cli.run("service", "install") == 0
 
     plist = cli.home / "Library" / "LaunchAgents" / f"{LABEL}.plist"
@@ -128,7 +144,7 @@ def test_service_install(cli: Harness) -> None:
     assert f"Installed and started {LABEL}" in cli.out.getvalue()
 
 
-def test_service_install_failure(cli: Harness) -> None:
+def test_service_install_failure(cli: Rig) -> None:
     cli.recorder.bootstrap_result = CommandResult(5, "", "Input/output error")
 
     assert cli.run("service", "install") == 1
@@ -136,7 +152,7 @@ def test_service_install_failure(cli: Harness) -> None:
     assert "launchctl bootstrap failed" in cli.err.getvalue()
 
 
-def test_service_uninstall(cli: Harness) -> None:
+def test_service_uninstall(cli: Rig) -> None:
     cli.run("service", "install")
 
     assert cli.run("service", "uninstall") == 0
@@ -145,7 +161,7 @@ def test_service_uninstall(cli: Harness) -> None:
     assert f"Stopped and removed {LABEL}" in cli.out.getvalue()
 
 
-def test_service_status_running(cli: Harness) -> None:
+def test_service_status_running(cli: Rig) -> None:
     cli.run("service", "install")
     cli.recorder.print_result = CommandResult(0, "state = running\n", "")
 
@@ -157,7 +173,7 @@ def test_service_status_running(cli: Harness) -> None:
     assert "state = running" in output
 
 
-def test_service_status_not_installed(cli: Harness) -> None:
+def test_service_status_not_installed(cli: Rig) -> None:
     assert cli.run("service", "status") == 1
 
     output = cli.out.getvalue()
@@ -165,7 +181,7 @@ def test_service_status_not_installed(cli: Harness) -> None:
     assert "loaded: no" in output
 
 
-def test_pair_prints_a_code_and_its_expiry(cli: Harness) -> None:
+def test_pair_prints_a_code_and_its_expiry(cli: Rig) -> None:
     assert cli.run("pair") == 0
 
     lines = cli.out.getvalue().splitlines()
@@ -174,8 +190,80 @@ def test_pair_prints_a_code_and_its_expiry(cli: Harness) -> None:
     assert lines[1].startswith("Expires at ")
 
 
-def test_a_command_is_required(cli: Harness) -> None:
+def test_a_command_is_required(cli: Rig) -> None:
     with pytest.raises(SystemExit) as exited:
         cli.run()
 
     assert exited.value.code == 2
+
+
+def test_serve_moves_the_folders_from_before_the_rename_first(moving: Rig) -> None:
+    assert moving.run("serve") == 0
+
+    config, data = moving.home / ".config", moving.home / "Library" / "Application Support"
+    assert moving.recorder.served == [9200]
+    assert (config / "harness").readlink() == config / "nest"
+    assert (data / "harness").readlink() == data / "nest"
+    assert (data / "harness.harness-backup" / "attachments").is_dir()
+    assert moving.paths.db_path == data / "nest" / "nest.db"
+    assert moving.paths.db_path.is_file()
+    assert f"Moved {data / 'harness'} to {data / 'nest'}" in moving.err.getvalue()
+    assert moving.run("serve") == 0
+
+
+def test_serve_stops_with_a_clear_line_when_a_folder_cannot_move(moving: Rig) -> None:
+    (moving.home / ".config" / "harness.harness-backup").mkdir()
+
+    assert moving.run("serve") == 1
+
+    assert moving.err.getvalue().startswith("nestd: ")
+    assert "already exists" in moving.err.getvalue()
+    assert moving.recorder.served == []
+    assert not (moving.home / ".config" / "nest").exists()
+    assert not (moving.home / ".config" / "harness").is_symlink()
+
+
+def test_serve_adopts_the_old_database_in_a_folder_named_by_the_old_variable(
+    tmp_path: Path,
+) -> None:
+    data_root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
+    data = data_root / "data"
+    data.mkdir()
+    (data / "harness.db").write_bytes(b"")
+    rig = Rig(
+        tmp_path / "home",
+        {"HARNESS_CONFIG_DIR": str(tmp_path / "c"), "HARNESS_DATA_DIR": str(data)},
+    )
+
+    try:
+        assert rig.run("serve") == 0
+    finally:
+        shutil.rmtree(data_root)
+
+    assert "Renamed harness.db to nest.db in" in rig.err.getvalue()
+
+
+def test_service_install_replaces_the_harness_service_and_moves_the_folders(moving: Rig) -> None:
+    agents = moving.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / "com.harness.daemon.plist").write_text("<plist/>", encoding="utf-8")
+
+    assert moving.run("service", "install") == 0
+
+    assert not (agents / "com.harness.daemon.plist").exists()
+    assert (agents / f"{LABEL}.plist").is_file()
+    commands = moving.recorder.commands
+    assert commands[0] == ["/bin/launchctl", "bootout", "gui/501/com.harness.daemon"]
+    assert commands[-1][1] == "bootstrap"
+    data = moving.home / "Library" / "Application Support"
+    assert (data / "harness").is_symlink()
+    output = moving.out.getvalue()
+    assert "Removed the service from before the rename (com.harness.daemon)" in output
+    assert f"Moved {data / 'harness'} to {data / 'nest'}" in output
+
+
+def test_pair_moves_the_folders_first(moving: Rig) -> None:
+    assert moving.run("pair") == 0
+
+    assert (moving.home / ".config" / "harness").is_symlink()
+    assert "Pairing code: " in moving.out.getvalue()

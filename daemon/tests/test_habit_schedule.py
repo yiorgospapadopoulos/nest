@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from pydantic import TypeAdapter
 
-from harness.pixies.habit_models import Schedule
-from harness.pixies.schedule import describe, latest_due, next_due
+from nestd.pixies.habit_models import Schedule
+from nestd.pixies.schedule import describe, latest_due, next_due
 
 NEW_YORK = ZoneInfo("America/New_York")
 SCHEDULE: TypeAdapter[Schedule] = TypeAdapter(Schedule)

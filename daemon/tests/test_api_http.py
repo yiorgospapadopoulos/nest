@@ -10,12 +10,12 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
-import harness
-from harness.api.app import create_app
-from harness.api.routes.pairing import client_address
-from harness.config.errors import ConfigError
-from harness.context import AppContext
-from harness.events import types
+import nestd
+from nestd.api.app import create_app
+from nestd.api.routes.pairing import client_address
+from nestd.config.errors import ConfigError
+from nestd.context import AppContext
+from nestd.events import types
 from tests.api_support import build_context, local_token, make_paths
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -59,7 +59,7 @@ async def test_health_needs_no_auth(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": harness.__version__}
+    assert response.json() == {"status": "ok", "version": nestd.__version__}
 
 
 async def test_startup_creates_local_token_and_stores_no_event(
@@ -183,7 +183,7 @@ async def test_redeem_sets_cookie_and_the_cookie_authenticates(
     assert body["device"]["name"] == "iPhone"
     assert body["device"]["is_local"] is False
     cookie = response.headers["set-cookie"]
-    assert cookie.startswith(f"harness_token={body['token']};")
+    assert cookie.startswith(f"nest_token={body['token']};")
     for attribute in ("HttpOnly", "Secure", "SameSite=strict", "Max-Age=34560000", "Path=/"):
         assert attribute in cookie
     devices = await client.get("/api/devices")

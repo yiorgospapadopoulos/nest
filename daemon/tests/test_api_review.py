@@ -9,20 +9,30 @@ import httpx
 import pytest
 from pydantic import TypeAdapter
 
-from harness.events import types
-from harness.gitops.runner import CommandError
-from harness.providers.base import AgentTask, MessageBlock
-from harness.review import watch
-from harness.review.models import SessionDiff
-from harness.sessions.git_audit import HEAD_BRANCH
-from harness.sessions.models import SendResult
+from nestd.events import types
+from nestd.gitops.runner import CommandError
+from nestd.providers.base import AgentTask, MessageBlock, RewindResult
+from nestd.review import watch
+from nestd.review.models import SessionDiff
+from nestd.sessions.git_audit import HEAD_BRANCH
+from nestd.sessions.models import SendResult
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import background, commit, crash, edit, hang, messages, reply, tasks
+from tests.fake_provider import (
+    background,
+    commit,
+    crash,
+    echoed,
+    edit,
+    hang,
+    messages,
+    reply,
+    tasks,
+)
 from tests.fake_runner import PR_URL
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import commit_file, git, init_repo, with_origin
-from tests.test_api_sessions import create, notified, reach
+from tests.test_api_sessions import create, notified, reach, state_of
 from tests.tracking_fixture import create_task, start_agent_message
 
 APPROVE = {"commit_message": "Fix the bug"}
@@ -808,7 +818,7 @@ async def test_files_git_is_told_to_ignore_are_never_committed(
 async def test_a_repository_that_uses_git_lfs_is_published_from_terminal(
     api: Api, attributes: str
 ) -> None:
-    """PL-17: harness runs no hooks, so git-lfs would not upload the files it stores."""
+    """PL-17: Nest runs no hooks, so git-lfs would not upload the files it stores."""
     repo = api.ctx.repos.get("repo").path
     (repo / attributes).parent.mkdir(parents=True, exist_ok=True)
     (repo / attributes).write_text("*.psd filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8")
@@ -958,6 +968,94 @@ async def test_reject_discards_the_work(api: Api) -> None:
     assert session["branch"] not in git(api.ctx.repos.get("repo").path, "branch")
     assert again.status_code == 409
     assert diff.status_code == 409
+
+
+async def in_place_with_checkpoints(api: Api) -> str:
+    """An in-place chat of two turns, each with its own file checkpoint."""
+    api.provider.script(echoed("msg-1", edit({"agent.txt": "agent\n"}, reply("Done."))))
+    session_id = str((await create(api, mode="in_place"))["id"])
+    await reach(api, session_id, "idle")
+    api.provider.script(echoed("msg-2", edit({"agent.txt": "more\n"}, reply("More."))))
+    await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "and more"})
+    await reach(api, session_id, "idle", results=2)
+    await notified(api, session_id, "review_ready", 2)
+    return session_id
+
+
+async def rewinds(api: Api) -> list[object]:
+    return [args for run in api.provider.runs for name, args in run.calls if name == "rewind_files"]
+
+
+async def reject(api: Api, session_id: str) -> httpx.Response:
+    return await api.http.post(f"/api/sessions/{session_id}/reject")
+
+
+async def test_rejecting_a_worktree_chat_restores_no_files(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+
+    rejected = await reject(api, session_id)
+
+    assert rejected.json()["state"] == "closed"
+    assert await rewinds(api) == []
+
+
+async def test_rejecting_an_in_place_chat_restores_the_files_from_its_first_message(
+    api: Api,
+) -> None:
+    session_id = await in_place_with_checkpoints(api)
+
+    rejected = await reject(api, session_id)
+
+    assert (rejected.status_code, rejected.json()["state"]) == (200, "closed")
+    assert await rewinds(api) == [("msg-1", False)]
+    resolutions = [r["resolution"] for r in await approvals(api)]
+    assert {"action": "rejected"} in resolutions
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    assert {"kind": "files_restored", "text": "Restored 1 file to before your message"} in [
+        e["payload"] for e in events if e["type"] == types.SESSION_NOTICE
+    ]
+
+
+async def test_an_in_place_chat_without_a_checkpoint_is_not_rejected(api: Api) -> None:
+    session_id, repo = await in_place_review(api)
+
+    refused = await reject(api, session_id)
+
+    assert refused.status_code == 409
+    assert refused.json() == {
+        "detail": "Claude's edits in this chat cannot be restored: it has no file checkpoint.",
+        "code": "cannot_rewind",
+    }
+    assert await state_of(api, session_id) == "idle"
+    assert (repo / "agent.txt").read_text(encoding="utf-8") == "agent\n"
+    (review,) = await approvals(api)
+    assert review["status"] == "pending"
+
+
+async def test_a_refused_restore_keeps_the_chat_and_its_review(api: Api) -> None:
+    session_id = await in_place_with_checkpoints(api)
+    api.provider.rewind = RewindResult(can_rewind=False, error="the checkpoint is gone")
+
+    refused = await reject(api, session_id)
+
+    assert refused.status_code == 409
+    assert refused.json() == {"detail": "the checkpoint is gone", "code": "cannot_rewind"}
+    assert await state_of(api, session_id) == "idle"
+    assert [r["status"] for r in await approvals(api)].count("pending") == 1
+
+
+async def test_rejecting_an_in_place_chat_waits_for_its_turn(api: Api) -> None:
+    api.provider.script(echoed("msg-1", hang()))
+    session_id = str((await create(api, mode="in_place"))["id"])
+    await reach(api, session_id, "running")
+
+    async def refused() -> bool:
+        # Once the engine's echo gave the message its checkpoint.
+        response = await reject(api, session_id)
+        return response.status_code == 409 and "no turn is running" in response.json()["detail"]
+
+    await until(refused)
+    assert await state_of(api, session_id) == "running"
 
 
 async def test_feedback_supersedes_the_review_and_continues_the_session(api: Api) -> None:

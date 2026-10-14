@@ -6,8 +6,8 @@ import pytest
 from claude_agent_sdk import PermissionResultAllow, PermissionUpdate, ToolPermissionContext
 from claude_agent_sdk.types import PermissionRuleValue
 
-from harness.providers.base import PermissionDecision, PermissionRequest, SessionSpec
-from harness.providers.claude_rules import always_rule
+from nestd.providers.base import PermissionDecision, PermissionRequest, SessionSpec
+from nestd.providers.claude_rules import always_rule
 from tests.test_claude_provider import Opened, ScriptedHandler
 
 NPM_TEST = PermissionUpdate(
@@ -77,7 +77,7 @@ async def test_always_applies_the_suggestions_with_their_destination(tmp_path: P
     [
         # Allowed once: the suggestions are left for next time.
         (PermissionDecision("allow"), [NPM_TEST]),
-        # Nothing suggested: harness allows the tool by name for the session instead.
+        # Nothing suggested: Nest allows the tool by name for the session instead.
         (PermissionDecision("allow", always=True), []),
     ],
 )

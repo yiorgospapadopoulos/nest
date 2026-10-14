@@ -6,18 +6,18 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
-from harness.approvals.queue import ApprovalQueue
-from harness.approvals.store import ApprovalStore
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.gitops.runner import CommandError
-from harness.notifications.notifier import Notifier
-from harness.prs.errors import PrReadError
-from harness.prs.monitor import FAST, SLOW, SLOW_AFTER, PrMonitor
-from harness.sessions.models import Session
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.approvals.queue import ApprovalQueue
+from nestd.approvals.store import ApprovalStore
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.gitops.runner import CommandError
+from nestd.notifications.notifier import Notifier
+from nestd.prs.errors import PrReadError
+from nestd.prs.monitor import FAST, SLOW, SLOW_AFTER, PrMonitor
+from nestd.sessions.models import Session
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_runner import PR_URL, FakeRunner, check_run, pr_json
 from tests.fakes import FakeClock

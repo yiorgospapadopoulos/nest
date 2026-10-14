@@ -1,7 +1,7 @@
 import pytest
 
-from harness.pixies.errors import InvalidSlugError
-from harness.pixies.slugs import check_slug, slugify
+from nestd.pixies.errors import InvalidSlugError
+from nestd.pixies.slugs import check_slug, slugify
 
 
 @pytest.mark.parametrize(

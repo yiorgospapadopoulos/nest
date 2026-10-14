@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from harness.config.errors import ConfigError
-from harness.config.loader import load_settings, save_notifications
-from harness.config.models import NotificationSettings, NtfySettings, QuietHours
-from harness.paths import AppPaths
+from nestd.config.errors import ConfigError
+from nestd.config.loader import load_settings, save_notifications
+from nestd.config.models import NotificationSettings, NtfySettings, QuietHours
+from nestd.paths import AppPaths
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_notifications_are_read_from_settings(paths: AppPaths) -> None:
         '[notifications]\nvapid_subject = "https://example.org"\n'
         "[notifications.kinds]\nfinished = false\n"
         '[notifications.quiet_hours]\nstart = "22:30"\nend = "07:00"\n'
-        '[notifications.ntfy]\nenabled = true\ntopic = "harness-k2v9x7q4m1z8"\n',
+        '[notifications.ntfy]\nenabled = true\ntopic = "nest-k2v9x7q4m1z8"\n',
         encoding="utf-8",
     )
 
@@ -54,7 +54,7 @@ def test_notifications_are_read_from_settings(paths: AppPaths) -> None:
     assert settings.kinds.finished is False
     assert settings.kinds.failed is True
     assert settings.quiet_hours == QuietHours(start="22:30", end="07:00")
-    assert settings.ntfy.topic == "harness-k2v9x7q4m1z8"
+    assert settings.ntfy.topic == "nest-k2v9x7q4m1z8"
     assert settings.vapid_subject == "https://example.org"
 
 
@@ -76,7 +76,7 @@ def test_enabled_ntfy_needs_a_topic() -> None:
         NtfySettings(enabled=True)
 
 
-@pytest.mark.parametrize("topic", ["has space in a topic", "harness/k2v9x7q4m1z8", "x" * 65])
+@pytest.mark.parametrize("topic", ["has space in a topic", "nest/k2v9x7q4m1z8", "x" * 65])
 def test_ntfy_topics_are_url_safe(topic: str) -> None:
     with pytest.raises(ValidationError):
         NtfySettings(topic=topic)
@@ -86,7 +86,7 @@ def test_ntfy_topics_are_long_enough_to_be_hard_to_guess() -> None:
     """H-04: anyone who knows a public topic can read it."""
     assert NtfySettings(topic="k" * 16).topic == "k" * 16
     with pytest.raises(ValidationError, match="16"):
-        NtfySettings(topic="harness-k2v9x7q")
+        NtfySettings(topic="nest-k2v9x7q4m1")
 
 
 @pytest.mark.parametrize("server", ["ftp://ntfy.sh", "ntfy.sh", "https://"])

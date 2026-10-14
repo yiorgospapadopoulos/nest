@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.providers.base import RewindResult
-from harness.sessions.errors import CannotRewindError, SessionBusyError, SessionClosedError
-from harness.sessions.models import SessionState
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.providers.base import RewindResult
+from nestd.sessions.errors import CannotRewindError, SessionBusyError, SessionClosedError
+from nestd.sessions.models import SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import echoed, hang, reply
 from tests.fakes import FakeClock

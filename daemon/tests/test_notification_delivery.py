@@ -6,17 +6,17 @@ from datetime import UTC
 import pytest
 from pydantic import JsonValue
 
-from harness.config.models import NotificationKinds, NotificationSettings, NtfySettings, QuietHours
-from harness.errors import ConflictError
-from harness.events import types
-from harness.events.bus import EventBus, SubscriptionOverflowError
-from harness.events.models import Event
-from harness.notifications.delivery import NotificationDelivery
-from harness.notifications.messages import TEST_NOTICE
-from harness.notifications.subscriptions import PushSubscriptionStore
-from harness.notifications.vapid import VapidKeys
-from harness.notifications.webpush import PushReport
-from harness.storage.db import Database
+from nestd.config.models import NotificationKinds, NotificationSettings, NtfySettings, QuietHours
+from nestd.errors import ConflictError
+from nestd.events import types
+from nestd.events.bus import EventBus, SubscriptionOverflowError
+from nestd.events.models import Event
+from nestd.notifications.delivery import NotificationDelivery
+from nestd.notifications.messages import TEST_NOTICE
+from nestd.notifications.subscriptions import PushSubscriptionStore
+from nestd.notifications.vapid import VapidKeys
+from nestd.notifications.webpush import PushReport
+from nestd.storage.db import Database
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.push_support import FakeServers, Receiver, json_body
 from tests.test_push_subscriptions import paired
@@ -58,7 +58,7 @@ async def eventually(condition: Callable[[], bool]) -> None:
     raise AssertionError("condition never became true")
 
 
-class Harness:
+class Rig:
     def __init__(self, db: Database, clock: FakeClock, bus: EventBus | None = None) -> None:
         self.db = db
         self.clock = clock
@@ -88,7 +88,7 @@ class Harness:
             {
                 "kind": kind,
                 "session_id": session,
-                "repo": "harness",
+                "repo": "nest",
                 "title": "Fix login",
                 "text": "Approve Bash",
             },
@@ -100,13 +100,13 @@ class Harness:
 
 
 @pytest.fixture
-async def h(db: Database, clock: FakeClock) -> AsyncIterator[Harness]:
-    harness = Harness(db, clock)
-    yield harness
-    await harness.delivery.close()
+async def h(db: Database, clock: FakeClock) -> AsyncIterator[Rig]:
+    rig = Rig(db, clock)
+    yield rig
+    await rig.delivery.close()
 
 
-async def test_notify_events_are_pushed_to_every_active_subscription(h: Harness) -> None:
+async def test_notify_events_are_pushed_to_every_active_subscription(h: Rig) -> None:
     await h.subscribe()
     await h.notify("question", "s9")  # before start: not delivered
     await h.delivery.start()
@@ -116,7 +116,7 @@ async def test_notify_events_are_pushed_to_every_active_subscription(h: Harness)
     await eventually(lambda: len(h.servers.requests) == 1)
     assert h.pushed() == [
         {
-            "title": "Needs approval · harness",
+            "title": "Needs approval · nest",
             "body": "Fix login: Approve Bash",
             "url": "/inbox",
             "tag": "session-s1",
@@ -124,7 +124,7 @@ async def test_notify_events_are_pushed_to_every_active_subscription(h: Harness)
     ]
 
 
-async def test_disabled_kinds_and_other_events_are_not_sent(h: Harness) -> None:
+async def test_disabled_kinds_and_other_events_are_not_sent(h: Rig) -> None:
     await h.subscribe()
     h.rules.current = NotificationSettings(kinds=NotificationKinds(finished=False))
     await h.delivery.start()
@@ -141,10 +141,10 @@ async def test_disabled_kinds_and_other_events_are_not_sent(h: Harness) -> None:
 
 
 def notify_payload(kind: str) -> dict[str, JsonValue]:
-    return {"kind": kind, "session_id": "s1", "repo": "harness", "title": "T", "text": "x"}
+    return {"kind": kind, "session_id": "s1", "repo": "nest", "title": "T", "text": "x"}
 
 
-async def test_quiet_hours_hold_everything_back(h: Harness) -> None:
+async def test_quiet_hours_hold_everything_back(h: Rig) -> None:
     await h.subscribe()
     # The fake clock reads 12:00 UTC.
     h.rules.current = NotificationSettings(quiet_hours=QuietHours(start="11:30", end="12:30"))
@@ -157,20 +157,20 @@ async def test_quiet_hours_hold_everything_back(h: Harness) -> None:
     assert len(h.servers.requests) == 1
 
 
-async def test_ntfy_receives_the_same_notice_when_enabled(h: Harness) -> None:
+async def test_ntfy_receives_the_same_notice_when_enabled(h: Rig) -> None:
     h.rules.current = NotificationSettings(
-        ntfy=NtfySettings(enabled=True, topic="harness-t0p1c-k2v9x7")
+        ntfy=NtfySettings(enabled=True, topic="nest-t0p1c-k2v9x7")
     )
     await h.delivery.start()
 
     await h.notify()
 
     await eventually(lambda: len(h.servers.to(NTFY)) == 1)
-    assert json_body(h.servers.to(NTFY)[0])["topic"] == "harness-t0p1c-k2v9x7"
+    assert json_body(h.servers.to(NTFY)[0])["topic"] == "nest-t0p1c-k2v9x7"
 
 
 async def test_a_failing_delivery_is_logged_and_the_next_one_still_goes_out(
-    h: Harness, caplog: pytest.LogCaptureFixture
+    h: Rig, caplog: pytest.LogCaptureFixture
 ) -> None:
     await h.subscribe()
     await h.delivery.start()
@@ -194,7 +194,7 @@ async def test_falling_behind_resubscribes_from_the_last_seen_event(
     db: Database, clock: FakeClock
 ) -> None:
     bus = FlakyBus(db, clock)
-    h = Harness(db, clock, bus)
+    h = Rig(db, clock, bus)
     await h.subscribe()
     start = await bus.last_id()
     try:
@@ -207,7 +207,7 @@ async def test_falling_behind_resubscribes_from_the_last_seen_event(
     assert bus.afters == [start, start]
 
 
-async def test_stop_cancels_sends_in_flight(h: Harness) -> None:
+async def test_stop_cancels_sends_in_flight(h: Rig) -> None:
     await h.subscribe()
     gate = asyncio.Event()
     original = h.store.active
@@ -228,7 +228,7 @@ async def test_stop_cancels_sends_in_flight(h: Harness) -> None:
     assert h.servers.requests == []
 
 
-async def test_send_test_reaches_only_the_callers_subscriptions(h: Harness) -> None:
+async def test_send_test_reaches_only_the_callers_subscriptions(h: Rig) -> None:
     h.rules.current = NotificationSettings(
         kinds=NotificationKinds(needs_approval=False),
         quiet_hours=QuietHours(start="00:00", end="23:59"),
@@ -241,7 +241,7 @@ async def test_send_test_reaches_only_the_callers_subscriptions(h: Harness) -> N
     assert h.servers.to("https://fcm.googleapis.com/other") == []
 
 
-async def test_send_test_without_a_subscription_is_a_conflict(h: Harness) -> None:
+async def test_send_test_without_a_subscription_is_a_conflict(h: Rig) -> None:
     device = await paired(h.db, h.clock)
 
     with pytest.raises(ConflictError, match="enable notifications"):

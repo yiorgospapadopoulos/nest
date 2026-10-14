@@ -7,10 +7,10 @@ from datetime import timedelta
 import pytest
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.events.bus import EventBus, SubscriptionOverflowError
-from harness.events.models import Event
-from harness.storage.db import Database, Params
+from nestd.events import types
+from nestd.events.bus import EventBus, SubscriptionOverflowError
+from nestd.events.models import Event
+from nestd.storage.db import Database, Params
 from tests.fakes import FakeClock
 
 

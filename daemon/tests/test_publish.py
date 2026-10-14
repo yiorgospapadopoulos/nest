@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.gitops.runner import CommandError
-from harness.gitops.safety import HARDENED
-from harness.review.errors import (
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.gitops.runner import CommandError
+from nestd.gitops.safety import HARDENED
+from nestd.review.errors import (
     GitActionError,
     HeadChangedError,
     NestedRepositoryError,
@@ -17,10 +17,10 @@ from harness.review.errors import (
     UnsafeBranchError,
     UnsafeRepoConfigError,
 )
-from harness.review.publish import GitPublisher, PublishPlan, PullRequest
-from harness.sessions.models import Session
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.review.publish import GitPublisher, PublishPlan, PullRequest
+from nestd.sessions.models import Session
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fake_runner import PR_URL, FakeRunner
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git, init_repo, with_origin
@@ -686,7 +686,7 @@ def slip_in_commit(cwd: Path) -> str:
 
 
 async def test_a_commit_slipped_in_after_the_checks_is_never_published(env: Env) -> None:
-    """SEC-15: harness's commit must sit on the HEAD the checks saw."""
+    """SEC-15: Nest's commit must sit on the HEAD the checks saw."""
     session = await env.worktree_session()
     (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
     checked = env.plan()
@@ -726,7 +726,7 @@ async def test_a_root_commit_is_checked_too(tmp_path: Path, env: Env) -> None:
 
 
 async def test_only_the_checked_work_is_pushed(env: Env) -> None:
-    """SEC-15: the push names harness's commit, not whatever the branch holds by then."""
+    """SEC-15: the push names Nest's commit, not whatever the branch holds by then."""
     session = await env.worktree_session()
     (env.worktree / "a.txt").write_text("a\n", encoding="utf-8")
     env.runner.before["git push"] = lambda: slip_in_commit(env.worktree)

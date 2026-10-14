@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from claude_agent_sdk import SystemMessage, TextBlock, UserMessage
 
-from harness.providers.base import SessionSpec
-from harness.providers.claude_messages import TurnOutput, translate
-from harness.providers.claude_thinking import ThinkingTimer
+from nestd.providers.base import SessionSpec
+from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_thinking import ThinkingTimer
 from tests.async_support import until
 from tests.recording_sink import RecordingSink
 from tests.test_claude_messages import stream
@@ -30,7 +30,7 @@ def modes(sink: RecordingSink) -> list[object]:
     return [value for name, value in sink.calls if name == "permission_mode"]
 
 
-async def test_the_start_up_report_is_ignored_once_harness_set_the_mode(tmp_path: Path) -> None:
+async def test_the_start_up_report_is_ignored_once_nest_set_the_mode(tmp_path: Path) -> None:
     """BUG-90: the mode chosen while the first message was on its way stays."""
     opened = Opened(tmp_path)
     run, client = await opened.open(SessionSpec(tmp_path, "acceptEdits"))
@@ -45,7 +45,7 @@ async def test_the_start_up_report_is_ignored_once_harness_set_the_mode(tmp_path
     assert modes(opened.sink) == ["default"]
 
 
-async def test_the_start_up_report_counts_until_harness_sets_a_mode(tmp_path: Path) -> None:
+async def test_the_start_up_report_counts_until_nest_sets_a_mode(tmp_path: Path) -> None:
     """IMP-06: a run opened without a mode works in Claude Code's own."""
     opened = Opened(tmp_path)
     run, client = await opened.open(SessionSpec(tmp_path, None))

@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.runner import CommandError, output_tail
-from harness.prs.ci_logs import MAX_LOG_BYTES, feedback
-from harness.prs.models import PrCheck
+from nestd.gitops.runner import CommandError, output_tail
+from nestd.prs.ci_logs import MAX_LOG_BYTES, feedback
+from nestd.prs.models import PrCheck
 from tests.fake_runner import actions_job
 
 REPO = "me/repo"

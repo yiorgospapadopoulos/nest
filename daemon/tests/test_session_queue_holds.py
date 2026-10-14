@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.attachments.store import Attachment
-from harness.events import types
-from harness.providers.base import RewindResult
-from harness.sessions.live import LiveSession
-from harness.sessions.models import USER, QueuedMessage, Sender, SessionState
-from harness.storage.db import Database
+from nestd.attachments.store import Attachment
+from nestd.events import types
+from nestd.providers.base import RewindResult
+from nestd.sessions.live import LiveSession
+from nestd.sessions.models import USER, QueuedMessage, Sender, SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, echoed, reply, until_interrupted
 from tests.fakes import FakeClock
@@ -67,7 +67,7 @@ async def test_a_message_queued_as_the_turn_ends_still_starts(
         await reply("two done")(run)
 
     env.provider.script(reply("one"), second_turn, reply("three done"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "two", [])
     (run,) = env.provider.runs
@@ -93,7 +93,7 @@ async def test_a_message_queued_as_publishing_ends_still_starts(
 ) -> None:
     """BUG-85: the end of publishing found nothing to start yet."""
     env.provider.script(reply("one"), reply("two done"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (run,) = env.provider.runs
     slow = SlowAdd(env, monkeypatch)
@@ -116,7 +116,7 @@ async def test_a_message_queued_as_a_stopped_turn_ends_waits(
 ) -> None:
     """A Stop holds the queue (BUG-61), also for a message that lands as the turn ends."""
     env.provider.script(reply("one"), until_interrupted(), reply("never"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "two", [])
     (run,) = env.provider.runs
@@ -141,7 +141,7 @@ async def test_a_message_held_by_a_finishing_send_waits_after_a_stop(env: Env) -
     finishing (BUG-60): the queue then waits, also once publishing ends (BUG-61).
     """
     env.provider.script(reply("one"), reply("two"), reply("never"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     env.provider.send_gate = asyncio.Event()
     await env.manager.send(created.id, "two", [])
@@ -170,7 +170,7 @@ async def test_a_nudge_that_lost_its_queued_message_still_delivers_the_cut_off_o
     gate = asyncio.Event()
     env.provider.open_gate = gate
     env.provider.script(reply("on it"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.RUNNING)
     turns = env.manager._turns  # pyright: ignore[reportPrivateUsage]
     has_queued = turns._has_queued  # pyright: ignore[reportPrivateUsage]
@@ -196,7 +196,7 @@ async def test_a_stopped_session_starts_nothing_from_its_queue(env: Env) -> None
     starts a queued message any more (BUG-53).
     """
     env.provider.script(reply("one"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.queue.add(created.id, "queued", [])
     live = live_of(env, created.id)
@@ -236,7 +236,7 @@ async def test_starting_work_lets_go_of_a_hold() -> None:
 async def test_a_restore_keeps_the_idle_run_open(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     """An idle close planned before a restore does not close the run under it."""
     env.provider.script(echoed("msg-1", reply("one")))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (run,) = env.provider.runs
     message = await first_user_message(env, created.id)

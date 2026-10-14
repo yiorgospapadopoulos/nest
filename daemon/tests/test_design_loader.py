@@ -3,8 +3,8 @@ from typing import Any
 
 import pytest
 
-from harness.design.errors import DesignError
-from harness.design.loader import find_root, load_tokens
+from nestd.design.errors import DesignError
+from nestd.design.loader import find_root, load_tokens
 from tests.design_support import REPO_ROOT, STATUSES, minimal_tokens, themed, write_tokens
 
 

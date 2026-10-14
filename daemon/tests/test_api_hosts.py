@@ -9,9 +9,9 @@ from pydantic import JsonValue
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from harness.api.app import create_app
-from harness.api.hosts import host_allowed
-from harness.context import AppContext
+from nestd.api.app import create_app
+from nestd.api.hosts import host_allowed
+from nestd.context import AppContext
 from tests.api_support import build_context, local_token
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -124,11 +124,11 @@ def test_sockets_to_the_tailnet_name_are_accepted(
 def test_allowed_hosts_from_settings_are_served(
     tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
 ) -> None:
-    settings = '[server]\nallowed_hosts = ["harness.home.arpa", "*.example.org"]\n'
+    settings = '[server]\nallowed_hosts = ["nest.home.arpa", "*.example.org"]\n'
     for client, _ctx in app_client(tmp_path, clock, secrets, settings):
-        for host in ("harness.home.arpa:8765", "mac.example.org", "a.b.example.org"):
+        for host in ("nest.home.arpa:8765", "mac.example.org", "a.b.example.org"):
             assert client.get("/api/health", headers={"Host": host}).status_code == 200
-        for host in ("example.org", "harness.home.arpa.evil", "evil.example"):
+        for host in ("example.org", "nest.home.arpa.evil", "evil.example"):
             assert client.get("/api/health", headers={"Host": host}).status_code == 400
         # The built-in names stay allowed.
         assert client.get("/api/health", headers={"Host": "localhost"}).status_code == 200

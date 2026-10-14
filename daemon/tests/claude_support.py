@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
-from harness.claude_sessions.location import encode_folder
+from nestd.claude_sessions.location import encode_folder
 
 type Entry = Mapping[str, object]
 

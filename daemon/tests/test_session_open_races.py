@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.models import ApprovalStatus
-from harness.sessions.models import SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.approvals.models import ApprovalStatus
+from nestd.sessions.models import SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.fake_provider import plan, reply
 from tests.fakes import FakeClock
 from tests.git_support import git

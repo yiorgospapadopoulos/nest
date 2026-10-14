@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from harness.providers.base import (
+from nestd.providers.base import (
     AgentInfo,
     CommandCatalog,
     ContextUsage,
     SlashCommand,
 )
-from harness.storage.db import Database
+from nestd.storage.db import Database
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import FakeRun, catalog, plan, reply

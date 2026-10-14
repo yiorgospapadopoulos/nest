@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.providers.base import ModelOption
-from harness.sessions.models import SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.providers.base import ModelOption
+from nestd.sessions.models import SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.fake_provider import reply, switched
 from tests.fakes import FakeClock
 from tests.session_support import DEFAULTS, Env
@@ -58,7 +58,7 @@ async def test_without_a_chosen_mode_the_run_opens_in_claude_codes_own(env: Env)
     assert await updates(env, created.id) == [
         {"permission_mode": "auto", "follows_claude_code_mode": False}
     ]
-    # Harness never sent the run a mode of its own.
+    # Nest never sent the run a mode of its own.
     assert env.provider.runs[0].calls == []
     # A reopened run continues in the mode the engine reported.
     await env.manager.shutdown()

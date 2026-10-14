@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.config.models import Settings
-from harness.context import AppContext
-from harness.paths import AppPaths
+from nestd.config.models import Settings
+from nestd.context import AppContext
+from nestd.paths import AppPaths
 from tests.fakes import FakeClock, FakeSecretStore
 
 

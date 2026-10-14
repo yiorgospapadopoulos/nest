@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from harness.pixies.activity import KEEP, ActivityStore
-from harness.pixies.models import PixieSettings
-from harness.pixies.store import PixieStore
-from harness.storage.db import Database
+from nestd.pixies.activity import KEEP, ActivityStore
+from nestd.pixies.models import PixieSettings
+from nestd.pixies.store import PixieStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 

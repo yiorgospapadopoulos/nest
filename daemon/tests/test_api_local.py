@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.runner import CommandError
-from harness.local_apps.apps import LIVE_WARNING
-from harness.providers.base import McpServer, TokenUsage, UsageInfo, UsageWindow
+from nestd.gitops.runner import CommandError
+from nestd.local_apps.apps import LIVE_WARNING
+from nestd.providers.base import McpServer, TokenUsage, UsageInfo, UsageWindow
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import FakeRun, background, hang, limits, loaded, reply
@@ -127,7 +127,7 @@ async def test_usage_limits_survive_a_restart(
 
 
 async def test_open_in_claude_code(api: Api) -> None:
-    """PL-15: harness's idle run closes first, so a later message from harness resumes the
+    """PL-15: Nest's idle run closes first, so a later message from Nest resumes the
     conversation with what was done in Terminal instead of forking it.
     """
     api.provider.script(reply("ok"))

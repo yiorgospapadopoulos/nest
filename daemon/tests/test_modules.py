@@ -2,8 +2,8 @@ from collections.abc import Callable
 
 import pytest
 
-from harness.config.errors import ConfigError
-from harness.modules.registry import Module, ModuleRegistry
+from nestd.config.errors import ConfigError
+from nestd.modules.registry import Module, ModuleRegistry
 
 
 class RecordingModule:

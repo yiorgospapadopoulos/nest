@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.providers.base import ContextUsage
-from harness.sessions.extras import RunExtras
-from harness.sessions.models import Session, SessionState
-from harness.storage.db import Database
+from nestd.providers.base import ContextUsage
+from nestd.sessions.extras import RunExtras
+from nestd.sessions.models import Session, SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock

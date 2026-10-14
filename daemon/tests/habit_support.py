@@ -8,18 +8,18 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.habit_models import CreateHabit, Habit, HabitRun
-from harness.pixies.models import CreatePixie, Pixie
-from harness.providers.base import AgentTool
-from harness.sessions.models import Session
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.habit_models import CreateHabit, Habit, HabitRun
+from nestd.pixies.models import CreatePixie, Pixie
+from nestd.providers.base import AgentTool
+from nestd.sessions.models import Session
 from tests.api_support import build_context
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, FakeRun, Turn, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
-from tests.pixie_harness_support import idle
+from tests.pixie_nest_support import idle
 
 
 @pytest.fixture

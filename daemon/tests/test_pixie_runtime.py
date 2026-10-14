@@ -3,20 +3,20 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.paths import AppPaths
-from harness.pixies.files import PixieFiles
-from harness.pixies.models import PixieSettings
-from harness.pixies.prompt import HABIT_RUN_NOTE
-from harness.pixies.runtime import PixieRuntime
-from harness.pixies.store import PixieStore
-from harness.pixies.tools import TOOL_NAMES
-from harness.providers.base import AgentTool
-from harness.repos.service import RepoService
-from harness.sessions.models import NewSession, Session, pixie_repo
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.paths import AppPaths
+from nestd.pixies.files import PixieFiles
+from nestd.pixies.models import PixieSettings
+from nestd.pixies.prompt import HABIT_RUN_NOTE
+from nestd.pixies.runtime import PixieRuntime
+from nestd.pixies.store import PixieStore
+from nestd.pixies.tools import TOOL_NAMES
+from nestd.providers.base import AgentTool
+from nestd.repos.service import RepoService
+from nestd.sessions.models import NewSession, Session, pixie_repo
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 
@@ -51,11 +51,11 @@ async def test_extras_for_a_pixie_chat(tmp_path: Path, db: Database, clock: Fake
     sessions = SessionStore(db, clock)
     asked: list[tuple[str, str]] = []
 
-    def harness_tools(pixie_id: str, session: Session) -> tuple[AgentTool, ...]:
+    def nest_tools(pixie_id: str, session: Session) -> tuple[AgentTool, ...]:
         asked.append((pixie_id, session.id))
         return (AgentTool("list_sessions", "List", {"type": "object"}, noop),)
 
-    runtime = PixieRuntime(store, files, repos, EventBus(db, clock), clock, harness_tools)
+    runtime = PixieRuntime(store, files, repos, EventBus(db, clock), clock, nest_tools)
 
     def chat(pixie_id: str) -> NewSession:
         return NewSession(

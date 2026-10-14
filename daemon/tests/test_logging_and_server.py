@@ -7,8 +7,8 @@ import pytest
 import uvicorn
 from fastapi import FastAPI
 
-from harness.logging_setup import ENGINE_STDERR_LOGGER, configure_logging
-from harness.server import HOST, run_uvicorn
+from nestd.logging_setup import ENGINE_STDERR_LOGGER, configure_logging
+from nestd.server import HOST, run_uvicorn
 
 
 @pytest.fixture
@@ -25,11 +25,11 @@ def test_logging_goes_to_the_given_stream_in_a_concise_format() -> None:
     stream = io.StringIO()
 
     configure_logging(stream)
-    logging.getLogger("harness.test").info("hello %s", "world")
-    logging.getLogger("harness.test").debug("hidden")
+    logging.getLogger("nestd.test").info("hello %s", "world")
+    logging.getLogger("nestd.test").debug("hidden")
 
     line = stream.getvalue()
-    assert line.endswith(" INFO harness.test: hello world\n")
+    assert line.endswith(" INFO nestd.test: hello world\n")
     assert "hidden" not in line
 
 
@@ -72,7 +72,7 @@ def test_claude_codes_stderr_reaches_the_daemon_log_at_debug_level() -> None:
 
     configure_logging(stream)
     logging.getLogger(ENGINE_STDERR_LOGGER).debug("MCP server failed to start")
-    logging.getLogger("harness.test").debug("hidden")
+    logging.getLogger("nestd.test").debug("hidden")
 
     output = stream.getvalue()
     assert output.endswith(f" DEBUG {ENGINE_STDERR_LOGGER}: MCP server failed to start\n")

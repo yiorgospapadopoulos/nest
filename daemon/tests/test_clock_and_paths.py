@@ -1,8 +1,8 @@
 from datetime import UTC, timedelta
 from pathlib import Path
 
-from harness.clock import SystemClock
-from harness.paths import AppPaths
+from nestd.clock import SystemClock
+from nestd.paths import AppPaths
 
 
 def test_system_clock_returns_utc_aware_time() -> None:
@@ -16,17 +16,42 @@ def test_system_clock_returns_utc_aware_time() -> None:
 def test_paths_default_to_user_locations(tmp_path: Path) -> None:
     paths = AppPaths.from_env({}, home=tmp_path)
 
-    assert paths.config_dir == tmp_path / ".config" / "harness"
-    assert paths.data_dir == tmp_path / "Library" / "Application Support" / "harness"
+    assert paths.config_dir == tmp_path / ".config" / "nest"
+    assert paths.data_dir == tmp_path / "Library" / "Application Support" / "nest"
 
 
 def test_paths_honour_environment_overrides(tmp_path: Path) -> None:
-    env = {"HARNESS_CONFIG_DIR": str(tmp_path / "cfg"), "HARNESS_DATA_DIR": str(tmp_path / "dat")}
+    env = {"NEST_CONFIG_DIR": str(tmp_path / "cfg"), "NEST_DATA_DIR": str(tmp_path / "dat")}
 
     paths = AppPaths.from_env(env, home=tmp_path / "home")
 
     assert paths.config_dir == tmp_path / "cfg"
     assert paths.data_dir == tmp_path / "dat"
+
+
+def test_paths_fall_back_to_the_old_harness_variables(tmp_path: Path) -> None:
+    """B43: a service or shell still setting the old names keeps working."""
+    old = {
+        "HARNESS_CONFIG_DIR": str(tmp_path / "old-cfg"),
+        "HARNESS_DATA_DIR": str(tmp_path / "old-dat"),
+        "HARNESS_WEB_DIST": str(tmp_path / "old-web"),
+    }
+    both = {**old, "NEST_CONFIG_DIR": str(tmp_path / "cfg"), "NEST_DATA_DIR": str(tmp_path / "dat")}
+
+    legacy = AppPaths.from_env(old, home=tmp_path)
+    preferred = AppPaths.from_env(both, home=tmp_path)
+
+    assert (legacy.config_dir, legacy.data_dir) == (tmp_path / "old-cfg", tmp_path / "old-dat")
+    assert legacy.web_dist == tmp_path / "old-web"
+    assert legacy.token_socket == tmp_path / "old-dat" / "token.sock"
+    assert (preferred.config_dir, preferred.data_dir) == (tmp_path / "cfg", tmp_path / "dat")
+    assert preferred.web_dist == tmp_path / "old-web"
+
+
+def test_an_empty_new_variable_falls_back_too(tmp_path: Path) -> None:
+    env = {"NEST_DATA_DIR": "", "HARNESS_DATA_DIR": str(tmp_path / "old")}
+
+    assert AppPaths.from_env(env, home=tmp_path).data_dir == tmp_path / "old"
 
 
 def test_web_dist_defaults_to_the_repository_build(tmp_path: Path) -> None:
@@ -37,7 +62,7 @@ def test_web_dist_defaults_to_the_repository_build(tmp_path: Path) -> None:
 
 
 def test_web_dist_honours_its_environment_override(tmp_path: Path) -> None:
-    paths = AppPaths.from_env({"HARNESS_WEB_DIST": str(tmp_path / "build")}, home=tmp_path)
+    paths = AppPaths.from_env({"NEST_WEB_DIST": str(tmp_path / "build")}, home=tmp_path)
 
     assert paths.web_dist == tmp_path / "build"
 
@@ -60,10 +85,10 @@ def test_the_claude_account_file_follows_home_and_claude_codes_setting(tmp_path:
 
 def test_the_token_socket_lives_in_the_data_folder(tmp_path: Path) -> None:
     """The Mac app reads its token there (D075); paths built in tests serve none."""
-    env = {"HARNESS_DATA_DIR": str(tmp_path / "dat")}
+    env = {"NEST_DATA_DIR": str(tmp_path / "dat")}
 
     assert AppPaths.from_env({}, home=tmp_path).token_socket == (
-        tmp_path / "Library" / "Application Support" / "harness" / "token.sock"
+        tmp_path / "Library" / "Application Support" / "nest" / "token.sock"
     )
     assert AppPaths.from_env(env, home=tmp_path).token_socket == tmp_path / "dat" / "token.sock"
     assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).token_socket is None
@@ -77,7 +102,7 @@ def test_derived_paths_live_under_config_and_data(tmp_path: Path) -> None:
     assert paths.settings_file == tmp_path / "c" / "settings.toml"
     assert paths.logs_dir == tmp_path / "d" / "logs"
     assert paths.attachments_dir == tmp_path / "d" / "attachments"
-    assert paths.db_path == tmp_path / "d" / "harness.db"
+    assert paths.db_path == tmp_path / "d" / "nest.db"
     assert paths.worktrees_dir == tmp_path / "d" / "worktrees"
     assert paths.agent_gh_dir == tmp_path / "d" / "agent-gh"
     assert paths.launchers_dir == tmp_path / "d" / "launchers"

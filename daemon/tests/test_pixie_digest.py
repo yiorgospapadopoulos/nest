@@ -5,14 +5,14 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
-from harness.events import types
-from harness.events.models import Event
-from harness.pixies import digest
-from harness.pixies.digest import Entry
-from harness.prs.models import PrChecks, PrStatus
-from harness.sessions.models import Session, SessionState
-from harness.stuck.models import StuckFlag
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.events import types
+from nestd.events.models import Event
+from nestd.pixies import digest
+from nestd.pixies.digest import Entry
+from nestd.prs.models import PrChecks, PrStatus
+from nestd.sessions.models import Session, SessionState
+from nestd.stuck.models import StuckFlag
 
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
 

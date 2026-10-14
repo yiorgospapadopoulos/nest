@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.claude_sessions.models import ClaudeChat
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.search.index import SearchIndex
-from harness.search.models import SearchHit
-from harness.sessions.models import Session
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database, Transaction
+from nestd.claude_sessions.models import ClaudeChat
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.search.index import SearchIndex
+from nestd.search.models import SearchHit
+from nestd.sessions.models import Session
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database, Transaction
 from tests.async_support import until
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session

@@ -21,9 +21,9 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from harness.providers import base
-from harness.providers.claude_messages import TurnOutput, translate
-from harness.providers.claude_thinking import ThinkingTimer
+from nestd.providers import base
+from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 from tests.test_claude_thinking import Ticker, start, stop
 
@@ -303,7 +303,7 @@ async def test_a_permission_mode_the_engine_switched_to_is_reported() -> None:
 
 
 async def test_auto_mode_is_reported() -> None:
-    """IMP-06: Claude Code's `auto` mode is one of harness's modes."""
+    """IMP-06: Claude Code's `auto` mode is one of Nest's modes."""
     message = system("status", status=None, permissionMode="auto")
 
     assert await translated(message) == [("permission_mode", "auto")]
@@ -321,7 +321,7 @@ async def test_init_reports_the_mode_the_run_works_in(mode: str, reported: bool)
 
 
 def echo(content: str | list[Any], uuid: str | None = "msg-1") -> UserMessage:
-    """The engine's echo of a user message harness sent (`--replay-user-messages`)."""
+    """The engine's echo of a user message Nest sent (`--replay-user-messages`)."""
     return UserMessage(content=content, uuid=uuid)
 
 
@@ -347,7 +347,7 @@ async def test_the_echo_of_a_sent_message_gives_its_checkpoint_only(
 
     assert first == [("checkpoint", "msg-1")]
     assert output.awaiting_replay is False
-    # Only the first echo after a send is the message harness sent; a later user text is
+    # Only the first echo after a send is the message Nest sent; a later user text is
     # the engine's own, never shown as Claude's (PL-09).
     assert again == []
 

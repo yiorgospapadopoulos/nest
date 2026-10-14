@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from harness.events import types
+from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.fake_provider import FakeRun, Turn, reply
 from tests.fakes import FakeClock, FakeSecretStore
@@ -142,7 +142,7 @@ async def test_the_agent_is_promised_no_review_commit_or_pull_request(api: Api) 
     prompt = api.provider.runs[0].spec.system_prompt_append
 
     assert prompt is not None
-    assert prompt.startswith("You are running inside harness")
+    assert prompt.startswith("You are running inside Nest")
     for promise in ("approve", "commits", "pull request"):
         assert promise not in prompt
     assert "only when the user asks" in prompt

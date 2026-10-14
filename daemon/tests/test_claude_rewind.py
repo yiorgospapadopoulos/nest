@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from claude_agent_sdk import TextBlock, UserMessage
 
-from harness.providers.base import RewindResult, SessionSpec, UserInput
+from nestd.providers.base import RewindResult, SessionSpec, UserInput
 from tests.async_support import until
 from tests.test_claude_provider import RESULT, Opened
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from harness.api.hosts import host_allowed
+from nestd.api.hosts import host_allowed
 
 
 @pytest.mark.parametrize(

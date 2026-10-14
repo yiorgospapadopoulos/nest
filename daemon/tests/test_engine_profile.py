@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.engine.profile import profile_name
+from nestd.engine.profile import profile_name
 
 OTHER_DETAIL = "another-private-account-detail"
 

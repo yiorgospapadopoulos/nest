@@ -5,20 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.providers.base import UsageInfo, UsageWindow
-from harness.storage.db import Database
-from harness.usage.probe import UsageProbe
-from harness.usage.refresher import (
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.providers.base import UsageInfo, UsageWindow
+from nestd.storage.db import Database
+from nestd.usage.probe import UsageProbe
+from nestd.usage.refresher import (
     FORCED_SPACING,
     IDLE_CLOSE,
     ProbeFailedError,
     RefreshTooSoonError,
     UsageRefresher,
 )
-from harness.usage.store import UsageStore
-from harness.usage.visibility import VISIBILITY_TTL, ClientVisibility
+from nestd.usage.store import UsageStore
+from nestd.usage.visibility import VISIBILITY_TTL, ClientVisibility
 from tests.fake_probe import FakeProbeFactory, answer, result
 from tests.fakes import FakeClock
 
@@ -35,7 +35,7 @@ class Setting:
         return self.interval
 
 
-class Harness:
+class Rig:
     def __init__(self, db: Database, clock: FakeClock, tmp_path: Path) -> None:
         self.db = db
         self.clock = clock
@@ -62,11 +62,11 @@ class Harness:
 
 
 @pytest.fixture
-def h(db: Database, clock: FakeClock, tmp_path: Path) -> Harness:
-    return Harness(db, clock, tmp_path)
+def h(db: Database, clock: FakeClock, tmp_path: Path) -> Rig:
+    return Rig(db, clock, tmp_path)
 
 
-async def test_nothing_is_probed_while_no_client_is_visible(h: Harness) -> None:
+async def test_nothing_is_probed_while_no_client_is_visible(h: Rig) -> None:
     h.factory.replies.append(answer())
 
     await h.refresher.tick()
@@ -74,7 +74,7 @@ async def test_nothing_is_probed_while_no_client_is_visible(h: Harness) -> None:
     assert h.factory.prompts == 0
 
 
-async def test_a_visible_client_gets_fresh_limits(h: Harness) -> None:
+async def test_a_visible_client_gets_fresh_limits(h: Rig) -> None:
     h.factory.replies.append(answer(0.42, 0.12))
     h.visibility.report("mac", visible=True)
 
@@ -89,7 +89,7 @@ async def test_a_visible_client_gets_fresh_limits(h: Harness) -> None:
     assert month.probes.model_dump() == {"count": 1, "tokens": 452}
 
 
-async def test_probes_repeat_every_interval_while_visible(h: Harness) -> None:
+async def test_probes_repeat_every_interval_while_visible(h: Rig) -> None:
     h.factory.replies.extend([answer(0.1), answer(0.2)])
     h.visibility.report("mac", visible=True)
     await h.refresher.tick()
@@ -104,7 +104,7 @@ async def test_probes_repeat_every_interval_while_visible(h: Harness) -> None:
     assert h.factory.prompts == 2
 
 
-async def test_limits_a_session_reported_within_the_interval_skip_the_probe(h: Harness) -> None:
+async def test_limits_a_session_reported_within_the_interval_skip_the_probe(h: Rig) -> None:
     h.factory.replies.append(answer())
     h.visibility.report("phone", visible=True)
     await h.store.update_limits(
@@ -121,7 +121,7 @@ async def test_limits_a_session_reported_within_the_interval_skip_the_probe(h: H
     assert h.factory.prompts == 1
 
 
-async def test_no_probes_when_the_refresh_is_off(h: Harness) -> None:
+async def test_no_probes_when_the_refresh_is_off(h: Rig) -> None:
     h.factory.replies.append(answer())
     h.visibility.report("mac", visible=True)
     h.setting.interval = None
@@ -131,7 +131,7 @@ async def test_no_probes_when_the_refresh_is_off(h: Harness) -> None:
     assert h.factory.prompts == 0
 
 
-async def test_visibility_expires_without_a_heartbeat(h: Harness) -> None:
+async def test_visibility_expires_without_a_heartbeat(h: Rig) -> None:
     h.factory.replies.extend([answer(), answer()])
     h.visibility.report("mac", visible=True)
     await h.refresher.tick()
@@ -143,7 +143,7 @@ async def test_visibility_expires_without_a_heartbeat(h: Harness) -> None:
 
 
 async def test_a_failed_probe_waits_for_the_next_interval(
-    h: Harness, caplog: pytest.LogCaptureFixture
+    h: Rig, caplog: pytest.LogCaptureFixture
 ) -> None:
     h.factory.replies.extend([RuntimeError("Invalid API key sk-ant-secret"), answer()])
     h.visibility.report("mac", visible=True)
@@ -163,7 +163,7 @@ async def test_a_failed_probe_waits_for_the_next_interval(
 
 
 async def test_a_probe_without_windows_records_its_tokens_only(
-    h: Harness, caplog: pytest.LogCaptureFixture
+    h: Rig, caplog: pytest.LogCaptureFixture
 ) -> None:
     h.factory.replies.append([result()])
     h.visibility.report("mac", visible=True)
@@ -178,7 +178,7 @@ async def test_a_probe_without_windows_records_its_tokens_only(
     assert month.probes.count == 1
 
 
-async def test_the_idle_probe_client_closes_after_ten_minutes(h: Harness) -> None:
+async def test_the_idle_probe_client_closes_after_ten_minutes(h: Rig) -> None:
     h.factory.replies.append(answer())
     h.visibility.report("mac", visible=True)
     await h.refresher.tick()
@@ -193,7 +193,7 @@ async def test_the_idle_probe_client_closes_after_ten_minutes(h: Harness) -> Non
     assert h.factory.clients[0].disconnects == 1
 
 
-async def test_a_forced_refresh_probes_without_a_visible_client(h: Harness) -> None:
+async def test_a_forced_refresh_probes_without_a_visible_client(h: Rig) -> None:
     h.factory.replies.append(answer(0.7))
     h.setting.interval = None
 
@@ -204,7 +204,7 @@ async def test_a_forced_refresh_probes_without_a_visible_client(h: Harness) -> N
     assert await h.usage_events() == 1
 
 
-async def test_forced_refreshes_are_spaced(h: Harness) -> None:
+async def test_forced_refreshes_are_spaced(h: Rig) -> None:
     h.factory.replies.extend([answer(), answer()])
     await h.refresher.refresh()
 
@@ -219,14 +219,14 @@ async def test_forced_refreshes_are_spaced(h: Harness) -> None:
     assert h.factory.prompts == 2
 
 
-async def test_a_failed_forced_refresh_says_so(h: Harness) -> None:
+async def test_a_failed_forced_refresh_says_so(h: Rig) -> None:
     h.factory.replies.append([result()])
 
     with pytest.raises(ProbeFailedError):
         await h.refresher.refresh()
 
 
-async def test_the_loop_probes_when_a_client_becomes_visible(h: Harness) -> None:
+async def test_the_loop_probes_when_a_client_becomes_visible(h: Rig) -> None:
     h.factory.replies.append(answer())
     h.refresher = UsageRefresher(
         store=h.store,
@@ -254,9 +254,7 @@ async def test_the_loop_probes_when_a_client_becomes_visible(h: Harness) -> None
     assert h.factory.clients[0].disconnects == 1
 
 
-async def test_the_loop_survives_a_failing_tick(
-    h: Harness, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_the_loop_survives_a_failing_tick(h: Rig, caplog: pytest.LogCaptureFixture) -> None:
     calls = 0
 
     async def failing() -> None:
@@ -277,7 +275,7 @@ async def test_the_loop_survives_a_failing_tick(
     assert "usage refresh failed" in caplog.text
 
 
-async def test_stopping_a_refresher_that_never_started(h: Harness) -> None:
+async def test_stopping_a_refresher_that_never_started(h: Rig) -> None:
     await h.refresher.stop()
 
 

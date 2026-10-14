@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.providers.base import TokenUsage, UsageInfo, UsageWindow
-from harness.usage.probe import (
+from nestd.providers.base import TokenUsage, UsageInfo, UsageWindow
+from nestd.usage.probe import (
     MAX_PROBES_PER_CLIENT,
     PROBE_PROMPT,
     ProbeError,

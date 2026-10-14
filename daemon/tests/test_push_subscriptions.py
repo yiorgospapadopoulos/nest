@@ -2,9 +2,9 @@ from datetime import timedelta
 
 import pytest
 
-from harness.auth.devices import DeviceService
-from harness.notifications.subscriptions import PushSubscriptionStore
-from harness.storage.db import Database
+from nestd.auth.devices import DeviceService
+from nestd.notifications.subscriptions import PushSubscriptionStore
+from nestd.storage.db import Database
 from tests.fakes import START, FakeClock, FakeSecretStore
 
 

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.runner import GitError
-from harness.sessions.files import FileIndex
+from nestd.gitops.runner import GitError
+from nestd.sessions.files import FileIndex
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 

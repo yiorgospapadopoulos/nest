@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from harness.config.errors import ConfigError
-from harness.config.loader import load_repos, load_settings, save_agent_defaults, save_repo
-from harness.config.models import AgentChoices, AgentDefaults, RepoConfig, WorktreeConfig
-from harness.paths import AppPaths
+from nestd.config.errors import ConfigError
+from nestd.config.loader import load_repos, load_settings, save_agent_defaults, save_repo
+from nestd.config.models import AgentChoices, AgentDefaults, RepoConfig, WorktreeConfig
+from nestd.paths import AppPaths
 
 
 @pytest.fixture

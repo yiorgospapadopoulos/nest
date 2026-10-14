@@ -7,18 +7,19 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.claude_sessions import catalog as catalog_module
-from harness.claude_sessions.archive import ChatArchive
-from harness.claude_sessions.catalog import ClaudeChats
-from harness.claude_sessions.errors import ClaudeChatNotFoundError
-from harness.claude_sessions.live import LiveChats
-from harness.claude_sessions.transcript import Transcript, read_transcript
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.paths import AppPaths
-from harness.repos.service import RepoNotFoundError, RepoService
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.claude_sessions import catalog as catalog_module
+from nestd.claude_sessions.archive import ChatArchive
+from nestd.claude_sessions.catalog import ClaudeChats
+from nestd.claude_sessions.errors import ClaudeChatNotFoundError
+from nestd.claude_sessions.live import LiveChats
+from nestd.claude_sessions.location import candidate_dirs, encode_folder
+from nestd.claude_sessions.transcript import Transcript, read_transcript
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.paths import AppPaths
+from nestd.repos.service import RepoNotFoundError, RepoService
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.claude_support import (
     CHAT_A,
@@ -139,8 +140,12 @@ async def test_leaves_out_what_is_not_a_claude_code_chat_of_the_repo(
 ) -> None:
     claude = setup.claude
     root = setup.root
-    # Harness's own worktree, another folder with the same prefix, a subfolder.
-    claude.write_chat(setup.worktree("harness-0123abcd"), CHAT_A, simple_chat())
+    # Nest's own worktree, another folder with the same prefix, a subfolder.
+    claude.write_chat(setup.worktree("nest-0123abcd"), CHAT_A, simple_chat())
+    # B43: one of its worktrees from before the rename.
+    claude.write_chat(
+        setup.worktree("harness-89abcdef"), "aaaaaaaa-1111-4000-8000-000000000009", simple_chat()
+    )
     claude.write_chat(root.parent / f"{root.name}-old", CHAT_B, simple_chat())
     claude.write_chat(root / "src", CHAT_C, simple_chat())
     project = claude.project_dir(root)
@@ -152,7 +157,7 @@ async def test_leaves_out_what_is_not_a_claude_code_chat_of_the_repo(
     )
     (project / "memory").mkdir()
     (claude.projects / "stray.jsonl").write_text("", encoding="utf-8")
-    # A chat the user later adopted into harness.
+    # A chat the user later adopted into Nest.
     owned = "ffffffff-0000-4000-8000-000000000006"
     claude.write_chat(root, owned, simple_chat())
     session = await setup.store.create(new_session(mode="in_place", cwd=root))
@@ -163,6 +168,56 @@ async def test_leaves_out_what_is_not_a_claude_code_chat_of_the_repo(
     await setup.store.keep_earlier_provider_session(session.id, cleared)
 
     assert await setup.chats.list_chats() == []
+
+
+async def test_chats_recorded_under_a_linked_old_path_belong_to_the_repo(
+    setup: Setup, tmp_path: Path
+) -> None:
+    # B43: the folder was renamed and the old path is now a link to it.
+    old = tmp_path / "old-name"
+    old.symlink_to(setup.root, target_is_directory=True)
+    (setup.root / ".claude" / "worktrees" / "agent-x").mkdir(parents=True)
+    claude = setup.claude
+    project = claude.project_dir(setup.root)
+    claude.write_chat(old, CHAT_A, simple_chat(), modified=T1, directory=project)
+    worktree = old / ".claude" / "worktrees" / "agent-x"
+    claude.write_chat(worktree, CHAT_B, simple_chat(), modified=T2, directory=project)
+    # A worktree removed since: its path no longer exists.
+    gone = old / ".claude" / "worktrees" / "gone"
+    claude.write_chat(gone, CHAT_C, simple_chat(), modified=T3, directory=project)
+    # Still left out: Nest's own worktree and a folder that no longer exists elsewhere.
+    owned = old / ".claude" / "worktrees" / "nest-0123abcd"
+    claude.write_chat(
+        owned, "aaaaaaaa-1111-4000-8000-000000000008", simple_chat(), directory=project
+    )
+    missing = tmp_path / "missing"
+    claude.write_chat(
+        missing, "aaaaaaaa-1111-4000-8000-000000000009", simple_chat(), directory=project
+    )
+
+    chats = await setup.chats.list_chats()
+
+    assert [(chat.id, chat.cwd, chat.worktree) for chat in chats] == [
+        (CHAT_C, gone, "gone"),
+        (CHAT_B, worktree, "agent-x"),
+        (CHAT_A, old, None),
+    ]
+
+
+def test_project_dirs_of_a_linked_folder_include_its_target(tmp_path: Path) -> None:
+    target = tmp_path / "new-name"
+    target.mkdir()
+    link = tmp_path / "old-name"
+    link.symlink_to(target, target_is_directory=True)
+    projects = tmp_path / "projects"
+    for folder in (link, target, tmp_path / "other"):
+        (projects / encode_folder(folder)).mkdir(parents=True)
+
+    assert candidate_dirs(projects, link) == [
+        projects / encode_folder(target),
+        projects / encode_folder(link),
+    ]
+    assert candidate_dirs(projects, target) == [projects / encode_folder(target)]
 
 
 async def test_chats_of_one_repo(setup: Setup, tmp_path: Path) -> None:

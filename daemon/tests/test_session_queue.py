@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter
 
-from harness.events import types
-from harness.sessions.errors import SessionBusyError
-from harness.sessions.live import LiveSession
-from harness.sessions.models import QueuedMessage, SessionState
-from harness.sessions.queue import QueuedMessageNotFoundError
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.sessions.errors import SessionBusyError
+from nestd.sessions.live import LiveSession
+from nestd.sessions.models import QueuedMessage, SessionState
+from nestd.sessions.queue import QueuedMessageNotFoundError
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import (
     FakeRun,

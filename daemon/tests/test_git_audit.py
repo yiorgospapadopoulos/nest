@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.runner import GitError
-from harness.sessions import git_audit
-from harness.sessions.git_audit import HEAD_BRANCH, changed_refs, snapshot_refs
+from nestd.gitops.runner import GitError
+from nestd.sessions import git_audit
+from nestd.sessions.git_audit import HEAD_BRANCH, changed_refs, snapshot_refs
 from tests.git_support import commit_file, git, init_repo
 
 

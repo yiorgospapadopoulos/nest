@@ -1,6 +1,6 @@
 import pytest
 
-from harness.design.colors import RGBA, parse_color
+from nestd.design.colors import RGBA, parse_color
 
 
 def test_hex_colors_parse_to_unit_channels() -> None:

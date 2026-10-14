@@ -7,11 +7,11 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.models import UpdatePixie
-from harness.pixies.reporting import follow_up
-from harness.providers.base import ToolRefusedError
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.models import UpdatePixie
+from nestd.pixies.reporting import follow_up
+from nestd.providers.base import ToolRefusedError
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, FakeRun, reply
 from tests.habit_support import (
@@ -28,7 +28,7 @@ from tests.habit_support import (
     tools,
     user_messages,
 )
-from tests.pixie_harness_support import idle
+from tests.pixie_nest_support import idle
 
 __all__ = ["ctx", "provider"]
 

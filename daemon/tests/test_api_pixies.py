@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
+from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_engine import server_info

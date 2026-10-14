@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from harness.storage.db import Database
+from nestd.storage.db import Database
 from tests.fakes import FakeClock, FakeSecretStore
 
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
-    database = await Database.open(tmp_path / "harness.db")
+    database = await Database.open(tmp_path / "nest.db")
     yield database
     await database.close()
 

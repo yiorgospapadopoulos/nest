@@ -1,7 +1,7 @@
 import pytest
 from claude_agent_sdk.types import HookContext, PreToolUseHookInput, UserPromptSubmitHookInput
 
-from harness.providers.git_guard import (
+from nestd.providers.git_guard import (
     DENY_REASON,
     GIT_WRITE_RULES,
     block_git_writes,
@@ -287,7 +287,7 @@ async def test_hook_denies_blocked_bash_commands_with_a_reason() -> None:
 
     assert output == DENIED
     assert DENY_REASON == (
-        "harness: commits, pushes and pull requests are made by harness after you approve them"
+        "Nest: commits, pushes and pull requests are made by Nest after you approve them"
     )
 
 

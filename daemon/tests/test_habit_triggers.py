@@ -7,15 +7,15 @@ from datetime import timedelta
 import pytest
 from pydantic import JsonValue
 
-from harness.context import AppContext
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.events.models import Event
-from harness.pixies.habit_models import Habit
-from harness.pixies.scheduler import MAX_EVENTS, USAGE_REASON
-from harness.pixies.triggers import HabitTriggers
-from harness.providers.base import UsageInfo, UsageWindow
-from harness.sessions.models import CreateSession, NewSession, Session, pixie_repo
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.events.models import Event
+from nestd.pixies.habit_models import Habit
+from nestd.pixies.scheduler import MAX_EVENTS, USAGE_REASON
+from nestd.pixies.triggers import HabitTriggers
+from nestd.providers.base import UsageInfo, UsageWindow
+from nestd.sessions.models import CreateSession, NewSession, Session, pixie_repo
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, engine_error, reply
 from tests.fakes import FakeClock

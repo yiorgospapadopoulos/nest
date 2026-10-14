@@ -1,7 +1,7 @@
 import pytest
 
-from harness.providers.base import Subagent
-from harness.sessions.subagents import NO_AGENTS, ChatAgents, TeamCall
+from nestd.providers.base import Subagent
+from nestd.sessions.subagents import NO_AGENTS, ChatAgents, TeamCall
 
 QA = TeamCall("qa", " [call qa]")
 DOCS = TeamCall("docs-team", " [call docs]")

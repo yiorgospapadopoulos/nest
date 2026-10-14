@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
+from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.fake_provider import reply
 from tests.fake_runner import actions_job, check_run, pr_json
@@ -73,7 +73,7 @@ async def test_the_failing_checks_logs_go_to_the_agent(api: Api) -> None:
     assert TOKEN not in text
     assert "user:" not in text
     assert "error pushing to https://github.com/me/repo" in text
-    # A check outside GitHub Actions has no log harness can read.
+    # A check outside GitHub Actions has no log Nest can read.
     assert "deploy-preview" in text
     assert "https://ci.example/deploy-preview" in text
     assert "unit" not in text.split("\n", 1)[1]

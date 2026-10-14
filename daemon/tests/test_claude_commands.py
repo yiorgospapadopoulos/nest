@@ -2,10 +2,10 @@ from typing import Any
 
 from claude_agent_sdk import SystemMessage
 
-from harness.providers.base import AgentInfo, CommandCatalog, ContextUsage, SlashCommand
-from harness.providers.claude_commands import context_usage, described_catalog, init_catalog
-from harness.providers.claude_messages import TurnOutput, translate
-from harness.providers.claude_thinking import ThinkingTimer
+from nestd.providers.base import AgentInfo, CommandCatalog, ContextUsage, SlashCommand
+from nestd.providers.claude_commands import context_usage, described_catalog, init_catalog
+from nestd.providers.claude_messages import TurnOutput, translate
+from nestd.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 
 SERVER_INFO: dict[str, Any] = {

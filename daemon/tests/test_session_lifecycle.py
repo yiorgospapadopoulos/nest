@@ -4,19 +4,18 @@ from pathlib import Path
 
 import pytest
 
-from harness.config.models import WorktreeConfig
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.providers.base import ImageInput, ModelOption, UserInput
-from harness.sessions.errors import (
-    DirtyCheckoutError,
+from nestd.config.models import WorktreeConfig
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.providers.base import ImageInput, ModelOption, UserInput
+from nestd.sessions.errors import (
     NoWorkspaceError,
     SessionClosedError,
     SessionNotFoundError,
 )
-from harness.sessions.models import SessionState
-from harness.sessions.turns import HARNESS_PROMPT
-from harness.storage.db import Database
+from nestd.sessions.models import SessionState
+from nestd.sessions.turns import NEST_PROMPT
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import crash, reply
 from tests.fakes import FakeClock
@@ -48,7 +47,7 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
         "acceptEdits",
     )
     assert session.worktree_path == (
-        env.repo_path.resolve() / ".claude" / "worktrees" / f"harness-{created.id[:8]}"
+        env.repo_path.resolve() / ".claude" / "worktrees" / f"nest-{created.id[:8]}"
     )
     assert session.cwd == session.worktree_path
     assert session.branch is not None
@@ -62,11 +61,11 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     assert run.spec.permission_mode == "acceptEdits"
     assert run.spec.resume_id is None
     assert run.spec.extra_dirs == ()
-    assert run.spec.system_prompt_append == HARNESS_PROMPT
+    assert run.spec.system_prompt_append == NEST_PROMPT
     # Claude Code tells SDK hosts which MCP servers need sign-in; replies should still
     # read like the Claude app's, which does not list them unprompted.
-    assert "MCP servers" in HARNESS_PROMPT
-    assert "only when the user asks" in HARNESS_PROMPT
+    assert "MCP servers" in NEST_PROMPT
+    assert "only when the user asks" in NEST_PROMPT
     assert run.inputs == [UserInput(text="Fix the bug\nDetails here")]
     assert await env.event_types(created.id) == [
         types.SESSION_CREATED,
@@ -120,7 +119,7 @@ async def test_new_sessions_follow_the_global_mode_unless_the_repo_sets_one(env:
     global_default = await env.create()
     env.repos.update_worktree_config("repo", WorktreeConfig(default=True))
     repo_override = await env.create()
-    explicit = await env.create(mode="in_place", allow_dirty=True)
+    explicit = await env.create(mode="in_place")
 
     assert global_default.mode == "in_place"
     assert repo_override.mode == "worktree"
@@ -213,21 +212,16 @@ async def test_in_place_session_uses_the_checkout(env: Env) -> None:
     assert types.SESSION_WORKSPACE not in await env.event_types(created.id)
 
 
-async def test_in_place_refuses_a_dirty_checkout_unless_allowed(env: Env) -> None:
+async def test_in_place_starts_on_a_dirty_checkout(env: Env) -> None:
+    """B53: uncommitted changes in the checkout no longer refuse a chat."""
     await env.register()
     (env.repo_path / "README.md").write_text("changed", encoding="utf-8")
     env.provider.script(reply("ok"))
 
-    with pytest.raises(DirtyCheckoutError) as caught:
-        await env.create(mode="in_place")
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
 
-    assert caught.value.files == ["README.md"]
-    assert caught.value.payload() == {
-        "detail": "the checkout has uncommitted changes; set allow_dirty to proceed",
-        "files": ["README.md"],
-    }
     await env.reach(created.id, SessionState.IDLE)
+    assert (env.repo_path / "README.md").read_text(encoding="utf-8") == "changed"
 
 
 async def test_create_validates_repo_and_attachments(env: Env) -> None:

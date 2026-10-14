@@ -7,25 +7,25 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.queue import ApprovalQueue
-from harness.approvals.store import ApprovalStore
-from harness.attachments.store import AttachmentStore
-from harness.claude_sessions.live import LiveChats
-from harness.config.models import AgentDefaults, WorktreeConfig
-from harness.events.bus import EventBus
-from harness.gitops import runner
-from harness.notifications.notifier import Notifier
-from harness.paths import AppPaths
-from harness.providers.base import ModelOption
-from harness.repos.service import RepoService
-from harness.sessions.extras import RunExtrasSource
-from harness.sessions.manager import SessionManager
-from harness.sessions.models import CreateSession, Session, SessionState
-from harness.sessions.queue import MessageQueue
-from harness.sessions.store import SessionStore
-from harness.sessions.subagents import ChatAgentsSource
-from harness.storage.db import Database
-from harness.worktrees.manager import WorktreeManager
+from nestd.approvals.queue import ApprovalQueue
+from nestd.approvals.store import ApprovalStore
+from nestd.attachments.store import AttachmentStore
+from nestd.claude_sessions.live import LiveChats
+from nestd.config.models import AgentDefaults, WorktreeConfig
+from nestd.events.bus import EventBus
+from nestd.gitops import runner
+from nestd.notifications.notifier import Notifier
+from nestd.paths import AppPaths
+from nestd.providers.base import ModelOption
+from nestd.repos.service import RepoService
+from nestd.sessions.extras import RunExtrasSource
+from nestd.sessions.manager import SessionManager
+from nestd.sessions.models import CreateSession, Session, SessionState
+from nestd.sessions.queue import MessageQueue
+from nestd.sessions.store import SessionStore
+from nestd.sessions.subagents import ChatAgentsSource
+from nestd.storage.db import Database
+from nestd.worktrees.manager import WorktreeManager
 from tests.async_support import until
 from tests.claude_support import ClaudeHome
 from tests.fake_provider import FakeProvider

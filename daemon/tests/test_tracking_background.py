@@ -2,7 +2,7 @@
 
 from pydantic import JsonValue
 
-from harness.tracking.agents import Change
+from nestd.tracking.agents import Change
 from tests.test_tracking import Feed, at
 from tests.tracking_fixture import message, start_agent_message, text, tool_result, tool_use
 

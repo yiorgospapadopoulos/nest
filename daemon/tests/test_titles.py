@@ -1,6 +1,6 @@
 import pytest
 
-from harness.sessions.titles import MAX_TITLE_LENGTH, short_title
+from nestd.sessions.titles import MAX_TITLE_LENGTH, short_title
 
 
 @pytest.mark.parametrize(

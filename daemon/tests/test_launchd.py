@@ -6,9 +6,10 @@ from typing import Any
 
 import pytest
 
-from harness.paths import AppPaths
-from harness.service.launchd import (
+from nestd.paths import AppPaths
+from nestd.service.launchd import (
     LABEL,
+    LEGACY_LABEL,
     CommandResult,
     LaunchdService,
     ServiceError,
@@ -39,7 +40,7 @@ def make_service(paths: AppPaths, tmp_path: Path, runner: FakeRunner) -> Launchd
         launch_agents_dir=tmp_path / "LaunchAgents",
         uid=501,
         runner=runner,
-        program_args=["/venv/bin/python", "-m", "harness", "serve"],
+        program_args=["/venv/bin/python", "-m", "nestd", "serve"],
         path_env="/custom/bin:/usr/bin",
     )
 
@@ -53,23 +54,23 @@ def test_path_env_resolves_user_and_homebrew_tools() -> None:
 
 def test_render_plist(paths: AppPaths) -> None:
     plist: dict[str, Any] = plistlib.loads(
-        render_plist(["/venv/bin/python", "-m", "harness", "serve"], paths, "/a:/b").encode()
+        render_plist(["/venv/bin/python", "-m", "nestd", "serve"], paths, "/a:/b").encode()
     )
 
     assert plist == {
         "Label": LABEL,
-        "ProgramArguments": ["/venv/bin/python", "-m", "harness", "serve"],
+        "ProgramArguments": ["/venv/bin/python", "-m", "nestd", "serve"],
         "RunAtLoad": True,
         "KeepAlive": True,
         "StandardOutPath": str(paths.logs_dir / "daemon.log"),
         "StandardErrorPath": str(paths.logs_dir / "daemon.log"),
         "EnvironmentVariables": {
             "PATH": "/a:/b",
-            "HARNESS_CONFIG_DIR": str(paths.config_dir),
-            "HARNESS_DATA_DIR": str(paths.data_dir),
+            "NEST_CONFIG_DIR": str(paths.config_dir),
+            "NEST_DATA_DIR": str(paths.data_dir),
         },
     }
-    assert LABEL == "com.harness.daemon"
+    assert LABEL == "com.nest.daemon"
 
 
 def test_install_writes_plist_and_bootstraps(paths: AppPaths, tmp_path: Path) -> None:
@@ -107,6 +108,25 @@ def test_uninstall_boots_out_and_removes_plist(paths: AppPaths, tmp_path: Path) 
 
     assert not service.plist_path.exists()
     assert runner.calls == [["/bin/launchctl", "bootout", f"gui/501/{LABEL}"]] * 2
+
+
+def test_remove_legacy_boots_out_the_harness_service_then_removes_its_plist(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    """B43: the service from before the rename to Nest goes before the new one starts."""
+    runner = FakeRunner()
+    service = make_service(paths, tmp_path, runner)
+    legacy = tmp_path / "LaunchAgents" / "com.harness.daemon.plist"
+    legacy.parent.mkdir()
+    legacy.write_text("<plist/>", encoding="utf-8")
+
+    assert service.remove_legacy() is True
+
+    assert LEGACY_LABEL == "com.harness.daemon"
+    assert runner.calls == [["/bin/launchctl", "bootout", "gui/501/com.harness.daemon"]]
+    assert not legacy.exists()
+    assert service.remove_legacy() is False
+    assert not service.plist_path.exists()
 
 
 def test_status_reports_installed_and_running(paths: AppPaths, tmp_path: Path) -> None:

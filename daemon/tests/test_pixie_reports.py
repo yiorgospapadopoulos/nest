@@ -5,14 +5,14 @@ import logging
 
 import pytest
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.models import CreatePixie
-from harness.pixies.reports import REPORT_HEAD, REPORT_TAIL, ReportBack
-from harness.sessions.models import NewSession, Session, SessionState
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.models import CreatePixie
+from nestd.pixies.reports import REPORT_HEAD, REPORT_TAIL, ReportBack
+from nestd.sessions.models import NewSession, Session, SessionState
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, FakeRun, edit, engine_error, reply
-from tests.pixie_harness_support import ctx, idle, make_boss, provider
+from tests.pixie_nest_support import ctx, idle, make_boss, provider
 
 __all__ = ["ctx", "provider"]
 

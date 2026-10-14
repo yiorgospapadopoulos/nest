@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from harness.config.errors import ConfigError
-from harness.config.loader import load_repos, load_settings, load_templates, save_repo
-from harness.config.models import RepoConfig, ServerSettings, Settings, WorktreeConfig
-from harness.paths import AppPaths
+from nestd.config.errors import ConfigError
+from nestd.config.loader import load_repos, load_settings, load_templates, save_repo
+from nestd.config.models import RepoConfig, ServerSettings, Settings, WorktreeConfig
+from nestd.paths import AppPaths
 
 
 @pytest.fixture
@@ -238,10 +238,10 @@ def test_allowed_hosts_default_to_empty_and_are_read(paths: AppPaths) -> None:
     assert load_settings(paths).server.allowed_hosts == []
 
     paths.settings_file.write_text(
-        '[server]\nallowed_hosts = ["Harness.Local", "*.example.org"]\n', encoding="utf-8"
+        '[server]\nallowed_hosts = ["Nest.Local", "*.example.org"]\n', encoding="utf-8"
     )
 
-    assert load_settings(paths).server.allowed_hosts == ["harness.local", "*.example.org"]
+    assert load_settings(paths).server.allowed_hosts == ["nest.local", "*.example.org"]
 
 
 @pytest.mark.parametrize(

@@ -4,14 +4,14 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from harness.config.models import NtfySettings
-from harness.notifications.messages import Notice
-from harness.notifications.ntfy import NtfyChannel
+from nestd.config.models import NtfySettings
+from nestd.notifications.messages import Notice
+from nestd.notifications.ntfy import NtfyChannel
 from tests.push_support import FakeServers, json_body
 
 URGENT = Notice(
     kind="question",
-    title="Question · harness",
+    title="Question · nest",
     body="Fix login: Which database?",
     url="/inbox",
     tag="session-s1",
@@ -36,7 +36,7 @@ async def test_publishes_json_with_title_priority_and_click_link(
     settings = NtfySettings(
         enabled=True,
         server="https://ntfy.example.org/",
-        topic="harness-k2v9x7q4",
+        topic="nest-k2v9x7q4m1z",
         click_base_url="https://mac.tailnet.ts.net/",
     )
 
@@ -44,8 +44,8 @@ async def test_publishes_json_with_title_priority_and_click_link(
 
     [request] = servers.to("https://ntfy.example.org/")
     assert json_body(request) == {
-        "topic": "harness-k2v9x7q4",
-        "title": "Question · harness",
+        "topic": "nest-k2v9x7q4m1z",
+        "title": "Question · nest",
         "message": "Fix login: Which database?",
         "priority": 4,
         "tags": ["question"],
@@ -58,7 +58,7 @@ async def test_routine_notices_have_default_priority_and_no_link_without_a_base(
 ) -> None:
     routine = Notice(kind="finished", title="t", body="b", url="/chat/s", tag="x", urgent=False)
 
-    await channel.send(routine, NtfySettings(enabled=True, topic="harness-topic-k2v9x7"))
+    await channel.send(routine, NtfySettings(enabled=True, topic="nest-topic-k2v9x7"))
 
     body = json_body(servers.to("https://ntfy.sh/")[0])
     assert body["priority"] == 3
@@ -68,7 +68,7 @@ async def test_routine_notices_have_default_priority_and_no_link_without_a_base(
 async def test_disabled_or_topicless_channels_send_nothing(
     channel: NtfyChannel, servers: FakeServers
 ) -> None:
-    assert await channel.send(URGENT, NtfySettings(topic="harness-topic-k2v9x7")) is False
+    assert await channel.send(URGENT, NtfySettings(topic="nest-topic-k2v9x7")) is False
     assert await channel.send(URGENT, NtfySettings.model_construct(enabled=True)) is False
     assert servers.requests == []
 

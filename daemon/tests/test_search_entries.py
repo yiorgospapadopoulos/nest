@@ -1,7 +1,7 @@
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.search.entries import MAX_RESULT, MAX_TEXT, Entry, entries
+from nestd.events import types
+from nestd.search.entries import MAX_RESULT, MAX_TEXT, Entry, entries
 
 
 def message(*blocks: JsonValue, parent: str | None = None) -> dict[str, JsonValue]:

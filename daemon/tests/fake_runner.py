@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from harness.gitops.runner import CommandError, run_command
+from nestd.gitops.runner import CommandError, run_command
 
 PR_URL = "https://github.com/me/repo/pull/7"
 

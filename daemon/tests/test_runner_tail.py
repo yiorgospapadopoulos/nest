@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.runner import CommandError, keeping_tail, output_tail, run_command
+from nestd.gitops.runner import CommandError, keeping_tail, output_tail, run_command
 
 
 def test_no_tail_is_kept_by_default() -> None:

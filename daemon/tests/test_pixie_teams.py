@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.errors import (
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.errors import (
     DuplicateSlugError,
     InvalidSlugError,
     LeaderNotMemberError,
     TeamNotFoundError,
 )
-from harness.pixies.models import CreatePixie, CreateTeam, UpdatePixie, UpdateTeam
+from nestd.pixies.models import CreatePixie, CreateTeam, UpdatePixie, UpdateTeam
 from tests.api_support import build_context
 from tests.fakes import FakeClock, FakeSecretStore
 

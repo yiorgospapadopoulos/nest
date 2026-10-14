@@ -107,7 +107,7 @@ async def test_a_project_chat_calls_pixies_and_teams(api: Api, tmp_path: Path) -
     assert list(run.spec.subagents) == ["lead"]
     assert run.spec.subagents["lead"].description == "Lead: You plan."
     assert run.inputs[0].text.startswith(
-        "@qa check it\n\n(The user called the team @qa, a team of pixies set up in harness."
+        "@qa check it\n\n(The user called the team @qa, a team of pixies set up in Nest."
         " Its members are these subagents: lead (leader). First use the subagent lead "
     )
     assert created.json()["prompt"] == "@qa check it"

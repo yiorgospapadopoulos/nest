@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from harness.cli import main
-from harness.design.outputs import (
+from nestd.cli import main
+from nestd.design.outputs import (
     CSS_OUTPUT,
     MASCOTS_SWIFT_OUTPUT,
     MASCOTS_TS_OUTPUT,
     SWIFT_OUTPUT,
     stale_outputs,
 )
-from harness.runtime import Runtime, default_runtime
+from nestd.runtime import Runtime, default_runtime
 from tests.design_support import REPO_ROOT, minimal_tokens, write_mascots, write_tokens
 
 
@@ -78,10 +78,10 @@ def test_check_reports_missing_and_stale_outputs(console: Console, tmp_path: Pat
     root = str(tmp_path)
     assert console.run("design", "check", "--root", root) == 1
     err = console.err.getvalue()
-    assert f"harness: {CSS_OUTPUT} is missing\n" in err
-    assert f"harness: {MASCOTS_TS_OUTPUT} is missing\n" in err
-    assert f"harness: {SWIFT_OUTPUT} is missing\n" in err
-    assert err.endswith("harness: run `harness design generate` to update them\n")
+    assert f"nestd: {CSS_OUTPUT} is missing\n" in err
+    assert f"nestd: {MASCOTS_TS_OUTPUT} is missing\n" in err
+    assert f"nestd: {SWIFT_OUTPUT} is missing\n" in err
+    assert err.endswith("nestd: run `nestd design generate` to update them\n")
 
     console.run("design", "generate", "--root", root)
     assert console.run("design", "check", "--root", root) == 0
@@ -93,7 +93,7 @@ def test_check_reports_missing_and_stale_outputs(console: Console, tmp_path: Pat
     console.err.truncate(0)
     console.err.seek(0)
     assert console.run("design", "check", "--root", root) == 1
-    assert f"harness: {CSS_OUTPUT} is out of date\n" in console.err.getvalue()
+    assert f"nestd: {CSS_OUTPUT} is out of date\n" in console.err.getvalue()
 
 
 def test_design_errors_exit_with_a_message(
@@ -101,7 +101,7 @@ def test_design_errors_exit_with_a_message(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     assert console.run("design", "check") == 1
-    assert "harness: could not find design/tokens.toml" in console.err.getvalue()
+    assert "nestd: could not find design/tokens.toml" in console.err.getvalue()
     data = minimal_tokens()
     del data["radius"]
     write_tokens(tmp_path, data)

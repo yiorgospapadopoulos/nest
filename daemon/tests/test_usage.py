@@ -3,10 +3,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from harness.providers.base import TokenUsage, UsageInfo, UsageWindow
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
-from harness.usage.store import UsageStore
+from nestd.providers.base import TokenUsage, UsageInfo, UsageWindow
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
+from nestd.usage.store import UsageStore
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 

@@ -5,18 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from harness.context import AppContext
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.pixies.errors import (
+from nestd.context import AppContext
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.pixies.errors import (
     DuplicateSlugError,
     InvalidSlugError,
     PixieNotFoundError,
     StaleFileError,
 )
-from harness.pixies.models import CreatePixie, UpdatePixie, WriteFile
-from harness.sessions.errors import SessionNotFoundError
-from harness.sessions.models import UpdateSession
+from nestd.pixies.models import CreatePixie, UpdatePixie, WriteFile
+from nestd.sessions.errors import SessionNotFoundError
+from nestd.sessions.models import UpdateSession
 from tests.api_support import build_context
 from tests.async_support import until
 from tests.fake_engine import FakeInfoFactory, server_info

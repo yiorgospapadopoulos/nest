@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.sessions.models import CreateSession, Sender, SessionState
-from harness.storage.db import Database
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.sessions.models import CreateSession, Sender, SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, reply
 from tests.fakes import FakeClock

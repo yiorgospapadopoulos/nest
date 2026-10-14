@@ -2,12 +2,12 @@ import asyncio
 
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.events.models import Event
-from harness.providers.base import AgentTask
-from harness.storage.db import Database
-from harness.tracking.service import Tracking
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.events.models import Event
+from nestd.providers.base import AgentTask
+from nestd.storage.db import Database
+from nestd.tracking.service import Tracking
 from tests.async_support import until
 from tests.fakes import FakeClock
 from tests.tracking_fixture import create_task, message, start_agent_message, text, tool_use

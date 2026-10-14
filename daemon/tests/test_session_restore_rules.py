@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.providers.base import RewindResult
-from harness.sessions.errors import NoTurnInProgressError, NoWorkspaceError, SessionBusyError
-from harness.sessions.live import LiveSession
-from harness.sessions.models import SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.providers.base import RewindResult
+from nestd.sessions.errors import NoTurnInProgressError, NoWorkspaceError, SessionBusyError
+from nestd.sessions.live import LiveSession
+from nestd.sessions.models import SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import (
     FakeRun,
@@ -45,7 +45,7 @@ async def first_message(env: Env, session_id: str) -> int:
 async def idle_chat(env: Env, *later: Turn) -> tuple[str, int, FakeRun]:
     """A chat whose first message has a checkpoint; `later` are more scripted turns."""
     env.provider.script(echoed("msg-1", reply("one")), *later)
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     return created.id, await first_message(env, created.id), env.provider.runs[0]
 
@@ -197,7 +197,7 @@ async def test_files_are_not_restored_while_the_work_is_published(env: Env) -> N
             await env.manager.rewind(session_id, message, dry_run=True)
 
     assert str(refused.value) == (
-        "Files cannot be restored while harness commits or pushes this chat's work. "
+        "Files cannot be restored while Nest commits or pushes this chat's work. "
         "Try again when that is done."
     )
     assert run.calls == []

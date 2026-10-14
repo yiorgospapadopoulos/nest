@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.errors import PixieNotFoundError
-from harness.pixies.models import CreatePixie, CreateTeam, UpdatePixie, WriteFile
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.errors import PixieNotFoundError
+from nestd.pixies.models import CreatePixie, CreateTeam, UpdatePixie, WriteFile
 from tests.api_support import build_context
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, reply

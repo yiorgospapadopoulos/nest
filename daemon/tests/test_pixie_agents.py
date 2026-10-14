@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from harness.context import AppContext
-from harness.pixies.agents import EDIT_TOOLS, PixieAgents
-from harness.pixies.files import PixieFiles
-from harness.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
-from harness.pixies.prompt import CALL_PREAMBLE
-from harness.pixies.store import PixieStore
-from harness.pixies.team_store import TeamStore
-from harness.sessions.models import Session, SessionState
+from nestd.context import AppContext
+from nestd.pixies.agents import EDIT_TOOLS, PixieAgents
+from nestd.pixies.files import PixieFiles
+from nestd.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
+from nestd.pixies.prompt import CALL_PREAMBLE
+from nestd.pixies.store import PixieStore
+from nestd.pixies.team_store import TeamStore
+from nestd.sessions.models import Session, SessionState
 from tests.api_support import build_context
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -147,7 +147,7 @@ async def test_a_leader_plans_for_its_available_members(
     assert "## Your team" not in offered.subagents["bugs"].prompt
     assert [t.handle for t in offered.teams] == ["qa"]
     assert offered.teams[0].instruction == (
-        "\n\n(The user called the team @qa, a team of pixies set up in harness. Its members"
+        "\n\n(The user called the team @qa, a team of pixies set up in Nest. Its members"
         " are these subagents: lead (leader), bugs. First use the subagent lead to plan which"
         " member does which part. Then call each member as the plan says. Then sum up the"
         " results.)"

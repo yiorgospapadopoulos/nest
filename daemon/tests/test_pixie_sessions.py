@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from harness.sessions.models import NewSession, pixie_repo
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.sessions.models import NewSession, pixie_repo
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 

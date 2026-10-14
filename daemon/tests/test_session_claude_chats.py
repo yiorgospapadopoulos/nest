@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.claude_sessions.errors import ChatOpenElsewhereError
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.repos.service import RepoFolderMissingError
-from harness.sessions.errors import NoWorkspaceError
-from harness.sessions.models import ChatImport, SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.claude_sessions.errors import ChatOpenElsewhereError
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.repos.service import RepoFolderMissingError
+from nestd.sessions.errors import NoWorkspaceError
+from nestd.sessions.models import ChatImport, SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.claude_support import CHAT_A
 from tests.fake_provider import reply
@@ -124,7 +124,7 @@ async def test_sending_is_refused_while_claude_code_has_the_chat_open(env: Env) 
     await answered(env, session.id)
 
 
-async def test_harnesss_own_sdk_run_does_not_count_as_elsewhere(env: Env) -> None:
+async def test_nests_own_sdk_run_does_not_count_as_elsewhere(env: Env) -> None:
     env.provider.script(reply("one"), reply("two"))
     created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
@@ -133,7 +133,7 @@ async def test_harnesss_own_sdk_run_does_not_count_as_elsewhere(env: Env) -> Non
 
     await env.manager.send(created.id, "more", [])
     await env.reach(created.id, SessionState.IDLE)
-    # Once harness let its run go, a live SDK process is someone else's.
+    # Once Nest let its run go, a live SDK process is someone else's.
     await env.manager.update(created.id, UpdateSession(archived=True))
 
     with pytest.raises(ChatOpenElsewhereError):

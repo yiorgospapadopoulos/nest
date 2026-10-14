@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.engine.effort import EffortSettings, claude_code_effort, effort_settings
-from harness.providers.base import ModelOption
+from nestd.engine.effort import EffortSettings, claude_code_effort, effort_settings
+from nestd.providers.base import ModelOption
 
 LEVELS = ["low", "medium", "high", "xhigh", "max"]
 OTHER_DETAIL = "a-private-setting"

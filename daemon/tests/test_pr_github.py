@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from harness.prs.github import fetch_status, parse_status, repo_of, summarize_checks
-from harness.prs.models import PrCheck
+from nestd.prs.github import fetch_status, parse_status, repo_of, summarize_checks
+from nestd.prs.models import PrCheck
 from tests.fake_runner import PR_URL, FakeRunner, check_run, pr_json
 
 NOW = datetime(2026, 1, 1, 13, 0, tzinfo=UTC)
@@ -42,7 +42,7 @@ def test_the_real_output_of_a_closed_sandbox_pull_request() -> None:
     output = (
         '{"createdAt":"2026-10-06T15:45:25Z","headRefOid":"779f15c948adfad4f0d9a987a30fb1e033a52983",'
         '"mergeStateStatus":"CLEAN","mergeable":"MERGEABLE","number":1,"reviewDecision":"",'
-        '"state":"CLOSED","statusCheckRollup":[],"title":"Add hello greeting (harness live test)",'
+        '"state":"CLOSED","statusCheckRollup":[],"title":"Add hello greeting (Nest live test)",'
         '"url":"https://github.com/me/repo/pull/1"}'
     )
 
@@ -163,7 +163,7 @@ def test_garbled_output_is_a_validation_error() -> None:
         parse_status("not json", NOW)
 
 
-def test_same_as_ignores_when_harness_looked() -> None:
+def test_same_as_ignores_when_nest_looked() -> None:
     first = parse_status(pr_json(), NOW)
     later = parse_status(pr_json(), datetime(2026, 1, 2, tzinfo=UTC))
     changed = parse_status(pr_json(headRefOid="def456"), NOW)

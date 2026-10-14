@@ -1,11 +1,11 @@
-from harness.providers.base import (
+from nestd.providers.base import (
     CommandCatalog,
     EngineDetails,
     McpServer,
     ResultInfo,
     UsageInfo,
 )
-from harness.sessions.models import Session, SessionState
+from nestd.sessions.models import Session, SessionState
 
 
 class RecordingHooks:

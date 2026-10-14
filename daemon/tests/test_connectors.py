@@ -3,12 +3,12 @@ from datetime import timedelta
 
 import pytest
 
-from harness.connectors.naming import display_name, group_of, manage_hint
-from harness.connectors.registry import ConnectorRegistry
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.providers.base import McpServer
-from harness.storage.db import Database
+from nestd.connectors.naming import display_name, group_of, manage_hint
+from nestd.connectors.registry import ConnectorRegistry
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.providers.base import McpServer
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 

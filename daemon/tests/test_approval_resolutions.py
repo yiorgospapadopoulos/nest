@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
-from harness.approvals.resolutions import ResolveApproval, resolution_for
-from harness.errors import InvalidInputError
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.approvals.resolutions import ResolveApproval, resolution_for
+from nestd.errors import InvalidInputError
 
 QUESTIONS: dict[str, JsonValue] = {
     "questions": [

@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from harness.engine.fetch import FetchError, fetch_details, info_options
-from harness.engine.models import FALLBACK_MODELS, ModelList
-from harness.engine.service import EngineInfo, effort_problem
-from harness.engine.store import EngineInfoStore
-from harness.errors import InvalidInputError
-from harness.providers.base import AccountInfo, EngineDetails, ModelOption
-from harness.storage.db import Database
+from nestd.engine.fetch import FetchError, fetch_details, info_options
+from nestd.engine.models import FALLBACK_MODELS, ModelList
+from nestd.engine.service import EngineInfo, effort_problem
+from nestd.engine.store import EngineInfoStore
+from nestd.errors import InvalidInputError
+from nestd.providers.base import AccountInfo, EngineDetails, ModelOption
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_engine import LEVELS, FakeInfoFactory, server_info
 from tests.fakes import START, FakeClock
@@ -28,7 +28,7 @@ HAIKU = ModelOption(value="haiku", display_name="Haiku", description="haiku mode
 ACCOUNT = AccountInfo(email="person@example.com", plan="Claude Max", organization="Acme")
 
 
-class Harness:
+class Rig:
     def __init__(self, db: Database, clock: FakeClock) -> None:
         self.db = db
         self.clock = clock
@@ -48,8 +48,8 @@ class Harness:
 
 
 @pytest.fixture
-def h(db: Database, clock: FakeClock) -> Harness:
-    return Harness(db, clock)
+def h(db: Database, clock: FakeClock) -> Rig:
+    return Rig(db, clock)
 
 
 def test_the_fetch_loads_only_user_settings_without_tools_hooks_or_a_transcript(
@@ -108,7 +108,7 @@ async def test_a_failing_disconnect_does_not_lose_the_details() -> None:
 
 
 async def test_before_any_report_the_fallback_list_and_an_empty_account_apply(
-    h: Harness,
+    h: Rig,
 ) -> None:
     assert await h.engine.models() == ModelList(models=list(FALLBACK_MODELS), updated_at=None)
     assert [m.value for m in FALLBACK_MODELS] == ["default", "opus", "sonnet", "haiku"]
@@ -117,7 +117,7 @@ async def test_before_any_report_the_fallback_list_and_an_empty_account_apply(
     assert await h.engine.find("opus") is None
 
 
-async def test_a_refresh_stores_the_models_and_account(h: Harness) -> None:
+async def test_a_refresh_stores_the_models_and_account(h: Rig) -> None:
     assert await h.engine.refresh()
 
     models = await h.engine.models()
@@ -129,7 +129,7 @@ async def test_a_refresh_stores_the_models_and_account(h: Harness) -> None:
     assert await h.engine.find("claude-unknown") is None
 
 
-async def test_the_cache_survives_a_restart(h: Harness) -> None:
+async def test_the_cache_survives_a_restart(h: Rig) -> None:
     await h.engine.refresh()
 
     restarted = EngineInfo(store=EngineInfoStore(h.db, h.clock), fetch=_never_called, clock=h.clock)
@@ -139,7 +139,7 @@ async def test_the_cache_survives_a_restart(h: Harness) -> None:
 
 
 async def test_a_failed_refresh_keeps_the_cache_and_logs_the_kind(
-    h: Harness, caplog: pytest.LogCaptureFixture
+    h: Rig, caplog: pytest.LogCaptureFixture
 ) -> None:
     await h.engine.refresh()
     h.factory.connect_error = RuntimeError("person@example.com said no")
@@ -160,7 +160,7 @@ def _profile(home: Path, name: str) -> Path:
 
 
 async def test_without_an_engine_name_the_claude_code_profile_name_is_shown(
-    h: Harness, tmp_path: Path
+    h: Rig, tmp_path: Path
 ) -> None:
     path = _profile(tmp_path, "Sam")
     engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, account_file=path)
@@ -177,7 +177,7 @@ async def test_without_an_engine_name_the_claude_code_profile_name_is_shown(
     assert (await h.store.account()) == ACCOUNT
 
 
-async def test_the_engines_own_display_name_wins(h: Harness, tmp_path: Path) -> None:
+async def test_the_engines_own_display_name_wins(h: Rig, tmp_path: Path) -> None:
     path = _profile(tmp_path, "From the file")
     engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, account_file=path)
 
@@ -186,7 +186,7 @@ async def test_the_engines_own_display_name_wins(h: Harness, tmp_path: Path) -> 
     assert (await engine.account()).display_name == "From the engine"
 
 
-async def test_a_report_with_only_an_account_keeps_the_models(h: Harness) -> None:
+async def test_a_report_with_only_an_account_keeps_the_models(h: Rig) -> None:
     await h.engine.refresh()
     h.clock.advance(timedelta(minutes=5))
 
@@ -196,14 +196,14 @@ async def test_a_report_with_only_an_account_keeps_the_models(h: Harness) -> Non
     assert await h.engine.account() == AccountInfo(plan="Claude Pro")
 
 
-async def test_a_report_from_a_session_replaces_the_list(h: Harness) -> None:
+async def test_a_report_from_a_session_replaces_the_list(h: Rig) -> None:
     await h.engine.report(EngineDetails(models=[HAIKU]))
 
     assert await h.engine.models() == ModelList(models=[HAIKU], updated_at=START)
     assert await h.engine.account() == AccountInfo()
 
 
-async def test_ticks_fetch_at_start_then_every_six_hours(h: Harness) -> None:
+async def test_ticks_fetch_at_start_then_every_six_hours(h: Rig) -> None:
     await h.engine.tick()
     h.clock.advance(timedelta(hours=5, minutes=59))
     await h.engine.tick()
@@ -213,7 +213,7 @@ async def test_ticks_fetch_at_start_then_every_six_hours(h: Harness) -> None:
     assert len(h.factory.clients) == 2
 
 
-async def test_a_session_report_postpones_the_next_fetch(h: Harness) -> None:
+async def test_a_session_report_postpones_the_next_fetch(h: Rig) -> None:
     await h.engine.tick()
     h.clock.advance(timedelta(hours=5))
     await h.engine.report(EngineDetails(models=[HAIKU]))
@@ -223,7 +223,7 @@ async def test_a_session_report_postpones_the_next_fetch(h: Harness) -> None:
     assert len(h.factory.clients) == 1
 
 
-async def test_a_failed_fetch_is_retried_after_half_an_hour(h: Harness) -> None:
+async def test_a_failed_fetch_is_retried_after_half_an_hour(h: Rig) -> None:
     h.factory.connect_error = RuntimeError("down")
     await h.engine.tick()
     h.clock.advance(timedelta(minutes=29))
@@ -236,7 +236,7 @@ async def test_a_failed_fetch_is_retried_after_half_an_hour(h: Harness) -> None:
     assert (await h.engine.models()).updated_at is not None
 
 
-async def test_the_loop_waits_briefly_then_fetches_and_stops_cleanly(h: Harness) -> None:
+async def test_the_loop_waits_briefly_then_fetches_and_stops_cleanly(h: Rig) -> None:
     engine = h.build(start_delay=timedelta(milliseconds=10), tick=timedelta(milliseconds=10))
 
     async def stored() -> bool:
@@ -250,7 +250,7 @@ async def test_the_loop_waits_briefly_then_fetches_and_stops_cleanly(h: Harness)
     assert len(h.factory.clients) == 1
 
 
-async def test_stopping_during_the_start_delay_never_fetches(h: Harness) -> None:
+async def test_stopping_during_the_start_delay_never_fetches(h: Rig) -> None:
     engine = h.build(start_delay=timedelta(hours=1))
 
     await engine.start()
@@ -260,9 +260,7 @@ async def test_stopping_during_the_start_delay_never_fetches(h: Harness) -> None
     assert h.factory.clients == []
 
 
-async def test_the_loop_survives_a_failing_tick(
-    h: Harness, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_the_loop_survives_a_failing_tick(h: Rig, caplog: pytest.LogCaptureFixture) -> None:
     async def broken() -> EngineDetails:
         raise RuntimeError("database is locked")
 
@@ -281,7 +279,7 @@ async def test_the_loop_survives_a_failing_tick(
         await engine.stop()
 
 
-async def test_effort_is_checked_against_the_model_levels(h: Harness) -> None:
+async def test_effort_is_checked_against_the_model_levels(h: Rig) -> None:
     await h.engine.refresh()
 
     await h.engine.require_effort("opus", "xhigh")
@@ -291,7 +289,7 @@ async def test_effort_is_checked_against_the_model_levels(h: Harness) -> None:
         await h.engine.require_effort("haiku", "low")
 
 
-async def test_effort_is_not_checked_against_the_fallback_list(h: Harness) -> None:
+async def test_effort_is_not_checked_against_the_fallback_list(h: Rig) -> None:
     await h.engine.require_effort("haiku", "max")
 
 

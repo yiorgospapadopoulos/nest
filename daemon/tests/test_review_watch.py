@@ -2,16 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.queue import ApprovalQueue
-from harness.approvals.store import ApprovalStore
-from harness.events.bus import EventBus
-from harness.notifications.notifier import Notifier
-from harness.review import watch
-from harness.review.models import SessionDiff
-from harness.review.watch import ReviewWatcher
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
-from harness.tracking.service import Tracking
+from nestd.approvals.queue import ApprovalQueue
+from nestd.approvals.store import ApprovalStore
+from nestd.events.bus import EventBus
+from nestd.notifications.notifier import Notifier
+from nestd.review import watch
+from nestd.review.models import SessionDiff
+from nestd.review.watch import ReviewWatcher
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
+from nestd.tracking.service import Tracking
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 

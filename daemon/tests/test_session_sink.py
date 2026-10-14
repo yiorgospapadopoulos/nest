@@ -5,10 +5,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from harness.config.models import PermissionMode
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.providers.base import (
+from nestd.config.models import PermissionMode
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.providers.base import (
     AgentTask,
     CommandCatalog,
     EngineDetails,
@@ -20,11 +20,11 @@ from harness.providers.base import (
     UsageInfo,
     UsageWindow,
 )
-from harness.sessions.live import LiveSession
-from harness.sessions.models import Session
-from harness.sessions.sink import SessionSink
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.sessions.live import LiveSession
+from nestd.sessions.models import Session
+from nestd.sessions.sink import SessionSink
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.recording_hooks import RecordingHooks
 from tests.test_session_store import new_session

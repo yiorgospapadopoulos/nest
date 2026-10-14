@@ -4,10 +4,10 @@ from datetime import timedelta
 
 import pytest
 
-from harness.pixies.models import PixieSettings
-from harness.pixies.report_store import LIST_MAX, ReportNotFoundError, ReportStore
-from harness.pixies.store import PixieStore
-from harness.storage.db import Database
+from nestd.pixies.models import PixieSettings
+from nestd.pixies.report_store import LIST_MAX, ReportNotFoundError, ReportStore
+from nestd.pixies.store import PixieStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 

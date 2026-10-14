@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops import runner
-from harness.gitops.runner import CommandError, GitError, run_command, run_git
+from nestd.gitops import runner
+from nestd.gitops.runner import CommandError, GitError, run_command, run_git
 from tests.git_support import init_repo
 
 

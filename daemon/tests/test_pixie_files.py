@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.pixies.errors import InvalidFileNameError, PixieNotFoundError, StaleFileError
-from harness.pixies.files import MEMORY_BUDGET, PixieFiles
+from nestd.pixies.errors import InvalidFileNameError, PixieNotFoundError, StaleFileError
+from nestd.pixies.files import MEMORY_BUDGET, PixieFiles
 
 P1 = "0" * 31 + "1"
 

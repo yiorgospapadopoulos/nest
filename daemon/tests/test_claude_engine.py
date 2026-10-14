@@ -2,8 +2,8 @@ from typing import Any
 
 import pytest
 
-from harness.providers.base import AccountInfo, EngineDetails, ModelOption
-from harness.providers.claude_engine import engine_details, plan_label
+from nestd.providers.base import AccountInfo, EngineDetails, ModelOption
+from nestd.providers.claude_engine import engine_details, plan_label
 
 LEVELS = ["low", "medium", "high", "xhigh", "max"]
 

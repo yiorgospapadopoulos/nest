@@ -3,15 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from harness.attachments.store import (
+from nestd.attachments.store import (
     MAX_ATTACHMENT_BYTES,
     AttachmentStore,
     AttachmentTooLargeError,
     UnknownAttachmentError,
     safe_filename,
 )
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 

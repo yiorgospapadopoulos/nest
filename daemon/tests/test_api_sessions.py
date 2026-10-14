@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.storage.db import Database
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import ask, engine_error, hang, reply, until_interrupted
@@ -181,15 +181,21 @@ async def test_interrupt_update_and_close(api: Api) -> None:
     assert again.status_code == 409
 
 
-async def test_dirty_in_place_sessions_report_the_files(api: Api, tmp_path: Path) -> None:
+async def test_in_place_sessions_start_on_a_dirty_checkout(api: Api, tmp_path: Path) -> None:
     (tmp_path / "repo" / "README.md").write_text("changed", encoding="utf-8")
 
     response = await api.http.post(
         "/api/sessions", json={"repo": "repo", "prompt": "x", "mode": "in_place"}
     )
+    refused = await api.http.post(
+        "/api/sessions",
+        json={"repo": "repo", "prompt": "x", "mode": "in_place", "allow_dirty": True},
+    )
 
-    assert response.status_code == 409
-    assert response.json()["files"] == ["README.md"]
+    assert response.status_code == 201
+    assert response.json()["mode"] == "in_place"
+    # The old option is gone, so a client still sending it hears so.
+    assert refused.status_code == 422
 
 
 @pytest.mark.parametrize("mode", ["worktree", "in_place"])

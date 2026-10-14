@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.sessions.errors import SessionNotFoundError
-from harness.sessions.models import NewSession, SessionState
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
-from harness.stuck.models import StuckFlag
+from nestd.sessions.errors import SessionNotFoundError
+from nestd.sessions.models import NewSession, SessionState
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
+from nestd.stuck.models import StuckFlag
 from tests.fakes import FakeClock
 
 

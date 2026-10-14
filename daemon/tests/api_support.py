@@ -5,11 +5,11 @@ from pathlib import Path
 
 import httpx
 
-from harness.auth.devices import LOCAL_DEVICE_ACCOUNT
-from harness.context import AppContext
-from harness.gitops.runner import CommandRunner, run_command
-from harness.paths import AppPaths
-from harness.providers.base import AgentProvider
+from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
+from nestd.context import AppContext
+from nestd.gitops.runner import CommandRunner, run_command
+from nestd.paths import AppPaths
+from nestd.providers.base import AgentProvider
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
 from tests.fake_probe import FakeProbeFactory

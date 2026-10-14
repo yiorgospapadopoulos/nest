@@ -3,12 +3,12 @@
 import pytest
 from pydantic import JsonValue
 
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.habit_tools import REPORT_TOOL_NAMES
-from harness.pixies.harness_tools import HARNESS_TOOL_NAMES
-from harness.pixies.tools import TOOL_NAMES
-from harness.providers.base import AgentTool, ToolRefusedError
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.habit_tools import REPORT_TOOL_NAMES
+from nestd.pixies.nest_tools import NEST_TOOL_NAMES
+from nestd.pixies.tools import TOOL_NAMES
+from nestd.providers.base import AgentTool, ToolRefusedError
 from tests.fake_provider import FakeProvider, FakeRun, reply
 from tests.habit_support import (
     cards,
@@ -122,7 +122,7 @@ async def test_a_habit_run_has_the_tools_but_posts_no_cards(
     provider.script(turn)
     run = await run_now(ctx, habit)
 
-    assert tuple(seen) == TOOL_NAMES + HARNESS_TOOL_NAMES + REPORT_TOOL_NAMES
+    assert tuple(seen) == TOOL_NAMES + NEST_TOOL_NAMES + REPORT_TOOL_NAMES
     assert refusals == ["A habit run has no chat to post cards in; use report instead."]
     assert await cards(ctx, run.session_id or "") == []
 

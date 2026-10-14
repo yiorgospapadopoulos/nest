@@ -3,8 +3,8 @@
 import pytest
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.storage.db import Database
+from nestd.events import types
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.test_stuck_watcher import Env
 

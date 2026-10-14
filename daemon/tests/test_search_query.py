@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from harness.search.query import MAX_TERMS, fts_query
+from nestd.search.query import MAX_TERMS, fts_query
 
 
 @pytest.mark.parametrize(

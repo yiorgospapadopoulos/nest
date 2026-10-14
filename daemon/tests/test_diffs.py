@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops import runner
-from harness.gitops.runner import GitError
-from harness.gitops.safety import HARDENED
-from harness.review import head
-from harness.review.diff_parser import RawEntry, parse_patch, parse_raw
-from harness.review.diffs import MAX_LINES_PER_FILE, session_diff
-from harness.review.errors import HiddenHistoryError
-from harness.review.models import ReviewCommit, ReviewHead
-from harness.review.untracked import MAX_SHOWN_BYTES
+from nestd.gitops import runner
+from nestd.gitops.runner import GitError
+from nestd.gitops.safety import HARDENED
+from nestd.review import head
+from nestd.review.diff_parser import RawEntry, parse_patch, parse_raw
+from nestd.review.diffs import MAX_LINES_PER_FILE, session_diff
+from nestd.review.errors import HiddenHistoryError
+from nestd.review.models import ReviewCommit, ReviewHead
+from nestd.review.untracked import MAX_SHOWN_BYTES
 from tests.git_support import commit_file, git, init_repo
 from tests.nested_support import add_nested_repo, plant_filter
 
@@ -263,7 +263,7 @@ async def test_an_untracked_nested_repository_is_listed_as_a_folder(repo: Path) 
 
     fresh, nested = diff.files
     assert (nested.path, nested.status, nested.additions, nested.hunks) == ("lib/", "added", 0, [])
-    # BUG-65: shown as a repository of its own, which harness will not commit.
+    # BUG-65: shown as a repository of its own, which Nest will not commit.
     assert (nested.nested_repository, fresh.nested_repository) == (True, False)
     assert (fresh.path, fresh.additions) == ("fresh.txt", 1)
 
@@ -533,7 +533,7 @@ async def test_settings_never_hide_a_changed_text_file_as_binary(
 
 
 async def test_binary_files_are_still_binary(repo: Path) -> None:
-    """Only harness's own test decides: a NUL byte near the start of the file."""
+    """Only Nest's own test decides: a NUL byte near the start of the file."""
     for name in ("logo.png", "tail.txt"):
         commit_file(repo, name, "placeholder\n")
     commit_file(repo, "doomed.bin", "\0gone")

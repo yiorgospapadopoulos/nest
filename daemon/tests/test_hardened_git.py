@@ -10,16 +10,16 @@ from pathlib import Path
 
 import pytest
 
-from harness.config.models import RepoConfig
-from harness.gitops import runner
-from harness.gitops.hardened import nested_filter_overrides
-from harness.gitops.runner import GitError, run_command
-from harness.gitops.safety import HARDENED
-from harness.paths import AppPaths
-from harness.repos.service import RepoService
-from harness.sessions.files import FileIndex
-from harness.sessions.git_audit import snapshot_refs, with_own_changes
-from harness.worktrees.manager import WorktreeManager
+from nestd.config.models import RepoConfig
+from nestd.gitops import runner
+from nestd.gitops.hardened import nested_filter_overrides
+from nestd.gitops.runner import GitError, run_command
+from nestd.gitops.safety import HARDENED
+from nestd.paths import AppPaths
+from nestd.repos.service import RepoService
+from nestd.sessions.files import FileIndex
+from nestd.sessions.git_audit import snapshot_refs, with_own_changes
+from nestd.worktrees.manager import WorktreeManager
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git, init_repo
 from tests.nested_support import add_nested_repo, plant_filter
@@ -61,41 +61,6 @@ async def test_creating_a_worktree_runs_no_hook_or_agent_filter(
     assert not filter_marker.exists()
 
 
-async def test_listing_dirty_files_runs_no_fsmonitor_program(
-    paths: AppPaths, tmp_path: Path
-) -> None:
-    repo = init_repo(tmp_path / "repo")
-    marker = tmp_path / "fsmonitor-ran"
-    git(repo, "config", "core.fsmonitor", str(marker_script(tmp_path / "fsm.sh", marker)))
-    (repo / "README.md").write_text("changed\n", encoding="utf-8")
-    manager = WorktreeManager(paths)
-
-    for _ in range(2):  # git asks the monitor once the index records it
-        assert await manager.dirty_files(RepoConfig(name="repo", path=repo)) == ["README.md"]
-
-    assert not marker.exists()
-
-
-async def test_listing_dirty_files_runs_no_filter_of_a_nested_repository(
-    paths: AppPaths, tmp_path: Path
-) -> None:
-    """SEC-08: git would run `status` inside it, with its own config."""
-    repo = init_repo(tmp_path / "repo")
-    nested = add_nested_repo(repo)
-    marker = tmp_path / "filter-ran"
-    plant_filter(nested, marker)
-    (repo / "README.md").write_text("changed\n", encoding="utf-8")
-
-    dirty = await WorktreeManager(paths).dirty_files(RepoConfig(name="repo", path=repo))
-    assert not marker.exists()
-    commit_file(nested, "more.txt", "more\n")
-    moved = await WorktreeManager(paths).dirty_files(RepoConfig(name="repo", path=repo))
-
-    assert dirty == ["README.md"]
-    # A new commit in the nested repository is a change of the work.
-    assert moved == ["README.md", "lib"]
-
-
 async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     paths: AppPaths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -120,7 +85,6 @@ async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     manager = WorktreeManager(paths)
     worktree = await manager.create(repo, "0123456789", "task")
     await manager.head(repo)
-    await manager.dirty_files(repo)
     baseline = await snapshot_refs(worktree.path)
     await with_own_changes(worktree.path, baseline, "origin")
     assert await snapshot_refs(plain) == {}

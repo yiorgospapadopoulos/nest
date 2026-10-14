@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.providers.base import AccountInfo, EngineDetails, ModelOption
+from nestd.providers.base import AccountInfo, EngineDetails, ModelOption
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_engine import LEVELS, server_info

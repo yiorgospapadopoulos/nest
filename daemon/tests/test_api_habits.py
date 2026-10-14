@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from harness.pixies.reporting import FromRun
+from nestd.pixies.reporting import FromRun
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
-from tests.pixie_harness_support import idle
+from tests.pixie_nest_support import idle
 
 
 @pytest.fixture

@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from harness.errors import ConflictError
-from harness.gitops.runner import CommandError
-from harness.local_apps.apps import LIVE_WARNING, LocalApps, RepoApp
-from harness.local_apps.errors import AppNotInstalledError, LocalAppError
-from harness.local_apps.launchers import launcher_script
-from harness.sessions.errors import NoWorkspaceError
-from harness.sessions.models import Session, SessionState
+from nestd.errors import ConflictError
+from nestd.gitops.runner import CommandError
+from nestd.local_apps.apps import LIVE_WARNING, LocalApps, RepoApp
+from nestd.local_apps.errors import AppNotInstalledError, LocalAppError
+from nestd.local_apps.launchers import launcher_script
+from nestd.sessions.errors import NoWorkspaceError
+from nestd.sessions.models import Session, SessionState
 from tests.fake_opener import FakeOpener
 from tests.fakes import START
 from tests.test_session_store import new_session
@@ -65,7 +65,7 @@ async def test_open_in_claude_code_writes_and_opens_a_launcher(
     assert opener.calls == [(("open", str(launch.launcher)), tmp_path / "launchers")]
 
 
-async def test_open_in_claude_code_warns_while_harness_runs_the_session(
+async def test_open_in_claude_code_warns_while_nest_runs_the_session(
     apps: LocalApps, tmp_path: Path
 ) -> None:
     launch = await apps.open_in_claude_code(session(tmp_path), live=True)

@@ -1,4 +1,4 @@
-# The parts of py-vapid that harness uses; the package ships no type information.
+# The parts of py-vapid that Nest uses; the package ships no type information.
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 
 class Vapid02:

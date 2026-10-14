@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from harness.config.loader import load_repos
-from harness.config.models import RepoConfig, WorktreeConfig
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.gitops.runner import GitError
-from harness.paths import AppPaths
-from harness.repos import service as service_module
-from harness.repos.service import (
+from nestd.config.loader import load_repos
+from nestd.config.models import RepoConfig, WorktreeConfig
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.gitops.runner import GitError
+from nestd.paths import AppPaths
+from nestd.repos import service as service_module
+from nestd.repos.service import (
     InvalidRepoError,
     NotAGitRepositoryError,
     RepoExistsError,
@@ -21,7 +21,7 @@ from harness.repos.service import (
     RepoService,
     is_link_candidate,
 )
-from harness.storage.db import Database
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.git_support import commit_file, git, init_repo, with_origin
 
@@ -71,7 +71,7 @@ async def test_register_prefers_origin_head_and_explicit_name(
 
 
 async def test_register_records_the_origin_push_url(service: RepoService, tmp_path: Path) -> None:
-    """D050: the URL harness pushes to, recorded before any agent ran in the repo."""
+    """D050: the URL Nest pushes to, recorded before any agent ran in the repo."""
     repo = init_repo(tmp_path / "repo")
     origin = with_origin(repo, tmp_path / "origin.git")
 

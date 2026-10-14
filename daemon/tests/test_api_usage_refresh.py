@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.usage.refresher import FORCED_SPACING
-from harness.usage.visibility import VISIBILITY_TTL
+from nestd.usage.refresher import FORCED_SPACING
+from nestd.usage.visibility import VISIBILITY_TTL
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_probe import answer, result

@@ -25,8 +25,8 @@ from claude_agent_sdk import (
 from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 from pydantic import JsonValue
 
-from harness.logging_setup import ENGINE_STDERR_LOGGER
-from harness.providers.base import (
+from nestd.logging_setup import ENGINE_STDERR_LOGGER
+from nestd.providers.base import (
     AccountInfo,
     AgentTask,
     AgentTool,
@@ -47,9 +47,9 @@ from harness.providers.base import (
     Subagent,
     UserInput,
 )
-from harness.providers.claude import ClaudeProvider, ClaudeRun, build_options
-from harness.providers.claude_questions import QUESTION_TIMEOUT_SECONDS
-from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
+from nestd.providers.claude import ClaudeProvider, ClaudeRun, build_options
+from nestd.providers.claude_questions import QUESTION_TIMEOUT_SECONDS
+from nestd.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 from tests.async_support import until
 from tests.fake_sdk import FakeSdkClient
 from tests.recording_sink import RecordingSink

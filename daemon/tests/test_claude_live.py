@@ -3,7 +3,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from harness.claude_sessions.live import LiveChats, pid_alive
+from nestd.claude_sessions.live import LiveChats, pid_alive
 from tests.claude_support import CHAT_A, CHAT_B, ClaudeHome
 
 
@@ -36,7 +36,7 @@ def test_running_reads_live_session_files(tmp_path: Path) -> None:
     assert live.running() == {CHAT_A: ["cli", "sdk-py"], CHAT_B: [""]}
 
 
-def test_open_elsewhere_ignores_harnesss_own_sdk_run(tmp_path: Path) -> None:
+def test_open_elsewhere_ignores_nests_own_sdk_run(tmp_path: Path) -> None:
     home = ClaudeHome(tmp_path)
     home.open_chat(20, CHAT_A, entrypoint="sdk-py")
     home.open_chat(21, CHAT_B, entrypoint="claude-vscode")

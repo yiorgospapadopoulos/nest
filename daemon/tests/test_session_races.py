@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from harness.attachments.store import Attachment
-from harness.config.models import PermissionMode, RepoConfig
-from harness.errors import ConflictError
-from harness.events import types
-from harness.providers.base import UserInput
-from harness.sessions.errors import SessionBusyError, SessionClosedError
-from harness.sessions.live import LiveSession
-from harness.sessions.models import QueuedMessage, Session, SessionState, UpdateSession
-from harness.storage.db import Database
-from harness.worktrees.manager import Worktree
+from nestd.attachments.store import Attachment
+from nestd.config.models import PermissionMode, RepoConfig
+from nestd.errors import ConflictError
+from nestd.events import types
+from nestd.providers.base import UserInput
+from nestd.sessions.errors import SessionBusyError, SessionClosedError
+from nestd.sessions.live import LiveSession
+from nestd.sessions.models import QueuedMessage, Session, SessionState, UpdateSession
+from nestd.storage.db import Database
+from nestd.worktrees.manager import Worktree
 from tests.async_support import until
 from tests.fake_provider import FakeRun, background, hang, reply, until_interrupted
 from tests.fakes import FakeClock
@@ -54,7 +54,7 @@ async def test_stop_as_a_queued_message_starts_keeps_it_from_the_agent(
         await reply("first done")(run)
 
     env.provider.script(reply("prompt done"), first_turn, reply("second done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "message A", [])
     await env.reach(created.id, SessionState.RUNNING)
@@ -95,7 +95,7 @@ async def test_a_nudge_while_the_run_opens_starts_the_next_turn(env: Env) -> Non
     gate = asyncio.Event()
     env.provider.open_gate = gate
     env.provider.script(reply("on it"), reply("answer to the nudge"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.RUNNING)
 
     result = await env.manager.send(created.id, "You seem stuck", [], interrupt=True)
@@ -144,7 +144,7 @@ async def test_a_nudge_as_a_queued_message_starts_keeps_it_first(
         await reply("first done")(run)
 
     env.provider.script(reply("prompt done"), first_turn, reply("B done"), reply("nudge done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "message A", [])
     (run,) = env.provider.runs
@@ -176,7 +176,7 @@ async def test_a_nudge_as_a_queued_message_starts_keeps_it_first(
 async def test_two_messages_at_the_same_moment_run_one_after_the_other(env: Env) -> None:
     """BUG-17: the second is queued, not refused (D032)."""
     env.provider.script(reply("prompt done"), reply("one"), reply("two"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
 
     first, second = await asyncio.gather(
@@ -192,10 +192,10 @@ async def test_two_messages_at_the_same_moment_run_one_after_the_other(env: Env)
 async def test_a_message_sent_as_the_idle_close_runs_waits_for_the_agent_to_exit(
     env: Env,
 ) -> None:
-    """BUG-16: harness's own exiting process is not "open in Claude Code"."""
+    """BUG-16: Nest's own exiting process is not "open in Claude Code"."""
     env.manager = env.build(timedelta(milliseconds=20))
     env.provider.script(reply("done"), reply("again"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (first,) = env.provider.runs
     exiting, exit_now = asyncio.Event(), asyncio.Event()
@@ -232,7 +232,7 @@ async def test_a_turn_that_ends_before_its_message_is_sent_still_closes_its_idle
     gate = asyncio.Event()
     env.provider.send_gate = gate
     env.provider.script(reply("fast"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
 
     gate.set()
@@ -243,7 +243,7 @@ async def test_a_turn_that_ends_before_its_message_is_sent_still_closes_its_idle
 async def test_a_document_attached_while_background_tasks_run_keeps_the_run(env: Env) -> None:
     """BUG-02: a new attachment folder waits for the next run, as a new effort does (D046)."""
     env.provider.script(background(1, reply("started a background agent")), reply("read it"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     doc = await env.attachments.save("notes.txt", b"hi", "text/plain")
 
@@ -267,7 +267,7 @@ async def test_stop_while_the_turn_end_reads_the_queue_keeps_the_queue_waiting(
         await reply("first done")(run)
 
     env.provider.script(reply("prompt done"), first_turn, reply("second done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "message A", [])
     (run,) = env.provider.runs
@@ -300,7 +300,7 @@ async def test_a_message_sent_after_the_turn_ended_but_before_its_send_returned_
 ) -> None:
     """BUG-60: queued only because the sending task was still finishing, it starts then."""
     env.provider.script(reply("one"), reply("two"), reply("three"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     gate = asyncio.Event()
     env.provider.send_gate = gate
@@ -323,7 +323,7 @@ async def test_a_message_sent_after_the_turn_ended_but_before_its_send_returned_
 async def test_publishing_after_a_stop_keeps_the_queue_waiting(env: Env) -> None:
     """BUG-61: the end of publishing starts only what was sent meanwhile (D032, D054)."""
     env.provider.script(reply("one"), until_interrupted(), reply("three"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     await env.manager.send(created.id, "two", [])
     (run,) = env.provider.runs
@@ -344,11 +344,11 @@ async def test_publishing_after_a_stop_keeps_the_queue_waiting(env: Env) -> None
 async def test_the_engines_echo_of_a_mode_never_replaces_a_newer_choice(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """BUG-62: Claude Code reports the mode harness just sent it; the user's later choice,
+    """BUG-62: Claude Code reports the mode Nest just sent it; the user's later choice,
     saved while that reaches the run, stays (D048).
     """
     env.provider.script(reply("done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (run,) = env.provider.runs
     await env.manager.update(created.id, UpdateSession(permission_mode="plan"))
@@ -385,7 +385,7 @@ async def test_stop_while_the_next_message_waits_for_the_last_send_ends_the_turn
         await reply("two")(run)
 
     env.provider.script(reply("one"), quick, reply("three"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (run,) = env.provider.runs
     send_gate = asyncio.Event()
@@ -439,7 +439,7 @@ async def test_a_send_waiting_for_the_turn_end_never_starts_after_close(
 ) -> None:
     """BUG-53: the stored state never flips from closed back to running."""
     env.provider.script(reply("done"), reply("A done"), reply("never"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     in_hook, release = asyncio.Event(), asyncio.Event()
     original = env.hooks.state_changed
@@ -506,7 +506,7 @@ async def test_a_send_while_archiving_stops_the_run_is_refused_then_resumes(
 ) -> None:
     """BUG-53: archiving keeps the chat open; the next message after it opens a new run."""
     env.provider.script(reply("done"), reply("resumed"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (first,) = env.provider.runs
     exiting, exit_now = asyncio.Event(), asyncio.Event()
@@ -534,7 +534,7 @@ async def test_a_send_while_archiving_stops_the_run_is_refused_then_resumes(
 async def test_a_send_during_shutdown_is_refused(env: Env) -> None:
     """BUG-53: nothing starts while the daemon stops its agents."""
     env.provider.script(reply("done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (first,) = env.provider.runs
     exiting, exit_now = asyncio.Event(), asyncio.Event()
@@ -570,7 +570,7 @@ async def test_a_stopped_live_session_starts_no_work() -> None:
 
 async def test_a_message_queued_and_cancelled_while_publishing_starts_nothing(env: Env) -> None:
     env.provider.script(reply("one"))
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
 
     async with env.manager.publishing(created.id):
@@ -586,7 +586,7 @@ async def test_a_message_queued_and_cancelled_while_publishing_starts_nothing(en
 async def test_closing_while_a_message_is_sent_keeps_nothing_to_resend(env: Env) -> None:
     """Only a nudge keeps a cut-off message (BUG-58); closing drops everything."""
     env.provider.script(reply("one"), hang())
-    created = await env.create(prompt="one", mode="in_place", allow_dirty=True)
+    created = await env.create(prompt="one", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     env.provider.send_gate = asyncio.Event()
     await env.manager.send(created.id, "two", [])
@@ -604,7 +604,7 @@ async def test_closing_while_a_message_is_sent_keeps_nothing_to_resend(env: Env)
 async def test_two_archives_at_once_stop_the_run_once(env: Env) -> None:
     """Two devices archive the chat together; a message afterwards opens a new run."""
     env.provider.script(reply("done"), reply("resumed"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (first,) = env.provider.runs
     exiting, exit_now = asyncio.Event(), asyncio.Event()
@@ -633,7 +633,7 @@ async def test_a_mode_the_engine_reports_as_the_user_saves_it_is_saved_once(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env.provider.script(reply("done"))
-    created = await env.create(mode="in_place", allow_dirty=True)
+    created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
     (run,) = env.provider.runs
     sending, release = asyncio.Event(), asyncio.Event()

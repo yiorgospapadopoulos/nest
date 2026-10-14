@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.auth.token_socket import (
+from nestd.auth.token_socket import (
     SOCKET_NAME,
     PeerSocket,
     TokenSocket,
@@ -123,7 +123,7 @@ async def test_refuses_a_peer_running_as_another_user(
     )
     await server.start()
     try:
-        with caplog.at_level(logging.WARNING, logger="harness.auth.token_socket"):
+        with caplog.at_level(logging.WARNING, logger="nestd.auth.token_socket"):
             assert await ask(folder / SOCKET_NAME) == b""
     finally:
         await server.stop()
@@ -142,7 +142,7 @@ async def test_refuses_a_peer_whose_credentials_cannot_be_read(
     server = TokenSocket(folder / SOCKET_NAME, source, peer_uid=unreadable)
     await server.start()
     try:
-        with caplog.at_level(logging.WARNING, logger="harness.auth.token_socket"):
+        with caplog.at_level(logging.WARNING, logger="nestd.auth.token_socket"):
             assert await ask(folder / SOCKET_NAME) == b""
     finally:
         await server.stop()
@@ -159,7 +159,7 @@ async def test_a_failing_token_source_closes_without_an_answer(
     server = TokenSocket(folder / SOCKET_NAME, failing)
     await server.start()
     try:
-        with caplog.at_level(logging.ERROR, logger="harness.auth.token_socket"):
+        with caplog.at_level(logging.ERROR, logger="nestd.auth.token_socket"):
             assert await ask(folder / SOCKET_NAME) == b""
         # The server keeps serving later connections.
         assert await ask(folder / SOCKET_NAME) == b""

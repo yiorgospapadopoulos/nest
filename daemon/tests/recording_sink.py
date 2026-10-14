@@ -1,5 +1,5 @@
-from harness.config.models import PermissionMode
-from harness.providers.base import (
+from nestd.config.models import PermissionMode
+from nestd.providers.base import (
     AgentTask,
     CommandCatalog,
     EngineDetails,

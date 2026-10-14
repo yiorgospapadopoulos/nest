@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from harness.events import types
+from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.claude_support import CHAT_A, ClaudeHome, simple_chat
 from tests.fake_provider import reply

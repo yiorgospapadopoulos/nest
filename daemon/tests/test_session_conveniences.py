@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.models import ApprovalKind, ApprovalStatus
-from harness.events import types
-from harness.providers.base import (
+from nestd.approvals.models import ApprovalKind, ApprovalStatus
+from nestd.events import types
+from nestd.providers.base import (
     AccountInfo,
     CommandCatalog,
     ContextUsage,
@@ -16,9 +16,9 @@ from harness.providers.base import (
     PlanDecision,
     SlashCommand,
 )
-from harness.sessions.errors import NoWorkspaceError
-from harness.sessions.models import SessionState
-from harness.storage.db import Database
+from nestd.sessions.errors import NoWorkspaceError
+from nestd.sessions.models import SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import catalog, engine, plan, reply
 from tests.fakes import FakeClock

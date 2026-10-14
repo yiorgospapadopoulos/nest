@@ -5,18 +5,18 @@ import httpx
 import pytest
 from py_vapid import Vapid02
 
-from harness.notifications.messages import Notice
-from harness.notifications.subscriptions import PushSubscription, PushSubscriptionStore
-from harness.notifications.vapid import VapidKeys
-from harness.notifications.webpush import PushReport, WebPushChannel
-from harness.storage.db import Database
+from nestd.notifications.messages import Notice
+from nestd.notifications.subscriptions import PushSubscription, PushSubscriptionStore
+from nestd.notifications.vapid import VapidKeys
+from nestd.notifications.webpush import PushReport, WebPushChannel
+from nestd.storage.db import Database
 from tests.fakes import START, FakeClock, FakeSecretStore
 from tests.push_support import FakeServers, Receiver
 from tests.test_push_subscriptions import paired
 
 NOTICE = Notice(
     kind="needs_approval",
-    title="Needs approval · harness",
+    title="Needs approval · nest",
     body="Fix login: Approve Bash",
     url="/inbox",
     tag="session-s1",

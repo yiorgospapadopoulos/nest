@@ -3,10 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import JsonValue
 
-from harness.events.models import Event
-from harness.tracking.agents import MAX_STEPS, Change
-from harness.tracking.steps import short_arg, short_result
-from harness.tracking.tracker import SessionTracker
+from nestd.events.models import Event
+from nestd.tracking.agents import MAX_STEPS, Change
+from nestd.tracking.steps import short_arg, short_result
+from nestd.tracking.tracker import SessionTracker
 from tests.tracking_fixture import (
     AGENT_ID,
     ROOT,

@@ -5,12 +5,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from harness.api.app import create_app
-from harness.context import AppContext
+from nestd.api.app import create_app
+from nestd.context import AppContext
 from tests.api_support import build_context, local_token
 from tests.fakes import FakeClock, FakeSecretStore
 
-INDEX = "<!doctype html><title>harness</title>"
+INDEX = "<!doctype html><title>Nest</title>"
 IMMUTABLE = "public, max-age=31536000, immutable"
 
 
@@ -20,7 +20,7 @@ def dist(tmp_path: Path) -> Path:
     (root / "assets").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
     (root / "sw.js").write_text("self.addEventListener('fetch', () => {});", encoding="utf-8")
-    (root / "manifest.webmanifest").write_text('{"name": "harness"}', encoding="utf-8")
+    (root / "manifest.webmanifest").write_text('{"name": "nest"}', encoding="utf-8")
     (root / "icon-192.png").write_bytes(b"\x89PNG")
     (root / "assets" / "index-abc123.js").write_text("console.log(1);", encoding="utf-8")
     (root / "assets" / "index-abc123.css").write_text("body{}", encoding="utf-8")
@@ -64,7 +64,7 @@ async def test_root_serves_the_app_shell_without_auth_and_uncached(
     assert response.headers["cache-control"] == "no-cache"
 
 
-@pytest.mark.parametrize("path", ["/inbox", "/projects/harness/chat", "/assets"])
+@pytest.mark.parametrize("path", ["/inbox", "/projects/nest/chat", "/assets"])
 async def test_unknown_app_paths_fall_back_to_the_index(
     client: httpx.AsyncClient, path: str
 ) -> None:

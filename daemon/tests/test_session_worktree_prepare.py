@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from harness.config.models import WorktreeConfig
-from harness.events import types
-from harness.sessions.models import SessionState
-from harness.storage.db import Database
-from harness.worktrees.setup import link_files
+from nestd.config.models import WorktreeConfig
+from nestd.events import types
+from nestd.sessions.models import SessionState
+from nestd.storage.db import Database
+from nestd.worktrees.setup import link_files
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock
@@ -85,7 +85,7 @@ async def test_a_link_that_cannot_be_made_does_not_stop_the_chat(env: Env) -> No
     await env.register(WorktreeConfig(link=["conf/app.env"]))
     env.provider.script(reply("ok"))
 
-    created = await env.create(allow_dirty=True)
+    created = await env.create()
     await env.reach(created.id, SessionState.IDLE)
 
     workspace = next(

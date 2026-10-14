@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.events import types
-from harness.notifications.messages import TEST_NOTICE
-from harness.notifications.vapid import VAPID_ACCOUNT
+from nestd.events import types
+from nestd.notifications.messages import TEST_NOTICE
+from nestd.notifications.vapid import VAPID_ACCOUNT
 from tests.api_client import Api, running_api
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.push_support import FakeServers, Receiver, b64
@@ -168,14 +168,14 @@ async def test_notify_events_reach_subscribed_phones(api: Api, servers: FakeServ
 
     await api.ctx.bus.publish(
         types.NOTIFY,
-        {"kind": "failed", "session_id": "s1", "repo": "harness", "title": "T", "text": "boom"},
+        {"kind": "failed", "session_id": "s1", "repo": "nest", "title": "T", "text": "boom"},
         "s1",
     )
 
     await eventually(lambda: len(servers.to(ENDPOINT)) == 1)
     payload = receiver.read(servers.to(ENDPOINT)[0].content)
     assert payload == {
-        "title": "Failed · harness",
+        "title": "Failed · nest",
         "body": "T: boom",
         "url": "/chat/s1",
         "tag": "session-s1",

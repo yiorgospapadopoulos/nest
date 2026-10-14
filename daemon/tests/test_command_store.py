@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from harness.providers.base import AgentInfo, CommandCatalog, SlashCommand
-from harness.sessions.commands import CommandList, CommandStore
-from harness.sessions.store import SessionStore
-from harness.storage.db import Database
+from nestd.providers.base import AgentInfo, CommandCatalog, SlashCommand
+from nestd.sessions.commands import CommandList, CommandStore
+from nestd.sessions.store import SessionStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 

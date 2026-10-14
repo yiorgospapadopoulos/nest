@@ -6,8 +6,8 @@ from pathlib import Path
 
 import httpx
 
-from harness.api.app import create_app
-from harness.context import AppContext
+from nestd.api.app import create_app
+from nestd.context import AppContext
 from tests.api_support import build_context, local_token
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener

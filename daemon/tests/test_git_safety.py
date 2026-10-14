@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from harness.gitops.remotes import github_repo, push_urls, scrub_credentials, scrub_url
-from harness.gitops.runner import run_command
-from harness.gitops.safety import (
+from nestd.gitops.remotes import github_repo, push_urls, scrub_credentials, scrub_url
+from nestd.gitops.runner import run_command
+from nestd.gitops.safety import (
     HARDENED,
     RepoSetting,
     filter_overrides,

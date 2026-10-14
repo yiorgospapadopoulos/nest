@@ -7,12 +7,12 @@ from pydantic import JsonValue
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from harness.api.app import create_app
-from harness.api.routes.events import origin_allowed
-from harness.context import AppContext
-from harness.events import types
-from harness.events.bus import EventBus, SubscriptionOverflowError
-from harness.events.models import Event
+from nestd.api.app import create_app
+from nestd.api.routes.events import origin_allowed
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.events.bus import EventBus, SubscriptionOverflowError
+from nestd.events.models import Event
 from tests.api_support import build_context, local_token
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -54,7 +54,7 @@ def expect_close(client: TestClient, url: str, code: int, headers: dict[str, str
 
 
 @pytest.mark.parametrize(
-    "headers", [{}, {"Authorization": "Bearer wrong"}, {"Cookie": "harness_token=wrong"}]
+    "headers", [{}, {"Authorization": "Bearer wrong"}, {"Cookie": "nest_token=wrong"}]
 )
 def test_unauthenticated_socket_is_closed_with_4401(
     client: TestClient, headers: dict[str, str]
@@ -82,9 +82,20 @@ def test_replays_after_id_then_streams_live_events(
 def test_cookie_auth_and_live_only_without_after(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:
-    cookie = {"Cookie": f"harness_token={local_token(secrets)}"}
+    cookie = {"Cookie": f"nest_token={local_token(secrets)}"}
     with client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=cookie) as ws:
         ws.send_text("ignored")
+        live = publish(client, ctx, "live.only")
+        assert ws.receive_json()["id"] == live.id
+
+
+@pytest.mark.parametrize("name", ["nest_token", "harness_token"])
+def test_the_cookie_from_before_the_rename_still_authenticates(
+    client: TestClient, ctx: AppContext, secrets: FakeSecretStore, name: str
+) -> None:
+    """B43: a phone paired before the rename keeps its `harness_token` cookie."""
+    cookie = {"Cookie": f"{name}={local_token(secrets)}"}
+    with client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=cookie) as ws:
         live = publish(client, ctx, "live.only")
         assert ws.receive_json()["id"] == live.id
 

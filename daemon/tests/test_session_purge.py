@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.models import ApprovalKind
-from harness.events import types
-from harness.sessions.errors import SessionNotFoundError
-from harness.sessions.models import SessionState
-from harness.storage.db import Database
+from nestd.approvals.models import ApprovalKind
+from nestd.events import types
+from nestd.sessions.errors import SessionNotFoundError
+from nestd.sessions.models import SessionState
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import ask, hang, reply
 from tests.fakes import FakeClock

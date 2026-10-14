@@ -3,7 +3,7 @@ from typing import Any
 from claude_agent_sdk import PermissionResultAllow
 from claude_agent_sdk.types import HookInput
 
-from harness.providers.base import (
+from nestd.providers.base import (
     PermissionDecision,
     PermissionRequest,
     PlanDecision,
@@ -13,7 +13,7 @@ from harness.providers.base import (
     QuestionOption,
     QuestionRequest,
 )
-from harness.providers.claude_questions import QuestionBridge, parse_questions
+from nestd.providers.claude_questions import QuestionBridge, parse_questions
 
 # Shaped like a real AskUserQuestion call.
 TOOL_INPUT: dict[str, Any] = {
@@ -106,7 +106,7 @@ async def test_the_hook_returns_the_answers_as_updated_input() -> None:
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "permissionDecisionReason": "The user answered in harness.",
+            "permissionDecisionReason": "The user answered in Nest.",
             "updatedInput": {**TOOL_INPUT, "answers": {"Which data structure?": "DAG"}},
         }
     }

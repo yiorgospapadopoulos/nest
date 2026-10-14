@@ -1,0 +1,5 @@
+"""Nest daemon."""
+
+from importlib.metadata import version
+
+__version__ = version("nestd")

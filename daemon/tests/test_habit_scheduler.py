@@ -8,13 +8,13 @@ from datetime import timedelta
 
 import pytest
 
-from harness.approvals.models import ApprovalStatus
-from harness.context import AppContext
-from harness.events import types
-from harness.pixies.habit_models import UpdateHabit
-from harness.pixies.habit_store import KEEP_RUNS, StoredRun
-from harness.pixies.prompt import HABIT_RUN_NOTE
-from harness.pixies.scheduler import (
+from nestd.approvals.models import ApprovalStatus
+from nestd.context import AppContext
+from nestd.events import types
+from nestd.pixies.habit_models import UpdateHabit
+from nestd.pixies.habit_store import KEEP_RUNS, StoredRun
+from nestd.pixies.prompt import HABIT_RUN_NOTE
+from nestd.pixies.scheduler import (
     INTERRUPTED_REASON,
     LATE_REASON,
     PAUSED_REASON,
@@ -23,8 +23,8 @@ from harness.pixies.scheduler import (
     USAGE_REASON,
     HabitScheduler,
 )
-from harness.providers.base import UsageInfo, UsageWindow
-from harness.sessions.models import Session, SessionState
+from nestd.providers.base import UsageInfo, UsageWindow
+from nestd.sessions.models import Session, SessionState
 from tests.async_support import until
 from tests.fake_provider import (
     FakeProvider,

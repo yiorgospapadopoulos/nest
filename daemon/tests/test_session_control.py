@@ -5,23 +5,23 @@ from pathlib import Path
 
 import pytest
 
-from harness.approvals.models import Approval, ApprovalKind, ApprovalStatus
-from harness.config.models import WorktreeConfig
-from harness.events import types
-from harness.providers.base import (
+from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
+from nestd.config.models import WorktreeConfig
+from nestd.events import types
+from nestd.providers.base import (
     PermissionDecision,
     Question,
     QuestionAnswer,
     QuestionOption,
     QuestionRequest,
 )
-from harness.sessions.errors import (
+from nestd.sessions.errors import (
     NoTurnInProgressError,
     SessionClosedError,
     SessionNotFoundError,
 )
-from harness.sessions.models import SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.sessions.models import SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import (
     ask,
@@ -223,7 +223,7 @@ async def test_a_new_effort_reopens_the_run_at_the_next_message(env: Env) -> Non
 
 async def test_switching_to_bypass_reopens_the_run_in_bypass(env: Env) -> None:
     """Claude Code refuses a live switch into bypass unless launched with a flag that offers
-    it to every run (D046); harness reopens the run in bypass at the next message instead."""
+    it to every run (D046); Nest reopens the run in bypass at the next message instead."""
     env.provider.script(reply("one"), reply("two"), reply("three"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)

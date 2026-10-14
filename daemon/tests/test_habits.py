@@ -5,11 +5,11 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
-from harness.context import AppContext
-from harness.errors import InvalidInputError
-from harness.events import types
-from harness.pixies.errors import PixieNotFoundError
-from harness.pixies.habit_models import (
+from nestd.context import AppContext
+from nestd.errors import InvalidInputError
+from nestd.events import types
+from nestd.pixies.errors import PixieNotFoundError
+from nestd.pixies.habit_models import (
     NEEDS_A_START,
     CreateHabit,
     HabitIdea,
@@ -17,8 +17,8 @@ from harness.pixies.habit_models import (
     problems,
     severity_at_least,
 )
-from harness.pixies.habit_store import HabitNotFoundError
-from harness.sessions.models import SessionState
+from nestd.pixies.habit_store import HabitNotFoundError
+from nestd.sessions.models import SessionState
 from tests.fake_provider import FakeProvider, reply
 from tests.fakes import FakeClock
 from tests.habit_support import (

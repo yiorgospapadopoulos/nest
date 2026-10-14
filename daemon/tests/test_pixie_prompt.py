@@ -1,16 +1,16 @@
 from datetime import UTC, datetime
 
-from harness.events import types
-from harness.events.bus import EventBus
-from harness.pixies.models import Pixie
-from harness.pixies.prompt import (
+from nestd.events import types
+from nestd.events.bus import EventBus
+from nestd.pixies.models import Pixie
+from nestd.pixies.prompt import (
     HABIT_RUN_NOTE,
     habit_message,
     habit_system_prompt,
     recent_conversation,
     system_prompt,
 )
-from harness.storage.db import Database
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)

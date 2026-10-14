@@ -1,7 +1,7 @@
 import pytest
 
-from harness.prs.summary import pr_summary
-from harness.review.models import DiffStats
+from nestd.prs.summary import pr_summary
+from nestd.review.models import DiffStats
 
 STATS = DiffStats(files=3, additions=40, deletions=2)
 

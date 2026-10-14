@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from harness.config.models import RepoConfig, WorktreeConfig
-from harness.gitops.runner import GitError
-from harness.paths import AppPaths
-from harness.worktrees.manager import Worktree, WorktreeManager, branch_name
-from harness.worktrees.setup import run_commands
+from nestd.config.models import RepoConfig, WorktreeConfig
+from nestd.gitops.runner import GitError
+from nestd.paths import AppPaths
+from nestd.worktrees.manager import Worktree, WorktreeManager, branch_name
+from nestd.worktrees.setup import run_commands
 from tests.async_support import until
 from tests.git_support import commit_file, git, init_repo
 
@@ -46,7 +46,7 @@ async def test_create_branches_from_the_default_branch_into_the_repos_claude_wor
 
     worktree = await manager.create(repo, "0123456789abcdef", "Fix the login bug!")
 
-    assert worktree.path == repo.path / ".claude" / "worktrees" / "harness-01234567"
+    assert worktree.path == repo.path / ".claude" / "worktrees" / "nest-01234567"
     assert re.fullmatch(r"agent/fix-the-login-bug-[0-9a-f]{6}", worktree.branch)
     assert worktree.base_ref == main_sha
     assert (worktree.path / "README.md").is_file()
@@ -242,17 +242,6 @@ async def test_removing_twice_is_harmless(manager: WorktreeManager, tmp_path: Pa
     assert worktree.branch not in branches(repo)
 
 
-async def test_dirty_files(manager: WorktreeManager, tmp_path: Path) -> None:
-    repo = make_repo(tmp_path)
-    assert await manager.dirty_files(repo) == []
-    commit_file(repo.path, "old name.txt")
-    git(repo.path, "mv", "old name.txt", "new name.txt")
-    (repo.path / "README.md").write_text("changed", encoding="utf-8")
-    (repo.path / "untracked.txt").write_text("x", encoding="utf-8")
-
-    assert await manager.dirty_files(repo) == ["README.md", "new name.txt", "untracked.txt"]
-
-
 async def test_head_is_the_current_commit_or_none(manager: WorktreeManager, tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     empty = tmp_path / "empty"
@@ -302,18 +291,35 @@ async def test_remove_deletes_files_written_after_git_removed_the_worktree(
     assert worktree.branch not in branches(repo)
 
 
+async def test_remove_deletes_leftovers_of_a_worktree_made_before_the_rename(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    """B43: worktrees made before the rename to Nest are named `harness-<short id>`."""
+    repo = make_repo(tmp_path)
+    old = repo.path / ".claude" / "worktrees" / "harness-0123abcd"
+    git(repo.path, "worktree", "add", "-q", "-b", "agent/old", str(old))
+    git(repo.path, "worktree", "remove", "--force", str(old))
+    (old / ".remember").mkdir(parents=True)
+
+    await manager.remove(repo, Worktree(old, "agent/old", ""), delete_branch=True)
+
+    assert not old.exists()
+    assert "agent/old" not in branches(repo)
+
+
 @pytest.mark.parametrize(
     "where",
     [
         "elsewhere",
         "data/worktrees/../escaped",
         "repo/.claude/worktrees/agent-claude",
-        "repo/.claude/worktrees/harness-x/../agent-escaped",
-        "repo/.claude/harness-misplaced",
+        "repo/.claude/worktrees/nest-x/../agent-escaped",
+        "repo/.claude/nest-misplaced",
+        "repo/.claude/worktrees/harnessy-x",
         "repo/src",
     ],
 )
-async def test_remove_never_deletes_directories_outside_harness_worktrees(
+async def test_remove_never_deletes_directories_outside_nest_worktrees(
     manager: WorktreeManager, tmp_path: Path, where: str
 ) -> None:
     repo = make_repo(tmp_path)

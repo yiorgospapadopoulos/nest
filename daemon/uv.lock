@@ -819,59 +819,6 @@ wheels = [
 ]
 
 [[package]]
-name = "harness"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "claude-agent-sdk" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "keyring" },
-    { name = "pydantic" },
-    { name = "python-multipart" },
-    { name = "pywebpush" },
-    { name = "tomli-w" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx2" },
-    { name = "pip-audit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "claude-agent-sdk", specifier = ">=0.2.163" },
-    { name = "fastapi", specifier = ">=0.142.2" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "keyring", specifier = ">=25.7.0" },
-    { name = "pydantic", specifier = ">=2.13.5" },
-    { name = "python-multipart", specifier = ">=0.0.32" },
-    { name = "pywebpush", specifier = ">=2.5.0" },
-    { name = "tomli-w", specifier = ">=1.2.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx2", specifier = ">=2.13.1" },
-    { name = "pip-audit", specifier = ">=2.10.1" },
-    { name = "pyright", specifier = ">=1.1.414" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-asyncio", specifier = ">=1.4.0" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ruff", specifier = ">=0.16.10" },
-]
-
-[[package]]
 name = "http-ece"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1380,6 +1327,59 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/02/8b/b2c2805c3eb6fa4cdf5512fb95ac6174dde71e34dd601c5be52f4df5dc82/multidict-6.9.1-cp315-cp315t-win_amd64.whl", hash = "sha256:e96ca64383efa107262ee3949f047af5ee4f1845ba09463466c04d35a83bd3ec", size = 64984, upload-time = "2026-09-21T17:58:59.446Z" },
     { url = "https://files.pythonhosted.org/packages/fd/34/03f1d204d698c408f4754c969882609b6b7a902c0e3d16a7033f219cdeda/multidict-6.9.1-cp315-cp315t-win_arm64.whl", hash = "sha256:501ed8b02a5990c67a91c732843609d43a6be1f7576fcdfc867331239f37fbd3", size = 58742, upload-time = "2026-09-21T17:59:01.726Z" },
     { url = "https://files.pythonhosted.org/packages/be/59/e26cb779be4c591d1a910f59d29aca9fba4de70349840a833beba2652371/multidict-6.9.1-py3-none-any.whl", hash = "sha256:7bf6478188f4e47bf5686e8a33da4ae28bf43b1b2528d9ee144d28492bfac60b", size = 19176, upload-time = "2026-09-21T17:59:03.501Z" },
+]
+
+[[package]]
+name = "nestd"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "claude-agent-sdk" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "keyring" },
+    { name = "pydantic" },
+    { name = "python-multipart" },
+    { name = "pywebpush" },
+    { name = "tomli-w" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx2" },
+    { name = "pip-audit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "claude-agent-sdk", specifier = ">=0.2.163" },
+    { name = "fastapi", specifier = ">=0.142.2" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "keyring", specifier = ">=25.7.0" },
+    { name = "pydantic", specifier = ">=2.13.5" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
+    { name = "pywebpush", specifier = ">=2.5.0" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx2", specifier = ">=2.13.1" },
+    { name = "pip-audit", specifier = ">=2.10.1" },
+    { name = "pyright", specifier = ">=1.1.414" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "ruff", specifier = ">=0.16.10" },
 ]
 
 [[package]]

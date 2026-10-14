@@ -2,9 +2,9 @@ import sqlite3
 
 import pytest
 
-from harness.pixies.errors import DuplicateSlugError, TeamNotFoundError
-from harness.pixies.team_store import TeamStore
-from harness.storage.db import Database
+from nestd.pixies.errors import DuplicateSlugError, TeamNotFoundError
+from nestd.pixies.team_store import TeamStore
+from nestd.storage.db import Database
 from tests.fakes import FakeClock
 
 

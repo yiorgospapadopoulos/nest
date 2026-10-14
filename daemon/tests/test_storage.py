@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from harness.storage.db import Database, DatabaseError
-from harness.storage.migrations import load_migrations
+from nestd.storage.db import Database, DatabaseError
+from nestd.storage.migrations import load_migrations
 
 
 def write_migrations(directory: Path, files: dict[str, str]) -> Path:

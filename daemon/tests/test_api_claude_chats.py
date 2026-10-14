@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.events import types
+from nestd.events import types
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.claude_support import CHAT_A, CHAT_B, ClaudeHome, simple_chat, user
@@ -161,7 +161,7 @@ async def test_archive_needs_a_boolean(
     assert response.status_code == 422
 
 
-async def test_an_archived_chat_can_still_be_continued_in_harness(
+async def test_an_archived_chat_can_still_be_continued_in_nest(
     api: Api, claude: ClaudeHome, root: Path
 ) -> None:
     claude.write_chat(root, CHAT_A, simple_chat())
@@ -170,6 +170,6 @@ async def test_an_archived_chat_can_still_be_continued_in_harness(
     adopted = await api.http.post(f"/api/claude-chats/{CHAT_A}/adopt")
 
     assert adopted.status_code == 201
-    # It is a harness session now, in the default (unarchived) list.
+    # It is a Nest session now, in the default (unarchived) list.
     assert adopted.json()["archived_at"] is None
     assert (await api.http.get("/api/claude-chats")).json() == []

@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.paths import AppPaths
-from harness.pixies.files import PixieFiles
-from harness.pixies.models import Pixie
-from harness.pixies.tools import TOOL_NAMES, pixie_tools
-from harness.providers.base import AgentTool, ToolRefusedError
-from harness.repos.service import RepoService
+from nestd.paths import AppPaths
+from nestd.pixies.files import PixieFiles
+from nestd.pixies.models import Pixie
+from nestd.pixies.tools import TOOL_NAMES, pixie_tools
+from nestd.providers.base import AgentTool, ToolRefusedError
+from nestd.repos.service import RepoService
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 

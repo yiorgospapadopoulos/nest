@@ -5,11 +5,11 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
-from harness.approvals.models import ApprovalStatus
-from harness.events import types
-from harness.sessions.errors import SessionClosedError, SessionNotFoundError
-from harness.sessions.models import SessionState, UpdateSession
-from harness.storage.db import Database
+from nestd.approvals.models import ApprovalStatus
+from nestd.events import types
+from nestd.sessions.errors import SessionClosedError, SessionNotFoundError
+from nestd.sessions.models import SessionState, UpdateSession
+from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import ask, hang, reply
 from tests.fakes import FakeClock
