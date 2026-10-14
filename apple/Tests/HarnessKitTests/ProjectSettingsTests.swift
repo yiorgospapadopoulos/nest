@@ -47,24 +47,78 @@ import Testing
         #expect(app.repos.count == 2)
     }
 
-    @Test func savingTheWorktreeSettingsUpdatesTheProject() async throws {
+    /// Each change sends only the setting it changed, so it cannot undo a change made
+    /// meanwhile elsewhere (audit BUG-102).
+    @Test func aChangeSendsOnlyWhatItChanged() async throws {
         let app = try await loaded()
-        var config = try #require(app.repo("todo-ui")).worktree
-        config.isDefault = nil
-        config.setup = []
+        let saved = try await app.changeSettings(of: "todo-ui") { $0.isDefault = nil }
+        #expect(saved?.worktree.isDefault == nil)
+        #expect(app.repo("todo-ui")?.worktree.isDefault == nil)
+        #expect(api.calls.last == #"updateRepo todo-ui {"default":null}"#)
 
-        let saved = try await app.saveWorktree(config, of: "todo-ui")
+        try await app.changeSettings(of: "todo-ui") { $0.setup = [] }
+        #expect(api.calls.last == #"updateRepo todo-ui {"setup":[]}"#)
+        #expect(app.repo("todo-ui")?.worktree.link == [".env.local"])
 
-        #expect(saved.worktree == config)
-        #expect(app.repo("todo-ui")?.worktree == config)
+        // Nothing changed, nothing sent.
+        let calls = api.calls.count
+        let same = try await app.changeSettings(of: "todo-ui") { $0.addLink(".env.local") }
+        #expect(same == app.repo("todo-ui"))
+        #expect(api.calls.count == calls)
+        // A project gone meanwhile is left alone.
+        #expect(try await app.changeSettings(of: "gone") { $0.isDefault = true } == nil)
+        #expect(api.calls.count == calls)
+    }
+
+    /// Quick changes save one at a time, each on top of what the last save returned, so
+    /// none is lost (audit BUG-102).
+    @Test func quickChangesSaveInTurnWithoutLosingAny() async throws {
+        let app = try await loaded()
+        let gate = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["updateRepo"] = gate.stream }
+        let first = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("a") } }
+        try await waitFor { app.isSavingSettings(of: "todo-ui") }
+        let second = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("b") } }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(!api.calls.contains { $0.hasPrefix("updateRepo") })
+
+        gate.continuation.finish()
+        _ = try await first.value
+        _ = try await second.value
+
         #expect(
-            api.calls.last
-                == #"updateWorktree todo-ui {"link":[".env.local"],"setup":[],"setup_timeout_seconds":900}"#
-        )
-        // A project gone from the list meanwhile is not added back.
-        api.set { $0.repos.append(Fixture.plainRepo) }
-        try await app.saveWorktree(config, of: Fixture.plainRepo.name)
-        #expect(app.repo(Fixture.plainRepo.name) == nil)
+            api.calls.filter { $0.hasPrefix("updateRepo") } == [
+                #"updateRepo todo-ui {"link":[".env.local","a"]}"#,
+                #"updateRepo todo-ui {"link":[".env.local","a","b"]}"#,
+            ])
+        #expect(app.repo("todo-ui")?.worktree.link == [".env.local", "a", "b"])
+        #expect(!app.isSavingSettings(of: "todo-ui"))
+    }
+
+    /// A refused save leaves the project as it was, and later changes still save.
+    @Test func aRefusedChangeKeepsTheProjectAndTheNextOneSaves() async throws {
+        let app = try await loaded()
+        api.fail("updateRepo", with: APIError.invalidInput("bad link"))
+        await #expect(throws: APIError.invalidInput("bad link")) {
+            try await app.changeSettings(of: "todo-ui") { $0.addLink("x") }
+        }
+        #expect(app.repo("todo-ui")?.worktree.link == [".env.local"])
+        api.set { $0.failures = [:] }
+        try await app.changeSettings(of: "todo-ui") { $0.addLink("y") }
+        #expect(app.repo("todo-ui")?.worktree.link == [".env.local", "y"])
+    }
+
+    @Test func removingByValueSkipsAnEntryAlreadyGone() {
+        var config = WorktreeConfig(link: ["a", "b"], setup: ["npm ci", "make", "npm ci"])
+        config.removeLink("b")
+        config.removeLink("zz")
+        #expect(config.link == ["a"])
+        config.removeSetup("npm ci", at: 2)
+        #expect(config.setup == ["npm ci", "make"])
+        // The list changed since it was shown: the command at that place is another one.
+        config.removeSetup("npm ci", at: 1)
+        config.removeSetup("npm ci", at: 9)
+        #expect(config.setup == ["npm ci", "make"])
     }
 
     @Test func suggestsOnlyLinksNotThereYet() async throws {

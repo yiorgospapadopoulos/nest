@@ -186,12 +186,12 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:
-                #"{"acknowledge_violation":false,"commit_message":"M","expected_head":"c","open_pr":true,"push":true}"#,
+                #"{"acknowledge_violation":false,"commit_message":"M","expected_fingerprint":"f","expected_head":"c","open_pr":true,"push":true}"#,
             response: sessionJSON
         ) {
             _ = try await $0.approve(
                 "s1",
-                ApproveRequest(commitMessage: "M", expectedHead: "c"))
+                ApproveRequest(commitMessage: "M", expectedHead: "c", expectedFingerprint: "f"))
         },
         RouteCase("POST", "/api/sessions/s1/reject", response: sessionJSON) {
             _ = try await $0.reject("s1")
@@ -317,19 +317,26 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("DELETE", "/api/repos/todo-ui?purge_sessions=true", response: "") {
             try await $0.removeRepo("todo-ui", purgeSessions: true)
         },
-        RouteCase(
-            "PUT", "/api/repos/todo-ui/worktree",
-            body:
-                #"{"default":false,"link":[".env"],"setup":["npm ci"],"setup_timeout_seconds":900}"#,
-            response: repoJSON
-        ) {
-            _ = try await $0.updateWorktree(
-                "todo-ui", WorktreeConfig(isDefault: false, link: [".env"], setup: ["npm ci"]))
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"default":null}"#, response: repoJSON) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: WorktreeConfig(isDefault: true), to: WorktreeConfig()))
         },
         RouteCase(
-            "PUT", "/api/repos/todo-ui/worktree",
-            body: #"{"link":[],"setup":[],"setup_timeout_seconds":60}"#, response: repoJSON
-        ) { _ = try await $0.updateWorktree("todo-ui", WorktreeConfig(setupTimeoutSeconds: 60)) },
+            "PATCH", "/api/repos/todo-ui", body: #"{"default":false,"link":[".env"]}"#,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(
+                    from: WorktreeConfig(setup: ["npm ci"]),
+                    to: WorktreeConfig(isDefault: false, link: [".env"], setup: ["npm ci"])))
+        },
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"setup":[]}"#, response: repoJSON) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: WorktreeConfig(setup: ["npm ci"]), to: WorktreeConfig()))
+        },
         RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
             _ = try await $0.linkSuggestions("todo-ui")
         },
@@ -485,6 +492,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                 == "attachments larger than 20 MB are not accepted")
     }
 
+    /// A file that grows after its size was checked is still cut off at the limit: the
+    /// read itself stops one byte past it and refuses (audit M-8).
+    @Test func aFileThatGrewAfterTheCheckIsRefusedAfterReading() throws {
+        let large = try file(size: AttachmentFile.maximumSize + 1)
+        defer { try? FileManager.default.removeItem(at: large) }
+        #expect(throws: AttachmentFileError.tooLarge) {
+            _ = try AttachmentFile.readCapped(large)
+        }
+        let largest = try file(size: AttachmentFile.maximumSize)
+        defer { try? FileManager.default.removeItem(at: largest) }
+        #expect(try AttachmentFile.readCapped(largest).count == AttachmentFile.maximumSize)
+    }
+
     @Test func anEmptyFileReadsEmpty() async throws {
         let empty = try file(size: 0)
         defer { try? FileManager.default.removeItem(at: empty) }
@@ -586,7 +606,10 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(
             await failure(409, #"{"detail": "Wait for it.", "code": "background_running"}"#)
                 == .approveRefused("Wait for it.", reason: .backgroundRunning))
-        for code in ["nested_repository", "unsafe_branch", "unsafe_repo_config"] {
+        for code in [
+            "nested_repository", "unsafe_branch", "unsafe_repo_config", "index_flags",
+            "lfs_unsupported", "review_changed",
+        ] {
             let error = await failure(409, #"{"detail": "No.", "code": "\#(code)"}"#)
             #expect(error == .approveRefused("No.", reason: ApproveRefusal(rawValue: code)!))
             #expect(error?.pushRemote == nil)
@@ -709,7 +732,12 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             ApproveRefusal.headChanged.hint
                 == "The branch moved since you looked. Check the changes again."
         )
+        #expect(
+            ApproveRefusal.reviewChanged.hint
+                == "The changes were read again. Check them before approving.")
         #expect(ApproveRefusal.gitViolation.hint == nil)
         #expect(ApproveRefusal.backgroundRunning.hint == nil)
+        #expect(ApproveRefusal.indexFlags.hint == nil)
+        #expect(ApproveRefusal.lfsUnsupported.hint == nil)
     }
 }

@@ -113,10 +113,15 @@ final class FakeAPI: HarnessAPI {
         }
     }
 
-    func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo {
-        try call("updateWorktree", "\(name) \(Fixture.json(config))") { state in
+    func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {
+        await pass("updateRepo")
+        return try call("updateRepo", "\(name) \(Fixture.json(patch))") { state in
             let index = state.repos.firstIndex { $0.name == name }!
-            state.repos[index].worktree = config
+            if patch.changesDefault {
+                state.repos[index].worktree.isDefault = patch.isDefault
+            }
+            state.repos[index].worktree.link = patch.link ?? state.repos[index].worktree.link
+            state.repos[index].worktree.setup = patch.setup ?? state.repos[index].worktree.setup
             return state.repos[index]
         }
     }
@@ -239,6 +244,7 @@ final class FakeAPI: HarnessAPI {
     }
 
     func rewind(_ id: String, message: Int) async throws {
+        await pass("rewind")
         try call("rewind", "\(id) \(message)") { _ in }
     }
 
@@ -298,16 +304,18 @@ final class FakeAPI: HarnessAPI {
     }
 
     func diff(_ sessionID: String) async throws -> SessionDiff {
-        try call("diff", sessionID) { $0.diff }
+        await pass("diff")
+        return try call("diff", sessionID) { $0.diff }
     }
 
     func approve(_ sessionID: String, _ request: ApproveRequest) async throws -> Session {
         let files = request.files.map { " files=\($0)" } ?? ""
         let head = request.expectedHead.map { " head=\($0)" } ?? ""
+        let fingerprint = request.expectedFingerprint.map { " fingerprint=\($0)" } ?? ""
         let remote = request.confirmRemoteURL.map { " remote=\($0)" } ?? ""
         let detail =
             "\(sessionID) \(request.commitMessage) open_pr=\(request.openPR)\(files)\(head)"
-            + remote
+            + fingerprint + remote
         await pass("approve")
         return try call("approve", detail) { state in
             session(sessionID, in: &state) { $0.prURL = "https://example.com/pr/1" }

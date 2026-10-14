@@ -46,8 +46,8 @@ public struct APIClient: HarnessAPI {
         try await perform("DELETE", ["repos", name], query: query)
     }
 
-    public func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo {
-        try await call("PUT", ["repos", name, "worktree"], body: config)
+    public func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {
+        try await call("PATCH", ["repos", name], body: patch)
     }
 
     public func linkSuggestions(_ name: String) async throws -> [String] {

@@ -171,6 +171,8 @@ public final class AppStore {
     /// The latest repo reload `reloadRepos` started.
     @ObservationIgnored public private(set) var reloadingRepos: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
+    /// The latest settings save of each project, which the next one waits for.
+    private var settingSaves: [String: Task<Repo?, any Error>] = [:]
     /// Open project tabs in order, by repo name.
     public private(set) var openProjects: [String]
     public private(set) var currentProject: String?
@@ -339,14 +341,39 @@ public final class AppStore {
         show(repos.filter { $0.name != name })
     }
 
-    /// Saves a project's worktree settings: its default, links and setup commands.
+    /// Changes a project's worktree default, links or setup commands. Saves run one at a
+    /// time per project, each change applied to the settings the last save returned, and
+    /// only the settings it changed are sent (audit BUG-102). Nil when the project is gone.
     @discardableResult
-    public func saveWorktree(_ config: WorktreeConfig, of name: String) async throws -> Repo {
-        let repo = try await api.updateWorktree(name, config)
-        if let index = repos.firstIndex(where: { $0.name == name }) {
-            repos[index] = repo
+    public func changeSettings(
+        of name: String, _ change: @escaping @Sendable (inout WorktreeConfig) -> Void
+    ) async throws -> Repo? {
+        let previous = settingSaves[name]
+        let save = Task {
+            _ = try? await previous?.value
+            guard let repo = repo(name) else { return nil as Repo? }
+            var config = repo.worktree
+            change(&config)
+            let patch = RepoPatch(from: repo.worktree, to: config)
+            guard !patch.isEmpty else { return repo }
+            let saved = try await api.updateRepo(name, patch)
+            if let index = repos.firstIndex(where: { $0.name == name }) {
+                repos[index] = saved
+            }
+            return saved
         }
-        return repo
+        settingSaves[name] = save
+        defer {
+            if settingSaves[name] == save {
+                settingSaves[name] = nil
+            }
+        }
+        return try await save.value
+    }
+
+    /// A settings change of the project is saving or waiting its turn.
+    public func isSavingSettings(of name: String) -> Bool {
+        settingSaves[name] != nil
     }
 
     /// Gitignored files of the project worth linking, not linked yet.

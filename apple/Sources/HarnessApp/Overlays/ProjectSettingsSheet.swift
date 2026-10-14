@@ -53,14 +53,15 @@ private struct WorktreeSection: View {
             Caption(text: "Agent default follows Settings, now \(agentDefault).")
         }
         SheetSection(title: "Linked files") {
-            ListRows(items: config.link, mono: true) { index in
-                save { $0.link.remove(at: index) }
+            ListRows(items: config.link, mono: true) { _, path in
+                save { $0.removeLink(path) }
             }
             AddRow(placeholder: "Path in the project, such as .env", text: $newLink) {
                 var changed = config
                 if changed.addLink(newLink) {
+                    let path = newLink
                     newLink = ""
-                    shell.saveWorktree(changed, of: repo.name)
+                    save { $0.addLink(path) }
                 } else {
                     shell.show(
                         "Use a path inside the project that is not linked yet", kind: .failed)
@@ -88,14 +89,15 @@ private struct WorktreeSection: View {
             )
         }
         SheetSection(title: "Setup commands") {
-            ListRows(items: config.setup, mono: true) { index in
-                save { $0.setup.remove(at: index) }
+            ListRows(items: config.setup, mono: true) { index, command in
+                save { $0.removeSetup(command, at: index) }
             }
             AddRow(placeholder: "Command, such as npm ci", text: $newSetup) {
+                let command = newSetup
                 var changed = config
-                if changed.addSetup(newSetup) {
+                if changed.addSetup(command) {
                     newSetup = ""
-                    shell.saveWorktree(changed, of: repo.name)
+                    save { $0.addSetup(command) }
                 }
             }
             Caption(text: "Run in order in each new worktree before the chat starts.")
@@ -105,10 +107,9 @@ private struct WorktreeSection: View {
         }
     }
 
-    private func save(_ change: (inout WorktreeConfig) -> Void) {
-        var config = repo.worktree
-        change(&config)
-        shell.saveWorktree(config, of: repo.name)
+    /// Each change applies to the settings as last saved, not as this view shows them.
+    private func save(_ change: @escaping @Sendable (inout WorktreeConfig) -> Void) {
+        shell.changeSettings(of: repo.name, change)
     }
 }
 
@@ -145,11 +146,11 @@ private struct RemoveSection: View {
     }
 }
 
-/// Items with a remove button each.
+/// Items with a remove button each; removing names the item and its place.
 private struct ListRows: View {
     let items: [String]
     var mono = false
-    let remove: (Int) -> Void
+    let remove: (Int, String) -> Void
 
     var body: some View {
         if items.isEmpty {
@@ -167,7 +168,7 @@ private struct ListRows: View {
                     .textSelection(.enabled)
                 Spacer(minLength: 8)
                 Button {
-                    remove(index)
+                    remove(index, item)
                 } label: {
                     Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))
                 }

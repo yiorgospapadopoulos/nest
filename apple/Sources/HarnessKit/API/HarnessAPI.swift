@@ -10,8 +10,9 @@ public protocol HarnessAPI: Sendable {
     func repoCommands(_ repo: String) async throws -> CommandList
     /// Unregisters the repo; `purgeSessions` deletes its chats first. The folder stays.
     func removeRepo(_ name: String, purgeSessions: Bool) async throws
-    /// Replaces the repo's worktree settings: its default, links and setup commands.
-    func updateWorktree(_ name: String, _ config: WorktreeConfig) async throws -> Repo
+    /// Changes only the repo settings the patch names: its worktree default, links or
+    /// setup commands.
+    func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo
     /// Gitignored files in the checkout worth linking into worktrees.
     func linkSuggestions(_ name: String) async throws -> [String]
 
