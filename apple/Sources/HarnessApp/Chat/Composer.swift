@@ -97,6 +97,9 @@ struct Composer: View {
             guard suggestions?.trigger.kind == .command, let repo = shell.project else { return }
             await shell.completions.loadCommands(session: session, repo: repo)
         }
+        .task(id: mentionedPixies(suggestions)) {
+            await shell.pixies.loadSoulLines(mentionedPixies(suggestions))
+        }
         .task(id: fileQuery(suggestions)) {
             guard let query = fileQuery(suggestions), let session else { return }
             // Typing pauses this long before the files are asked for.
@@ -112,7 +115,16 @@ struct Composer: View {
     private func suggestions(_ draft: ComposerDraft) -> CompletionList? {
         guard pixie == nil, focused || reveal, let repo = shell.project else { return nil }
         return shell.completions.suggestions(
-            text: draft.text, caret: draft.caret, session: session, repo: repo)
+            text: draft.text, caret: draft.caret, session: session, repo: repo,
+            mentions: shell.pixieMentions(forChat: chat))
+    }
+
+    /// The pixies the "@" list offers, whose souls' first lines it shows.
+    private func mentionedPixies(_ list: CompletionList?) -> [String] {
+        guard list?.trigger.kind == .file else { return [] }
+        return list?.items.compactMap { item in
+            if case .pixie(let pixie, _) = item.mention { pixie.id } else { nil }
+        } ?? []
     }
 
     private func commandSource(_ list: CompletionList?) -> String? {

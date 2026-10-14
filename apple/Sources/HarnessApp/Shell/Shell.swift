@@ -177,6 +177,9 @@ final class Shell {
     /// The list shows hidden pixies too, so they can be opened and shown again.
     var showsHiddenPixies = false
     var pixiePanel = PixiePanel.details
+    /// The Pixies list's open question, with the text typed into it.
+    var pixiePrompt: PixiePrompt?
+    var pixiePromptText = ""
 
     var project: String? { app.currentProject }
     var projectState: ProjectState { project.map(app.state(of:)) ?? ProjectState() }
@@ -276,8 +279,13 @@ final class Shell {
     /// A pixie clicked in the list: opens its pane in the Pixies tab, or focuses it.
     func openPixie(_ id: String) {
         pixiesOpen = true
+        let focused = app.pixieState.layout.focused
         let size = workspaceSize
-        updateWorkspace { $0.openChat(id, in: size) }
+        withAnimation(.smooth(duration: 0.22)) { app.openPixie(id, in: size) }
+        if app.pixieState.layout.focused != focused {
+            pixiePanel = .details
+        }
+        syncTools()
     }
 
     /// A pixie pane's Details button: shows that pixie's details, or hides them when they
@@ -298,6 +306,10 @@ final class Shell {
     func revealPixie(_ id: String) {
         close()
         openPixie(id)
+        // The click came from a project's view, which the Pixies tab replaces in this
+        // same update: open it again once the tab is on screen, which only focuses it
+        // when it stayed open.
+        Task { @MainActor in self.openPixie(id) }
     }
 
     /// New pixie and the starters open the new pixie's pane; New pixie also opens its
@@ -331,12 +343,85 @@ final class Shell {
         run("Could not reorder the pixies") { try await self.pixies.move(id, onto: target) }
     }
 
-    /// Move Up (-1) and Move Down (1) among the listed pixies.
+    /// Move Up (-1) and Move Down (1) among the listed pixies of its section.
     func movePixie(_ id: String, by offset: Int) {
-        let listed = listedPixies.map(\.id)
+        let listed = pixieSections.neighbors(of: id)
         run("Could not reorder the pixies") {
             try await self.pixies.move(id, by: offset, among: listed)
         }
+    }
+
+    // MARK: Teams and the pixie menus (B40)
+
+    /// The Pixies list: teams with their listed members, then pixies with no team.
+    var pixieSections: PixieListSections {
+        PixieListLayout.sections(listedPixies, teams: pixies.teams)
+    }
+
+    /// Asks the question in the Pixies list; a rename starts from the current text.
+    func ask(_ prompt: PixiePrompt) {
+        pixiePromptText = prompt.startText(teams: pixies.teams)
+        pixiePrompt = prompt
+    }
+
+    /// The answer to the question: Create, Rename, Save or Delete.
+    func answerPixiePrompt() {
+        guard let prompt = pixiePrompt else { return }
+        pixiePrompt = nil
+        let text = pixiePromptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch prompt {
+        case .newTeam where !text.isEmpty:
+            run("Could not create the team") { try await self.pixies.createTeam(name: text) }
+        case .renameTeam(let id) where !text.isEmpty:
+            updateTeam(id, UpdatePixieTeamRequest(name: text))
+        case .teamHandle(let id) where !text.isEmpty:
+            updateTeam(id, UpdatePixieTeamRequest(handle: text))
+        case .deletePixie(let id):
+            deletePixie(id)
+        case .deleteTeam(let id):
+            run("Could not delete the team") { try await self.pixies.deleteTeam(id) }
+        default:
+            break
+        }
+    }
+
+    func updateTeam(_ id: String, _ request: UpdatePixieTeamRequest) {
+        run("Could not save the team") { try await self.pixies.updateTeam(id, request) }
+    }
+
+    func toggleTeamFold(_ id: String) {
+        withAnimation(.smooth(duration: 0.2)) { app.toggleTeamFold(id) }
+    }
+
+    /// Move to team: a team's id, or nil for No team.
+    func setPixieTeam(_ id: String, _ team: String?) {
+        run("Could not move the pixie") { try await self.pixies.setTeam(id, to: team) }
+    }
+
+    /// A pixie dropped on another one joins its section, at its place.
+    func placePixie(_ id: String, onto target: String) {
+        run("Could not move the pixie") { try await self.pixies.place(id, onto: target) }
+    }
+
+    func duplicatePixie(_ id: String) {
+        run("Could not duplicate the pixie") {
+            let copy = try await self.pixies.duplicate(id)
+            self.show("Duplicated as \(copy.name)", kind: .done)
+        }
+    }
+
+    func showPixieDetails(_ id: String) {
+        openPixie(id)
+        withAnimation(.smooth(duration: 0.22)) { pixieDetailsOpen = true }
+    }
+
+    /// The pixies and teams a chat's `@` list offers: those its project may call; nil in a
+    /// pixie's chat, which calls none yet. Souls are read the first time they are needed.
+    func pixieMentions(forChat chat: String) -> [PixieMention]? {
+        guard let repo = sessions.session(chat)?.repo ?? project, Pixie.id(ofRepo: repo) == nil
+        else { return nil }
+        return PixieMentions.available(
+            pixies: pixies.pixies, teams: pixies.teams, repo: repo, souls: pixies.soulLines)
     }
 
     /// Why the slug was refused (taken or not allowed), else nil.

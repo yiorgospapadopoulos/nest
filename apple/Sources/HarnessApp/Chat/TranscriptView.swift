@@ -25,7 +25,9 @@ struct TranscriptView: View {
         let background = Set(shell.activity.background(session: chat).runningItems.map(\.id))
         // A call waiting on a permission prompt still runs; one whose turn ended stopped.
         let inFlight = session?.state.isInFlight ?? false
-        let entries = store?.entries(live: inFlight, background: background) ?? []
+        let pixies = PixieCalls.slugs(shell.pixies.pixies)
+        let entries =
+            store?.entries(live: inFlight, background: background, pixies: pixies) ?? []
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -45,6 +47,13 @@ struct TranscriptView: View {
                                 }
                         case .tools(let group):
                             ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
+                        case .pixieCall(let call):
+                            PixieCallRow(entry: call)
+                                .background {
+                                    if highlighted == call.id {
+                                        Highlight(accent: accent)
+                                    }
+                                }
                         }
                     }
                     if hasNewer {
@@ -160,7 +169,7 @@ struct TranscriptView: View {
         guard let store, let target = try? await store.resolveFocus() else { return }
         follow.hold()
         // A hit inside a collapsed group of tool calls opens the group first.
-        let entries = store.entries(live: false)
+        let entries = store.entries(live: false, pixies: PixieCalls.slugs(shell.pixies.pixies))
         if let group = TranscriptGrouping.group(containing: target, in: entries) {
             shell.expandedItems.insert(group)
         }
@@ -197,6 +206,8 @@ private struct TranscriptRow: View {
             let canRewind = RewindFlow.isAvailable(for: shell.sessions.session(chat))
             UserBubble(
                 text: text, attachments: attachments,
+                mentions: MentionHighlights.find(
+                    in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams),
                 rewind: item.eventID.flatMap { event in
                     canRewind ? { shell.startRewind(chat, message: event) } : nil
                 })
@@ -223,6 +234,8 @@ private struct TranscriptRow: View {
 private struct UserBubble: View {
     let text: String
     let attachments: [Attachment]
+    /// Pixie and team mentions, drawn in their colour and semibold (B40).
+    let mentions: [MentionHighlight]
     /// Restores the files to before this message, while the chat is idle.
     let rewind: (() -> Void)?
     @Environment(\.revealsHoverControls) private var reveal
@@ -232,9 +245,19 @@ private struct UserBubble: View {
         VStack(alignment: .trailing, spacing: 6) {
             if !text.isEmpty {
                 let color = NSColor(Palette.Mac.textPrimary)
-                SelectableText(key: "\(color)\n\(text)", hugsWidth: true) {
-                    TextStyling.plain(
-                        text, font: TextStyling.ui(TypeSize.reading), color: color, lineSpacing: 3)
+                SelectableText(key: "\(color)\n\(mentions)\n\(text)", hugsWidth: true) {
+                    let styled = NSMutableAttributedString(
+                        attributedString: TextStyling.plain(
+                            text, font: TextStyling.ui(TypeSize.reading), color: color,
+                            lineSpacing: 3))
+                    for mention in mentions {
+                        styled.addAttributes(
+                            [
+                                .foregroundColor: NSColor(Color(hex: mention.color)),
+                                .font: TextStyling.ui(TypeSize.reading, .semibold),
+                            ], range: mention.range)
+                    }
+                    return styled
                 }
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
@@ -559,7 +582,7 @@ private struct ToolRow: View {
 
     var body: some View {
         let expanded = shell.expandedItems.contains(id)
-        let output = call.result.map { $0.trimmingCharacters(in: .newlines) } ?? ""
+        let output = ToolSummary.output(of: call).map { $0.trimmingCharacters(in: .newlines) } ?? ""
         let expandable = !output.isEmpty
         let kind = ToolSummary.kind(of: call.name)
         VStack(alignment: .leading, spacing: 4) {
@@ -626,6 +649,117 @@ private struct ToolRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A pixie's call (B40): its mascot and name with what it was asked and how it went,
+/// shimmering while it runs. A click opens its steps and answer in place; the mascot or
+/// name opens the pixie in the Pixies tab.
+struct PixieCallRow: View {
+    let entry: PixieCallEntry
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let expanded = shell.expandedItems.contains(entry.id)
+        let pixie = shell.pixies.pixies.first { $0.slug == entry.slug }
+        let name = pixie?.name ?? entry.slug
+        let task = entry.call.input["description"]?.stringValue ?? ""
+        let note = ToolSummary.result(of: entry.call)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Button {
+                    if let pixie {
+                        shell.revealPixie(pixie.id)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if let pixie {
+                            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 13)
+                        }
+                        Text(name)
+                            .font(.ui(TypeSize.ui, .medium))
+                            .foregroundStyle(Palette.t1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .fixedSize()
+                .help("Open \(name) in Pixies")
+                .accessibilityLabel("Open \(name)")
+                Group {
+                    Text(task)
+                        .foregroundStyle(Palette.t2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .shimmer(entry.isRunning)
+                        .layoutPriority(1)
+                    Text(entry.call.isError ? note : "\u{00B7} \(note)")
+                        .foregroundStyle(entry.call.isError ? StatusTone.failed.color : Palette.t3)
+                        .lineLimit(1)
+                        .fixedSize()
+                    Image(systemName: Icon.chevron)
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(Palette.t3)
+                        .rotationEffect(.degrees(expanded ? 0 : -90))
+                    Spacer(minLength: 0)
+                }
+                .font(.ui(TypeSize.ui))
+                .contentShape(Rectangle())
+                .pointerStyle(.link)
+                .onTapGesture { toggle(entry.id, in: shell) }
+            }
+            .frame(minHeight: 21)
+            .accessibilityElement(children: .contain)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityAction(named: expanded ? "Collapse" : "Expand") {
+                toggle(entry.id, in: shell)
+            }
+            if expanded {
+                PixieCallSteps(call: entry.call)
+                    .padding(.leading, 6)
+            }
+        }
+    }
+}
+
+/// An opened pixie call: its text, its tool calls as grey lines, then its answer.
+private struct PixieCallSteps: View {
+    let call: ToolCall
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(call.steps) { step in
+                switch step.kind {
+                case .text(let text):
+                    MarkdownText(text: text, copyable: false)
+                case .tool(let name, _):
+                    HStack(spacing: 7) {
+                        Image(systemName: Icon.tool(ToolSummary.kind(of: name)))
+                            .font(.system(size: 9))
+                            .frame(width: 12)
+                        Text(step.line)
+                            .font(.mono(TypeSize.meta))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .foregroundStyle(Palette.t3)
+                }
+            }
+            if let result = ToolSummary.output(of: call), !result.isEmpty {
+                MarkdownText(text: result)
+            } else if call.steps.isEmpty {
+                Text(call.stopped ? "Stopped before it answered" : "Starting...")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+            }
+        }
+        .padding(.leading, 13)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Palette.divider)
+                .frame(width: 1)
+        }
     }
 }
 

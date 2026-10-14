@@ -27,6 +27,7 @@
         private var agentDefaults = AgentDefaults(
             model: "opus", effort: .high, permissionMode: .default, mode: .inPlace)
         private var pixieList: [Pixie] = []
+        private var teamList: [PixieTeam] = []
         /// Pixie files by "<pixie id>/<name>", such as "reviewer/soul".
         private var pixieFiles: [String: String] = [:]
         /// Messages sent to a pixie's chat while it works, by chat id.
@@ -618,8 +619,12 @@
                 guard let index = pixieList.firstIndex(where: { $0.id == id }) else {
                     throw APIError.notFound("unknown pixie")
                 }
+                let before = pixieList[index].teamID
                 let pixie = pixieList[index].applying(request)
                 pixieList[index] = pixie
+                if pixie.teamID != before {
+                    settleLeaders()
+                }
                 return pixie
             }
         }
@@ -636,12 +641,97 @@
         }
 
         func deletePixie(_ id: String) async throws {
-            lock.withLock { pixieList.removeAll { $0.id == id } }
+            lock.withLock {
+                pixieList.removeAll { $0.id == id }
+                settleLeaders()
+            }
         }
 
-        /// The sample pixies again, after a snapshot removed them.
+        /// The sample pixies again, after a snapshot removed them; no teams.
         func restorePixies() {
-            lock.withLock { pixieList = Self.samplePixies(now: now) }
+            lock.withLock {
+                pixieList = Self.samplePixies(now: now)
+                teamList = []
+            }
+        }
+
+        /// A copy right after the original, as the daemon makes it.
+        func duplicatePixie(_ id: String) async throws -> Pixie {
+            try lock.withLock {
+                guard let index = pixieList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound("unknown pixie")
+                }
+                var copy = pixieList[index]
+                copy.id = "\(id)-2"
+                copy.slug = "\(copy.slug)-2"
+                copy.name = "\(copy.name) 2"
+                copy.chatSessionID = nil
+                copy.position += 1
+                for later in pixieList.indices where pixieList[later].position >= copy.position {
+                    pixieList[later].position += 1
+                }
+                pixieList.insert(copy, at: index + 1)
+                pixieFiles["\(copy.id)/soul"] = pixieFiles["\(id)/soul"]
+                pixieFiles["\(copy.id)/memory"] = pixieFiles["\(id)/memory"]
+                return copy
+            }
+        }
+
+        func pixieTeams() async throws -> [PixieTeam] {
+            lock.withLock { teamList }
+        }
+
+        func createPixieTeam(_ request: CreatePixieTeamRequest) async throws -> PixieTeam {
+            let handle = request.handle ?? request.name.lowercased().replacing(" ", with: "-")
+            let team: PixieTeam = try decode([
+                "id": "team-\(handle)", "name": request.name, "handle": handle,
+                "leader_id": NSNull(), "position": lock.withLock { teamList.count },
+                "created_at": SampleData.iso(now), "updated_at": SampleData.iso(now),
+            ])
+            lock.withLock { teamList.append(team) }
+            return team
+        }
+
+        func updatePixieTeam(_ id: String, _ request: UpdatePixieTeamRequest) async throws
+            -> PixieTeam
+        {
+            try lock.withLock {
+                guard let index = teamList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound("unknown team")
+                }
+                if let leader = request.leaderID,
+                    !pixieList.contains(where: { $0.id == leader && $0.teamID == id })
+                {
+                    throw APIError.conflict("leader_not_member", files: [])
+                }
+                teamList[index].name = request.name ?? teamList[index].name
+                teamList[index].handle = request.handle ?? teamList[index].handle
+                teamList[index].leaderID = request.leaderID ?? teamList[index].leaderID
+                return teamList[index]
+            }
+        }
+
+        func deletePixieTeam(_ id: String) async throws {
+            lock.withLock {
+                teamList.removeAll { $0.id == id }
+                for index in pixieList.indices where pixieList[index].teamID == id {
+                    pixieList[index].teamID = nil
+                }
+            }
+        }
+
+        /// The daemon's leader rule: a team keeps its leader while it is a member, else the
+        /// first member in pixie order leads; a team with none has no leader. Call locked.
+        private func settleLeaders() {
+            for index in teamList.indices {
+                let team = teamList[index]
+                let members = pixieList.filter { $0.teamID == team.id }.sorted {
+                    $0.position < $1.position
+                }
+                if !members.contains(where: { $0.id == team.leaderID }) {
+                    teamList[index].leaderID = members.first?.id
+                }
+            }
         }
 
         /// Into the pixie's open chat, queued as the snapshots show it; else a new chat.

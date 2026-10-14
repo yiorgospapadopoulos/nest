@@ -131,6 +131,10 @@
                 try await renderChatBackground(model, shell, controller, folder)
                 return
             }
+            if only == "b40" {
+                try await renderTeamsAndCalls(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -463,6 +467,216 @@
             shell.toggleMaximize("watcher")
             try await model.pixies.delete(scout.id)
             shell.keepPixiePanes()
+        }
+
+        /// B40: the Pixies list with teams (leader marked, an empty team, one folded), the
+        /// row and team menus, the composer's `@` list with pixies and teams before files,
+        /// and pixie calls in a transcript, one running and one opened in place.
+        private static func renderTeamsAndCalls(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let pixies = model.pixies
+            let bugs = try await pixies.create(
+                CreatePixieRequest(
+                    name: "Bug hunter", mascot: .crab, color: "#E5484D",
+                    soul: "I find the bugs others miss, starting with the edge cases.\n"))
+            let stylist = try await pixies.create(
+                CreatePixieRequest(
+                    name: "Stylist", mascot: .bunny, color: "#D6409F",
+                    soul: "I keep names, comments and layout tidy.\n"))
+            let scout = try await pixies.create(
+                CreatePixieRequest(
+                    name: "Scout", mascot: .frog, color: "#46A758",
+                    soul: "I read new code and tell the others what changed.\n"))
+            let qa = try await pixies.createTeam(name: "QA", handle: "qa")
+            let ops = try await pixies.createTeam(name: "Ops", handle: "ops")
+            _ = try await pixies.createTeam(name: "Docs", handle: "docs")
+            for (pixie, team) in [
+                ("reviewer", qa.id), (bugs.id, qa.id), (stylist.id, qa.id), ("watcher", ops.id),
+            ] {
+                try await pixies.setTeam(pixie, to: team)
+            }
+            // The sample daemon sends no events: read the leaders it chose.
+            try await pixies.load()
+            _ = scout
+
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b40-team-list", folder)
+            try await pair(controller, "b40-team-list-hover", folder, revealsHoverControls: true)
+            shell.toggleTeamFold(ops.id)
+            try await pair(controller, "b40-team-folded", folder)
+            shell.toggleTeamFold(ops.id)
+
+            // A long name on a leader: the handle gives way before the name does.
+            try await pixies.update(bugs.id, UpdatePixieRequest(name: "Bug hunter extraordinaire"))
+            try await pixies.updateTeam(qa.id, UpdatePixieTeamRequest(leaderID: bugs.id))
+            try await pair(controller, "b40-long-leader-name", folder)
+            try await pair(
+                controller, "b40-long-leader-name-hover", folder, revealsHoverControls: true)
+            try await pixies.update(bugs.id, UpdatePixieRequest(name: "Bug hunter"))
+            try await pixies.updateTeam(qa.id, UpdatePixieTeamRequest(leaderID: "reviewer"))
+
+            // Rename and Change handle start with what is there, selected.
+            shell.ask(.renameTeam(qa.id))
+            try await pairView(
+                PixiePromptSheet(prompt: .renameTeam(qa.id)).environment(shell),
+                "b40-rename-team", folder)
+            shell.ask(.teamHandle(qa.id))
+            try await pairView(
+                PixiePromptSheet(prompt: .teamHandle(qa.id)).environment(shell),
+                "b40-team-handle", folder)
+            shell.pixiePrompt = nil
+
+            let section = shell.pixieSections.teams[0]
+            try await pairView(
+                MenuPreview(
+                    title: "Reviewer",
+                    rows: [
+                        MenuPreview.Row(title: "Open"), MenuPreview.Row(title: "Details"),
+                        MenuPreview.Row(title: "Duplicate"),
+                        MenuPreview.Row(title: "Move to team", detail: "QA, Ops, Docs, No team"),
+                        MenuPreview.Row(title: "Move Up", disabled: true),
+                        MenuPreview.Row(title: "Move Down"), MenuPreview.Row(title: "Hide"),
+                        MenuPreview.Row(title: "Delete…"),
+                    ]
+                ).frame(width: 260), "b40-pixie-menu", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "Move to team",
+                    rows: pixies.teams.map {
+                        MenuPreview.Row(title: $0.name, checked: $0.id == qa.id)
+                    } + [MenuPreview.Row(title: "No team")]
+                ).frame(width: 220), "b40-move-to-team-menu", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "QA",
+                    rows: [
+                        MenuPreview.Row(title: "Rename…"), MenuPreview.Row(title: "Change handle…"),
+                        MenuPreview.Row(
+                            title: "Set leader",
+                            detail: section.members.map(\.name).joined(separator: ", ")),
+                        MenuPreview.Row(title: "Delete team…"),
+                    ]
+                ).frame(width: 260), "b40-team-menu", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "Set leader",
+                    rows: section.members.map {
+                        MenuPreview.Row(title: $0.name, checked: section.isLeader($0))
+                    }
+                ).frame(width: 220), "b40-set-leader-menu", folder)
+            let confirm = PixieConfirm.deletePixie("Reviewer")
+            let team = PixieConfirm.deleteTeam("QA")
+            try await pairView(
+                MenuPreview(
+                    title: "Confirmations",
+                    rows: [
+                        MenuPreview.Row(title: confirm.title, detail: confirm.message),
+                        MenuPreview.Row(title: team.title, detail: team.message),
+                    ]
+                ).frame(width: 380), "b40-confirmations", folder)
+
+            // The composer's "@" list in a project chat: teams, pixies, then files.
+            shell.selectProject("todo-ui")
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            await pixies.loadSoulLines(pixies.pixies.map(\.id))
+            let draft = shell.draft(for: "c3")
+            draft.replaceText("Ask @", caret: 5)
+            try await pair(controller, "b40-at-list", folder, revealsHoverControls: true)
+            draft.replaceText("Ask @re", caret: 7)
+            try await pair(controller, "b40-at-list-filtered", folder, revealsHoverControls: true)
+            draft.clear()
+
+            // Pixie calls: Watcher still runs in c2; Reviewer answered in c3. Both panes
+            // are open first, so their transcripts take the events.
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c2", in: workspace)
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            try await model.transcripts.transcript(for: "c2").load()
+            var id = 30_000
+            func receive(_ session: String, _ type: String, _ payload: [String: Any]) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(Date()), "session_id": session,
+                    "payload": payload,
+                ])
+                model.transcripts.receive(event)
+            }
+            func blocks(_ list: [[String: Any]], parent: String? = nil) -> [String: Any] {
+                ["blocks": list, "parent_tool_use_id": parent ?? NSNull()]
+            }
+            func use(_ tool: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["type": "tool_use", "id": tool, "name": name, "input": input]
+            }
+            func text(_ value: String) -> [String: Any] { ["type": "text", "text": value] }
+            receive(
+                "c3", "session.user_message",
+                [
+                    "text":
+                        "@reviewer check the date parser change, then @qa, @ops and @pixie-3 the rest (not @nobody)",
+                    "attachments": [],
+                ])
+            receive(
+                "c3", "session.message",
+                blocks([
+                    use(
+                        "pc1", "Agent",
+                        ["subagent_type": "reviewer", "description": "Review the date parser"])
+                ]))
+            receive(
+                "c3", "session.message",
+                blocks(
+                    [
+                        text("Reading the change first."),
+                        use("pr1", "Read", ["file_path": "lib/dates.ts"]),
+                    ], parent: "pc1"))
+            receive(
+                "c3", "session.message",
+                blocks(
+                    [use("pr2", "Bash", ["command": "npm test -- dates"])], parent: "pc1"))
+            receive(
+                "c3", "session.message",
+                blocks(
+                    [
+                        [
+                            "type": "tool_result", "tool_use_id": "pc1",
+                            // As Claude Code hands it back; the row shows the report only.
+                            "content":
+                                "[Subagent hand-back] The text below is the final report of a subagent. The report follows:\n  Two issues. `parseDate` drops the time zone, and the new branch has no test.\n  Otherwise it reads well.\nagentId: a7d8f3a2 (use SendMessage to continue this agent)\n<usage>subagent_tokens: 28022\ntool_uses: 2\nduration_ms: 9381</usage>",
+                        ]
+                    ]))
+            receive(
+                "c3", "session.message",
+                blocks([text("Reviewer found two issues; I will fix the time zone first.")]))
+            receive(
+                "c2", "session.message",
+                blocks([
+                    use(
+                        "pc2", "Agent",
+                        ["subagent_type": "watcher", "description": "Watch the build"])
+                ]))
+            try await pair(controller, "b40-pixie-calls", folder)
+            shell.expandedItems.insert("pc1")
+            try await pair(controller, "b40-pixie-call-open", folder)
+            shell.expandedItems.remove("pc1")
+            // The mascot or name opens the pixie's pane in the Pixies tab, none open yet.
+            model.app.updatePixies { $0.layout = WorkspaceLayout() }
+            shell.revealPixie("reviewer")
+            print("reveal check: \(model.app.pixieState.layout.leaves)")
+            try await pair(controller, "b40-call-opens-pixie", folder)
         }
 
         /// B29: a running turn with its timer, thinking, a running agents group and a
