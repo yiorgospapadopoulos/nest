@@ -1,5 +1,5 @@
 """The pixies a project chat can call with `@slug`, as Claude Code subagents, and the
-teams it can call with `@handle` (B40).
+teams it can call with `@handle` (B40); in a pixie's own chat, every other pixie (B41).
 """
 
 from dataclasses import dataclass
@@ -54,8 +54,11 @@ class PixieAgents:
     async def for_session(self, session: Session) -> ChatAgents:
         """Every pixie that may work on the chat's project: not hidden, with project
         access, and assigned to it or to every project. A team is offered when its leader
-        is, with its offered members.
+        is, with its offered members. A pixie's own chat gets every other pixie that is
+        not hidden and has project access, and no teams (B41).
         """
+        if session.pixie_id is not None:
+            return await self._for_pixie_chat(session.pixie_id)
         available = [
             item
             for pixie in await self._pixies.list_pixies()
@@ -70,6 +73,17 @@ class PixieAgents:
         }
         calls = tuple(_team_call(team, available) for team in teams)
         return ChatAgents(subagents, calls)
+
+    async def _for_pixie_chat(self, pixie_id: str) -> ChatAgents:
+        subagents = {
+            item.pixie.slug: _subagent(item, None)
+            for pixie in await self._pixies.list_pixies()
+            if pixie.id != pixie_id
+            and not pixie.hidden
+            and pixie.project_access != "none"
+            and (item := self._read(pixie)) is not None
+        }
+        return ChatAgents(subagents)
 
     def _read(self, pixie: Pixie) -> _Available | None:
         try:

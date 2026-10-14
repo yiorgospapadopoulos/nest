@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
@@ -17,6 +17,27 @@ PIXIE_REPO_PREFIX = "pixie:"
 
 def pixie_repo(pixie_id: str) -> str:
     return f"{PIXIE_REPO_PREFIX}{pixie_id}"
+
+
+# A user message the daemon sends a pixie: the outcome of chats it started (B41), or a
+# report one of its habit runs made (B42).
+type MessageOrigin = Literal["report_back", "report"]
+
+
+@dataclass(frozen=True)
+class Sender:
+    """Who a user message comes from besides the user: the pixie that sent it into the
+    chat, or the daemon's report to a pixie (B41). Both None: the user.
+    """
+
+    from_pixie: str | None = None
+    origin: MessageOrigin | None = None
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"from_pixie": self.from_pixie, "origin": self.origin}
+
+
+USER = Sender()
 
 
 class SessionState(StrEnum):
@@ -51,6 +72,12 @@ class NewSession(BaseModel):
     base_ref: str | None = None
     # Set for a pixie's chat (D072); such sessions are not listed with a project's chats.
     pixie_id: str | None = None
+    # The pixie that started this chat with its tools, and the batch of chats it started
+    # in that turn until their report went back to it (B41).
+    started_by_pixie: str | None = None
+    pixie_batch: str | None = None
+    # Set for a habit run's session (B42): it has the pixie's `pixie_id` but is not its chat.
+    habit_run_id: str | None = None
 
 
 class Session(NewSession):
@@ -131,6 +158,13 @@ class QueuedMessage(BaseModel):
     text: str
     attachments: list[AttachmentSummary]
     created_at: datetime
+    # Kept for the message's event when it starts; not part of the queue's payload (B41).
+    from_pixie: str | None = Field(default=None, exclude=True)
+    origin: MessageOrigin | None = Field(default=None, exclude=True)
+
+    @property
+    def sender(self) -> Sender:
+        return Sender(self.from_pixie, self.origin)
 
 
 class SendResult(Session):

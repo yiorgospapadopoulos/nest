@@ -18,6 +18,7 @@ type NotifyKind = Literal[
     "ci_failed",
     "ready_to_merge",
     "stuck",
+    "pixie_report",
 ]
 
 
@@ -31,14 +32,22 @@ class Notifier:
         self._pixie_name = pixie_name
 
     async def notify(
-        self, kind: NotifyKind, session_id: str, repo: str, title: str, text: str
+        self,
+        kind: NotifyKind,
+        session_id: str,
+        repo: str,
+        title: str,
+        text: str,
+        extra: dict[str, JsonValue] | None = None,
     ) -> None:
+        """`extra` adds fields of the kind, such as a pixie report's id (B42)."""
         payload: dict[str, JsonValue] = {
             "kind": kind,
             "session_id": session_id,
             "repo": repo,
             "title": title,
             "text": text,
+            **(extra or {}),
         }
         if repo.startswith(PIXIE_REPO_PREFIX):
             # A pixie's chat: the phone names the pixie and opens its page (D072).

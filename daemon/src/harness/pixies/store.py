@@ -11,6 +11,11 @@ from harness.pixies.models import Pixie, PixieSettings
 from harness.storage.db import Database, Transaction
 
 _JSON = ("projects", "skills", "can_call", "allowed_tools", "disallowed_tools")
+# Every pixie column, and how many of its `action` reports are unread (B42).
+_SELECT = (
+    "SELECT pixies.*, (SELECT COUNT(*) FROM pixie_reports AS r WHERE r.pixie_id = pixies.id"
+    " AND r.severity = 'action' AND r.read_at IS NULL) AS unread_action_reports FROM pixies"
+)
 
 
 class PixieStore:
@@ -59,7 +64,10 @@ class PixieStore:
             created_at=now,
             updated_at=now,
         )
-        values = {name: _column(name, value) for name, value in pixie.model_dump().items()}
+        values = {
+            name: _column(name, value)
+            for name, value in pixie.model_dump(exclude={"unread_action_reports"}).items()
+        }
         try:
             await tx.execute(
                 f"INSERT INTO pixies ({', '.join(values)})"  # noqa: S608
@@ -72,7 +80,7 @@ class PixieStore:
         return pixie
 
     async def get(self, pixie_id: str) -> Pixie:
-        row = await self._db.fetch_one("SELECT * FROM pixies WHERE id = ?", (pixie_id,))
+        row = await self._db.fetch_one(f"{_SELECT} WHERE id = ?", (pixie_id,))
         if row is None:
             msg = f"unknown pixie {pixie_id!r}"
             raise PixieNotFoundError(msg)
@@ -84,13 +92,13 @@ class PixieStore:
         return None if row is None else str(row["name"])
 
     async def list_pixies(self) -> list[Pixie]:
-        rows = await self._db.fetch_all("SELECT * FROM pixies ORDER BY position, rowid")
+        rows = await self._db.fetch_all(f"{_SELECT} ORDER BY position, rowid")
         return [_pixie(row) for row in rows]
 
     async def members(self, team_id: str) -> list[Pixie]:
         """The team's pixies, in pixie order."""
         rows = await self._db.fetch_all(
-            "SELECT * FROM pixies WHERE team_id = ? ORDER BY position, rowid", (team_id,)
+            f"{_SELECT} WHERE team_id = ? ORDER BY position, rowid", (team_id,)
         )
         return [_pixie(row) for row in rows]
 

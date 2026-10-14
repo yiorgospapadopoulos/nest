@@ -96,6 +96,8 @@ class NotificationKinds(_Strict):
     ready_to_merge: bool = False
     # A session looks stuck; shown in the inbox, pushed only when switched on (D036).
     stuck: bool = False
+    # A pixie's report at or above the pixie's `report_push` severity (B42).
+    pixie_report: bool = True
 
 
 class QuietHours(_Strict):

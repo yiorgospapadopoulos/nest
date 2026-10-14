@@ -11,7 +11,7 @@ from harness.attachments.store import Attachment
 from harness.events import types
 from harness.providers.base import RewindResult
 from harness.sessions.live import LiveSession
-from harness.sessions.models import QueuedMessage, SessionState
+from harness.sessions.models import USER, QueuedMessage, Sender, SessionState
 from harness.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, echoed, reply, until_interrupted
@@ -40,11 +40,16 @@ class SlowAdd:
         monkeypatch.setattr(env.queue, "add", self.add)
 
     async def add(
-        self, session_id: str, text: str, attachments: list[Attachment], urgent: bool = False
+        self,
+        session_id: str,
+        text: str,
+        attachments: list[Attachment],
+        urgent: bool = False,
+        sender: Sender = USER,
     ) -> QueuedMessage:
         self.adding.set()
         await self.release.wait()
-        return await self._add(session_id, text, attachments, urgent)
+        return await self._add(session_id, text, attachments, urgent, sender)
 
 
 def live_of(env: Env, session_id: str) -> LiveSession:

@@ -20,6 +20,7 @@ from harness.api.routes import (
     local_apps,
     notifications,
     pairing,
+    pixie_reports,
     pixie_teams,
     pixies,
     prs,
@@ -53,11 +54,18 @@ def create_app(ctx: AppContext) -> FastAPI:
             await ctx.search.start()
             await ctx.stuck.start()
             await ctx.engine.start()
+            await ctx.report_back.start()
+            await ctx.habit_scheduler.start()
+            await ctx.habit_triggers.start()
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
+            # Before the agents stop: the runs they cut off count as restarted (B42).
+            await ctx.habit_triggers.stop()
+            await ctx.habit_scheduler.stop()
+            await ctx.report_back.stop()
             await ctx.engine.stop()
             await ctx.stuck.stop()
             await ctx.search.stop()
@@ -89,6 +97,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         sessions,
         pixies,
         pixie_teams,
+        pixie_reports,
         claude_chats,
         search,
         review,

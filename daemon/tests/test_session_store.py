@@ -186,3 +186,29 @@ async def test_stuck_flags_are_stored_without_reordering_and_cleared_together(
     assert await store.clear_stuck() == [first.id]
     assert (await store.get(first.id)).stuck is None
     assert await store.clear_stuck() == []
+
+
+async def test_chats_a_pixie_started_and_its_open_batches(
+    store: SessionStore, clock: FakeClock
+) -> None:
+    first = await store.create(new_session(started_by_pixie="p1", pixie_batch="b1"))
+    clock.advance(timedelta(minutes=1))
+    second = await store.create(new_session(started_by_pixie="p1", pixie_batch="b2"))
+    other = await store.create(new_session(started_by_pixie="p2", pixie_batch="b3"))
+    await store.create(new_session())
+    before = (await store.get(first.id)).updated_at
+    clock.advance(timedelta(minutes=1))
+
+    started = await store.started_by("p1")
+    batched = await store.batch_members("p1")
+    pixies = await store.batch_pixies()
+    await store.clear_batch([first.id, other.id])
+
+    assert [s.id for s in started] == [first.id, second.id]
+    assert [s.id for s in batched] == [first.id, second.id]
+    assert pixies == ["p1", "p2"]
+    assert [s.id for s in await store.batch_members("p1")] == [second.id]
+    assert await store.batch_pixies() == ["p1"]
+    # Clearing a batch does not move a chat up its list.
+    assert (await store.get(first.id)).updated_at == before
+    assert (await store.get(first.id)).started_by_pixie == "p1"

@@ -153,6 +153,14 @@ class EventBus:
         rows = await self._db.fetch_all("SELECT COALESCE(MAX(id), 0) AS id FROM events")
         return rows[0]["id"]
 
+    async def latest_id(self, session_id: str, event_type: str) -> int | None:
+        """The id of the session's newest stored event of `event_type`, if any."""
+        rows = await self._db.fetch_all(
+            "SELECT MAX(id) AS id FROM events WHERE session_id = ? AND type = ?",
+            (session_id, event_type),
+        )
+        return rows[0]["id"]
+
     async def session_events(
         self,
         session_id: str,

@@ -2,6 +2,9 @@
 token usage, connector status, slash command lists and the engine's models and account.
 """
 
+from collections.abc import Sequence
+from typing import Protocol
+
 from harness.connectors.registry import ConnectorRegistry
 from harness.engine.service import EngineInfo
 from harness.notifications.notifier import Notifier, NotifyKind
@@ -23,6 +26,14 @@ from harness.usage.store import UsageStore
 MAX_NOTICE_LENGTH = 200
 
 
+class StateFollower(Protocol):
+    """Follows state changes after the daemon's own reactions, such as pixies' reports."""
+
+    async def state_changed(self, session: Session) -> None: ...
+
+    async def purged(self, session_id: str) -> None: ...
+
+
 class SessionReactions:
     """The session hooks of the running daemon."""
 
@@ -36,7 +47,9 @@ class SessionReactions:
         commands: CommandStore,
         engine: EngineInfo,
         repos: RepoService,
+        followers: Sequence[StateFollower] = (),
     ) -> None:
+        self._followers = followers
         self._repos = repos
         self._commands = commands
         self._engine = engine
@@ -48,15 +61,20 @@ class SessionReactions:
 
     async def state_changed(self, session: Session) -> None:
         tracker = await self._tracking.sync(session.id)
-        if session.state is SessionState.IDLE:
+        # A habit run speaks only through its reports (B42).
+        quiet = session.habit_run_id is not None
+        if session.state is SessionState.IDLE and not quiet:
             # The agent may have made a plain folder a git repository (D041); a plain
             # folder and a pixie chat have nothing to review (D072).
             git = session.pixie_id is None and await self._repos.has_git(session.repo)
             # A review announces itself; otherwise the user hears the turn finished.
             if not git or await self._reviews.turn_ended(session) is None:
                 await self._notify(session, "finished", tracker.summary or "The turn finished.")
-        elif session.state is SessionState.FAILED:
+        elif session.state is SessionState.FAILED and not quiet:
             await self._notify(session, "failed", session.last_error or "The session failed.")
+        # After the review: a follower sees whether the turn's work is ready for review.
+        for follower in self._followers:
+            await follower.state_changed(session)
 
     async def message(self, session_id: str) -> None:
         await self._tracking.sync(session_id)
@@ -78,6 +96,8 @@ class SessionReactions:
 
     async def purged(self, session_id: str) -> None:
         self._tracking.forget(session_id)
+        for follower in self._followers:
+            await follower.purged(session_id)
 
     async def _notify(self, session: Session, kind: NotifyKind, text: str) -> None:
         await self._notifier.notify(

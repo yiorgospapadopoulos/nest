@@ -31,6 +31,8 @@ def test_defaults_enable_agent_kinds_but_not_pr_checks_without_quiet_hours_or_nt
         "ready_to_merge": False,
         # Stuck sessions show in the inbox; pushing them is opt in (D036).
         "stuck": False,
+        # Pixie reports at or above each pixie's own severity (B42).
+        "pixie_report": True,
     }
     assert settings.quiet_hours is None
     assert settings.ntfy.enabled is False

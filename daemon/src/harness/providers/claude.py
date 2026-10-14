@@ -57,7 +57,14 @@ from harness.providers.claude_questions import (
 from harness.providers.claude_rewind import rewind
 from harness.providers.claude_rules import always_rule
 from harness.providers.claude_thinking import ThinkingTimer
-from harness.providers.claude_tools import WRITE_TOOLS, own_tool_names, tool_servers, write_guard
+from harness.providers.claude_tools import (
+    SUBAGENT_DENIED,
+    WRITE_TOOLS,
+    own_tool_names,
+    subagent_guard,
+    tool_servers,
+    write_guard,
+)
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
@@ -170,6 +177,8 @@ def build_options(
         tool_name: str, tool_input: dict[str, JsonValue], context: ToolPermissionContext
     ) -> PermissionResult:
         if tool_name in own_tools:
+            if context.agent_id is not None:
+                return PermissionResultDeny(message=SUBAGENT_DENIED)
             return PermissionResultAllow()
         if tool_name == ASK_USER_QUESTION:
             return questions.permission(tool_input, context.tool_use_id)
@@ -198,6 +207,10 @@ def build_options(
             timeout=QUESTION_TIMEOUT_SECONDS,
         ),
     ]
+    if own_tools:
+        pre_tool_use.append(
+            HookMatcher(matcher="|".join(sorted(own_tools)), hooks=[subagent_guard(own_tools)])
+        )
     if spec.write_root is not None:
         pre_tool_use.append(
             HookMatcher(matcher="|".join(WRITE_TOOLS), hooks=[write_guard(spec.write_root)])
@@ -219,7 +232,7 @@ def build_options(
         disallowed_tools=[*GIT_WRITE_RULES, *spec.disallowed_tools],
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,
-        agents={name: _agent(sub) for name, sub in spec.subagents.items()} or None,
+        agents={name: _agent(sub, own_tools) for name, sub in spec.subagents.items()} or None,
         hooks={"PreToolUse": pre_tool_use},
         env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
         stderr=stderr,
@@ -360,7 +373,9 @@ async def _review_plan(
     )
 
 
-def _agent(subagent: Subagent) -> AgentDefinition:
+def _agent(subagent: Subagent, own_tools: frozenset[str]) -> AgentDefinition:
+    """The run's own tools are never the subagent's (B41)."""
+    denied = [*subagent.disallowed_tools, *sorted(own_tools)]
     return AgentDefinition(
         description=subagent.description,
         prompt=subagent.prompt,
@@ -368,7 +383,7 @@ def _agent(subagent: Subagent) -> AgentDefinition:
         effort=subagent.effort,
         skills=list(subagent.skills) or None,
         permissionMode=subagent.permission_mode,
-        disallowedTools=list(subagent.disallowed_tools) or None,
+        disallowedTools=denied or None,
     )
 
 

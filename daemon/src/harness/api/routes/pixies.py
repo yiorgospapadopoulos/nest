@@ -5,10 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from harness.api.deps import Context, RequireDevice
+from harness.pixies.habit_models import CreateHabit, Habit, HabitRun, ReadReports, UpdateHabit
 from harness.pixies.models import (
     CreatePixie,
     FileText,
     Pixie,
+    PixieActivity,
     PixieOrder,
     SearchHit,
     UpdatePixie,
@@ -102,3 +104,56 @@ async def search_memory(
     pixie_id: str, ctx: Context, q: Annotated[str, Query(min_length=1, max_length=200)]
 ) -> list[SearchHit]:
     return await ctx.pixies.search(pixie_id, q)
+
+
+@router.get("/{pixie_id}/activity")
+async def pixie_activity(pixie_id: str, ctx: Context) -> list[PixieActivity]:
+    """What the pixie did through its harness tools, newest first; the latest 200 (B41)."""
+    return await ctx.pixies.activity(pixie_id)
+
+
+@router.get("/{pixie_id}/habits")
+async def list_habits(pixie_id: str, ctx: Context) -> list[Habit]:
+    """Oldest first, each with `next_due_at` and `last_run` (B42)."""
+    return await ctx.habits.list_habits(pixie_id)
+
+
+@router.post("/{pixie_id}/habits", status_code=status.HTTP_201_CREATED)
+async def create_habit(pixie_id: str, body: CreateHabit, ctx: Context) -> Habit:
+    """422 without a schedule or a trigger."""
+    return await ctx.habits.create(pixie_id, body)
+
+
+@router.patch("/{pixie_id}/habits/{habit_id}")
+async def update_habit(pixie_id: str, habit_id: str, body: UpdateHabit, ctx: Context) -> Habit:
+    """Fields left out are unchanged; `"schedule": null` removes the schedule (422 when no
+    trigger is left). `"enabled": false` pauses it and true resumes it.
+    """
+    return await ctx.habits.update(pixie_id, habit_id, body)
+
+
+@router.delete("/{pixie_id}/habits/{habit_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_habit(pixie_id: str, habit_id: str, ctx: Context) -> Response:
+    """Stops its run in progress and deletes it with its runs and their transcripts."""
+    await ctx.habits.delete(pixie_id, habit_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{pixie_id}/habits/{habit_id}/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_habit(pixie_id: str, habit_id: str, ctx: Context) -> HabitRun:
+    """Run now: queues a run that starts once no other run is in progress, however late
+    and whatever the usage, also while the habit is paused.
+    """
+    return await ctx.habits.run_now(pixie_id, habit_id)
+
+
+@router.get("/{pixie_id}/habits/{habit_id}/runs")
+async def habit_runs(pixie_id: str, habit_id: str, ctx: Context) -> list[HabitRun]:
+    """Newest first: the latest 20 finished runs and any queued or running."""
+    return await ctx.habits.runs(pixie_id, habit_id)
+
+
+@router.post("/{pixie_id}/reports/read")
+async def read_pixie_reports(pixie_id: str, ctx: Context) -> ReadReports:
+    """Marks every unread report of the pixie read; returns their ids (B42)."""
+    return await ctx.reports.mark_pixie_read(pixie_id)

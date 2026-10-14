@@ -40,10 +40,12 @@ from harness.sessions.git_audit import with_own_changes
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import BYPASS, LiveSession
 from harness.sessions.models import (
+    USER,
     ChatImport,
     CreateSession,
     NewSession,
     QueuedMessage,
+    Sender,
     SendResult,
     Session,
     SessionState,
@@ -173,12 +175,25 @@ class SessionManager:
             live.run is not None or live.busy or not live.run_closed.is_set()
         )
 
-    async def create(self, request: CreateSession) -> Session:
+    async def create(
+        self,
+        request: CreateSession,
+        *,
+        started_by_pixie: str | None = None,
+        pixie_batch: str | None = None,
+    ) -> Session:
+        """`started_by_pixie` marks a chat a pixie starts with its tools, in the batch of
+        its turn; its prompt is shown as the pixie's. Such a chat needs a git repository,
+        since it must work in its own worktree (B41).
+        """
         try:
             repo = await self._repos.current(request.repo)
         except RepoNotFoundError as error:
             raise InvalidInputError(str(error)) from error
         require_folder(repo)
+        if started_by_pixie is not None and not repo.git:
+            msg = f"{repo.name} is not a git repository, so a chat cannot get its own worktree"
+            raise InvalidInputError(msg)
         defaults = self._defaults()
         model = request.model or defaults.model
         effort = await self._effort(model, request.effort, defaults.effort)
@@ -212,8 +227,11 @@ class SessionManager:
                 provider=self._provider.name,
                 # Worktree sessions get their base when the worktree is created.
                 base_ref=await self._worktrees.head(repo) if mode == "in_place" else None,
+                started_by_pixie=started_by_pixie,
+                pixie_batch=pixie_batch,
             )
         )
+        sender = Sender(from_pixie=started_by_pixie)
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
         )
@@ -222,7 +240,9 @@ class SessionManager:
         )
         live = self._live.setdefault(session.id, LiveSession(session.id))
         live.start(
-            lambda: self._turns.guard(live, self._turns.start(live, session, repo, attachments))
+            lambda: self._turns.guard(
+                live, self._turns.start(live, session, repo, attachments, sender)
+            )
         )
         return session
 
@@ -237,9 +257,12 @@ class SessionManager:
         effort: Effort | None,
         permission_mode: PermissionMode,
         attachment_ids: list[str],
+        sender: Sender = USER,
+        habit_run_id: str | None = None,
     ) -> Session:
         """A pixie's chat: in place in its workdir, with no project, review or git (D072).
         Refused (422) when the model does not run in the pixie's mode, as for any chat.
+        With `habit_run_id` it is the session of one run of the pixie's habit (B42).
         """
         await self._require_mode(model, permission_mode)
         attachments = await self._attachments.for_session(attachment_ids, None)
@@ -255,6 +278,7 @@ class SessionManager:
                 permission_mode=permission_mode,
                 provider=self._provider.name,
                 pixie_id=pixie_id,
+                habit_run_id=habit_run_id,
             )
         )
         await self._bus.publish(
@@ -265,7 +289,9 @@ class SessionManager:
         )
         live = self._live.setdefault(session.id, LiveSession(session.id))
         live.start(
-            lambda: self._turns.guard(live, self._turns.start(live, session, None, attachments))
+            lambda: self._turns.guard(
+                live, self._turns.start(live, session, None, attachments, sender)
+            )
         )
         return session
 
@@ -338,7 +364,12 @@ class SessionManager:
         return session
 
     async def send(
-        self, session_id: str, text: str, attachment_ids: list[str], interrupt: bool = False
+        self,
+        session_id: str,
+        text: str,
+        attachment_ids: list[str],
+        interrupt: bool = False,
+        sender: Sender = USER,
     ) -> SendResult:
         """Start a turn, or queue the message while one runs. Without a live run, the agent
         is resumed from its last session. With `interrupt`, a running turn is stopped and
@@ -364,9 +395,11 @@ class SessionManager:
             msg = f"session {session_id!r} was stopped meanwhile; send the message again"
             raise SessionBusyError(msg)
         if live.busy or live.publishing:
-            return await self._enqueue(live, session, text, attachments, interrupt)
+            return await self._enqueue(live, session, text, attachments, interrupt, sender)
         require_cwd(session)
-        live.start(lambda: self._turns.guard(live, self._send_turn(live, text, attachments)))
+        live.start(
+            lambda: self._turns.guard(live, self._send_turn(live, text, attachments, sender))
+        )
         return SendResult(**session.model_dump())
 
     async def _enqueue(
@@ -376,10 +409,11 @@ class SessionManager:
         text: str,
         attachments: list[Attachment],
         interrupt: bool,
+        sender: Sender,
     ) -> SendResult:
         if not live.turn_active:
             live.held = True
-        queued = await self._queue.add(session.id, text, attachments, urgent=interrupt)
+        queued = await self._queue.add(session.id, text, attachments, interrupt, sender)
         if interrupt and live.nudgeable:
             live.resume_queue = True
             await self._approvals.expire(session.id, BLOCKING, "interrupted by the user")
@@ -388,9 +422,11 @@ class SessionManager:
         await self._turns.release_held(live)
         return SendResult(**session.model_dump(), queued_message=queued)
 
-    async def _send_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
+    async def _send_turn(
+        self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
+    ) -> None:
         await self._approvals.supersede(live.session_id, ApprovalKind.REVIEW)
-        await self._turns.submit(live, text, attachments)
+        await self._turns.submit(live, text, attachments, sender=sender)
 
     async def queued(self, session_id: str) -> list[QueuedMessage]:
         await self._store.get(session_id)
@@ -520,6 +556,20 @@ class SessionManager:
                     self._repos.get(session.repo), worktree, delete_branch=True
                 )
             return await self._states.set(session_id, SessionState.CLOSED)
+
+    async def close_keeping_work(self, session_id: str) -> bool:
+        """Close the session; its worktree and branch are removed only when the worktree
+        holds no work (B41). Returns whether a worktree with work was kept. Checked after
+        the agent stopped, so it cannot add work meanwhile.
+        """
+        session = await self.close(session_id, remove_worktree=False)
+        worktree = worktree_of(session)
+        if worktree is None:
+            return False
+        if await self._worktrees.has_work(worktree):
+            return True
+        await self._worktrees.remove(self._repos.get(session.repo), worktree, delete_branch=True)
+        return False
 
     async def purge(self, session_id: str) -> None:
         """Delete the session for good: its run, worktree and branch, and all it stored."""

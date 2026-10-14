@@ -13,6 +13,7 @@ from harness.attachments.store import Attachment
 from harness.config.models import Effort, PermissionMode
 from harness.providers.base import AgentRun
 from harness.sessions.errors import SessionBusyError
+from harness.sessions.models import USER, Sender
 from harness.sessions.subagents import NO_AGENTS, ChatAgents
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class Unsent:
     text: str
     attachments: list[Attachment]
     shown: bool
+    sender: Sender = USER
 
 
 @dataclass(eq=False)

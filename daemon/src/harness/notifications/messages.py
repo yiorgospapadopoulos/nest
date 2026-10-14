@@ -18,6 +18,7 @@ _LABELS: dict[str, str] = {
     "ci_failed": "Checks failed",
     "ready_to_merge": "Ready to merge",
     "stuck": "Stuck",
+    "pixie_report": "Report",
 }
 # Items that wait in the inbox open it; the rest open their chat.
 _INBOX_KINDS = frozenset(
@@ -68,6 +69,8 @@ def notice_from_event(payload: Mapping[str, JsonValue]) -> Notice | None:
         or not isinstance(text, str)
     ):
         return None
+    if kind == "pixie_report":
+        return _report_notice(payload, title)
     url = "/inbox" if kind in _INBOX_KINDS else f"/chat/{quote(session_id, safe='')}"
     where = repo
     pixie_id = payload.get("pixie_id")
@@ -86,4 +89,23 @@ def notice_from_event(payload: Mapping[str, JsonValue]) -> Notice | None:
         url=url,
         tag=f"session-{session_id}",
         urgent=kind in _URGENT_KINDS,
+    )
+
+
+def _report_notice(payload: Mapping[str, JsonValue], title: str) -> Notice | None:
+    """A pixie's report (B42): titled with the pixie, the report's title as the body; it
+    opens the pixie, and one that needs action is urgent.
+    """
+    pixie_id = payload.get("pixie_id")
+    report_id = payload.get("report_id")
+    if not isinstance(pixie_id, str) or not isinstance(report_id, str):
+        return None
+    name = payload.get("pixie_name")
+    return Notice(
+        kind="pixie_report",
+        title=name if isinstance(name, str) else "Pixie",
+        body=title,
+        url=f"/pixie/{quote(pixie_id, safe='')}",
+        tag=f"pixie-report-{report_id}",
+        urgent=payload.get("severity") == "action",
     )

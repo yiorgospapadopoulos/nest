@@ -357,3 +357,26 @@ async def test_remove_without_the_repo_folder_only_deletes_the_leftover_director
     assert not leftover.exists()
     assert not worktree.path.exists()
     assert outside.is_dir()
+
+
+async def test_has_work_counts_changes_and_commits_since_the_base(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    worktree = await manager.create(repo, "s1", "Fix")
+
+    clean = await manager.has_work(worktree)
+    (worktree.path / "new.txt").write_text("x\n", encoding="utf-8")
+    untracked = await manager.has_work(worktree)
+    git(worktree.path, "add", "new.txt")
+    git(worktree.path, "commit", "-q", "-m", "add")
+    committed = await manager.has_work(worktree)
+    gone = await manager.has_work(Worktree(tmp_path / "missing", "b", worktree.base_ref))
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    unknown = await manager.has_work(Worktree(plain, "b", worktree.base_ref))
+
+    assert (clean, untracked, committed) == (False, True, True)
+    assert gone is False
+    # git cannot tell outside a repository: kept, to be safe.
+    assert unknown is True

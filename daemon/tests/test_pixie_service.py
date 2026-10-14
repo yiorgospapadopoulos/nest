@@ -490,3 +490,19 @@ async def test_a_chat_does_not_start_in_a_mode_its_model_lacks(
 
     assert (await ctx.pixies.get(pixie.id)).chat_session_id is None
     assert await ctx.db.fetch_all("SELECT id FROM sessions") == []
+
+
+async def test_a_new_autonomy_opens_a_fresh_run_that_names_it(
+    ctx: AppContext, provider: FakeProvider
+) -> None:
+    provider.script(reply("hi"), reply("again"))
+    pixie = await ctx.pixies.create(CreatePixie(name="Tester"))
+    chat = await ctx.pixies.send(pixie.id, "hello", [])
+    await until(lambda: not ctx.sessions.busy(chat.id))
+
+    await ctx.pixies.update(pixie.id, UpdatePixie(autonomy="start"))
+    await ctx.pixies.send(pixie.id, "more", [])
+    await until(lambda: len(provider.runs) == 2)
+
+    assert "your autonomy (Observe)" in (provider.runs[0].spec.system_prompt_append or "")
+    assert "your autonomy (Start)" in (provider.runs[1].spec.system_prompt_append or "")

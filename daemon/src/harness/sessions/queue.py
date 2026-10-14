@@ -14,10 +14,10 @@ from harness.clock import Clock
 from harness.errors import NotFoundError
 from harness.events import types
 from harness.events.bus import EventBus
-from harness.sessions.models import AttachmentSummary, QueuedMessage
+from harness.sessions.models import USER, AttachmentSummary, QueuedMessage, Sender
 from harness.storage.db import Database
 
-_SELECT = "SELECT id, text, attachments, created_at FROM queued_messages"
+_SELECT = "SELECT id, text, attachments, created_at, from_pixie, origin FROM queued_messages"
 # Urgent messages (they interrupted the turn) first, then oldest first.
 _ORDER = " ORDER BY urgent DESC, created_at, rowid"
 
@@ -37,7 +37,12 @@ class MessageQueue:
         return [_message(row) for row in rows]
 
     async def add(
-        self, session_id: str, text: str, attachments: list[Attachment], urgent: bool = False
+        self,
+        session_id: str,
+        text: str,
+        attachments: list[Attachment],
+        urgent: bool = False,
+        sender: Sender = USER,
     ) -> QueuedMessage:
         message = QueuedMessage(
             id=uuid4().hex,
@@ -49,10 +54,13 @@ class MessageQueue:
                 for a in attachments
             ],
             created_at=self._clock.now(),
+            from_pixie=sender.from_pixie,
+            origin=sender.origin,
         )
         await self._db.execute(
-            "INSERT INTO queued_messages (id, session_id, text, attachments, created_at, urgent)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queued_messages"
+            " (id, session_id, text, attachments, created_at, urgent, from_pixie, origin)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message.id,
                 session_id,
@@ -60,6 +68,8 @@ class MessageQueue:
                 json.dumps([a.model_dump() for a in message.attachments]),
                 message.created_at.isoformat(),
                 urgent,
+                sender.from_pixie,
+                sender.origin,
             ),
         )
         await self._announce(session_id)

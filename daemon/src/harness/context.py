@@ -34,18 +34,29 @@ from harness.notifications.notifier import Notifier
 from harness.notifications.subscriptions import PushSubscriptionStore
 from harness.notifications.vapid import VapidKeys
 from harness.paths import AppPaths
+from harness.pixies.activity import ActivityStore
 from harness.pixies.agents import PixieAgents
 from harness.pixies.files import PixieFiles
+from harness.pixies.habit_events import HabitEvents
+from harness.pixies.habit_store import HabitStore
+from harness.pixies.habit_tools import PixieHabitTools
+from harness.pixies.habits import HabitService
+from harness.pixies.harness_tools import PixieHarness
+from harness.pixies.report_store import ReportStore
+from harness.pixies.reporting import Reports
+from harness.pixies.reports import REPORT_BACK, ReportBack
 from harness.pixies.runtime import PixieRuntime
+from harness.pixies.scheduler import HabitScheduler
 from harness.pixies.service import PixieService
 from harness.pixies.store import PixieStore
 from harness.pixies.team_store import TeamStore
 from harness.pixies.teams import TeamService
+from harness.pixies.triggers import HabitTriggers
 from harness.providers.base import AgentProvider
 from harness.providers.claude import ClaudeProvider
 from harness.prs.monitor import PrMonitor
 from harness.prs.service import PullRequests
-from harness.reactions import SessionReactions
+from harness.reactions import SessionReactions, StateFollower
 from harness.repos.service import RepoService
 from harness.review.actions import ReviewActions
 from harness.review.publish import GitPublisher
@@ -93,6 +104,11 @@ class AppContext:
     engine: EngineInfo
     pixies: PixieService
     teams: TeamService
+    report_back: ReportBack
+    habits: HabitService
+    habit_scheduler: HabitScheduler
+    habit_triggers: HabitTriggers
+    reports: Reports
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -145,8 +161,21 @@ class AppContext:
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
         )
         pixie_files = PixieFiles(paths.pixies_dir)
-        pixie_runtime = PixieRuntime(pixie_store, pixie_files, repos, bus, clock)
         team_store = TeamStore(db, clock)
+        activity = ActivityStore(db, clock)
+
+        async def report(pixie_id: str, text: str) -> None:
+            await pixies.send(pixie_id, text, [], sender=REPORT_BACK)
+
+        report_back = ReportBack(
+            store=store,
+            pixies=pixie_store,
+            approvals=approvals,
+            deliver=report,
+            busy=lambda session_id: sessions.busy(session_id),
+        )
+        # The habit scheduler joins once it exists: it needs the sessions (B42).
+        followers: list[StateFollower] = [report_back]
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -164,6 +193,7 @@ class AppContext:
                 commands,
                 engine,
                 repos,
+                followers=followers,
             ),
             # Read for each new session, so edits through the API apply at once.
             defaults=lambda: context.settings.agents,
@@ -172,8 +202,18 @@ class AppContext:
             live_chats=live_chats,
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
-            extras=pixie_runtime.extras,
+            extras=lambda session: pixie_runtime.extras(session),
             agents=PixieAgents(pixie_store, pixie_files, team_store).for_session,
+        )
+        harness = PixieHarness(
+            pixies=pixie_store,
+            sessions=sessions,
+            store=store,
+            approvals=approvals,
+            bus=bus,
+            activity=activity,
+            clock=clock,
+            zone=zone,
         )
         teams = TeamService(team_store, pixie_store, bus)
         pixies = PixieService(
@@ -185,6 +225,52 @@ class AppContext:
             clock,
             # Read for each new chat, so edits through the API apply at once.
             defaults=lambda: context.settings.agents,
+            activity=activity,
+        )
+        habit_store = HabitStore(db, clock)
+        habit_events = HabitEvents(habit_store, bus, clock, zone)
+        scheduler = HabitScheduler(
+            store=habit_store,
+            events=habit_events,
+            pixies=pixie_store,
+            files=pixie_files,
+            sessions=sessions,
+            approvals=approvals,
+            usage=usage,
+            clock=clock,
+            zone=zone,
+            defaults=lambda: context.settings.agents,
+        )
+        followers.append(scheduler)
+        habits = HabitService(
+            store=habit_store,
+            pixies=pixie_store,
+            events=habit_events,
+            scheduler=scheduler,
+            sessions=sessions,
+            clock=clock,
+        )
+        reports = Reports(
+            store=ReportStore(db, clock),
+            habits=habit_store,
+            pixies=pixie_store,
+            chats=pixies,
+            bus=bus,
+            notifier=notifier,
+        )
+        habit_tools = PixieHabitTools(
+            habits=habits, store=habit_store, reports=reports, activity=activity
+        )
+        pixie_runtime = PixieRuntime(
+            pixie_store,
+            pixie_files,
+            repos,
+            bus,
+            clock,
+            lambda pixie_id, session: (
+                harness.tools(pixie_id, session.id, habit_run=session.habit_run_id is not None)
+                + habit_tools.tools(pixie_id, session)
+            ),
         )
         monitor = PrMonitor(
             store=store,
@@ -272,6 +358,13 @@ class AppContext:
             engine=engine,
             pixies=pixies,
             teams=teams,
+            report_back=report_back,
+            habits=habits,
+            habit_scheduler=scheduler,
+            habit_triggers=HabitTriggers(
+                bus=bus, sessions=store, habits=habit_store, pixies=pixie_store, scheduler=scheduler
+            ),
+            reports=reports,
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None

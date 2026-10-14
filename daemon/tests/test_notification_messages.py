@@ -151,3 +151,67 @@ async def test_a_gone_pixie_is_notified_without_a_name(db: Database, clock: Fake
 
     payloads = [e.payload for e in await bus.session_events("s1")]
     assert [(p["pixie_id"], "pixie_name" in p) for p in payloads] == [("p1", False)] * 2
+
+
+@pytest.mark.parametrize(("severity", "urgent"), [("action", True), ("warn", False)])
+def test_a_pixie_report_is_titled_with_the_pixie_and_opens_its_page(
+    severity: str, urgent: bool
+) -> None:
+    payload = event(
+        "pixie_report",
+        repo="pixie:p/1",
+        pixie_id="p/1",
+        pixie_name="Watcher",
+        title="CI is red on main",
+        text="Two checks fail.",
+        report_id="r1",
+        severity=severity,
+    )
+
+    assert notice_from_event(payload) == Notice(
+        kind="pixie_report",
+        title="Watcher",
+        body="CI is red on main",
+        url="/pixie/p%2F1",
+        tag="pixie-report-r1",
+        urgent=urgent,
+    )
+    assert notice_from_event({**payload, "pixie_name": None}) == Notice(
+        kind="pixie_report",
+        title="Pixie",
+        body="CI is red on main",
+        url="/pixie/p%2F1",
+        tag="pixie-report-r1",
+        urgent=urgent,
+    )
+
+
+@pytest.mark.parametrize("missing", ["pixie_id", "report_id"])
+def test_a_pixie_report_needs_its_pixie_and_report(missing: str) -> None:
+    payload = event("pixie_report", repo="pixie:p1", pixie_id="p1", report_id="r1")
+    del payload[missing]
+
+    assert notice_from_event(payload) is None
+
+
+async def test_a_notice_carries_extra_fields(db: Database, clock: FakeClock) -> None:
+    bus = EventBus(db, clock)
+
+    async def named(_pixie_id: str) -> str | None:
+        return "Watcher"
+
+    await Notifier(bus, named).notify(
+        "pixie_report", "s1", "pixie:p1", "CI", "Red", extra={"report_id": "r1"}
+    )
+
+    [stored] = [e.payload for e in await bus.session_events("s1")]
+    assert stored == {
+        "kind": "pixie_report",
+        "session_id": "s1",
+        "repo": "pixie:p1",
+        "title": "CI",
+        "text": "Red",
+        "report_id": "r1",
+        "pixie_id": "p1",
+        "pixie_name": "Watcher",
+    }

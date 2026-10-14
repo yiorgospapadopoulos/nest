@@ -132,6 +132,39 @@ class SessionStore:
         )
         return [_session(row) for row in rows]
 
+    async def started_by(self, pixie_id: str) -> list[Session]:
+        """Every chat the pixie started with its tools, oldest first (B41)."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE started_by_pixie = ? ORDER BY created_at, rowid",
+            (pixie_id,),
+        )
+        return [_session(row) for row in rows]
+
+    async def batch_members(self, pixie_id: str) -> list[Session]:
+        """The pixie's started chats whose report has not gone back to it yet, oldest first."""
+        rows = await self._db.fetch_all(
+            "SELECT * FROM sessions WHERE started_by_pixie = ? AND pixie_batch IS NOT NULL"
+            " ORDER BY created_at, rowid",
+            (pixie_id,),
+        )
+        return [_session(row) for row in rows]
+
+    async def batch_pixies(self) -> list[str]:
+        """The pixies with started chats whose report has not gone back yet."""
+        rows = await self._db.fetch_all(
+            "SELECT DISTINCT started_by_pixie FROM sessions"
+            " WHERE pixie_batch IS NOT NULL AND started_by_pixie IS NOT NULL"
+            " ORDER BY started_by_pixie"
+        )
+        return [row["started_by_pixie"] for row in rows]
+
+    async def clear_batch(self, session_ids: list[str]) -> None:
+        """Their report went back: they leave their batch, without moving in the lists."""
+        for session_id in session_ids:
+            await self._db.execute(
+                "UPDATE sessions SET pixie_batch = NULL WHERE id = ?", (session_id,)
+            )
+
     async def delete(self, session_id: str) -> None:
         """Delete the session with everything stored for it: approvals, attachments, events,
         queued messages, earlier engine session ids and its command list.

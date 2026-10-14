@@ -12,6 +12,7 @@ from harness.providers.base import AgentTool, ToolRefusedError
 TOOL_SERVER = "pixie"
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 WRITE_DENIED = "A pixie may only write files in its own workdir; use its memory tools instead."
+SUBAGENT_DENIED = "A pixie's own tools are only for the pixie, not for agents it calls."
 
 
 def own_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
@@ -37,6 +38,32 @@ def tool_servers(tools: tuple[AgentTool, ...]) -> dict[str, McpServerConfig]:
     return {TOOL_SERVER: create_sdk_mcp_server(TOOL_SERVER, tools=[to_sdk_tool(t) for t in tools])}
 
 
+def _deny(reason: str) -> HookJSONOutput:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def subagent_guard(own_tools: frozenset[str]) -> HookCallback:
+    """PreToolUse hook that denies the run's own tools to its subagents in every mode: a
+    pixie called inside a pixie's chat must not act with that pixie's tools (B41).
+    """
+
+    async def guard(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        data: dict[str, Any] = dict(input_data)
+        if data.get("tool_name") in own_tools and data.get("agent_id"):
+            return _deny(SUBAGENT_DENIED)
+        return {}
+
+    return guard
+
+
 def write_guard(root: Path) -> HookCallback:
     """PreToolUse hook that denies file edits outside `root`, in every permission mode."""
     resolved_root = root.resolve()
@@ -57,12 +84,6 @@ def write_guard(root: Path) -> HookCallback:
             target = await asyncio.to_thread(path.resolve)
             if target == resolved_root or resolved_root in target.parents:
                 return {}
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": WRITE_DENIED,
-            }
-        }
+        return _deny(WRITE_DENIED)
 
     return guard

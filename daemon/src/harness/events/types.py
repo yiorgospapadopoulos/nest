@@ -82,3 +82,19 @@ PIXIE_DELETED: Final = "pixie.deleted"
 # with the whole team, or deleted, `{id}`; its pixies are announced first, without it.
 PIXIE_TEAM_UPDATED: Final = "pixie_team.updated"
 PIXIE_TEAM_DELETED: Final = "pixie_team.deleted"
+# A card in a pixie's chat, stored as one of its session events (B41): `{kind, session_id}`.
+# `session`: a chat the pixie started, shown with its live state; `pr`: that chat's pull
+# request, shown with its checks and review state. Clients render both from their stores.
+# B42 adds `{kind: "report", report_id}`, `{kind: "choices", options}` (reply buttons) and
+# `{kind: "habit_suggestion", habit: {name, prompt, schedule, triggers}}`.
+PIXIE_CARD: Final = "pixie.card"
+# A pixie reported something (B42), `{report}` with the whole report; global. Read reports
+# follow as `{ids}`.
+PIXIE_REPORT: Final = "pixie.report"
+PIXIE_REPORT_READ: Final = "pixie.report_read"
+# Pixie habits (B42); global. A habit was created or changed, or its runs moved its last
+# run or next due time, `{habit}` with the whole habit; or deleted, `{id, pixie_id}`. A
+# run's outcome changed (queued, running, then how it ended), `{run}`.
+HABIT_UPDATED: Final = "habit.updated"
+HABIT_DELETED: Final = "habit.deleted"
+HABIT_RUN_UPDATED: Final = "habit.run_updated"

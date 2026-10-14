@@ -115,6 +115,20 @@ class WorktreeManager:
             return None
         return output.strip()
 
+    async def has_work(self, worktree: Worktree) -> bool:
+        """Whether the worktree holds changes (untracked files included) or commits since
+        its base. A folder that is gone holds nothing; when git cannot tell, it counts as
+        work, so nothing is removed by mistake.
+        """
+        if not await asyncio.to_thread(worktree.path.is_dir):
+            return False
+        args = ["status", "--porcelain", "-z", "--ignore-submodules=dirty"]
+        try:
+            changes = await run_checkout_git(args, worktree.path)
+        except GitError:
+            return True
+        return bool(changes) or await self.head_at(worktree.path) != worktree.base_ref
+
     async def dirty_files(self, repo: RepoConfig) -> list[str]:
         """Paths with uncommitted changes, including untracked files, in the main checkout.
 

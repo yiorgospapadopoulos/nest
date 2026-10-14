@@ -90,7 +90,12 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
         "existing": [],
         "failed": [],
     }
-    assert events[3].payload == {"text": "Fix the bug\nDetails here", "attachments": []}
+    assert events[3].payload == {
+        "text": "Fix the bug\nDetails here",
+        "attachments": [],
+        "from_pixie": None,
+        "origin": None,
+    }
 
 
 async def test_request_overrides_defaults_and_title(env: Env) -> None:
@@ -349,6 +354,8 @@ async def test_attachments_reach_the_agent_and_reopen_the_run_for_new_dirs(env: 
         "attachments": [
             {"id": doc.id, "filename": "spec.pdf", "media_type": "application/pdf", "size": 4}
         ],
+        "from_pixie": None,
+        "origin": None,
     }
 
 
@@ -404,3 +411,16 @@ async def test_list_and_get(env: Env) -> None:
 
     assert [s.id for s in await env.manager.list_sessions()] == [second.id, first.id]
     assert (await env.manager.get(first.id)).id == first.id
+
+
+async def test_closing_while_keeping_work_leaves_an_in_place_checkout_alone(env: Env) -> None:
+    await env.register()
+    env.provider.script(reply("done"))
+    created = await env.create(mode="in_place")
+    await env.reach(created.id, SessionState.IDLE)
+
+    kept = await env.manager.close_keeping_work(created.id)
+
+    assert kept is False
+    assert (await env.store.get(created.id)).state is SessionState.CLOSED
+    assert env.repo_path.is_dir()

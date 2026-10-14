@@ -42,6 +42,11 @@ def test_event_type_names() -> None:
     assert types.PR_OPENED == "pr.opened"
     assert types.NOTIFY == "notify"
     assert types.USAGE_UPDATED == "usage.updated"
+    assert types.PIXIE_REPORT == "pixie.report"
+    assert types.PIXIE_REPORT_READ == "pixie.report_read"
+    assert types.HABIT_UPDATED == "habit.updated"
+    assert types.HABIT_DELETED == "habit.deleted"
+    assert types.HABIT_RUN_UPDATED == "habit.run_updated"
 
 
 async def test_publish_persists_and_returns_the_event(db: Database, clock: FakeClock) -> None:
@@ -273,3 +278,18 @@ async def test_an_event_stored_while_its_publisher_is_cancelled_is_still_deliver
     stored = [event.type for event in await bus.session_events("s1")]
     assert stored == ["session.user_message", "session.state"]
     assert [event.type for event in received] == stored
+
+
+async def test_latest_id_of_one_type_in_one_session(db: Database, clock: FakeClock) -> None:
+    bus = EventBus(db, clock)
+    await bus.publish("session.user_message", {}, "s1")
+    newest = await bus.publish("session.user_message", {}, "s1")
+    await bus.publish("session.message", {}, "s1")
+    await bus.publish("session.user_message", {}, "s2")
+
+    assert await bus.latest_id("s1", "session.user_message") == newest.id
+    assert await bus.latest_id("s3", "session.user_message") is None
+
+
+def test_the_pixie_card_event_name() -> None:
+    assert types.PIXIE_CARD == "pixie.card"

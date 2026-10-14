@@ -1,4 +1,4 @@
-"""Project chats run with the pixies as subagents, and team mentions reach the agent (B40)."""
+"""Chats run with the pixies as subagents, and team mentions reach the agent (B40, B41)."""
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -148,7 +148,9 @@ async def test_background_tasks_keep_the_run_and_its_set(env: Env, source: Sourc
     assert env.provider.runs[0].inputs[1].text == "@qa how is it going?\n\n(call the qa team)"
 
 
-async def test_a_pixie_chat_gets_no_subagents(env: Env, source: Source) -> None:
+async def test_a_pixie_chat_runs_with_the_subagents_its_source_gives(
+    env: Env, source: Source
+) -> None:
     env.provider.script(reply("hi"))
     await env.db.execute(
         "INSERT INTO pixies (id, slug, name, mascot, color, background, permission_mode,"
@@ -170,6 +172,6 @@ async def test_a_pixie_chat_gets_no_subagents(env: Env, source: Source) -> None:
     )
     await results(env, session.id, 1)
 
-    assert source.asked == []
-    assert dict(env.provider.runs[0].spec.subagents) == {}
-    assert env.provider.runs[0].inputs[0].text == "@qa hello"
+    # Which pixies a pixie chat gets is the source's choice (B41).
+    assert source.asked == [session.id]
+    assert dict(env.provider.runs[0].spec.subagents) == {"tester": TESTER}

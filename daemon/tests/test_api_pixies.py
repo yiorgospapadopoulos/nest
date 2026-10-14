@@ -219,3 +219,40 @@ async def test_auto_needs_a_model_that_supports_it(api: Api) -> None:
     assert refused.status_code == 422
     assert refused.json() == {"detail": "Haiku does not support Auto mode"}
     assert (moved.json()["model"], moved.json()["permission_mode"]) == ("haiku", "default")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "status"),
+    [
+        ("max_running", 1, 200),
+        ("max_running", 20, 200),
+        ("max_running", 0, 422),
+        ("max_running", 21, 422),
+        ("max_per_day", 1, 200),
+        ("max_per_day", 100, 200),
+        ("max_per_day", 0, 422),
+        ("max_per_day", 101, 422),
+    ],
+)
+async def test_limits_are_patched_within_their_ranges(
+    api: Api, field: str, value: int, status: int
+) -> None:
+    pid = (await api.http.post("/api/pixies", json={"name": "Boss"})).json()["id"]
+
+    patched = await api.http.patch(f"/api/pixies/{pid}", json={field: value})
+
+    assert patched.status_code == status
+    if status == 200:
+        assert patched.json()[field] == value
+
+
+async def test_a_new_pixie_has_the_default_limits_and_an_empty_activity_log(api: Api) -> None:
+    created = (await api.http.post("/api/pixies", json={"name": "Boss"})).json()
+
+    activity = await api.http.get(f"/api/pixies/{created['id']}/activity")
+    unknown = await api.http.get("/api/pixies/nope/activity")
+
+    assert (created["max_running"], created["max_per_day"]) == (2, 5)
+    assert activity.status_code == 200
+    assert activity.json() == []
+    assert unknown.status_code == 404

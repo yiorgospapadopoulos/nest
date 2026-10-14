@@ -4,6 +4,7 @@ import pytest
 
 from harness.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotFoundError
 from harness.pixies.models import PixieSettings
+from harness.pixies.report_store import ReportStore
 from harness.pixies.store import PixieStore
 from harness.storage.db import Database
 from tests.fakes import FakeClock
@@ -141,3 +142,34 @@ async def test_reorder_must_name_every_pixie_once(
         await store.reorder([named[i] for i in order])
 
     assert [p.id for p in await store.list_pixies()] == ids
+
+
+async def test_limits_default_and_change(db: Database, clock: FakeClock) -> None:
+    store = PixieStore(db, clock)
+    pixie = await store.create(PixieSettings(name="Boss"), "boss")
+
+    changed = await store.update(pixie.id, max_running=4, max_per_day=12)
+
+    assert (pixie.max_running, pixie.max_per_day) == (2, 5)
+    assert (changed.max_running, changed.max_per_day) == (4, 12)
+
+
+async def test_report_push_and_unread_action_reports(db: Database, clock: FakeClock) -> None:
+    store = PixieStore(db, clock)
+    reports = ReportStore(db, clock)
+    pixie = await store.create(PixieSettings(name="Boss"), "boss")
+    other = await store.create(PixieSettings(name="Other"), "other")
+    for severity in ("action", "action", "warn", "info"):
+        await reports.add(pixie.id, severity, "T", "", None)
+    await reports.add(other.id, "action", "T", "", None)
+    read = await reports.add(pixie.id, "action", "Seen", "", None)
+    await reports.mark_read(read.id)
+
+    changed = await store.update(pixie.id, report_push="warn")
+    counted = {p.slug: p.unread_action_reports for p in await store.list_pixies()}
+
+    assert pixie.report_push == "action"
+    assert pixie.unread_action_reports == 0
+    assert changed.report_push == "warn"
+    assert changed.unread_action_reports == 2
+    assert counted == {"boss": 2, "other": 1}

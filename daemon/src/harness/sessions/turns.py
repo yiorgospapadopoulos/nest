@@ -25,7 +25,7 @@ from harness.sessions.extras import RunExtras, RunExtrasSource
 from harness.sessions.git_audit import changed_refs, for_publish, snapshot_refs
 from harness.sessions.hooks import SessionHooks
 from harness.sessions.live import BYPASS, LiveSession, Unsent
-from harness.sessions.models import Session, SessionState
+from harness.sessions.models import USER, Sender, Session, SessionState
 from harness.sessions.queue import MessageQueue
 from harness.sessions.rules import attachment_summary, require_cwd, user_input
 from harness.sessions.sink import SessionSink
@@ -135,6 +135,7 @@ class TurnRunner:
         session: Session,
         repo: RepoConfig | None,
         attachments: list[Attachment],
+        sender: Sender = USER,
     ) -> Outcome | None:
         if session.mode == "worktree":
             assert repo is not None  # noqa: S101 (a worktree session always has a project)
@@ -144,36 +145,47 @@ class TurnRunner:
                     session, repo, self._worktrees, self._store, self._bus
                 )
             except asyncio.CancelledError:
-                _keep_unsent(live, Unsent(session.prompt, attachments, shown=False))
+                _keep_unsent(live, Unsent(session.prompt, attachments, False, sender))
                 raise
             finally:
                 live.preparing = False
             if not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
-        return await self.submit(live, session.prompt, attachments)
+        return await self.submit(live, session.prompt, attachments, sender=sender)
 
     async def submit(
-        self, live: LiveSession, text: str, attachments: list[Attachment], shown: bool = False
+        self,
+        live: LiveSession,
+        text: str,
+        attachments: list[Attachment],
+        shown: bool = False,
+        sender: Sender = USER,
     ) -> None:
         """Show the message unless it is `shown` already, and give it to the agent. A nudge
         that cuts it off before the agent has it keeps it to go first (BUG-58).
         """
         try:
             if not shown:
-                await self._announce(live, text, attachments)
+                await self._announce(live, text, attachments, sender)
                 shown = True
             await self._run_turn(live, text, attachments)
         except asyncio.CancelledError:
             if not live.turn_active:
-                _keep_unsent(live, Unsent(text, attachments, shown))
+                _keep_unsent(live, Unsent(text, attachments, shown, sender))
             raise
 
-    async def _announce(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
+    async def _announce(
+        self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
+    ) -> None:
         session_id = live.session_id
         await self._attachments.assign([a.id for a in attachments], session_id)
         event = await self._bus.publish(
             types.SESSION_USER_MESSAGE,
-            {"text": text, "attachments": [attachment_summary(a) for a in attachments]},
+            {
+                "text": text,
+                "attachments": [attachment_summary(a) for a in attachments],
+                **sender.payload(),
+            },
             session_id,
         )
         live.user_event = event.id
@@ -317,7 +329,7 @@ class TurnRunner:
             await asyncio.wait({previous})
         unsent, live.unsent = live.unsent, None
         if unsent is not None:
-            await self.submit(live, unsent.text, unsent.attachments, unsent.shown)
+            await self.submit(live, unsent.text, unsent.attachments, unsent.shown, unsent.sender)
             return None
         taking = asyncio.ensure_future(self._take(live))
         try:
@@ -329,7 +341,8 @@ class TurnRunner:
             raise
         if taken is None:
             return ended  # the user took it off the queue meanwhile
-        await self.submit(live, *taken, shown=True)
+        text, attachments = taken
+        await self.submit(live, text, attachments, shown=True)
         return None
 
     async def _take(self, live: LiveSession) -> tuple[str, list[Attachment]] | None:
@@ -338,7 +351,7 @@ class TurnRunner:
             return None
         ids = [attachment.id for attachment in queued.attachments]
         attachments = await self._attachments.for_session(ids, live.session_id)
-        await self._announce(live, queued.text, attachments)
+        await self._announce(live, queued.text, attachments, queued.sender)
         return queued.text, attachments
 
     async def _report_context(self, live: LiveSession, run: AgentRun) -> None:
@@ -438,8 +451,8 @@ class TurnRunner:
         return await self._extras(session)
 
     async def _chat_agents(self, session: Session) -> ChatAgents:
-        """The pixies a project chat may call; a pixie's own chat gets none (B40)."""
-        if session.pixie_id is not None or self._agents is None:
+        """The pixies the chat may call (B40); a pixie's own chat gets the others (B41)."""
+        if self._agents is None:
             return NO_AGENTS
         return await self._agents(session)
 

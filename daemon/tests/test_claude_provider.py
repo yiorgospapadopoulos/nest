@@ -3,6 +3,7 @@ import json
 import logging
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from claude_agent_sdk import (
@@ -881,6 +882,7 @@ async def test_tools_and_the_write_root_reach_the_options(tmp_path: Path) -> Non
     assert [m.matcher for m in client.options.hooks["PreToolUse"]] == [
         "*",
         "AskUserQuestion",
+        "mcp__pixie__memory_read",
         "Edit|Write|MultiEdit|NotebookEdit",
     ]
     assert client.options.skills == ["review"]
@@ -944,6 +946,58 @@ async def test_subagents_become_agent_definitions(tmp_path: Path) -> None:
         # Left out: the chat's model and thinking, and every skill and tool.
         "plain": AgentDefinition(description="Plain", prompt="Plain.", permissionMode="default"),
     }
+
+
+async def test_subagents_never_get_the_runs_own_tools(tmp_path: Path) -> None:
+    async def noop(_args: dict[str, JsonValue]) -> str:
+        return ""
+
+    spec = SessionSpec(
+        cwd=tmp_path,
+        permission_mode="default",
+        tools=(
+            AgentTool("start_session", "Start", {"type": "object"}, noop),
+            AgentTool("memory_write", "Save", {"type": "object"}, noop),
+        ),
+        subagents={
+            "tester": Subagent(
+                description="Tester",
+                prompt="You test.",
+                permission_mode="bypassPermissions",
+                disallowed_tools=("Edit",),
+            ),
+        },
+    )
+
+    _, client = await Opened(tmp_path).open(spec)
+    options = client.options
+    from_subagent = await options.can_use_tool(  # type: ignore[misc]
+        "mcp__pixie__start_session", {}, ToolPermissionContext(agent_id="a1")
+    )
+    assert options.hooks is not None
+    (guard,) = options.hooks["PreToolUse"][2].hooks
+    hook_data = {"hook_event_name": "PreToolUse", "tool_name": "mcp__pixie__memory_write"}
+    no_context = cast(Any, {})
+    in_subagent = await guard(cast(Any, {**hook_data, "agent_id": "a1"}), None, no_context)
+    in_main = await guard(cast(Any, hook_data), None, no_context)
+    other_tool = await guard(
+        cast(Any, {**hook_data, "tool_name": "Bash", "agent_id": "a1"}), None, no_context
+    )
+
+    assert options.agents is not None
+    assert options.agents["tester"].disallowedTools == [
+        "Edit",
+        "mcp__pixie__memory_write",
+        "mcp__pixie__start_session",
+    ]
+    assert options.hooks["PreToolUse"][2].matcher == (
+        "mcp__pixie__memory_write|mcp__pixie__start_session"
+    )
+    # Denied wherever a subagent calls them, also in modes that never ask.
+    assert isinstance(from_subagent, PermissionResultDeny)
+    assert cast(Any, in_subagent)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert in_main == {}
+    assert other_tool == {}
 
 
 async def test_no_subagents_passes_none(tmp_path: Path) -> None:

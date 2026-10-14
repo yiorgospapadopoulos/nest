@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from harness.config.models import Color, Effort, Mascot, PermissionMode
+from harness.pixies.habit_models import Severity
 
 type Background = Literal["plain", "meadow", "dusk", "night", "dawn"]
 # Which harness tools a pixie gets (stage 3); every level includes the ones before it.
@@ -18,6 +19,9 @@ NAME_MAX = 40
 type Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX)
 ]
+# How many chats a pixie may have started and running at once, and start per local day.
+type MaxRunning = Annotated[int, Field(ge=1, le=20)]
+type MaxPerDay = Annotated[int, Field(ge=1, le=100)]
 
 
 class PixieSettings(BaseModel):
@@ -44,6 +48,10 @@ class PixieSettings(BaseModel):
     allowed_tools: list[str] = Field(default_factory=list[str])
     disallowed_tools: list[str] = Field(default_factory=list[str])
     hidden: bool = False
+    max_running: MaxRunning = 2
+    max_per_day: MaxPerDay = 5
+    # The lowest severity of its reports that reaches the phone (B42).
+    report_push: Severity = "action"
 
 
 class CreatePixie(PixieSettings):
@@ -79,6 +87,9 @@ class UpdatePixie(BaseModel):
     allowed_tools: list[str] | None = None
     disallowed_tools: list[str] | None = None
     hidden: bool | None = None
+    max_running: MaxRunning | None = None
+    max_per_day: MaxPerDay | None = None
+    report_push: Severity | None = None
     # A team's id to join it (B40).
     team_id: str | None = None
 
@@ -99,6 +110,8 @@ class Pixie(PixieSettings):
     chat_session_id: str | None
     created_at: datetime
     updated_at: datetime
+    # Its `action` reports the user has not read (B42); counted, not stored.
+    unread_action_reports: int = 0
 
 
 class CreateTeam(BaseModel):
@@ -153,3 +166,14 @@ class SearchHit(BaseModel):
     # "MEMORY.md", "notes/<name>.md" or "archive/<YYYY-MM>.md".
     file: str
     line: str
+
+
+class PixieActivity(BaseModel):
+    """One thing a pixie did through its harness tools (B41)."""
+
+    id: int
+    ts: datetime
+    tool: str
+    # The chat it acted on, if any.
+    session_id: str | None
+    summary: str

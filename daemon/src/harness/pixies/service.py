@@ -8,6 +8,7 @@ from harness.clock import Clock
 from harness.config.models import AgentDefaults
 from harness.events import types
 from harness.events.bus import EventBus
+from harness.pixies.activity import ActivityStore
 from harness.pixies.errors import DuplicateSlugError
 from harness.pixies.files import PixieFiles
 from harness.pixies.models import (
@@ -15,6 +16,7 @@ from harness.pixies.models import (
     CreatePixie,
     FileText,
     Pixie,
+    PixieActivity,
     PixieSettings,
     SearchHit,
     UpdatePixie,
@@ -25,7 +27,14 @@ from harness.pixies.store import PixieStore
 from harness.pixies.teams import TeamService
 from harness.sessions.errors import SessionNotFoundError
 from harness.sessions.manager import SessionManager
-from harness.sessions.models import SendResult, Session, SessionState, UpdateSession
+from harness.sessions.models import (
+    USER,
+    Sender,
+    SendResult,
+    Session,
+    SessionState,
+    UpdateSession,
+)
 
 DEFAULT_SOUL = (
     "You are a helpful pixie. Describe here who you are, what you do, how you like to work "
@@ -39,6 +48,8 @@ _CLEARABLE = ("model", "effort")
 _RUN_SHAPING = (
     "name",
     "slug",
+    # The run's prompt names it; the tools check it on every call anyway (B41).
+    "autonomy",
     "project_access",
     "projects",
     "skills",
@@ -60,7 +71,9 @@ class PixieService:
         bus: EventBus,
         clock: Clock,
         defaults: Callable[[], AgentDefaults],
+        activity: ActivityStore,
     ) -> None:
+        self._activity = activity
         self._store = store
         self._files = files
         self._teams = teams
@@ -193,14 +206,17 @@ class PixieService:
         # Only now: a send that waited on the lock still finds it and sees no pixie.
         self._locks.pop(pixie_id, None)
 
-    async def send(self, pixie_id: str, text: str, attachment_ids: list[str]) -> SendResult:
+    async def send(
+        self, pixie_id: str, text: str, attachment_ids: list[str], sender: Sender = USER
+    ) -> SendResult:
         """Starts the pixie's chat, or sends to the open one; `queued_message` is set when the
-        message waits for the running turn."""
+        message waits for the running turn. `sender` marks the daemon's own reports (B41).
+        """
         async with self._lock(pixie_id):
             pixie = await self._store.get(pixie_id)
             chat = await self._open_chat(pixie)
             if chat is not None:
-                return await self._sessions.send(chat.id, text, attachment_ids)
+                return await self._sessions.send(chat.id, text, attachment_ids, sender=sender)
             defaults = self._defaults()
             session = await self._sessions.create_pixie_chat(
                 pixie_id=pixie.id,
@@ -211,9 +227,15 @@ class PixieService:
                 effort=pixie.effort,
                 permission_mode=pixie.permission_mode,
                 attachment_ids=attachment_ids,
+                sender=sender,
             )
             await self._announce(await self._store.set_chat(pixie.id, session.id))
             return SendResult(**session.model_dump())
+
+    async def open_chat_id(self, pixie_id: str) -> str | None:
+        """The pixie's chat a message would go to, or None when one would start a new one."""
+        chat = await self._open_chat(await self._store.get(pixie_id))
+        return None if chat is None else chat.id
 
     async def reset(self, pixie_id: str) -> Pixie:
         async with self._lock(pixie_id):
@@ -238,6 +260,11 @@ class PixieService:
     async def notes(self, pixie_id: str) -> list[str]:
         await self._store.get(pixie_id)
         return self._files.notes(pixie_id)
+
+    async def activity(self, pixie_id: str) -> list[PixieActivity]:
+        """What the pixie did through its harness tools, newest first (B41)."""
+        await self._store.get(pixie_id)
+        return await self._activity.list(pixie_id)
 
     async def search(self, pixie_id: str, query: str) -> list[SearchHit]:
         await self._store.get(pixie_id)

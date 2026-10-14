@@ -8,7 +8,7 @@ import pytest
 from harness.context import AppContext
 from harness.pixies.agents import EDIT_TOOLS, PixieAgents
 from harness.pixies.files import PixieFiles
-from harness.pixies.models import CreatePixie, CreateTeam, UpdatePixie, WriteFile
+from harness.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
 from harness.pixies.prompt import CALL_PREAMBLE
 from harness.pixies.store import PixieStore
 from harness.pixies.team_store import TeamStore
@@ -217,3 +217,29 @@ async def test_the_team_call_lists_members_in_pixie_order_with_the_leader_marked
     assert "Its members are these subagents: a, b, c (leader). First use the subagent c " in (
         offered.teams[0].instruction
     )
+
+
+async def test_a_pixie_chat_gets_every_other_available_pixie_and_no_teams(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    created: dict[str, Pixie] = {}
+    for name, fields in (
+        ("Boss", {"projects": ["web"]}),
+        ("Api", {"projects": ["api"]}),
+        ("Hidden", {"hidden": True}),
+        ("Nothing", {"project_access": "none"}),
+        ("Reader", {"project_access": "read"}),
+    ):
+        pixie = await ctx.pixies.create(CreatePixie.model_validate({"name": name, **fields}))
+        created[name] = pixie
+    team = await ctx.teams.create(CreateTeam(name="QA", handle="qa"))
+    await ctx.pixies.update(created["Api"].id, UpdatePixie(team_id=team.id))
+    own = chat(f"pixie:{created['Boss'].id}").model_copy(update={"pixie_id": created["Boss"].id})
+
+    offered = await agents.for_session(own)
+
+    # Every project's pixie, but never itself, a hidden one or one without project access.
+    assert list(offered.subagents) == ["api", "reader"]
+    assert offered.teams == ()
+    # A leader's team section belongs to project chats, where its team can be called.
+    assert "## Your team" not in offered.subagents["api"].prompt
