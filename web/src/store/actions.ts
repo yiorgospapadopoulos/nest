@@ -19,6 +19,7 @@ import type {
   NotificationSettings,
   Pixie,
   PixieSearchHit,
+  PixieTeam,
   RepoConfig,
   RepoPatch,
   ResolveBody,
@@ -28,8 +29,14 @@ import type {
   SessionDiff,
   UpdatePixieBody,
   UpdateSessionBody,
+  UpdateTeamBody,
 } from "../api/types.ts";
-import { loadShowAutomated, saveShowAutomated } from "./devicePrefs.ts";
+import {
+  loadFoldedTeams,
+  loadShowAutomated,
+  saveFoldedTeams,
+  saveShowAutomated,
+} from "./devicePrefs.ts";
 import { nudgeText } from "./selectors.ts";
 import type { Action, Toast } from "./state.ts";
 
@@ -90,6 +97,7 @@ function remotePrompt(data: Record<string, unknown>): RemotePrompt {
 export function createActions(api: Api, dispatch: Dispatch, storage: () => Storage) {
   let toastId = 0;
   let showAutomated = loadShowAutomated(storage);
+  let foldedTeams = loadFoldedTeams(storage);
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
@@ -173,8 +181,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   }
 
   async function loadPixies(): Promise<void> {
-    const pixies = await quietly(() => api.pixies());
+    const [pixies, teams] = await Promise.all([
+      quietly(() => api.pixies()),
+      quietly(() => api.teams()),
+    ]);
     if (pixies !== null) dispatch({ type: "pixies", pixies });
+    if (teams !== null) dispatch({ type: "teams", teams });
   }
 
   async function loadClaudeChats(): Promise<void> {
@@ -272,6 +284,46 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
       dispatch({ type: "pixies", pixies: list });
       return true;
+    },
+    async duplicatePixie(id: string): Promise<Pixie | null> {
+      const copy = await attempt(() => api.duplicatePixie(id));
+      if (copy !== null) dispatch({ type: "pixie", pixie: copy });
+      return copy;
+    },
+    async createTeam(name: string): Promise<PixieTeam | null> {
+      const created = await attempt(() => api.createTeam({ name }));
+      if (created !== null) dispatch({ type: "team", team: created });
+      return created;
+    },
+    async updateTeam(id: string, body: UpdateTeamBody): Promise<boolean> {
+      const updated = await attempt(() => api.updateTeam(id, body));
+      if (updated === null) return false;
+      dispatch({ type: "team", team: updated });
+      return true;
+    },
+    /** Resolves to why the Mac refused the handle (409 taken, 422 invalid), else null. */
+    async setTeamHandle(id: string, handle: string): Promise<string | null> {
+      try {
+        dispatch({ type: "team", team: await api.updateTeam(id, { handle }) });
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 409 || error.status === 422)) {
+          return error.message;
+        }
+        report(error);
+      }
+      return null;
+    },
+    async deleteTeam(id: string): Promise<boolean> {
+      const done = await attempt(() => api.deleteTeam(id).then(() => true));
+      if (done === null) return false;
+      dispatch({ type: "teamRemoved", id });
+      return true;
+    },
+    /** Remembered on this device only. */
+    setTeamFolded(id: string, folded: boolean): void {
+      foldedTeams = [...foldedTeams.filter((each) => each !== id), ...(folded ? [id] : [])];
+      saveFoldedTeams(storage, foldedTeams);
+      dispatch({ type: "teamFolded", id, folded });
     },
     async sendToPixie(id: string, text: string): Promise<Session | null> {
       const sent = await attempt(() => api.sendToPixie(id, text));

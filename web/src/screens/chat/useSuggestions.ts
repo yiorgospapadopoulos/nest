@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { SlashCommand } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { availablePixies, availableTeams } from "../../store/selectors.ts";
 import type { Suggestion } from "./Suggestions.tsx";
-import { matchCommands, replaceTrigger, triggerAt } from "./suggest.ts";
+import { matchCommands, pixieMentions, replaceTrigger, soulLine, triggerAt } from "./suggest.ts";
 
 // Typing pauses this long before the files are asked for.
 const FILE_DELAY_MS = 150;
@@ -13,15 +14,17 @@ interface Input {
   focused: boolean;
   // Undefined in a new chat: commands come from the project, and files are not offered.
   sessionId: string | undefined;
+  // The project chat's repo, for the pixies and teams it can call (B40).
   repo: string;
 }
 
 /**
  * Completions for the composer: the chat's slash commands after a leading "/" (asked for
- * once per chat or project), and repo files after an "@" (latest request wins).
+ * once per chat or project), and after an "@" the pixies and teams the chat can call, then
+ * repo files (latest request wins).
  */
 export function useSuggestions({ text, caret, focused, sessionId, repo }: Input) {
-  const { actions } = useStore();
+  const { state, actions } = useStore();
   const [commands, setCommands] = useState<Record<string, SlashCommand[]>>({});
   const requested = useRef(new Set<string>());
   const [found, setFound] = useState<string[]>([]);
@@ -31,6 +34,24 @@ export function useSuggestions({ text, caret, focused, sessionId, repo }: Input)
   const source = sessionId === undefined ? `repo:${repo}` : `session:${sessionId}`;
   const wantsCommands = trigger?.kind === "command";
   const fileQuery = trigger?.kind === "file" && sessionId !== undefined ? trigger.query : null;
+  const mentioning = trigger?.kind === "file";
+  const callable = mentioning ? availablePixies(state, repo) : [];
+  const teams = mentioning ? availableTeams(state, repo) : [];
+  // The first line of each callable pixie's soul, read once while mentioning.
+  const [souls, setSouls] = useState<Record<string, string>>({});
+  const asked = useRef(new Set<string>());
+  const callableKey = callable.map((p) => p.id).join(" ");
+
+  useEffect(() => {
+    if (callableKey === "") return;
+    for (const id of callableKey.split(" ")) {
+      if (asked.current.has(id)) continue;
+      asked.current.add(id);
+      void actions.peekPixieFile(id, "soul").then((file) => {
+        if (file !== null) setSouls((current) => ({ ...current, [id]: soulLine(file.text) }));
+      });
+    }
+  }, [callableKey, actions]);
 
   useEffect(() => {
     if (!wantsCommands || requested.current.has(source)) return;
@@ -67,20 +88,33 @@ export function useSuggestions({ text, caret, focused, sessionId, repo }: Input)
       detail: c.description,
       result: replaceTrigger(text, trigger, `/${c.name}`),
     }));
-  } else if (trigger !== null && fileQuery !== null) {
-    items = found.map((path) => ({
-      key: path,
-      label: path,
-      hint: null,
-      detail: null,
-      result: replaceTrigger(text, trigger, `@${path}`),
-    }));
+  } else if (trigger !== null) {
+    // Pixies and teams are offered with or without files.
+    const people = pixieMentions(teams, callable, souls, trigger.query);
+    const files =
+      fileQuery === null
+        ? []
+        : found.map((path) => ({
+            key: path,
+            label: path,
+            hint: null,
+            detail: null,
+            group: "Files" as const,
+            result: replaceTrigger(text, trigger, `@${path}`),
+          }));
+    items = [
+      ...people.map((mention) => ({
+        ...mention,
+        result: replaceTrigger(text, trigger, `@${mention.handle}`),
+      })),
+      ...files,
+    ];
   }
   const navKey = trigger === null ? "" : `${trigger.kind}:${trigger.query}`;
   const active = nav.key === navKey ? nav.index % items.length : 0;
 
   return {
-    label: trigger?.kind === "file" ? "Files" : "Commands",
+    label: trigger?.kind === "file" ? mentionLabel(items) : "Commands",
     // Empty when nothing is being completed.
     items,
     active,
@@ -88,4 +122,11 @@ export function useSuggestions({ text, caret, focused, sessionId, repo }: Input)
       setNav({ key: navKey, index: (active + delta + items.length) % items.length });
     },
   };
+}
+
+/** The list's name after an "@": what it holds. */
+function mentionLabel(items: Suggestion[]): string {
+  const files = items.some((item) => item.group === "Files");
+  const pixies = items.some((item) => item.group === "Pixies");
+  return pixies ? (files ? "Pixies and files" : "Pixies") : "Files";
 }

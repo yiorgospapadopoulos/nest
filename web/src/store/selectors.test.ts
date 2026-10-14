@@ -13,6 +13,7 @@ import {
   repo,
   review,
   session,
+  team,
   NOW,
 } from "../test/fixtures.ts";
 import {
@@ -26,8 +27,11 @@ import {
   needsCount,
   nudgeText,
   pendingFor,
+  availablePixies,
+  availableTeams,
   pixieList,
   stuckChats,
+  teamList,
 } from "./selectors.ts";
 import { initialState, type State } from "./state.ts";
 
@@ -416,5 +420,59 @@ describe("pixies", () => {
     delete old.pixie_id;
     const s = state([old as Session]);
     expect(chatLists(s, "narwhal").groups).toHaveLength(1);
+  });
+});
+
+describe("teams and who a chat can call", () => {
+  const withTeams = (): State => ({
+    ...initialState,
+    pixies: Object.fromEntries(
+      [
+        pixie({ id: "lead", slug: "lead", position: 3, team_id: "qa" }),
+        pixie({ id: "bugs", slug: "bugs", position: 1, team_id: "qa" }),
+        pixie({ id: "shy", slug: "shy", position: 2, team_id: "qa", hidden: true }),
+        pixie({ id: "blind", slug: "blind", position: 4, project_access: "none" }),
+        pixie({ id: "cv", slug: "cv", position: 5, projects: ["todo-ui"], team_id: "docs" }),
+        pixie({ id: "any", slug: "any", position: 0, projects: null }),
+        pixie({ id: "read", slug: "read", position: 6, project_access: "read", projects: [] }),
+      ].map((p) => [p.id, p]),
+    ),
+    teams: {
+      docs: team({ id: "docs", handle: "docs", position: 1, leader_id: "cv" }),
+      qa: team({ id: "qa", handle: "qa", position: 0, leader_id: "lead" }),
+      empty: team({ id: "empty", handle: "empty", position: 2, leader_id: null }),
+      gone: team({ id: "gone", handle: "gone", position: 3, leader_id: "missing" }),
+    },
+  });
+
+  it("lists teams by position", () => {
+    expect(teamList(withTeams()).map((t) => t.id)).toEqual(["qa", "docs", "empty", "gone"]);
+  });
+
+  it("offers pixies that may work on the project, by position", () => {
+    expect(availablePixies(withTeams(), "narwhal").map((p) => p.id)).toEqual([
+      "any",
+      "bugs",
+      "lead",
+    ]);
+    expect(availablePixies(withTeams(), "todo-ui").map((p) => p.id)).toEqual([
+      "any",
+      "bugs",
+      "lead",
+      "cv",
+    ]);
+  });
+
+  it("offers teams whose leader is available, with their available members", () => {
+    const offered = (repo: string) =>
+      availableTeams(withTeams(), repo).map(({ team: t, members }) => [
+        t.id,
+        members.map((m) => m.id),
+      ]);
+    expect(offered("narwhal")).toEqual([["qa", ["bugs", "lead"]]]);
+    expect(offered("todo-ui")).toEqual([
+      ["qa", ["bugs", "lead"]],
+      ["docs", ["cv"]],
+    ]);
   });
 });

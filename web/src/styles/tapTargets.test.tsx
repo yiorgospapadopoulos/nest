@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { screen, within } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
-import { detail, pixie, queuedMessage, repo, review, session } from "../test/fixtures.ts";
+import { detail, pixie, queuedMessage, repo, review, session, team } from "../test/fixtures.ts";
 import { openPixie } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
 
@@ -123,6 +123,53 @@ describe("tap targets", () => {
       width: TAP,
       height: TAP,
     });
+  });
+
+  it("are at least 44 points in the pixie list and a pixie call", async () => {
+    const tester = pixie({ team_id: "t1" });
+    const chat = session();
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([tester]);
+    api.teams.mockResolvedValue([team({ leader_id: tester.id })]);
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+    api.session.mockResolvedValue(detail(chat));
+    api.sessionEvents.mockResolvedValue([
+      {
+        id: 1,
+        session_id: chat.id,
+        type: "session.message",
+        ts: "x",
+        payload: {
+          parent_tool_use_id: null,
+          blocks: [
+            { type: "tool_use", id: "a1", name: "Task", input: { subagent_type: "tester" } },
+          ],
+        },
+      },
+    ]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    const controls = [
+      screen.getByRole("button", { name: "New team" }),
+      screen.getByRole("button", { name: "Actions for team QA" }),
+    ];
+    for (const control of controls) {
+      const size = box(control);
+      expect(Math.min(size.width, size.height), control.textContent).toBeGreaterThanOrEqual(TAP);
+    }
+
+    // The header spans the column; its height is what counts.
+    expect(box(screen.getByRole("button", { name: /^QA/ })).height).toBeGreaterThanOrEqual(TAP);
+
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+    for (const control of [
+      await screen.findByRole("button", { name: "Open Tester" }),
+      screen.getByRole("button", { name: /running/ }),
+    ]) {
+      expect(box(control).height).toBeGreaterThanOrEqual(TAP);
+    }
   });
 
   it("are at least 44 points on a pixie's details", async () => {

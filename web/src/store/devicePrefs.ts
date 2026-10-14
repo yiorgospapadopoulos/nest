@@ -22,6 +22,27 @@ export function saveShowAutomated(storage: () => Storage, on: boolean): void {
   }
 }
 
+// The teams folded in the pixie list (B40), by id.
+export const FOLDED_TEAMS_KEY = "harness.foldedTeams";
+
+export function loadFoldedTeams(storage: () => Storage): string[] {
+  let saved: unknown;
+  try {
+    saved = JSON.parse(storage().getItem(FOLDED_TEAMS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+}
+
+export function saveFoldedTeams(storage: () => Storage, ids: string[]): void {
+  try {
+    storage().setItem(FOLDED_TEAMS_KEY, JSON.stringify(ids));
+  } catch {
+    // Not remembered.
+  }
+}
+
 // Unsent messages, per chat (see draftKey), so a reload or a closed app keeps them.
 export const DRAFTS_KEY = "harness.drafts";
 

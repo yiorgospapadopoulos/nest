@@ -8,6 +8,7 @@ import type {
   CommandList,
   Connector,
   CreatePixieBody,
+  CreateTeamBody,
   CreateSessionBody,
   HarnessEvent,
   MergeBody,
@@ -17,6 +18,7 @@ import type {
   Pixie,
   PixieFile,
   PixieSearchHit,
+  PixieTeam,
   PushReport,
   PushSubscriptionBody,
   RedeemResponse,
@@ -31,6 +33,7 @@ import type {
   SessionDiff,
   UpdatePixieBody,
   UpdateSessionBody,
+  UpdateTeamBody,
   UsageLimits,
 } from "./types.ts";
 
@@ -38,6 +41,7 @@ import type {
 export const OPEN_ELSEWHERE = "open_in_claude_code";
 
 const pixiePath = (id: string) => `/api/pixies/${encodeURIComponent(id)}`;
+const teamPath = (id: string) => `/api/pixie-teams/${encodeURIComponent(id)}`;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -133,6 +137,11 @@ export interface Api {
   savePixieFile(id: string, name: string, text: string, hash: string | null): Promise<PixieFile>;
   pixieNotes(id: string): Promise<string[]>;
   searchPixie(id: string, q: string): Promise<PixieSearchHit[]>;
+  duplicatePixie(id: string): Promise<Pixie>;
+  teams(): Promise<PixieTeam[]>;
+  createTeam(body: CreateTeamBody): Promise<PixieTeam>;
+  updateTeam(id: string, body: UpdateTeamBody): Promise<PixieTeam>;
+  deleteTeam(id: string): Promise<null>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -410,6 +419,28 @@ export class HttpApi implements Api {
 
   searchPixie(id: string, q: string) {
     return this.json<PixieSearchHit[]>("GET", `${pixiePath(id)}/search?q=${encodeURIComponent(q)}`);
+  }
+
+  /** A copy right under the original, in its team, named "<name> 2" (B40). */
+  duplicatePixie(id: string) {
+    return this.json<Pixie>("POST", `${pixiePath(id)}/duplicate`);
+  }
+
+  teams() {
+    return this.json<PixieTeam[]>("GET", "/api/pixie-teams");
+  }
+
+  createTeam(body: CreateTeamBody) {
+    return this.json<PixieTeam>("POST", "/api/pixie-teams", body);
+  }
+
+  updateTeam(id: string, body: UpdateTeamBody) {
+    return this.json<PixieTeam>("PATCH", teamPath(id), body);
+  }
+
+  /** Its pixies stay, without a team. */
+  deleteTeam(id: string) {
+    return this.json<null>("DELETE", teamPath(id));
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Approval, JsonObject } from "../api/types.ts";
-import { approval, event, mergeApproval, plan, question, review } from "../test/fixtures.ts";
+import {
+  approval,
+  event,
+  HAND_BACK,
+  mergeApproval,
+  pixie,
+  plan,
+  question,
+  review,
+} from "../test/fixtures.ts";
 import { buildTranscript, resultSummary, turnStart } from "./build.ts";
 
 const json = (a: Approval) => ({ ...a }) as unknown as JsonObject;
@@ -603,6 +612,118 @@ describe("turnStart", () => {
         turnStart([at(1, "session.user_message"), at(2, "session.state", { state })]),
       ).toBeNull();
     }
+  });
+});
+
+describe("pixie calls", () => {
+  const tester = pixie({ id: "p1", slug: "tester", name: "Tester" });
+  const known = new Map([["tester", tester]]);
+  const agent = (id: string, subagent: string, name = "Task") => ({
+    type: "tool_use",
+    id,
+    name,
+    input: { description: "Check the form", subagent_type: subagent },
+  });
+  const sub = (id: number, parent: string, ...list: JsonObject[]) =>
+    event({ id, type: "session.message", payload: { parent_tool_use_id: parent, blocks: list } });
+
+  it("shows a call to a known pixie as its own row holding the call's own messages", () => {
+    const items = buildTranscript(
+      [
+        blocks(1, call("b1"), agent("a1", "tester"), call("b2")),
+        sub(
+          2,
+          "a1",
+          { type: "thinking", text: "hmm" },
+          { type: "text", text: "Looking." },
+          { type: "text" },
+          { type: "tool_use", id: "s1", name: "Read", input: { file_path: "/w/a.ts" } },
+          { type: "tool_use", id: "s2", name: "Glob", input: {} },
+          { type: "tool_use", id: "s3", input: {} },
+        ),
+        sub(3, "a1", { type: "tool_result", tool_use_id: "s1", content: "x" }),
+        sub(4, "zz", { type: "text", text: "another agent" }),
+        event({ id: 6, type: "session.message", payload: { parent_tool_use_id: 7, blocks: [] } }),
+        blocks(5, done("b1"), { type: "tool_result", tool_use_id: "a1", content: "All good" }),
+      ],
+      {},
+      "/w",
+      new Set(),
+      known,
+    );
+
+    expect(shape(items)).toEqual(["tool:1.0", "pixie:1.1", "tool:1.2"]);
+    expect(items[1]).toEqual({
+      kind: "pixie",
+      key: "1.1",
+      pixie: tester,
+      call: {
+        kind: "tool",
+        key: "1.1",
+        id: "a1",
+        name: "Task",
+        arg: "Check the form",
+        result: "All good",
+        detail: "All good",
+        failed: false,
+      },
+      steps: [
+        { kind: "text", key: "2.1", text: "Looking." },
+        { kind: "call", key: "2.3", text: "Read a.ts" },
+        { kind: "call", key: "2.4", text: "Glob" },
+        { kind: "call", key: "2.5", text: "Tool" },
+      ],
+    });
+  });
+
+  it("shows only the report of an agent's hand-back, for pixies and other agents", () => {
+    const back = (id: string) => ({ type: "tool_result", tool_use_id: id, content: HAND_BACK });
+    const items = buildTranscript(
+      [
+        blocks(1, agent("a1", "tester"), agent("a2", "stranger"), call("b1")),
+        blocks(2, back("a1"), back("a2"), back("b1")),
+      ],
+      {},
+      null,
+      new Set(),
+      known,
+    );
+    const report =
+      "I'm New pixie 2 (@new-pixie-2-2), running on Claude Opus 5.5 (`claude-opus-5-5`).";
+
+    expect(items[0]).toMatchObject({
+      kind: "pixie",
+      call: { result: `${report.slice(0, 39)}…`, detail: report },
+    });
+    expect(items[1]).toMatchObject({
+      kind: "tools",
+      items: [
+        { name: "Task", result: `${report.slice(0, 39)}…`, detail: report },
+        { name: "Bash", result: "6 lines", detail: HAND_BACK },
+      ],
+    });
+  });
+
+  it("leaves unknown agents and other tools as they were, and stops with the turn", () => {
+    const items = buildTranscript(
+      [
+        blocks(
+          1,
+          agent("a1", "stranger", "Agent"),
+          agent("a2", "tester", "Bash"),
+          call("a4", "Task"),
+        ),
+        blocks(2, agent("a3", "tester", "Agent")),
+        event({ id: 3, type: "session.state", payload: { state: "idle" } }),
+      ],
+      {},
+      null,
+      new Set(),
+      known,
+    );
+
+    expect(shape(items)).toEqual(["group:1.0,1.1,1.2", "pixie:2.0"]);
+    expect(items[1]).toMatchObject({ kind: "pixie", call: { result: "stopped" }, steps: [] });
   });
 });
 

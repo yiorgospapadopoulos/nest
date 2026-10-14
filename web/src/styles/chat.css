@@ -211,6 +211,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A known pixie or team mention (B40): its colour pulled halfway toward the bubble's text
+   colour, so it reads on an accent bubble and on a neutral one, light or dark. */
+.m-u .mention {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--px) 50%, var(--on-bubble));
+}
 .m-u small {
   display: block;
   opacity: 0.75;
@@ -391,6 +397,57 @@
 }
 .tgl .think {
   padding: 0 4px;
+}
+/* A call to a pixie (B40): its mascot and name open its page, the rest opens in place. */
+.pxch {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.pxcn,
+.pxct {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.pxcn {
+  flex: none;
+  padding: 6px 4px 6px 10px;
+}
+.pxcn .pxs {
+  display: block;
+}
+.pxct {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px 6px 4px;
+  text-align: left;
+}
+.pxct[aria-expanded="true"] .cv {
+  transform: none;
+}
+.pxsteps {
+  padding: 6px 12px 10px;
+  font-size: 0.7353rem;
+  line-height: 1.5;
+}
+.pxtext,
+.pxans {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pxstep {
+  font: 0.6471rem var(--mono);
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tool pre {
   margin: 0;
@@ -1103,6 +1160,20 @@
 .sgi[aria-selected="true"],
 .sgi:active {
   background: var(--fill);
+}
+/* A mention list's sections (B40): pixies and teams, then files. */
+.sgh {
+  padding: 8px 14px 2px;
+  font-size: 0.6471rem;
+  font-weight: 600;
+  color: var(--t3);
+}
+.sgm {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  align-self: center;
 }
 .sgn {
   flex: none;

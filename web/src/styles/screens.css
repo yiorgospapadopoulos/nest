@@ -1286,6 +1286,20 @@ a.b {
 .pxr .pxs {
   flex: none;
 }
+/* In a pixie row the name has priority: the @handle starts from no width and only grows
+   into the room the name and tags leave, so it truncates first, down to nothing, and only
+   then does the name truncate. */
+.pxr .rt {
+  flex: 0 1 auto;
+}
+.pxr .pxslug {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
 .pxnew {
   color: var(--accent);
 }
@@ -1322,6 +1336,57 @@ div.pxr:active {
   cursor: default;
 }
 .pxmv .up {
+  transform: rotate(180deg);
+}
+/* Teams (B40): a foldable header with the team's menu, its pixies below. */
+.pxth {
+  display: flex;
+  align-items: center;
+}
+.pxth .pgb {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  margin-right: 0;
+}
+.pxth .rmore {
+  width: 44px;
+  height: 44px;
+}
+.pxhandle {
+  font-weight: 500;
+  color: var(--t3);
+}
+.pxnone {
+  margin: 0;
+  padding: 16px;
+  font-size: 0.7647rem;
+  color: var(--t3);
+}
+.pxteam + .lgrp,
+.pxteam + .pxteam {
+  margin-top: 6px;
+}
+.pxlead {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--t2);
+  font-weight: 600;
+}
+/* New team, beside New pixie in the same row. */
+.pxnewt {
+  flex: none;
+  min-width: 44px;
+  min-height: 54px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.9118rem;
+  cursor: pointer;
+}
+.asi .ic.up {
   transform: rotate(180deg);
 }
 .pxplus {

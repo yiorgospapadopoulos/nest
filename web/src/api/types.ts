@@ -592,8 +592,35 @@ export interface Pixie extends PixieSettings {
   slug: string;
   position: number;
   chat_session_id: string | null;
+  // The team it belongs to, if any; one team per pixie (B40).
+  team_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A team of pixies, called with `@handle`. Its members are the pixies naming it. */
+export interface PixieTeam {
+  id: string;
+  name: string;
+  // Shares the slug rules and namespace with pixie slugs.
+  handle: string;
+  // Always a member while the team has any; null when it has none.
+  leader_id: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTeamBody {
+  name: string;
+  handle?: string;
+}
+
+// `leader_id` must name a member (409 `leader_not_member` otherwise).
+export interface UpdateTeamBody {
+  name?: string;
+  handle?: string;
+  leader_id?: string;
 }
 
 export type CreatePixieBody = Partial<PixieSettings> & {
@@ -602,7 +629,12 @@ export type CreatePixieBody = Partial<PixieSettings> & {
   soul?: string;
 };
 // Fields left out are unchanged; `all_projects` sets `projects` back to every project.
-export type UpdatePixieBody = Partial<PixieSettings> & { slug?: string; all_projects?: boolean };
+// `team_id: null` leaves its team.
+export type UpdatePixieBody = Partial<PixieSettings> & {
+  slug?: string;
+  all_projects?: boolean;
+  team_id?: string | null;
+};
 
 /** A pixie file's text and the hash a later write must name. */
 export interface PixieFile {

@@ -1,4 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
 import type { BackgroundSummary, QueuedMessage, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import type { HistoryStatus } from "../../store/state.ts";
@@ -6,14 +13,17 @@ import { elapsed, summarizeTools, thoughtLabel } from "../../transcript/activity
 import {
   buildTranscript,
   turnStart,
+  type PixieCallItem,
   type ThinkingItem,
   type ToolItem,
   type TranscriptItem,
 } from "../../transcript/build.ts";
+import { mentionColors, mentionParts } from "../../transcript/mentions.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { toolIcon } from "../../ui/toolIcon.ts";
 import { usePageVisible } from "../../ui/visible.ts";
 import { workRoot } from "../approvals/hooks.ts";
+import { Sprite } from "../pixies/Sprite.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { RewindSheet } from "./RewindSheet.tsx";
 
@@ -38,9 +48,18 @@ interface Props {
   // there by then is not announced. A failed load offers Retry.
   history: HistoryStatus;
   onRetry: () => void;
+  // A pixie's page, from a call to it.
+  onOpenPixie: (id: string) => void;
 }
 
-export function Transcript({ session, background, focus = null, history, onRetry }: Props) {
+export function Transcript({
+  session,
+  background,
+  focus = null,
+  history,
+  onRetry,
+  onOpenPixie,
+}: Props) {
   const loaded = history === "loaded";
   const { state, actions } = useStore();
   const events = state.transcripts[session.id];
@@ -56,10 +75,15 @@ export function Transcript({ session, background, focus = null, history, onRetry
     [runningKey],
   );
   const root = workRoot(session);
-  // Built again only when the events, approvals or running tasks change (IMP-11).
+  // A call to a pixie shows as its row, matched by slug (B40).
+  const pixies = useMemo(
+    () => new Map(Object.values(state.pixies).map((p) => [p.slug, p])),
+    [state.pixies],
+  );
+  // Built again only when the events, approvals, running tasks or pixies change (IMP-11).
   const items = useMemo(
-    () => buildTranscript(events ?? [], state.approvals, root, running),
-    [events, state.approvals, root, running],
+    () => buildTranscript(events ?? [], state.approvals, root, running, pixies),
+    [events, state.approvals, root, running, pixies],
   );
   const box = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -144,6 +168,7 @@ export function Transcript({ session, background, focus = null, history, onRetry
               session={session}
               running={running}
               onRewind={onRewind}
+              onOpenPixie={onOpenPixie}
             />
           ))}
           {live && <div className="m-a">{live}</div>}
@@ -276,19 +301,19 @@ interface ItemProps {
   session: Session;
   running: ReadonlySet<string>;
   onRewind: ((eventId: number) => void) | undefined;
+  onOpenPixie: (id: string) => void;
 }
 
-function Item({ item, session, running, onRewind }: ItemProps) {
-  return item.kind === "approval" ? (
-    <InlineApproval approval={item.approval} session={session} />
-  ) : (
-    <MessageItem
-      item={item}
-      ev={item.key.replace(/\..*$/, "")}
-      running={running}
-      onRewind={onRewind}
-    />
-  );
+function Item({ item, session, running, onRewind, onOpenPixie }: ItemProps) {
+  const ev = item.key.replace(/\..*$/, "");
+  switch (item.kind) {
+    case "approval":
+      return <InlineApproval approval={item.approval} session={session} />;
+    case "pixie":
+      return <PixieCall item={item} ev={ev} running={running} onOpenPixie={onOpenPixie} />;
+    default:
+      return <MessageItem item={item} ev={ev} running={running} onRewind={onRewind} />;
+  }
 }
 
 /** A message waiting for the running turn to end, dimmed until it is sent. */
@@ -309,7 +334,8 @@ function Queued({ message, onCancel }: { message: QueuedMessage; onCancel: () =>
   );
 }
 
-export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" }>;
+// Pixie calls show only in a harness chat's transcript.
+export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" }>;
 
 interface EntryProps {
   item: MessageEntry;
@@ -326,7 +352,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
     case "user": {
       const bubble = (
         <div className="m-u" data-ev={ev}>
-          {item.text}
+          <UserText text={item.text} />
           {item.attachments.length > 0 && <small>{item.attachments.join(", ")}</small>}
         </div>
       );
@@ -372,6 +398,88 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
     case "tools":
       return <ToolGroup items={item.items} ev={ev} running={running} />;
   }
+}
+
+interface PixieCallProps {
+  item: PixieCallItem;
+  ev: string;
+  running: ReadonlySet<string>;
+  onOpenPixie: (id: string) => void;
+}
+
+/**
+ * A call to a pixie (B40): its mascot and name go to its page; the rest of the row opens
+ * in place to the call's own messages, then its answer.
+ */
+function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
+  const [open, setOpen] = useState(false);
+  const { pixie, call, steps } = item;
+  const busy = call.result === null || running.has(call.id);
+  return (
+    <div className="tool pxcall" data-ev={ev}>
+      <div className="pxch">
+        <button
+          className="pxcn"
+          aria-label={`Open ${pixie.name}`}
+          onClick={() => {
+            onOpenPixie(pixie.id);
+          }}
+        >
+          <span aria-hidden="true">
+            <Sprite mascot={pixie.mascot} color={pixie.color} size={18} />
+          </span>
+          <span className="tn">{pixie.name}</span>
+        </button>
+        <button
+          className="pxct"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen(!open);
+          }}
+        >
+          <span className="ta">{call.arg}</span>
+          <span className={busy ? "tr glow" : call.failed ? "tr bad" : "tr"}>
+            {busy ? "running" : call.result}
+          </span>
+          <Icon name="chev" className="cv" />
+        </button>
+      </div>
+      {open && (
+        <div className="tgl pxsteps" role="group" aria-label={`${pixie.name}'s steps`}>
+          {steps.map((step) =>
+            step.kind === "text" ? (
+              <div key={step.key} className="pxtext">
+                {step.text}
+              </div>
+            ) : (
+              <div key={step.key} className="pxstep">
+                {step.text}
+              </div>
+            ),
+          )}
+          <div className="pxans">{busy ? "running" : (call.detail ?? call.result)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A sent message, its @ mentions of known pixies and teams in the pixie's colour (B40). */
+function UserText({ text }: { text: string }) {
+  const { state } = useStore();
+  const colors = useMemo(
+    () => mentionColors(state.pixies, state.teams),
+    [state.pixies, state.teams],
+  );
+  return mentionParts(text, colors).map((part, index) =>
+    part.color === null ? (
+      part.text
+    ) : (
+      <span key={index} className="mention" style={{ "--px": part.color } as CSSProperties}>
+        {part.text}
+      </span>
+    ),
+  );
 }
 
 /** "Thought for 8s", opening to the thinking; nothing to open when the engine left it out. */

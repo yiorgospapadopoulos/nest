@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Pixie, UpdatePixieBody } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
-import { ActionSheet } from "../../ui/Sheet.tsx";
 import { ChipList } from "./ChipList.tsx";
+import { Confirm } from "./Confirm.tsx";
 import { FilePage } from "./FilePage.tsx";
 import { InlineInput } from "./InlineInput.tsx";
 import { factLines } from "./memory.ts";
@@ -317,39 +317,5 @@ function DrillIn({ title, about, onOpen, children }: DrillInProps) {
       {body}
       <Icon name="chevr" className="chv" />
     </button>
-  );
-}
-
-interface ConfirmProps {
-  title: string;
-  about: string;
-  action: string;
-  onConfirm: () => void;
-  onClose: () => void;
-}
-
-function Confirm({ title, about, action, onConfirm, onClose }: ConfirmProps) {
-  return (
-    <ActionSheet
-      label={title}
-      role="alertdialog"
-      onClose={onClose}
-      title={
-        <>
-          <b>{title}</b>
-          {about}
-        </>
-      }
-    >
-      <button
-        className="asi dng mid"
-        onClick={() => {
-          onClose();
-          onConfirm();
-        }}
-      >
-        {action}
-      </button>
-    </ActionSheet>
   );
 }

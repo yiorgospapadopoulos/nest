@@ -4,6 +4,7 @@ import type {
   ClaudeChat,
   HarnessEvent,
   Pixie,
+  PixieTeam,
   PrStatus,
   Session,
   StuckFlag,
@@ -28,6 +29,37 @@ export function pixieList(state: State, withHidden = false): Pixie[] {
   return Object.values(state.pixies)
     .filter((p) => withHidden || !p.hidden)
     .sort((a, b) => a.position - b.position);
+}
+
+/** The teams in the order the user set. */
+export function teamList(state: State): PixieTeam[] {
+  return Object.values(state.teams).sort((a, b) => a.position - b.position);
+}
+
+/** Whether a project chat in `repo` gets the pixie as a subagent (B40). */
+function mayWork(p: Pixie, repo: string): boolean {
+  return !p.hidden && p.project_access !== "none" && (p.projects?.includes(repo) ?? true);
+}
+
+/** The pixies a project chat in `repo` can call, in list order. */
+export function availablePixies(state: State, repo: string): Pixie[] {
+  return pixieList(state).filter((p) => mayWork(p, repo));
+}
+
+export interface CallableTeam {
+  team: PixieTeam;
+  // Its members the chat can call, in list order; the leader is one of them.
+  members: Pixie[];
+}
+
+/** The teams a project chat in `repo` can call: those whose leader it can call. */
+export function availableTeams(state: State, repo: string): CallableTeam[] {
+  const available = availablePixies(state, repo);
+  return teamList(state).flatMap((team) =>
+    available.some((p) => p.id === team.leader_id)
+      ? [{ team, members: available.filter((p) => p.team_id === team.id) }]
+      : [],
+  );
 }
 
 export function pendingFor(state: State, sessionId: string): Approval[] {

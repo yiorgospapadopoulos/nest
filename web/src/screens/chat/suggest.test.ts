@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { commandList } from "../../test/fixtures.ts";
-import { matchCommands, replaceTrigger, triggerAt } from "./suggest.ts";
+import { matchCommands, replaceTrigger, soulLine, triggerAt } from "./suggest.ts";
 
 describe("triggerAt", () => {
   it("finds a slash command only at the very start", () => {
@@ -59,5 +59,14 @@ describe("matchCommands", () => {
     expect(names("RE")).toEqual(["review", "security-review"]);
     expect(names("c")).toEqual(["clear", "compact", "security-review"]);
     expect(names("zzz")).toEqual([]);
+  });
+});
+
+describe("soulLine", () => {
+  it("is the first line with text, without heading marks", () => {
+    expect(soulLine("\n  \n## You review code\nMore")).toBe("You review code");
+    expect(soulLine("Plain first line\n")).toBe("Plain first line");
+    expect(soulLine("\n \n")).toBe("");
+    expect(soulLine("")).toBe("");
   });
 });

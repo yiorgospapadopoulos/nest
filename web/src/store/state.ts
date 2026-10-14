@@ -10,6 +10,7 @@ import type {
   ModelOption,
   NotificationSettings,
   Pixie,
+  PixieTeam,
   QueuedMessage,
   RepoConfig,
   Session,
@@ -62,6 +63,10 @@ export interface State {
   sessions: Record<string, Session>;
   // The user's pixies by id; their chats are sessions with a pixie_id.
   pixies: Record<string, Pixie>;
+  // Teams of pixies by id (B40).
+  teams: Record<string, PixieTeam>;
+  // The teams folded in the pixie list; remembered on this device.
+  foldedTeams: string[];
   // Claude Code chats of the projects that harness does not own, by Claude Code session id.
   claudeChats: Record<string, ClaudeChat>;
   // List chats programs started through an Agent SDK too; remembered on this device.
@@ -96,6 +101,8 @@ export const initialState: State = {
   repos: [],
   sessions: {},
   pixies: {},
+  teams: {},
+  foldedTeams: [],
   claudeChats: {},
   showAutomated: false,
   approvals: {},
@@ -126,6 +133,10 @@ export type Action =
   | { type: "pixies"; pixies: Pixie[] }
   | { type: "pixie"; pixie: Pixie }
   | { type: "pixieRemoved"; id: string }
+  | { type: "teams"; teams: PixieTeam[] }
+  | { type: "team"; team: PixieTeam }
+  | { type: "teamRemoved"; id: string }
+  | { type: "teamFolded"; id: string; folded: boolean }
   | { type: "claudeChats"; chats: ClaudeChat[] }
   | { type: "claudeChat"; chat: ClaudeChat }
   | { type: "claudeChatRemoved"; id: string }

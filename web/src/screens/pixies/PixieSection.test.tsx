@@ -16,7 +16,7 @@ describe("Pixies section", () => {
 
     expect(screen.getByRole("heading", { name: /Pixies/ })).toBeInTheDocument();
     expect(screen.queryByText("pixie:p1")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Tester/ }));
+    await user.click(screen.getByRole("button", { name: /^Tester,/ }));
     expect(screen.getByRole("tab", { name: "Chat" })).toBeInTheDocument();
   });
 
@@ -39,11 +39,11 @@ describe("Pixies section", () => {
     const { user } = await renderApp({ api });
     await user.click(screen.getByRole("tab", { name: "Projects" }));
 
-    expect(screen.queryByRole("button", { name: /Secret/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Secret,/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
-    expect(screen.getByRole("button", { name: /Secret/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Secret,/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Hide hidden" }));
-    expect(screen.queryByRole("button", { name: /Secret/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Secret,/ })).not.toBeInTheDocument();
   });
 
   it("offers no templates when every pixie is hidden", async () => {
@@ -54,7 +54,7 @@ describe("Pixies section", () => {
 
     expect(screen.queryByText("Or start from a template")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
-    expect(screen.getByRole("button", { name: /Tester/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Tester,/ })).toBeInTheDocument();
   });
 
   it("New pixie creates one and opens its details", async () => {

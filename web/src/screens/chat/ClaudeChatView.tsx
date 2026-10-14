@@ -13,7 +13,8 @@ interface Props {
   onOpen: (sessionId: string) => void;
 }
 
-const isMessage = (item: TranscriptItem): item is MessageEntry => item.kind !== "approval";
+const isMessage = (item: TranscriptItem): item is MessageEntry =>
+  item.kind !== "approval" && item.kind !== "pixie";
 
 /** A Claude Code chat's history, read only, until the user continues it in harness. */
 export function ClaudeChatView({ id, onBack, onOpen }: Props) {

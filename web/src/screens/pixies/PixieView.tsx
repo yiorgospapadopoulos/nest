@@ -18,11 +18,13 @@ const TABS: readonly { tab: PixieTab; label: string }[] = [
 interface Props {
   id: string;
   onBack: () => void;
+  // Another pixie's page, from a call to it in the chat.
+  onOpenPixie: (id: string) => void;
   tab?: PixieTab | undefined;
 }
 
 /** A pixie's page: its one ongoing chat, and the details that set it up (D072). */
-export function PixieView({ id, onBack, tab: first = "chat" }: Props) {
+export function PixieView({ id, onBack, onOpenPixie, tab: first = "chat" }: Props) {
   const { state } = useStore();
   const pixie = state.pixies[id];
   const [tab, setTab] = useState<PixieTab>(first);
@@ -70,7 +72,7 @@ export function PixieView({ id, onBack, tab: first = "chat" }: Props) {
       <div className={`pxbg pxbg-${pixie.background}`} aria-hidden="true" />
       {tab === "chat" ? (
         // A new chat (after the first message or a reset) is a fresh transcript.
-        <PixieChat key={pixie.chat_session_id ?? "none"} pixie={pixie} />
+        <PixieChat key={pixie.chat_session_id ?? "none"} pixie={pixie} onOpenPixie={onOpenPixie} />
       ) : (
         <div className="pxd" id="pixie-panel" role="tabpanel" aria-labelledby="pixie-tab-details">
           <PixieDetails pixie={pixie} />
@@ -80,7 +82,7 @@ export function PixieView({ id, onBack, tab: first = "chat" }: Props) {
   );
 }
 
-function PixieChat({ pixie }: { pixie: Pixie }) {
+function PixieChat({ pixie, onOpenPixie }: { pixie: Pixie; onOpenPixie: (id: string) => void }) {
   const { state, actions } = useStore();
   const chatId = pixie.chat_session_id;
   const session = chatId === null ? undefined : state.sessions[chatId];
@@ -111,6 +113,7 @@ function PixieChat({ pixie }: { pixie: Pixie }) {
           background={state.tracking[session.id]?.background ?? NO_BACKGROUND}
           history={state.history[session.id] ?? "loading"}
           onRetry={() => void actions.reloadChat(session.id)}
+          onOpenPixie={onOpenPixie}
         />
       )}
       <Composer pixie={pixie.id} chat={session} />

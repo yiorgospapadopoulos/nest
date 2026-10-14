@@ -13,6 +13,7 @@ import {
   pixie,
   repo,
   session,
+  team,
 } from "./fixtures.ts";
 
 export type FakeApi = { [K in keyof Api]: Mock<Api[K]> };
@@ -108,5 +109,10 @@ export function fakeApi(): FakeApi {
     savePixieFile: vi.fn<Api["savePixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
     pixieNotes: vi.fn<Api["pixieNotes"]>().mockResolvedValue([]),
     searchPixie: vi.fn<Api["searchPixie"]>().mockResolvedValue([]),
+    duplicatePixie: vi.fn<Api["duplicatePixie"]>().mockResolvedValue(pixie({ id: "p2" })),
+    teams: vi.fn<Api["teams"]>().mockResolvedValue([]),
+    createTeam: vi.fn<Api["createTeam"]>().mockResolvedValue(team()),
+    updateTeam: vi.fn<Api["updateTeam"]>().mockResolvedValue(team()),
+    deleteTeam: vi.fn<Api["deleteTeam"]>().mockResolvedValue(null),
   };
 }

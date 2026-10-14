@@ -1,4 +1,5 @@
-import type { SlashCommand } from "../../api/types.ts";
+import type { Mascot, Pixie, SlashCommand } from "../../api/types.ts";
+import type { CallableTeam } from "../../store/selectors.ts";
 
 /** The "/command" or "@path" token being typed at the caret, as Claude Code completes them. */
 export interface Trigger {
@@ -53,4 +54,60 @@ export function matchCommands(commands: SlashCommand[], query: string): SlashCom
     (c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q),
   );
   return [...starts, ...inside];
+}
+
+/** A pixie or team offered after an "@", before the text it would insert is known. */
+export interface PixieMention {
+  key: string;
+  label: string;
+  hint: string;
+  detail: string | null;
+  group: "Pixies";
+  mascots: { mascot: Mascot; color: string }[];
+  // The slug or handle the mention inserts.
+  handle: string;
+}
+
+const look = ({ mascot, color }: Pixie) => ({ mascot, color });
+
+/** The first non-empty line of a soul, without Markdown heading marks. */
+export function soulLine(text: string): string {
+  const line = text.split("\n").find((each) => each.trim() !== "") ?? "";
+  return line.replace(/^\s*#+\s*/, "").trim();
+}
+
+/** Teams, then pixies, whose name or handle contains the query (any case). */
+export function pixieMentions(
+  teams: CallableTeam[],
+  pixies: Pixie[],
+  souls: Record<string, string>,
+  query: string,
+): PixieMention[] {
+  const q = query.toLowerCase();
+  const matches = (name: string, handle: string) =>
+    name.toLowerCase().includes(q) || handle.includes(q);
+  return [
+    ...teams
+      .filter(({ team }) => matches(team.name, team.handle))
+      .map(({ team, members }) => ({
+        key: `team:${team.id}`,
+        label: team.name,
+        hint: `@${team.handle}`,
+        detail: null,
+        group: "Pixies" as const,
+        mascots: members.map(look),
+        handle: team.handle,
+      })),
+    ...pixies
+      .filter((p) => matches(p.name, p.slug))
+      .map((p) => ({
+        key: `pixie:${p.id}`,
+        label: p.name,
+        hint: `@${p.slug}`,
+        detail: souls[p.id] ?? null,
+        group: "Pixies" as const,
+        mascots: [look(p)],
+        handle: p.slug,
+      })),
+  ];
 }

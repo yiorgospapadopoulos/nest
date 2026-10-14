@@ -13,6 +13,7 @@ import {
   repo,
   review,
   session,
+  team,
 } from "../test/fixtures.ts";
 import { reduce } from "./reducer.ts";
 import { initialState, type State } from "./state.ts";
@@ -481,6 +482,41 @@ describe("live events", () => {
     expect(Object.keys(state.drafts)).toEqual(["pixie:b", "session:s1"]);
     state = apply(state, event({ type: "pixie.deleted", payload: { pixie_id: "b" } }));
     expect(Object.keys(state.drafts)).toEqual(["session:s1"]);
+  });
+
+  it("keeps teams from loads and events, and frees the pixies of a deleted team", () => {
+    let state = reduce(initialState, {
+      type: "pixies",
+      pixies: [pixie({ id: "a", team_id: "t1" }), pixie({ id: "b", team_id: "t2" })],
+    });
+    state = reduce(state, { type: "teams", teams: [team({ id: "t1" }), team({ id: "t2" })] });
+    state = apply(
+      state,
+      event({
+        type: "pixie_team.updated",
+        payload: { team: team({ id: "t1", leader_id: "a" }) } as never,
+      }),
+    );
+    expect(state.teams.t1?.leader_id).toBe("a");
+    state = reduce(state, { type: "team", team: team({ id: "t3", name: "Docs" }) });
+    expect(Object.keys(state.teams)).toEqual(["t1", "t2", "t3"]);
+
+    state = apply(state, event({ type: "pixie_team.deleted", payload: { id: "t1" } }));
+    state = apply(state, event({ type: "pixie_team.deleted", payload: {} }));
+    expect(Object.keys(state.teams)).toEqual(["t2", "t3"]);
+    expect(state.pixies.a?.team_id).toBeNull();
+    state = reduce(state, { type: "teamRemoved", id: "t2" });
+    expect(Object.keys(state.teams)).toEqual(["t3"]);
+    expect(state.pixies.b?.team_id).toBeNull();
+  });
+
+  it("remembers which teams are folded", () => {
+    let state = reduce(initialState, { type: "teamFolded", id: "t1", folded: true });
+    state = reduce(state, { type: "teamFolded", id: "t2", folded: true });
+    state = reduce(state, { type: "teamFolded", id: "t1", folded: true });
+    expect(state.foldedTeams).toEqual(["t1", "t2"]);
+    state = reduce(state, { type: "teamFolded", id: "t1", folded: false });
+    expect(state.foldedTeams).toEqual(["t2"]);
   });
 
   it("drops the drafts of pixies deleted while the app was closed once pixies load", () => {

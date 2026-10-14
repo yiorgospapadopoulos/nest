@@ -8,6 +8,7 @@ import type {
   JsonValue,
   LimitWindow,
   Pixie,
+  PixieTeam,
   RepoConfig,
   Session,
   TrackedAgent,
@@ -89,6 +90,17 @@ export function reduce(state: State, action: Action): State {
       return { ...state, pixies: { ...state.pixies, [action.pixie.id]: action.pixie } };
     case "pixieRemoved":
       return withoutPixie(state, action.id);
+    case "teams":
+      return { ...state, teams: Object.fromEntries(action.teams.map((t) => [t.id, t])) };
+    case "team":
+      return { ...state, teams: { ...state.teams, [action.team.id]: action.team } };
+    case "teamRemoved":
+      return withoutTeam(state, action.id);
+    case "teamFolded": {
+      const others = state.foldedTeams.filter((id) => id !== action.id);
+      const folded = action.folded ? [...others, action.id] : others;
+      return folded.length === state.foldedTeams.length ? state : { ...state, foldedTeams: folded };
+    }
     case "claudeChats":
       return {
         ...state,
@@ -256,6 +268,12 @@ export function applyEvent(state: State, event: HarnessEvent): State {
     }
     case "pixie.deleted":
       return withoutPixie(next, str(p.pixie_id) ?? "");
+    case "pixie_team.updated": {
+      const team = p.team as unknown as PixieTeam;
+      return { ...next, teams: { ...next.teams, [team.id]: team } };
+    }
+    case "pixie_team.deleted":
+      return withoutTeam(next, str(p.id) ?? "");
     case "connectors.updated":
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
@@ -271,6 +289,20 @@ function withoutPixie(state: State, id: string): State {
     ...state,
     pixies: omit(state.pixies, id),
     drafts: omit(state.drafts, draftKey({ pixie: id })),
+  };
+}
+
+/** The state without the team; its pixies stay, without a team, as the Mac leaves them. */
+function withoutTeam(state: State, id: string): State {
+  return {
+    ...state,
+    teams: omit(state.teams, id),
+    pixies: Object.fromEntries(
+      Object.entries(state.pixies).map(([key, p]) => [
+        key,
+        p.team_id === id ? { ...p, team_id: null } : p,
+      ]),
+    ),
   };
 }
 

@@ -1,7 +1,8 @@
 import { list, obj, str, toolArg } from "../api/payloads.ts";
-import type { Approval, HarnessEvent, JsonObject, JsonValue } from "../api/types.ts";
+import type { Approval, HarnessEvent, JsonObject, JsonValue, Pixie } from "../api/types.ts";
 import { permissionOf } from "../api/payloads.ts";
 import { turnLabel } from "./activity.ts";
+import { agentReport } from "./report.ts";
 
 export interface ToolItem {
   kind: "tool";
@@ -24,11 +25,28 @@ export interface ThinkingItem {
   ms: number | null;
 }
 
+/** A line inside a pixie call: its text, or a tool it used as a plain line. */
+export interface PixieStep {
+  kind: "text" | "call";
+  key: string;
+  text: string;
+}
+
+/** A call to a pixie (B40): the agent call, labelled with the pixie, and its own messages. */
+export interface PixieCallItem {
+  kind: "pixie";
+  key: string;
+  pixie: Pixie;
+  call: ToolItem;
+  steps: PixieStep[];
+}
+
 export type TranscriptItem =
   | { kind: "user"; key: string; text: string; attachments: string[] }
   | { kind: "assistant"; key: string; text: string }
   | ToolItem
   | ThinkingItem
+  | PixieCallItem
   // Consecutive tool calls (two or more) with the thinking between them (D045).
   | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
   | { kind: "approval"; key: string; approval: Approval }
@@ -46,10 +64,14 @@ const SUMMARY_LIMIT = 40;
 // What a call shows when its turn ended without its result.
 const STOPPED = "stopped";
 const NO_TASKS: ReadonlySet<string> = new Set();
+const NO_PIXIES: ReadonlyMap<string, Pixie> = new Map();
+// The tools that call a subagent, by `input.subagent_type`.
+const AGENT_TOOLS = new Set(["Task", "Agent"]);
 
 /**
  * The chat transcript from its stored events. Subagent messages are left out (they show
- * in the Agents sheet); approvals still pending render as inline cards, finished ones as
+ * in the Agents sheet), except those of a call to one of `pixies` (by slug), which go
+ * into that call's row. Approvals still pending render as inline cards, finished ones as
  * a short note. Calls without a result stop when their turn ends, except those whose
  * background task (by tool use id in `running`) still runs.
  */
@@ -58,6 +80,7 @@ export function buildTranscript(
   pending: Record<string, Approval>,
   root: string | null,
   running: ReadonlySet<string> = NO_TASKS,
+  pixies: ReadonlyMap<string, Pixie> = NO_PIXIES,
 ): TranscriptItem[] {
   const finals = new Map<string, Approval>();
   for (const e of events) {
@@ -68,6 +91,8 @@ export function buildTranscript(
   }
   const items: TranscriptItem[] = [];
   const tools = new Map<string, ToolItem>();
+  // The pixie calls by tool use id, which their own messages name as their parent.
+  const calls = new Map<string, PixieCallItem>();
   // The open turn's result: a turn a queued message ends has no other end (D045). An error
   // result's note gives way to the reason a failed state carries.
   let result: { ms: number | null; key: string; error: TranscriptItem | null } | null = null;
@@ -95,7 +120,10 @@ export function buildTranscript(
         break;
       case "session.message":
         if (p.parent_tool_use_id === null || p.parent_tool_use_id === undefined) {
-          addBlocks(items, tools, list(p.blocks).map(obj), key, root);
+          addBlocks(items, { tools, calls, pixies }, list(p.blocks).map(obj), key, root);
+        } else {
+          const parent = calls.get(str(p.parent_tool_use_id) ?? "");
+          if (parent !== undefined) addSteps(parent.steps, list(p.blocks).map(obj), key, root);
         }
         break;
       case "approval.created": {
@@ -194,9 +222,36 @@ function num(value: JsonValue | undefined): number | null {
   return typeof value === "number" ? value : null;
 }
 
+interface Known {
+  tools: Map<string, ToolItem>;
+  calls: Map<string, PixieCallItem>;
+  pixies: ReadonlyMap<string, Pixie>;
+}
+
+/** The pixie an agent call goes to, if it names one. */
+function calledPixie(block: JsonObject, pixies: ReadonlyMap<string, Pixie>): Pixie | undefined {
+  if (!AGENT_TOOLS.has(str(block.name) ?? "")) return undefined;
+  return pixies.get(str(obj(block.input).subagent_type) ?? "");
+}
+
+/** A pixie call's own text, and the tools it used as plain lines. */
+function addSteps(steps: PixieStep[], blocks: JsonObject[], key: string, root: string | null) {
+  blocks.forEach((block, index) => {
+    const stepKey = `${key}.${String(index)}`;
+    if (block.type === "text") {
+      const text = str(block.text) ?? "";
+      if (text.trim()) steps.push({ kind: "text", key: stepKey, text });
+    } else if (block.type === "tool_use") {
+      const arg = toolArg(obj(block.input), root);
+      const name = str(block.name) ?? "Tool";
+      steps.push({ kind: "call", key: stepKey, text: arg ? `${name} ${arg}` : name });
+    }
+  });
+}
+
 function addBlocks(
   items: TranscriptItem[],
-  tools: Map<string, ToolItem>,
+  { tools, calls, pixies }: Known,
   blocks: JsonObject[],
   key: string,
   root: string | null,
@@ -225,11 +280,20 @@ function addBlocks(
         failed: false,
       };
       tools.set(tool.id, tool);
-      if (!HIDDEN_TOOLS.has(tool.name)) items.push(tool);
+      const pixie = calledPixie(block, pixies);
+      if (pixie !== undefined) {
+        const item: PixieCallItem = { kind: "pixie", key: blockKey, pixie, call: tool, steps: [] };
+        calls.set(tool.id, item);
+        items.push(item);
+      } else if (!HIDDEN_TOOLS.has(tool.name)) {
+        items.push(tool);
+      }
     } else if (block.type === "tool_result") {
       const tool = tools.get(str(block.tool_use_id) ?? "");
       if (tool !== undefined) {
-        const content = str(block.content) ?? "";
+        const raw = str(block.content) ?? "";
+        // An agent's answer comes wrapped by Claude Code; only its report shows.
+        const content = AGENT_TOOLS.has(tool.name) ? agentReport(raw) : raw;
         tool.failed = block.is_error === true;
         tool.result = resultSummary(content, tool.failed);
         tool.detail = content.trim() ? content.slice(0, DETAIL_LIMIT) : null;

@@ -42,7 +42,11 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
   if ("claude" in target) {
     return <ClaudeChatView id={target.claude} onBack={onBack} onOpen={onOpen} />;
   }
-  if ("pixie" in target) return <PixieView id={target.pixie} tab={target.tab} onBack={onBack} />;
+  if ("pixie" in target) {
+    return (
+      <PixieView id={target.pixie} tab={target.tab} onBack={onBack} onOpenPixie={onOpenPixie} />
+    );
+  }
   return "draft" in target ? (
     <Frame title="New chat" back={target.draft} onBack={onBack}>
       <div className="ch-tx">
@@ -60,7 +64,12 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
       />
     </Frame>
   ) : (
-    <SessionChat id={target.id} focus={target.event ?? null} onBack={onBack} />
+    <SessionChat
+      id={target.id}
+      focus={target.event ?? null}
+      onBack={onBack}
+      onOpenPixie={onOpenPixie}
+    />
   );
 }
 
@@ -68,10 +77,12 @@ function SessionChat({
   id,
   focus,
   onBack,
+  onOpenPixie,
 }: {
   id: string;
   focus: number | null;
   onBack: () => void;
+  onOpenPixie: (id: string) => void;
 }) {
   const { state, actions } = useStore();
   const session = state.sessions[id];
@@ -139,6 +150,7 @@ function SessionChat({
         focus={focus}
         history={history ?? "loading"}
         onRetry={() => void actions.reloadChat(id)}
+        onOpenPixie={onOpenPixie}
       />
       {/* Until the history is in, the latest exchange and so its tasks are unknown. */}
       {history === "loaded" && (

@@ -298,6 +298,29 @@ const calls: Call[] = [
     "/api/pixies/p1/search?q=a%20b",
     undefined,
   ],
+  [
+    "duplicatePixie",
+    (a) => a.duplicatePixie("p 1"),
+    "POST",
+    "/api/pixies/p%201/duplicate",
+    undefined,
+  ],
+  ["teams", (a) => a.teams(), "GET", "/api/pixie-teams", undefined],
+  [
+    "createTeam",
+    (a) => a.createTeam({ name: "QA", handle: "qa" }),
+    "POST",
+    "/api/pixie-teams",
+    { name: "QA", handle: "qa" },
+  ],
+  [
+    "updateTeam",
+    (a) => a.updateTeam("t 1", { leader_id: "p1" }),
+    "PATCH",
+    "/api/pixie-teams/t%201",
+    { leader_id: "p1" },
+  ],
+  ["deleteTeam", (a) => a.deleteTeam("t1"), "DELETE", "/api/pixie-teams/t1", undefined],
 ];
 
 describe("HttpApi", () => {

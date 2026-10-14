@@ -4,7 +4,7 @@ import { EventStream, eventsUrl, type SocketFactory } from "../api/events.ts";
 import { browserPushEnv } from "../pwa/push.ts";
 import { reportVisibility } from "../pwa/visibility.ts";
 import { createActions } from "./actions.ts";
-import { loadDrafts, loadShowAutomated, saveDrafts } from "./devicePrefs.ts";
+import { loadDrafts, loadFoldedTeams, loadShowAutomated, saveDrafts } from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
 import { reduce } from "./reducer.ts";
 import { initialState } from "./state.ts";
@@ -30,6 +30,7 @@ export function StoreProvider({
   const [state, dispatch] = useReducer(reduce, storage, (from) => ({
     ...initialState,
     showAutomated: loadShowAutomated(from),
+    foldedTeams: loadFoldedTeams(from),
     drafts: loadDrafts(from),
   }));
   const actions = useMemo(() => createActions(api, dispatch, storage), [api, storage]);
