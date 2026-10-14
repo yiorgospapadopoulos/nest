@@ -148,7 +148,7 @@ async def test_files_are_restored_only_while_the_chat_is_idle(env: Env) -> None:
     await until(stored)
     (message,) = await user_messages(env, created.id)
 
-    with pytest.raises(SessionBusyError, match="idle"):
+    with pytest.raises(SessionBusyError, match="no turn is running"):
         await env.manager.rewind(created.id, message, dry_run=True)
 
 

@@ -64,10 +64,16 @@ from harness.worktrees.manager import WorktreeManager
 
 # What a session following Claude Code's own mode shows until the engine reports it.
 DEFAULT_MODE: PermissionMode = "default"
+AUTO: PermissionMode = "auto"
 
 NO_CHECKPOINT = (
     "harness has no file checkpoint for this message: it was sent before checkpoints were "
     "kept, in Claude Code, or as a command"
+)
+
+NO_RUN_TO_PREVIEW = (
+    "Claude Code is not running for this chat, so the files to restore cannot be listed. "
+    "Send a message to start it again, then try again."
 )
 
 # The engine's entry for a model (None is Claude Code's default), or None when unknown.
@@ -163,8 +169,13 @@ class SessionManager:
         defaults = self._defaults()
         model = request.model or defaults.model
         effort = await self._effort(model, request.effort, defaults.effort)
-        permission_mode = request.permission_mode or defaults.permission_mode
+        permission_mode = request.permission_mode
         await self._require_mode(model, permission_mode)
+        # A default mode the model does not run in is dropped, as the effort default is.
+        if permission_mode is None and not await self._mode_problem(
+            model, defaults.permission_mode
+        ):
+            permission_mode = defaults.permission_mode
         # A plain folder has no worktrees or branches: its chats always work in place (D041).
         mode = (
             (request.mode or _repo_mode(repo) or defaults.default_mode) if repo.git else "in_place"
@@ -286,13 +297,15 @@ class SessionManager:
         attachments: list[Attachment],
         interrupt: bool,
     ) -> SendResult:
-        queued = await self._queue.add(session.id, text, attachments, urgent=interrupt)
         if not live.turn_active:
             live.held = True
-        if interrupt and live.busy:
+        queued = await self._queue.add(session.id, text, attachments, urgent=interrupt)
+        if interrupt and live.nudgeable:
             live.resume_queue = True
             await self._approvals.expire(session.id, BLOCKING, "interrupted by the user")
             await live.interrupt()
+        # What held the session may have ended while the message was stored (BUG-85).
+        await self._turns.release_held(live)
         return SendResult(**session.model_dump(), queued_message=queued)
 
     async def _send_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
@@ -342,7 +355,7 @@ class SessionManager:
         session = await self._store.get(session_id)
         if (request.model, request.permission_mode, request.effort) != (None, None, None):
             require_open(session)
-            await self._require_mode(request.model or session.model, request.permission_mode)
+            request = await self._fitting_mode(session, request)
         changes = session_changes(session, request, self._clock.now())
         if not changes:
             return session
@@ -358,7 +371,9 @@ class SessionManager:
     async def rewind(self, session_id: str, event_id: int, dry_run: bool) -> RewindResult:
         """Restore the files the agent changed since the user message of event `event_id`
         to how they were before it, or with `dry_run` say what that would change. Only
-        while the chat is idle; the conversation stays as it is (IMP-02).
+        while no turn runs (idle, interrupted or failed), in a chat that is not archived,
+        not being published and has no background tasks running; the conversation stays
+        as it is (IMP-02, BUG-104). A preview never starts Claude Code (BUG-94).
         """
         session = await self._store.get(session_id)
         require_open(session)
@@ -366,13 +381,16 @@ class SessionManager:
         if checkpoint is None:
             result = RewindResult(can_rewind=False, error=NO_CHECKPOINT)
         else:
-            require_cwd(session)
+            require_workspace(session)
             await self._require_not_open_elsewhere(session)
             live = self._live.setdefault(session_id, LiveSession(session_id))
-            if self._stopping or live.stopped or live.busy or live.publishing:
-                msg = "files can be restored while the chat is idle; wait for the turn or stop it"
-                raise SessionBusyError(msg)
-            result = await self._turns.rewind(live, checkpoint, dry_run)
+            problem = self._restore_problem(session, live)
+            if problem is not None:
+                raise SessionBusyError(problem)
+            if dry_run and live.run is None:
+                result = RewindResult(can_rewind=False, error=NO_RUN_TO_PREVIEW)
+            else:
+                result = await self._turns.rewind(live, checkpoint, dry_run)
         if dry_run:
             return result
         if not result.can_rewind:
@@ -383,6 +401,29 @@ class SessionManager:
             session_id,
         )
         return result
+
+    def _restore_problem(self, session: Session, live: LiveSession) -> str | None:
+        """Why the chat's files cannot be restored now, in words for the user."""
+        if session.archived_at is not None:
+            return "Files cannot be restored in an archived chat. Unarchive it first."
+        if self._stopping or live.stopped:
+            return "This chat is being closed or archived, so its files cannot be restored."
+        if live.busy:
+            return (
+                "Files can be restored only when no turn is running. Wait for the turn to "
+                "end, or stop it."
+            )
+        if live.publishing:
+            return (
+                "Files cannot be restored while harness commits or pushes this chat's work. "
+                "Try again when that is done."
+            )
+        if live.background_tasks:
+            return (
+                "Files cannot be restored while the agent's background tasks run. "
+                "Wait for them to finish."
+            )
+        return None
 
     async def close(self, session_id: str, remove_worktree: bool) -> Session:
         require_open(await self._store.get(session_id))
@@ -552,12 +593,31 @@ class SessionManager:
             return chosen
         return default if effort_problem(option, default) is None else None
 
+    async def _fitting_mode(self, session: Session, request: UpdateSession) -> UpdateSession:
+        """`request`, refused (422) when its model and mode do not fit. A chat in Auto
+        moved to a model without it asks again (`default`) instead (BUG-86).
+        """
+        model = request.model or session.model
+        if (
+            request.model is not None
+            and request.permission_mode is None
+            and session.permission_mode == AUTO
+            and await self._mode_problem(model, AUTO)
+        ):
+            return request.model_copy(update={"permission_mode": DEFAULT_MODE})
+        await self._require_mode(model, request.permission_mode)
+        return request
+
     async def _require_mode(self, model: str | None, mode: PermissionMode | None) -> None:
         """422 when the engine's list knows the model and it does not run in `mode`."""
-        option = None if self._models is None else await self._models(model)
-        problem = None if option is None else mode_problem(option, mode)
+        problem = await self._mode_problem(model, mode)
         if problem is not None:
             raise InvalidInputError(problem)
+
+    async def _mode_problem(self, model: str | None, mode: PermissionMode | None) -> str | None:
+        """Why `model` does not run in `mode`; None when it does or the list is unknown."""
+        option = None if self._models is None else await self._models(model)
+        return None if option is None else mode_problem(option, mode)
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:
         async def on_mode(_session_id: str, mode: PermissionMode) -> None:

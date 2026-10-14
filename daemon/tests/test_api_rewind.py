@@ -93,7 +93,7 @@ async def test_restoring_while_the_agent_works_is_refused(api: Api) -> None:
         response = await api.http.post(
             f"/api/sessions/{session_id}/rewind", json={"message": message}
         )
-        return response.status_code == 409 and "idle" in response.json()["detail"]
+        return response.status_code == 409 and "no turn is running" in response.json()["detail"]
 
     await until(refused)
 

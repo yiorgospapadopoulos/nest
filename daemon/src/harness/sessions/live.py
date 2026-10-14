@@ -66,8 +66,12 @@ class LiveSession:
     # Set first when the session is closed, archived, deleted or the daemon stops: no new
     # work starts on this live state any more (BUG-53).
     stopped: bool = False
+    # The worktree is being created and set up: a nudge waits for it instead of cutting it
+    # off, so the prompt never runs without its setup (BUG-95). A Stop still cuts it off.
+    preparing: bool = False
     # A message was queued only because publishing or a send still finishing held the
-    # session, not a turn; the queue starts once that hold ends (BUG-60, BUG-61).
+    # session, or as a turn ended normally; the queue starts once that hold ends (BUG-60,
+    # BUG-61, BUG-85).
     held: bool = False
     # Background tasks the agent reports running; the run is kept open while there are any.
     background_tasks: int = 0
@@ -89,6 +93,9 @@ class LiveSession:
     published: asyncio.Event = field(default_factory=_set_event)
     # Cleared while a closing run's process exits; a new run waits for it (BUG-16).
     run_closed: asyncio.Event = field(default_factory=_set_event)
+    # Cleared while `hold` keeps the session busy (restoring files): a turn the agent
+    # starts on its own waits, and Stop or a nudge leaves the hold alone (BUG-88, BUG-89).
+    unheld: asyncio.Event = field(default_factory=_set_event)
 
     @property
     def busy(self) -> bool:
@@ -97,6 +104,17 @@ class LiveSession:
     @property
     def publishing(self) -> bool:
         return not self.published.is_set()
+
+    @property
+    def holding(self) -> bool:
+        return not self.unheld.is_set()
+
+    @property
+    def nudgeable(self) -> bool:
+        """Whether a nudge cuts the current work off, rather than waiting for a restore of
+        files or the worktree's setup to finish (BUG-88, BUG-95).
+        """
+        return self.busy and not self.holding and not self.preparing
 
     def require_idle(self) -> None:
         if self.busy:
@@ -116,15 +134,18 @@ class LiveSession:
     @asynccontextmanager
     async def hold(self) -> AsyncGenerator[None]:
         """Keep the idle session busy while the caller's own task works on its run, such
-        as restoring files: a message sent meanwhile is queued, and a Stop cancels it. The
-        caller checked that it is idle; nothing else starts a task until this ends.
+        as restoring files: a message sent meanwhile is queued, and a Stop does not cut it
+        off. The caller checked that it is idle.
         """
         self.cancel_idle_close()
-        self.task = asyncio.current_task()
+        task = self.task = asyncio.current_task()
+        self.unheld.clear()
         try:
             yield
         finally:
-            self.task = None
+            self.unheld.set()
+            if self.task is task:
+                self.task = None
 
     async def interrupt(self) -> bool:
         """Stop the current turn or task; False if nothing is in progress."""
@@ -132,7 +153,7 @@ class LiveSession:
             self.interrupted = True
             await self.run.interrupt()
             return True
-        if self.task is not None:
+        if self.task is not None and not self.holding:
             self.interrupted = True
             self.task.cancel()
             return True
@@ -144,12 +165,15 @@ class LiveSession:
             return None
         return round((now - self.turn_started).total_seconds() * 1000)
 
-    def end_turn(self, idle_close: timedelta) -> None:
+    def end_turn(self, idle_close: timedelta, held: bool) -> None:
+        """`held` after a turn that ended normally: a message stored only now still starts
+        (BUG-85). After a Stop or a failure the queue waits (BUG-61).
+        """
         self.turn_active = False
         self.turn_started = None
         self.interrupted = False
         self.resume_queue = False
-        self.held = False
+        self.held = held
         self.schedule_idle_close(idle_close)
 
     def schedule_idle_close(self, idle_close: timedelta) -> None:

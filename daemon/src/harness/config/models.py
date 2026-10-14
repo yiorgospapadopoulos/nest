@@ -181,8 +181,15 @@ class WorktreeConfig(_Strict):
     def _links_stay_inside_repo(cls, links: list[str]) -> list[str]:
         for link in links:
             path = PurePosixPath(link)
-            if not link or path.is_absolute() or ".." in path.parts or path == PurePosixPath():
-                msg = f"link {link!r} must be a relative path inside the repository"
+            if (
+                not link
+                or path.is_absolute()
+                or ".." in path.parts
+                or path == PurePosixPath()
+                # In a worktree `.git` is a file git owns (BUG-96).
+                or path.parts[0] == ".git"
+            ):
+                msg = f"link {link!r} must be a relative path inside the repository, outside .git"
                 raise ValueError(msg)
         return links
 

@@ -33,6 +33,8 @@ BASH_TOOL = "Bash"
 LOCAL_BASH = "local_bash"
 MAX_STEPS = 8
 _RUNNING_STATES = frozenset({"starting", "running", "waiting"})
+# Turn ends after which the agent run, and so its background work, goes on.
+_RUN_STAYS = frozenset({"failed", "interrupted"})
 _EARLIEST = datetime.min.replace(tzinfo=UTC)
 
 
@@ -164,10 +166,13 @@ class AgentBoard:
         main.finish(status, at)
         if state != "idle":
             # The turn was cut off: what it still runs will never report back. Background
-            # work outlives a turn that ends normally, and one the engine ended with an
-            # error, whose run stays open (D054, BUG-63); a run that ends stops its tasks.
+            # work outlives a turn that ends normally, one the engine ended with an error
+            # and one the user stopped, whose run stays open (D054, BUG-63, BUG-92): it
+            # runs until the engine reports it finished, as approving counts it. A run
+            # that ends reports its tasks stopped.
+            kept = state in _RUN_STAYS
             for agent in [*self._agents.values(), *self._commands.values()]:
-                if agent.status == "running" and not (state == "failed" and agent.background):
+                if agent.status == "running" and not (kept and agent.background):
                     agent.finish("failed", at)
         return Change.LIFECYCLE
 

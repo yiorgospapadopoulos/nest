@@ -36,8 +36,9 @@ from harness.worktrees.manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
 
-# How long the turn's end waits for the context report. The engine answers a control
-# request only while its messages are read, and this wait holds up their reader (I-L).
+# How long the turn's end waits for the context report, which holds up harness's reader
+# of the agent's messages. The SDK takes control answers in its own reader, which stops
+# only once 100 messages wait unread (I-L).
 CONTROL_TIMEOUT_SECONDS = 10.0
 
 _CONNECTORS_NOTE = (
@@ -121,6 +122,7 @@ class TurnRunner:
         self, live: LiveSession, session: Session, repo: RepoConfig, attachments: list[Attachment]
     ) -> Outcome | None:
         if session.mode == "worktree":
+            live.preparing = True
             try:
                 setup = await prepare_worktree(
                     session, repo, self._worktrees, self._store, self._bus
@@ -128,6 +130,8 @@ class TurnRunner:
             except asyncio.CancelledError:
                 _keep_unsent(live, Unsent(session.prompt, attachments, shown=False))
                 raise
+            finally:
+                live.preparing = False
             if not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
         return await self.submit(live, session.prompt, attachments)
@@ -167,8 +171,10 @@ class TurnRunner:
         await run.send(user_input(text, attachments))
 
     async def agent_active(self, live: LiveSession) -> None:
-        # A turn the agent starts on its own waits while the daemon publishes its work.
+        # A turn the agent starts on its own waits while the daemon publishes its work or
+        # files are restored (BUG-89).
         await live.published.wait()
+        await live.unheld.wait()
         if live.busy:
             return
         # The agent started a turn on its own, e.g. after a background task finished.
@@ -334,7 +340,7 @@ class TurnRunner:
         # new state can send the next message straight away; it starts once the hooks,
         # which make the turn's review, are done.
         duration = live.turn_ms(self._clock.now())
-        live.end_turn(self._idle_close)
+        live.end_turn(self._idle_close, held=state is SessionState.IDLE)
         live.settled.clear()
         try:
             await self._states.set(live.session_id, state, error, turn={"duration_ms": duration})
