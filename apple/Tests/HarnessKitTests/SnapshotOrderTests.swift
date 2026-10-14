@@ -79,6 +79,7 @@ import Testing
         api.set { $0.sessions = [Fixture.session(id)] }
         try await sessions.load()
         approvals.apply(.approvalCreated(review))
+        try await approvals.loadDiff(for: review)
         let release = hold("approve")
         let publishing = Task {
             try await sessions.publish(
@@ -101,6 +102,7 @@ import Testing
         api.set { $0.sessions = [Fixture.session(id)] }
         try await sessions.load()
         approvals.apply(.approvalCreated(review))
+        try await approvals.loadDiff(for: review)
         let release = hold("approve")
         let publishing = Task {
             try await sessions.publish(

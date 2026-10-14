@@ -289,14 +289,15 @@ public final class SessionsStore {
 
     /// Approves a review (`ApprovalsStore.publish`). A refusal (409) means the chat
     /// changed since it was shown, so the chat and its diff are read again before the
-    /// error is passed on: a violation's switch, or the moved branch, then shows.
+    /// error is passed on: a violation's switch, the moved branch or the changed files then
+    /// show, and Approve waits for them.
     @discardableResult
     public func publish(_ approval: Approval, _ form: PublishForm) async throws -> Session {
         do {
             return try await fetch { try await self.approvals.publish(approval, form) }
         } catch let error as APIError where error.isConflict {
             _ = try? await fetch { try await self.api.session(approval.sessionID) }
-            _ = try? await approvals.loadDiff(session: approval.sessionID)
+            _ = try? await approvals.loadDiff(for: approval)
             throw error
         }
     }

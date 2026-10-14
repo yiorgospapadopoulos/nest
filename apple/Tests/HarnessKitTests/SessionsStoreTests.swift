@@ -233,6 +233,7 @@ import Testing
         let id = review.sessionID
         try await seed([Fixture.session(id)])
         approvals.apply(.approvalCreated(review))
+        try await approvals.loadDiff(for: review)
         var flagged = Fixture.session(id)
         flagged.gitViolation = true
         var moved = Fixture.diff
@@ -253,12 +254,14 @@ import Testing
         #expect(calls == ["approve", "session", "diff"])
         #expect(store.session(id)?.gitViolation == true)
         #expect(approvals.diffs[id] == moved)
+        #expect(approvals.isReviewLoaded(review))
     }
 
     @Test func otherApproveFailuresReadNothingAgain() async throws {
         let review = Fixture.approval("ap-review")
         try await seed([Fixture.session(review.sessionID)])
         approvals.apply(.approvalCreated(review))
+        try await approvals.loadDiff(for: review)
         api.fail("approve", with: APIError.gitFailed("push failed", step: "push", stderr: ""))
         await #expect(throws: APIError.self) {
             try await store.publish(review, approvals.publishForm(for: review, session: nil))
@@ -270,6 +273,7 @@ import Testing
         let review = Fixture.approval("ap-review")
         try await seed([Fixture.session(review.sessionID)])
         approvals.apply(.approvalCreated(review))
+        try await approvals.loadDiff(for: review)
         let session = try await store.publish(
             review, approvals.publishForm(for: review, session: nil))
         #expect(session.prURL == "https://example.com/pr/1")

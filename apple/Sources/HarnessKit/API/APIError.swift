@@ -104,12 +104,20 @@ public enum ApproveRefusal: String, Sendable {
     case unsafeRepoConfig = "unsafe_repo_config"
     case remoteNotConfirmed = "remote_not_confirmed"
     case remoteChanged = "remote_changed"
+    /// A changed file is marked assume-unchanged or skip-worktree; the detail names them.
+    case indexFlags = "index_flags"
+    /// The repository uses git-lfs, which approving cannot publish.
+    case lfsUnsupported = "lfs_unsupported"
+    /// The changes differ from the review the user saw.
+    case reviewChanged = "review_changed"
 
     /// What to do, beyond the daemon's own words.
     public var hint: String? {
-        self == .headChanged
-            ? "The branch moved since you looked. Check the changes again."
-            : nil
+        switch self {
+        case .headChanged: "The branch moved since you looked. Check the changes again."
+        case .reviewChanged: "The changes were read again. Check them before approving."
+        default: nil
+        }
     }
 }
 

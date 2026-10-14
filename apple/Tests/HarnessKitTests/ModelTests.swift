@@ -274,12 +274,14 @@ import Testing
         #expect(diff.commits[0].shortSHA == "3333333")
         #expect(diff.commits[0].id == diff.commits[0].sha)
         #expect(diff.pushTarget == "Pushes to agent/dark-mode-1a2b3c")
+        #expect(diff.fingerprint == "fp-1")
     }
 
     @Test func aDiffFromAnOlderDaemonHasNoHeadOrCommits() {
         let empty = #""stats": {"files": 0, "additions": 0, "deletions": 0}, "files": []"#
         let diff = Fixture.decode(SessionDiff.self, json: #"{"base": null, \#(empty)}"#)
         #expect(diff.head == nil)
+        #expect(diff.fingerprint == nil)
         #expect(diff.commits.isEmpty)
         #expect(diff.pushTarget == nil)
         // A detached HEAD names no branch.

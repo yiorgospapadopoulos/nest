@@ -67,7 +67,8 @@ struct DiffSheet: View {
         .frame(maxWidth: 1180, maxHeight: .infinity)
         .sheetGlass(radius: glass.sheetRadius)
         .shadow(color: glass.shadow, radius: 30, y: 18)
-        .task(id: approvalID) { await load(session) }
+        // Read again on every opening, so it never shows an older review's changes.
+        .task(id: approvalID) { await load(approval) }
     }
 
     private func header(_ approval: Approval?, _ diff: SessionDiff?) -> some View {
@@ -126,17 +127,19 @@ struct DiffSheet: View {
                         systemImage: Icon.pullRequest)
                 }
                 .buttonStyle(.harness(.approve))
-                .disabled(violation && !acknowledged)
+                .disabled(
+                    (violation && !acknowledged) || !shell.approvals.isReviewLoaded(approval))
             }
         }
         .padding(EdgeInsets(top: 10, leading: 16, bottom: 12, trailing: 16))
         .overlay(alignment: .top) { Rectangle().fill(Palette.hair).frame(height: 1) }
     }
 
-    private func load(_ session: String?) async {
-        guard let session, shell.approvals.diffs[session] == nil else { return }
+    private func load(_ approval: Approval?) async {
+        guard let approval else { return }
+        failure = nil
         do {
-            try await shell.approvals.loadDiff(session: session)
+            try await shell.approvals.loadDiff(for: approval)
         } catch {
             failure = "Could not load the changes: \(Shell.describe(error))"
         }

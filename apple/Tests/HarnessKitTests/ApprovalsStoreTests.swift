@@ -25,6 +25,12 @@ import Testing
     var question: Approval { Fixture.approval("ap-question") }
     var review: Approval { Fixture.approval("ap-review") }
 
+    /// The pending items, with the review's diff loaded as its sheets load it.
+    func loadReview() async throws {
+        try await store.load()
+        try await store.loadDiff(for: review)
+    }
+
     @Test func loadsPendingItemsByRepoAndSession() async throws {
         try await store.load()
 
@@ -136,7 +142,7 @@ import Testing
     }
 
     @Test func publishesAWorktreeReviewWithThePullRequest() async throws {
-        try await store.load()
+        try await loadReview()
         let form = store.publishForm(for: review, session: nil)
         #expect(form.commitMessage == "Dark mode contrast")
         #expect(store.progress(session: review.sessionID) == nil)
@@ -144,7 +150,9 @@ import Testing
         let session = try await store.publish(review, form)
 
         #expect(session.prURL == "https://example.com/pr/1")
-        #expect(api.calls.last == "approve \(review.sessionID) Dark mode contrast open_pr=true")
+        #expect(
+            api.calls.last
+                == "approve \(review.sessionID) Dark mode contrast open_pr=true \(Self.loadedHead)")
         #expect(!store.hasPendingReview(session: review.sessionID))
         let progress = try #require(store.progress(session: review.sessionID))
         #expect(progress.steps.map(\.state) == [.done, .done, .done])
@@ -154,7 +162,7 @@ import Testing
     }
 
     @Test func publishesAnInPlaceReviewWithItsFilesAndNoPullRequest() async throws {
-        try await store.load()
+        try await loadReview()
         var session = Fixture.session(review.sessionID)
         session.mode = .inPlace
         var form = store.publishForm(for: review, session: session)
@@ -162,12 +170,12 @@ import Testing
         try await store.publish(review, form)
         #expect(
             api.calls.last
-                == #"approve \#(review.sessionID) Raise contrast open_pr=false files=["app/globals.css", "app/layout.tsx", "components/ThemeToggle.tsx"]"#
+                == #"approve \#(review.sessionID) Raise contrast open_pr=false files=["app/globals.css", "app/layout.tsx", "components/ThemeToggle.tsx"] \#(Self.loadedHead)"#
         )
     }
 
     @Test func aFailedGitStepKeepsTheReviewForARetry() async throws {
-        try await store.load()
+        try await loadReview()
         api.fail(
             "approve", with: APIError.gitFailed("git push failed", step: "push", stderr: "denied"))
         await #expect(throws: APIError.self) {
@@ -179,20 +187,149 @@ import Testing
         #expect(progress.failure == .gitFailed("git push failed", step: "push", stderr: "denied"))
     }
 
-    /// The daemon refuses to publish when HEAD is no longer the one the review showed
-    /// (audit SEC-02, SEC-06).
-    @Test func approveSendsTheHeadTheReviewShowed() async throws {
-        try await store.load()
-        try await store.loadDiff(session: review.sessionID)
+    /// The daemon refuses to publish when HEAD or the changes are no longer the ones the
+    /// review showed (audit SEC-02, SEC-06, BUG-83).
+    @Test func approveSendsTheHeadAndFingerprintOfTheLoadedReview() async throws {
+        try await loadReview()
         try await store.publish(review, store.publishForm(for: review, session: nil))
         #expect(
             api.calls.last
-                == "approve \(review.sessionID) Dark mode contrast open_pr=true head=2222222222222222222222222222222222222222"
-        )
+                == "approve \(review.sessionID) Dark mode contrast open_pr=true \(Self.loadedHead)")
+    }
+
+    static let loadedHead = "head=2222222222222222222222222222222222222222 fingerprint=fp-1"
+
+    /// Approve goes out only for a review whose diff was read for it (audit M-5, SEC-16).
+    @Test func approvingWaitsForTheReviewToLoad() async throws {
+        try await store.load()
+        #expect(!store.isReviewLoaded(review))
+        await #expect(throws: APIError.self) {
+            try await store.publish(review, store.publishForm(for: review, session: nil))
+        }
+        #expect(!api.calls.contains { $0.hasPrefix("approve") })
+        #expect(store.progress(session: review.sessionID) == nil)
+
+        try await store.loadDiff(for: review)
+        #expect(store.isReviewLoaded(review))
+        // A diff read for another review of the chat does not count for this one.
+        var later = review
+        later.id = "ap-review-2"
+        #expect(!store.isReviewLoaded(later))
+    }
+
+    /// Every opening reads the diff again: a cached one would show old changes and send an
+    /// old HEAD (audit BUG-83). The previous diff stays on screen while it reloads, and
+    /// Approve waits for the new one.
+    @Test func openingTheReviewAgainReadsAFreshDiff() async throws {
+        try await loadReview()
+        var changed = Fixture.diff
+        changed.head = ReviewHead(commit: "3333", branch: "agent/dark-mode-1a2b3c")
+        changed.fingerprint = "fp-2"
+        let gate = AsyncStream<Void>.makeStream()
+        api.set {
+            $0.diff = changed
+            $0.gates["diff"] = gate.stream
+        }
+        let reloading = Task { try await store.loadDiff(for: review) }
+        try await waitFor { store.loadingDiffs.contains(review.sessionID) }
+        #expect(store.diffs[review.sessionID] == Fixture.diff)
+        #expect(!store.isReviewLoaded(review))
+
+        gate.continuation.finish()
+        #expect(try await reloading.value == changed)
+        #expect(store.loadingDiffs.isEmpty)
+        #expect(store.diffs[review.sessionID] == changed)
+        try await store.publish(review, store.publishForm(for: review, session: nil))
+        #expect(api.calls.last?.hasSuffix("head=3333 fingerprint=fp-2") == true)
+    }
+
+    /// A failed reload keeps the diff on screen, but Approve waits for one that loads.
+    @Test func aFailedReloadKeepsTheDiffButNotApprove() async throws {
+        try await loadReview()
+        api.fail("diff")
+        await #expect(throws: APIError.self) { try await store.loadDiff(for: review) }
+        #expect(store.diffs[review.sessionID] == Fixture.diff)
+        #expect(store.loadingDiffs.isEmpty)
+        #expect(!store.isReviewLoaded(review))
+    }
+
+    /// A new or resolved review, feedback, a reject and a publish each make the loaded
+    /// diff stale, so it is dropped.
+    @Test func theDiffIsDroppedWhenTheReviewChanges() async throws {
+        let id = review.sessionID
+        try await loadReview()
+        // The same review again (a replay) keeps it.
+        store.apply(.approvalCreated(review))
+        #expect(store.isReviewLoaded(review))
+        var newer = review
+        newer.id = "ap-review-2"
+        store.apply(.approvalCreated(newer))
+        #expect(store.diffs[id] == nil)
+        #expect(!store.isReviewLoaded(newer))
+
+        try await store.loadDiff(for: newer)
+        store.apply(.approvalCreated(permission))
+        #expect(store.isReviewLoaded(newer))
+        store.apply(.approvalResolved(newer))
+        #expect(store.diffs[id] == nil)
+
+        store.apply(.approvalCreated(review))
+        try await store.loadDiff(for: review)
+        try await store.feedback(review, text: "More tests")
+        #expect(store.diffs[id] == nil)
+
+        store.apply(.approvalCreated(review))
+        try await store.loadDiff(for: review)
+        try await store.reject(review)
+        #expect(store.diffs[id] == nil)
+
+        store.apply(.approvalCreated(review))
+        try await store.loadDiff(for: review)
+        try await store.publish(review, store.publishForm(for: review, session: nil))
+        #expect(store.diffs[id] == nil)
+        #expect(!store.isReviewLoaded(review))
+    }
+
+    /// A load that the review outlived does not bring the old diff back.
+    @Test func aLoadForAReviewThatWentAwayIsDropped() async throws {
+        try await store.load()
+        let gate = AsyncStream<Void>.makeStream()
+        api.set { $0.gates["diff"] = gate.stream }
+        let loading = Task { try await store.loadDiff(for: review) }
+        try await waitFor { store.loadingDiffs.contains(review.sessionID) }
+
+        store.apply(.approvalResolved(review))
+        #expect(store.loadingDiffs.isEmpty)
+        gate.continuation.finish()
+        _ = try await loading.value
+
+        #expect(store.diffs[review.sessionID] == nil)
+        #expect(!store.isReviewLoaded(review))
+    }
+
+    /// "I checked" holds for the changes the user checked: a reload that shows other
+    /// changes or another HEAD asks again (audit SEC-11 on the Mac).
+    @Test func changedChangesAskToCheckAgain() async throws {
+        try await loadReview()
+        store.acknowledgedViolations.insert(review.id)
+        try await store.loadDiff(for: review)
+        #expect(store.acknowledgedViolations == [review.id])
+
+        var changed = Fixture.diff
+        changed.fingerprint = "fp-2"
+        api.set { $0.diff = changed }
+        try await store.loadDiff(for: review)
+        #expect(store.acknowledgedViolations.isEmpty)
+
+        store.acknowledgedViolations.insert(review.id)
+        changed.head = ReviewHead(commit: "4444", branch: nil)
+        api.set { $0.diff = changed }
+        try await store.loadDiff(for: review)
+        #expect(store.acknowledgedViolations.isEmpty)
     }
 
     @Test func aRefusedApproveRunsNoStepAndKeepsTheReason() async throws {
-        try await store.load()
+        try await loadReview()
         let refusal = APIError.approveRefused("Work still runs.", reason: .backgroundRunning)
         api.fail("approve", with: refusal)
         await #expect(throws: refusal) {
@@ -207,7 +344,7 @@ import Testing
     }
 
     @Test func otherPublishErrorsMarkTheRunningStep() async throws {
-        try await store.load()
+        try await loadReview()
         api.fail("approve", with: CancellationError())
         await #expect(throws: CancellationError.self) {
             try await store.publish(review, store.publishForm(for: review, session: nil))
@@ -218,7 +355,7 @@ import Testing
     }
 
     @Test func gitEventsMoveTheProgress() async throws {
-        try await store.load()
+        try await loadReview()
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["approve"] = gate.stream }
         let task = Task {
@@ -286,7 +423,7 @@ import Testing
     }
 
     @Test func loadsDiffs() async throws {
-        let diff = try await store.loadDiff(session: review.sessionID)
+        let diff = try await store.loadDiff(for: review)
         #expect(diff == Fixture.diff)
         #expect(store.diffs[review.sessionID] == Fixture.diff)
     }
@@ -302,7 +439,7 @@ import Testing
         #expect(store.pending.count == 1)
 
         store.apply(.approvalCreated(review))
-        _ = try await store.loadDiff(session: review.sessionID)
+        _ = try await store.loadDiff(for: review)
         store.apply(.approvalResolved(permission))
         #expect(store.pending.map(\.id) == ["ap-review"])
 

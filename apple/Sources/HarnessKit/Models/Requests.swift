@@ -79,13 +79,16 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
     public var acknowledgeViolation: Bool
     /// HEAD's commit as the review showed it; the daemon refuses if it moved since.
     public var expectedHead: String?
+    /// The fingerprint of the review the user saw; the daemon refuses if the changes differ.
+    public var expectedFingerprint: String?
     /// The address origin pushes to now, which the user agreed to push to (I-008).
     public var confirmRemoteURL: String?
 
     public init(
         commitMessage: String, files: [String]? = nil, push: Bool = true, openPR: Bool = true,
         prTitle: String? = nil, prBody: String? = nil, acknowledgeViolation: Bool = false,
-        expectedHead: String? = nil, confirmRemoteURL: String? = nil
+        expectedHead: String? = nil, expectedFingerprint: String? = nil,
+        confirmRemoteURL: String? = nil
     ) {
         self.commitMessage = commitMessage
         self.files = files
@@ -95,6 +98,7 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         self.prBody = prBody
         self.acknowledgeViolation = acknowledgeViolation
         self.expectedHead = expectedHead
+        self.expectedFingerprint = expectedFingerprint
         self.confirmRemoteURL = confirmRemoteURL
     }
 
@@ -106,6 +110,7 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         case prBody = "pr_body"
         case acknowledgeViolation = "acknowledge_violation"
         case expectedHead = "expected_head"
+        case expectedFingerprint = "expected_fingerprint"
         case confirmRemoteURL = "confirm_remote_url"
     }
 }

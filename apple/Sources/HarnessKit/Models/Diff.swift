@@ -14,6 +14,9 @@ public struct SessionDiff: Decodable, Sendable, Hashable {
     public var commits: [ReviewCommit]
     public var files: [FileDiff]
     public var stats: DiffStats
+    /// A hash of HEAD, the commits and every file shown; Approve sends it back and is
+    /// refused when the changes differ from this review. Nil from daemons before B34.
+    public var fingerprint: String?
 
     public static let foreignCommitsWarning =
         "These commits are on the branch, but harness did not make them. Check them before publishing."
@@ -24,7 +27,7 @@ public struct SessionDiff: Decodable, Sendable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case base, head, commits, files, stats
+        case base, head, commits, files, stats, fingerprint
     }
 
     public init(from decoder: any Decoder) throws {
@@ -34,6 +37,7 @@ public struct SessionDiff: Decodable, Sendable, Hashable {
         commits = try container.decodeIfPresent([ReviewCommit].self, forKey: .commits) ?? []
         files = try container.decode([FileDiff].self, forKey: .files)
         stats = try container.decode(DiffStats.self, forKey: .stats)
+        fingerprint = try container.decodeIfPresent(String.self, forKey: .fingerprint)
     }
 }
 

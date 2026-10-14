@@ -7,6 +7,7 @@ struct PublishSheet: View {
     let approvalID: String
     @Environment(Shell.self) private var shell
     @State private var form: PublishForm?
+    @State private var loadFailure: String?
 
     var body: some View {
         let approval = shell.approval(approvalID)
@@ -38,10 +39,15 @@ struct PublishSheet: View {
                 form?.follow(shell.sessions.session(approval.sessionID))
             }
         }
-        // Approve sends the HEAD of the diff it shows, so it is read when missing.
+        // Approve sends the HEAD and fingerprint of the diff it shows, so it is read again
+        // on every opening and Approve waits for it.
         .task(id: approvalID) {
-            if let session = approval?.sessionID, shell.approvals.diffs[session] == nil {
-                _ = try? await shell.approvals.loadDiff(session: session)
+            guard let approval else { return }
+            loadFailure = nil
+            do {
+                try await shell.approvals.loadDiff(for: approval)
+            } catch {
+                loadFailure = "Could not read the changes: \(Shell.describe(error))"
             }
         }
     }
@@ -59,6 +65,7 @@ struct PublishSheet: View {
     {
         let progress = shell.approvals.progress(session: approval.sessionID)
         let running = progress?.isRunning ?? false
+        let loaded = shell.approvals.isReviewLoaded(approval)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text(approval.title).font(.ui(TypeSize.body, .semibold)).lineLimit(1)
@@ -72,6 +79,21 @@ struct PublishSheet: View {
             .padding(.top, 14)
             if let diff = shell.approvals.diffs[approval.sessionID] {
                 PublishTarget(diff: diff).padding(.top, 10)
+            }
+            if let loadFailure {
+                Text(loadFailure)
+                    .font(.ui(TypeSize.caption, .medium))
+                    .foregroundStyle(StatusTone.failed.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            } else if !loaded {
+                HStack(spacing: 8) {
+                    Spinner()
+                    Text("Reading the changes…")
+                        .font(.ui(TypeSize.caption))
+                        .foregroundStyle(Palette.t3)
+                }
+                .padding(.top, 8)
             }
             if form.wrappedValue.hasViolation {
                 ViolationNotice(approval: approval)
@@ -130,7 +152,7 @@ struct PublishSheet: View {
                     }
                 }
                 .buttonStyle(.harness(.approve))
-                .disabled(running || !form.wrappedValue.canSubmit)
+                .disabled(running || !loaded || !form.wrappedValue.canSubmit)
                 .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 16)
