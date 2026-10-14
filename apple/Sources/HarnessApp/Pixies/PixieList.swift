@@ -1,11 +1,14 @@
 import HarnessKit
 import SwiftUI
 
-/// The pixies down the left, as the sidebar lists chats, with New pixie.
+/// The pixies down the left, as the sidebar lists chats, with New pixie. Drag a pixie onto
+/// another to put it there; Move Up and Move Down in its menu do the same by keyboard.
 struct PixieList: View {
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
     @Environment(\.glass) private var glass
+    /// The pixie being dragged, for where the drop line shows.
+    @State private var dragged: String?
 
     var body: some View {
         let pixies = shell.listedPixies
@@ -42,8 +45,9 @@ struct PixieList: View {
 
             ScrollView {
                 LazyVStack(spacing: 2) {
+                    let ids = pixies.map(\.id)
                     ForEach(pixies) { pixie in
-                        PixieRow(pixie: pixie)
+                        PixieRow(pixie: pixie, listed: ids, dragged: $dragged)
                     }
                 }
                 .padding(.horizontal, 4)
@@ -67,6 +71,8 @@ struct PixieList: View {
         .frame(width: Sidebar.width)
         .frame(maxHeight: .infinity, alignment: .top)
         .panelGlass(radius: glass.radius.panel)
+        // A drag that ends outside the list leaves nothing behind.
+        .onDisappear { dragged = nil }
     }
 }
 
@@ -74,11 +80,19 @@ struct PixieList: View {
 /// runs, and a count shows what waits for the user.
 private struct PixieRow: View {
     let pixie: Pixie
+    /// The listed pixies' ids, in order.
+    let listed: [String]
+    @Binding var dragged: String?
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
     @Environment(\.glass) private var glass
     @Environment(\.reducedMotion) private var reduceMotion
     @State private var hovering = false
+    /// Another pixie is dragged over this one.
+    @State private var targeted = false
+
+    /// What a drag carries: "pixie:<id>", so other text dropped here is ignored.
+    static func payload(_ id: String) -> String { Pixie.repoPrefix + id }
 
     var body: some View {
         let selected = shell.shownPixie?.id == pixie.id
@@ -118,9 +132,36 @@ private struct PixieRow: View {
             in: glass.rounded(glass.radius.item)
         )
         .contentShape(Rectangle())
+        .overlay(alignment: dropsBelow ? .bottom : .top) {
+            if targeted && dragged != pixie.id {
+                Capsule()
+                    .fill(accent.accent)
+                    .frame(height: 2)
+                    .offset(y: dropsBelow ? 2 : -2)
+                    .allowsHitTesting(false)
+            }
+        }
         .pointerStyle(.link)
-        .onHover { hovering = $0 }
+        .onHover { inside in
+            hovering = inside
+            // No hover arrives while a drag runs: one now means the drag ended, dropped
+            // elsewhere or cancelled, which SwiftUI does not report.
+            if inside {
+                dragged = nil
+            }
+        }
         .onTapGesture { shell.selectPixie(pixie.id) }
+        .onDrag {
+            dragged = pixie.id
+            return NSItemProvider(object: Self.payload(pixie.id) as NSString)
+        } preview: {
+            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 28)
+                .padding(6)
+                .background(glass.surface, in: glass.rounded(glass.radius.item))
+        }
+        .onDrop(of: [.plainText], isTargeted: $targeted) { providers in
+            drop(providers)
+        }
         .contextMenu {
             Button {
                 shell.selectPixie(pixie.id)
@@ -128,6 +169,11 @@ private struct PixieRow: View {
             } label: {
                 Label("Details", systemImage: Icon.rightPanel)
             }
+            Divider()
+            Button("Move Up") { shell.movePixie(pixie.id, by: -1) }
+                .disabled(listed.first == pixie.id)
+            Button("Move Down") { shell.movePixie(pixie.id, by: 1) }
+                .disabled(listed.last == pixie.id)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -135,6 +181,28 @@ private struct PixieRow: View {
         )
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { shell.selectPixie(pixie.id) }
+        .accessibilityAction(named: "Move Up") { shell.movePixie(pixie.id, by: -1) }
+        .accessibilityAction(named: "Move Down") { shell.movePixie(pixie.id, by: 1) }
+    }
+
+    /// A pixie dragged down the list lands below this one, else above it.
+    private var dropsBelow: Bool {
+        guard let dragged, let from = listed.firstIndex(of: dragged),
+            let to = listed.firstIndex(of: pixie.id)
+        else { return false }
+        return from < to
+    }
+
+    private func drop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        let target = pixie.id
+        // Called on a background queue: nonisolated, then back to the main actor.
+        _ = provider.loadObject(ofClass: NSString.self) { @Sendable text, _ in
+            guard let text = text as? String, let id = Pixie.id(ofRepo: text) else { return }
+            Task { @MainActor in shell.movePixie(id, onto: target) }
+        }
+        dragged = nil
+        return true
     }
 }
 

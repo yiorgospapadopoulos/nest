@@ -328,11 +328,15 @@ public struct APIClient: HarnessAPI {
         try await call("PATCH", ["pixies", id], body: request)
     }
 
+    public func reorderPixies(_ ids: [String]) async throws -> [Pixie] {
+        try await call("PUT", ["pixies", "order"], body: ReorderPixiesRequest(ids: ids))
+    }
+
     public func deletePixie(_ id: String) async throws {
         try await perform("DELETE", ["pixies", id])
     }
 
-    public func sendToPixie(_ id: String, text: String) async throws -> Session {
+    public func sendToPixie(_ id: String, text: String) async throws -> SentMessage {
         try await call("POST", ["pixies", id, "messages"], body: FeedbackRequest(text: text))
     }
 

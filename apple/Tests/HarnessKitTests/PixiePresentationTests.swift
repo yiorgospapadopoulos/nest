@@ -10,6 +10,23 @@ import Testing
         #expect(Pixie.id(ofRepo: "todo-ui") == nil)
     }
 
+    /// A model change the daemon answered by leaving Auto gets a notice; nothing else does.
+    @Test func droppingOutOfAutoIsToldOnlyForAModelChange() throws {
+        var auto = Fixture.decode(Pixie.self, "pixie")
+        auto.permissionMode = .auto
+        var asking = auto
+        asking.permissionMode = .default
+        #expect(auto.droppedAuto(by: UpdatePixieRequest(model: "haiku"), saved: asking))
+        #expect(auto.droppedAuto(by: UpdatePixieRequest(clearsModel: true), saved: asking))
+        // Still Auto, not in Auto before, a mode picked too, or no model change.
+        #expect(!auto.droppedAuto(by: UpdatePixieRequest(model: "opus"), saved: auto))
+        #expect(!asking.droppedAuto(by: UpdatePixieRequest(model: "haiku"), saved: asking))
+        #expect(
+            !auto.droppedAuto(
+                by: UpdatePixieRequest(model: "haiku", permissionMode: .plan), saved: asking))
+        #expect(!auto.droppedAuto(by: UpdatePixieRequest(name: "N"), saved: asking))
+    }
+
     @Test func choicesLeaveUnknownOut() {
         #expect(Mascot.choices.count == 10)
         #expect(Mascot.choices.first == .invader)

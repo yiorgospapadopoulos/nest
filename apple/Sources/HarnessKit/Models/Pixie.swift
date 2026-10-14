@@ -65,6 +65,31 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+extension Pixie {
+    /// The pixie with the change made, as the daemon makes it; the app shows it while the
+    /// change saves. The daemon's answer has the last word, such as Auto dropping to Ask
+    /// before edits on a model without it.
+    public func applying(_ change: UpdatePixieRequest) -> Pixie {
+        var pixie = self
+        pixie.name = change.name ?? name
+        pixie.slug = change.slug ?? slug
+        pixie.mascot = change.mascot ?? mascot
+        pixie.color = change.color ?? color
+        pixie.background = change.background ?? background
+        pixie.model = change.model ?? (change.clearsModel ? nil : model)
+        pixie.effort = change.effort ?? (change.clearsEffort ? nil : effort)
+        pixie.permissionMode = change.permissionMode ?? permissionMode
+        pixie.autonomy = change.autonomy ?? autonomy
+        pixie.projectAccess = change.projectAccess ?? projectAccess
+        pixie.projects = change.allProjects == true ? nil : change.projects ?? projects
+        pixie.skills = change.skills ?? skills
+        pixie.allowedTools = change.allowedTools ?? allowedTools
+        pixie.disallowedTools = change.disallowedTools ?? disallowedTools
+        pixie.hidden = change.hidden ?? hidden
+        return pixie
+    }
+}
+
 /// A pixie file's text and the hash a later write must name.
 public struct PixieFile: Codable, Sendable, Hashable {
     public var text: String

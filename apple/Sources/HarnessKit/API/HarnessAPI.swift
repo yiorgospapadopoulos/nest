@@ -95,10 +95,13 @@ public protocol HarnessAPI: Sendable {
     func pixies() async throws -> [Pixie]
     func createPixie(_ request: CreatePixieRequest) async throws -> Pixie
     func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie
+    /// Names every pixie once, in the new order; answers them all in that order.
+    func reorderPixies(_ ids: [String]) async throws -> [Pixie]
     /// Stops the pixie's run and removes its chat and folder.
     func deletePixie(_ id: String) async throws
-    /// Sends the text into the pixie's chat; answers the chat.
-    func sendToPixie(_ id: String, text: String) async throws -> Session
+    /// Sends the text into the pixie's chat; answers the chat, and the queued message when
+    /// the chat was busy.
+    func sendToPixie(_ id: String, text: String) async throws -> SentMessage
     /// Opens a fresh run for the pixie's chat.
     func resetPixie(_ id: String) async throws -> Pixie
     /// A file of the pixie's folder, such as `soul` or `notes/ideas`.

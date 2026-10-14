@@ -131,7 +131,9 @@ struct PixieDetails: View {
             .padding(EdgeInsets(top: 18, leading: 14, bottom: 18, trailing: 14))
         }
         .scrollIndicators(.never)
-        .task(id: pixie.id) {
+        // Read quietly, again when the pixie changes or its chat ends a turn (it may have
+        // remembered something); coming back from Memory opens these details afresh.
+        .task(id: FactsKey(pixie: pixie, working: working)) {
             if let memory = try? await shell.pixies.file(pixie.id, name: "memory") {
                 facts = PixieMemory.count(memory.text)
             }
@@ -154,6 +156,23 @@ struct PixieDetails: View {
             case .reset: Text("The chat is archived. Soul and memory stay.")
             case .delete: Text("Its chat, soul, memory and notes are removed.")
             }
+        }
+    }
+
+    /// The pixie's chat runs a turn.
+    private var working: Bool {
+        pixie.chatSessionID.flatMap(shell.sessions.session)?.state.isInFlight ?? false
+    }
+
+    private struct FactsKey: Hashable {
+        let id: String
+        let updatedAt: Date
+        let working: Bool
+
+        init(pixie: Pixie, working: Bool) {
+            id = pixie.id
+            updatedAt = pixie.updatedAt
+            self.working = working
         }
     }
 
@@ -494,13 +513,20 @@ private struct PixieSettings: View {
 
     var body: some View {
         let agents = shell.agents
-        let levels = agents.thinkingLevels(for: pixie.model ?? agents.current.model)
+        // The model the pixie runs: its own, else the agent default's.
+        let runs = pixie.model ?? agents.current.model
+        let levels = agents.thinkingLevels(for: runs)
         DetailGroup {
             PickerRow(
                 title: "Model",
                 value: pixie.model == nil ? "Default" : agents.label(for: pixie.model)
             ) {
-                ModelItems(current: pixie.model) { save(UpdatePixieRequest(model: $0.value)) }
+                ModelItems(
+                    current: pixie.model,
+                    defaultItem: .init(
+                        detail: "The agent default, now \(agents.label(for: agents.current.model))"
+                    ) { save(UpdatePixieRequest(clearsModel: true)) }
+                ) { save(UpdatePixieRequest(model: $0.value)) }
             }
             DetailDivider()
             PickerRow(
@@ -508,20 +534,18 @@ private struct PixieSettings: View {
                 value: levels.isEmpty ? "Not available" : pixie.effort?.label ?? "Default",
                 enabled: !levels.isEmpty
             ) {
-                ThinkingItems(model: pixie.model ?? agents.current.model, effort: pixie.effort) {
-                    if let effort = $0 {
-                        save(UpdatePixieRequest(effort: effort))
-                    }
+                ThinkingItems(model: runs, effort: pixie.effort, offersDefault: true) {
+                    save(UpdatePixieRequest(effort: $0, clearsEffort: $0 == nil))
                 }
             }
             DetailDivider()
             PickerRow(title: "Permissions", value: pixie.permissionMode.label) {
-                Section("Permission mode") {
-                    ForEach(PermissionMode.selectable, id: \.self) { mode in
-                        OptionItem(
-                            title: mode.label, detail: mode.summary,
-                            checked: pixie.permissionMode == mode
-                        ) { save(UpdatePixieRequest(permissionMode: mode)) }
+                // Auto only where the model offers it, as in any chat.
+                PermissionItems(
+                    modes: agents.permissionModes(for: runs), current: pixie.permissionMode
+                ) {
+                    if let mode = $0 {
+                        save(UpdatePixieRequest(permissionMode: mode))
                     }
                 }
             }

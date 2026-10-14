@@ -70,22 +70,35 @@ struct ModelMenu: View {
 }
 
 /// Claude Code's model list with descriptions and a checkmark on the current model; a
-/// model the list does not have shows only as the menu's title.
+/// model the list does not have shows only as the menu's title. With `defaultItem` set
+/// (a pixie), Default comes first and stands for no model of its own (nil).
 struct ModelItems: View {
     let current: String?
+    var defaultItem: DefaultItem?
     let pick: (ModelInfo) -> Void
     @Environment(Shell.self) private var shell
+
+    struct DefaultItem {
+        let detail: String
+        let pick: () -> Void
+    }
 
     var body: some View {
         let agents = shell.agents
         Section("Model") {
+            if let defaultItem {
+                OptionItem(title: "Default", detail: defaultItem.detail, checked: current == nil) {
+                    defaultItem.pick()
+                }
+            }
             if agents.models.isEmpty {
                 Button("Models unavailable") {}.disabled(true)
             }
             ForEach(agents.models) { info in
                 OptionItem(
                     title: info.displayName, detail: info.description,
-                    checked: agents.isSelected(info, current: current)
+                    checked: (defaultItem == nil || current != nil)
+                        && agents.isSelected(info, current: current)
                 ) { pick(info) }
             }
         }

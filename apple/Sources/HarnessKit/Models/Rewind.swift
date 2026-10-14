@@ -79,9 +79,10 @@ public final class RewindFlow {
     }
 
     /// The daemon restores files while no turn runs: idle, after Stop or a failure, and
-    /// not in an archived chat (audit BUG-104).
+    /// not in an archived chat (audit BUG-104), and never in a pixie's chat, whose runs
+    /// start fresh so the earlier ones' checkpoints are gone (D072).
     public static func isAvailable(for session: Session?) -> Bool {
-        guard let session, !session.isArchived else { return false }
+        guard let session, !session.isArchived, session.pixieID == nil else { return false }
         return [.idle, .interrupted, .failed].contains(session.state)
     }
 

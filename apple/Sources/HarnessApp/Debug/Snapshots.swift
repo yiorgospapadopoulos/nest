@@ -425,6 +425,14 @@
             try await pair(controller, "pixie-details-soul", folder)
             shell.pixiePanel = .memory
             try await pair(controller, "pixie-details-memory", folder)
+            // A message sent while Reviewer's chat works waits as queued, as in any chat.
+            shell.pixiePanel = .details
+            let sent = try await model.pixies.send(
+                "reviewer", text: "Also check the tests of the date parser.")
+            if let queued = sent.queuedMessage {
+                model.activity.enqueue(queued, session: sent.session.id)
+            }
+            try await pair(controller, "pixie-chat-queued", folder)
         }
 
         /// B29: a running turn with its timer, thinking, a running agents group and a

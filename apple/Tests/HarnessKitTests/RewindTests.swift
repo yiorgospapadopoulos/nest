@@ -116,6 +116,13 @@ import Testing
         #expect(!RewindFlow.isAvailable(for: nil))
     }
 
+    /// A pixie's runs never resume, so the daemon cannot restore files in its chat.
+    @Test func aPixieChatCannotRestore() {
+        var chat = Fixture.session(state: .idle)
+        chat.pixieID = "p1"
+        #expect(!RewindFlow.isAvailable(for: chat))
+    }
+
     /// With no file changed since the message there is nothing to restore: Restore stays
     /// off and says so (audit BUG-104).
     @Test func nothingChangedMeansNothingToRestore() async {

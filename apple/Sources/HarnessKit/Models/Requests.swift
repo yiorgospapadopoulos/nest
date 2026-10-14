@@ -266,7 +266,8 @@ public struct CreatePixieRequest: Encodable, Sendable, Hashable {
     }
 }
 
-/// `PATCH /api/pixies/{id}`; nil fields are left unchanged.
+/// `PATCH /api/pixies/{id}`; nil fields are left unchanged. `clearsModel` and
+/// `clearsEffort` send an explicit null, which sets Model or Thinking back to Default.
 public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var name: String?
     public var slug: String?
@@ -283,6 +284,12 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var allowedTools: [String]?
     public var disallowedTools: [String]?
     public var hidden: Bool?
+    /// True sends `"model": null`: the pixie follows the agent default again. A `model`
+    /// set as well wins.
+    public var clearsModel: Bool
+    /// True sends `"effort": null`: thinking is left to the model again. An `effort` set as
+    /// well wins.
+    public var clearsEffort: Bool
     /// True sets `projects` back to every project.
     public var allProjects: Bool?
 
@@ -292,7 +299,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
         projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
         allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
-        allProjects: Bool? = nil
+        clearsModel: Bool = false, clearsEffort: Bool = false, allProjects: Bool? = nil
     ) {
         self.name = name
         self.slug = slug
@@ -309,6 +316,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         self.allowedTools = allowedTools
         self.disallowedTools = disallowedTools
         self.hidden = hidden
+        self.clearsModel = clearsModel
+        self.clearsEffort = clearsEffort
         self.allProjects = allProjects
     }
 
@@ -320,6 +329,43 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         case allowedTools = "allowed_tools"
         case disallowedTools = "disallowed_tools"
         case allProjects = "all_projects"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(slug, forKey: .slug)
+        try container.encodeIfPresent(mascot, forKey: .mascot)
+        try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(background, forKey: .background)
+        if let model {
+            try container.encode(model, forKey: .model)
+        } else if clearsModel {
+            try container.encodeNil(forKey: .model)
+        }
+        if let effort {
+            try container.encode(effort, forKey: .effort)
+        } else if clearsEffort {
+            try container.encodeNil(forKey: .effort)
+        }
+        try container.encodeIfPresent(permissionMode, forKey: .permissionMode)
+        try container.encodeIfPresent(autonomy, forKey: .autonomy)
+        try container.encodeIfPresent(projectAccess, forKey: .projectAccess)
+        try container.encodeIfPresent(projects, forKey: .projects)
+        try container.encodeIfPresent(skills, forKey: .skills)
+        try container.encodeIfPresent(allowedTools, forKey: .allowedTools)
+        try container.encodeIfPresent(disallowedTools, forKey: .disallowedTools)
+        try container.encodeIfPresent(hidden, forKey: .hidden)
+        try container.encodeIfPresent(allProjects, forKey: .allProjects)
+    }
+}
+
+/// `PUT /api/pixies/order`: every pixie's id, in the new order.
+public struct ReorderPixiesRequest: Encodable, Sendable, Hashable {
+    public var ids: [String]
+
+    public init(ids: [String]) {
+        self.ids = ids
     }
 }
 

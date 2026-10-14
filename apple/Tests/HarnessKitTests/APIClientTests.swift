@@ -177,6 +177,17 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.updatePixie(
                 "p1", UpdatePixieRequest(hidden: true, allProjects: true))
         },
+        RouteCase(
+            "PATCH", "/api/pixies/p1", body: #"{"effort":null,"model":null}"#,
+            response: pixieJSON
+        ) {
+            _ = try await $0.updatePixie(
+                "p1", UpdatePixieRequest(clearsModel: true, clearsEffort: true))
+        },
+        RouteCase(
+            "PUT", "/api/pixies/order", body: #"{"ids":["p2","p1"]}"#,
+            response: "[" + pixieJSON + "]"
+        ) { _ = try await $0.reorderPixies(["p2", "p1"]) },
         RouteCase("DELETE", "/api/pixies/p1", response: "") { try await $0.deletePixie("p1") },
         RouteCase(
             "POST", "/api/pixies/p1/messages", body: #"{"text":"hi"}"#, response: sessionJSON

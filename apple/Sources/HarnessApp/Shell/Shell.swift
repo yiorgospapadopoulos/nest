@@ -255,9 +255,33 @@ final class Shell {
         }
     }
 
-    /// Saves one change at once; there is no form to submit (D072).
+    /// Saves one change at once; there is no form to submit (D072). A pixie in Auto moved
+    /// to a model without it drops to Ask, as the daemon does for any chat; a toast says so.
     func updatePixie(_ id: String, _ request: UpdatePixieRequest) {
-        run("Could not save the pixie") { try await self.pixies.update(id, request) }
+        let before = pixies.pixies.first { $0.id == id }
+        run("Could not save the pixie") {
+            // The daemon's answer to this very save, not what later saves show meanwhile.
+            let saved = try await self.pixies.update(id, request)
+            if before?.droppedAuto(by: request, saved: saved) == true {
+                let model = saved.model.map { self.agents.label(for: $0) } ?? "The default model"
+                self.show(
+                    "\(model) does not support Auto mode: permissions are now \(saved.permissionMode.label)"
+                )
+            }
+        }
+    }
+
+    /// Drag and drop in the Pixies list: the pixie takes the other one's place.
+    func movePixie(_ id: String, onto target: String) {
+        run("Could not reorder the pixies") { try await self.pixies.move(id, onto: target) }
+    }
+
+    /// Move Up (-1) and Move Down (1) among the listed pixies.
+    func movePixie(_ id: String, by offset: Int) {
+        let listed = listedPixies.map(\.id)
+        run("Could not reorder the pixies") {
+            try await self.pixies.move(id, by: offset, among: listed)
+        }
     }
 
     /// Why the slug was refused (taken or not allowed), else nil.
@@ -304,9 +328,13 @@ final class Shell {
         Task {
             defer { draft.sending = false }
             do {
-                let session = try await pixies.send(id, text: text)
-                sessions.insert(session)
-                sentMessages.record(text, chat: session.id)
+                let sent = try await pixies.send(id, text: text)
+                sessions.insert(sent.session)
+                // Sent while the chat works: it shows as queued, as in any chat.
+                if let queued = sent.queuedMessage {
+                    activity.enqueue(queued, session: sent.session.id)
+                }
+                sentMessages.record(text, chat: sent.session.id)
                 draft.clearSent(text: typed, attachments: [])
             } catch {
                 show(error, doing: "Could not send")

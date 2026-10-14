@@ -14,6 +14,15 @@ extension Pixie {
     }
 }
 
+extension Pixie {
+    /// The daemon's answer to a model change took this pixie out of Auto, as it does for a
+    /// model without Auto mode; the app says so. `self` is the pixie before the change.
+    public func droppedAuto(by change: UpdatePixieRequest, saved: Pixie) -> Bool {
+        permissionMode == .auto && change.permissionMode == nil
+            && (change.model != nil || change.clearsModel) && saved.permissionMode != .auto
+    }
+}
+
 extension Mascot {
     /// The mascots to pick from, in the order of `design/mascots.toml`.
     public static var choices: [Mascot] { allCases.filter { $0 != .unknown } }

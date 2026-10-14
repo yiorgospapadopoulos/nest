@@ -9,6 +9,8 @@ final class FakeAPI: HarnessAPI {
     struct State {
         var calls: [String] = []
         var failures: [String: any Error] = [:]
+        /// Fails only the next call of that name.
+        var failNext: [String: any Error] = [:]
         var repos = Fixture.repos
         var sessions: [Session] = []
         var details: [String: Session] = [:]
@@ -49,6 +51,8 @@ final class FakeAPI: HarnessAPI {
         var pixieFiles: [String: PixieFile] = [:]
         var pixieNotes: [String] = []
         var pixieHits: [PixieSearchHit] = []
+        /// Models without Auto: a pixie in Auto moved to one drops to Ask before edits.
+        var dropsAutoFor: Set<String> = []
         var agentDefaults = AgentDefaults(
             model: "opus", effort: .xhigh, permissionMode: .default, mode: .inPlace)
         /// What a rewind preview answers, by session id.
@@ -81,7 +85,7 @@ final class FakeAPI: HarnessAPI {
     {
         try state.withLock { state in
             state.calls.append(detail.isEmpty ? name : "\(name) \(detail)")
-            if let failure = state.failures[name] {
+            if let failure = state.failures[name] ?? state.failNext.removeValue(forKey: name) {
                 throw failure
             }
             return answer(&state)
@@ -488,12 +492,34 @@ final class FakeAPI: HarnessAPI {
         }
     }
 
+    /// Waits at the "updatePixie" gate after taking the change, as the daemon answers.
     func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie {
-        try call("updatePixie", id) { state in
+        let answer = try call("updatePixie", id) { state in
             let index = state.pixies.firstIndex { $0.id == id }!
-            state.pixies[index].name = request.name ?? state.pixies[index].name
-            state.pixies[index].hidden = request.hidden ?? state.pixies[index].hidden
-            return state.pixies[index]
+            var pixie = state.pixies[index].applying(request)
+            if pixie.permissionMode == .auto, let model = pixie.model,
+                state.dropsAutoFor.contains(model)
+            {
+                pixie.permissionMode = .default
+            }
+            state.pixies[index] = pixie
+            return pixie
+        }
+        await pass("updatePixie")
+        return answer
+    }
+
+    /// Waits at the "reorderPixies" gate first, so a refusal can be set while it waits.
+    func reorderPixies(_ ids: [String]) async throws -> [Pixie] {
+        await pass("reorderPixies")
+        return try call("reorderPixies", ids.joined(separator: ",")) { state in
+            let byID = Dictionary(uniqueKeysWithValues: state.pixies.map { ($0.id, $0) })
+            state.pixies = ids.enumerated().map { index, id in
+                var pixie = byID[id]!
+                pixie.position = index
+                return pixie
+            }
+            return state.pixies
         }
     }
 
@@ -501,11 +527,16 @@ final class FakeAPI: HarnessAPI {
         try call("deletePixie", id) { state in state.pixies.removeAll { $0.id == id } }
     }
 
-    func sendToPixie(_ id: String, text: String) async throws -> Session {
-        try call("sendToPixie", id) { _ in
+    func sendToPixie(_ id: String, text: String) async throws -> SentMessage {
+        try call("sendToPixie", id) { state in
             var session = Fixture.session("chat-\(id)", repo: "pixie:\(id)", state: .running)
             session.pixieID = id
-            return session
+            let queued =
+                state.queueSends
+                ? QueuedMessage(
+                    id: "q-\(text)", text: text, createdAt: Date(timeIntervalSince1970: 0))
+                : nil
+            return SentMessage(session: session, queuedMessage: queued)
         }
     }
 

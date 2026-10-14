@@ -29,6 +29,8 @@
         private var pixieList: [Pixie] = []
         /// Pixie files by "<pixie id>/<name>", such as "reviewer/soul".
         private var pixieFiles: [String: String] = [:]
+        /// Messages sent to a pixie's chat while it works, by chat id.
+        private var pixieQueues: [String: [QueuedMessage]] = [:]
         /// What approving answers instead of the failed push, when set.
         private var approveRefusal: APIError?
         /// Diff reads waiting for `releaseDiffs()`, while diffs are held; nil otherwise.
@@ -95,8 +97,11 @@
         }
 
         func session(_ id: String) async throws -> Session {
-            guard let detail = details[id] ?? lock.withLock({ sessionList.first { $0.id == id } })
+            guard var detail = details[id] ?? lock.withLock({ sessionList.first { $0.id == id } })
             else { throw APIError.notFound("No session \(id)") }
+            if let queued = lock.withLock({ pixieQueues[id] }) {
+                detail.queued = queued
+            }
             return detail
         }
 
@@ -596,25 +601,20 @@
                 guard let index = pixieList.firstIndex(where: { $0.id == id }) else {
                     throw APIError.notFound("unknown pixie")
                 }
-                var pixie = pixieList[index]
-                pixie.name = request.name ?? pixie.name
-                pixie.slug = request.slug ?? pixie.slug
-                pixie.mascot = request.mascot ?? pixie.mascot
-                pixie.color = request.color ?? pixie.color
-                pixie.background = request.background ?? pixie.background
-                pixie.model = request.model ?? pixie.model
-                pixie.effort = request.effort ?? pixie.effort
-                pixie.permissionMode = request.permissionMode ?? pixie.permissionMode
-                pixie.autonomy = request.autonomy ?? pixie.autonomy
-                pixie.projectAccess = request.projectAccess ?? pixie.projectAccess
-                pixie.projects =
-                    request.allProjects == true ? nil : request.projects ?? pixie.projects
-                pixie.skills = request.skills ?? pixie.skills
-                pixie.allowedTools = request.allowedTools ?? pixie.allowedTools
-                pixie.disallowedTools = request.disallowedTools ?? pixie.disallowedTools
-                pixie.hidden = request.hidden ?? pixie.hidden
+                let pixie = pixieList[index].applying(request)
                 pixieList[index] = pixie
                 return pixie
+            }
+        }
+
+        func reorderPixies(_ ids: [String]) async throws -> [Pixie] {
+            lock.withLock {
+                pixieList = ids.enumerated().compactMap { index, id in
+                    guard var pixie = pixieList.first(where: { $0.id == id }) else { return nil }
+                    pixie.position = index
+                    return pixie
+                }
+                return pixieList
             }
         }
 
@@ -627,11 +627,17 @@
             lock.withLock { pixieList = Self.samplePixies(now: now) }
         }
 
-        func sendToPixie(_ id: String, text: String) async throws -> Session {
+        /// Into the pixie's open chat, queued as the snapshots show it; else a new chat.
+        func sendToPixie(_ id: String, text: String) async throws -> SentMessage {
+            if let chat = lock.withLock({ pixieList.first { $0.id == id }?.chatSessionID }) {
+                let queued = QueuedMessage(id: "q-\(chat)", text: text, createdAt: now)
+                lock.withLock { pixieQueues[chat, default: []].append(queued) }
+                return SentMessage(session: try await session(chat), queuedMessage: queued)
+            }
             var session = try await sessions(repo: nil, archived: false)[0]
             session.pixieID = id
             session.repo = "pixie:\(id)"
-            return session
+            return SentMessage(session: session)
         }
 
         func resetPixie(_ id: String) async throws -> Pixie {
