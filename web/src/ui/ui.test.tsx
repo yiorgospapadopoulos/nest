@@ -111,6 +111,9 @@ describe("an error toast", () => {
     );
     await act(() => vi.advanceTimersByTimeAsync(0));
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    // The error shows first, then time passes well beyond when other toasts go away.
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("status")).toHaveTextContent("Could not reach your Mac");
     await act(() => vi.advanceTimersByTimeAsync(TOAST_MS * 10));
 
     expect(screen.getByRole("status")).toHaveTextContent("Could not reach your Mac");

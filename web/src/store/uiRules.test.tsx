@@ -129,8 +129,13 @@ describe("the shared UI rules", () => {
     ]);
 
     expect(ciFailure(session({ pr: failing }), [])).not.toBeNull();
-    for (const state of rule.not_in_states) {
-      expect(ciFailure(session({ pr: failing, state }), []), state).toBeNull();
+    // Every state the status table knows: those listed hide the card, all others count.
+    const states = [...new Set(rules.status.cases.map((c) => c.state))];
+    expect(states).toHaveLength(7);
+    for (const state of states) {
+      const found = ciFailure(session({ pr: failing, state }), []);
+      if (rule.not_in_states.includes(state)) expect(found, state).toBeNull();
+      else expect(found, state).not.toBeNull();
     }
     expect(ciFailure(session({ pr: failing }), pendingOf(rule.not_with_pending))).toBeNull();
     expect(ciFailure(session({ pr: failing, archived_at: "x" }), [])).toBeNull();

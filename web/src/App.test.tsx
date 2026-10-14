@@ -118,6 +118,11 @@ describe("App", () => {
     render(<App api={fakeApi()} connect={sockets.connect} />);
 
     expect(await screen.findByText("All clear")).toBeInTheDocument();
+    // The socket opens in an effect after the screen that shows the inbox, which can run
+    // after the text is found.
+    await waitFor(() => {
+      expect(sockets.sockets).toHaveLength(1);
+    });
     expect(sockets.last().url).toBe(`ws://${window.location.host}/api/events`);
   });
 
