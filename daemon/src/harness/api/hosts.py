@@ -4,6 +4,7 @@ rebinding. Requests must name this Mac: 127.0.0.1, localhost, [::1] (the Mac app
 name from `[server] allowed_hosts`. Event sockets are checked too.
 """
 
+import re
 from collections.abc import Callable, Sequence
 
 from starlette.datastructures import Headers
@@ -11,6 +12,7 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 BUILT_IN_HOSTS = ("127.0.0.1", "localhost", "[::1]", "*.ts.net")
+_HOST = re.compile(r"(?P<name>\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?")
 # Policy violation: a socket refused before it is accepted reaches the client as a 403.
 REFUSED_SOCKET_CLOSE_CODE = 1008
 
@@ -42,12 +44,11 @@ def host_allowed(host: str | None, extra: Sequence[str]) -> bool:
 
 
 def _host_name(host: str) -> str:
-    """The lowercase name without port or trailing dot; IPv6 keeps its brackets."""
-    host = host.strip().lower()
-    if host.startswith("["):
-        end = host.find("]")
-        return "" if end == -1 else host[: end + 1]
-    return host.partition(":")[0].rstrip(".")
+    """The lowercase name without port or trailing dot; IPv6 keeps its brackets. "" for
+    anything but a name or IPv6 literal with an optional numeric port.
+    """
+    match = _HOST.fullmatch(host.strip().lower())
+    return "" if match is None else match["name"].rstrip(".")
 
 
 def _matches(name: str, pattern: str) -> bool:

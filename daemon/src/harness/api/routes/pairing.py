@@ -52,10 +52,10 @@ def client_address(request: Request) -> str:
     """The address failed pairing attempts count against (H-01).
 
     The daemon listens on 127.0.0.1 only, so the iPhone arrives through `tailscale serve`,
-    which connects from loopback and appends the phone's tailnet address to
-    X-Forwarded-For. Only the last entry is taken: earlier ones come from the client and
-    could be anything. A local process can also send the header, so the device service
-    keeps a global limit as well.
+    which connects from loopback and sets X-Forwarded-For to the phone's tailnet address,
+    replacing whatever the client sent. Only the last entry is taken, so a header with
+    several entries counts as its last one. A local process can also send the header, so
+    the device service keeps a global limit as well.
     """
     peer = request.client.host if request.client is not None else None
     if peer is None:
