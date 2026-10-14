@@ -1,5 +1,5 @@
 # Pixel-art pixie mascots (D072): 12 columns by 10 rows, "#" filled, "." empty.
-# Generated into web/src/generated/mascots.ts and apple/Sources/HarnessKit/Generated/Mascots.swift.
+# Generated into web/src/generated/mascots.ts and apple/Sources/NestKit/Generated/Mascots.swift.
 colors = [
   "#E5484D",
   "#F76B15",

@@ -1,4 +1,4 @@
-# Quality gates for every part of harness. `make check` is the single entry point.
+# Quality gates for every part of Nest. `make check` is the single entry point.
 
 .PHONY: install-app check check-daemon check-web check-apple fmt test install tokens app run-app
 
@@ -42,21 +42,25 @@ test:
 	cd apple && swift test
 
 tokens:
-	cd daemon && uv run harness design generate
+	cd daemon && uv run nestd design generate
 
-# The Mac app bundle in apple/build/Harness.app, signed with "Harness Local Signing" when present, ad hoc otherwise (D042).
+# The Mac app bundle in apple/build/Nest.app, signed with "Nest Local Signing" when present, ad hoc otherwise (D042).
 app:
 	apple/scripts/bundle-app.sh
 
 run-app: app
-	open apple/build/Harness.app
+	open apple/build/Nest.app
 
 # Copy the built app into /Applications so it opens from Spotlight, Launchpad and the Dock.
+# The app from before the rename to Nest (B43), Harness.app, is removed; its settings and
+# backgrounds are copied by Nest on its first launch.
 install-app: app
+	rm -rf /Applications/Nest.app
+	ditto apple/build/Nest.app /Applications/Nest.app
+	-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u /Applications/Harness.app
 	rm -rf /Applications/Harness.app
-	ditto apple/build/Harness.app /Applications/Harness.app
-	# Leave one Harness for Spotlight and Launchpad: the installed copy. The build copy may never
+	# Leave one Nest for Spotlight and Launchpad: the installed copy. The build copy may never
 	# have been registered (lsregister -10814), so a failure here is ignored.
-	-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u apple/build/Harness.app
-	rm -rf apple/build/Harness.app
-	@echo "Installed /Applications/Harness.app"
+	-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u apple/build/Nest.app
+	rm -rf apple/build/Nest.app
+	@echo "Installed /Applications/Nest.app"

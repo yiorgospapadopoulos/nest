@@ -1,6 +1,6 @@
-# Design tokens for harness, the single source for the PWA (CSS) and the Mac app (Swift).
+# Design tokens for Nest, the single source for the PWA (CSS) and the Mac app (Swift).
 # Values come from the locked mockups (D020, D021). Regenerate after editing:
-#   cd daemon && uv run harness design generate
+#   cd daemon && uv run nestd design generate
 #
 # Colors are `#rrggbb` or `rgba(r,g,b,a)`. Every color has a light and a dark value.
 # Names are snake_case; they become kebab-case CSS variables and camelCase Swift names.
