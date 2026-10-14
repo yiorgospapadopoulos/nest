@@ -1,10 +1,10 @@
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from harness.api.deps import Context, RequireDevice
 from harness.prs.models import MergeRequest, PrListItem
-from harness.sessions.models import Session
+from harness.sessions.models import SendResult, Session
 
 router = APIRouter(prefix="/api", dependencies=[RequireDevice])
 
@@ -23,6 +23,15 @@ async def list_prs(
 async def refresh_pr(session_id: str, ctx: Context) -> Session:
     """Read the session's pull request from GitHub now."""
     return await ctx.prs.refresh(session_id)
+
+
+@router.post("/sessions/{session_id}/ci-feedback", status_code=status.HTTP_202_ACCEPTED)
+async def ci_feedback(session_id: str, ctx: Context) -> SendResult:
+    """Send the failing checks' logs (the last lines of each failed GitHub Actions job,
+    read with the daemon's gh login) to the agent as a message. 409 `no_failing_checks`
+    when none fails now; 502 when GitHub cannot be read.
+    """
+    return await ctx.prs.send_ci_feedback(session_id)
 
 
 @router.post("/sessions/{session_id}/merge")

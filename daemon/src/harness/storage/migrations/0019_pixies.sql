@@ -1,4 +1,4 @@
--- Pixies: saved agents with their own soul, memory and chat (B34, D057).
+-- Pixies: saved agents with their own soul, memory and chat (B35, D057).
 CREATE TABLE pixies (
     id TEXT PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,

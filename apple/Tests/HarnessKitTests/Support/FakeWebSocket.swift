@@ -3,18 +3,31 @@ import Synchronization
 
 @testable import HarnessKit
 
-/// A scripted `URLSessionWebSocketTask` stand-in.
+/// A scripted `URLSessionWebSocketTask` stand-in that behaves like the real one: a
+/// receive waits for a frame and fails once the server closed the socket or the task was
+/// cancelled; after the server closed, the pong never comes.
 final class FakeWebSocketTask: WebSocketTask {
     struct State {
-        var frames: [Result<URLSessionWebSocketTask.Message, URLError>] = []
+        var frames: [URLSessionWebSocketTask.Message] = []
+        /// The server closed the socket with this code; `.invalid` while it is open.
         var closeCode: URLSessionWebSocketTask.CloseCode = .invalid
         var closeReason: Data?
         var pingError: URLError?
-        /// The pong never comes; like the real task, only cancelling it calls the handler.
+        /// The pong never comes; only cancelling the task calls the handler.
         var pingHangs = false
         var pendingPing: (@Sendable ((any Error)?) -> Void)?
+        var receiver: CheckedContinuation<URLSessionWebSocketTask.Message, any Error>?
         var resumed = false
         var cancelledWith: URLSessionWebSocketTask.CloseCode?
+        var pings = 0
+
+        /// Why a receive fails now, if it does.
+        var failure: URLError? {
+            if cancelledWith != nil {
+                return URLError(.cancelled)
+            }
+            return closeCode != .invalid ? URLError(.networkConnectionLost) : nil
+        }
     }
 
     let state = Mutex(State())
@@ -27,17 +40,32 @@ final class FakeWebSocketTask: WebSocketTask {
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
-        try state.withLock { state in
-            state.frames.isEmpty
-                ? .failure(URLError(.networkConnectionLost)) : state.frames.removeFirst()
-        }.get()
+        try await withCheckedThrowingContinuation { continuation in
+            let answer: Result<URLSessionWebSocketTask.Message, URLError>? = state.withLock {
+                state in
+                if !state.frames.isEmpty {
+                    return .success(state.frames.removeFirst())
+                }
+                if let failure = state.failure {
+                    return .failure(failure)
+                }
+                state.receiver = continuation
+                return nil
+            }
+            if let answer {
+                continuation.resume(with: answer)
+            }
+        }
     }
 
     func sendPing(pongReceiveHandler: @escaping @Sendable ((any Error)?) -> Void) {
         let (answered, error): (Bool, (any Error)?) = state.withLock { state in
-            guard state.pingHangs else { return (true, state.pingError) }
+            state.pings += 1
             if state.cancelledWith != nil {
                 return (true, URLError(.cancelled))
+            }
+            guard state.pingHangs || state.closeCode != .invalid else {
+                return (true, state.pingError)
             }
             state.pendingPing = pongReceiveHandler
             return (false, nil)
@@ -48,12 +76,39 @@ final class FakeWebSocketTask: WebSocketTask {
     }
 
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        let pending = state.withLock { state in
+        let (ping, receiver) = state.withLock { state in
             state.cancelledWith = closeCode
-            defer { state.pendingPing = nil }
-            return state.pendingPing
+            defer {
+                state.pendingPing = nil
+                state.receiver = nil
+            }
+            return (state.pendingPing, state.receiver)
         }
-        pending?(URLError(.cancelled))
+        ping?(URLError(.cancelled))
+        receiver?.resume(throwing: URLError(.cancelled))
+    }
+
+    /// A frame from the server.
+    func send(_ message: URLSessionWebSocketTask.Message) {
+        let receiver = state.withLock { state in
+            defer { state.receiver = nil }
+            if state.receiver == nil {
+                state.frames.append(message)
+            }
+            return state.receiver
+        }
+        receiver?.resume(returning: message)
+    }
+
+    /// The server closes the socket, as the daemon does with 4401 right after accepting.
+    func serverCloses(code: Int, reason: String? = nil) {
+        let receiver = state.withLock { state in
+            state.closeCode = URLSessionWebSocketTask.CloseCode(rawValue: code)!
+            state.closeReason = reason.map { Data($0.utf8) }
+            defer { state.receiver = nil }
+            return state.receiver
+        }
+        receiver?.resume(throwing: URLError(.networkConnectionLost))
     }
 }
 

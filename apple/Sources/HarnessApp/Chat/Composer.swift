@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// The message field of a pane with attach, dictation, the quiet selectors and send. A
 /// pixie's composer sends through the pixie and leaves out attachments, selectors and
-/// suggestions: its settings live in its details, and it belongs to no project (D057).
+/// suggestions: its settings live in its details, and it belongs to no project (D072).
 struct Composer: View {
     /// The draft's key: the pane's chat, or `Shell.pixieDraft` for a pixie.
     let chat: String
@@ -389,7 +389,8 @@ private struct ControlRow: View {
                     chat: chat, model: isDraft ? draft.model : session?.model,
                     effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
                 PermissionMenu(
-                    chat: chat, mode: isDraft ? draft.permission : session?.permissionMode)
+                    chat: chat, model: isDraft ? draft.model : session?.model,
+                    mode: isDraft ? draft.permission : session?.permissionMode)
             }
             if isDraft && shell.repo?.git != false {
                 ModeMenu(draft: draft)

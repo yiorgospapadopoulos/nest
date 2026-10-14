@@ -57,6 +57,28 @@ describe("Pixie page", () => {
     expect(screen.queryByText("Say hi to Tester")).not.toBeInTheDocument();
   });
 
+  it("loads the pixie's chat again from Retry", async () => {
+    const api = fakeApi();
+    // Known from an earlier event, as the session list leaves pixie chats out.
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+    api.session.mockResolvedValue(detail(chat));
+    api.sessionEvents.mockRejectedValueOnce(new Error("Request failed (502)"));
+    api.sessionEvents.mockResolvedValue([
+      event({
+        id: 2,
+        session_id: "c1",
+        type: "session.user_message",
+        payload: { text: "Still there?", attachments: [] },
+      }),
+    ]);
+    const { user } = await openPixie(api, pixie({ chat_session_id: "c1" }));
+
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Still there?")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("interrupts the pixie while it works", async () => {
     const api = fakeApi();
     const running = { ...chat, state: "running" as const };

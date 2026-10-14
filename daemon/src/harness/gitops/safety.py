@@ -3,7 +3,7 @@
 An agent can write `.git/config`, `.git/hooks` and `.gitattributes`. The daemon's approved
 commit, push and pull request, and the diffs they are based on, therefore run with:
 - `HARDENED` overrides on every git command: no hooks, no fsmonitor program, no `ext::`
-  transport;
+  transport, literal paths and no replace refs;
 - a check of the repository's own settings (local and worktree config, with the files they
   include) for anything else that runs a program or sends data elsewhere (`UNSAFE_REASONS`);
   publishing refuses them, and diffs neutralize filter drivers instead.
@@ -14,10 +14,14 @@ from dataclasses import dataclass
 
 GIT_CONFIG_LIST = ("git", "config", "--list", "--show-scope", "-z")
 # `-c` settings come after every config file, so they win over the repository's own.
+# Paths are literal, never patterns: a file the agent names `*` matches only itself
+# (SEC-04). Replace refs, which `git replace` makes without a commit, are ignored: they
+# could make the base look like the work, or hide the work's commits, in the review.
 HARDENED = (
     *("-c", "core.hooksPath=/dev/null"),
     *("-c", "core.fsmonitor=false"),
     *("-c", "protocol.ext.allow=never"),
+    *("--literal-pathspecs", "--no-replace-objects"),
 )
 _REPO_SCOPES = frozenset({"local", "worktree"})
 _BOOLEANS = frozenset({"true", "false", "yes", "no", "on", "off", "1", "0", ""})
@@ -95,14 +99,18 @@ def _unsafe_reason(key: str, value: str) -> str | None:
     return None
 
 
-def filter_overrides(settings: list[RepoSetting]) -> list[str]:
-    """`-c` options that switch off the repository's own filter drivers.
+def filter_overrides(settings: list[RepoSetting], *, only_unsafe: bool = False) -> list[str]:
+    """`-c` options that switch off the repository's own filter drivers; with
+    `only_unsafe`, only drivers with a setting `unsafe_settings` names, so git-lfs as it
+    installs itself keeps working where files are checked out (I-009).
 
     Raises ValueError for a driver name `-c` cannot express (it splits at the first `=`).
     """
     drivers: list[str] = []
     for setting in settings:
         if setting.key.lower().startswith("filter.") and setting.key.count(".") >= 2:
+            if only_unsafe and _unsafe_reason(setting.key.lower(), setting.value) is None:
+                continue
             driver = setting.key[len("filter.") : setting.key.rindex(".")]
             if "=" in driver:
                 msg = f"filter driver {driver!r} cannot be switched off"

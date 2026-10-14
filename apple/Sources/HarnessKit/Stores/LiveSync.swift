@@ -136,7 +136,9 @@ public final class AppModel {
     public let pixies: PixiesStore
     public let live: LiveSync
     /// Where `local()` read the device token, to read it again.
-    private var keychain: (store: any TokenStore, token: DeviceToken)?
+    var keychain: (store: any TokenStore, token: DeviceToken)?
+    /// The live sync `connect()` started last.
+    private var liveTask: Task<Void, Never>?
 
     public init(
         api: any HarnessAPI, events: any EventSource,
@@ -171,19 +173,41 @@ public final class AppModel {
     /// Before a retry: after the daemon refused the device token, reads it from the
     /// Keychain again, since the daemon may have stored a new one. Models not built by
     /// `local()` keep theirs.
-    public func rereadTokenIfRefused() throws {
+    public func rereadTokenIfRefused() async throws {
         guard app.connection == .unauthorized, let keychain,
-            let token = try keychain.store.deviceToken()
+            let token = try await Self.read(keychain.store)
         else { return }
         keychain.token.replace(with: token)
+    }
+
+    /// Drops the current connection and connects again at once, with the Keychain's token
+    /// when the daemon refused the one in use. A failed Keychain read is returned, and the
+    /// connection runs with the token it has.
+    @discardableResult
+    public func connect() async -> (any Error)? {
+        var failure: (any Error)?
+        do {
+            try await rereadTokenIfRefused()
+        } catch {
+            failure = error
+        }
+        liveTask?.cancel()
+        liveTask = Task { await live.run() }
+        return failure
+    }
+
+    /// The Keychain may ask the user, so it is read away from the main actor.
+    @concurrent
+    private static func read(_ tokens: any TokenStore) async throws -> String? {
+        try tokens.deviceToken()
     }
 
     /// The model for the daemon on this Mac, with the device token from the Keychain;
     /// nil when the daemon has not stored a token yet.
     public static func local(
         tokens: any TokenStore = KeychainTokenStore(), baseURL: URL = APIClient.defaultBaseURL
-    ) throws -> AppModel? {
-        guard let value = try tokens.deviceToken() else { return nil }
+    ) async throws -> AppModel? {
+        guard let value = try await read(tokens) else { return nil }
         let token = DeviceToken(value)
         let model = AppModel(
             api: APIClient(token: token, baseURL: baseURL),

@@ -135,7 +135,7 @@ def test_repository_swift_is_deterministic_and_balanced() -> None:
     assert swift == render_swift(tokens)
     assert swift.count("{") == swift.count("}")
     assert swift.count("(") == swift.count(")")
-    assert "public static let largeTitle: Double = 32" in swift
+    assert "public static let headline: Double = 17" in swift
     assert (
         "public static let all: [AccentColor] = [graphite, ocean, teal, moss, clay, rose]" in swift
     )

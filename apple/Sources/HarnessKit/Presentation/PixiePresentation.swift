@@ -1,6 +1,6 @@
 import Foundation
 
-// What the Pixies tab shows and offers; the same choices and words as the iPhone (D057).
+// What the Pixies tab shows and offers; the same choices and words as the iPhone (D072).
 
 extension Pixie {
     /// A pixie chat's repo is "pixie:<pixie id>".
@@ -60,7 +60,7 @@ extension ProjectAccess {
 }
 
 extension Autonomy {
-    /// Stored now; the harness tools that use it come with stage 3 (D057).
+    /// Stored now; the harness tools that use it come with stage 3 (D072).
     public static var choices: [Autonomy] { [.observe, .message, .start, .answer] }
 
     public var label: String {

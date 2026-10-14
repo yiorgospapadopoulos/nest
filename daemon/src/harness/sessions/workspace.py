@@ -64,6 +64,7 @@ async def _create(
             "linked": [*links.linked],
             "missing": [*links.missing],
             "existing": [*links.existing],
+            "failed": [*links.failed],
         },
         session.id,
     )

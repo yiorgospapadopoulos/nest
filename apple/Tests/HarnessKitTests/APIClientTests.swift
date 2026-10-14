@@ -219,6 +219,16 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                     commitMessage: "M", files: ["a.txt"], push: false, openPR: false, prTitle: "T",
                     prBody: "B", acknowledgeViolation: true))
         },
+        RouteCase(
+            "POST", "/api/sessions/s1/approve",
+            body:
+                #"{"acknowledge_violation":false,"commit_message":"M","expected_fingerprint":"f","expected_head":"c","open_pr":true,"push":true}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.approve(
+                "s1",
+                ApproveRequest(commitMessage: "M", expectedHead: "c", expectedFingerprint: "f"))
+        },
         RouteCase("POST", "/api/sessions/s1/reject", response: sessionJSON) {
             _ = try await $0.reject("s1")
         },
@@ -329,8 +339,63 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase(
             "POST", "/api/approvals/ap1/resolve",
-            body: #"{"always":false,"decision":"approve","dismiss":false}"#, response: approvalJSON
-        ) { _ = try await $0.resolveApproval("ap1", .approvePlan) },
+            body: #"{"always":false,"decision":"approve","dismiss":false,"mode":"acceptEdits"}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .approvePlan()) },
+        RouteCase(
+            "POST", "/api/approvals/ap1/resolve",
+            body: #"{"always":false,"decision":"approve","dismiss":false,"mode":"auto"}"#,
+            response: approvalJSON
+        ) { _ = try await $0.resolveApproval("ap1", .approvePlan(mode: .auto)) },
+        RouteCase("DELETE", "/api/repos/todo-ui", response: "") {
+            try await $0.removeRepo("todo-ui", purgeSessions: false)
+        },
+        RouteCase("DELETE", "/api/repos/todo-ui?purge_sessions=true", response: "") {
+            try await $0.removeRepo("todo-ui", purgeSessions: true)
+        },
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"default":null}"#, response: repoJSON) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: WorktreeConfig(isDefault: true), to: WorktreeConfig()))
+        },
+        RouteCase(
+            "PATCH", "/api/repos/todo-ui", body: #"{"default":false,"link":[".env"]}"#,
+            response: repoJSON
+        ) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(
+                    from: WorktreeConfig(setup: ["npm ci"]),
+                    to: WorktreeConfig(isDefault: false, link: [".env"], setup: ["npm ci"])))
+        },
+        RouteCase("PATCH", "/api/repos/todo-ui", body: #"{"setup":[]}"#, response: repoJSON) {
+            _ = try await $0.updateRepo(
+                "todo-ui",
+                RepoPatch(from: WorktreeConfig(setup: ["npm ci"]), to: WorktreeConfig()))
+        },
+        RouteCase("GET", "/api/repos/todo-ui/link-suggestions", response: #"[".env"]"#) {
+            _ = try await $0.linkSuggestions("todo-ui")
+        },
+        RouteCase(
+            "GET", "/api/sessions/s1/rewind?message=42",
+            response:
+                #"{"can_rewind": true, "files_changed": ["a"], "insertions": 1, "deletions": 0}"#
+        ) { _ = try await $0.rewindPreview("s1", message: 42) },
+        RouteCase("POST", "/api/sessions/s1/rewind", body: #"{"message":42}"#, response: "") {
+            try await $0.rewind("s1", message: 42)
+        },
+        RouteCase("POST", "/api/sessions/s1/ci-feedback", response: "") {
+            try await $0.ciFeedback("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/approve",
+            body:
+                #"{"acknowledge_violation":false,"commit_message":"M","confirm_remote_url":"git@x:me/r.git","open_pr":true,"push":true}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.approve(
+                "s1", ApproveRequest(commitMessage: "M", confirmRemoteURL: "git@x:me/r.git"))
+        },
         RouteCase(
             "POST", "/api/approvals/ap1/resolve",
             body:
@@ -463,14 +528,79 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                 == "attachments larger than 20 MB are not accepted")
     }
 
-    @Test func aMissingFileOrAFolderFails() async {
+    /// A file that grows after its size was checked is still cut off at the limit: the
+    /// read itself stops one byte past it and refuses (audit M-8).
+    @Test func aFileThatGrewAfterTheCheckIsRefusedAfterReading() throws {
+        let large = try file(size: AttachmentFile.maximumSize + 1)
+        defer { try? FileManager.default.removeItem(at: large) }
+        #expect(throws: AttachmentFileError.tooLarge) {
+            _ = try AttachmentFile.readCapped(large)
+        }
+        let largest = try file(size: AttachmentFile.maximumSize)
+        defer { try? FileManager.default.removeItem(at: largest) }
+        #expect(try AttachmentFile.readCapped(largest).count == AttachmentFile.maximumSize)
+    }
+
+    @Test func anEmptyFileReadsEmpty() async throws {
+        let empty = try file(size: 0)
+        defer { try? FileManager.default.removeItem(at: empty) }
+        #expect(try await AttachmentFile.read(empty).isEmpty)
+    }
+
+    @Test func aMissingFileFails() async {
         await #expect(throws: (any Error).self) {
             _ = try await AttachmentFile.read(URL(fileURLWithPath: "/no/such/file"))
         }
-        // A folder has no file size; reading it fails.
-        await #expect(throws: (any Error).self) {
-            _ = try await AttachmentFile.read(FileManager.default.temporaryDirectory)
+    }
+
+    /// Folders and packages (an `.rtfd`, an app) are not files to attach; they say so
+    /// rather than failing with a generic error (audit BUG-78).
+    @Test func foldersAndPackagesAreRefusedClearly() async throws {
+        let package = FileManager.default.temporaryDirectory.appending(path: "\(UUID()).rtfd")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: package) }
+        for folder in [package, FileManager.default.temporaryDirectory] {
+            await #expect(throws: AttachmentFileError.notAFile) {
+                _ = try await AttachmentFile.read(folder)
+            }
         }
+        #expect(
+            AttachmentFileError.notAFile.localizedDescription
+                == "only files can be attached, not folders or packages")
+    }
+
+    /// A link is read as the file it points to, size check included (audit BUG-78).
+    @Test func aLinkIsCheckedAsItsTarget() async throws {
+        let large = try file(size: AttachmentFile.maximumSize + 1)
+        let small = try file(size: 2)
+        let links = [large, small].map { _ in
+            FileManager.default.temporaryDirectory.appending(path: "\(UUID()).link")
+        }
+        try FileManager.default.createSymbolicLink(at: links[0], withDestinationURL: large)
+        try FileManager.default.createSymbolicLink(at: links[1], withDestinationURL: small)
+        defer {
+            for url in [large, small] + links { try? FileManager.default.removeItem(at: url) }
+        }
+        await #expect(throws: AttachmentFileError.tooLarge) {
+            _ = try await AttachmentFile.read(links[0])
+        }
+        #expect(try await AttachmentFile.read(links[1]) == Data([0, 0]))
+    }
+
+    @Test func uploadsWithTheFilesNameAndType() async throws {
+        let api = FakeAPI()
+        let text = try file(size: 3, named: "\(UUID()).txt")
+        let other = try file(size: 1, named: "\(UUID()).zzunknown")
+        defer {
+            try? FileManager.default.removeItem(at: text)
+            try? FileManager.default.removeItem(at: other)
+        }
+        let uploaded = try await AttachmentFile.upload(text, with: api)
+        #expect(uploaded.filename == text.lastPathComponent)
+        #expect(uploaded.mediaType == "text/plain")
+        #expect(uploaded.size == 3)
+        let unknown = try await AttachmentFile.upload(other, with: api)
+        #expect(unknown.mediaType == "application/octet-stream")
     }
 }
 
@@ -510,6 +640,40 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(
             await failure(409, #"{"detail": "other", "code": "something_else"}"#)
                 == .conflict("other", files: []))
+        #expect(
+            await failure(409, #"{"detail": "Check the git changes.", "code": "git_violation"}"#)
+                == .approveRefused("Check the git changes.", reason: .gitViolation))
+        #expect(
+            await failure(409, #"{"detail": "The branch moved.", "code": "head_changed"}"#)
+                == .approveRefused("The branch moved.", reason: .headChanged))
+        #expect(
+            await failure(409, #"{"detail": "Wait for it.", "code": "background_running"}"#)
+                == .approveRefused("Wait for it.", reason: .backgroundRunning))
+        for code in [
+            "nested_repository", "unsafe_branch", "unsafe_repo_config", "index_flags",
+            "lfs_unsupported", "review_changed",
+        ] {
+            let error = await failure(409, #"{"detail": "No.", "code": "\#(code)"}"#)
+            #expect(error == .approveRefused("No.", reason: ApproveRefusal(rawValue: code)!))
+            #expect(error?.pushRemote == nil)
+        }
+        // A push address to confirm comes with where origin pushes now (I-008).
+        let changed = await failure(
+            409,
+            #"{"detail": "Moved.", "code": "remote_changed", "remote_urls": ["git@new:r.git"], "confirmed_url": "git@old:r.git"}"#
+        )
+        let moved = PushRemote(urls: ["git@new:r.git"], confirmedURL: "git@old:r.git")
+        #expect(changed == .approveRefused("Moved.", reason: .remoteChanged, remote: moved))
+        #expect(changed?.pushRemote?.target == "git@new:r.git")
+        let unconfirmed = await failure(
+            409,
+            #"{"detail": "Confirm.", "code": "remote_not_confirmed", "remote_urls": ["a", "b"], "confirmed_url": null}"#
+        )
+        #expect(unconfirmed?.pushRemote == PushRemote(urls: ["a", "b"]))
+        #expect(unconfirmed?.pushRemote?.target == nil)
+        let bare = await failure(409, #"{"detail": "None.", "code": "remote_not_confirmed"}"#)
+        #expect(bare?.pushRemote == PushRemote(urls: []))
+        #expect(APIError.notFound("x").pushRemote == nil)
         #expect(
             await failure(400, #"{"detail": "invalid or expired pairing code"}"#)
                 == .invalidInput("invalid or expired pairing code"))
@@ -590,11 +754,36 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             .payloadTooLarge("a"), .rateLimited("a", retryAfter: nil), .appNotInstalled("a"),
             .gitFailed("a", step: "s", stderr: ""), .badGateway("a"),
             .server(status: 500, detail: "a"),
-            .transport("a"), .decoding("a"),
+            .transport("a"), .decoding("a"), .approveRefused("a", reason: .headChanged),
         ]
         #expect(errors.map(\.message) == Array(repeating: "a", count: errors.count))
         #expect(
             APIError.staleFile(text: "t", hash: "h").message
                 == "The file changed since you opened it.")
+    }
+
+    /// Every 409 means the chat changed since the app last read it.
+    @Test func conflictsAreTold() {
+        let conflicts: [APIError] = [
+            .conflict("a", files: []), .openInClaudeCode("a"),
+            .approveRefused("a", reason: .gitViolation),
+        ]
+        #expect(conflicts.allSatisfy { $0.isConflict })
+        #expect(!APIError.server(status: 500, detail: "a").isConflict)
+        #expect(!APIError.gitFailed("a", step: "push", stderr: "").isConflict)
+    }
+
+    @Test func aMovedBranchSaysWhatToDo() {
+        #expect(
+            ApproveRefusal.headChanged.hint
+                == "The branch moved since you looked. Check the changes again."
+        )
+        #expect(
+            ApproveRefusal.reviewChanged.hint
+                == "The changes were read again. Check them before approving.")
+        #expect(ApproveRefusal.gitViolation.hint == nil)
+        #expect(ApproveRefusal.backgroundRunning.hint == nil)
+        #expect(ApproveRefusal.indexFlags.hint == nil)
+        #expect(ApproveRefusal.lfsUnsupported.hint == nil)
     }
 }

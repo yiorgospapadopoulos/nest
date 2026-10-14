@@ -33,7 +33,7 @@ export const PROJECT_ACCESS: Record<ProjectAccess, Choice> = {
   none: { label: "None", hint: "Works only in its own folder" },
 };
 
-// Stored now; the harness tools that use it come with stage 3 (D057).
+// Stored now; the harness tools that use it come with stage 3 (D072).
 export const AUTONOMY: Record<Autonomy, Choice> = {
   observe: { label: "Observe", hint: "Reads chats, the inbox and pull requests" },
   message: { label: "Message", hint: "Also sends messages and nudges to chats" },

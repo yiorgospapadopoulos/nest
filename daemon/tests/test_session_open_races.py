@@ -1,19 +1,18 @@
 """Changes that land while a session's agent run opens or its worktree is created."""
 
 import asyncio
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 
 from harness.approvals.models import ApprovalStatus
-from harness.gitops import runner
 from harness.sessions.models import SessionState, UpdateSession
 from harness.storage.db import Database
 from tests.fake_provider import plan, reply
 from tests.fakes import FakeClock
 from tests.git_support import git
-from tests.session_support import Env
+from tests.session_support import Env, gate_worktree_add
 
 PROMPT = "Fix the bug\nDetails here"
 
@@ -109,29 +108,6 @@ async def test_a_mode_the_engine_switched_to_itself_is_known_to_the_run(env: Env
     await env.manager.update(created.id, UpdateSession(permission_mode="plan"))
 
     assert env.provider.runs[0].calls == [("set_permission_mode", "plan")]
-
-
-def gate_worktree_add(
-    monkeypatch: pytest.MonkeyPatch, fail: bool = False
-) -> tuple[asyncio.Event, asyncio.Event]:
-    """Hold `git worktree add` until the second event is set; the first marks it started.
-    With `fail`, git then fails instead of adding the worktree.
-    """
-    started, release = asyncio.Event(), asyncio.Event()
-    run = runner._run  # pyright: ignore[reportPrivateUsage]
-
-    async def gated(
-        argv: Sequence[str], cwd: Path, time_limit: float
-    ) -> tuple[int | None, bytes, bytes]:
-        if list(argv[1:3]) == ["worktree", "add"]:
-            started.set()
-            await release.wait()
-            if fail:
-                return 128, b"", b"fatal: no space left"
-        return await run(argv, cwd, time_limit)
-
-    monkeypatch.setattr(runner, "_run", gated)
-    return started, release
 
 
 async def test_interrupting_while_the_worktree_is_created_keeps_the_chat_usable(

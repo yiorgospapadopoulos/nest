@@ -28,22 +28,29 @@ def pr_json(**fields: object) -> str:
     return json.dumps(values)
 
 
-def check_run(name: str, status: str = "COMPLETED", conclusion: str = "SUCCESS") -> object:
+def check_run(
+    name: str, status: str = "COMPLETED", conclusion: str = "SUCCESS", url: str | None = None
+) -> object:
     return {
         "__typename": "CheckRun",
         "name": name,
         "status": status,
         "conclusion": conclusion,
-        "detailsUrl": f"https://ci.example/{name}",
+        "detailsUrl": url or f"https://ci.example/{name}",
     }
+
+
+def actions_job(job_id: int) -> str:
+    """A GitHub Actions job's page, as a check run's details URL."""
+    return f"https://github.com/me/repo/actions/runs/99/job/{job_id}"
 
 
 class FakeRunner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
         # One-off failures keyed by the first three words of the command, such as
-        # "gh pr merge", or by the first two, such as "git push" (git's leading `-c`
-        # overrides left out).
+        # "gh pr merge", or by the first two, such as "git push" (git's leading options,
+        # such as `-c` overrides, left out).
         self.failures: dict[str, Exception] = {}
         # One-off canned outputs, keyed the same way, for commands that would reach out.
         self.outputs: dict[str, str] = {}
@@ -53,6 +60,8 @@ class FakeRunner:
         self.before: dict[str, Callable[[], object]] = {}
         # What `gh pr view` prints; None fails it, as if GitHub were unreachable.
         self.pr_view: str | None = None
+        # What `gh run view --job <id> --log-failed` prints, by job id; others fail.
+        self.job_logs: dict[str, str] = {}
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         self.calls.append(tuple(argv))
@@ -75,6 +84,11 @@ class FakeRunner:
             return self.pr_view
         if tuple(argv[:3]) == ("gh", "pr", "merge"):
             return ""
+        if tuple(argv[:3]) == ("gh", "run", "view"):
+            log = self.job_logs.get(argv[argv.index("--job") + 1])
+            if log is None:
+                raise CommandError(argv, 1, "HTTP 404: Not Found\n")
+            return log
         if argv[0] == "gh":
             return f"Creating pull request for {argv[-5]}\n\n{PR_URL}\n"
         return await run_command(argv, cwd)
@@ -90,6 +104,6 @@ class FakeRunner:
 
 def _without_overrides(argv: Sequence[str]) -> list[str]:
     words = list(argv)
-    while len(words) > 2 and words[0] == "git" and words[1] == "-c":
-        del words[1:3]
+    while len(words) > 2 and words[0] == "git" and words[1].startswith("-"):
+        del words[1 : 3 if words[1] == "-c" else 2]
     return words

@@ -29,7 +29,7 @@ struct PixieDetailsPanel: View {
 }
 
 /// Everything that sets a pixie up, in one scrolling panel laid out like the approved design's
-/// Details panel. Every change is saved at once; there is no form to submit (D057).
+/// Details panel. Every change is saved at once; there is no form to submit (D072).
 struct PixieDetails: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell

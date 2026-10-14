@@ -18,7 +18,8 @@ final class AppController {
     private(set) var shell: Shell?
     /// Starts the daemon's launchd service when the daemon cannot be reached.
     let service: ServiceStarter
-    @ObservationIgnored private var liveTask: Task<Void, Never>?
+    /// The device token is being read for the first start.
+    @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
     @ObservationIgnored private var visibility: VisibilityMonitor?
 
@@ -49,8 +50,19 @@ final class AppController {
             connect()
             return
         }
+        guard !starting else { return }
+        starting = true
+        Task {
+            defer { starting = false }
+            await open()
+        }
+    }
+
+    /// Reads the device token (away from the main thread, as the Keychain may ask) and
+    /// builds the window's model.
+    private func open() async {
         do {
-            guard let model = try AppModel.local() else {
+            guard let model = try await AppModel.local() else {
                 phase = .noToken
                 return
             }
@@ -80,15 +92,13 @@ final class AppController {
     }
 
     /// Drops the current connection and connects again at once, with the Keychain's
-    /// token when the daemon refused the one in use.
+    /// token when the daemon refused the one in use (`AppModel.connect()`).
     func connect() {
         guard let shell else { return }
-        do {
-            try shell.model.rereadTokenIfRefused()
-        } catch {
-            shell.show(error, doing: "Could not read the device token")
+        Task {
+            if let failure = await shell.model.connect() {
+                shell.show(failure, doing: "Could not read the device token")
+            }
         }
-        liveTask?.cancel()
-        liveTask = Task { await shell.model.live.run() }
     }
 }

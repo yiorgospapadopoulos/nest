@@ -77,6 +77,8 @@ async def test_delete_with_purge_removes_the_session(api: Api) -> None:
     assert deleted.status_code == 204
     assert gone.status_code == 404
     assert again.status_code == 404
+    # IMP-13: nothing is kept in memory for it either.
+    assert session_id not in api.ctx.tracking._trackers  # pyright: ignore[reportPrivateUsage]
 
 
 async def test_purge_works_after_the_repo_folder_was_deleted(api: Api, tmp_path: Path) -> None:

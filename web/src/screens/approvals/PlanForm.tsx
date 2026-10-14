@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { Approval } from "../../api/types.ts";
+import type { Approval, PlanMode } from "../../api/types.ts";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { usePlan } from "./hooks.ts";
 
@@ -12,11 +12,13 @@ function isLong(plan: string): boolean {
 }
 
 /**
- * The plan Claude wrote in plan mode, with "Approve plan" and "Keep planning". Keeping
- * planning can carry an optional note for Claude.
+ * The plan Claude wrote in plan mode, with "Approve plan" and "Keep planning". Approving
+ * says how Claude goes on: accepting edits (the default), asking for each, or Auto where
+ * the model takes it. Keeping planning can carry an optional note for Claude.
  */
 export function PlanForm({ approval }: { approval: Approval }) {
-  const { busy, plan, approve, keepPlanning } = usePlan(approval);
+  const { busy, plan, modes, approve, keepPlanning } = usePlan(approval);
+  const [mode, setMode] = useState<PlanMode>("acceptEdits");
   const [all, setAll] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const id = useId();
@@ -39,20 +41,36 @@ export function PlanForm({ approval }: { approval: Approval }) {
         </button>
       )}
       {note === null ? (
-        <div className="acts">
-          <button className="b b-pri" disabled={busy} onClick={() => void approve()}>
-            Approve plan
-          </button>
-          <button
-            className="b"
-            disabled={busy}
-            onClick={() => {
-              setNote("");
-            }}
-          >
-            Keep planning
-          </button>
-        </div>
+        <>
+          <div className="pmodes" role="radiogroup" aria-label="Then">
+            {modes.map((option) => (
+              <button
+                key={option.value}
+                role="radio"
+                aria-checked={option.value === mode}
+                onClick={() => {
+                  setMode(option.value);
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="acts">
+            <button className="b b-pri" disabled={busy} onClick={() => void approve(mode)}>
+              Approve plan
+            </button>
+            <button
+              className="b"
+              disabled={busy}
+              onClick={() => {
+                setNote("");
+              }}
+            >
+              Keep planning
+            </button>
+          </div>
+        </>
       ) : (
         <form
           onSubmit={(event) => {

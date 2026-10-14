@@ -114,6 +114,14 @@ private struct ProjectMenu: View {
             } label: {
                 Label("Copy path", systemImage: Icon.copy)
             }
+            Divider()
+            Button {
+                if let project = shell.project {
+                    shell.show(.project(project))
+                }
+            } label: {
+                Label("Project settings…", systemImage: Icon.gear)
+            }
         } label: {
             HStack(spacing: 5) {
                 Text(shell.project ?? "")

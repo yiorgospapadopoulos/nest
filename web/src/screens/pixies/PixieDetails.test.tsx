@@ -154,6 +154,8 @@ describe("Pixie details", () => {
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { autonomy: "start" });
 
     await user.click(await screen.findByRole("button", { name: "Permissions: Ask" }));
+    // The default model takes Auto.
+    expect(screen.getByRole("menuitemradio", { name: /^Auto/ })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitemradio", { name: /^Plan/ }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { permission_mode: "plan" });
   });
@@ -167,6 +169,10 @@ describe("Pixie details", () => {
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: "haiku" });
     // Haiku takes no thinking level.
     expect(await screen.findByRole("button", { name: "Thinking: Not available" })).toBeDisabled();
+    // Nor the Auto permission mode.
+    await user.click(screen.getByRole("button", { name: "Permissions: Ask" }));
+    expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "Model: Haiku 4.5" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Opus 5.5/ }));

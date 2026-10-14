@@ -1,0 +1,61 @@
+{
+  "$comment": "Shared UI rules for the Mac app and the iPhone PWA (IMP-10). Each client has a test asserting its own tables match this file. Tones: running, waiting, review, failed, interrupted, done, idle. Groups are the chat list groups in order; archived chats are listed apart in both clients.",
+  "status": {
+    "$comment": "A chat's status label, tone and list group from its state and its pending approval kinds. Pending kinds are checked first: question, then plan, then permission (or a waiting state); review and merge only count while the chat is idle. A stuck chat is in needs_you whatever its status; a pinned chat is in pinned.",
+    "cases": [
+      { "state": "starting", "pending": [], "label": "Starting", "tone": "running", "group": "running" },
+      { "state": "running", "pending": [], "label": "Running", "tone": "running", "group": "running" },
+      { "state": "waiting", "pending": [], "label": "Needs approval", "tone": "waiting", "group": "needs_you" },
+      { "state": "waiting", "pending": ["permission"], "label": "Needs approval", "tone": "waiting", "group": "needs_you" },
+      { "state": "waiting", "pending": ["plan"], "label": "Plan ready", "tone": "waiting", "group": "needs_you" },
+      { "state": "waiting", "pending": ["question"], "label": "Question", "tone": "waiting", "group": "needs_you" },
+      { "state": "waiting", "pending": ["permission", "plan"], "label": "Plan ready", "tone": "waiting", "group": "needs_you" },
+      { "state": "waiting", "pending": ["permission", "plan", "question"], "label": "Question", "tone": "waiting", "group": "needs_you" },
+      { "state": "running", "pending": ["permission"], "label": "Needs approval", "tone": "waiting", "group": "needs_you" },
+      { "state": "idle", "pending": [], "label": "Idle", "tone": "idle", "group": "idle" },
+      { "state": "idle", "pending": ["review"], "label": "Ready for review", "tone": "review", "group": "needs_you" },
+      { "state": "idle", "pending": ["merge"], "label": "Ready to merge", "tone": "review", "group": "needs_you" },
+      { "state": "idle", "pending": ["merge", "review"], "label": "Ready for review", "tone": "review", "group": "needs_you" },
+      { "state": "interrupted", "pending": [], "label": "Interrupted", "tone": "interrupted", "group": "idle" },
+      { "state": "failed", "pending": [], "label": "Failed", "tone": "failed", "group": "idle" },
+      { "state": "closed", "pending": [], "label": "Done", "tone": "done", "group": "done" },
+      { "state": "idle", "pending": [], "stuck": true, "label": "Idle", "tone": "idle", "group": "needs_you" },
+      { "state": "running", "pending": [], "pinned": true, "label": "Running", "tone": "running", "group": "pinned" }
+    ]
+  },
+  "groups": [
+    { "id": "pinned", "label": "Pinned" },
+    { "id": "needs_you", "label": "Needs you" },
+    { "id": "running", "label": "Running" },
+    { "id": "idle", "label": "Idle" },
+    { "id": "done", "label": "Done" }
+  ],
+  "badge": {
+    "$comment": "What a project's badge and the app's attention count add up: every pending approval, every chat whose open pull request failed its checks while it waits for the user, and every chat that looks stuck. Archived chats count for neither of the last two.",
+    "counts": ["approvals", "checks_failed", "stuck"],
+    "checks_failed": {
+      "pr_state": "open",
+      "checks_state": "failure",
+      "not_in_states": ["starting", "running", "waiting", "closed"],
+      "not_with_pending": ["review"],
+      "not_archived": true
+    }
+  },
+  "needs_you": {
+    "$comment": "The Needs you cards of a project, in this order. Approvals oldest first, failed checks by when their checks last changed (oldest first), stuck chats longest stuck first.",
+    "order": ["approvals", "checks_failed", "stuck"],
+    "approvals": "oldest_first",
+    "checks_failed": "oldest_check_change_first",
+    "stuck": "longest_stuck_first"
+  },
+  "notification_kinds": [
+    { "kind": "needs_approval", "label": "Approvals" },
+    { "kind": "question", "label": "Questions" },
+    { "kind": "review_ready", "label": "Work ready for review" },
+    { "kind": "failed", "label": "Agent errors" },
+    { "kind": "finished", "label": "Finished turns" },
+    { "kind": "ci_failed", "label": "Pull request checks failed" },
+    { "kind": "ready_to_merge", "label": "Pull requests ready to merge" },
+    { "kind": "stuck", "label": "Chats that look stuck" }
+  ]
+}

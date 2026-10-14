@@ -273,6 +273,9 @@ export function event(overrides: Partial<HarnessEvent> & { type: string }): Harn
 export function diff(): SessionDiff {
   return {
     base: "abc",
+    head: { commit: "c0ffee0000000000000000000000000000000000", branch: "agent/contact" },
+    commits: [],
+    fingerprint: "f1ngerprint",
     stats: { files: 2, additions: 2, deletions: 1 },
     files: [
       {
@@ -283,6 +286,7 @@ export function diff(): SessionDiff {
         deletions: 1,
         binary: false,
         truncated: false,
+        nested_repository: false,
         hunks: [
           {
             old_start: 12,
@@ -307,6 +311,7 @@ export function diff(): SessionDiff {
         deletions: 0,
         binary: true,
         truncated: false,
+        nested_repository: false,
         hunks: [],
       },
     ],
@@ -387,6 +392,8 @@ export function models(): ModelOption[] {
       description: "Opus 5.5 · Best for everyday, complex tasks",
       effort_levels: LEVELS,
       supports_effort: true,
+      supports_auto_mode: true,
+      claude_code_effort: "high",
     },
     {
       value: "opus",
@@ -394,6 +401,8 @@ export function models(): ModelOption[] {
       description: "Most capable for complex work",
       effort_levels: LEVELS,
       supports_effort: true,
+      supports_auto_mode: true,
+      claude_code_effort: null,
     },
     {
       value: "haiku",
@@ -401,6 +410,8 @@ export function models(): ModelOption[] {
       description: "Fastest for quick answers",
       effort_levels: [],
       supports_effort: false,
+      supports_auto_mode: false,
+      claude_code_effort: null,
     },
     {
       value: "claude-opus-4-6",
@@ -408,6 +419,8 @@ export function models(): ModelOption[] {
       description: "Previous Opus",
       effort_levels: ["low", "medium", "high", "max"],
       supports_effort: true,
+      supports_auto_mode: false,
+      claude_code_effort: "medium",
     },
   ];
 }

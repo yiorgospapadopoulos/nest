@@ -118,6 +118,11 @@ describe("App", () => {
     render(<App api={fakeApi()} connect={sockets.connect} />);
 
     expect(await screen.findByText("All clear")).toBeInTheDocument();
+    // The socket opens in an effect after the screen that shows the inbox, which can run
+    // after the text is found.
+    await waitFor(() => {
+      expect(sockets.sockets).toHaveLength(1);
+    });
     expect(sockets.last().url).toBe(`ws://${window.location.host}/api/events`);
   });
 
@@ -238,11 +243,13 @@ describe("App", () => {
       sockets.last().open();
     });
     expect(screen.queryByText("Reconnecting...")).not.toBeInTheDocument();
+    const regions = screen.queryAllByRole("status");
 
     act(() => {
       sockets.last().drop(1006);
     });
-    expect(screen.getByText("Reconnecting...")).toHaveAttribute("role", "status");
+    // Said in a status region that was already there, so VoiceOver reads it out.
+    expect(regions).toContain(screen.getByText("Reconnecting...").closest('[role="status"]'));
     // The phone comes back to the app: no wait for the back-off.
     act(() => {
       document.dispatchEvent(new Event("visibilitychange"));

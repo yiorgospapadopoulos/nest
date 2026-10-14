@@ -1,5 +1,6 @@
 """Typed models for the TOML files in the user config directory."""
 
+import re
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
@@ -13,12 +14,17 @@ from pydantic import (
 )
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
-PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan"]
+PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan", "auto"]
+# The modes an approved plan may continue in; `auto` only with a model that supports it.
+PlanApprovalMode = Literal["acceptEdits", "default", "auto"]
 type SessionMode = Literal["worktree", "in_place"]
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+_HOST_PATTERN = r"(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*"
 
 
 class ServerSettings(_Strict):
@@ -27,12 +33,25 @@ class ServerSettings(_Strict):
     # Browser origins allowed to open the event socket besides the daemon's own host,
     # such as "https://mac.tailnet.ts.net".
     allowed_origins: list[str] = Field(default_factory=list[str])
+    # Host names requests may be addressed to besides 127.0.0.1, localhost, [::1] and
+    # *.ts.net (H-02), such as "harness.home.arpa" or "*.example.org"; no port.
+    allowed_hosts: list[str] = Field(default_factory=list[str])
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _host_names(cls, hosts: list[str]) -> list[str]:
+        for host in hosts:
+            if re.fullmatch(_HOST_PATTERN, host) is None:
+                msg = f"not a host name or *.domain pattern: {host!r}"
+                raise ValueError(msg)
+        return [host.lower() for host in hosts]
 
 
 class AgentDefaults(_Strict):
     model: str | None = None
     effort: Effort | None = None
-    permission_mode: PermissionMode = "default"
+    # None is Claude Code's own setting: no mode is passed, so your `defaultMode` applies.
+    permission_mode: PermissionMode | None = None
     # Where new chats work; a repo's `[worktree] default` overrides it when set (D038).
     default_mode: SessionMode = "in_place"
     # Idle agent processes are closed after this long and resumed on the next message.
@@ -45,7 +64,8 @@ class AgentChoices(_Strict):
     # A value of the engine's model list ("default", "opus", ...); null is Claude Code's own.
     model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
     effort: Effort | None = None
-    permission_mode: PermissionMode = "default"
+    # Null is Claude Code's own setting (its `defaultMode`).
+    permission_mode: PermissionMode | None = None
     mode: SessionMode = "in_place"
 
 
@@ -161,8 +181,15 @@ class WorktreeConfig(_Strict):
     def _links_stay_inside_repo(cls, links: list[str]) -> list[str]:
         for link in links:
             path = PurePosixPath(link)
-            if not link or path.is_absolute() or ".." in path.parts or path == PurePosixPath():
-                msg = f"link {link!r} must be a relative path inside the repository"
+            if (
+                not link
+                or path.is_absolute()
+                or ".." in path.parts
+                or path == PurePosixPath()
+                # In a worktree `.git` is a file git owns (BUG-96).
+                or path.parts[0] == ".git"
+            ):
+                msg = f"link {link!r} must be a relative path inside the repository, outside .git"
                 raise ValueError(msg)
         return links
 

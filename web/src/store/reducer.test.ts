@@ -53,6 +53,30 @@ describe("reduce", () => {
     expect(Object.keys(reloaded.sessions).sort()).toEqual(["c1", "s2"]);
   });
 
+  it("drops saved drafts of chats and projects gone while the app was closed", () => {
+    const draft = { text: "x", files: [] };
+    const saved = {
+      "session:s1": draft,
+      "session:gone": draft,
+      "new:todo-ui": draft,
+      "new:removed": draft,
+      // Pixies arrive after the snapshot, so their drafts stay.
+      "pixie:p1": draft,
+    };
+    const snapshot = {
+      type: "loaded" as const,
+      repos: [repo("todo-ui")],
+      sessions: [session()],
+      approvals: [],
+    };
+
+    const first = reduce({ ...initialState, drafts: saved }, snapshot);
+    expect(Object.keys(first.drafts)).toEqual(["session:s1", "new:todo-ui", "pixie:p1"]);
+    // Later snapshots, after a reconnect, leave drafts to the live events.
+    const later = reduce({ ...first, drafts: saved }, snapshot);
+    expect(later.drafts).toBe(saved);
+  });
+
   it("tracks a reconnect until the socket opens or the device has to pair again", () => {
     const lost = reduce(loaded(), { type: "reconnecting", on: true });
     expect(lost.reconnecting).toBe(true);
@@ -121,6 +145,19 @@ describe("reduce", () => {
     expect(reduce(state, { type: "transcriptOpened", id: "s1" }).transcripts.s1).toHaveLength(2);
     const fresh = reduce(loaded(), { type: "transcriptLoaded", id: "s9", events: [] });
     expect(fresh.transcripts.s9).toEqual([]);
+  });
+
+  it("marks a failed history load only while the open chat is still loading", () => {
+    let state = reduce(loaded(), { type: "transcriptOpened", id: "s1" });
+    expect(state.history.s1).toBe("loading");
+    state = reduce(state, { type: "historyFailed", id: "s1" });
+    expect(state.history.s1).toBe("failed");
+
+    state = reduce(state, { type: "transcriptLoaded", id: "s1", events: [] });
+    // A later refresh that fails keeps what is shown, and a closed chat has no status.
+    expect(reduce(state, { type: "historyFailed", id: "s1" })).toBe(state);
+    expect(reduce(state, { type: "historyFailed", id: "s2" })).toBe(state);
+    expect(reduce(state, { type: "transcriptClosed", id: "s1" }).history).toEqual({});
   });
 
   it("takes only what was sent out of a draft", () => {
@@ -211,6 +248,12 @@ describe("live events", () => {
     expect(state.sessions.s1?.pr).toEqual(pr);
     state = apply(state, event({ type: "session.pr", payload: { pr: "garbled" } }));
     expect(state.sessions.s1?.pr).toBeNull();
+    expect(state.sessions.s1?.git_violation).toBe(false);
+    state = apply(
+      state,
+      event({ type: "session.git_violation", payload: { changes: ["refs/heads/x"] } }),
+    );
+    expect(state.sessions.s1?.git_violation).toBe(true);
     const unknown = apply(state, event({ type: "session.state", session_id: "nope" }));
     expect(unknown).toBe(state);
     expect(apply(state, event({ type: "session.state", session_id: null }))).toBe(state);

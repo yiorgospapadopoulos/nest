@@ -20,7 +20,7 @@ interface ExtendableEvent {
   waitUntil(promise: Promise<unknown>): void;
 }
 
-interface FetchEvent {
+interface FetchEvent extends ExtendableEvent {
   request: Request;
   respondWith(response: Promise<Response>): void;
 }
@@ -60,7 +60,13 @@ export interface WorkerScope {
     }): Promise<readonly WindowClientLike[]>;
     openWindow(url: string): Promise<unknown>;
   };
-  registration: { showNotification(title: string, options: NotificationOptions): Promise<void> };
+  registration: {
+    showNotification(
+      title: string,
+      // `renotify` alerts again for a notification that replaces one with the same tag.
+      options: NotificationOptions & { renotify?: boolean },
+    ): Promise<void>;
+  };
   skipWaiting(): Promise<void>;
   fetch(request: Request): Promise<Response>;
   addEventListener(type: "install" | "activate", listener: (event: ExtendableEvent) => void): void;
@@ -74,12 +80,7 @@ export interface WorkerScope {
 
 export function installWorker(scope: WorkerScope): void {
   scope.addEventListener("install", (event) => {
-    event.waitUntil(
-      scope.caches
-        .open(CACHE)
-        .then((cache) => cache.addAll(SHELL))
-        .then(() => scope.skipWaiting()),
-    );
+    event.waitUntil(precache(scope).then(() => scope.skipWaiting()));
   });
   scope.addEventListener("activate", (event) => {
     event.waitUntil(
@@ -92,7 +93,9 @@ export function installWorker(scope: WorkerScope): void {
     );
   });
   scope.addEventListener("fetch", (event) => {
-    const response = respond(scope, event.request);
+    const response = respond(scope, event.request, (work) => {
+      event.waitUntil(work);
+    });
     if (response !== null) event.respondWith(response);
   });
   scope.addEventListener("push", (event) => {
@@ -140,7 +143,7 @@ function showPush(scope: WorkerScope, data: PushEvent["data"]) {
     body,
     icon: ICON,
     data: { url },
-    ...(tag === undefined ? {} : { tag }),
+    ...(tag === undefined ? {} : { tag, renotify: true }),
   });
 }
 
@@ -162,12 +165,36 @@ export async function openItem(scope: WorkerScope, path: string): Promise<void> 
   open.postMessage({ type: NAVIGATE, url: path });
 }
 
-/** How the worker answers a request; null leaves it to the network untouched. */
-export function respond(scope: WorkerScope, request: Request): Promise<Response> | null {
+/**
+ * The shell, then the hashed assets the cached page names: the page that registered the
+ * worker loaded them outside it, so without this an offline next launch has no assets.
+ */
+async function precache(scope: WorkerScope): Promise<void> {
+  const cache = await scope.caches.open(CACHE);
+  await cache.addAll(SHELL);
+  const page = await cache.match("/");
+  const html = page === undefined ? "" : await page.text();
+  await cache.addAll([...assetsOf(html)]);
+}
+
+/** The hashed assets a page names. */
+function assetsOf(html: string): Set<string> {
+  return new Set(html.match(/\/assets\/[^"'\s)]+/g));
+}
+
+/**
+ * How the worker answers a request; null leaves it to the network untouched. `keepAlive`
+ * holds the worker for work that goes on after the answer, such as caching a late page.
+ */
+export function respond(
+  scope: WorkerScope,
+  request: Request,
+  keepAlive: (work: Promise<unknown>) => void = () => undefined,
+): Promise<Response> | null {
   if (request.method !== "GET") return null;
   const url = new URL(request.url);
   if (url.origin !== scope.location.origin || url.pathname.startsWith("/api/")) return null;
-  if (request.mode === "navigate") return page(scope, request);
+  if (request.mode === "navigate") return page(scope, request, keepAlive);
   if (url.pathname.startsWith("/assets/")) return cacheFirst(scope, request);
   if (SHELL.includes(url.pathname)) return networkFirst(scope, request, url.pathname);
   return null;
@@ -178,12 +205,20 @@ export function respond(scope: WorkerScope, request: Request): Promise<Response>
  * with the daemon down) or takes too long (a sleeping Mac); then the cached shell, when
  * there is one. A page that arrives late still refreshes the cache.
  */
-async function page(scope: WorkerScope, request: Request): Promise<Response> {
-  const cache = await scope.caches.open(CACHE);
+async function page(
+  scope: WorkerScope,
+  request: Request,
+  keepAlive: (work: Promise<unknown>) => void,
+): Promise<Response> {
+  const opened = scope.caches.open(CACHE);
   const network = scope.fetch(request).then(async (response) => {
-    if (response.ok) await keepPage(cache, response);
+    if (response.ok) await keepPage(await opened, response);
     return response;
   });
+  // Before the first await, while the fetch event is still being dispatched: iOS may
+  // otherwise stop the worker once the cached shell has answered.
+  keepAlive(network.catch(() => null));
+  const cache = await opened;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<"late">((resolve) => {
     timer = setTimeout(() => {
@@ -203,7 +238,7 @@ async function page(scope: WorkerScope, request: Request): Promise<Response> {
 async function keepPage(cache: Cache, response: Response): Promise<void> {
   const html = await response.clone().text();
   await cache.put("/", response.clone());
-  const used = new Set(html.match(/\/assets\/[^"'\s)]+/g));
+  const used = assetsOf(html);
   // A page naming no assets (an error page, say) is no guide to what is stale.
   if (used.size === 0) return;
   for (const request of await cache.keys()) {

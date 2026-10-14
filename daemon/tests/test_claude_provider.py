@@ -1,4 +1,7 @@
 import asyncio
+import json
+import logging
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,8 +20,10 @@ from claude_agent_sdk import (
     TextBlock,
     ToolPermissionContext,
 )
+from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 from pydantic import JsonValue
 
+from harness.logging_setup import ENGINE_STDERR_LOGGER
 from harness.providers.base import (
     AccountInfo,
     AgentTask,
@@ -39,7 +44,7 @@ from harness.providers.base import (
     SlashCommand,
     UserInput,
 )
-from harness.providers.claude import ClaudeProvider, ClaudeRun
+from harness.providers.claude import ClaudeProvider, ClaudeRun, build_options
 from harness.providers.claude_questions import QUESTION_TIMEOUT_SECONDS
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
 from tests.async_support import until
@@ -158,6 +163,31 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     }
 
 
+async def test_a_stream_message_over_a_megabyte_reaches_the_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PL-14: an image read comes back as one long line; the SDK's 1 MB default ends the run."""
+    big = json.dumps({"type": "user", "data": "x" * (3 * 1024 * 1024)})
+    line = tmp_path / "line.json"
+    line.write_text(big + "\n", encoding="utf-8")
+    cli = tmp_path / "claude"
+    cli.write_text(f'#!/bin/sh\ncat "{line}"\n', encoding="utf-8")
+    cli.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", "1")
+    spec = SessionSpec(cwd=tmp_path, permission_mode="default")
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    transport = SubprocessCLITransport("", replace(options, cli_path=cli))
+
+    await transport.connect()
+    try:
+        received = [message async for message in transport.read_messages()]
+    finally:
+        await transport.close()
+
+    assert options.max_buffer_size == 64 * 1024 * 1024
+    assert [len(message["data"]) for message in received] == [3 * 1024 * 1024]
+
+
 async def test_minimal_spec_uses_the_plain_preset(tmp_path: Path) -> None:
     _, client = await Opened(tmp_path).open(SessionSpec(cwd=tmp_path, permission_mode="default"))
 
@@ -232,6 +262,28 @@ async def test_a_crash_says_what_the_agent_wrote_to_stderr(tmp_path: Path) -> No
     # Whole lines, as many as fit.
     assert tail.startswith("noise ")
     assert 300 - 41 < len(tail) <= 300
+
+
+async def test_every_stderr_line_is_logged_without_credentials(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BUG-82: not only a crash's tail; the daemon log shows what Claude Code warned about."""
+    _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "default"))
+    assert client.options.stderr is not None
+
+    with caplog.at_level(logging.DEBUG, ENGINE_STDERR_LOGGER):
+        client.options.stderr("[WARN] hook failed\n")
+        client.options.stderr("   ")
+        client.options.stderr("fetch https://me:ghp_secret@github.com/me/repo.git failed")
+
+    records = [r for r in caplog.records if r.name == ENGINE_STDERR_LOGGER]
+    assert [(r.levelno, r.getMessage()) for r in records] == [
+        (logging.DEBUG, f"Claude Code in {tmp_path}: [WARN] hook failed"),
+        (
+            logging.DEBUG,
+            f"Claude Code in {tmp_path}: fetch https://github.com/me/repo.git failed",
+        ),
+    ]
 
 
 async def test_a_long_stderr_line_is_cut_to_its_end(tmp_path: Path) -> None:

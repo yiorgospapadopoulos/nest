@@ -80,7 +80,7 @@ public enum NotificationPolicy {
             sessionID: notice.sessionID, project: notice.repo, playsSound: preferences.sound)
     }
 
-    /// The project a notice comes from, or the pixie's name for a pixie chat (D057).
+    /// The project a notice comes from, or the pixie's name for a pixie chat (D072).
     static func source(of notice: Notice, pixies: [Pixie]) -> String {
         guard notice.repo.hasPrefix("pixie:") else { return notice.repo }
         let id = String(notice.repo.dropFirst("pixie:".count))

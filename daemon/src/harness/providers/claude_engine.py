@@ -59,6 +59,8 @@ def _model(entry: dict[str, object]) -> ModelOption | None:
         description=_text(entry.get("description")) or "",
         effort_levels=levels,
         supports_effort=entry.get("supportsEffort") is True,
+        supports_auto_mode=entry.get("supportsAutoMode") is True,
+        resolved_model=_text(entry.get("resolvedModel")),
     )
 
 

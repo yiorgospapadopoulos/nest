@@ -40,7 +40,11 @@ class TurnEvents(Protocol):
     async def background_tasks(self, live: LiveSession, running: int) -> None: ...
 
     async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
-        """The engine switched its permission mode itself."""
+        """The engine reported its permission mode."""
+        ...
+
+    async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
+        """The engine took the user message last given, under this checkpoint id."""
         ...
 
 
@@ -152,6 +156,11 @@ class SessionSink:
 
     async def permission_mode(self, mode: PermissionMode) -> None:
         await self._isolated("the mode change", self._turns.permission_mode(self._live, mode))
+
+    async def checkpoint(self, checkpoint_id: str) -> None:
+        await self._isolated(
+            "the message checkpoint", self._turns.checkpoint(self._live, checkpoint_id)
+        )
 
     async def background_tasks(self, running: int) -> None:
         await self._isolated(

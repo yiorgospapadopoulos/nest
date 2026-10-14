@@ -207,7 +207,27 @@ def test_unknown_or_other_tasks_change_nothing() -> None:
     assert statuses(feed) == [("b1", "running")]
 
 
-def test_a_cut_off_turn_fails_background_work_and_a_late_notice_corrects_it() -> None:
+def test_a_stopped_turn_keeps_background_work_running_until_the_engine_ends_it() -> None:
+    """BUG-92: the run stays open after Stop, and its background tasks are counted the same
+    way approving the work counts them: running until the engine reports them finished.
+    """
+    feed = Feed()
+    feed.state("running")
+    feed.messages(
+        start_agent_message("a1", run_in_background=True),
+        message(tool_use("b1", "Bash", {"command": "sleep 9", "run_in_background": True})),
+        start_agent_message("a2"),
+    )
+    task(feed, "t1", "started", tool_use_id="a1", background=True)
+
+    feed.state("interrupted")
+    assert statuses(feed) == [("a1", "running"), ("b1", "running"), ("a2", "failed")]
+
+    task(feed, "t1", "finished", status="stopped")
+    assert statuses(feed) == [("a1", "failed"), ("b1", "running"), ("a2", "failed")]
+
+
+def test_closing_a_chat_fails_its_background_work_and_a_late_notice_corrects_it() -> None:
     feed = Feed()
     feed.state("running")
     feed.messages(
@@ -216,8 +236,28 @@ def test_a_cut_off_turn_fails_background_work_and_a_late_notice_corrects_it() ->
     )
     task(feed, "t1", "started", tool_use_id="a1", background=True)
 
-    feed.state("interrupted")
+    feed.state("closed")
     assert statuses(feed) == [("a1", "failed"), ("b1", "failed")]
 
     task(feed, "t1", "finished", status="completed")
     assert statuses(feed) == [("a1", "done"), ("b1", "failed")]
+
+
+def test_an_error_turn_keeps_background_work_running() -> None:
+    """BUG-63: the run stays open after an engine error (D054), and so does its background
+    work; only what the turn itself was running is cut off.
+    """
+    feed = Feed()
+    feed.state("running")
+    feed.messages(
+        start_agent_message("a1", run_in_background=True),
+        message(tool_use("b1", "Bash", {"command": "sleep 9", "run_in_background": True})),
+        start_agent_message("a2"),
+    )
+    task(feed, "t1", "started", tool_use_id="a1", background=True)
+
+    feed.state("failed")
+
+    assert statuses(feed) == [("a1", "running"), ("b1", "running"), ("a2", "failed")]
+    task(feed, "t1", "finished", status="completed")
+    assert statuses(feed) == [("a1", "done"), ("b1", "running"), ("a2", "failed")]

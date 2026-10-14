@@ -1,6 +1,6 @@
 import Foundation
 
-/// The pixie's pixel-art mascot; `MascotSprites` draws it (D057).
+/// The pixie's pixel-art mascot; `MascotSprites` draws it (D072).
 public enum Mascot: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
     case invader, ghost, cat, owl, robot, frog, mushroom, bunny, crab, sprout
     case unknown
@@ -25,7 +25,7 @@ public enum ProjectAccess: String, Codable, Sendable, CaseIterable, UnknownSafeE
     case unknown
 }
 
-/// A long-lived assistant with its own soul, memory and chat (D057).
+/// A long-lived assistant with its own soul, memory and chat (D072).
 public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var slug: String

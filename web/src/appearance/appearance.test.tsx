@@ -10,6 +10,7 @@ import {
   saveAppearance,
   STORAGE_KEY,
 } from "./appearance.ts";
+import { themeColorTags } from "./boot.ts";
 
 const broken = () => {
   throw new Error("SecurityError");
@@ -92,6 +93,25 @@ describe("appearance", () => {
     ]).toEqual(["light", "teal", "neutral", "deep"]);
     applyAppearance(root, DEFAULT_APPEARANCE);
     expect(root.attributes).toHaveLength(0);
+  });
+
+  it("makes the theme color follow a chosen theme", () => {
+    // A theme color the build did not write stays as it is.
+    document.head.innerHTML =
+      themeColorTags({ light: "#eeeeec", dark: "#0c0c0d" }) +
+      '<meta name="theme-color" data-scheme="dark" content="#123456" />';
+    const contents = () =>
+      [...document.querySelectorAll('meta[name="theme-color"]')].map((m) =>
+        m.getAttribute("content"),
+      );
+
+    applyAppearance(document.documentElement, { ...DEFAULT_APPEARANCE, theme: "dark" });
+    expect(contents()).toEqual(["#0c0c0d", "#0c0c0d", "#123456"]);
+    applyAppearance(document.documentElement, { ...DEFAULT_APPEARANCE, theme: "light" });
+    expect(contents()).toEqual(["#eeeeec", "#eeeeec", "#123456"]);
+    applyAppearance(document.documentElement, DEFAULT_APPEARANCE);
+    expect(contents()).toEqual(["#eeeeec", "#0c0c0d", "#123456"]);
+    document.head.innerHTML = "";
   });
 
   it("renders the defaults without a provider", () => {

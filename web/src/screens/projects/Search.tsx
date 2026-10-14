@@ -5,7 +5,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { groupHits, type ChatHits } from "./searchHits.ts";
 
-// A pixie chat's repo; its hits are named after the pixie and open its page (D057).
+// A pixie chat's repo; its hits are named after the pixie and open its page (D072).
 const PIXIE_REPO = "pixie:";
 
 // Typing pauses this long before the Mac is asked.

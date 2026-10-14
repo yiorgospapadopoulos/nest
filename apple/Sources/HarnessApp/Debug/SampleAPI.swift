@@ -29,6 +29,14 @@
         private var pixieList: [Pixie] = []
         /// Pixie files by "<pixie id>/<name>", such as "reviewer/soul".
         private var pixieFiles: [String: String] = [:]
+        /// What approving answers instead of the failed push, when set.
+        private var approveRefusal: APIError?
+        /// Diff reads waiting for `releaseDiffs()`, while diffs are held; nil otherwise.
+        private var diffWaiters: [CheckedContinuation<Void, Never>]?
+        /// Reading events fails, as while the daemon is unreachable.
+        private var eventsFail = false
+        /// A restore preview finds no file changed since the message.
+        private var nothingToRestore = false
 
         init(now: Date = Date()) {
             self.now = now
@@ -62,6 +70,23 @@
         }
 
         func openRepo(_ name: String, in app: RepoApp) async throws {}
+
+        func removeRepo(_ name: String, purgeSessions: Bool) async throws {}
+
+        func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {
+            let all = try await repos()
+            var repo = all.first { $0.name == name } ?? all[0]
+            if patch.changesDefault {
+                repo.worktree.isDefault = patch.isDefault
+            }
+            repo.worktree.link = patch.link ?? repo.worktree.link
+            repo.worktree.setup = patch.setup ?? repo.worktree.setup
+            return repo
+        }
+
+        func linkSuggestions(_ name: String) async throws -> [String] {
+            [".env", "node_modules/"]
+        }
 
         func sessions(repo: String?, archived: Bool) async throws -> [Session] {
             lock.withLock { sessionList }.filter {
@@ -106,6 +131,9 @@
         func sessionEvents(_ id: String, after: Int, before: Int?, limit: Int?) async throws
             -> [Event]
         {
+            if lock.withLock({ eventsFail }) {
+                throw APIError.transport("Could not connect to the server.")
+            }
             let range = (events[id] ?? lock.withLock { adoptedEvents[id] } ?? []).filter {
                 ($0.id ?? 0) > after && ($0.id ?? 0) < (before ?? .max)
             }
@@ -197,16 +225,67 @@
 
         func interrupt(_ id: String) async throws {}
 
+        func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
+            if lock.withLock({ nothingToRestore }) {
+                return RewindPreview(canRewind: true)
+            }
+            return RewindPreview(
+                canRewind: true, files: ["src/App.tsx", "src/styles.css"], insertions: 12,
+                deletions: 4)
+        }
+
+        func rewind(_ id: String, message: Int) async throws {}
+
+        func ciFeedback(_ id: String) async throws {}
+
         func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
             try decode(["launcher": "/tmp/claude.command"])
         }
 
         func diff(_ sessionID: String) async throws -> SessionDiff {
-            try SampleData.diff()
+            await withCheckedContinuation { continuation in
+                let held = lock.withLock {
+                    diffWaiters?.append(continuation)
+                    return diffWaiters != nil
+                }
+                if !held {
+                    continuation.resume()
+                }
+            }
+            return try SampleData.diff()
+        }
+
+        /// Approving answers this refusal from now on, as when origin's address changed.
+        func refuseApprove(with error: APIError) {
+            lock.withLock { approveRefusal = error }
+        }
+
+        /// Diffs load only after `releaseDiffs()`.
+        func holdDiffs() {
+            lock.withLock { diffWaiters = [] }
+        }
+
+        func releaseDiffs() {
+            let waiters = lock.withLock {
+                defer { diffWaiters = nil }
+                return diffWaiters ?? []
+            }
+            waiters.forEach { $0.resume() }
+        }
+
+        func failEvents(_ fail: Bool) {
+            lock.withLock { eventsFail = fail }
+        }
+
+        func previewNothingToRestore(_ nothing: Bool) {
+            lock.withLock { nothingToRestore = nothing }
         }
 
         /// Pushing fails, so snapshots show a failed step with git's output.
         func approve(_ sessionID: String, _ request: ApproveRequest) async throws -> Session {
+            if let refusal = lock.withLock({ approveRefusal }) {
+                throw refusal
+            }
             throw APIError.gitFailed(
                 "git push failed", step: "push",
                 stderr:
@@ -428,6 +507,8 @@
                     [
                         "value": value, "display_name": name, "description": description,
                         "effort_levels": levels, "supports_effort": !levels.isEmpty,
+                        "supports_auto_mode": value == "default" || value == "opus",
+                        "claude_code_effort": value == "default" ? "high" : NSNull(),
                     ] as [String: Any]
                 },
                 "updated_at": SampleData.iso(now),
@@ -774,6 +855,8 @@
             }
             return try decode([
                 "base": "main",
+                "head": ["commit": "9f3c2e1a7b", "branch": "agent/dark-mode-contrast-3f2a"],
+                "commits": [["sha": "4d5e6f7a8b9c", "subject": "Add a release workflow"]],
                 "stats": ["files": 4, "additions": 48, "deletions": 19],
                 "files": [
                     file(
@@ -872,7 +955,7 @@
                 ]
             }
             if let pixie {
-                // A pixie's chat: no branch, and no list carries it (D057).
+                // A pixie's chat: no branch, and no list carries it (D072).
                 object["pixie_id"] = pixie
                 object["branch"] = NSNull()
                 object["mode"] = "in_place"
@@ -1082,6 +1165,7 @@
                 payload: [
                     "tool": "Bash", "input": ["command": "npm install zod"],
                     "title": "Adds zod so one schema is shared by the form and the API route.",
+                    "always_rule": "Bash(npm install:*)",
                 ])
 
             session(

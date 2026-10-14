@@ -1,4 +1,4 @@
-// Fact lines of a pixie's MEMORY.md (D057).
+// Fact lines of a pixie's MEMORY.md (D072).
 
 // A fact line of MEMORY.md, as the pixie writes them: "- YYYY-MM-DD: <fact>".
 const DATED = /^- \d{4}-\d{2}-\d{2}: /;

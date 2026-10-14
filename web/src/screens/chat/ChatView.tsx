@@ -18,7 +18,7 @@ import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
-// continued in harness, or a pixie's page (D057).
+// continued in harness, or a pixie's page (D072).
 export type ChatTarget =
   | { id: string; event?: number }
   | { draft: string }
@@ -76,6 +76,8 @@ function SessionChat({
   const { state, actions } = useStore();
   const session = state.sessions[id];
   const [sheet, setSheet] = useState<"agents" | "actions" | null>(null);
+  const history = state.history[id];
+  // Whether the first fetch is over: the history itself goes when the chat is deleted.
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -135,9 +137,13 @@ function SessionChat({
         session={session}
         background={tracking.background}
         focus={focus}
-        loaded={loaded}
+        history={history ?? "loading"}
+        onRetry={() => void actions.reloadChat(id)}
       />
-      <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
+      {/* Until the history is in, the latest exchange and so its tasks are unknown. */}
+      {history === "loaded" && (
+        <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
+      )}
       <Composer session={session} />
       {sheet === "agents" && (
         <AgentsSheet

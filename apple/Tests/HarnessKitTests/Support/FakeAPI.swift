@@ -51,6 +51,10 @@ final class FakeAPI: HarnessAPI {
         var pixieHits: [PixieSearchHit] = []
         var agentDefaults = AgentDefaults(
             model: "opus", effort: .xhigh, permissionMode: .default, mode: .inPlace)
+        /// What a rewind preview answers, by session id.
+        var rewinds: [String: RewindPreview] = [:]
+        /// Gitignored files a repo suggests linking, by repo name.
+        var linkSuggestions: [String: [String]] = [:]
     }
 
     let state = Mutex(State())
@@ -110,16 +114,44 @@ final class FakeAPI: HarnessAPI {
         try call("openRepo", "\(name) \(app.rawValue)") { _ in }
     }
 
-    func sessions(repo: String?, archived: Bool) async throws -> [Session] {
-        try call("sessions", "archived=\(archived)") { state in
-            state.sessions.filter { $0.isArchived == archived && (repo == nil || $0.repo == repo) }
+    func removeRepo(_ name: String, purgeSessions: Bool) async throws {
+        try call("removeRepo", "\(name) purge=\(purgeSessions)") { state in
+            state.repos.removeAll { $0.name == name }
         }
     }
 
+    func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo {
+        await pass("updateRepo")
+        return try call("updateRepo", "\(name) \(Fixture.json(patch))") { state in
+            let index = state.repos.firstIndex { $0.name == name }!
+            if patch.changesDefault {
+                state.repos[index].worktree.isDefault = patch.isDefault
+            }
+            state.repos[index].worktree.link = patch.link ?? state.repos[index].worktree.link
+            state.repos[index].worktree.setup = patch.setup ?? state.repos[index].worktree.setup
+            return state.repos[index]
+        }
+    }
+
+    func linkSuggestions(_ name: String) async throws -> [String] {
+        try call("linkSuggestions", name) { $0.linkSuggestions[name] ?? [] }
+    }
+
+    /// Both wait at the "sessions" gate, after reading what they answer.
+    func sessions(repo: String?, archived: Bool) async throws -> [Session] {
+        let answer = try call("sessions", "archived=\(archived)") { state in
+            state.sessions.filter { $0.isArchived == archived && (repo == nil || $0.repo == repo) }
+        }
+        await pass("sessions")
+        return answer
+    }
+
     func session(_ id: String) async throws -> Session {
-        try call("session", id) { state in
+        let answer = try call("session", id) { state in
             state.details[id] ?? state.sessions.first { $0.id == id }!
         }
+        await pass("session")
+        return answer
     }
 
     func createSession(_ request: CreateSessionRequest) async throws -> Session {
@@ -212,6 +244,21 @@ final class FakeAPI: HarnessAPI {
         try call("interrupt", id) { _ in }
     }
 
+    func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
+        try call("rewindPreview", "\(id) \(message)") { state in
+            state.rewinds[id] ?? RewindPreview(canRewind: true)
+        }
+    }
+
+    func rewind(_ id: String, message: Int) async throws {
+        await pass("rewind")
+        try call("rewind", "\(id) \(message)") { _ in }
+    }
+
+    func ciFeedback(_ id: String) async throws {
+        try call("ciFeedback", id) { _ in }
+    }
+
     func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
         try call("openInClaudeCode", id) { _ in
             ClaudeCodeLaunch(launcher: "/tmp/\(id).command", warning: nil)
@@ -264,12 +311,18 @@ final class FakeAPI: HarnessAPI {
     }
 
     func diff(_ sessionID: String) async throws -> SessionDiff {
-        try call("diff", sessionID) { $0.diff }
+        await pass("diff")
+        return try call("diff", sessionID) { $0.diff }
     }
 
     func approve(_ sessionID: String, _ request: ApproveRequest) async throws -> Session {
         let files = request.files.map { " files=\($0)" } ?? ""
-        let detail = "\(sessionID) \(request.commitMessage) open_pr=\(request.openPR)\(files)"
+        let head = request.expectedHead.map { " head=\($0)" } ?? ""
+        let fingerprint = request.expectedFingerprint.map { " fingerprint=\($0)" } ?? ""
+        let remote = request.confirmRemoteURL.map { " remote=\($0)" } ?? ""
+        let detail =
+            "\(sessionID) \(request.commitMessage) open_pr=\(request.openPR)\(files)\(head)"
+            + fingerprint + remote
         await pass("approve")
         return try call("approve", detail) { state in
             session(sessionID, in: &state) { $0.prURL = "https://example.com/pr/1" }
@@ -312,9 +365,11 @@ final class FakeAPI: HarnessAPI {
     }
 
     func approvals(status: ApprovalStatus?, project: String?) async throws -> [Approval] {
-        try call("approvals") { state in
+        let answer = try call("approvals") { state in
             state.approvals.filter { status == nil || $0.status == status }
         }
+        await pass("approvals")
+        return answer
     }
 
     func resolveApproval(_ id: String, _ request: ResolveApprovalRequest) async throws -> Approval {
@@ -410,7 +465,7 @@ final class FakeAPI: HarnessAPI {
     func updateAgentDefaults(_ defaults: AgentDefaults) async throws -> AgentDefaults {
         let detail = [
             defaults.model ?? "nil", defaults.effort?.rawValue ?? "nil",
-            defaults.permissionMode.rawValue, defaults.mode.rawValue,
+            defaults.permissionMode?.rawValue ?? "nil", defaults.mode.rawValue,
         ].joined(separator: " ")
         return try call("updateAgentDefaults", detail) { state in
             state.agentDefaults = defaults

@@ -1,9 +1,9 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
-import { detail, pixie, queuedMessage, repo, session } from "../test/fixtures.ts";
+import { detail, pixie, queuedMessage, repo, review, session } from "../test/fixtures.ts";
 import { openPixie } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
 
@@ -34,6 +34,26 @@ function box(element: HTMLElement) {
     width: Math.max(px(css.width), px(css.minWidth)),
     height: Math.max(px(css.height), px(css.minHeight)),
   };
+}
+
+/**
+ * What a tap reaches: the control's box, or the larger hit area a ::before of its own
+ * declares (jsdom has no pseudo-element styles, so the rule is read from the sheet).
+ */
+function hitBox(element: HTMLElement) {
+  const own = box(element);
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  let width = own.width;
+  let height = own.height;
+  for (const sheet of document.styleSheets) {
+    for (const rule of sheet.cssRules) {
+      if (!(rule instanceof CSSStyleRule) || !rule.selectorText.endsWith("::before")) continue;
+      if (!element.matches(rule.selectorText.replace(/::before$/, ""))) continue;
+      width = Math.max(width, px(rule.style.width), px(rule.style.minWidth));
+      height = Math.max(height, px(rule.style.height), px(rule.style.minHeight));
+    }
+  }
+  return { width, height };
 }
 
 // Apple's smallest comfortable tap target.
@@ -128,5 +148,36 @@ describe("tap targets", () => {
     for (const name of [/^Edit name/, /^Edit slug/, "Add project", "Add skill", /^Soul/]) {
       expect(box(screen.getByRole("button", { name })).height).toBeGreaterThanOrEqual(TAP);
     }
+  });
+
+  it("are at least 44 points for card buttons, switches and colour swatches", async () => {
+    const api = fakeApi();
+    api.approvals.mockResolvedValue([review()]);
+    api.sessions.mockImplementation((archived) =>
+      Promise.resolve(archived ? [] : [session({ git_violation: true })]),
+    );
+    const { user } = await renderApp({ api });
+
+    // Text buttons are as wide as their words; their height is what falls short.
+    const reach = (control: HTMLElement, sides: "height" | "both" = "both") => {
+      const hit = hitBox(control);
+      const name = control.textContent || (control.getAttribute("aria-label") ?? "");
+      expect(hit.height, name).toBeGreaterThanOrEqual(TAP);
+      if (sides === "both") expect(hit.width, name).toBeGreaterThanOrEqual(TAP);
+    };
+    // A review card's switch and a plain card button.
+    reach(await screen.findByRole("switch", { name: "I checked, publish anyway" }));
+    reach(screen.getByRole("button", { name: "Feedback" }), "height");
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    reach(screen.getByRole("switch", { name: "Show automated chats" }));
+    await user.click(screen.getByRole("tab", { name: "Account" }));
+    for (const swatch of within(await screen.findByRole("group", { name: "Accent" })).getAllByRole(
+      "button",
+    )) {
+      reach(swatch);
+    }
+    reach(await screen.findByRole("button", { name: "Show email" }), "height");
+    // A segmented control's segments.
+    reach(await screen.findByRole("button", { name: "In place" }), "height");
   });
 });

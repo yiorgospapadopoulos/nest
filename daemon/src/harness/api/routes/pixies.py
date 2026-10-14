@@ -1,4 +1,4 @@
-"""Pixies: saved agents with a soul, memory and their own chat (D057)."""
+"""Pixies: saved agents with a soul, memory and their own chat (D072)."""
 
 from typing import Annotated
 

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A file of the pixie's folder as plain text, inside the details panel. Saving names
 /// the hash it read, so a change the pixie made meanwhile is never overwritten without
-/// the user choosing to (D057).
+/// the user choosing to (D072).
 struct PixieFilePage: View {
     let pixie: Pixie
     /// `soul`, `memory` or `notes/<name>`.

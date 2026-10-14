@@ -46,6 +46,10 @@ class Tracking:
             await self._publish(session_id, tracker, tasks_changed, change)
             return tracker
 
+    def forget(self, session_id: str) -> None:
+        """Drop a deleted session's tracker (IMP-13)."""
+        self._trackers.pop(session_id, None)
+
     async def snapshot(self, session_id: str) -> TrackingSnapshot:
         tracker = await self.sync(session_id)
         return TrackingSnapshot(

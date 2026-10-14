@@ -80,10 +80,6 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
             MergeMethod.allCases.map(\.label) == [
                 "Squash and merge", "Merge commit", "Rebase and merge",
             ])
-        #expect(
-            CIFailure.message(["test", "build"])
-                == "CI failed: test, build. Please fix. You can't use gh or reach GitHub from here, so work from the code and the check names, and ask me for the logs if you need them."
-        )
     }
 
     @Test func mergeApprovalsCarryTheProposal() {
@@ -190,18 +186,25 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(sessions.attention() == 5)
     }
 
-    @Test func sendToAgentNamesTheFailingChecks() async throws {
+    /// The daemon reads the failing checks' logs with its own login and sends them (IMP-08).
+    @Test func sendToAgentAsksTheDaemonForTheFailingChecks() async throws {
         api.set {
             $0.sessions = [
                 session("s1"), session("none", pr: nil), session("green", pr: pr(items: "[]")),
             ]
         }
         try await sessions.load()
-        try await sessions.sendChecksFailure("s1")
-        #expect(api.calls.last == "sendMessage s1 \(CIFailure.message(["test", "build"])) []")
-        #expect(try await sessions.sendChecksFailure("none") == nil)
-        #expect(try await sessions.sendChecksFailure("green") == nil)
-        #expect(api.calls.count { $0.hasPrefix("sendMessage") } == 1)
+        #expect(try await sessions.sendChecksFailure("s1"))
+        #expect(api.calls.last == "ciFeedback s1")
+        #expect(try await sessions.sendChecksFailure("none") == false)
+        #expect(try await sessions.sendChecksFailure("green") == false)
+        #expect(api.calls.count { $0.hasPrefix("ciFeedback") } == 1)
+        #expect(!api.calls.contains { $0.hasPrefix("sendMessage") })
+
+        api.fail("ciFeedback", with: APIError.badGateway("gh failed"))
+        await #expect(throws: APIError.badGateway("gh failed")) {
+            try await sessions.sendChecksFailure("s1")
+        }
     }
 
     @Test func refreshReadsThePullRequestAgain() async throws {

@@ -56,3 +56,6 @@ class RecordingSink:
 
     async def permission_mode(self, mode: PermissionMode) -> None:
         self.calls.append(("permission_mode", mode))
+
+    async def checkpoint(self, checkpoint_id: str) -> None:
+        self.calls.append(("checkpoint", checkpoint_id))

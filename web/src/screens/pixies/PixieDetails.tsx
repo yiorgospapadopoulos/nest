@@ -18,7 +18,7 @@ const SKILL_LIST = "pixie-skills";
 
 /**
  * Everything that sets a pixie up, in one scrolling panel laid out like the approved design's Details
- * panel. Every change is saved at once; there is no form to submit (D057).
+ * panel. Every change is saved at once; there is no form to submit (D072).
  */
 export function PixieDetails({ pixie }: { pixie: Pixie }) {
   const { actions } = useStore();

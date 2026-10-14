@@ -210,6 +210,36 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(finished.summary == "Ran 3 agents")
     }
 
+    /// A call its turn's end cut off shows as stopped, not running forever (audit
+    /// BUG-75, D054); one whose background task runs, or of the open turn, still runs.
+    @Test func callsWithoutAResultStopWhenTheirTurnEnds() throws {
+        func stopped(_ entries: [TranscriptEntry]) -> [String] {
+            entries.flatMap { entry -> [ToolCall] in
+                switch entry {
+                case .item(let item):
+                    if case .tool(let call) = item.content { [call] } else { [] }
+                case .tools(let group): group.calls
+                }
+            }.filter(\.stopped).map(\.id)
+        }
+        let items = [
+            tool("Bash", "lone", result: nil), text("a"), tool("Bash", "t1", result: nil),
+            tool("Agent", "bg", result: nil), tool("Read", "t2"), end("end"),
+            tool("Bash", "open", result: nil),
+        ]
+        #expect(
+            stopped(TranscriptGrouping.entries(items, live: true, background: ["bg"]))
+                == ["lone", "t1"])
+        #expect(
+            stopped(TranscriptGrouping.entries(items, live: false))
+                == ["lone", "t1", "bg", "open"])
+        // A new message starts a turn, so the calls before it stopped, even when the
+        // interrupted turn's length was unknown and it got no end line.
+        let user = TranscriptItem(id: "u", content: .user(text: "go", attachments: []), eventID: 2)
+        let next = [tool("Bash", "old", result: nil), user, tool("Bash", "new", result: nil)]
+        #expect(stopped(TranscriptGrouping.entries(next, live: true)) == ["old"])
+    }
+
     @Test func findsTheGroupHoldingAnItem() {
         let entries = TranscriptGrouping.entries(
             [text("a"), tool("Bash", "t1"), thought("th"), tool("Bash", "t2")], live: false)
@@ -305,14 +335,34 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(ends(transcript) == [TurnEnd(durationMS: 7_000, stopped: false)])
     }
 
-    @Test func anInterruptionStopsTheOpenTurn() async throws {
+    @Test func anInterruptionStopsTheOpenTurnWithTheDaemonsMeasure() async throws {
         let transcript = try await loaded()
         transcript.receive(user(1, at: 0))
-        transcript.receive(state("interrupted", 2, at: 7))
+        transcript.receive(marked("interrupted", #""duration_ms": 7000"#, 2, at: 30))
         #expect(transcript.turnStartedAt == nil)
         #expect(ends(transcript) == [TurnEnd(durationMS: 7_000, stopped: true)])
         // "Stopped after 7s" says it all; "Interrupted" is only for an unknown length.
         #expect(transcript.items.map(\.id) == ["e1", "e2-end"])
+    }
+
+    /// After a crash or a restart the daemon cannot tell how long the turn ran; the time
+    /// between the events would count the downtime too (audit BUG-76).
+    @Test func aTurnOfUnknownLengthIsInterruptedNotTimed() async throws {
+        let transcript = try await loaded()
+        transcript.receive(user(1, at: 0))
+        // The daemon's recovery sends no measure at all.
+        transcript.receive(state("interrupted", 2, at: 50))
+        #expect(transcript.turnStartedAt == nil)
+        #expect(ends(transcript).isEmpty)
+        #expect(transcript.items.map(\.content).last == .notice("Interrupted"))
+
+        // An explicit null is unknown too, for any end.
+        transcript.receive(user(3, at: 51))
+        transcript.receive(marked("idle", #""duration_ms": null"#, 4, at: 59))
+        transcript.receive(user(5, at: 60))
+        transcript.receive(marked("failed", #""duration_ms": null"#, 6, at: 64))
+        #expect(ends(transcript).isEmpty)
+        #expect(transcript.turnStartedAt == nil)
     }
 
     @Test func aTurnThatEndsInAnErrorFailsWithItsReason() async throws {
@@ -369,12 +419,12 @@ private func end(_ id: String) -> TranscriptItem {
 
         // A later turn's interruption leaves the earlier end alone.
         transcript.receive(user(4, at: 10))
-        transcript.receive(state("interrupted", 5, at: 12))
-        transcript.receive(state("interrupted", 6, at: 13))
+        transcript.receive(marked("interrupted", #""duration_ms": 2000"#, 5, at: 12))
+        transcript.receive(marked("interrupted", #""duration_ms": 2100"#, 6, at: 13))
         #expect(
             ends(transcript) == [
                 TurnEnd(durationMS: 6_000, stopped: true),
-                TurnEnd(durationMS: 2_000, stopped: true),
+                TurnEnd(durationMS: 2_100, stopped: true),
             ])
     }
 
@@ -633,5 +683,136 @@ private func end(_ id: String) -> TranscriptItem {
                 EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: 1,
                 session: "x", ts: "2026-10-06T09:13:06Z"))
         #expect(transcript.exchange(of: summary).items.map(\.id) == ["toolu_10", "toolu_11"])
+    }
+
+    static func toolUse(_ id: Int, tool: String, at second: Int) -> Event {
+        Fixture.event(
+            EventType.sessionMessage,
+            #"{"blocks": [{"type": "tool_use", "id": "\#(tool)", "name": "Bash", "input": {}}], "parent_tool_use_id": null}"#,
+            id: id, session: "x", ts: ts(second))
+    }
+
+    static func finished(_ id: Int, tool: String, at second: Int) -> Event {
+        Fixture.event(
+            EventType.sessionAgentTask,
+            #"{"task_id": "t-\#(tool)", "phase": "finished", "tool_use_id": "\#(tool)", "status": "completed", "background": true}"#,
+            id: id, session: "x", ts: ts(second))
+    }
+
+    /// The exchange goes by event ids where the transcript holds the tasks' events, so a
+    /// step of the clock does not move tasks in or out of it (I-H).
+    @Test func eventIDsPlaceTasksDespiteAClockStep() async throws {
+        let message = Fixture.event(
+            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: 3,
+            session: "x", ts: Self.ts(1200))
+        api.set {
+            $0.events["x"] = [
+                Self.toolUse(1, tool: "toolu_09", at: 0),
+                Self.finished(2, tool: "toolu_09", at: 10),
+                message,
+                // The clock stepped back after the message.
+                Self.toolUse(4, tool: "toolu_11", at: 300),
+                Self.finished(5, tool: "toolu_11", at: 360),
+                // A subagent's call is placed by its event too.
+                Fixture.event(
+                    EventType.sessionMessage,
+                    #"{"blocks": [{"type": "tool_use", "id": "toolu_12", "name": "Bash", "input": {}}], "parent_tool_use_id": "toolu_09"}"#,
+                    id: 6, session: "x", ts: Self.ts(301)),
+            ]
+        }
+        let transcript = TranscriptStore(sessionID: "x", api: api)
+        try await transcript.load()
+        #expect(transcript.exchangeStartEvent == 3)
+
+        func item(_ id: String, _ status: AgentStatus, from start: Int, to end: Int?)
+            -> BackgroundItem
+        {
+            BackgroundItem(
+                id: id, kind: .bash, name: id, description: nil, status: status,
+                startedAt: Self.at(start), finishedAt: end.map(Self.at))
+        }
+        let summary = BackgroundSummary(
+            running: 1, completed: 3,
+            items: [
+                // Its times fall after the message, its events before it.
+                item("toolu_09", .done, from: 1800, to: 1860),
+                item("toolu_10", .running, from: 0, to: nil),
+                // Its times fall before the message, its events after it.
+                item("toolu_11", .done, from: 300, to: 360),
+                item("toolu_12", .done, from: 301, to: 302),
+                // Unknown to the transcript: placed by time.
+                item("toolu_13", .done, from: 1300, to: 1310),
+                item("toolu_14", .done, from: 100, to: 110),
+            ])
+
+        let shown = transcript.exchange(of: summary)
+        #expect(shown.items.map(\.id) == ["toolu_10", "toolu_11", "toolu_12", "toolu_13"])
+        #expect(shown.label == "1 running · 3 completed")
+    }
+
+    @Test func aTaskThatFinishedDuringTheExchangeCountsByItsEndEvent() {
+        let item = BackgroundItem(
+            id: "toolu_1", kind: .bash, name: "x", description: nil, status: .done,
+            startedAt: Self.at(0), finishedAt: Self.at(1))
+        let summary = BackgroundSummary(running: 0, completed: 1, items: [item])
+        let late = ExchangeStart(
+            date: Self.at(500), event: 10, starts: ["toolu_1": 2], ends: ["toolu_1": 11])
+        #expect(summary.exchange(since: late).items.map(\.id) == ["toolu_1"])
+        let before = ExchangeStart(
+            date: Self.at(0), event: 10, starts: ["toolu_1": 2], ends: ["toolu_1": 9])
+        #expect(summary.exchange(since: before).isEmpty)
+        // Without the message's event id, times decide.
+        let timed = ExchangeStart(date: Self.at(0), starts: ["toolu_1": 2], ends: ["toolu_1": 9])
+        #expect(summary.exchange(since: timed).items.count == 1)
+    }
+
+    @Test func aLiveMessageWithoutAnIDStillMovesTheStartByTime() async throws {
+        api.set { $0.events["x"] = [] }
+        let transcript = TranscriptStore(sessionID: "x", api: api)
+        try await transcript.load()
+        let first = Fixture.event(
+            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: nil,
+            session: "x", ts: Self.ts(10))
+        let earlier = Fixture.event(
+            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: nil,
+            session: "x", ts: Self.ts(5))
+        transcript.receive(first)
+        transcript.receive(earlier)
+        #expect(transcript.exchangeStartedAt == Self.at(10))
+        #expect(transcript.exchangeStartEvent == nil)
+    }
+
+    /// The rows are kept until the items or the arguments change (IMP-11).
+    @Test func visibleItemsAndRowsFollowEachChange() async throws {
+        api.set {
+            $0.events["x"] = [Self.toolUse(1, tool: "a", at: 0), Self.toolUse(2, tool: "b", at: 1)]
+        }
+        let transcript = TranscriptStore(sessionID: "x", api: api)
+        try await transcript.load()
+        #expect(transcript.visibleItems.map(\.id) == ["a", "b"])
+        #expect(transcript.visibleItems.map(\.id) == ["a", "b"])
+
+        let live = transcript.entries(live: true)
+        #expect(live == transcript.entries(live: true))
+        guard case .tools(let group) = live.first else {
+            Issue.record("the two calls are one row")
+            return
+        }
+        #expect(group.isRunning)
+        guard case .tools(let stopped) = transcript.entries(live: false).first else {
+            Issue.record("the two calls are one row")
+            return
+        }
+        #expect(!stopped.isRunning)
+        guard case .tools(let working) = transcript.entries(live: false, background: ["a"]).first
+        else {
+            Issue.record("the two calls are one row")
+            return
+        }
+        #expect(working.isRunning)
+
+        transcript.receive(Self.reply(3))
+        #expect(transcript.visibleItems.map(\.id) == ["a", "b", "e3-0"])
+        #expect(transcript.entries(live: false).count == 2)
     }
 }

@@ -1,4 +1,4 @@
-"""The tools every pixie run has: its memory, notes, soul and project list (D057).
+"""The tools every pixie run has: its memory, notes, soul and project list (D072).
 
 Each handler re-reads the file it changes, so a write never loses a change the user
 saved meanwhile.

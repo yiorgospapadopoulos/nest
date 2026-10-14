@@ -66,7 +66,7 @@ async def test_messages_and_reset(api: Api) -> None:
 async def test_a_pixie_turn_notifies_finished_without_a_review(api: Api) -> None:
     api.provider.script(edit({"notes.md": "x"}, then=reply("done")))
     pid = (await api.http.post("/api/pixies", json={"name": "Tester"})).json()["id"]
-    # A git work tree with a new file would earn any other chat a review (D057 says not here).
+    # A git work tree with a new file would earn any other chat a review (D072 says not here).
     git(api.ctx.paths.pixies_dir / pid / "workdir", "init", "-q")
 
     chat = (await api.http.post(f"/api/pixies/{pid}/messages", json={"text": "go"})).json()

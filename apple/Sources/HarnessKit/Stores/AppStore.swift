@@ -171,6 +171,8 @@ public final class AppStore {
     /// The latest repo reload `reloadRepos` started.
     @ObservationIgnored public private(set) var reloadingRepos: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
+    /// The latest settings save of each project, which the next one waits for.
+    private var settingSaves: [String: Task<Repo?, any Error>] = [:]
     /// Open project tabs in order, by repo name.
     public private(set) var openProjects: [String]
     public private(set) var currentProject: String?
@@ -193,7 +195,11 @@ public final class AppStore {
     /// Loads the repos; tabs of repos that are gone close and their terminal and browser
     /// panes end, and the first repo opens when no tab is open. A closed tab keeps its panes.
     public func loadRepos() async throws {
-        repos = try await api.repos()
+        show(try await api.repos())
+    }
+
+    private func show(_ repos: [Repo]) {
+        self.repos = repos
         let names = Set(repos.map(\.name))
         openProjects.removeAll { !names.contains($0) }
         for name in projects.keys where !names.contains(name) {
@@ -293,13 +299,6 @@ public final class AppStore {
         update(project) { $0.openChat(chat, in: size) }
     }
 
-    public func moveProject(_ name: String, to index: Int) {
-        guard let from = openProjects.firstIndex(of: name) else { return }
-        openProjects.remove(at: from)
-        openProjects.insert(name, at: min(max(0, index), openProjects.count))
-        save()
-    }
-
     public func state(of project: String) -> ProjectState {
         projects[project] ?? ProjectState()
     }
@@ -316,6 +315,11 @@ public final class AppStore {
         }
     }
 
+    /// The panes every project's workspace shows, open tabs or not.
+    public var openPanes: Set<String> {
+        Set(projects.values.flatMap(\.layout.leaves))
+    }
+
     /// A deleted chat leaves every workspace.
     public func forgetChat(_ id: String) {
         for name in projects.keys {
@@ -325,6 +329,57 @@ public final class AppStore {
 
     public func openProject(_ name: String, in app: RepoApp) async throws {
         try await api.openRepo(name, in: app)
+    }
+
+    // MARK: Project settings
+
+    /// Unregisters a project; with `purgeChats` its chats are deleted first, which the
+    /// daemon requires while it has any. The folder stays. Its tab closes and its terminal
+    /// and browser panes end.
+    public func removeProject(_ name: String, purgeChats: Bool) async throws {
+        try await api.removeRepo(name, purgeSessions: purgeChats)
+        show(repos.filter { $0.name != name })
+    }
+
+    /// Changes a project's worktree default, links or setup commands. Saves run one at a
+    /// time per project, each change applied to the settings the last save returned, and
+    /// only the settings it changed are sent (audit BUG-102). Nil when the project is gone.
+    @discardableResult
+    public func changeSettings(
+        of name: String, _ change: @escaping @Sendable (inout WorktreeConfig) -> Void
+    ) async throws -> Repo? {
+        let previous = settingSaves[name]
+        let save = Task {
+            _ = try? await previous?.value
+            guard let repo = repo(name) else { return nil as Repo? }
+            var config = repo.worktree
+            change(&config)
+            let patch = RepoPatch(from: repo.worktree, to: config)
+            guard !patch.isEmpty else { return repo }
+            let saved = try await api.updateRepo(name, patch)
+            if let index = repos.firstIndex(where: { $0.name == name }) {
+                repos[index] = saved
+            }
+            return saved
+        }
+        settingSaves[name] = save
+        defer {
+            if settingSaves[name] == save {
+                settingSaves[name] = nil
+            }
+        }
+        return try await save.value
+    }
+
+    /// A settings change of the project is saving or waiting its turn.
+    public func isSavingSettings(of name: String) -> Bool {
+        settingSaves[name] != nil
+    }
+
+    /// Gitignored files of the project worth linking, not linked yet.
+    public func linkSuggestions(for name: String) async throws -> [String] {
+        let linked = Set(repo(name)?.worktree.link ?? [])
+        return try await api.linkSuggestions(name).filter { !linked.contains($0) }
     }
 
     /// Reopens the terminal and browser panes the project had; unreadable data is ignored.

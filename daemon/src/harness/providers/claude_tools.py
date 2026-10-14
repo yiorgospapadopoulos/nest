@@ -1,4 +1,4 @@
-"""Harness tools as an in-process MCP server, and the write guard for pixie runs (D057)."""
+"""Harness tools as an in-process MCP server, and the write guard for pixie runs (D072)."""
 
 import asyncio
 from pathlib import Path

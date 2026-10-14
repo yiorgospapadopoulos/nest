@@ -86,7 +86,7 @@ class AppPaths:
 
     @property
     def pixies_dir(self) -> Path:
-        """Each pixie's soul, memory, notes and chat folder (D057)."""
+        """Each pixie's soul, memory, notes and chat folder (D072)."""
         return self.data_dir / "pixies"
 
     @property

@@ -8,6 +8,8 @@ public struct ToolCall: Sendable, Hashable {
     public let input: JSONValue
     public var result: String?
     public var isError: Bool
+    /// Its turn ended without a result and no background task of it runs (D054).
+    public var stopped = false
 }
 
 /// How a turn ended: how long it worked, and whether it was interrupted or failed.
@@ -72,7 +74,12 @@ public final class TranscriptStore {
     /// The session id, or the Claude Code chat id.
     public let sessionID: String
     public let source: Source
-    public private(set) var items: [TranscriptItem] = []
+    public private(set) var items: [TranscriptItem] = [] {
+        didSet {
+            visibleCache = nil
+            entriesCache = nil
+        }
+    }
     public private(set) var isLoaded = false
     /// The last stored event applied; replays and duplicates at or below it are skipped.
     public private(set) var lastEventID = 0
@@ -88,6 +95,16 @@ public final class TranscriptStore {
     /// tasks the bar counts, began then. Turns the agent starts by itself stay in it. Kept
     /// apart from the loaded page, so a search hit's page does not move it back.
     public private(set) var exchangeStartedAt: Date?
+    /// The latest user message's event id. Event ids order the exchange where they can,
+    /// so a step of the clock does not move tasks in or out of it (I-H).
+    public private(set) var exchangeStartEvent: Int?
+    /// The event that started or finished each background task, by tool use id.
+    private var taskStarts: [String: Int] = [:]
+    private var taskEnds: [String: Int] = [:]
+    /// `visibleItems` and `entries(live:background:)` as last computed for these items.
+    @ObservationIgnored private var visibleCache: [TranscriptItem]?
+    @ObservationIgnored private var entriesCache:
+        (live: Bool, background: Set<String>, entries: [TranscriptEntry])?
     /// The latest user message is known: a load reached the newest events or looked it up,
     /// or one arrived live (nothing newer can come any other way).
     private var knowsExchange = false
@@ -101,8 +118,12 @@ public final class TranscriptStore {
     /// The last turn's error result, while no other turn started since: the failed state
     /// that follows says why in its place.
     private var lastErrorResult: String?
-    /// Live events that arrived before the history, or while a load runs.
-    private var held: [Event] = []
+    /// Stored live events that arrived before the history, while a load runs, or after a
+    /// catch-up failed; deltas are not kept, as their final messages are stored too.
+    private(set) var held: [Event] = []
+    /// A catch-up failed, so events may be missing before the live ones: those wait, and
+    /// the next catch-up or opening loads again.
+    private var behind = false
     /// Loads in flight; live events wait for them (see `holdingLiveEvents`).
     private var loads = 0
     /// The stored events applied, oldest first, to rebuild the items with older ones.
@@ -135,26 +156,61 @@ public final class TranscriptStore {
                 events = try await api.claudeChatEvents(sessionID)
                 reset()
                 exchangeStartedAt = nil
+                exchangeStartEvent = nil
+                taskStarts = [:]
+                taskEnds = [:]
             }
             events.forEach(apply)
             finishLoading()
         }
     }
 
+    /// What the chat shows while `catchUpFailure` is set, with Retry.
+    public static let catchUpFailedText = "Could not catch up with this chat"
+
+    /// Why the last catch-up of the loaded transcript failed; live events wait meanwhile,
+    /// so the chat says so instead of freezing silently (audit BUG-101).
+    public private(set) var catchUpFailure: String?
+
     /// Loads again after a connect: when the last load failed, and, when the connection
     /// may have missed events (`missed`), the ones after the newest loaded. A transcript
     /// with newer pages still to load gets them with those pages.
     public func catchUp(missed: Bool) async {
-        guard loads == 0, !isLoaded || (missed && source == .session && !hasNewer) else {
-            return
-        }
-        try? await load()
+        guard loads == 0, !isLoaded || behind || (missed && source == .session && !hasNewer)
+        else { return }
+        await loadMissed()
     }
 
+    /// Retry after a failed catch-up.
+    public func retryCatchUp() async {
+        guard loads == 0 else { return }
+        await loadMissed()
+    }
+
+    private func loadMissed() async {
+        // Until the load succeeds, events may be missing before the live ones.
+        behind = isLoaded
+        do {
+            try await load()
+        } catch {
+            if isLoaded {
+                catchUpFailure = (error as? APIError)?.message ?? error.localizedDescription
+            }
+        }
+    }
+
+    /// Opening the transcript should load it: it never loaded, or a catch-up failed.
+    public var needsLoad: Bool { !isLoaded || behind }
+
     /// The items the transcript shows: successful turn results and empty (redacted)
-    /// thinking of unknown length are left out.
+    /// thinking of unknown length are left out. Kept until the items change, as views read
+    /// it on every update (IMP-11).
     public var visibleItems: [TranscriptItem] {
-        items.filter { item in
+        let items = self.items
+        if let visibleCache {
+            return visibleCache
+        }
+        let visible = items.filter { item in
             switch item.content {
             case .result(let result): result.isError
             case .thinking(let text, let duration):
@@ -162,6 +218,20 @@ public final class TranscriptStore {
             default: true
             }
         }
+        visibleCache = visible
+        return visible
+    }
+
+    /// The transcript's rows (`TranscriptGrouping.entries`), kept until the items, the
+    /// turn's liveness or the running background tasks change.
+    public func entries(live: Bool, background: Set<String> = []) -> [TranscriptEntry] {
+        let visible = visibleItems
+        if let cached = entriesCache, cached.live == live, cached.background == background {
+            return cached.entries
+        }
+        let entries = TranscriptGrouping.entries(visible, live: live, background: background)
+        entriesCache = (live, background, entries)
+        return entries
     }
 
     /// A thinking block runs: as the daemon reports, or for daemons that do not, the open
@@ -175,9 +245,14 @@ public final class TranscriptStore {
     }
 
     /// The background bar's tasks (see `BackgroundSummary.exchange(since:)`); until the
-    /// latest user message is known, only those still at work.
+    /// latest user message is known, only those still at work. A task whose start or end
+    /// the transcript holds is placed by event id, others by time.
     public func exchange(of summary: BackgroundSummary) -> BackgroundSummary {
-        summary.exchange(since: knowsExchange ? exchangeStartedAt : .distantFuture)
+        guard knowsExchange else { return summary.exchange(since: .distantFuture) }
+        guard let date = exchangeStartedAt else { return summary }
+        return summary.exchange(
+            since: ExchangeStart(
+                date: date, event: exchangeStartEvent, starts: taskStarts, ends: taskEnds))
     }
 
     // MARK: Focus and pages
@@ -259,7 +334,7 @@ public final class TranscriptStore {
             let events = try await api.sessionEvents(
                 sessionID, after: event, before: end, limit: Self.pageSize)
             if let message = events.last(where: \.isUserMessage) {
-                noteUserMessage(at: message.ts)
+                noteUserMessage(message)
                 return
             }
             before = events.count == Self.pageSize ? events.first?.id : nil
@@ -269,6 +344,8 @@ public final class TranscriptStore {
     private func finishLoading() {
         isLoaded = true
         knowsExchange = true
+        behind = false
+        catchUpFailure = nil
     }
 
     /// Runs a load while live events wait, so that none is lost meanwhile and none is
@@ -280,9 +357,9 @@ public final class TranscriptStore {
         loads += 1
         defer {
             loads -= 1
-            if loads == 0 && isLoaded {
+            if loads == 0 && isLoaded && !behind {
                 if !hasNewer {
-                    held.filter { $0.id != nil }.forEach(apply)
+                    held.forEach(apply)
                 }
                 held = []
             }
@@ -318,11 +395,13 @@ public final class TranscriptStore {
             return
         }
         if event.isUserMessage {
-            noteUserMessage(at: event.ts)
+            noteUserMessage(event)
             knowsExchange = true
         }
-        if !isLoaded || loads > 0 {
-            held.append(event)
+        if !isLoaded || loads > 0 || behind {
+            if event.id != nil {
+                held.append(event)
+            }
         } else if !hasNewer {
             apply(event)
         }
@@ -347,9 +426,10 @@ public final class TranscriptStore {
         switch event.body {
         case .userMessage(let message):
             startTurn(at: event.ts)
-            noteUserMessage(at: event.ts)
+            noteUserMessage(event)
             append(key, .user(text: message.text, attachments: message.attachments), eventID)
         case .message(let message) where message.parentToolUseID == nil:
+            noteTaskStarts(message, eventID)
             endStreaming()
             for (index, block) in message.blocks.enumerated() {
                 add(block, id: "\(key)-\(index)", eventID: eventID)
@@ -381,6 +461,12 @@ public final class TranscriptStore {
                 lastErrorResult = nil
             }
             append(key, .notice(error.map { "Failed: \($0)" } ?? "Failed"), eventID)
+        case .message(let message):
+            noteTaskStarts(message, eventID)
+        case .agentTask(let task):
+            if task.phase == .finished, let tool = task.toolUseID, let eventID {
+                taskEnds[tool] = eventID
+            }
         case .gitFailed(let step, let stderr):
             append(key, .notice("git \(step) failed: \(stderr)"), eventID)
         case .prOpened(let url):
@@ -427,9 +513,24 @@ public final class TranscriptStore {
         }
     }
 
-    /// User messages come in order, so the latest one seen anywhere starts the exchange.
-    private func noteUserMessage(at date: Date) {
-        exchangeStartedAt = max(exchangeStartedAt ?? date, date)
+    /// User messages come in order, so the latest one seen anywhere starts the exchange:
+    /// the one with the highest event id, or the latest time for one without an id.
+    private func noteUserMessage(_ event: Event) {
+        guard let id = event.id else {
+            exchangeStartedAt = max(exchangeStartedAt ?? event.ts, event.ts)
+            return
+        }
+        guard id >= exchangeStartEvent ?? id else { return }
+        exchangeStartEvent = id
+        exchangeStartedAt = event.ts
+    }
+
+    /// Remembers which event made each tool call, as background tasks go by their call.
+    private func noteTaskStarts(_ message: AgentMessage, _ eventID: Int?) {
+        guard let eventID else { return }
+        for case .toolUse(let id, _, _) in message.blocks where taskStarts[id] == nil {
+            taskStarts[id] = eventID
+        }
     }
 
     // MARK: Turns
@@ -444,12 +545,14 @@ public final class TranscriptStore {
     }
 
     /// Ends the open turn with a line saying how long it took, preferring the engine's
-    /// duration; a turn of unknown start and length gets no line. Whether it got one.
+    /// duration, else (when `measure` allows) the time since its start; a turn of unknown
+    /// length gets no line. Whether it got one.
     @discardableResult
     private func endTurn(
-        _ key: String, _ eventID: Int?, at date: Date, durationMS: Int?, stopped: Bool
+        _ key: String, _ eventID: Int?, at date: Date, durationMS: Int?, stopped: Bool,
+        measure: Bool = true
     ) -> Bool {
-        let measured = turnStartedAt.map { Int(date.timeIntervalSince($0) * 1000) }
+        let measured = measure ? turnStartedAt.map { Int(date.timeIntervalSince($0) * 1000) } : nil
         turnStartedAt = nil
         lastTurnEnd = nil
         guard let duration = durationMS ?? measured else { return false }
@@ -462,14 +565,21 @@ public final class TranscriptStore {
     /// The session left the turn (idle, interrupted or failed), with the daemon's measure
     /// of the turn when it sends one: the open turn ends, or the turn its result just
     /// ended takes that measure and, when stopped, says so. Whether the turn has a line
-    /// with its length.
+    /// with its length. A measure sent as null, or an interruption without one (the
+    /// daemon's recovery after a restart), means the length is unknown: the time between
+    /// the events would count the downtime too. Only older daemons' ends without the
+    /// field are timed from the turn's start.
     @discardableResult
     private func settleTurn(_ key: String, _ eventID: Int?, _ event: Event, stopped: Bool)
         -> Bool
     {
-        let duration = event.payload["duration_ms"]?.numberValue.map { Int($0) }
+        let field = event.payload["duration_ms"]
+        let duration = field?.numberValue.map { Int($0) }
         if turnStartedAt != nil {
-            return endTurn(key, eventID, at: event.ts, durationMS: duration, stopped: stopped)
+            let measure = field == nil && event.payload["state"]?.stringValue != "interrupted"
+            return endTurn(
+                key, eventID, at: event.ts, durationMS: duration, stopped: stopped,
+                measure: measure)
         }
         guard let id = lastTurnEnd, let index = items.firstIndex(where: { $0.id == id }),
             case .turnEnd(var end) = items[index].content
@@ -540,6 +650,11 @@ public final class Transcripts {
 
     public func close(_ sessionID: String) {
         stores[sessionID] = nil
+    }
+
+    /// Releases the transcripts of panes no workspace shows any more.
+    public func keep(_ panes: Set<String>) {
+        stores = stores.filter { panes.contains($0.key) }
     }
 
     /// After a connect: transcripts whose load failed load again, and when the connection

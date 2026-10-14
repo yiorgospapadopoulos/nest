@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { mergeOf, permissionOf, planOf, reviewOf } from "../../api/payloads.ts";
-import type { Approval, ApproveBody, Session } from "../../api/types.ts";
+import type { Approval, ApproveBody, PlanMode, Session, SessionDiff } from "../../api/types.ts";
+import type { RemotePrompt } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
+import { planModes } from "../chat/options.ts";
 
 /** Where the session's agent works; tool paths inside it are shown relative to it. */
 export function workRoot(session: Session | undefined): string | null {
@@ -27,7 +29,7 @@ export function usePermission(approval: Approval, session: Session | undefined) 
       behavior === "deny"
         ? "Rejected. Claude continues without it"
         : always
-          ? `Always allowed: ${view.tool}`
+          ? `Always allowed: ${view.always}`
           : `Approved: ${view.command}`;
     return run(() => actions.resolve(approval, { behavior, always }, done));
   };
@@ -35,13 +37,21 @@ export function usePermission(approval: Approval, session: Session | undefined) 
 }
 
 export function usePlan(approval: Approval) {
-  const { actions } = useStore();
+  const { state, actions } = useStore();
   const { busy, run } = useBusy();
+  const unknownModels = state.models === null;
+  // Whether Auto is offered depends on the chat's model.
+  useEffect(() => {
+    if (unknownModels) void actions.loadChoices();
+  }, [unknownModels, actions]);
+  const model = state.sessions[approval.session_id]?.model ?? null;
   return {
     busy,
     plan: planOf(approval),
-    // Claude then continues with Accept edits, as in Claude Code.
-    approve: () => run(() => actions.resolve(approval, { decision: "approve" }, "Plan approved")),
+    modes: planModes(state.models, model),
+    // Claude then goes on in `mode`; Accept edits unless chosen otherwise, as in Claude Code.
+    approve: (mode: PlanMode) =>
+      run(() => actions.resolve(approval, { decision: "approve", mode }, "Plan approved")),
     keepPlanning: (note: string) =>
       run(() =>
         actions.resolve(
@@ -53,21 +63,84 @@ export function usePlan(approval: Approval) {
   };
 }
 
+interface DiffAnswer {
+  // The request it answers.
+  request: object | null;
+  diff: SessionDiff | null;
+  failed: boolean;
+}
+
+/**
+ * The session's diff, loaded when the approval is shown, again whenever the approval or the
+ * session changes, and on request. Only the latest request's answer is kept; the previous
+ * diff stays on screen while it loads, and a failed load drops it.
+ */
+function useDiff(approval: Approval, session: Session | undefined) {
+  const { actions } = useStore();
+  const [reloads, setReloads] = useState(0);
+  const request = useMemo(() => ({ approval, session, reloads }), [approval, session, reloads]);
+  const [answer, setAnswer] = useState<DiffAnswer>({ request: null, diff: null, failed: false });
+  useEffect(() => {
+    let current = true;
+    void actions.diff(approval.session_id).then((diff) => {
+      if (current) setAnswer({ request, diff, failed: diff === null });
+    });
+    return () => {
+      current = false;
+    };
+  }, [actions, approval.session_id, request]);
+  const loadDiff = useCallback(() => {
+    setReloads((n) => n + 1);
+  }, []);
+  return {
+    diff: answer.diff,
+    loading: answer.request !== request,
+    failed: answer.failed,
+    loadDiff,
+  };
+}
+
 export function useReview(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
-  // The agent changed git refs itself: publishing waits until the user says they checked.
-  const [acknowledged, setAcknowledged] = useState(false);
+  const { diff, loading, failed, loadDiff } = useDiff(approval, session);
+  // What approving would publish: the reviewed HEAD and the daemon's hash of the review.
+  const reviewed = diff === null ? null : `${diff.head.commit ?? ""} ${diff.fingerprint}`;
+  // The agent changed git refs itself: publishing waits until the user says they checked,
+  // and asks again when the review they checked changes.
+  const [checked, setChecked] = useState<string | null>(null);
+  const acknowledged = checked !== null && checked === reviewed;
   // Reject asks first, from a button or a swipe.
   const [rejecting, setRejecting] = useState(false);
+  // Publishing waits for the push address to be confirmed, with the message it was for.
+  const [remote, setRemote] = useState<(RemotePrompt & { message: string }) | null>(null);
   const view = reviewOf(approval);
   const inPlace = session?.mode === "in_place";
   const violation = session?.git_violation === true;
-  const body = (message: string): ApproveBody => ({
+  // Approving sends what the user saw, so it waits for the diff, and for any reload of it.
+  const ready = diff !== null && !loading;
+  const publish = async (message: string, confirmUrl?: string) => {
+    // A swipe can come before the diff has loaded: nothing to publish yet.
+    if (diff === null || loading) return;
+    await run(async () => {
+      const result = await actions.approveReview(approval, {
+        ...body(diff, message.trim() || approval.title),
+        ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
+      });
+      if (typeof result === "object") setRemote({ ...result.remote, message });
+      // Refused: show the branch as it is now, with any commits harness did not make.
+      if (result === "refused" || typeof result === "object") loadDiff();
+      return result === "approved";
+    });
+  };
+  const body = (seen: SessionDiff, message: string): ApproveBody => ({
     commit_message: message,
     // In-place work is pushed without a pull request, committing only the changed files.
     ...(inPlace ? { files: view.paths, open_pr: false } : {}),
     ...(violation && acknowledged ? { acknowledge_violation: true } : {}),
+    // Publish exactly what was reviewed, or be told it changed.
+    expected_fingerprint: seen.fingerprint,
+    ...(seen.head.commit === null ? {} : { expected_head: seen.head.commit }),
   });
   return {
     view,
@@ -75,13 +148,27 @@ export function useReview(approval: Approval, session: Session | undefined) {
     inPlace,
     violation,
     acknowledged,
-    setAcknowledged,
+    setAcknowledged: (on: boolean) => {
+      setChecked(on ? reviewed : null);
+    },
     // Approving would be refused until the violation is acknowledged.
     blocked: violation && !acknowledged,
+    ready,
     title: session?.title ?? approval.title,
     approveLabel: inPlace ? "Approve and push" : "Approve and open PR",
-    approve: (message: string) =>
-      run(() => actions.approveReview(approval, body(message.trim() || approval.title))),
+    diff,
+    diffFailed: failed,
+    loadDiff,
+    approve: (message: string) => publish(message),
+    remote,
+    cancelRemote: () => {
+      setRemote(null);
+    },
+    // Approves again with the same message, pushing to the one address origin has now.
+    pushThere: (message: string, url: string) => {
+      setRemote(null);
+      return publish(message, url);
+    },
     rejecting,
     askReject: () => {
       setRejecting(true);
@@ -107,10 +194,10 @@ export function useMerge(approval: Approval) {
 }
 
 /** "Send to agent" for failed checks; the card goes away once the agent starts. */
-export function useCiFailure(session: Session, names: string[]) {
+export function useCiFailure(session: Session) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
-  return { busy, send: () => run(() => actions.sendCiFailure(session, names)) };
+  return { busy, send: () => run(() => actions.sendCiFailure(session)) };
 }
 
 /** Interrupt or nudge a stuck chat; the card goes away once the turn ends. */

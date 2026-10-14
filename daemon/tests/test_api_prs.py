@@ -1,3 +1,4 @@
+import gc
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -14,8 +15,8 @@ from tests.fake_runner import PR_URL, check_run, pr_json
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import git, init_repo, with_origin
 from tests.test_api_review import (
-    APPROVE,
     approvals,
+    approve,
     event_types,
     exists,
     finished_with_changes,
@@ -42,7 +43,7 @@ async def opened(api: Api, view: str | None = None) -> str:
     """A session whose work was approved and opened as a pull request, read once."""
     api.runner.pr_view = view
     session_id = await finished_with_changes(api)
-    approved = await api.http.post(f"/api/sessions/{session_id}/approve", json=APPROVE)
+    approved = await approve(api, session_id)
     assert approved.status_code == 200, approved.text
     await until(lambda: len(api.runner.gh_calls("view")) >= 1)
     if view is not None:
@@ -165,6 +166,9 @@ async def test_merge_options_and_an_unread_pull_request(api: Api) -> None:
     # GitHub could not be read after the merge either, so no status is known.
     assert merged.json()["pr"] is None
     assert merge_calls(api) == [("gh", "pr", "merge", PR_URL, "--repo", "me/repo", "--rebase")]
+    # IMP-13: a session's lock lives only while it is held.
+    gc.collect()
+    assert len(api.ctx.prs._locks) == 0  # pyright: ignore[reportPrivateUsage]
 
 
 async def test_after_a_merge_an_unreadable_status_is_marked_merged(api: Api) -> None:

@@ -2,6 +2,7 @@
 
 import base64
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Response, status
 from pydantic import AfterValidator, BaseModel, StringConstraints
@@ -13,6 +14,25 @@ from harness.notifications.webpush import PushReport
 router = APIRouter(prefix="/api/push")
 
 Endpoint = Annotated[str, StringConstraints(pattern=r"^https://\S+$", max_length=2048)]
+
+# The push services of Safari, Chrome, Firefox and Edge (H-05): the daemon posts signed
+# requests to subscribed endpoints, so a subscription must not point anywhere else.
+PUSH_SERVICE_HOSTS = (
+    "web.push.apple.com",
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+)
+PUSH_SERVICE_DOMAINS = (".push.apple.com", ".notify.windows.com")
+
+
+def _push_service(endpoint: str) -> str:
+    parts = urlsplit(endpoint)
+    host = (parts.hostname or "").lower()
+    known = host in PUSH_SERVICE_HOSTS or host.endswith(PUSH_SERVICE_DOMAINS)
+    if not known or parts.username is not None or parts.port not in (None, 443):
+        msg = "not a known web push service"
+        raise ValueError(msg)
+    return endpoint
 
 
 def _key_of_length(length: int, first: int | None = None) -> AfterValidator:
@@ -39,7 +59,7 @@ class SubscriptionKeys(BaseModel):
 class SubscribeRequest(BaseModel):
     """`PushSubscription.toJSON()` from the browser; other fields are ignored."""
 
-    endpoint: Endpoint
+    endpoint: Annotated[Endpoint, AfterValidator(_push_service)]
     keys: SubscriptionKeys
 
 

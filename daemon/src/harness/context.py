@@ -135,6 +135,7 @@ class AppContext:
             fetch=lambda: fetch_details(engine_factory),
             clock=clock,
             account_file=paths.claude_account_file,
+            settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
         )
         pixie_files = PixieFiles(paths.pixies_dir)
         pixie_runtime = PixieRuntime(pixie_store, pixie_files, repos, bus, clock)
@@ -188,7 +189,7 @@ class AppContext:
             repos=repos,
             approvals=approvals,
             tracking=tracking,
-            publisher=GitPublisher(runner, store, bus),
+            publisher=GitPublisher(runner, store, bus, paths.data_dir),
             prs=monitor,
         )
         notifications = NotificationDelivery(

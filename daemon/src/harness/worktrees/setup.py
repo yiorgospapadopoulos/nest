@@ -14,6 +14,9 @@ class LinkResult:
     missing: list[str] = field(default_factory=list[str])
     # Targets already present in the worktree (for example tracked files); left alone.
     existing: list[str] = field(default_factory=list[str])
+    # Targets that could not be made, such as under a tracked file or through a folder
+    # that leads out of the worktree (BUG-96).
+    failed: list[str] = field(default_factory=list[str])
 
 
 @dataclass(frozen=True)
@@ -26,7 +29,9 @@ class SetupResult:
 
 
 def link_files(entries: list[str], source_root: Path, target_root: Path) -> LinkResult:
+    """Symlink each entry; one that cannot be made is reported, never fatal (BUG-96)."""
     result = LinkResult()
+    root = target_root.resolve()
     for entry in entries:
         source = source_root / entry
         target = target_root / entry
@@ -34,11 +39,22 @@ def link_files(entries: list[str], source_root: Path, target_root: Path) -> Link
             result.missing.append(entry)
         elif target.exists() or target.is_symlink():
             result.existing.append(entry)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.symlink_to(source)
+        elif _link(source, target, root):
             result.linked.append(entry)
+        else:
+            result.failed.append(entry)
     return result
+
+
+def _link(source: Path, target: Path, root: Path) -> bool:
+    try:
+        if not target.parent.resolve().is_relative_to(root):
+            return False
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(source)
+    except OSError:
+        return False
+    return True
 
 
 async def run_commands(

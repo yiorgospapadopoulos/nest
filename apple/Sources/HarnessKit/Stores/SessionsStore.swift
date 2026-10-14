@@ -38,6 +38,16 @@ public enum BoardColumn: String, Sendable, CaseIterable {
     }
 }
 
+/// The kinds of Needs you cards, in the order they are listed (`design/ui-rules.json`).
+public enum NeedsYouSection: String, Sendable, CaseIterable {
+    /// Pending approvals, oldest first.
+    case approvals
+    /// Chats whose pull request failed its checks (`SessionsStore.checksFailed`).
+    case checksFailed = "checks_failed"
+    /// Chats that look stuck (`SessionsStore.stuck`).
+    case stuck
+}
+
 /// All sessions (chats) by id, with the actions of the sidebar and composer.
 @MainActor @Observable
 public final class SessionsStore {
@@ -47,22 +57,29 @@ public final class SessionsStore {
 
     let api: any HarnessAPI
     let approvals: ApprovalsStore
+    @ObservationIgnored private let live = LiveEventLog()
 
     public init(api: any HarnessAPI, approvals: ApprovalsStore) {
         self.api = api
         self.approvals = approvals
     }
 
-    /// Loads open and archived sessions of every repo. The daemon lists no pixie chats, so
-    /// the ones already read stay (D057).
+    /// Loads open and archived sessions of every repo; live events that arrive meanwhile
+    /// apply again on top. The daemon lists no pixie chats, so the ones already read stay
+    /// (D072).
     public func load() async throws {
-        let active = try await api.sessions(repo: nil, archived: false)
-        let archived = try await api.sessions(repo: nil, archived: true)
-        var loaded = sessions.filter { $0.value.pixieID != nil }
-        for session in active + archived {
-            loaded[session.id] = session
+        _ = try await live.read {
+            try await self.api.sessions(repo: nil, archived: false)
+                + self.api.sessions(repo: nil, archived: true)
+        } store: { list in
+            var loaded = sessions.filter { $0.value.pixieID != nil }
+            for session in list {
+                loaded[session.id] = session
+            }
+            sessions = loaded
+        } replay: {
+            apply($0)
         }
-        sessions = loaded
     }
 
     public func session(_ id: String) -> Session? {
@@ -70,7 +87,7 @@ public final class SessionsStore {
     }
 
     /// The repo's sessions, most recently updated first. Pixie chats belong to no project
-    /// and are left out (D057).
+    /// and are left out (D072).
     public func sessions(in repo: String) -> [Session] {
         sessions.values.filter { $0.repo == repo && $0.pixieID == nil }.sorted {
             ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id)
@@ -103,42 +120,62 @@ public final class SessionsStore {
         }
     }
 
-    /// Waiting on a prompt or question, holding work to review, or looking stuck.
+    /// Waiting on a prompt or question, holding work to review or a pull request to
+    /// merge, or looking stuck, as on the iPhone (`design/ui-rules.json`).
     public func needsYou(_ session: Session) -> Bool {
-        session.state == .waiting || approvals.hasPendingReview(session: session.id)
-            || session.stuck != nil
+        let tone = tone(of: session)
+        return tone == .waiting || tone == .review || session.stuck != nil
     }
 
-    /// The status color of a session's dot and pill; a pull request ready to merge shows
-    /// as review too.
+    /// The status color of a session's dot and pill: a prompt, question or plan waits
+    /// first; work to review or a pull request to merge shows as review while idle.
     public func tone(of session: Session) -> StatusTone {
-        let ready =
-            approvals.hasPendingReview(session: session.id)
-            || approvals.pending(session: session.id).contains { $0.kind == .merge }
+        let kinds = pendingKinds(of: session)
+        if session.state == .waiting || !kinds.isDisjoint(with: Self.promptKinds) {
+            return .waiting
+        }
+        let idle = session.state == .idle || session.state == .unknown
+        let ready = idle && (kinds.contains(.review) || kinds.contains(.merge))
         return StatusTone.of(session.state, hasReview: ready)
     }
 
-    /// The status words of a session's pill, sidebar row and palette entry.
+    /// Idle chats with nothing to review show a hollow dot.
+    public func isHollow(_ session: Session) -> Bool {
+        session.state == .idle && tone(of: session) == .done
+    }
+
+    /// The status words of a session's pill, sidebar row and palette entry: a question
+    /// first, then a plan, then a permission prompt, as on the iPhone.
     public func statusLabel(of session: Session) -> String {
+        let kinds = pendingKinds(of: session)
+        if kinds.contains(.question) {
+            return "Question"
+        }
+        if kinds.contains(.plan) {
+            return "Plan ready"
+        }
+        if kinds.contains(.permission) || session.state == .waiting {
+            return "Needs approval"
+        }
         switch session.state {
         case .starting: return "Starting"
         case .running: return "Running"
-        case .waiting:
-            // A question first, then a plan, then a permission prompt (as on the iPhone).
-            let kinds = Set(approvals.pending(session: session.id).map(\.kind))
-            if kinds.contains(.question) {
-                return "Question"
-            }
-            return kinds.contains(.plan) ? "Plan ready" : "Needs approval"
         case .interrupted: return "Interrupted"
         case .failed: return "Failed"
         case .closed: return "Done"
-        case .idle, .unknown:
-            if approvals.hasPendingReview(session: session.id) {
+        case .idle, .waiting, .unknown:
+            if kinds.contains(.review) {
                 return "Ready for review"
             }
-            return tone(of: session) == .review ? "Ready to merge" : "Idle"
+            return kinds.contains(.merge) ? "Ready to merge" : "Idle"
         }
+    }
+
+    /// Approvals that make a chat wait on the user before anything else.
+    static let promptKinds: Set<ApprovalKind> = [.question, .plan, .permission]
+
+    private func pendingKinds(of session: Session) -> Set<ApprovalKind> {
+        Set(approvals.pending(session: session.id).map(\.kind))
     }
 
     /// The Board view of a repo's open (not archived) sessions.
@@ -159,28 +196,36 @@ public final class SessionsStore {
     }
 
     /// Chats whose open pull request has failed checks and that wait for the user: not
-    /// working, closed or archived, and with no review of new work pending.
+    /// working, closed or archived, and with no review of new work pending. The ones whose
+    /// checks changed longest ago come first.
     public func checksFailed(in repo: String?) -> [Session] {
-        listed(in: repo).filter { session in
-            guard let pr = session.pr, pr.state == .open, pr.checks.state == .failure else {
-                return false
-            }
-            return !session.state.isInFlight && session.state != .closed && !session.isArchived
-                && !approvals.hasPendingReview(session: session.id)
+        listed(in: repo).compactMap { session -> (Session, Date)? in
+            guard let pr = session.pr, pr.state == .open, pr.checks.state == .failure,
+                !session.state.isInFlight, session.state != .closed, !session.isArchived,
+                !approvals.hasPendingReview(session: session.id)
+            else { return nil }
+            return (session, pr.changedAt)
         }
+        .sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
+        .map(\.0)
     }
 
-    /// Chats that look stuck, for their Needs you cards; archived ones and pixie chats are
-    /// left out.
+    /// Chats that look stuck, for their Needs you cards, the longest stuck first; archived
+    /// ones and pixie chats are left out.
     public func stuck(in repo: String?) -> [Session] {
-        listed(in: repo).filter { $0.stuck != nil && !$0.isArchived }
+        listed(in: repo).compactMap { session -> (Session, Date)? in
+            guard let flag = session.stuck, !session.isArchived else { return nil }
+            return (session, flag.since)
+        }
+        .sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
+        .map(\.0)
     }
 
     /// What needs the user, for the project's tab and the Dock badge (every project's
     /// without a repo): pending approvals, pull requests whose checks failed and chats
     /// that look stuck, as on the iPhone. A pixie's pending approvals count in the Dock
     /// badge, but no project's count; its chat is not a project chat, so it adds no failed
-    /// checks or stuck flags (D057).
+    /// checks or stuck flags (D072).
     public func attention(of repo: String? = nil) -> Int {
         let pending = repo.map(approvals.pending(repo:)) ?? approvals.pending
         return pending.count + checksFailed(in: repo).count + stuck(in: repo).count
@@ -194,7 +239,7 @@ public final class SessionsStore {
 
     @discardableResult
     public func create(_ request: CreateSessionRequest) async throws -> Session {
-        store(try await api.createSession(request))
+        try await fetch { try await self.api.createSession(request) }
     }
 
     /// Reads one session, such as a pixie's chat, which no list carries.
@@ -213,9 +258,9 @@ public final class SessionsStore {
     public func send(_ id: String, text: String, attachmentIDs: [String] = []) async throws
         -> QueuedMessage?
     {
-        let sent = try await api.sendMessage(id, text: text, attachmentIDs: attachmentIDs)
-        store(sent.session)
-        return sent.queuedMessage
+        try await sendFetched {
+            try await self.api.sendMessage(id, text: text, attachmentIDs: attachmentIDs)
+        }
     }
 
     /// Asks Claude Code to compact the chat's context; queued while a turn runs.
@@ -224,19 +269,21 @@ public final class SessionsStore {
         try await send(id, text: "/compact")
     }
 
-    /// Sends the failing check names into the chat, asking the agent to fix them; nothing
-    /// is sent while no check failed.
+    /// Has the daemon send the failing checks, with their logs' tails, into the chat for
+    /// the agent to fix (IMP-08); the daemon reads them with its own GitHub login, which
+    /// agents lack. Nothing is sent while no check failed; whether it was.
     @discardableResult
-    public func sendChecksFailure(_ id: String) async throws -> QueuedMessage? {
-        guard let names = sessions[id]?.pr?.failingChecks, !names.isEmpty else { return nil }
-        return try await send(id, text: CIFailure.message(names))
+    public func sendChecksFailure(_ id: String) async throws -> Bool {
+        guard let names = sessions[id]?.pr?.failingChecks, !names.isEmpty else { return false }
+        try await api.ciFeedback(id)
+        return true
     }
 
     /// Reads the pull request from GitHub now.
     public func refreshPR(_ id: String) async throws {
         refreshingPR.insert(id)
         defer { refreshingPR.remove(id) }
-        store(try await api.refreshPR(id))
+        try await fetch { try await self.api.refreshPR(id) }
     }
 
     /// Send a nudge: stops the stuck turn and sends a message asking for another
@@ -244,10 +291,24 @@ public final class SessionsStore {
     @discardableResult
     public func nudge(_ id: String) async throws -> QueuedMessage? {
         guard let flag = sessions[id]?.stuck else { return nil }
-        let sent = try await api.sendMessage(
-            id, text: flag.nudge, attachmentIDs: [], interrupt: true)
-        store(sent.session)
-        return sent.queuedMessage
+        return try await sendFetched {
+            try await self.api.sendMessage(id, text: flag.nudge, attachmentIDs: [], interrupt: true)
+        }
+    }
+
+    /// Approves a review (`ApprovalsStore.publish`). A refusal (409) means the chat
+    /// changed since it was shown, so the chat and its diff are read again before the
+    /// error is passed on: a violation's switch, the moved branch or the changed files then
+    /// show, and Approve waits for them.
+    @discardableResult
+    public func publish(_ approval: Approval, _ form: PublishForm) async throws -> Session {
+        do {
+            return try await fetch { try await self.approvals.publish(approval, form) }
+        } catch let error as APIError where error.isConflict {
+            _ = try? await fetch { try await self.api.session(approval.sessionID) }
+            _ = try? await approvals.loadDiff(for: approval)
+            throw error
+        }
     }
 
     public func interrupt(_ id: String) async throws {
@@ -299,6 +360,7 @@ public final class SessionsStore {
     // MARK: Events
 
     public func apply(_ event: Event) {
+        live.record(event)
         switch event.body {
         case .sessionCreated(let session), .sessionUpdated(let session):
             store(session)
@@ -323,6 +385,16 @@ public final class SessionsStore {
         case .unstuck:
             guard let id = event.sessionID else { return }
             sessions[id]?.stuck = nil
+        case .gitViolation:
+            guard let id = event.sessionID else { return }
+            sessions[id]?.gitViolation = true
+        case .workspace(let workspace):
+            guard let id = event.sessionID, var session = sessions[id] else { return }
+            session.worktreePath = workspace.path
+            session.cwd = workspace.path
+            session.branch = workspace.branch
+            session.baseRef = workspace.baseRef
+            sessions[id] = session
         case .sessionDeleted(let id):
             sessions[id] = nil
         default:
@@ -331,7 +403,21 @@ public final class SessionsStore {
     }
 
     private func update(_ id: String, _ request: UpdateSessionRequest) async throws {
-        store(try await api.updateSession(id, request))
+        try await fetch { try await self.api.updateSession(id, request) }
+    }
+
+    /// Stores the session a call answers with, then the live events that arrived while it
+    /// ran: the answer may be older than they are. The session as it stands is returned.
+    @discardableResult
+    private func fetch(_ call: () async throws -> Session) async throws -> Session {
+        let session = try await live.read(call, store: { store($0) }, replay: apply)
+        return sessions[session.id] ?? session
+    }
+
+    private func sendFetched(_ call: () async throws -> SentMessage) async throws
+        -> QueuedMessage?
+    {
+        try await live.read(call, store: { store($0.session) }, replay: apply).queuedMessage
     }
 
     @discardableResult

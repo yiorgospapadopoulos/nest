@@ -24,6 +24,33 @@ import Testing
             ])
     }
 
+    /// Only web and mail links open; a `file:` link to a `.command` file would run it, and
+    /// app schemes launch other apps, so they show as plain text (audit SEC-03).
+    @Test func onlyWebAndMailLinksStayLinks() {
+        let runs = RichText.runs(
+            "[report](file:///tmp/x.command) [prefs](x-apple.systempreferences:com.apple) [code](vscode://file/a) [mail](mailto:me@example.com) [site](HTTP://example.com)"
+        )
+        #expect(runs.filter { $0.link != nil }.map(\.text) == ["mail", "site"])
+        #expect(runs.map(\.text).joined() == "report prefs code mail site")
+    }
+
+    @Test func safeLinksAllowWebAndMailOnly() {
+        #expect(SafeLink.url("https://github.com/o/r/pull/1")?.host == "github.com")
+        #expect(SafeLink.url("http://example.com") != nil)
+        #expect(SafeLink.url("mailto:me@example.com") != nil)
+        #expect(SafeLink.url("file:///tmp/x.command") == nil)
+        #expect(SafeLink.url("ssh://host") == nil)
+        // Schemes that run script or open apps stay text, whatever their case (audit M-8).
+        for link in [
+            "javascript:alert(1)", "JavaScript:alert(1)", "vbscript:msgbox(1)",
+            "data:text/html,<script>alert(1)</script>", "x-apple.systempreferences:", "tel:123",
+        ] {
+            #expect(SafeLink.url(link) == nil, "\(link)")
+        }
+        #expect(SafeLink.url("no scheme") == nil)
+        #expect(SafeLink.url("") == nil)
+    }
+
     @Test func bareURLsBecomeLinksOutsideCode() {
         let runs = RichText.runs("Open https://example.com/a?b=1 or `https://not.linked`")
         #expect(

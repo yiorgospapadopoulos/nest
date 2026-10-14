@@ -80,6 +80,95 @@ public struct WorktreeConfig: Codable, Sendable, Hashable {
     }
 }
 
+extension WorktreeConfig {
+    /// Adds a link as typed, trimmed; false when it is blank, already there, or not a
+    /// relative path inside the repository (the daemon refuses those).
+    @discardableResult
+    public mutating func addLink(_ text: String) -> Bool {
+        let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard !path.hasPrefix("/"), !parts.allSatisfy({ $0 == "." }), !parts.contains(".."),
+            !link.contains(path)
+        else { return false }
+        link.append(path)
+        return true
+    }
+
+    /// Removes a linked path; one already gone is left alone.
+    public mutating func removeLink(_ path: String) {
+        link.removeAll { $0 == path }
+    }
+
+    /// Removes the setup command shown at this place, if it is still the one there.
+    public mutating func removeSetup(_ command: String, at index: Int) {
+        if setup[safe: index] == command {
+            setup.remove(at: index)
+        }
+    }
+
+    /// Adds a setup command as typed, trimmed; false when it is blank.
+    @discardableResult
+    public mutating func addSetup(_ text: String) -> Bool {
+        let command = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else { return false }
+        setup.append(command)
+        return true
+    }
+}
+
+/// `PATCH /api/repos/{name}`: only the project settings that changed, so a change cannot
+/// undo another made meanwhile (audit BUG-102).
+public struct RepoPatch: Encodable, Sendable, Hashable {
+    /// The worktree default changed; `isDefault` is then the new one, nil following the
+    /// agent default.
+    public var changesDefault: Bool
+    public var isDefault: Bool?
+    public var link: [String]?
+    public var setup: [String]?
+
+    /// The settings that differ between the two.
+    public init(from old: WorktreeConfig, to new: WorktreeConfig) {
+        changesDefault = old.isDefault != new.isDefault
+        isDefault = new.isDefault
+        link = old.link == new.link ? nil : new.link
+        setup = old.setup == new.setup ? nil : new.setup
+    }
+
+    public var isEmpty: Bool { !changesDefault && link == nil && setup == nil }
+
+    enum CodingKeys: String, CodingKey {
+        case link, setup
+        case isDefault = "default"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if changesDefault {
+            if let isDefault {
+                try container.encode(isDefault, forKey: .isDefault)
+            } else {
+                try container.encodeNil(forKey: .isDefault)
+            }
+        }
+        try container.encodeIfPresent(link, forKey: .link)
+        try container.encodeIfPresent(setup, forKey: .setup)
+    }
+}
+
+/// What removing a project from harness does, for its confirmation.
+public enum ProjectRemoval {
+    public static func consequence(chats: Int) -> String {
+        let folder = "harness forgets this project. Its folder stays as it is."
+        switch chats {
+        case 0: return folder
+        case 1: return "\(folder) Its chat is deleted for good, with its worktree and branch."
+        default:
+            return
+                "\(folder) Its \(chats) chats are deleted for good, with their worktrees and branches."
+        }
+    }
+}
+
 /// Local apps a project can be opened in.
 public enum RepoApp: String, Codable, Sendable, CaseIterable {
     case vscode

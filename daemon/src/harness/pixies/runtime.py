@@ -1,4 +1,4 @@
-"""Builds a pixie chat's run: its prompt, tools, projects, skills and permissions (D057)."""
+"""Builds a pixie chat's run: its prompt, tools, projects, skills and permissions (D072)."""
 
 from pathlib import Path
 

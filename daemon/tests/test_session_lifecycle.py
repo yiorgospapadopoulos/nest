@@ -88,6 +88,7 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
         "linked": [],
         "missing": [],
         "existing": [],
+        "failed": [],
     }
     assert events[3].payload == {"text": "Fix the bug\nDetails here", "attachments": []}
 

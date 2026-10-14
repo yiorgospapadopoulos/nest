@@ -16,6 +16,8 @@ final class TerminalSession {
         frame: CGRect(x: 0, y: 0, width: 640, height: 400))
     /// The shell exited; the pane offers to start a new one.
     private(set) var exited = false
+    /// The shell started in its folder, not in the home folder in its place.
+    private(set) var inFolder = false
     @ObservationIgnored private var relay: ProcessRelay?
 
     init(folder: String) {
@@ -30,22 +32,24 @@ final class TerminalSession {
     /// a merged chat's worktree).
     func start() {
         exited = false
+        inFolder = TerminalFolder.exists(folder)
         guard Self.startsShells else { return }
-        var isFolder: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: folder, isDirectory: &isFolder)
         view.startProcess(
             executable: Self.loginShell, args: ["-l"], environment: Self.environment,
-            currentDirectory: exists && isFolder.boolValue ? folder : NSHomeDirectory())
+            currentDirectory: inFolder ? folder : NSHomeDirectory())
     }
 
     /// Types a line from `TerminalInput.line(for:)`, Return included; the shell reads it
-    /// once its prompt is ready.
-    func run(line: String) {
+    /// once its prompt is ready. Nothing is typed into a shell that started elsewhere
+    /// because the folder was gone; whether it was typed.
+    func run(line: String) -> Bool {
         if exited {
             view.feed(text: "\r\n")
             start()
         }
+        guard inFolder else { return false }
         view.send(txt: line)
+        return true
     }
 
     func end() {

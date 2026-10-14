@@ -27,6 +27,7 @@ from pydantic import JsonValue
 
 from harness.config.models import PermissionMode
 from harness.gitops.remotes import scrub_credentials
+from harness.logging_setup import ENGINE_STDERR_LOGGER
 from harness.providers.base import (
     ApprovalHandler,
     ContextUsage,
@@ -34,17 +35,25 @@ from harness.providers.base import (
     PermissionRequest,
     PlanRequest,
     ProviderEventSink,
+    RewindResult,
     SessionSpec,
     UserInput,
 )
 from harness.providers.claude_commands import context_usage, described_catalog
 from harness.providers.claude_engine import engine_details
-from harness.providers.claude_messages import BackgroundTasks, mcp_servers, translate
+from harness.providers.claude_messages import (
+    BackgroundTasks,
+    TurnOutput,
+    mcp_servers,
+    translate,
+)
 from harness.providers.claude_questions import (
     ASK_USER_QUESTION,
     QUESTION_TIMEOUT_SECONDS,
     QuestionBridge,
 )
+from harness.providers.claude_rewind import rewind
+from harness.providers.claude_rules import always_rule
 from harness.providers.claude_thinking import ThinkingTimer
 from harness.providers.claude_tools import WRITE_TOOLS, own_tool_names, tool_servers, write_guard
 from harness.providers.git_guard import GIT_WRITE_RULES, block_git_writes
@@ -57,8 +66,12 @@ STDERR_CHARS = 300
 # The tool Claude calls in plan mode to present its plan and ask to start working (D032).
 EXIT_PLAN_MODE = "ExitPlanMode"
 KEEP_PLANNING_MESSAGE = "Keep planning."
+# The longest stream message the run reads. Each is one line, and a tool result with an
+# image is base64 in it; the SDK's 1 MB default would end the run on such a read (PL-14).
+MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
+stderr_logger = logging.getLogger(ENGINE_STDERR_LOGGER)
 
 
 class SdkClient(Protocol):
@@ -117,14 +130,18 @@ CLAUDE_APP_ENV = {
 
 
 class StderrTail:
-    """The last lines the CLI wrote to stderr, which say why it crashed (BUG-42)."""
+    """What the CLI writes to stderr: each line goes to the daemon log (BUG-82), and the
+    last ones say why it crashed (BUG-42).
+    """
 
-    def __init__(self) -> None:
+    def __init__(self, cwd: Path) -> None:
+        self._cwd = cwd
         self._lines: deque[str] = deque(maxlen=STDERR_LINES)
 
     def add(self, line: str) -> None:
         text = line.strip()
         if text:
+            stderr_logger.debug("Claude Code in %s: %s", self._cwd, scrub_credentials(text))
             self._lines.append(text)
 
     def text(self) -> str:
@@ -157,10 +174,14 @@ def build_options(
         if tool_name == EXIT_PLAN_MODE:
             return await _review_plan(handler, tool_input, context.tool_use_id)
         reason = context.decision_reason or context.blocked_path
+        rule = always_rule(context.suggestions)
         decision = await handler.decide(
-            PermissionRequest(tool_name, tool_input, context.title, reason)
+            PermissionRequest(tool_name, tool_input, context.title, reason, rule)
         )
         if decision.behavior == "allow":
+            if decision.always and rule is not None:
+                # Claude Code keeps them where it suggested: the session or a settings file.
+                return PermissionResultAllow(updated_permissions=list(context.suggestions))
             return PermissionResultAllow()
         return PermissionResultDeny(message=decision.message or DEFAULT_DENY_MESSAGE)
 
@@ -199,6 +220,11 @@ def build_options(
         hooks={"PreToolUse": pre_tool_use},
         env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
         stderr=stderr,
+        max_buffer_size=MAX_MESSAGE_BYTES,
+        # Files can be restored to before a user message; the echo of each message the
+        # run is sent carries the id to restore to (IMP-02).
+        enable_file_checkpointing=True,
+        extra_args={"replay-user-messages": None},
     )
 
 
@@ -213,10 +239,12 @@ class ClaudeRun:
         self._stderr = stderr
         self._tasks = BackgroundTasks()
         self._thinking = ThinkingTimer()
+        self._output = TurnOutput()
         self._reader = asyncio.create_task(self._read())
 
     async def send(self, user_input: UserInput) -> None:
         self._thinking.mark()
+        self._output.awaiting_replay = True
         await self._client.query(_single(_user_message(user_input)))
 
     async def interrupt(self) -> None:
@@ -226,6 +254,7 @@ class ClaudeRun:
         await self._client.set_model(model)
 
     async def set_permission_mode(self, mode: PermissionMode) -> None:
+        self._output.mode_set = True
         await self._client.set_permission_mode(mode)
 
     async def connector_statuses(self) -> list[McpServer]:
@@ -234,6 +263,9 @@ class ClaudeRun:
 
     async def context_usage(self) -> ContextUsage | None:
         return context_usage(await self._client.get_context_usage())
+
+    async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
+        return await rewind(self._client, checkpoint_id, dry_run)
 
     async def close(self) -> None:
         self._reader.cancel()
@@ -263,7 +295,7 @@ class ClaudeRun:
             running = self._tasks.update(message)
             if running is not None:
                 await self._sink.background_tasks(running)
-            await translate(message, self._sink, self._thinking)
+            await translate(message, self._sink, self._thinking, self._output)
         except Exception as exc:
             logger.warning(
                 "could not handle a message from the agent (%s: %s)", type(exc).__name__, exc
@@ -287,7 +319,7 @@ class ClaudeProvider:
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> ClaudeRun:
-        stderr = StderrTail()
+        stderr = StderrTail(spec.cwd)
         client = self._client_factory(build_options(spec, handler, self._gh_config_dir, stderr.add))
         try:
             await client.connect()

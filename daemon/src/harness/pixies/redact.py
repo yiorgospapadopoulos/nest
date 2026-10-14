@@ -1,4 +1,4 @@
-"""Best-effort removal of common credential formats from facts a pixie saves (D057)."""
+"""Best-effort removal of common credential formats from facts a pixie saves (D072)."""
 
 import re
 

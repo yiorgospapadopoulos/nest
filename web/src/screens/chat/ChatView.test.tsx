@@ -503,6 +503,67 @@ describe("inline approvals", () => {
     ]);
   });
 
+  it("always allow a permission in place, by Claude Code's suggested rule", async () => {
+    const ruled = approval({
+      payload: {
+        tool: "Bash",
+        input: { command: "npm test -- --run" },
+        always_rule: "Bash(npm test:*)",
+      },
+    });
+    const plain = approval({
+      id: "q8",
+      payload: { tool: "Read", input: { file_path: "/w/s1/a" } },
+    });
+    const { user, api } = await openChat({
+      approvals: [ruled, plain],
+      events: [created(ruled, 1), created(plain, 2)],
+    });
+    const [first, second] = screen.getAllByRole("group", { name: "Permission needed" });
+
+    await user.click(
+      within(defined(first)).getByRole("button", { name: "Always allow Bash(npm test:*)" }),
+    );
+    expect(await screen.findByText("Always allowed: Bash(npm test:*)")).toBeInTheDocument();
+    await user.click(within(defined(second)).getByRole("button", { name: "Always allow Read" }));
+
+    expect(api.resolveApproval.mock.calls).toEqual([
+      ["q1", { behavior: "allow", always: true }],
+      ["q8", { behavior: "allow", always: true }],
+    ]);
+    expect(await screen.findByText("Always allowed: Read")).toBeInTheDocument();
+  });
+
+  it("confirm the push address of a review in place", async () => {
+    const r = review();
+    const { user, api } = await openChat({ approvals: [r], events: [created(r, 1)] });
+    api.approve.mockRejectedValueOnce(
+      new ApiError(409, "origin pushes to x", "remote_not_confirmed", {
+        remote_urls: ["https://github.com/me/todo-ui.git"],
+        confirmed_url: null,
+      }),
+    );
+    const box = screen.getByRole("group", { name: "Ready for review" });
+    // Where it pushes shows on the card itself.
+    expect(await within(box).findByText("Pushes to agent/contact")).toBeInTheDocument();
+
+    await user.click(within(box).getByRole("button", { name: "Approve and open PR" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
+    const pushThere = within(confirm).getByRole("button", { name: "Push there" });
+    await waitFor(() => {
+      expect(pushThere).toBeEnabled();
+    });
+    await user.click(pushThere);
+
+    // The diff loaded after the refusal pins what the push publishes.
+    expect(api.approve).toHaveBeenLastCalledWith("s1", {
+      commit_message: "Validate contact form",
+      expected_fingerprint: "f1ngerprint",
+      expected_head: "c0ffee0000000000000000000000000000000000",
+      confirm_remote_url: "https://github.com/me/todo-ui.git",
+    });
+  });
+
   it("show why Claude Code asks for a permission", async () => {
     const asked = approval({
       payload: { tool: "Bash", input: { command: "ls /etc" }, reason: "Outside the project" },
@@ -572,12 +633,15 @@ describe("inline review of work with the agent's own git changes", () => {
     const approve = within(box).getByRole("button", { name: "Approve and open PR" });
 
     expect(approve).toBeDisabled();
+    await within(box).findByText("Pushes to agent/contact");
     await user.click(within(box).getByRole("switch", { name: "I checked, publish anyway" }));
     await user.click(approve);
 
     expect(api.approve).toHaveBeenCalledWith("s1", {
       commit_message: "Validate contact form",
       acknowledge_violation: true,
+      expected_fingerprint: "f1ngerprint",
+      expected_head: "c0ffee0000000000000000000000000000000000",
     });
   });
 });
@@ -766,11 +830,16 @@ describe("composer", () => {
       new ApiError(409, "open elsewhere", "open_in_claude_code"),
     );
     const field = screen.getByLabelText("Message");
+    const region = field.closest(".comp")?.querySelector('[aria-live="polite"]');
+    expect(region).toBeEmptyDOMElement();
 
     await user.type(field, "Continue{Enter}");
+    // Said in a live region that was already there, so VoiceOver reads it out.
     expect(
-      await screen.findByText("This chat is open in Claude Code right now. Close it there first."),
-    ).toHaveAttribute("role", "status");
+      (
+        await screen.findByText("This chat is open in Claude Code right now. Close it there first.")
+      ).closest('[aria-live="polite"]'),
+    ).toBe(region);
     expect(screen.queryByText("open elsewhere")).not.toBeInTheDocument();
     expect(field).toHaveValue("Continue");
 
@@ -866,6 +935,34 @@ describe("composer", () => {
       permission_mode: "acceptEdits",
     });
     expect(await screen.findByRole("region", { name: "Add tests" })).toBeInTheDocument();
+  });
+
+  it("moves text typed while the new chat is created into its composer", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    let finish: (created: Session) => void = () => undefined;
+    api.createSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    api.session.mockResolvedValue(detail({ id: "new", title: "Add tests" }));
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+
+    await user.type(screen.getByLabelText("Message"), "Add tests{Enter}");
+    await user.type(screen.getByLabelText("Message"), " and also the tests");
+    await act(async () => {
+      finish(session({ id: "new", title: "Add tests" }));
+      await Promise.resolve();
+    });
+
+    await screen.findByRole("region", { name: "Add tests" });
+    expect(screen.getByLabelText("Message")).toHaveValue("and also the tests");
+    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+    expect(screen.getByLabelText("Message")).toHaveValue("");
   });
 
   it("starts a new chat with the agent defaults", async () => {

@@ -4,10 +4,17 @@ from typing import Any
 
 import pytest
 
-from harness.providers.base import Question, QuestionAnswer, QuestionOption, QuestionRequest
+from harness.providers.base import (
+    PlanDecision,
+    Question,
+    QuestionAnswer,
+    QuestionOption,
+    QuestionRequest,
+)
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import ask, edit, question, reply
+from tests.fake_engine import server_info
+from tests.fake_provider import ask, edit, plan, question, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, notified, reach
@@ -141,3 +148,43 @@ async def test_stopping_the_daemon_expires_prompts_and_keeps_reviews(
     assert by_session[reviewed]["status"] == "pending"
     assert by_session[asking]["status"] == "expired"
     assert by_session[asking]["resolution"] == {"reason": "the daemon stopped"}
+
+
+async def test_an_approved_plan_continues_in_the_chosen_mode(api: Api) -> None:
+    """Auto only with a model that supports it; the session follows the chosen mode."""
+    api.engine.info = server_info("default", "opus", auto=("opus",))
+    assert await api.ctx.engine.refresh()
+    api.provider.script(plan("# Plan", reply("Working on it.")))
+    session_id = str((await create(api, permission_mode="plan"))["id"])
+    item = await pending(api)
+    url = f"/api/approvals/{item['id']}/resolve"
+
+    auto = await api.http.post(url, json={"decision": "approve", "mode": "auto"})
+    bypass = await api.http.post(url, json={"decision": "approve", "mode": "bypassPermissions"})
+    manual = await api.http.post(url, json={"decision": "approve", "mode": "default"})
+    await reach(api, session_id, "idle")
+
+    assert auto.status_code == 422
+    assert auto.json() == {"detail": "Default does not support Auto mode"}
+    assert bypass.status_code == 422
+    assert manual.status_code == 200
+    assert manual.json()["resolution"] == {"decision": "approve", "mode": "default"}
+    assert api.provider.runs[0].plans == [PlanDecision(approved=True, mode="default")]
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+    assert session["permission_mode"] == "default"
+
+
+async def test_a_plan_is_approved_in_auto_with_a_model_that_supports_it(api: Api) -> None:
+    api.engine.info = server_info("default", "opus", auto=("opus",))
+    assert await api.ctx.engine.refresh()
+    api.provider.script(plan("# Plan", reply("Working on it.")))
+    session_id = str((await create(api, permission_mode="plan", model="opus"))["id"])
+    item = await pending(api)
+
+    auto = await api.http.post(
+        f"/api/approvals/{item['id']}/resolve", json={"decision": "approve", "mode": "auto"}
+    )
+    await reach(api, session_id, "idle")
+
+    assert auto.status_code == 200
+    assert api.provider.runs[0].plans == [PlanDecision(approved=True, mode="auto")]

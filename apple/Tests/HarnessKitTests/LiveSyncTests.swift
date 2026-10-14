@@ -166,42 +166,65 @@ import Testing
         #expect(model.sessions.sessions.isEmpty)
     }
 
-    @Test func aRetryAfterTheTokenWasRefusedReadsTheKeychainAgain() throws {
+    @Test func aRetryAfterTheTokenWasRefusedReadsTheKeychainAgain() async throws {
         let keychain = ChangingTokens("old")
-        let model = try #require(try AppModel.local(tokens: keychain))
+        let model = try #require(try await AppModel.local(tokens: keychain))
         let client = try #require(model.api as? APIClient)
         let stream = try #require(model.live.source as? EventStream)
         keychain.token.withLock { $0 = "new" }
 
         // Only a refused token is read again.
-        try model.rereadTokenIfRefused()
+        try await model.rereadTokenIfRefused()
         #expect(client.token == "old")
 
         model.app.connection = .unauthorized
-        try model.rereadTokenIfRefused()
+        try await model.rereadTokenIfRefused()
         #expect(client.token == "new")
         #expect(stream.request().value(forHTTPHeaderField: "Authorization") == "Bearer new")
 
         // A token gone from the Keychain leaves the last one in use.
         keychain.token.withLock { $0 = nil }
-        try model.rereadTokenIfRefused()
+        try await model.rereadTokenIfRefused()
         #expect(stream.token == "new")
+        // The Keychain may show a prompt, so it is never read on the main thread (BUG-81).
+        #expect(keychain.readsOnMain.withLock { $0 } == [false, false, false])
     }
 
-    @Test func aModelWithoutTheKeychainKeepsItsToken() throws {
+    @Test func aModelWithoutTheKeychainKeepsItsToken() async throws {
         model.app.connection = .unauthorized
-        try model.rereadTokenIfRefused()
+        try await model.rereadTokenIfRefused()
         #expect(model.app.connection == .unauthorized)
     }
 
-    @Test func theLocalModelReadsTheKeychainToken() throws {
-        #expect(try AppModel.local(tokens: TokenStub(token: nil)) == nil)
-        let model = try #require(try AppModel.local(tokens: TokenStub(token: "tok")))
+    @Test func theLocalModelReadsTheKeychainToken() async throws {
+        #expect(try await AppModel.local(tokens: TokenStub(token: nil)) == nil)
+        let model = try #require(try await AppModel.local(tokens: TokenStub(token: "tok")))
         let client = try #require(model.api as? APIClient)
         #expect(client.token == "tok")
         #expect(client.baseURL == APIClient.defaultBaseURL)
         #expect((model.live.source as? EventStream)?.token == "tok")
         #expect(model.settings.store is UserDefaultsStore)
+    }
+
+    @Test func connectingRunsTheLiveSync() async throws {
+        #expect(await model.connect() == nil)
+        source.continuation.yield(.connected(resumed: false))
+        try await waitFor { model.app.connection == .connected }
+    }
+
+    /// A token the Keychain cannot give is reported, and the connection still runs with
+    /// the one in use.
+    @Test func aRetryWhoseKeychainReadFailsStillConnects() async throws {
+        let keychain = ChangingTokens("old")
+        keychain.failure.withLock { $0 = .keychain(-25293) }
+        model.keychain = (keychain, DeviceToken("old"))
+        model.app.connection = .unauthorized
+
+        let failure = await model.connect()
+
+        #expect(failure as? TokenStoreError == .keychain(-25293))
+        source.continuation.yield(.connected(resumed: false))
+        try await waitFor { model.app.connection == .connected }
     }
 }
 

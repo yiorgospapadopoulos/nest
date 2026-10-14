@@ -15,7 +15,7 @@ import {
   labelOf,
   modelOptions,
   NO_THINKING,
-  PERMISSIONS,
+  permissionOptions,
   thinkingLevels,
   type Option,
 } from "../chat/options.ts";
@@ -52,8 +52,9 @@ export function PixieSettings({ pixie, save }: Props) {
     if (unknownModels) void actions.loadChoices();
   }, [unknownModels, actions]);
 
-  // The model the pixie runs, for its thinking levels.
-  const levels = thinkingLevels(models, pixie.model ?? state.agentDefaults?.model ?? null);
+  // The model the pixie runs, for its thinking levels and whether it takes Auto.
+  const runs = pixie.model ?? state.agentDefaults?.model ?? null;
+  const levels = thinkingLevels(models, runs);
   const rows: Row[] = [
     {
       title: "Model",
@@ -78,7 +79,7 @@ export function PixieSettings({ pixie, save }: Props) {
     {
       title: "Permissions",
       value: labelOf("permission", pixie.permission_mode, models),
-      options: PERMISSIONS,
+      options: permissionOptions(models, runs),
       checked: pixie.permission_mode,
       pick: (mode) => ({ permission_mode: mode as PermissionMode }),
     },

@@ -7,7 +7,7 @@ import { InboxCard } from "./InboxCard.tsx";
 import { CiFailureCard } from "./PrCards.tsx";
 import { StuckCard } from "./StuckCard.tsx";
 
-// A pixie chat's repo; its items are grouped under the pixie (D057).
+// A pixie chat's repo; its items are grouped under the pixie (D072).
 const PIXIE_REPO = "pixie:";
 
 interface Props {

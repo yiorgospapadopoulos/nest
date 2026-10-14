@@ -2,7 +2,7 @@ import HarnessKit
 import SwiftUI
 
 /// A pixie's page: its one ongoing chat over its background, and the details panel on
-/// the right where everything about it is set (D057).
+/// the right where everything about it is set (D072).
 struct PixiePage: View {
     static let detailsWidth = 320.0
 

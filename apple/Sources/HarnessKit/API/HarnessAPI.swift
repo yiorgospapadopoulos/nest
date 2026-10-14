@@ -8,6 +8,13 @@ public protocol HarnessAPI: Sendable {
     func openRepo(_ name: String, in app: RepoApp) async throws
     /// The slash commands of the repo's latest agent run, for chats not started yet.
     func repoCommands(_ repo: String) async throws -> CommandList
+    /// Unregisters the repo; `purgeSessions` deletes its chats first. The folder stays.
+    func removeRepo(_ name: String, purgeSessions: Bool) async throws
+    /// Changes only the repo settings the patch names: its worktree default, links or
+    /// setup commands.
+    func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo
+    /// Gitignored files in the checkout worth linking into worktrees.
+    func linkSuggestions(_ name: String) async throws -> [String]
 
     func sessions(repo: String?, archived: Bool) async throws -> [Session]
     func session(_ id: String) async throws -> Session
@@ -30,6 +37,13 @@ public protocol HarnessAPI: Sendable {
     /// Up to 50 paths relative to the session's folder, for an @ mention.
     func sessionFiles(_ id: String, query: String) async throws -> [String]
     func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch
+    /// What restoring the files to before a user message (by event id) would change.
+    func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview
+    /// Restores the files to before a user message; the chat must be idle.
+    func rewind(_ id: String, message: Int) async throws
+    /// The daemon reads the failing checks' logs with its own GitHub login and sends them
+    /// to the chat.
+    func ciFeedback(_ id: String) async throws
 
     /// Claude Code chats harness does not own, newest first; automated ones only when asked.
     func claudeChats(repo: String?, includeAutomated: Bool) async throws -> [ClaudeChat]

@@ -1,4 +1,4 @@
-"""Create, change and delete pixies, and route messages to each pixie's chat (D057)."""
+"""Create, change and delete pixies, and route messages to each pixie's chat (D072)."""
 
 import asyncio
 from collections.abc import Callable

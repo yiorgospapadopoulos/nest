@@ -37,6 +37,41 @@ import Testing
                 == ApproveRequest(commitMessage: "Dark mode contrast", push: true, openPR: true))
     }
 
+    /// A violation found while the sheet is open needs the acknowledgement too.
+    @Test func followsAViolationFoundLater() {
+        var form = PublishForm(approval: review, session: session())
+        #expect(form.canSubmit)
+        form.follow(session(violation: true))
+        #expect(form.hasViolation)
+        #expect(!form.canSubmit)
+        form.acknowledgeViolation = true
+        #expect(form.canSubmit && form.request.acknowledgeViolation)
+        form.follow(nil)
+        #expect(!form.hasViolation)
+    }
+
+    /// "Push there" approves again with the address origin pushes to now (I-008).
+    @Test func aConfirmedPushAddressGoesWithAPush() {
+        var form = PublishForm(approval: review, session: session())
+        #expect(form.request.confirmRemoteURL == nil)
+        form.confirmRemoteURL = "git@github.com:me/cv.git"
+        #expect(form.request.confirmRemoteURL == "git@github.com:me/cv.git")
+        form.push = false
+        #expect(form.request.confirmRemoteURL == nil)
+    }
+
+    @Test func aRefusedPushSaysWhereOriginPushes() {
+        let changed = PushRemote(urls: ["git@new:r.git"], confirmedURL: "git@old:r.git")
+        #expect(changed.summary == "origin now pushes to")
+        #expect(changed.target == "git@new:r.git")
+        #expect(PushRemote(urls: ["a"]).summary == "origin pushes to")
+        #expect(PushRemote(urls: []).summary == "origin has no push address")
+        #expect(PushRemote(urls: []).target == nil)
+        let several = PushRemote(urls: ["a", "b"])
+        #expect(several.summary.hasPrefix("origin pushes to several addresses"))
+        #expect(several.target == nil)
+    }
+
     @Test func optionalPullRequestFieldsAreTrimmedOrLeftOut() {
         var form = PublishForm(approval: review, session: nil)
         form.commitMessage = "  Raise contrast \n"

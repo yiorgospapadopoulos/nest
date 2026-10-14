@@ -57,4 +57,9 @@ extension PermissionMode {
     public var shortLabel: String {
         self == .acceptEdits ? "Edits" : label
     }
+
+    /// The compact label of a mode, or "Default" for Claude Code's own setting (nil).
+    public static func shortLabel(_ mode: PermissionMode?) -> String {
+        mode?.shortLabel ?? "Default"
+    }
 }

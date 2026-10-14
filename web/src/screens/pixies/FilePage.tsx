@@ -14,7 +14,7 @@ interface Props {
 
 /**
  * One of the pixie's files as plain text. Saving names the hash it read, so a change the
- * pixie made meanwhile is never overwritten without the user choosing to (D057).
+ * pixie made meanwhile is never overwritten without the user choosing to (D072).
  */
 export function FilePage({ pixie, name, title, onClose }: Props) {
   const { actions } = useStore();

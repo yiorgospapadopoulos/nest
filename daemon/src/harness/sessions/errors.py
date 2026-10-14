@@ -32,8 +32,17 @@ class DirtyCheckoutError(ConflictError):
         return {"detail": str(self), "files": list(self.files)}
 
 
+class CannotRewindError(ConflictError):
+    """The files cannot be restored to before the message (IMP-02)."""
+
+    code = "cannot_rewind"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
 class PixieChatError(ConflictError):
-    """A pixie's chat goes with its pixie: reset or delete the pixie instead (D057)."""
+    """A pixie's chat goes with its pixie: reset or delete the pixie instead (D072)."""
 
     code = "pixie_chat"
 

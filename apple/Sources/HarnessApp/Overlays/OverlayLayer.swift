@@ -49,6 +49,10 @@ struct OverlayLayer: View {
             DiffSheet(approvalID: id).padding(.vertical, 40).padding(.horizontal, 48)
         case .publish(let id):
             PublishSheet(approvalID: id).padding(.top, 70)
+        case .project(let name):
+            ProjectSettingsSheet(project: name).padding(.top, 70)
+        case .rewind:
+            RewindSheet().padding(.top, 70)
         case .usage:
             EmptyView()
         }

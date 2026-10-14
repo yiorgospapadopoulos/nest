@@ -5,9 +5,11 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
+from starlette.requests import Request
 
 import harness
 from harness.api.app import create_app
+from harness.api.routes.pairing import client_address
 from harness.config.errors import ConfigError
 from harness.context import AppContext
 from harness.events import types
@@ -30,7 +32,7 @@ async def client(ctx: AppContext) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=transport, base_url="https://testserver") as http,
+        httpx.AsyncClient(transport=transport, base_url="https://mac.tailnet.ts.net") as http,
     ):
         yield http
 
@@ -57,14 +59,12 @@ async def test_health_needs_no_auth(client: httpx.AsyncClient) -> None:
     assert response.json() == {"status": "ok", "version": harness.__version__}
 
 
-async def test_startup_creates_local_token_and_publishes_daemon_started(
+async def test_startup_creates_local_token_and_stores_no_event(
     client: httpx.AsyncClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:
+    """IMP-17: no client read `daemon.started`, so it is not published."""
     assert local_token(secrets)
-    rows = await ctx.db.fetch_all("SELECT type, payload FROM events")
-    assert [(row["type"], row["payload"]) for row in rows] == [
-        (types.DAEMON_STARTED, f'{{"version": "{harness.__version__}"}}')
-    ]
+    assert await event_types(ctx) == []
 
 
 async def test_lifespan_starts_and_stops_enabled_modules(
@@ -148,10 +148,8 @@ async def test_redeem_sets_cookie_and_the_cookie_authenticates(
     devices = await client.get("/api/devices")
     assert devices.status_code == 200
     assert [d["name"] for d in devices.json()] == ["This Mac", "iPhone"]
-    assert (await event_types(ctx))[-1] == types.DEVICE_PAIRED
-    last = await ctx.db.fetch_one("SELECT payload FROM events ORDER BY id DESC LIMIT 1")
-    assert last is not None
-    assert last["payload"] == f'{{"device_id": "{body["device"]["id"]}", "name": "iPhone"}}'
+    # IMP-17: no client read `device.paired`, so it is not published.
+    assert await event_types(ctx) == []
 
 
 async def test_redeem_rejects_bad_codes_then_locks_out(client: httpx.AsyncClient) -> None:
@@ -165,6 +163,59 @@ async def test_redeem_rejects_bad_codes_then_locks_out(client: httpx.AsyncClient
 
     assert locked.status_code == 429
     assert locked.headers["retry-after"] == "300"
+
+
+async def test_redeem_counts_failures_per_tailnet_client(
+    client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    """H-01: `tailscale serve` connects from 127.0.0.1 and names the phone last in
+    X-Forwarded-For; a guesser on one tailnet address does not lock out another."""
+    payload = {"code": "WRONGONE", "device_name": "phone"}
+    guesser = {"X-Forwarded-For": "100.64.0.9"}
+    for _ in range(5):
+        assert (
+            await client.post("/api/pairing/redeem", json=payload, headers=guesser)
+        ).status_code == 400
+    assert (
+        await client.post("/api/pairing/redeem", json=payload, headers=guesser)
+    ).status_code == 429
+    # Spoofing an earlier entry does not help: the address tailscale appended is last.
+    spoofed = {"X-Forwarded-For": "1.2.3.4, 100.64.0.9"}
+    assert (
+        await client.post("/api/pairing/redeem", json=payload, headers=spoofed)
+    ).status_code == 429
+
+    code = (await client.post("/api/pairing/codes", headers=auth)).json()["code"]
+    owner = {"X-Forwarded-For": "100.64.0.2"}
+    redeemed = await client.post(
+        "/api/pairing/redeem", json={"code": code, "device_name": "iPhone"}, headers=owner
+    )
+
+    assert redeemed.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("peer", "forwarded", "expected"),
+    [
+        ("127.0.0.1", "100.64.0.9", "100.64.0.9"),
+        ("::1", "1.1.1.1 , 100.64.0.7 ", "100.64.0.7"),
+        ("127.0.0.1", None, "127.0.0.1"),
+        ("127.0.0.1", " , ", "127.0.0.1"),
+        # Only a proxy on this Mac is trusted to name the client.
+        ("100.64.0.3", "100.64.0.9", "100.64.0.3"),
+        ("testclient", "100.64.0.9", "testclient"),
+        (None, "100.64.0.9", "unknown"),
+    ],
+)
+def test_pairing_client_address(peer: str | None, forwarded: str | None, expected: str) -> None:
+    headers = [] if forwarded is None else [(b"x-forwarded-for", forwarded.encode())]
+    scope: dict[str, object] = {
+        "type": "http",
+        "headers": headers,
+        "client": None if peer is None else (peer, 5000),
+    }
+
+    assert client_address(Request(scope)) == expected
 
 
 @pytest.mark.parametrize(

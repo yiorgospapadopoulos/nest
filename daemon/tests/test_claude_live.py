@@ -48,6 +48,26 @@ def test_open_elsewhere_ignores_harnesss_own_sdk_run(tmp_path: Path) -> None:
     assert live.open_elsewhere("unknown", own_run=False) is False
 
 
+def test_the_claude_apps_idle_processes_do_not_hold_their_chats(tmp_path: Path) -> None:
+    """PL-10: the Claude app keeps a process alive for each chat it opened, idle for hours;
+    only one that is working holds the chat. Other programs' processes always do.
+    """
+    home = ClaudeHome(tmp_path)
+    home.open_chat(30, CHAT_A, entrypoint="claude-desktop", status="idle")
+    home.open_chat(31, CHAT_B, entrypoint="claude-desktop", status="busy")
+    home.open_chat(32, "chat-c", entrypoint="claude-desktop")
+    home.open_chat(33, "chat-d", entrypoint="cli", status="idle")
+    live = LiveChats(tmp_path, alive=lambda _pid: True)
+
+    assert live.running() == {
+        CHAT_B: ["claude-desktop"],
+        "chat-c": ["claude-desktop"],
+        "chat-d": ["cli"],
+    }
+    assert live.open_elsewhere(CHAT_A, own_run=False) is False
+    assert live.open_elsewhere(CHAT_B, own_run=False) is True
+
+
 def test_nothing_is_open_without_a_claude_dir(tmp_path: Path) -> None:
     assert LiveChats(None).running() == {}
     assert LiveChats(tmp_path / "missing").running() == {}

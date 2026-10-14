@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// What the app knows about one of its windows.
 public struct WindowPresence: Sendable, Hashable {
@@ -26,8 +27,9 @@ public struct WindowPresence: Sendable, Hashable {
 
 /// Tells the daemon whether the app is on screen, so it refreshes the usage limits only
 /// while someone can see them (D031): on each change, and every minute while visible,
-/// since a report lapses on the daemon after 150 s. Reports go out in order.
-@MainActor
+/// since a report lapses on the daemon after 150 s. Reports go out in order. Views read
+/// `isVisible` too, to pause their animations while nobody sees them (IMP-11).
+@MainActor @Observable
 public final class VisibilityReporter {
     /// The client name that tells the Mac app apart from a browser on the same device.
     public static let client = "mac"
@@ -38,11 +40,11 @@ public final class VisibilityReporter {
 
     public private(set) var isVisible = false
     /// When the last report went out; nil before the first.
-    public private(set) var lastReport: Date?
+    @ObservationIgnored public private(set) var lastReport: Date?
 
     let send: @Sendable (Bool) async throws -> Void
     let now: @Sendable () -> Date
-    private var sending: Task<Void, Never>?
+    @ObservationIgnored private var sending: Task<Void, Never>?
 
     public init(
         send: @escaping @Sendable (Bool) async throws -> Void,

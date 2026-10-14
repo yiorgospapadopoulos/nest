@@ -93,6 +93,36 @@ describe("Toast", () => {
   });
 });
 
+describe("an error toast", () => {
+  it("stays until it is dismissed", async () => {
+    vi.useFakeTimers();
+    const api = fakeApi();
+    api.approvals.mockResolvedValue([approval()]);
+    api.resolveApproval.mockRejectedValue(new Error("Could not reach your Mac"));
+    render(
+      <StoreProvider
+        api={api}
+        connect={socketFactory().connect}
+        location={{ protocol: "http:", host: "x" }}
+      >
+        <Inbox onOpenChat={() => undefined} onOpenPixie={() => undefined} />
+        <Toast />
+      </StoreProvider>,
+    );
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    // The error shows first, then time passes well beyond when other toasts go away.
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole("status")).toHaveTextContent("Could not reach your Mac");
+    await act(() => vi.advanceTimersByTimeAsync(TOAST_MS * 10));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Could not reach your Mac");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    vi.useRealTimers();
+  });
+});
+
 describe("DiffStats", () => {
   it("handles empty and single-file changes", () => {
     render(<DiffStats additions={0} deletions={0} files={1} />);

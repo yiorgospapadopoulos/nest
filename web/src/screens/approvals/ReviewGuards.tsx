@@ -21,6 +21,8 @@ export function ViolationNotice({ review }: { review: Review }) {
           role="switch"
           aria-checked={review.acknowledged}
           aria-labelledby={id}
+          // What was checked is the loaded review; a new one asks again.
+          disabled={review.diff === null}
           onClick={() => {
             review.setAcknowledged(!review.acknowledged);
           }}
@@ -50,6 +52,51 @@ export function RejectConfirmation({ review }: { review: Review }) {
       <button className="asi dng mid" onClick={() => void review.reject()}>
         Reject
       </button>
+    </ActionSheet>
+  );
+}
+
+/**
+ * Publishing waits until the user confirms where origin pushes (D050). With one address,
+ * "Push there" approves again with it; otherwise origin needs fixing on the Mac first.
+ */
+export function RemoteConfirmation({ review }: { review: Review }) {
+  const prompt = review.remote;
+  if (prompt === null) return null;
+  const [url, ...others] = prompt.urls;
+  const single = url !== undefined && others.length === 0;
+  return (
+    <ActionSheet
+      label="Confirm the push address"
+      role="alertdialog"
+      onClose={review.cancelRemote}
+      title={
+        <>
+          <b>Confirm the push address</b>
+          {!single ? (
+            <>
+              {url === undefined
+                ? "origin has no push address."
+                : `origin pushes to more than one address: ${prompt.urls.join(", ")}.`}{" "}
+              Fix origin on your Mac, then approve again.
+            </>
+          ) : prompt.confirmed === null ? (
+            `origin pushes to ${url}. harness pushes only to an address you confirmed.`
+          ) : (
+            `origin now pushes to ${url} instead of ${prompt.confirmed}, the address harness recorded.`
+          )}
+        </>
+      }
+    >
+      {single && (
+        <button
+          className="asi mid"
+          disabled={!review.ready}
+          onClick={() => void review.pushThere(prompt.message, url)}
+        >
+          Push there
+        </button>
+      )}
     </ActionSheet>
   );
 }

@@ -7,7 +7,7 @@ import pytest
 import uvicorn
 from fastapi import FastAPI
 
-from harness.logging_setup import configure_logging
+from harness.logging_setup import ENGINE_STDERR_LOGGER, configure_logging
 from harness.server import HOST, run_uvicorn
 
 
@@ -55,6 +55,28 @@ def test_http_client_request_lines_are_not_logged_because_urls_carry_secrets() -
     assert "secret-token" not in output
     assert "connect_tcp" not in output
     assert output.endswith(" WARNING httpx: kept\n")
+
+
+@pytest.fixture
+def restore_engine_stderr_logger() -> Iterator[None]:
+    logger = logging.getLogger(ENGINE_STDERR_LOGGER)
+    level = logger.level
+    yield
+    logger.setLevel(level)
+
+
+@pytest.mark.usefixtures("restore_logging", "restore_engine_stderr_logger")
+def test_claude_codes_stderr_reaches_the_daemon_log_at_debug_level() -> None:
+    """BUG-82: MCP, hook and CLI warnings show in daemon.log again."""
+    stream = io.StringIO()
+
+    configure_logging(stream)
+    logging.getLogger(ENGINE_STDERR_LOGGER).debug("MCP server failed to start")
+    logging.getLogger("harness.test").debug("hidden")
+
+    output = stream.getvalue()
+    assert output.endswith(f" DEBUG {ENGINE_STDERR_LOGGER}: MCP server failed to start\n")
+    assert "hidden" not in output
 
 
 class FakeServer:

@@ -97,3 +97,54 @@ describe("a reconnect that cannot resume", () => {
     expect(api.sessionEvents).toHaveBeenCalledTimes(calls);
   }, 10_000);
 });
+
+describe("a chat whose history failed to load", () => {
+  it("says so, and loads it again after a resumed reconnect", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    api.sessionEvents.mockRejectedValueOnce(new Error("Request failed (502)"));
+    api.sessionEvents.mockResolvedValue([said(1, "First")]);
+    const { user, sockets, push } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+
+    expect(await screen.findByText("The messages could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText("No messages yet")).not.toBeInTheDocument();
+    // A stored event gives the socket a cursor, so the reconnect resumes from it.
+    push({ id: 3, session_id: "s2", type: "session.state", payload: { state: "idle" } });
+    const count = sockets.sockets.length;
+    act(() => {
+      sockets.last().drop(1006);
+    });
+    await waitFor(
+      () => {
+        expect(sockets.sockets).toHaveLength(count + 1);
+      },
+      { timeout: 3000 },
+    );
+    act(() => {
+      sockets.last().open();
+    });
+
+    expect(sockets.last().url).toBe("wss://mac.ts.net/api/events?after=3");
+    expect(await screen.findByText("First", { selector: ".tx *" })).toBeInTheDocument();
+    expect(screen.queryByText("The messages could not be loaded.")).not.toBeInTheDocument();
+    expect(api.repos).toHaveBeenCalledTimes(1);
+  }, 10_000);
+
+  it("loads it again from Retry", async () => {
+    const api = fakeApi();
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    api.sessionEvents.mockRejectedValueOnce(new Error("Request failed (502)"));
+    api.sessionEvents.mockResolvedValue([said(1, "First")]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("First", { selector: ".tx *" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+});

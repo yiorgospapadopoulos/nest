@@ -8,13 +8,13 @@
 # Neutrals, grouped by role. CSS: --<group>-<name>, for example --text-primary.
 [colors.page]
 base = { light = "#eeeeec", dark = "#0c0c0d" }
-glow_start = { light = "rgba(150,170,190,0.2)", dark = "rgba(110,130,160,0.12)" }
-glow_end = { light = "rgba(205,190,165,0.18)", dark = "rgba(160,140,110,0.07)" }
 
 [colors.text]
 primary = { light = "#1a1b20", dark = "#f2f3f7" }
 secondary = { light = "rgba(26,27,32,0.68)", dark = "rgba(242,243,247,0.7)" }
-tertiary = { light = "rgba(26,27,32,0.64)", dark = "rgba(242,243,247,0.47)" }
+# Tertiary reads at 4.5:1 on the page, the wallpapers and the glass themes over them, except
+# Smoke and Deep in light mode (3.88) and directly over the wallpapers' darkest glows.
+tertiary = { light = "rgba(26,27,32,0.64)", dark = "rgba(242,243,247,0.56)" }
 
 [colors.line]
 hairline = { light = "rgba(0,0,0,0.08)", dark = "rgba(255,255,255,0.09)" }
@@ -27,9 +27,6 @@ strong = { light = "rgba(0,0,0,0.085)", dark = "rgba(255,255,255,0.12)" }
 [colors.surface]
 code = { light = "rgba(255,255,255,0.55)", dark = "rgba(0,0,0,0.25)" }
 scrim = { light = "rgba(236,238,246,0.34)", dark = "rgba(0,0,0,0.3)" }
-# Project tab strip and the window shell behind panels.
-strip = { light = "rgba(22,26,48,0.08)", dark = "rgba(0,0,0,0.34)" }
-shell = { light = "rgba(255,255,255,0.36)", dark = "rgba(255,255,255,0.045)" }
 # User message bubble when the "neutral" bubble color is chosen instead of the accent.
 neutral_bubble = { light = "rgba(255,255,255,0.92)", dark = "rgba(255,255,255,0.12)" }
 
@@ -275,35 +272,17 @@ stops = [
     { color = { light = "#acb5c0", dark = "#3a424d" }, center = [50, 100], size = [60, 60], fade = 70 },
 ]
 
-# Corner radii in points. The phone variants are the larger iPhone shapes.
+# Radii and spacing now come from the glass themes; these tables stay, empty, as the token
+# file's schema requires them.
 [radius]
-window = 24
-sheet = 24
-sheet_phone = 30
-panel = 20
-pane = 18
-card = 16
-card_phone = 22
-control = 10
-chip = 7
-pill = 999
 
-# Spacing scale in points.
 [spacing]
-xxs = 2
-xs = 4
-sm = 6
-md = 8
-lg = 10
-xl = 12
-xxl = 16
-xxxl = 24
 
 [typography.family]
 system = ["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"]
 mono = ["ui-monospace", "SF Mono", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"]
 
-# Font sizes in points. `body` is the Mac window base size; the phone base is `body_phone`.
+# Font sizes in points, used by the Mac app.
 [typography.size]
 micro = 10
 caption = 11
@@ -312,38 +291,17 @@ small = 12
 callout = 12.5
 body = 13
 subhead = 14
-body_phone = 15
 headline = 17
-title = 19
-large_title = 32
 
 [typography.weight]
-regular = 400
-medium = 500
-semibold = 600
-emphasized = 650
-bold = 700
-heavy = 800
 
 [typography.line_height]
-tight = 1.1
-body = 1.4
 
-# Durations in milliseconds; easings as cubic-bezier control points [x1, y1, x2, y2].
+# Durations in milliseconds, used by the Mac app's animations.
 [motion.duration]
-instant = 150
-fast = 200
-normal = 300
-sheet = 340
-slow = 400
 pulse = 1800
 attention = 2600
 
 [motion.easing]
-standard = [0.25, 0.1, 0.25, 1]
-ease_out = [0, 0, 0.58, 1]
-ease_in_out = [0.42, 0, 0.58, 1]
-# Panels sliding and resizing.
+# Sheets, chats and cards sliding in the iPhone app.
 glide = [0.2, 0.9, 0.25, 1]
-# Popovers and menus appearing, with a small overshoot.
-pop = [0.2, 0.9, 0.3, 1.15]

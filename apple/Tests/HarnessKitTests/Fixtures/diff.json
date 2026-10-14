@@ -1,5 +1,16 @@
 {
+  "fingerprint": "fp-1",
   "base": "1111111111111111111111111111111111111111",
+  "head": {
+    "commit": "2222222222222222222222222222222222222222",
+    "branch": "agent/dark-mode-1a2b3c"
+  },
+  "commits": [
+    {
+      "sha": "3333333333333333333333333333333333333333",
+      "subject": "Add a CI workflow"
+    }
+  ],
   "stats": {
     "files": 2,
     "additions": 3,

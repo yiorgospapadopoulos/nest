@@ -43,6 +43,9 @@
   --on-bubble: var(--on-accent);
   --sat: max(env(safe-area-inset-top), 12px);
   --sab: max(env(safe-area-inset-bottom), 12px);
+  /* In landscape, the side with the notch or the camera. */
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 /* The glass theme (data-glass on <html>, or on any element for a small preview). Declared on
    [data-glass] too, so the aliases resolve again inside a preview. Phone radii follow the
@@ -92,9 +95,16 @@
 *::after {
   box-sizing: border-box;
 }
+/* Text sizes are in rem: 17 points, or the iPhone's own text size (Dynamic Type). */
 html {
   -webkit-text-size-adjust: 100%;
   height: 100%;
+  font-size: 17px;
+}
+@supports (font: -apple-system-body) {
+  html {
+    font: -apple-system-body;
+  }
 }
 body {
   margin: 0;
@@ -102,7 +112,7 @@ body {
   overflow: hidden;
   background-color: var(--bg);
   color: var(--t1);
-  font: 15px/1.35 var(--sf);
+  font: 0.8824rem/1.35 var(--sf);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -180,7 +190,7 @@ code {
   margin: 0;
   padding: 4px 12px;
   border-radius: var(--r-ctl);
-  font-size: 12px;
+  font-size: 0.7059rem;
   font-weight: 600;
   color: var(--t2);
   white-space: nowrap;
@@ -271,7 +281,7 @@ code {
   height: 22px;
   padding: 0 9px 0 8px;
   border-radius: var(--r-ctl);
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   font-weight: 600;
   white-space: nowrap;
   color: var(--ct);
@@ -286,7 +296,7 @@ code {
   padding: 0 8px;
   border-radius: var(--r-sm);
   background: var(--fill);
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   color: var(--t2);
   white-space: nowrap;
   min-width: 0;
@@ -309,10 +319,12 @@ a.chip {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  position: relative;
   height: 28px;
+  min-width: 44px;
   padding: 0 12px;
   border-radius: var(--r-ctl);
-  font-size: 12.5px;
+  font-size: 0.7353rem;
   font-weight: 600;
   cursor: pointer;
   color: var(--t1);
@@ -322,6 +334,16 @@ a.chip {
     transform 0.15s,
     filter 0.15s,
     background 0.2s;
+}
+/* A 44 point tap target around the smaller pill (I-013). */
+.b::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 .b:active {
   transform: scale(0.97);
@@ -364,7 +386,7 @@ a.chip {
   height: 4px;
 }
 .note {
-  font-size: 11.5px;
+  font-size: 0.6765rem;
   color: var(--t3);
   line-height: 1.45;
 }
@@ -389,7 +411,7 @@ a.chip {
   flex: none;
   display: grid;
   place-items: center;
-  font-size: 10.5px;
+  font-size: 0.6176rem;
   font-weight: 800;
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
@@ -407,7 +429,7 @@ a.chip {
   background: #69737f;
 }
 .ds {
-  font: 600 11.5px/1 var(--mono);
+  font: 600 0.6765rem/1 var(--mono);
   white-space: nowrap;
 }
 .ds .a {
@@ -446,16 +468,27 @@ a.chip {
   flex: none;
 }
 .mseg button {
+  position: relative;
   border: 0;
   background: transparent;
   height: 32px;
   padding: 0 12px;
   border-radius: var(--r-sm);
-  font-size: 13.5px;
+  font-size: 0.7941rem;
   font-weight: 600;
   color: var(--t2);
   cursor: pointer;
   white-space: nowrap;
+}
+/* A 44 point tap target around each 32 point segment. */
+.mseg button::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 .mseg button[aria-pressed="true"] {
   background: var(--g2);
@@ -470,7 +503,7 @@ a.chip {
   z-index: 90;
   padding: 10px 16px;
   border-radius: var(--r-ctl);
-  font-size: 14px;
+  font-size: 0.8235rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -511,4 +544,32 @@ a.chip {
   .spin {
     border-right-color: var(--st-run);
   }
+}
+
+/* Continuous animations wait while the app is hidden (data-hidden on <html>). */
+:root[data-hidden] *,
+:root[data-hidden] *::before,
+:root[data-hidden] *::after {
+  animation-play-state: paused !important;
+}
+
+/* An error toast's dismiss button: a 44 point target over the toast's edge. */
+.toast.error {
+  padding-right: 4px;
+}
+.tdis {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -12px 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.toast .tdis .ic {
+  color: inherit;
 }

@@ -1,11 +1,18 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
 from harness.gitops.remotes import github_repo, push_urls, scrub_credentials, scrub_url
 from harness.gitops.runner import run_command
-from harness.gitops.safety import RepoSetting, filter_overrides, repo_settings, unsafe_settings
-from tests.git_support import init_repo
+from harness.gitops.safety import (
+    HARDENED,
+    RepoSetting,
+    filter_overrides,
+    repo_settings,
+    unsafe_settings,
+)
+from tests.git_support import git, init_repo
 
 
 def local(key: str, value: str = "x") -> RepoSetting:
@@ -80,6 +87,28 @@ def test_filter_overrides_switch_off_each_driver_once() -> None:
         *("-c", "filter.lfs.process=", "-c", "filter.lfs.required=false"),
     ]
     assert filter_overrides([]) == []
+
+
+def test_checkout_overrides_keep_git_lfs_as_it_installs_itself() -> None:
+    """Checking out a worktree must still run git-lfs, but not a driver the agent added."""
+    lfs = [
+        local("filter.lfs.clean", "git-lfs clean -- %f"),
+        local("filter.lfs.smudge", "git-lfs smudge -- %f"),
+        local("filter.lfs.process", "git-lfs filter-process"),
+        local("filter.lfs.required", "true"),
+    ]
+
+    assert filter_overrides(lfs, only_unsafe=True) == []
+    assert filter_overrides([local("filter.only.required", "true")], only_unsafe=True) == []
+    assert filter_overrides(
+        [*lfs[:2], local("filter.lfs.process", "sh -c evil"), local("filter.x.clean")],
+        only_unsafe=True,
+    ) == [
+        *("-c", "filter.lfs.clean=", "-c", "filter.lfs.smudge="),
+        *("-c", "filter.lfs.process=", "-c", "filter.lfs.required=false"),
+        *("-c", "filter.x.clean=", "-c", "filter.x.smudge="),
+        *("-c", "filter.x.process=", "-c", "filter.x.required=false"),
+    ]
 
 
 def test_a_filter_driver_named_with_an_equals_sign_cannot_be_switched_off() -> None:
@@ -172,3 +201,18 @@ def test_settings_that_run_diff_merge_editor_or_pager_programs_are_unsafe(
 ) -> None:
     """A security review flagged programs git can run from these keys during diffs and commits."""
     assert unsafe_settings([setting]) == [f"{setting.key} (runs a program)"]
+
+
+async def test_push_urls_are_read_with_hardened_git(tmp_path: Path) -> None:
+    """SEC-17: every git command the daemon runs in a repository the agent can write."""
+    repo = init_repo(tmp_path / "repo")
+    git(repo, "remote", "add", "origin", "https://me:token@github.com/me/repo.git")
+    calls: list[Sequence[str]] = []
+
+    async def recording(argv: Sequence[str], cwd: Path) -> str:
+        calls.append(argv)
+        return await run_command(argv, cwd)
+
+    assert await push_urls(repo, recording) == ["https://github.com/me/repo.git"]
+    ((program, *rest),) = calls
+    assert (program, tuple(rest[: len(HARDENED)])) == ("git", HARDENED)

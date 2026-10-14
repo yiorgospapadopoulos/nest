@@ -24,6 +24,21 @@ import {
   type Tracking,
 } from "./state.ts";
 
+function knownDrafts(
+  drafts: Record<string, Draft>,
+  { repos, sessions }: { repos: RepoConfig[]; sessions: Session[] },
+): Record<string, Draft> {
+  const known = new Set([
+    ...sessions.map((s) => draftKey({ session: s.id })),
+    ...repos.map((r) => draftKey({ repo: r.name })),
+  ]);
+  // Pixies load after this snapshot, so their drafts are kept (D072).
+  const pixie = draftKey({ pixie: "" });
+  return Object.fromEntries(
+    Object.entries(drafts).filter(([key]) => known.has(key) || key.startsWith(pixie)),
+  );
+}
+
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "auth":
@@ -36,7 +51,7 @@ export function reduce(state: State, action: Action): State {
         ...state,
         auth: "ready",
         repos: action.repos,
-        // The session list leaves pixie chats out (D057); the ones known stay.
+        // The session list leaves pixie chats out (D072); the ones known stay.
         sessions: Object.fromEntries([
           ...Object.values(state.sessions)
             .filter((s) => s.pixie_id != null)
@@ -46,7 +61,14 @@ export function reduce(state: State, action: Action): State {
         approvals: Object.fromEntries(
           action.approvals.filter((a) => a.status === "pending").map((a) => [a.id, a]),
         ),
+        // The first snapshot drops saved drafts of chats and projects removed while the app
+        // was closed; after that, the live events remove them.
+        drafts: state.auth === "ready" ? state.drafts : knownDrafts(state.drafts, action),
       };
+    case "repo":
+      return upsertRepo(state, action.repo);
+    case "repoRemoved":
+      return { ...state, repos: state.repos.filter((r) => r.name !== action.name) };
     case "session":
       return upsertSession(state, action.session);
     case "sessionRemoved":
@@ -81,6 +103,7 @@ export function reduce(state: State, action: Action): State {
       return {
         ...state,
         transcripts: { ...state.transcripts, [action.id]: state.transcripts[action.id] ?? [] },
+        history: { ...state.history, [action.id]: state.history[action.id] ?? "loading" },
       };
     case "transcriptLoaded":
       return {
@@ -89,9 +112,19 @@ export function reduce(state: State, action: Action): State {
           ...state.transcripts,
           [action.id]: merge(state.transcripts[action.id] ?? [], action.events),
         },
+        history: { ...state.history, [action.id]: "loaded" },
       };
+    case "historyFailed":
+      // A later refresh that fails keeps the history already shown.
+      return state.history[action.id] === "loading"
+        ? { ...state, history: { ...state.history, [action.id]: "failed" } }
+        : state;
     case "transcriptClosed":
-      return { ...state, transcripts: omit(state.transcripts, action.id) };
+      return {
+        ...state,
+        transcripts: omit(state.transcripts, action.id),
+        history: omit(state.history, action.id),
+      };
     case "queued":
       return { ...state, queued: { ...state.queued, [action.id]: action.queued } };
     case "queuedRemoved":
@@ -120,7 +153,7 @@ export function reduce(state: State, action: Action): State {
         files: d.files.filter((f) => f.id !== action.fileId),
       }));
     case "draftSent":
-      return draftSent(state, action.key, action.text, action.fileIds);
+      return draftSent(state, action.key, action.text, action.fileIds, action.to ?? action.key);
     case "connectors":
       return { ...state, connectors: action.connectors };
     case "limits":
@@ -151,16 +184,8 @@ export function applyEvent(state: State, event: HarnessEvent): State {
         repos: next.repos.map((r) => (r.name === changed.name ? changed : r)),
       };
     }
-    case "repo.added": {
-      const added = p.repo as unknown as RepoConfig;
-      const known = next.repos.some((r) => r.name === added.name);
-      return {
-        ...next,
-        repos: known
-          ? next.repos.map((r) => (r.name === added.name ? added : r))
-          : [...next.repos, added],
-      };
-    }
+    case "repo.added":
+      return upsertRepo(next, p.repo as unknown as RepoConfig);
     case "repo.removed":
       return { ...next, repos: next.repos.filter((r) => r.name !== str(p.name)) };
     case "session.created":
@@ -183,6 +208,9 @@ export function applyEvent(state: State, event: HarnessEvent): State {
       return patchSession(next, id, { stuck: stuckOf(p) });
     case "session.unstuck":
       return patchSession(next, id, { stuck: null });
+    case "session.git_violation":
+      // Publishing now waits for the user to say they checked (the acknowledge switch).
+      return patchSession(next, id, { git_violation: true });
     case "session.queued":
       // The full list after every change; the last one wins.
       return id === null ? next : { ...next, queued: { ...next.queued, [id]: queuedOf(p.queued) } };
@@ -245,6 +273,16 @@ function merge(current: HarnessEvent[], loaded: HarnessEvent[]): HarnessEvent[] 
   return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
 }
 
+function upsertRepo(state: State, repo: RepoConfig): State {
+  const known = state.repos.some((r) => r.name === repo.name);
+  return {
+    ...state,
+    repos: known
+      ? state.repos.map((r) => (r.name === repo.name ? repo : r))
+      : [...state.repos, repo],
+  };
+}
+
 function upsertSession(state: State, session: Session): State {
   return { ...state, sessions: { ...state.sessions, [session.id]: session } };
 }
@@ -265,6 +303,7 @@ function removeSession(state: State, id: string): State {
     ),
     tracking: without(state.tracking),
     transcripts: without(state.transcripts),
+    history: without(state.history),
     live: without(state.live),
     thinking: without(state.thinking),
     queued: without(state.queued),
@@ -300,16 +339,20 @@ function patchDraft(state: State, key: string, patch: (draft: Draft) => Partial<
   return { ...state, drafts: { ...state.drafts, [key]: { ...current, ...patch(current) } } };
 }
 
-/** The draft without the text and files that were sent, gone once nothing is left. */
-function draftSent(state: State, key: string, text: string, fileIds: string[]): State {
+/**
+ * The draft without the text and files that were sent, under `to`; gone once nothing is
+ * left. A new chat's draft moves to the chat its first message created.
+ */
+function draftSent(state: State, key: string, text: string, fileIds: string[], to: string): State {
   const current = state.drafts[key] ?? NO_DRAFT;
   // Text typed after the sent text stays; a sent part edited meanwhile keeps it all.
   const rest = current.text.startsWith(text)
     ? current.text.slice(text.length).trimStart()
     : current.text;
   const files = current.files.filter((f) => !fileIds.includes(f.id));
-  if (rest === "" && files.length === 0) return { ...state, drafts: omit(state.drafts, key) };
-  return { ...state, drafts: { ...state.drafts, [key]: { text: rest, files } } };
+  const drafts = omit(state.drafts, key);
+  if (rest === "" && files.length === 0) return { ...state, drafts };
+  return { ...state, drafts: { ...drafts, [to]: { text: rest, files } } };
 }
 
 function omit<T>(record: Record<string, T>, id: string): Record<string, T> {

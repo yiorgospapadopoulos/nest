@@ -56,6 +56,7 @@ def test_permission_resolutions() -> None:
         {"behavior": "allow", "answers": {}},
         {"behavior": "allow", "dismiss": True},
         {"behavior": "allow", "decision": "approve"},
+        {"behavior": "allow", "mode": "auto"},
     ],
 )
 def test_invalid_permission_resolutions(fields: dict[str, object]) -> None:
@@ -116,12 +117,30 @@ def test_reviews_use_the_review_actions() -> None:
 def test_unknown_fields_are_rejected() -> None:
     with pytest.raises(ValidationError):
         body(surprise=True)
+    with pytest.raises(ValidationError):
+        body(decision="approve", mode="bypassPermissions")
+
+
+def test_a_question_takes_no_mode() -> None:
+    with pytest.raises(InvalidInputError, match="question"):
+        resolution_for(
+            approval(ApprovalKind.QUESTION, QUESTIONS),
+            body(answers={"Which structure?": "DAG", "Which checks?": "all"}, mode="auto"),
+        )
 
 
 def test_plan_resolutions() -> None:
     item = approval(ApprovalKind.PLAN, {"plan": "# Plan"})
 
-    assert resolution_for(item, body(decision="approve")) == {"decision": "approve"}
+    assert resolution_for(item, body(decision="approve")) == {
+        "decision": "approve",
+        "mode": "acceptEdits",
+    }
+    for mode in ("default", "auto", "acceptEdits"):
+        assert resolution_for(item, body(decision="approve", mode=mode)) == {
+            "decision": "approve",
+            "mode": mode,
+        }
     assert resolution_for(item, body(decision="keep_planning", message="  more tests ")) == {
         "decision": "keep_planning",
         "message": "more tests",
@@ -141,6 +160,7 @@ def test_plan_resolutions() -> None:
         {"decision": "approve", "answers": {}},
         {"decision": "approve", "dismiss": True},
         {"decision": "approve", "always": True},
+        {"decision": "keep_planning", "mode": "auto"},
     ],
 )
 def test_invalid_plan_resolutions(fields: dict[str, object]) -> None:
@@ -168,6 +188,7 @@ def test_a_merge_approval_can_only_be_dismissed() -> None:
         {"dismiss": True, "behavior": "allow"},
         {"dismiss": True, "answers": {}},
         {"dismiss": True, "decision": "approve"},
+        {"dismiss": True, "mode": "auto"},
     ],
 )
 def test_a_merge_is_not_resolved_through_the_queue(fields: dict[str, object]) -> None:

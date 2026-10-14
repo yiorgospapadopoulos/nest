@@ -17,7 +17,11 @@ def session_changes(session: Session, request: UpdateSession, now: datetime) -> 
     wanted: dict[str, object] = request.model_dump(exclude_none=True, exclude={"archived"})
     if request.archived is not None and request.archived != (session.archived_at is not None):
         wanted["archived_at"] = now if request.archived else None
-    return {name: value for name, value in wanted.items() if getattr(session, name) != value}
+    changes = {name: value for name, value in wanted.items() if getattr(session, name) != value}
+    if request.permission_mode is not None and session.follows_claude_code_mode:
+        # A chosen mode, even the placeholder's own, replaces Claude Code's (IMP-06).
+        changes |= {"permission_mode": request.permission_mode, "follows_claude_code_mode": False}
+    return changes
 
 
 def require_open(session: Session) -> None:

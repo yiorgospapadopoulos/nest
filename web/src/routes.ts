@@ -7,7 +7,7 @@ export interface Route {
   tab: Tab;
   // The session open full screen, if any.
   chat: string | null;
-  // Or the pixie whose page is open (D057).
+  // Or the pixie whose page is open (D072).
   pixie?: string;
 }
 

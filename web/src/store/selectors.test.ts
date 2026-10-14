@@ -319,6 +319,38 @@ describe("the background bar's exchange", () => {
     expect(exchangeBackground(summary, [event({ type: "session.state" })])).toBe(summary);
   });
 
+  it("places a task by the event that started it, whatever the clocks said (I-H)", () => {
+    const call = (id: number, toolId: string) =>
+      event({
+        id,
+        type: "session.message",
+        payload: {
+          parent_tool_use_id: null,
+          blocks: [{ type: "tool_use", id: toolId, name: "Agent", input: {} }],
+        },
+      });
+    const done = (id: string, started: string, finished: string) => ({
+      ...item(id, "done", started),
+      finished_at: finished,
+    });
+    const stepped = {
+      running: 0,
+      completed: 3,
+      items: [
+        // Started before the message, though its clock read later.
+        done("before", "2026-10-06T10:10:00Z", "2026-10-06T09:59:00Z"),
+        // Started after the message, though the clock had stepped back.
+        done("after", "2026-10-06T09:50:00Z", "2026-10-06T09:55:00Z"),
+        // No call in the transcript: its time decides.
+        done("timed", "2026-10-06T10:01:00Z", "2026-10-06T10:02:00Z"),
+      ],
+    };
+    const events = [call(3, "before"), message(5, "2026-10-06T10:00:00Z"), call(7, "after")];
+
+    const current = exchangeBackground(stepped, events);
+    expect(current.items.map((i) => i.id)).toEqual(["after", "timed"]);
+  });
+
   it("counts a carried-over task that finishes as completed in the current exchange", () => {
     const finished = (id: string, started: string, at: string) => ({
       ...item(id, "done", started),

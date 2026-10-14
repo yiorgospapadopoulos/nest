@@ -13,8 +13,8 @@ import {
   type WorkerScope,
 } from "./serviceWorker.ts";
 
-/** In-memory Cache Storage keyed by URL path. */
-function fakeCaches() {
+/** In-memory Cache Storage keyed by URL path; `addAll` stores what `served` gives. */
+function fakeCaches(served: (path: string) => string = (path) => `cached ${path}`) {
   const stores = new Map<string, Map<string, Response>>();
   const key = (request: RequestInfo | URL) =>
     typeof request === "string" ? request : new URL((request as Request).url).pathname;
@@ -23,7 +23,7 @@ function fakeCaches() {
     stores.set(name, store);
     return Promise.resolve({
       addAll: (paths: string[]) => {
-        for (const p of paths) store.set(p, new Response(`cached ${p}`));
+        for (const p of paths) store.set(p, new Response(served(p)));
         return Promise.resolve();
       },
       put: (request: RequestInfo | URL, response: Response) => {
@@ -44,8 +44,11 @@ function fakeCaches() {
   return { caches, stores };
 }
 
-function setup(fetch: WorkerScope["fetch"] = () => Promise.resolve(new Response("network"))) {
-  const { caches, stores } = fakeCaches();
+function setup(
+  fetch: WorkerScope["fetch"] = () => Promise.resolve(new Response("network")),
+  served?: (path: string) => string,
+) {
+  const { caches, stores } = fakeCaches(served);
   const listeners = new Map<string, (event: never) => void>();
   const claim = vi.fn(() => Promise.resolve());
   const skipWaiting = vi.fn(() => Promise.resolve());
@@ -104,6 +107,93 @@ describe("service worker", () => {
     expect([...(stores.get(CACHE)?.keys() ?? [])]).toEqual(SHELL);
     expect(skipWaiting).toHaveBeenCalled();
     expect(claim).toHaveBeenCalled();
+  });
+
+  it("precaches the assets the cached page names, so the next launch works offline", async () => {
+    const page = '<script src="/assets/index-a.js"></script><link href="/assets/index-a.css">';
+    const { scope, stores, listeners } = setup(undefined, (path) =>
+      path === "/" ? page : `cached ${path}`,
+    );
+    installWorker(scope);
+
+    let pending: Promise<unknown> = Promise.resolve();
+    listeners.get("install")?.({
+      waitUntil: (p: Promise<unknown>) => {
+        pending = p;
+      },
+    } as never);
+    await pending;
+
+    expect([...(stores.get(CACHE)?.keys() ?? [])]).toEqual([
+      ...SHELL,
+      "/assets/index-a.js",
+      "/assets/index-a.css",
+    ]);
+  });
+
+  it("still installs when the cached page is gone before its assets are read", async () => {
+    const page = '<script src="/assets/index-a.js"></script>';
+    const { scope, stores, listeners } = setup(undefined, (path) =>
+      path === "/" ? page : `cached ${path}`,
+    );
+    const open = scope.caches.open.bind(scope.caches);
+    // Storage pressure, say, between caching the shell and reading the page back.
+    scope.caches.open = async (name) => {
+      const cache = await open(name);
+      cache.match = () => Promise.resolve(undefined);
+      return cache;
+    };
+    installWorker(scope);
+
+    let pending: Promise<unknown> = Promise.resolve();
+    listeners.get("install")?.({
+      waitUntil: (p: Promise<unknown>) => {
+        pending = p;
+      },
+    } as never);
+    await pending;
+
+    expect([...(stores.get(CACHE)?.keys() ?? [])]).toEqual(SHELL);
+  });
+
+  it("keeps the worker alive until a late page has refreshed the cache", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => undefined;
+      const { scope, stores, listeners } = setup(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      );
+      await (await scope.caches.open(CACHE)).put("/", new Response("old page"));
+      installWorker(scope);
+      const respondWith = vi.fn();
+      const waitUntil = vi.fn();
+
+      listeners.get("fetch")?.({
+        request: get("/inbox", "navigate"),
+        respondWith,
+        waitUntil,
+      } as never);
+      // Held from the start, while the fetch event is still being dispatched.
+      expect(waitUntil).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(NAVIGATION_TIMEOUT_MS);
+      expect(
+        await (respondWith.mock.calls[0]?.[0] as Promise<Response>).then((r) => r.text()),
+      ).toBe("old page");
+      let held = false;
+      void (waitUntil.mock.calls[0]?.[0] as Promise<unknown>).then(() => (held = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(held).toBe(false);
+
+      answer(new Response("newer page"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(held).toBe(true);
+      expect(await stores.get(CACHE)?.get("/")?.text()).toBe("newer page");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("answers only shell requests from its fetch listener", async () => {
@@ -278,7 +368,7 @@ function windowClient(url: string) {
 }
 
 describe("push notifications", () => {
-  it("shows the daemon's notification with its tag, icon and link", async () => {
+  it("shows the daemon's notification with its tag, icon and link, alerting again", async () => {
     const { scope, listeners, showNotification } = setup();
     installWorker(scope);
 
@@ -295,6 +385,8 @@ describe("push notifications", () => {
       body: "Fix: Bash",
       icon: ICON,
       tag: "s1",
+      // A newer notice of the same chat replaces the old one and still alerts.
+      renotify: true,
       data: { url: "/inbox" },
     });
   });

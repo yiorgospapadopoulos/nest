@@ -185,7 +185,7 @@ async def test_register_reports_other_git_failures(
     async def failing(args: Sequence[str], cwd: Path) -> str:
         raise GitError(args, 128, "fatal: detected dubious ownership in repository")
 
-    monkeypatch.setattr(service_module, "run_git", failing)
+    monkeypatch.setattr(service_module, "run_hardened_git", failing)
 
     with pytest.raises(InvalidRepoError, match="dubious ownership"):
         await service.register(tmp_path)

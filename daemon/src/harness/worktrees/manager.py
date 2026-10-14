@@ -8,7 +8,8 @@ from pathlib import Path
 from secrets import token_hex
 
 from harness.config.models import RepoConfig
-from harness.gitops.runner import GitError, run_git
+from harness.gitops.hardened import run_checkout_git, run_hardened_git
+from harness.gitops.runner import GitError
 from harness.paths import AppPaths
 from harness.worktrees.setup import LinkResult, SetupResult, link_files, run_commands
 
@@ -56,7 +57,7 @@ class WorktreeManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         base = await _base_commit(repo)
         branch = branch_name(title)
-        await run_git(["worktree", "add", "-q", "-b", branch, str(path), base], repo.path)
+        await run_checkout_git(["worktree", "add", "-q", "-b", branch, str(path), base], repo.path)
         return Worktree(path=path, branch=branch, base_ref=base)
 
     def link(self, repo: RepoConfig, worktree_path: Path) -> LinkResult:
@@ -80,13 +81,13 @@ class WorktreeManager:
         """
         has_repo = await asyncio.to_thread(repo.path.is_dir)
         if has_repo and await asyncio.to_thread(_is_worktree, worktree.path):
-            await run_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
+            await run_hardened_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
         await asyncio.to_thread(self._delete_leftovers, repo, worktree.path)
         if not has_repo:
             return
-        await run_git(["worktree", "prune"], repo.path)
+        await run_hardened_git(["worktree", "prune"], repo.path)
         if delete_branch and await _has_branch(repo, worktree.branch):
-            await run_git(["branch", "-D", worktree.branch], repo.path)
+            await run_hardened_git(["branch", "-D", worktree.branch], repo.path)
 
     def _delete_leftovers(self, repo: RepoConfig, path: Path) -> None:
         """Delete what remains at a removed worktree's path, only where harness puts them:
@@ -109,14 +110,19 @@ class WorktreeManager:
     async def head_at(self, path: Path) -> str | None:
         """The current commit of the checkout or worktree at `path`."""
         try:
-            output = await run_git(["rev-parse", "--verify", "--quiet", "HEAD"], path)
+            output = await run_hardened_git(["rev-parse", "--verify", "--quiet", "HEAD"], path)
         except GitError:
             return None
         return output.strip()
 
     async def dirty_files(self, repo: RepoConfig) -> list[str]:
-        """Paths with uncommitted changes, including untracked files, in the main checkout."""
-        output = await run_git(["status", "--porcelain", "-z"], repo.path)
+        """Paths with uncommitted changes, including untracked files, in the main checkout.
+
+        A submodule counts only when its commit changed: git never runs `status` inside it,
+        whose own config the agent could have given a filter (SEC-08).
+        """
+        args = ["status", "--porcelain", "-z", "--ignore-submodules=dirty"]
+        output = await run_checkout_git(args, repo.path)
         entries = iter(output.split("\0"))
         files: list[str] = []
         for entry in entries:
@@ -130,7 +136,7 @@ class WorktreeManager:
 
 async def _exclude_worktrees(repo: RepoConfig) -> None:
     """Add EXCLUDE_LINE to the repo's local exclude file unless it is there already."""
-    output = await run_git(["rev-parse", "--git-path", "info/exclude"], repo.path)
+    output = await run_hardened_git(["rev-parse", "--git-path", "info/exclude"], repo.path)
     await asyncio.to_thread(_add_exclude_line, repo.path / output.strip())
 
 
@@ -150,7 +156,9 @@ def _is_worktree(path: Path) -> bool:
 
 async def _has_branch(repo: RepoConfig, branch: str) -> bool:
     try:
-        await run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], repo.path)
+        await run_hardened_git(
+            ["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], repo.path
+        )
     except GitError:
         return False
     return True
@@ -159,7 +167,7 @@ async def _has_branch(repo: RepoConfig, branch: str) -> bool:
 async def _base_commit(repo: RepoConfig) -> str:
     try:
         ref = f"refs/heads/{repo.default_branch}^{{commit}}"
-        output = await run_git(["rev-parse", "--verify", "--quiet", ref], repo.path)
+        output = await run_hardened_git(["rev-parse", "--verify", "--quiet", ref], repo.path)
     except GitError:
-        output = await run_git(["rev-parse", "HEAD"], repo.path)
+        output = await run_hardened_git(["rev-parse", "HEAD"], repo.path)
     return output.strip()

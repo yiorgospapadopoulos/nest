@@ -126,13 +126,11 @@ public enum DesignTokens {
     public enum Colors {
         public enum Page {
             public static let base = ThemedColor(light: RGBA(red: 0.933333, green: 0.933333, blue: 0.92549, alpha: 1), dark: RGBA(red: 0.047059, green: 0.047059, blue: 0.05098, alpha: 1))
-            public static let glowStart = ThemedColor(light: RGBA(red: 0.588235, green: 0.666667, blue: 0.745098, alpha: 0.2), dark: RGBA(red: 0.431373, green: 0.509804, blue: 0.627451, alpha: 0.12))
-            public static let glowEnd = ThemedColor(light: RGBA(red: 0.803922, green: 0.745098, blue: 0.647059, alpha: 0.18), dark: RGBA(red: 0.627451, green: 0.54902, blue: 0.431373, alpha: 0.07))
         }
         public enum Text {
             public static let primary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 1), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 1))
             public static let secondary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.68), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.7))
-            public static let tertiary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.64), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.47))
+            public static let tertiary = ThemedColor(light: RGBA(red: 0.101961, green: 0.105882, blue: 0.12549, alpha: 0.64), dark: RGBA(red: 0.94902, green: 0.952941, blue: 0.968627, alpha: 0.56))
         }
         public enum Line {
             public static let hairline = ThemedColor(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.09))
@@ -145,8 +143,6 @@ public enum DesignTokens {
         public enum Surface {
             public static let code = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.55), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.25))
             public static let scrim = ThemedColor(light: RGBA(red: 0.92549, green: 0.933333, blue: 0.964706, alpha: 0.34), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.3))
-            public static let strip = ThemedColor(light: RGBA(red: 0.086275, green: 0.101961, blue: 0.188235, alpha: 0.08), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.34))
-            public static let shell = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.36), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.045))
             public static let neutralBubble = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.92), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.12))
         }
         public enum Diff {
@@ -343,26 +339,8 @@ public enum DesignTokens {
         public static let `default` = stone
     }
     public enum Radius {
-        public static let window: Double = 24
-        public static let sheet: Double = 24
-        public static let sheetPhone: Double = 30
-        public static let panel: Double = 20
-        public static let pane: Double = 18
-        public static let card: Double = 16
-        public static let cardPhone: Double = 22
-        public static let control: Double = 10
-        public static let chip: Double = 7
-        public static let pill: Double = 999
     }
     public enum Spacing {
-        public static let xxs: Double = 2
-        public static let xs: Double = 4
-        public static let sm: Double = 6
-        public static let md: Double = 8
-        public static let lg: Double = 10
-        public static let xl: Double = 12
-        public static let xxl: Double = 16
-        public static let xxxl: Double = 24
     }
     public enum Typography {
         public enum Family {
@@ -377,40 +355,20 @@ public enum DesignTokens {
             public static let callout: Double = 12.5
             public static let body: Double = 13
             public static let subhead: Double = 14
-            public static let bodyPhone: Double = 15
             public static let headline: Double = 17
-            public static let title: Double = 19
-            public static let largeTitle: Double = 32
         }
         public enum Weight {
-            public static let regular: Double = 400
-            public static let medium: Double = 500
-            public static let semibold: Double = 600
-            public static let emphasized: Double = 650
-            public static let bold: Double = 700
-            public static let heavy: Double = 800
         }
         public enum LineHeight {
-            public static let tight: Double = 1.1
-            public static let body: Double = 1.4
         }
     }
     public enum Motion {
         public enum Duration {
-            public static let instant: Double = 0.15
-            public static let fast: Double = 0.2
-            public static let normal: Double = 0.3
-            public static let sheet: Double = 0.34
-            public static let slow: Double = 0.4
             public static let pulse: Double = 1.8
             public static let attention: Double = 2.6
         }
         public enum Easing {
-            public static let standard = CubicBezier(x1: 0.25, y1: 0.1, x2: 0.25, y2: 1)
-            public static let easeOut = CubicBezier(x1: 0, y1: 0, x2: 0.58, y2: 1)
-            public static let easeInOut = CubicBezier(x1: 0.42, y1: 0, x2: 0.58, y2: 1)
             public static let glide = CubicBezier(x1: 0.2, y1: 0.9, x2: 0.25, y2: 1)
-            public static let pop = CubicBezier(x1: 0.2, y1: 0.9, x2: 0.3, y2: 1.15)
         }
     }
 }

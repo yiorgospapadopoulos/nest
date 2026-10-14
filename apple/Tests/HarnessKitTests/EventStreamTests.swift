@@ -178,9 +178,7 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
     let request = URLRequest(url: URL(string: "ws://127.0.0.1:8765/api/events")!)
 
     @Test func connectsAfterAPingAndReadsTextAndDataFrames() async throws {
-        task.state.withLock {
-            $0.frames = [.success(.string("one")), .success(.data(Data("two".utf8)))]
-        }
+        task.state.withLock { $0.frames = [.string("one"), .data(Data("two".utf8))] }
 
         let connection = try await connector.connect(request)
 
@@ -192,14 +190,110 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
     }
 
     @Test func aRefusedPingReportsTheCloseCode() async {
-        task.state.withLock {
-            $0.pingError = URLError(.networkConnectionLost)
-            $0.closeCode = URLSessionWebSocketTask.CloseCode(rawValue: 4401)!
-            $0.closeReason = Data("not authenticated".utf8)
-        }
+        task.state.withLock { $0.pingError = URLError(.networkConnectionLost) }
+        task.serverCloses(code: 4401, reason: "not authenticated")
         await #expect(throws: WebSocketClosed(code: 4401, reason: "not authenticated")) {
             _ = try await connector.connect(request)
         }
+    }
+
+    /// The daemon accepts, then closes with 4401 at once: the pong never comes, so the
+    /// first receive's failure has to end the wait (audit BUG-54).
+    @Test func aServerThatClosesBeforeThePongReportsTheCloseCode() async throws {
+        task.state.withLock { $0.pingHangs = true }
+        let connector = connector
+        let request = request
+        let connecting = Task { try await connector.connect(request) }
+        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+
+        task.serverCloses(code: 4401, reason: "not authenticated")
+
+        let ended = Task { _ = try? await connecting.value }
+        try await waitUntil { task.state.withLock { $0.cancelledWith != nil } }
+        // Releases the ping if the connect is still waiting, so a failure cannot hang.
+        task.cancel(with: .goingAway, reason: nil)
+        await ended.value
+        await #expect(throws: WebSocketClosed(code: 4401, reason: "not authenticated")) {
+            _ = try await connecting.value
+        }
+    }
+
+    @Test func aServerThatClosedBeforeTheConnectReportsTheCloseCode() async {
+        task.serverCloses(code: 4403)
+        await #expect(throws: WebSocketClosed(code: 4403, reason: nil)) {
+            _ = try await connector.connect(request)
+        }
+        #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
+    }
+
+    @Test func aFrameBeforeThePongShowsTheSocketIsOpenAndIsReadFirst() async throws {
+        task.state.withLock { $0.pingHangs = true }
+        let connector = connector
+        let request = request
+        let connecting = Task { try await connector.connect(request) }
+        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+
+        task.send(.string("first"))
+
+        let connection = try await connecting.value
+        #expect(try await connection.receive() == "first")
+        task.send(.string("second"))
+        #expect(try await connection.receive() == "second")
+        #expect(task.state.withLock { $0.cancelledWith } == nil)
+    }
+
+    @Test func aConnectThatNeverOpensTimesOut() async throws {
+        task.state.withLock { $0.pingHangs = true }
+        let sleeper = FakeSleeper()
+        let task = task
+        let request = request
+        let connector = URLSessionWebSocketConnector(timeout: 7, sleeper: sleeper) { _ in task }
+        let connecting = Task { try await connector.connect(request) }
+        // Without the timeout the connect would wait for ever: after a while the socket is
+        // closed instead, so the test fails with another error rather than hanging.
+        let watchdog = Task {
+            try await Task.sleep(for: .seconds(5))
+            task.cancel(with: .goingAway, reason: nil)
+        }
+        defer { watchdog.cancel() }
+        await #expect(throws: URLError(.timedOut)) { _ = try await connecting.value }
+        #expect(sleeper.delays.withLock { $0 } == [7])
+        #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
+    }
+
+    /// The timeout can fire before the wait for the socket starts; that answer is kept, not
+    /// lost, so the connect still ends (audit BUG-103).
+    @Test func anAnswerBeforeTheWaitStartsIsKept() async {
+        struct Late: Error {}
+        let opening = Opening()
+        opening.finish(URLError(.timedOut))
+        opening.finish(nil)
+        // Ends a wait that missed the early answer, so the test fails instead of hanging.
+        let watchdog = Task {
+            try await Task.sleep(for: .seconds(5))
+            opening.finish(Late())
+        }
+        defer { watchdog.cancel() }
+        await #expect(throws: URLError(.timedOut)) {
+            try await withCheckedThrowingContinuation { opening.start($0) }
+        }
+    }
+
+    @Test func onlyTheFirstAnswerEndsTheWait() async throws {
+        let opening = Opening()
+        let waiting = Task {
+            try await withCheckedThrowingContinuation { opening.start($0) }
+        }
+        try await waitUntil { opening.isWaiting }
+        opening.finish(nil)
+        opening.finish(URLError(.timedOut))
+        try await waiting.value
+    }
+
+    @Test func theDefaultConnectorWaitsTenSecondsAtMost() {
+        let connector = URLSessionWebSocketConnector()
+        #expect(connector.timeout == 10)
+        #expect(connector.sleeper is TaskSleeper)
     }
 
     @Test func aFailedPingWithoutACloseCodeRethrows() async {
@@ -246,7 +340,7 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
 
     @Test func aServerCloseWhileReadingReportsTheCode() async throws {
         let connection = try await connector.connect(request)
-        task.state.withLock { $0.closeCode = .init(rawValue: 1013)! }
+        task.serverCloses(code: 1013)
         await #expect(throws: WebSocketClosed(code: 1013, reason: nil)) {
             _ = try await connection.receive()
         }

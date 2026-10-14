@@ -1,4 +1,4 @@
-"""A pixie run's system prompt: who it is, its soul, memory, notes and recent talk (D057).
+"""A pixie run's system prompt: who it is, its soul, memory, notes and recent talk (D072).
 
 Every pixie run starts a fresh Claude Code session, so this is all it knows of earlier
 runs besides what its tools read.

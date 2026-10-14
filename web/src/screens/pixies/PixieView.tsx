@@ -21,7 +21,7 @@ interface Props {
   tab?: PixieTab | undefined;
 }
 
-/** A pixie's page: its one ongoing chat, and the details that set it up (D057). */
+/** A pixie's page: its one ongoing chat, and the details that set it up (D072). */
 export function PixieView({ id, onBack, tab: first = "chat" }: Props) {
   const { state } = useStore();
   const pixie = state.pixies[id];
@@ -84,13 +84,10 @@ function PixieChat({ pixie }: { pixie: Pixie }) {
   const { state, actions } = useStore();
   const chatId = pixie.chat_session_id;
   const session = chatId === null ? undefined : state.sessions[chatId];
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (chatId === null) return;
-    void actions.openChat(chatId).then(() => {
-      setLoaded(true);
-    });
+    void actions.openChat(chatId);
     return () => {
       actions.closeChat(chatId);
     };
@@ -112,7 +109,8 @@ function PixieChat({ pixie }: { pixie: Pixie }) {
         <Transcript
           session={session}
           background={state.tracking[session.id]?.background ?? NO_BACKGROUND}
-          loaded={loaded}
+          history={state.history[session.id] ?? "loading"}
+          onRetry={() => void actions.reloadChat(session.id)}
         />
       )}
       <Composer pixie={pixie.id} chat={session} />

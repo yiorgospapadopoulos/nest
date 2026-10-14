@@ -2,8 +2,6 @@
 
 from typing import Final
 
-DAEMON_STARTED: Final = "daemon.started"
-DEVICE_PAIRED: Final = "device.paired"
 DEVICE_REVOKED: Final = "device.revoked"
 
 # A repo was registered; global, `{name, repo}` as in REPO_UPDATED. Clients add it.
@@ -76,7 +74,7 @@ CLAUDE_CHATS_UPDATED: Final = "claude_chats.updated"
 # Subscription usage windows reported by the agent engine; global, not per session.
 USAGE_UPDATED: Final = "usage.updated"
 
-# Pixies (D057); global. A pixie was created or changed, `{pixie}` with the whole pixie,
+# Pixies (D072); global. A pixie was created or changed, `{pixie}` with the whole pixie,
 # or deleted, `{pixie_id}`. Clients replace or drop their copy.
 PIXIE_UPDATED: Final = "pixie.updated"
 PIXIE_DELETED: Final = "pixie.deleted"

@@ -50,7 +50,7 @@ class SessionReactions:
         tracker = await self._tracking.sync(session.id)
         if session.state is SessionState.IDLE:
             # The agent may have made a plain folder a git repository (D041); a plain
-            # folder and a pixie chat have nothing to review (D057).
+            # folder and a pixie chat have nothing to review (D072).
             git = session.pixie_id is None and await self._repos.has_git(session.repo)
             # A review announces itself; otherwise the user hears the turn finished.
             if not git or await self._reviews.turn_ended(session) is None:
@@ -75,6 +75,9 @@ class SessionReactions:
 
     async def engine_reported(self, details: EngineDetails) -> None:
         await self._engine.report(details)
+
+    async def purged(self, session_id: str) -> None:
+        self._tracking.forget(session_id)
 
     async def _notify(self, session: Session, kind: NotifyKind, text: str) -> None:
         await self._notifier.notify(

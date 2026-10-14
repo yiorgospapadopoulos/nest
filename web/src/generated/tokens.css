@@ -2,8 +2,6 @@
 
 :root {
   --page-base: #eeeeec;
-  --page-glow-start: rgba(150,170,190,0.2);
-  --page-glow-end: rgba(205,190,165,0.18);
   --text-primary: #1a1b20;
   --text-secondary: rgba(26,27,32,0.68);
   --text-tertiary: rgba(26,27,32,0.64);
@@ -13,8 +11,6 @@
   --fill-strong: rgba(0,0,0,0.085);
   --surface-code: rgba(255,255,255,0.55);
   --surface-scrim: rgba(236,238,246,0.34);
-  --surface-strip: rgba(22,26,48,0.08);
-  --surface-shell: rgba(255,255,255,0.36);
   --surface-neutral-bubble: rgba(255,255,255,0.92);
   --diff-added-fill: rgba(34,165,89,0.13);
   --diff-added-text: #14723a;
@@ -79,24 +75,6 @@
   --glass-blur-normal: 20px;
   --glass-blur-heavy: 30px;
   --glass-saturation: 185%;
-  --radius-window: 24px;
-  --radius-sheet: 24px;
-  --radius-sheet-phone: 30px;
-  --radius-panel: 20px;
-  --radius-pane: 18px;
-  --radius-card: 16px;
-  --radius-card-phone: 22px;
-  --radius-control: 10px;
-  --radius-chip: 7px;
-  --radius-pill: 999px;
-  --spacing-xxs: 2px;
-  --spacing-xs: 4px;
-  --spacing-sm: 6px;
-  --spacing-md: 8px;
-  --spacing-lg: 10px;
-  --spacing-xl: 12px;
-  --spacing-xxl: 16px;
-  --spacing-xxxl: 24px;
   --typography-family-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --typography-family-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --typography-size-micro: 10px;
@@ -106,30 +84,10 @@
   --typography-size-callout: 12.5px;
   --typography-size-body: 13px;
   --typography-size-subhead: 14px;
-  --typography-size-body-phone: 15px;
   --typography-size-headline: 17px;
-  --typography-size-title: 19px;
-  --typography-size-large-title: 32px;
-  --typography-weight-regular: 400;
-  --typography-weight-medium: 500;
-  --typography-weight-semibold: 600;
-  --typography-weight-emphasized: 650;
-  --typography-weight-bold: 700;
-  --typography-weight-heavy: 800;
-  --typography-line-height-tight: 1.1;
-  --typography-line-height-body: 1.4;
-  --motion-duration-instant: 150ms;
-  --motion-duration-fast: 200ms;
-  --motion-duration-normal: 300ms;
-  --motion-duration-sheet: 340ms;
-  --motion-duration-slow: 400ms;
   --motion-duration-pulse: 1800ms;
   --motion-duration-attention: 2600ms;
-  --motion-easing-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
-  --motion-easing-ease-out: cubic-bezier(0, 0, 0.58, 1);
-  --motion-easing-ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
   --motion-easing-glide: cubic-bezier(0.2, 0.9, 0.25, 1);
-  --motion-easing-pop: cubic-bezier(0.2, 0.9, 0.3, 1.15);
   --glass-backdrop-blur: 10px;
   --glass-backdrop-saturation: 160%;
   --glass-radius-window: 24px;
@@ -163,19 +121,15 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --page-base: #0c0c0d;
-    --page-glow-start: rgba(110,130,160,0.12);
-    --page-glow-end: rgba(160,140,110,0.07);
     --text-primary: #f2f3f7;
     --text-secondary: rgba(242,243,247,0.7);
-    --text-tertiary: rgba(242,243,247,0.47);
+    --text-tertiary: rgba(242,243,247,0.56);
     --line-hairline: rgba(255,255,255,0.09);
     --line-strong: rgba(255,255,255,0.18);
     --fill-subtle: rgba(255,255,255,0.065);
     --fill-strong: rgba(255,255,255,0.12);
     --surface-code: rgba(0,0,0,0.25);
     --surface-scrim: rgba(0,0,0,0.3);
-    --surface-strip: rgba(0,0,0,0.34);
-    --surface-shell: rgba(255,255,255,0.045);
     --surface-neutral-bubble: rgba(255,255,255,0.12);
     --diff-added-fill: rgba(53,208,122,0.15);
     --diff-added-text: #6be3a0;
@@ -243,19 +197,15 @@
 
 :root[data-theme="dark"] {
   --page-base: #0c0c0d;
-  --page-glow-start: rgba(110,130,160,0.12);
-  --page-glow-end: rgba(160,140,110,0.07);
   --text-primary: #f2f3f7;
   --text-secondary: rgba(242,243,247,0.7);
-  --text-tertiary: rgba(242,243,247,0.47);
+  --text-tertiary: rgba(242,243,247,0.56);
   --line-hairline: rgba(255,255,255,0.09);
   --line-strong: rgba(255,255,255,0.18);
   --fill-subtle: rgba(255,255,255,0.065);
   --fill-strong: rgba(255,255,255,0.12);
   --surface-code: rgba(0,0,0,0.25);
   --surface-scrim: rgba(0,0,0,0.3);
-  --surface-strip: rgba(0,0,0,0.34);
-  --surface-shell: rgba(255,255,255,0.045);
   --surface-neutral-bubble: rgba(255,255,255,0.12);
   --diff-added-fill: rgba(53,208,122,0.15);
   --diff-added-text: #6be3a0;

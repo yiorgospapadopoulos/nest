@@ -6,7 +6,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import type { PixieTab } from "./PixieView.tsx";
 import { Sprite } from "./Sprite.tsx";
 
-// One-tap starters while the user has no pixies; nothing is created without the tap (D057).
+// One-tap starters while the user has no pixies; nothing is created without the tap (D072).
 const TEMPLATES: readonly { name: string; mascot: Mascot; soul: string }[] = [
   {
     name: "Reviewer",

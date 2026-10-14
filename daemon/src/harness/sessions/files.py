@@ -11,7 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from harness.clock import Clock
-from harness.gitops.runner import GitError, run_git
+from harness.gitops.hardened import run_hardened_git
+from harness.gitops.runner import GitError
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class _Listing:
 
 class FileIndex:
     def __init__(
-        self, clock: Clock, git: GitRunner = run_git, ttl: timedelta = LISTING_TTL
+        self, clock: Clock, git: GitRunner = run_hardened_git, ttl: timedelta = LISTING_TTL
     ) -> None:
         self._clock = clock
         self._git = git

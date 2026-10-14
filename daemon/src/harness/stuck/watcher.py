@@ -42,6 +42,10 @@ _ACTIVITY = frozenset(
         types.SESSION_USER_MESSAGE,
         types.SESSION_MESSAGE,
         types.SESSION_DELTA,
+        # Thinking streams no text, and a notice (a retry, a compaction) shows the turn
+        # is alive too (IMP-15, IMP-30).
+        types.SESSION_THINKING,
+        types.SESSION_NOTICE,
         types.SESSION_RESULT,
         types.SESSION_AGENT_TASK,
         types.APPROVAL_CREATED,
@@ -74,8 +78,10 @@ class _Turn:
     )
     # The latest tool call of the main agent (None) and of each subagent (its tool use id).
     repeats: dict[str | None, _Repeat] = field(default_factory=dict[str | None, _Repeat])
+    # The main agent is thinking: no output, yet not silent.
+    thinking: bool = False
     flag: StuckFlag | None = None
-    # A pixie's chat is never flagged: no inbox shows its stuck card (D057). None until
+    # A pixie's chat is never flagged: no inbox shows its stuck card (D072). None until
     # a condition first holds and the session is looked up.
     pixie_chat: bool | None = None
     # Reasons already notified in this turn.
@@ -157,12 +163,18 @@ class StuckWatcher:
         if event.type == types.SESSION_USER_MESSAGE:
             # A queued message or a nudge starts the next turn without leaving `running`.
             turn.started = event.ts
+            turn.thinking = False
             turn.repeats.clear()
             turn.announced.clear()
         elif event.type in (types.APPROVAL_CREATED, types.APPROVAL_RESOLVED):
             _note_prompt(turn, event)
         elif event.type == types.SESSION_MESSAGE:
             _note_calls(turn, event)
+        if event.type == types.SESSION_THINKING:
+            turn.thinking = event.payload.get("active") is True
+        elif _main_output(event):
+            # Output after thinking ends it, also when its end was never reported (BUG-91).
+            turn.thinking = False
         await self._evaluate(session_id, turn)
 
     async def _end(self, session_id: str) -> None:
@@ -222,6 +234,13 @@ class StuckWatcher:
                 logger.warning("stuck check failed (%s)", type(error).__name__)
 
 
+def _main_output(event: Event) -> bool:
+    """Text, a message or a notice from the main agent's turn (a subagent's runs beside)."""
+    if event.type == types.SESSION_MESSAGE:
+        return event.payload.get("parent_tool_use_id") is None
+    return event.type in (types.SESSION_DELTA, types.SESSION_NOTICE)
+
+
 def _note_prompt(turn: _Turn, event: Event) -> None:
     approval = event.payload.get("approval")
     if not isinstance(approval, dict):
@@ -267,6 +286,7 @@ def _condition(turn: _Turn, settings: StuckSettings, now: datetime) -> StuckFlag
     if (
         settings.silent_minutes
         and not turn.prompts
+        and not turn.thinking
         and quiet >= timedelta(minutes=settings.silent_minutes)
     ):
         details = f"No new output for {_minutes(quiet)}"

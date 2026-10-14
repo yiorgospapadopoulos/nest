@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from harness.approvals.models import Approval, ApprovalKind
+from harness.config.models import PlanApprovalMode
 from harness.errors import InvalidInputError
 
 
@@ -13,7 +14,9 @@ class ResolveApproval(BaseModel):
     rest of the session. Question: `answers` (question text to the chosen label or free
     text; a list for several choices) or `dismiss` with an optional `message`. Plan:
     `decision` (approve, or keep_planning with an optional `message` for the agent).
-    Merge: `dismiss` only; merging goes through the session's merge action.
+    An approved plan continues in `mode`: acceptEdits (the default), default, or auto with
+    a model that supports it. Merge: `dismiss` only; merging goes through the session's
+    merge action.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -24,6 +27,7 @@ class ResolveApproval(BaseModel):
     answers: dict[str, str | list[str]] | None = None
     dismiss: bool = False
     decision: Literal["approve", "keep_planning"] | None = None
+    mode: PlanApprovalMode | None = None
 
 
 def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonValue]:
@@ -40,14 +44,20 @@ def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonV
 
 
 def _permission(body: ResolveApproval) -> dict[str, JsonValue]:
-    if body.behavior is None or body.answers is not None or body.dismiss or body.decision:
+    if (
+        body.behavior is None
+        or body.answers is not None
+        or body.dismiss
+        or body.decision
+        or body.mode
+    ):
         msg = "a permission is resolved with a behavior (allow or deny) only"
         raise InvalidInputError(msg)
     return {"behavior": body.behavior, "message": body.message, "always": body.always}
 
 
 def _merge(body: ResolveApproval) -> dict[str, JsonValue]:
-    if not body.dismiss or body.behavior or body.answers is not None or body.decision:
+    if not body.dismiss or body.behavior or body.answers is not None or body.decision or body.mode:
         msg = "a merge is done with the session's merge action, or dismissed with dismiss"
         raise InvalidInputError(msg)
     return {"dismissed": True}
@@ -60,18 +70,19 @@ def _plan(body: ResolveApproval) -> dict[str, JsonValue]:
         or body.answers is not None
         or body.dismiss
         or body.always
+        or (body.mode is not None and body.decision != "approve")
     ):
         msg = "a plan is resolved with a decision (approve or keep_planning) only"
         raise InvalidInputError(msg)
     if body.decision == "approve":
-        return {"decision": "approve"}
+        return {"decision": "approve", "mode": body.mode or "acceptEdits"}
     note = (body.message or "").strip()
     return {"decision": "keep_planning", "message": note or None}
 
 
 def _question(approval: Approval, body: ResolveApproval) -> dict[str, JsonValue]:
-    if body.behavior is not None or body.decision is not None:
-        msg = "a question takes answers or dismiss, not a behavior or decision"
+    if body.behavior is not None or body.decision is not None or body.mode is not None:
+        msg = "a question takes answers or dismiss, not a behavior, decision or mode"
         raise InvalidInputError(msg)
     if body.dismiss:
         if body.answers is not None:

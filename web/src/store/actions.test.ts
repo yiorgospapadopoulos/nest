@@ -92,7 +92,7 @@ describe("pixie actions", () => {
       stale: { text: "Theirs", hash: "h3" },
     });
     // A body without the file reads as empty.
-    api.savePixieFile.mockRejectedValueOnce(new ApiError(409, "changed", "stale_file", null));
+    api.savePixieFile.mockRejectedValueOnce(new ApiError(409, "changed", "stale_file"));
     expect(await actions.savePixieFile("p1", "soul", "Mine", "h1")).toEqual({
       stale: { text: "", hash: null },
     });

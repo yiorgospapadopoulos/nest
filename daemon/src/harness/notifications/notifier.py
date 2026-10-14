@@ -41,7 +41,7 @@ class Notifier:
             "text": text,
         }
         if repo.startswith(PIXIE_REPO_PREFIX):
-            # A pixie's chat: the phone names the pixie and opens its page (D057).
+            # A pixie's chat: the phone names the pixie and opens its page (D072).
             pixie_id = repo.removeprefix(PIXIE_REPO_PREFIX)
             payload["pixie_id"] = pixie_id
             name = None if self._pixie_name is None else await self._pixie_name(pixie_id)

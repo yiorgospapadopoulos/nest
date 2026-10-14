@@ -62,6 +62,9 @@ async def test_before_the_engine_reported_the_aliases_and_an_empty_account_show(
         "description": "Fastest, for quick answers",
         "effort_levels": [],
         "supports_effort": False,
+        "supports_auto_mode": False,
+        "resolved_model": None,
+        "claude_code_effort": None,
     }
     assert account == {"display_name": None, "email": None, "plan": None, "organization": None}
 
@@ -85,6 +88,9 @@ async def test_the_engine_list_and_account_are_served_in_claude_codes_order(api:
         "description": "opus model",
         "effort_levels": LEVELS,
         "supports_effort": True,
+        "supports_auto_mode": False,
+        "resolved_model": None,
+        "claude_code_effort": None,
     }
     assert account == {
         "display_name": None,
@@ -128,10 +134,11 @@ async def test_a_session_run_refreshes_the_list(api: Api) -> None:
 async def test_agent_defaults_start_in_place_with_claude_codes_choices(api: Api) -> None:
     defaults = (await api.http.get("/api/agents/defaults")).json()
 
+    # A null mode is Claude Code's own `defaultMode` (IMP-06).
     assert defaults == {
         "model": None,
         "effort": None,
-        "permission_mode": "default",
+        "permission_mode": None,
         "mode": "in_place",
     }
 
@@ -191,7 +198,7 @@ async def test_effort_is_checked_against_the_engine_list(api: Api) -> None:
     assert haiku.json() == {
         "model": "haiku",
         "effort": None,
-        "permission_mode": "default",
+        "permission_mode": None,
         "mode": "in_place",
     }
     assert session.status_code == 422
@@ -214,7 +221,7 @@ async def test_unlisted_models_and_the_fallback_list_are_not_checked(api: Api) -
     [
         {"model": ""},
         {"effort": "huge"},
-        {"permission_mode": "auto"},
+        {"permission_mode": "dontAsk"},
         {"mode": "elsewhere"},
         {"idle_close_minutes": 5},
     ],
@@ -232,3 +239,52 @@ async def test_agent_defaults_never_overwrite_a_broken_settings_file(api: Api) -
 
     assert response.status_code == 409
     assert api.ctx.paths.settings_file.read_text(encoding="utf-8") == "[agents\n"
+
+
+async def test_models_say_which_run_in_auto_and_claude_codes_own_effort(api: Api) -> None:
+    """IMP-06, IMP-07: from the engine's list and your Claude Code settings."""
+    api.engine.info = server_info("default", "opus", "haiku", auto=("opus",))
+    assert await api.ctx.engine.refresh()
+    claude_dir = api.ctx.paths.claude_dir
+    assert claude_dir is not None
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    settings = {"effortLevel": "high", "modelSettings": {"opus": {"effortLevel": "medium"}}}
+    (claude_dir / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+
+    models = (await api.http.get("/api/models")).json()["models"]
+
+    assert [(m["value"], m["supports_auto_mode"], m["claude_code_effort"]) for m in models] == [
+        ("default", False, "high"),
+        ("opus", True, "medium"),
+        ("haiku", False, None),
+    ]
+
+
+async def test_auto_is_a_default_only_for_a_model_that_supports_it(api: Api) -> None:
+    api.engine.info = server_info("default", "opus", auto=("opus",))
+    assert await api.ctx.engine.refresh()
+
+    refused = await api.http.put("/api/agents/defaults", json={"permission_mode": "auto"})
+    opus = await api.http.put(
+        "/api/agents/defaults", json={"model": "opus", "permission_mode": "auto"}
+    )
+
+    assert refused.status_code == 422
+    assert refused.json() == {"detail": "Default does not support Auto mode"}
+    assert opus.status_code == 200
+    assert opus.json()["permission_mode"] == "auto"
+
+
+async def test_a_null_default_mode_leaves_the_mode_to_claude_code(api: Api) -> None:
+    await api.http.put("/api/agents/defaults", json={"permission_mode": "plan"})
+
+    cleared = await api.http.put("/api/agents/defaults", json={"permission_mode": None})
+    api.provider.script(reply("ok"))
+    session = await create_with_defaults(api)
+
+    assert cleared.json()["permission_mode"] is None
+    data = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
+    assert "permission_mode" not in data["agents"]
+    assert (session["permission_mode"], session["follows_claude_code_mode"]) == ("default", True)
+    await reach(api, str(session["id"]), "idle")
+    assert api.provider.runs[0].spec.permission_mode is None

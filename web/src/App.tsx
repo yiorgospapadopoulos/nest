@@ -7,6 +7,7 @@ import { Shell } from "./screens/Shell.tsx";
 import { useStore } from "./store/context.ts";
 import { StoreProvider } from "./store/StoreProvider.tsx";
 import { Toast } from "./ui/Toast.tsx";
+import { usePauseWhenHidden } from "./ui/visible.ts";
 
 interface Props {
   api: Api;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function App({ api, connect, storage, location }: Props) {
+  usePauseWhenHidden();
   return (
     <AppearanceProvider {...(storage === undefined ? {} : { storage })}>
       <StoreProvider
@@ -62,14 +64,14 @@ function Root() {
   }
 }
 
-/** A small note while the live connection to the Mac is being restored. */
+/**
+ * A small note while the live connection to the Mac is being restored. The status region
+ * stays in place, as VoiceOver often misses one inserted together with its text.
+ */
 function Reconnecting() {
   const { state } = useStore();
-  if (!state.reconnecting) return null;
   return (
-    <p className="reconn gl" role="status">
-      Reconnecting...
-    </p>
+    <div role="status">{state.reconnecting && <p className="reconn gl">Reconnecting...</p>}</div>
   );
 }
 

@@ -44,12 +44,19 @@ struct TokenStub: TokenStore {
 /// A Keychain whose token changes, as when the daemon stores a new one.
 final class ChangingTokens: TokenStore {
     let token: Mutex<String?>
+    /// Whether each read ran on the main thread, where a Keychain prompt would freeze it.
+    let readsOnMain = Mutex<[Bool]>([])
+    let failure = Mutex<TokenStoreError?>(nil)
 
     init(_ token: String?) {
         self.token = Mutex(token)
     }
 
     func deviceToken() throws -> String? {
-        token.withLock { $0 }
+        readsOnMain.withLock { $0.append(Thread.isMainThread) }
+        if let failure = failure.withLock({ $0 }) {
+            throw failure
+        }
+        return token.withLock { $0 }
     }
 }

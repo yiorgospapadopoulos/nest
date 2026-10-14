@@ -6,8 +6,16 @@ import Observation
 public final class ApprovalsStore {
     /// Oldest first, as the daemon lists them.
     public private(set) var pending: [Approval] = []
-    /// Loaded diffs by session id.
+    /// The diff of each session's pending review, as last read; a reload keeps it on
+    /// screen until the new one arrives.
     public private(set) var diffs: [String: SessionDiff] = [:]
+    /// Sessions whose diff is being read.
+    public private(set) var loadingDiffs: Set<String> = []
+    /// The review each session's diff was last read for, while that read is the latest and
+    /// it succeeded: Approve waits for it (audit BUG-83, M-5).
+    private var loadedReviews: [String: String] = [:]
+    /// Counts the reads of each session's diff, so only the latest one is kept.
+    @ObservationIgnored private var diffReads: [String: Int] = [:]
     /// Approvals with a resolve, approve, reject or feedback call in flight.
     public private(set) var busy: Set<String> = []
     /// Reviews whose git violation the user acknowledged, by approval id.
@@ -20,15 +28,26 @@ public final class ApprovalsStore {
     private var freeAnswers: [String: [String: String]] = [:]
     /// Notes for Keep planning, by approval id.
     private var planNotes: [String: String] = [:]
+    /// How the chat goes on after Approve plan, by approval id, when the user chose.
+    private var planModes: [String: PermissionMode] = [:]
 
     let api: any HarnessAPI
+    @ObservationIgnored private let live = LiveEventLog()
 
     public init(api: any HarnessAPI) {
         self.api = api
     }
 
+    /// Loads the pending approvals; live approval events that arrive meanwhile apply
+    /// again on top, so an approval created during a resync stays.
     public func load() async throws {
-        pending = try await api.approvals(status: .pending, project: nil)
+        _ = try await live.read {
+            try await self.api.approvals(status: .pending, project: nil)
+        } store: {
+            pending = $0
+        } replay: {
+            apply($0.body)
+        }
     }
 
     public func pending(repo: String) -> [Approval] {
@@ -124,9 +143,22 @@ public final class ApprovalsStore {
         planNotes[approval.id] = note
     }
 
-    /// Continues with the plan; the daemon switches the chat to Accept edits.
-    public func approvePlan(_ approval: Approval) async throws {
-        try await resolve(approval, .approvePlan)
+    /// How the chat goes on once the plan is approved: Accept edits until the user picks.
+    public func planMode(for approval: Approval) -> PermissionMode {
+        planModes[approval.id] ?? .acceptEdits
+    }
+
+    public func setPlanMode(_ mode: PermissionMode, for approval: Approval) {
+        planModes[approval.id] = mode
+    }
+
+    /// Continues with the plan; the daemon switches the chat to the chosen mode, which
+    /// is returned.
+    @discardableResult
+    public func approvePlan(_ approval: Approval) async throws -> PermissionMode {
+        let mode = planMode(for: approval)
+        try await resolve(approval, .approvePlan(mode: mode))
+        return mode
     }
 
     /// Sends Claude back to planning with the typed note, if any.
@@ -136,11 +168,38 @@ public final class ApprovalsStore {
 
     // MARK: Reviews
 
+    /// Reads the review's diff again; the sheets call it each time they open, and a
+    /// refused approve calls it too. The diff shown stays until the new one arrives. When
+    /// the changes or HEAD differ from the ones shown, "I checked" has to be given again.
     @discardableResult
-    public func loadDiff(session: String) async throws -> SessionDiff {
+    public func loadDiff(for approval: Approval) async throws -> SessionDiff {
+        let session = approval.sessionID
+        let read = (diffReads[session] ?? 0) + 1
+        diffReads[session] = read
+        loadingDiffs.insert(session)
+        loadedReviews[session] = nil
+        defer {
+            if diffReads[session] == read {
+                loadingDiffs.remove(session)
+            }
+        }
         let diff = try await api.diff(session)
+        // A newer read, or the review going away, replaced this one meanwhile.
+        guard diffReads[session] == read else { return diff }
+        if let shown = diffs[session],
+            shown.fingerprint != diff.fingerprint || shown.head != diff.head
+        {
+            acknowledgedViolations.remove(approval.id)
+        }
         diffs[session] = diff
+        loadedReviews[session] = approval.id
         return diff
+    }
+
+    /// The review's diff was read for it and no newer read runs: what Approve sends back.
+    public func isReviewLoaded(_ approval: Approval) -> Bool {
+        loadedReviews[approval.sessionID] == approval.id
+            && !loadingDiffs.contains(approval.sessionID)
     }
 
     /// The approve sheet's starting point for a review of this session.
@@ -155,18 +214,27 @@ public final class ApprovalsStore {
     }
 
     /// Commits, and pushes and opens a pull request as the form asks; progress follows
-    /// the daemon's git events. A failed step leaves the review pending for a retry.
+    /// the daemon's git events. A failed step leaves the review pending for a retry. The
+    /// HEAD commit and fingerprint of the diff read for this review go along, so the daemon
+    /// refuses if either changed since; without that diff nothing is sent.
     @discardableResult
     public func publish(_ approval: Approval, _ form: PublishForm) async throws -> Session {
+        guard isReviewLoaded(approval), let diff = diffs[approval.sessionID] else {
+            throw APIError.invalidInput("The changes are still loading. Approve once they show.")
+        }
         let progress = PublishProgress(steps: form.steps)
         publishing[approval.sessionID] = progress
         progress.start()
+        var request = form.request
+        request.expectedHead = diff.head?.commit
+        request.expectedFingerprint = diff.fingerprint
         do {
             let session = try await track(approval) {
-                try await self.api.approve(approval.sessionID, form.request)
+                try await self.api.approve(approval.sessionID, request)
             }
             progress.finish(session)
             remove(approval.id)
+            forgetDiff(of: approval.sessionID)
             return session
         } catch {
             progress.finish(error as? APIError ?? .transport(error.localizedDescription))
@@ -178,6 +246,7 @@ public final class ApprovalsStore {
     public func reject(_ approval: Approval) async throws -> Session {
         let session = try await track(approval) { try await self.api.reject(approval.sessionID) }
         remove(approval.id)
+        forgetDiff(of: approval.sessionID)
         return session
     }
 
@@ -188,6 +257,7 @@ public final class ApprovalsStore {
             try await self.api.feedback(approval.sessionID, text: text)
         }
         remove(approval.id)
+        forgetDiff(of: approval.sessionID)
         return session
     }
 
@@ -210,6 +280,7 @@ public final class ApprovalsStore {
 
     /// Approval events, and the git steps of an approve call in flight.
     public func apply(_ event: Event) {
+        live.record(event)
         apply(event.body)
         guard let session = event.sessionID, let progress = publishing[session] else { return }
         switch event.body {
@@ -227,11 +298,18 @@ public final class ApprovalsStore {
         case .approvalCreated(let approval) where approval.status == .pending:
             remove(approval.id)
             pending.append(approval)
+            // A new review of the chat makes the diff read for the old one stale.
+            if approval.kind == .review && loadedReviews[approval.sessionID] != approval.id {
+                forgetDiff(of: approval.sessionID)
+            }
         case .approvalResolved(let approval):
             remove(approval.id)
+            if approval.kind == .review {
+                forgetDiff(of: approval.sessionID)
+            }
         case .sessionDeleted(let session):
             pending.removeAll { $0.sessionID == session }
-            diffs[session] = nil
+            forgetDiff(of: session)
             publishing[session] = nil
         default:
             break
@@ -250,11 +328,20 @@ public final class ApprovalsStore {
         return try await call()
     }
 
+    /// Drops the session's diff, and the result of any read still running.
+    private func forgetDiff(of session: String) {
+        diffs[session] = nil
+        loadedReviews[session] = nil
+        loadingDiffs.remove(session)
+        diffReads[session, default: 0] += 1
+    }
+
     private func remove(_ id: String) {
         pending.removeAll { $0.id == id }
         choices[id] = nil
         freeAnswers[id] = nil
         planNotes[id] = nil
+        planModes[id] = nil
         acknowledgedViolations.remove(id)
     }
 }

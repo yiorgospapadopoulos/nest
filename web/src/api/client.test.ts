@@ -130,10 +130,10 @@ const calls: Call[] = [
   ["diff", (a) => a.diff("s1"), "GET", "/api/sessions/s1/diff", undefined],
   [
     "approve",
-    (a) => a.approve("s1", { commit_message: "m" }),
+    (a) => a.approve("s1", { commit_message: "m", expected_fingerprint: "f1" }),
     "POST",
     "/api/sessions/s1/approve",
-    { commit_message: "m" },
+    { commit_message: "m", expected_fingerprint: "f1" },
   ],
   ["reject", (a) => a.reject("s1"), "POST", "/api/sessions/s1/reject", undefined],
   [
@@ -201,6 +201,43 @@ const calls: Call[] = [
     "/api/agents/defaults",
     agentDefaults({ model: "opus" }),
   ],
+  [
+    "remove repo",
+    (a) => a.removeRepo("todo ui", false),
+    "DELETE",
+    "/api/repos/todo%20ui?purge_sessions=false",
+    undefined,
+  ],
+  [
+    "remove repo and its chats",
+    (a) => a.removeRepo("todo-ui", true),
+    "DELETE",
+    "/api/repos/todo-ui?purge_sessions=true",
+    undefined,
+  ],
+  [
+    "worktree default",
+    (a) => a.updateRepo("todo-ui", { default: false }),
+    "PATCH",
+    "/api/repos/todo-ui",
+    { default: false },
+  ],
+  [
+    "links and setup",
+    (a) => a.updateRepo("todo-ui", { link: [".env"], setup: ["npm ci"] }),
+    "PATCH",
+    "/api/repos/todo-ui",
+    { link: [".env"], setup: ["npm ci"] },
+  ],
+  ["ci feedback", (a) => a.ciFeedback("s1"), "POST", "/api/sessions/s1/ci-feedback", undefined],
+  [
+    "rewind preview",
+    (a) => a.rewindPreview("s1", 42),
+    "GET",
+    "/api/sessions/s1/rewind?message=42",
+    undefined,
+  ],
+  ["rewind", (a) => a.rewind("s1", 42), "POST", "/api/sessions/s1/rewind", { message: 42 }],
   [
     "redeem",
     (a) => a.redeem("ABCD2345", "iPhone"),
@@ -310,15 +347,35 @@ describe("HttpApi", () => {
     });
   });
 
-  it("keeps the whole body of a refusal", async () => {
+  it("keeps the whole refusal for the fields some carry", async () => {
+    const body = {
+      detail: "origin now pushes to x",
+      code: "remote_changed",
+      remote_urls: ["https://github.com/me/x.git"],
+      confirmed_url: "https://github.com/me/y.git",
+    };
+    const { api } = setup(409, body);
+
+    await expect(
+      api.approve("s1", { commit_message: "m", expected_fingerprint: "f1" }),
+    ).rejects.toMatchObject({
+      code: "remote_changed",
+      data: body,
+    });
+    await expect(
+      new HttpApi(() => Promise.resolve(jsonResponse(409, ["x"]))).repos(),
+    ).rejects.toMatchObject({ data: {} });
+  });
+
+  it("keeps the whole body of a stale-file refusal", async () => {
     const body = { detail: "soul changed", code: "stale_file", text: "Theirs", hash: "h2" };
     const { api } = setup(409, body);
 
     await expect(api.savePixieFile("p1", "soul", "Mine", "h1")).rejects.toMatchObject({
       code: "stale_file",
-      body,
+      data: body,
     });
-    expect(new ApiError(500, "x").body).toBeNull();
+    expect(new ApiError(500, "x").data).toEqual({});
   });
 
   it.each([

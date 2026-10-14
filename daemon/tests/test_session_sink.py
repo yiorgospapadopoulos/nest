@@ -49,6 +49,9 @@ class RecordingTurns:
     async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
         self.calls.append(("mode", mode))
 
+    async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
+        self.calls.append(("checkpoint", checkpoint_id))
+
 
 @pytest.fixture
 def bus(db: Database, clock: FakeClock) -> EventBus:
@@ -252,6 +255,7 @@ async def test_notices_are_stored_and_a_retry_only_once_a_turn(
     await sink.notice("api_retry", "API error, retrying")
     await sink.notice("compacted", "Conversation compacted")
     await sink.permission_mode("plan")
+    await sink.checkpoint("msg-1")
 
     assert await notices(bus, session.id) == [
         {"kind": "api_retry", "text": "API error, retrying"},
@@ -259,7 +263,7 @@ async def test_notices_are_stored_and_a_retry_only_once_a_turn(
         {"kind": "api_retry", "text": "API error, retrying"},
         {"kind": "compacted", "text": "Conversation compacted"},
     ]
-    assert turns.calls[-1] == ("mode", "plan")
+    assert turns.calls[-2:] == [("mode", "plan"), ("checkpoint", "msg-1")]
 
 
 class BrokenTurns:
@@ -277,6 +281,9 @@ class BrokenTurns:
 
     async def background_tasks(self, live: LiveSession, running: int) -> None:
         raise RuntimeError("background")
+
+    async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
+        raise RuntimeError("checkpoint")
 
 
 class BrokenHooks:
@@ -300,6 +307,9 @@ class BrokenHooks:
 
     async def engine_reported(self, details: EngineDetails) -> None:
         raise LookupError("engine")
+
+    async def purged(self, session_id: str) -> None:
+        raise LookupError("purged")
 
 
 async def test_no_error_reaches_the_agent_run(
@@ -328,6 +338,7 @@ async def test_no_error_reaches_the_agent_run(
         await sink.task(AgentTask(task_id="t1", phase="started"))
         await sink.notice("compacted", "Conversation compacted")
         await sink.permission_mode("plan")
+        await sink.checkpoint("msg-1")
         await sink.stopped("process ended")
 
     kinds = [record.getMessage().split(" of session ")[0] for record in caplog.records]
@@ -351,5 +362,6 @@ async def test_no_error_reaches_the_agent_run(
         "the message hooks",
         "the notice event",
         "the mode change",
+        "the message checkpoint",
         "the run's end",
     ]

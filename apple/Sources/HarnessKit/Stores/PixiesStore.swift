@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// The user's pixies, in the order they set, with the actions of the Pixies section (D057).
+/// The user's pixies, in the order they set, with the actions of the Pixies section (D072).
 @MainActor @Observable
 public final class PixiesStore {
     /// Every pixie, hidden ones too, sorted by position.

@@ -26,6 +26,17 @@ def test_new_chats_work_in_place_unless_settings_say_otherwise(paths: AppPaths) 
     assert load_settings(paths).agents.default_mode == "worktree"
 
 
+def test_the_mode_is_claude_codes_own_unless_settings_say_otherwise(paths: AppPaths) -> None:
+    """IMP-06: no mode is passed, so Claude Code's `defaultMode` applies."""
+    assert AgentDefaults().permission_mode is None
+    assert load_settings(paths).agents.permission_mode is None
+    assert "permission_mode" not in paths.settings_file.read_text(encoding="utf-8")
+
+    paths.settings_file.write_text('[agents]\npermission_mode = "auto"\n', encoding="utf-8")
+
+    assert load_settings(paths).agents.permission_mode == "auto"
+
+
 def test_idle_agents_are_closed_after_an_hour_unless_settings_say_otherwise(
     paths: AppPaths,
 ) -> None:
@@ -114,6 +125,6 @@ def test_saving_agent_defaults_refuses_an_invalid_agents_section(paths: AppPaths
 
 
 def test_choices_reject_unknown_values() -> None:
-    for data in ({"effort": "huge"}, {"mode": "elsewhere"}, {"permission_mode": "auto"}):
+    for data in ({"effort": "huge"}, {"mode": "elsewhere"}, {"permission_mode": "dontAsk"}):
         with pytest.raises(ValidationError):
             AgentChoices.model_validate(data)

@@ -22,17 +22,17 @@ from claude_agent_sdk import (
 )
 
 from harness.providers import base
-from harness.providers.claude_messages import translate
+from harness.providers.claude_messages import TurnOutput, translate
 from harness.providers.claude_thinking import ThinkingTimer
 from tests.recording_sink import RecordingSink
 from tests.test_claude_thinking import Ticker, start, stop
 
 
 async def translated(
-    message: Message, thinking: ThinkingTimer | None = None
+    message: Message, thinking: ThinkingTimer | None = None, output: TurnOutput | None = None
 ) -> list[tuple[str, object]]:
     sink = RecordingSink()
-    await translate(message, sink, thinking or ThinkingTimer())
+    await translate(message, sink, thinking or ThinkingTimer(), output or TurnOutput())
     return sink.calls
 
 
@@ -132,6 +132,34 @@ async def test_tool_results_become_text() -> None:
     ]
 
 
+@pytest.mark.parametrize("parent", [None, "toolu_agent"])
+async def test_the_engines_own_user_text_is_not_shown_as_claudes(parent: str | None) -> None:
+    """PL-09: a skill's body, an interruption marker or a subagent's prompt arrive as user
+    messages; only their tool results belong in the transcript.
+    """
+    skill = UserMessage(
+        content=[TextBlock("Base directory for this skill: /x\n\n# Skill\nDo things.")],
+        uuid="u1",
+        parent_tool_use_id=parent,
+    )
+    mixed = UserMessage(
+        content=[
+            ToolResultBlock(tool_use_id="t1", content="Launching skill: review"),
+            TextBlock("[Request interrupted by user for tool use]"),
+        ],
+        uuid="u2",
+        parent_tool_use_id=parent,
+    )
+
+    assert await translated(skill) == []
+    assert await translated(mixed) == [
+        (
+            "message",
+            ([base.ToolResultBlock(tool_use_id="t1", content="Launching skill: review")], parent),
+        )
+    ]
+
+
 async def test_plain_user_text_is_not_repeated() -> None:
     # The session layer records what the user sent; the engine's echo is dropped.
     assert await translated(UserMessage(content="hello")) == []
@@ -217,7 +245,7 @@ async def test_a_result_ends_the_turns_thinking_timings() -> None:
         stream({"type": "content_block_delta", "delta": {"type": "thinking_delta"}}),
         stream({"type": "message_start", "message": {}}),
         SystemMessage(subtype="status", data={}),
-        SystemMessage(subtype="status", data={"status": None, "permissionMode": "auto"}),
+        SystemMessage(subtype="status", data={"status": None, "permissionMode": "dontAsk"}),
         HookEventMessage(subtype="hook_started", data={}, hook_event_name="PreToolUse"),
     ],
 )
@@ -272,6 +300,82 @@ async def test_a_permission_mode_the_engine_switched_to_is_reported() -> None:
     message = system("status", status=None, permissionMode="plan")
 
     assert await translated(message) == [("permission_mode", "plan")]
+
+
+async def test_auto_mode_is_reported() -> None:
+    """IMP-06: Claude Code's `auto` mode is one of harness's modes."""
+    message = system("status", status=None, permissionMode="auto")
+
+    assert await translated(message) == [("permission_mode", "auto")]
+
+
+@pytest.mark.parametrize(("mode", "reported"), [("acceptEdits", True), ("dontAsk", False)])
+async def test_init_reports_the_mode_the_run_works_in(mode: str, reported: bool) -> None:
+    """IMP-06: a run opened without a mode works in Claude Code's own `defaultMode`."""
+    message = SystemMessage(subtype="init", data={"session_id": "sdk-1", "permissionMode": mode})
+
+    calls = await translated(message)
+
+    assert (("permission_mode", mode) in calls) is reported
+    assert calls[:2] == [("provider_session_id", "sdk-1"), ("connectors", [])]
+
+
+def echo(content: str | list[Any], uuid: str | None = "msg-1") -> UserMessage:
+    """The engine's echo of a user message harness sent (`--replay-user-messages`)."""
+    return UserMessage(content=content, uuid=uuid)
+
+
+def awaiting() -> TurnOutput:
+    output = TurnOutput()
+    output.awaiting_replay = True
+    return output
+
+
+@pytest.mark.parametrize(
+    "content", [[TextBlock("Fix the bug")], [TextBlock("Look"), TextBlock("at this")], "/cost"]
+)
+async def test_the_echo_of_a_sent_message_gives_its_checkpoint_only(
+    content: str | list[Any],
+) -> None:
+    """IMP-02: the echo carries the id files can be restored to; the session already shows
+    the message, so it is not repeated.
+    """
+    output = awaiting()
+
+    first = await translated(echo(content), output=output)
+    again = await translated(echo([TextBlock("later text")], "msg-2"), output=output)
+
+    assert first == [("checkpoint", "msg-1")]
+    assert output.awaiting_replay is False
+    # Only the first echo after a send is the message harness sent; a later user text is
+    # the engine's own, never shown as Claude's (PL-09).
+    assert again == []
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="ok")], uuid="u"),
+        UserMessage(content=[TextBlock("subagent prompt")], uuid="u", parent_tool_use_id="t1"),
+        echo([TextBlock("no id")], uuid=None),
+        echo("<local-command-stdout>Total cost: $0</local-command-stdout>"),
+    ],
+)
+async def test_other_user_messages_are_not_the_echo(message: UserMessage) -> None:
+    output = awaiting()
+
+    calls = await translated(message, output=output)
+
+    assert all(name != "checkpoint" for name, _ in calls)
+    assert output.awaiting_replay is True
+
+
+async def test_a_turns_end_stops_waiting_for_the_echo() -> None:
+    output = awaiting()
+
+    await translated(command_result(None, num_turns=1), output=output)
+
+    assert output.awaiting_replay is False
 
 
 def rate_limit(raw: dict[str, Any]) -> RateLimitEvent:
@@ -401,3 +505,117 @@ async def test_results_without_errors_or_cost() -> None:
             is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=None, errors=[]
         ),
     )
+
+
+def command_result(result: str | None, num_turns: int = 0, is_error: bool = False) -> ResultMessage:
+    """How Claude Code ends a turn: a local command's has no model call (`num_turns` 0)."""
+    return ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=0,
+        is_error=is_error,
+        num_turns=num_turns,
+        session_id="sdk-1",
+        result=result,
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "shown"),
+    [
+        (
+            "<local-command-stdout>Total cost: $0.12\nTotal duration: 3s</local-command-stdout>",
+            "Total cost: $0.12\nTotal duration: 3s",
+        ),
+        (
+            "<local-command-stderr>/voice isn't available in this session.</local-command-stderr>",
+            "/voice isn't available in this session.",
+        ),
+        (
+            "<local-command-stdout>Set model</local-command-stdout>"
+            "<local-command-stderr>  but not saved  </local-command-stderr>",
+            "Set model\nbut not saved",
+        ),
+    ],
+)
+async def test_local_command_output_is_shown_as_a_notice(content: str, shown: str) -> None:
+    """PL-13: /cost, /context and the like answer without the model, as a user message."""
+    assert await translated(UserMessage(content=content)) == [("notice", ("command_output", shown))]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Fix the bug",
+        "<local-command-stdout>  </local-command-stdout>",
+        "<local-command-caveat>Caveat: generated by local commands</local-command-caveat>",
+        "<command-name>/cost</command-name>",
+    ],
+)
+async def test_other_plain_user_text_is_not_shown_again(content: str) -> None:
+    """The user's own prompt and Claude Code's records are not command output."""
+    assert await translated(UserMessage(content=content)) == []
+
+
+async def test_the_sdk_form_of_command_output_is_shown_as_a_notice() -> None:
+    message = system("local_command_output", content="Voice mode is on")
+
+    assert await translated(message) == [("notice", ("command_output", "Voice mode is on"))]
+
+
+@pytest.mark.parametrize("content", [" ", None, 3])
+async def test_the_sdk_form_without_output_shows_nothing(content: object) -> None:
+    assert await translated(system("local_command_output", content=content)) == []
+
+
+async def test_a_command_result_without_any_text_shown_becomes_a_notice() -> None:
+    output = TurnOutput()
+
+    first = await translated(command_result("Compacted. ctrl+o to see"), output=output)
+    # Each turn starts with nothing shown.
+    second = await translated(command_result("Again"), output=output)
+
+    assert first[0] == ("notice", ("command_output", "Compacted. ctrl+o to see"))
+    assert [name for name, _ in first] == ["notice", "provider_session_id", "result"]
+    assert second[0] == ("notice", ("command_output", "Again"))
+
+
+@pytest.mark.parametrize(
+    "shown",
+    [
+        UserMessage(content="<local-command-stdout>Total cost: $0.12</local-command-stdout>"),
+        system("local_command_output", content="Total cost: $0.12"),
+        # Claude Code also sends command output as the assistant's text.
+        AssistantMessage(content=[TextBlock("Total cost: $0.12")], model="<synthetic>"),
+        system("compact_boundary"),
+    ],
+)
+async def test_a_command_result_already_shown_is_not_repeated(shown: Message) -> None:
+    output = TurnOutput()
+    await translated(shown, output=output)
+
+    calls = await translated(command_result("Total cost: $0.12"), output=output)
+
+    assert [name for name, _ in calls] == ["provider_session_id", "result"]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        command_result("The answer", num_turns=1),
+        command_result("Prompt is too long", is_error=True),
+        command_result(None),
+        command_result("  "),
+    ],
+)
+async def test_model_turns_errors_and_empty_results_add_no_notice(result: ResultMessage) -> None:
+    """A model turn's result repeats text the agent streamed; an error shows as the state."""
+    output = TurnOutput()
+    # A subagent's text is not the answer the user saw.
+    await translated(
+        AssistantMessage(content=[TextBlock("x")], model="m", parent_tool_use_id="p"), output=output
+    )
+
+    calls = await translated(result, output=output)
+
+    assert [name for name, _ in calls] == ["provider_session_id", "result"]

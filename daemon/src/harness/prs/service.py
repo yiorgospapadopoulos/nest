@@ -7,20 +7,22 @@ Only the daemon merges: agents stay blocked from `gh pr merge` by the git guard 
 import asyncio
 import logging
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 from harness.approvals.models import ApprovalKind
 from harness.approvals.queue import ApprovalQueue
 from harness.events import types
 from harness.events.bus import EventBus
 from harness.gitops.runner import CommandError, CommandRunner, GitError
-from harness.prs.errors import NoPullRequestError, PrReadError
+from harness.prs.ci_logs import feedback
+from harness.prs.errors import NoFailingChecksError, NoPullRequestError, PrReadError
 from harness.prs.github import repo_of
 from harness.prs.models import MergeRequest, PrListItem, PrState
 from harness.prs.monitor import PrMonitor
 from harness.review.errors import GitActionError
 from harness.sessions.errors import SessionBusyError
 from harness.sessions.manager import SessionManager
-from harness.sessions.models import IN_FLIGHT, Session, SessionState
+from harness.sessions.models import IN_FLIGHT, SendResult, Session, SessionState
 from harness.sessions.store import SessionStore
 
 logger = logging.getLogger(__name__)
@@ -47,7 +49,8 @@ class PullRequests:
         self._bus = bus
         self._run = run
         self._cwd = cwd
-        self._locks: dict[str, asyncio.Lock] = {}
+        # One operation per session at a time; a lock goes once nobody holds it (IMP-13).
+        self._locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
     async def list_prs(self, repo: str | None, state: PrFilter) -> list[PrListItem]:
         """Pull requests harness opened, newest first; one not read yet counts as open."""
@@ -73,6 +76,20 @@ class PullRequests:
         session = await self._sessions.get(session_id)
         _require_pr(session)
         return await self.monitor.refresh(session)
+
+    async def send_ci_feedback(self, session_id: str) -> SendResult:
+        """Read the pull request now and send its failing checks' logs to the agent as a
+        message, which starts a turn or is queued like any other (IMP-08).
+        """
+        session = await self._sessions.get(session_id)
+        url = _require_pr(session)
+        session = await self.monitor.refresh(session)
+        failing = [] if session.pr is None else session.pr.checks.items
+        failing = [check for check in failing if check.state == "failure"]
+        if not failing:
+            raise NoFailingChecksError
+        text = await feedback(self._run, self._cwd, failing, repo_of(url))
+        return await self._sessions.send(session_id, text, [])
 
     async def merge(self, session_id: str, request: MergeRequest) -> Session:
         """Merge with gh, then close the session and remove its worktree and branch.

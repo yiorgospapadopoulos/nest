@@ -23,6 +23,10 @@ class OverflowingBus(EventBus):
         yield  # unreachable; makes this method an async generator like the original
 
 
+# The iPhone reaches the daemon by its tailnet name through `tailscale serve`.
+BASE_URL = "https://mac.tailnet.ts.net"
+
+
 @pytest.fixture
 def ctx(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Iterator[AppContext]:
     context = asyncio.run(build_context(tmp_path, clock, secrets))
@@ -32,7 +36,7 @@ def ctx(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Iterator[
 
 @pytest.fixture
 def client(ctx: AppContext) -> Iterator[TestClient]:
-    with TestClient(create_app(ctx)) as test_client:
+    with TestClient(create_app(ctx), base_url=BASE_URL) as test_client:
         yield test_client
 
 
@@ -55,20 +59,23 @@ def expect_close(client: TestClient, url: str, code: int, headers: dict[str, str
 def test_unauthenticated_socket_is_closed_with_4401(
     client: TestClient, headers: dict[str, str]
 ) -> None:
-    expect_close(client, "/api/events", 4401, headers=headers)
+    expect_close(client, "wss://mac.tailnet.ts.net/api/events", 4401, headers=headers)
 
 
 def test_replays_after_id_then_streams_live_events(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:
     auth = {"Authorization": f"Bearer {local_token(secrets)}"}
-    with client.websocket_connect("/api/events?after=0", headers=auth) as ws:
-        started = ws.receive_json()
+    stored = publish(client, ctx, "stored.event")
+    with client.websocket_connect(
+        "wss://mac.tailnet.ts.net/api/events?after=0", headers=auth
+    ) as ws:
+        replayed = ws.receive_json()
         live = publish(client, ctx, "live.event")
         received = ws.receive_json()
 
-    assert started["type"] == types.DAEMON_STARTED
-    assert started["id"] == 1
+    assert replayed == stored.model_dump(mode="json")
+    assert replayed["id"] == 1
     assert received == live.model_dump(mode="json")
 
 
@@ -76,7 +83,7 @@ def test_cookie_auth_and_live_only_without_after(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore
 ) -> None:
     cookie = {"Cookie": f"harness_token={local_token(secrets)}"}
-    with client.websocket_connect("/api/events", headers=cookie) as ws:
+    with client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=cookie) as ws:
         ws.send_text("ignored")
         live = publish(client, ctx, "live.only")
         assert ws.receive_json()["id"] == live.id
@@ -88,7 +95,7 @@ def test_disconnect_releases_the_subscription(
     auth = {"Authorization": f"Bearer {local_token(secrets)}"}
     # The notification delivery follows the bus too.
     before = ctx.bus.subscriber_count
-    with client.websocket_connect("/api/events", headers=auth):
+    with client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=auth):
         pass
 
     assert client.portal is not None
@@ -112,8 +119,8 @@ def test_revoking_a_device_closes_its_open_sockets_only(
     phone = {"Authorization": f"Bearer {phone_token}"}
 
     with (
-        client.websocket_connect("/api/events", headers=phone) as phone_ws,
-        client.websocket_connect("/api/events", headers=local) as mac_ws,
+        client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=phone) as phone_ws,
+        client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=local) as mac_ws,
     ):
         assert client.delete(f"/api/devices/{phone_id}", headers=local).status_code == 204
         with pytest.raises(WebSocketDisconnect) as closed:
@@ -133,7 +140,7 @@ def test_overflow_closes_the_socket_with_try_again_later(
     ctx.bus = OverflowingBus(ctx.db, ctx.clock)
     auth = {"Authorization": f"Bearer {local_token(secrets)}"}
 
-    expect_close(client, "/api/events?after=0", 1013, headers=auth)
+    expect_close(client, "wss://mac.tailnet.ts.net/api/events?after=0", 1013, headers=auth)
 
 
 def test_invalid_after_is_rejected(client: TestClient, secrets: FakeSecretStore) -> None:
@@ -141,7 +148,7 @@ def test_invalid_after_is_rejected(client: TestClient, secrets: FakeSecretStore)
 
     with (
         pytest.raises(WebSocketDisconnect) as closed,
-        client.websocket_connect("/api/events?after=-1", headers=auth),
+        client.websocket_connect("wss://mac.tailnet.ts.net/api/events?after=-1", headers=auth),
     ):
         pass
 
@@ -150,31 +157,42 @@ def test_invalid_after_is_rejected(client: TestClient, secrets: FakeSecretStore)
 
 @pytest.mark.parametrize(
     "origin",
-    ["https://testserver", "HTTPS://TestServer", "http://testserver"],
+    ["https://mac.tailnet.ts.net", "HTTPS://Mac.Tailnet.TS.net", "http://mac.tailnet.ts.net"],
 )
 def test_same_origin_browsers_are_accepted(
     client: TestClient, ctx: AppContext, secrets: FakeSecretStore, origin: str
 ) -> None:
     headers = {"Authorization": f"Bearer {local_token(secrets)}", "Origin": origin}
-    with client.websocket_connect("/api/events", headers=headers) as ws:
+    with client.websocket_connect("wss://mac.tailnet.ts.net/api/events", headers=headers) as ws:
         live = publish(client, ctx, "same.origin")
         assert ws.receive_json()["id"] == live.id
 
 
 @pytest.mark.parametrize(
     "origin",
-    ["https://evil.example", "https://testserver.evil.example", "null", "file://testserver", ""],
+    [
+        "https://evil.example",
+        "https://mac.tailnet.ts.net.evil.example",
+        "null",
+        "file://mac.tailnet.ts.net",
+        "",
+    ],
 )
 def test_cross_origin_sockets_are_closed_with_4403(
     client: TestClient, secrets: FakeSecretStore, origin: str
 ) -> None:
     headers = {"Authorization": f"Bearer {local_token(secrets)}", "Origin": origin}
 
-    expect_close(client, "/api/events", 4403, headers=headers)
+    expect_close(client, "wss://mac.tailnet.ts.net/api/events", 4403, headers=headers)
 
 
 def test_cross_origin_check_runs_before_authentication(client: TestClient) -> None:
-    expect_close(client, "/api/events", 4403, headers={"Origin": "https://evil.example"})
+    expect_close(
+        client,
+        "wss://mac.tailnet.ts.net/api/events",
+        4403,
+        headers={"Origin": "https://evil.example"},
+    )
 
 
 def test_allowed_origins_from_settings_are_accepted(
@@ -187,16 +205,18 @@ def test_allowed_origins_from_settings_are_accepted(
     )
     context = asyncio.run(build_context(tmp_path, clock, secrets))
     try:
-        with TestClient(create_app(context)) as test_client:
+        with TestClient(create_app(context), base_url=BASE_URL) as test_client:
             headers = {
                 "Authorization": f"Bearer {local_token(secrets)}",
                 "Origin": "https://mac.example.ts.net",
             }
-            with test_client.websocket_connect("/api/events", headers=headers) as ws:
+            with test_client.websocket_connect(
+                "wss://mac.tailnet.ts.net/api/events", headers=headers
+            ) as ws:
                 live = publish(test_client, context, "allowed.origin")
                 assert ws.receive_json()["id"] == live.id
             other = {**headers, "Origin": "https://x.y"}
-            expect_close(test_client, "/api/events", 4403, other)
+            expect_close(test_client, "wss://mac.tailnet.ts.net/api/events", 4403, other)
     finally:
         asyncio.run(context.close())
 

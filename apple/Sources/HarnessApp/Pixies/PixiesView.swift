@@ -2,7 +2,7 @@ import HarnessKit
 import SwiftUI
 
 /// The Pixies tab: the pixie list and the selected pixie's page, or the starters while
-/// there are none (D057).
+/// there are none (D072).
 struct PixiesView: View {
     @Environment(Shell.self) private var shell
     @Environment(\.glass) private var glass

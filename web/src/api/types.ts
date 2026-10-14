@@ -7,7 +7,10 @@ export type JsonObject = Record<string, JsonValue>;
 export type SessionState =
   "starting" | "running" | "waiting" | "idle" | "interrupted" | "failed" | "closed";
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
-export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan";
+// "auto" only for models that support it (`ModelOption.supports_auto_mode`).
+export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "auto";
+// How Claude continues after a plan is approved.
+export type PlanMode = "acceptEdits" | "default" | "auto";
 export type SessionMode = "worktree" | "in_place";
 
 /** How full the conversation's context window is, after the last turn. */
@@ -99,7 +102,7 @@ export interface Session {
   pr_summary: string | null;
   // Set while the chat looks stuck.
   stuck: StuckFlag | null;
-  // Set for a pixie's chat (D057).
+  // Set for a pixie's chat (D072).
   pixie_id: string | null;
 }
 
@@ -276,6 +279,8 @@ export interface FileDiff {
   deletions: number;
   binary: boolean;
   truncated: boolean;
+  // A nested git repository inside the work: shown, but never committed (approval is refused).
+  nested_repository: boolean;
   hunks: Hunk[];
 }
 
@@ -285,10 +290,27 @@ export interface DiffStats {
   deletions: number;
 }
 
+// The commit and branch a publish would use. The commit is null when HEAD is detached or
+// unborn (no commits yet); the branch is null only when HEAD is detached.
+export interface ReviewHead {
+  commit: string | null;
+  branch: string | null;
+}
+
+export interface ReviewCommit {
+  sha: string;
+  subject: string;
+}
+
 export interface SessionDiff {
   base: string | null;
+  head: ReviewHead;
+  // Commits on HEAD that neither the base nor harness's own publishing accounts for.
+  commits: ReviewCommit[];
   files: FileDiff[];
   stats: DiffStats;
+  // A hash of everything shown; approving sends it back as `expected_fingerprint`.
+  fingerprint: string;
 }
 
 export interface DayUsage {
@@ -395,6 +417,8 @@ export interface ResolveBody {
   // Plans only; a note to Claude goes with "keep_planning".
   decision?: "approve" | "keep_planning";
   message?: string | null;
+  // Plans only, with "approve": the permission mode Claude continues in.
+  mode?: PlanMode;
 }
 
 export interface ApproveBody {
@@ -403,6 +427,30 @@ export interface ApproveBody {
   open_pr?: boolean;
   // The user checked the git refs the agent changed itself (session.git_violation).
   acknowledge_violation?: boolean;
+  // The HEAD the user reviewed; the daemon refuses with `head_changed` if it moved.
+  expected_head?: string;
+  // The reviewed diff's fingerprint; the daemon refuses with `review_changed` if it differs.
+  expected_fingerprint: string;
+  // The push address the user confirmed after a `remote_not_confirmed` or `remote_changed`.
+  confirm_remote_url?: string;
+}
+
+/** What restoring files to before a message would do (`GET .../rewind?message=`). */
+export interface RewindPreview {
+  can_rewind: boolean;
+  // The paths, or only how many (the SDK reports paths; a count is accepted too).
+  files_changed: string[] | number;
+  insertions: number;
+  deletions: number;
+  // Why the files cannot be restored, when they cannot.
+  error: string | null;
+}
+
+/** Project settings to change (`PATCH /api/repos/{name}`); only the keys sent change. */
+export interface RepoPatch {
+  default?: boolean | null;
+  link?: string[];
+  setup?: string[];
 }
 
 export type NotifyKind =
@@ -483,6 +531,10 @@ export interface ModelOption {
   // Empty when the model takes no thinking level (Haiku).
   effort_levels: string[];
   supports_effort: boolean;
+  // Whether the model takes the "auto" permission mode.
+  supports_auto_mode: boolean;
+  // The thinking level Claude Code's own settings give it, when they set one.
+  claude_code_effort: string | null;
 }
 
 export interface ModelList {
@@ -504,7 +556,8 @@ export interface AgentDefaults {
   // Null leaves the choice to Claude Code.
   model: string | null;
   effort: Effort | null;
-  permission_mode: PermissionMode;
+  // Null leaves it to Claude Code's own setting (its `defaultMode`).
+  permission_mode: PermissionMode | null;
   mode: SessionMode;
 }
 
@@ -514,7 +567,7 @@ export type PixieBackground = "plain" | "meadow" | "dusk" | "night" | "dawn";
 export type Autonomy = "observe" | "message" | "start" | "answer";
 export type ProjectAccess = "edit" | "read" | "none";
 
-/** Everything the user sets on a pixie (D057). */
+/** Everything the user sets on a pixie (D072). */
 export interface PixieSettings {
   name: string;
   mascot: Mascot;

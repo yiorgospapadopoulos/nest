@@ -56,6 +56,8 @@ export interface PermissionView {
   why: string | null;
   // Why Claude Code asks rather than deciding itself, when it says.
   reason: string | null;
+  // What "Always allow" allows from now on: Claude Code's suggested rule, else the tool.
+  always: string;
 }
 
 export function permissionOf(approval: Approval, root: string | null): PermissionView {
@@ -68,6 +70,7 @@ export function permissionOf(approval: Approval, root: string | null): Permissio
     command,
     why: str(input.description) ?? str(approval.payload.title),
     reason: str(approval.payload.reason),
+    always: str(approval.payload.always_rule) ?? tool,
   };
 }
 

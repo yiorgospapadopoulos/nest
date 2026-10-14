@@ -1,4 +1,4 @@
-"""A pixie's folder: SOUL.md, MEMORY.md, notes/, archive/ and the chat's workdir/ (D057).
+"""A pixie's folder: SOUL.md, MEMORY.md, notes/, archive/ and the chat's workdir/ (D072).
 
 Writes name the hash of the text the writer read, so the user and the pixie editing at
 once never lose each other's changes silently.

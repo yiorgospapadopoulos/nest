@@ -16,7 +16,7 @@ def store(db: Database, clock: FakeClock) -> PushSubscriptionStore:
 async def paired(db: Database, clock: FakeClock, name: str = "iPhone") -> str:
     devices = DeviceService(db, clock, FakeSecretStore())
     device, _token = await devices.redeem_pairing_code(
-        (await devices.create_pairing_code()).code, name
+        (await devices.create_pairing_code()).code, name, client="phone"
     )
     return device.id
 

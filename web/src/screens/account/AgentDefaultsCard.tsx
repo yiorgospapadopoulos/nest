@@ -1,6 +1,15 @@
 import type { AgentDefaults, Effort, PermissionMode, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { CLAUDE_DEFAULT, effortLabel, PERMISSIONS, thinkingLevels } from "../chat/options.ts";
+import {
+  CLAUDE_CODE_MODE,
+  CLAUDE_DEFAULT,
+  effortLabel,
+  labelOf,
+  modelDefaultEffort,
+  permissionOptions,
+  takesAuto,
+  thinkingLevels,
+} from "../chat/options.ts";
 
 const MODES: { mode: SessionMode; label: string }[] = [
   { mode: "in_place", label: "In place" },
@@ -36,9 +45,22 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
     if (next.effort !== null && !thinkingLevels(state.models, next.model).includes(next.effort)) {
       next.effort = null;
     }
+    // So is Auto, which goes back to Claude Code's own mode; only a known model list says
+    // the model does not take it.
+    if (
+      next.permission_mode === "auto" &&
+      state.models !== null &&
+      !takesAuto(state.models, next.model)
+    ) {
+      next.permission_mode = null;
+    }
     void actions.saveAgentDefaults(next, defaults);
   };
   const listed = models.some((m) => m.value === model);
+  // A saved mode the model list does not offer (yet) still shows as it is.
+  const modes = permissionOptions(state.models, model);
+  const modeListed =
+    defaults.permission_mode === null || modes.some((o) => o.value === defaults.permission_mode);
   return (
     <div className="lgrp gl">
       <div className="srow">
@@ -75,7 +97,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
               save({ effort: value === "" ? null : (value as Effort) });
             }}
           >
-            <option value="">Model default</option>
+            <option value="">{modelDefaultEffort(state.models, model)}</option>
             {levels.map((level) => (
               <option key={level} value={level}>
                 {effortLabel(level)}
@@ -89,16 +111,23 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         <select
           id="default-permission"
           className="ssel"
-          value={defaults.permission_mode}
+          value={defaults.permission_mode ?? ""}
           onChange={(event) => {
-            save({ permission_mode: event.target.value as PermissionMode });
+            const value = event.target.value;
+            save({ permission_mode: value === "" ? null : (value as PermissionMode) });
           }}
         >
-          {PERMISSIONS.map((option) => (
+          <option value="">{CLAUDE_CODE_MODE}</option>
+          {modes.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
+          {!modeListed && (
+            <option value={String(defaults.permission_mode)}>
+              {labelOf("permission", defaults.permission_mode, state.models)}
+            </option>
+          )}
         </select>
       </div>
       <div className="srow">

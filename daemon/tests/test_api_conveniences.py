@@ -102,7 +102,7 @@ async def test_plans_are_approved_through_the_approval_queue(api: Api) -> None:
     assert item["kind"] == "plan"
     assert item["payload"] == {"plan": "# Plan", "tool_use_id": "toolu_plan"}
     assert wrong.status_code == 422
-    assert approved.json()["resolution"] == {"decision": "approve"}
+    assert approved.json()["resolution"] == {"decision": "approve", "mode": "acceptEdits"}
     assert detail.json()["permission_mode"] == "acceptEdits"
 
 

@@ -73,6 +73,15 @@ extension Effort {
 }
 
 extension PermissionMode {
+    /// What nil reads as: no mode is passed, so Claude Code's own `defaultMode` applies.
+    public static let claudeCodeDefaultLabel = "Claude Code default"
+    public static let claudeCodeDefaultSummary = "Your Claude Code setting applies"
+
+    /// A mode's label, or the Claude Code default's for nil.
+    public static func label(_ mode: PermissionMode?) -> String {
+        mode?.label ?? claudeCodeDefaultLabel
+    }
+
     /// The one-line description the permission menu shows.
     public var summary: String {
         switch self {
@@ -80,7 +89,25 @@ extension PermissionMode {
         case .acceptEdits: "Edits files without asking"
         case .plan: "Reads and plans only"
         case .bypassPermissions: "Runs everything without asking"
+        case .auto: "Asks only when Claude Code judges an action risky"
         case .unknown: ""
+        }
+    }
+}
+
+extension PermissionMode {
+    /// How a chat can go on once its plan is approved: auto-accepting edits (the default),
+    /// asking before each edit, or Auto where the model supports it.
+    public static func planChoices(supportsAuto: Bool) -> [PermissionMode] {
+        supportsAuto ? [.acceptEdits, .default, .auto] : [.acceptEdits, .default]
+    }
+
+    /// A plan choice's words on the plan card.
+    public var planChoiceLabel: String {
+        switch self {
+        case .default: "Approve edits manually"
+        case .auto: "Auto"
+        default: "Auto-accept edits"
         }
     }
 }

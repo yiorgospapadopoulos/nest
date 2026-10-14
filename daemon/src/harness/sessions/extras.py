@@ -1,4 +1,4 @@
-"""What a pixie session's run gets beyond a normal chat's (D057)."""
+"""What a pixie session's run gets beyond a normal chat's (D072)."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass

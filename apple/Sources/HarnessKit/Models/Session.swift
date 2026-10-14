@@ -39,11 +39,20 @@ public enum PermissionMode: String, UnknownSafeEnum {
     case acceptEdits
     case bypassPermissions
     case plan
+    /// Claude Code's classifier decides what needs asking; only some models offer it.
+    case auto
     case unknown
 
+    /// The modes every model offers; `auto` joins them where the model supports it
+    /// (`options(supportsAuto:)`).
     public static let selectable: [PermissionMode] = [
         .default, .acceptEdits, .plan, .bypassPermissions,
     ]
+
+    /// The menu's modes for a model, with Auto when it supports it.
+    public static func options(supportsAuto: Bool) -> [PermissionMode] {
+        supportsAuto ? selectable + [.auto] : selectable
+    }
 
     /// The short label the composer shows.
     public var label: String {
@@ -52,6 +61,7 @@ public enum PermissionMode: String, UnknownSafeEnum {
         case .acceptEdits: "Accept edits"
         case .bypassPermissions: "Bypass"
         case .plan: "Plan"
+        case .auto: "Auto"
         case .unknown: "Unknown"
         }
     }
@@ -90,7 +100,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var context: SessionContext?
     /// Why the running chat looks stuck, while it does (D036).
     public var stuck: StuckFlag?
-    /// The pixie this chat belongs to; such chats stay out of project lists (D057).
+    /// The pixie this chat belongs to; such chats stay out of project lists (D072).
     public var pixieID: String?
     /// Only in `GET /api/sessions/{id}`.
     public var tasks: [TrackedTask]?
