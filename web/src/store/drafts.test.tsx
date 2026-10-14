@@ -48,6 +48,23 @@ describe("saved drafts", () => {
     expect(screen.getByRole("button", { name: "Remove shot.png" })).toBeInTheDocument();
   });
 
+  it("are forgotten for chats and projects removed while the app was closed", async () => {
+    const storage = memoryStorage();
+    const draft = { text: "x", files: [] };
+    saveDrafts(() => storage, {
+      "session:s1": draft,
+      "session:deleted": draft,
+      "new:todo-ui": draft,
+      "new:removed": draft,
+    });
+
+    await renderApp({ api: chatApi(), storage });
+
+    await waitFor(() => {
+      expect(Object.keys(loadDrafts(() => storage))).toEqual(["session:s1", "new:todo-ui"]);
+    });
+  });
+
   it("are forgotten once the message is sent", async () => {
     const storage = memoryStorage();
     const { user } = await openChat(storage);

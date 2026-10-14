@@ -45,8 +45,13 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
     if (next.effort !== null && !thinkingLevels(state.models, next.model).includes(next.effort)) {
       next.effort = null;
     }
-    // So is Auto, which goes back to Claude Code's own mode.
-    if (next.permission_mode === "auto" && !takesAuto(state.models, next.model)) {
+    // So is Auto, which goes back to Claude Code's own mode; only a known model list says
+    // the model does not take it.
+    if (
+      next.permission_mode === "auto" &&
+      state.models !== null &&
+      !takesAuto(state.models, next.model)
+    ) {
       next.permission_mode = null;
     }
     void actions.saveAgentDefaults(next, defaults);

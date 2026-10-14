@@ -213,6 +213,25 @@ describe("agent defaults", () => {
     expect(within(card).getByLabelText("Permission mode")).toHaveDisplayValue("Auto");
   });
 
+  it("keeps Auto when another default changes while the model list is unknown", async () => {
+    const api = fakeApi();
+    api.models.mockRejectedValue(new Error("offline"));
+    api.agentDefaults.mockResolvedValue(
+      agentDefaults({ permission_mode: "auto", mode: "in_place" }),
+    );
+    const { user } = await openAccount(api);
+    const card = await screen.findByRole("region", { name: "Agent defaults" });
+    await waitFor(() => {
+      expect(within(card).getByLabelText("Permission mode")).toHaveValue("auto");
+    });
+
+    await user.click(within(card).getByRole("button", { name: "Worktree" }));
+
+    expect(api.saveAgentDefaults).toHaveBeenCalledWith(
+      agentDefaults({ permission_mode: "auto", mode: "worktree" }),
+    );
+  });
+
   it("puts the previous defaults back when the Mac refuses", async () => {
     const api = fakeApi();
     api.saveAgentDefaults.mockRejectedValue(

@@ -57,10 +57,11 @@ export function Shell() {
   // The chat that just closed: once the tabs show again, focus goes back to what opened
   // it, such as an Inbox card or a search hit, or else to the chat's row (data-chat). A tap
   // leaves focus on the page itself, and an opener may be gone, as an answered card.
-  const closed = useRef<string | null>(null);
+  // Holds the chat's id, or null for a new chat that was never sent (BUG-98).
+  const closed = useRef<{ id: string | null } | null>(null);
   useEffect(() => {
-    const id = closed.current;
-    if (chat !== null || id === null) return;
+    const last = closed.current;
+    if (chat !== null || last === null) return;
     closed.current = null;
     const back = opener.current;
     opener.current = null;
@@ -69,7 +70,7 @@ export function Shell() {
       return;
     }
     const rows = document.querySelectorAll<HTMLElement>("[data-chat]");
-    [...rows].find((row) => row.dataset.chat === id)?.focus();
+    [...rows].find((row) => row.dataset.chat === last.id)?.focus();
   }, [chat]);
 
   const openChat = (id: string, event?: number) => {
@@ -109,7 +110,7 @@ export function Shell() {
           key={chatKey(chat)}
           target={chat}
           onBack={() => {
-            closed.current = chatId(chat);
+            closed.current = { id: chatId(chat) };
             setChat(null);
           }}
           onOpen={openChat}

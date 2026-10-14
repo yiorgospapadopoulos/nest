@@ -19,7 +19,7 @@ function fileCount(preview: RewindPreview): number {
 function changes(preview: RewindPreview): string {
   const files = preview.files_changed;
   const count = fileCount(preview);
-  if (count === 0) return "No file changed since this message.";
+  if (count === 0) return "Nothing to restore. No file changed since this message.";
   const lines = `(+${String(preview.insertions)} -${String(preview.deletions)})`;
   const what =
     count === 1
@@ -47,7 +47,7 @@ export function RewindSheet({ sessionId, eventId, onClose }: Props) {
     };
   }, [actions, sessionId, eventId]);
 
-  const restorable = preview?.can_rewind === true && fileCount(preview) > 0;
+  const restorable = preview?.can_rewind === true;
   return (
     <ActionSheet
       label="Restore files?"
@@ -72,6 +72,7 @@ export function RewindSheet({ sessionId, eventId, onClose }: Props) {
       {restorable && (
         <button
           className="asi dng mid"
+          disabled={fileCount(preview) === 0}
           onClick={() => {
             onClose();
             void actions.rewind(sessionId, eventId);

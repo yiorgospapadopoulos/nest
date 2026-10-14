@@ -37,6 +37,28 @@ describe("reduce", () => {
     expect(reduce(state, { type: "auth", auth: "unpaired" }).auth).toBe("unpaired");
   });
 
+  it("drops saved drafts of chats and projects gone while the app was closed", () => {
+    const draft = { text: "x", files: [] };
+    const saved = {
+      "session:s1": draft,
+      "session:gone": draft,
+      "new:todo-ui": draft,
+      "new:removed": draft,
+    };
+    const snapshot = {
+      type: "loaded" as const,
+      repos: [repo("todo-ui")],
+      sessions: [session()],
+      approvals: [],
+    };
+
+    const first = reduce({ ...initialState, drafts: saved }, snapshot);
+    expect(Object.keys(first.drafts)).toEqual(["session:s1", "new:todo-ui"]);
+    // Later snapshots, after a reconnect, leave drafts to the live events.
+    const later = reduce({ ...first, drafts: saved }, snapshot);
+    expect(later.drafts).toBe(saved);
+  });
+
   it("tracks a reconnect until the socket opens or the device has to pair again", () => {
     const lost = reduce(loaded(), { type: "reconnecting", on: true });
     expect(lost.reconnecting).toBe(true);

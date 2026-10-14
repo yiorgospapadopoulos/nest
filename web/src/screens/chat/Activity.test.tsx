@@ -1,6 +1,12 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BackgroundSummary, HarnessEvent, JsonObject, Session } from "../../api/types.ts";
+import type {
+  Approval,
+  BackgroundSummary,
+  HarnessEvent,
+  JsonObject,
+  Session,
+} from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { approval, detail, event, repo, session } from "../../test/fixtures.ts";
@@ -14,14 +20,16 @@ interface Options {
   background?: BackgroundSummary;
   // Seconds after START the clock reads, with a fake clock and ticker from when the chat opens.
   clock?: number;
+  approvals?: Approval[];
 }
 
 async function openChat(
   chat: Session,
   events: HarnessEvent[],
-  { background, clock }: Options = {},
+  { background, clock, approvals = [] }: Options = {},
 ) {
   const api = fakeApi();
+  api.approvals.mockResolvedValue(approvals);
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.session.mockResolvedValue(detail({ ...chat, ...(background ? { background } : {}) }));
@@ -335,6 +343,95 @@ describe("a finished turn", () => {
 
       const row = defined((await screen.findByText("Bash")).closest<HTMLElement>(".tool"));
       expect(within(row).getByText("running")).toBeInTheDocument();
+    });
+  });
+
+  // The transcript is built again only when what it is built from changes (IMP-11). Each
+  // of these changes arrives without a stored event, so the events alone would miss it.
+  describe("is built again without a new message when", () => {
+    it("a background task ends", async () => {
+      const background: BackgroundSummary = {
+        running: 1,
+        completed: 0,
+        items: [
+          {
+            id: "t1",
+            kind: "bash",
+            name: "npm run dev",
+            description: null,
+            status: "running",
+            started_at: START,
+            finished_at: null,
+          },
+        ],
+      };
+      const { push } = await openChat(
+        session({ state: "interrupted" }),
+        [
+          ...turnStarted,
+          blocks(3, [call("t1", "Bash")]),
+          at(4, "session.state", { state: "interrupted", error: null }),
+        ],
+        { background },
+      );
+      const row = defined((await screen.findByText("Bash")).closest<HTMLElement>(".tool"));
+      expect(within(row).getByText("running")).toBeInTheDocument();
+
+      act(() => {
+        push({
+          session_id: "s1",
+          type: "session.agents",
+          payload: {
+            agents: [],
+            background: {
+              running: 0,
+              completed: 1,
+              items: background.items.map((item) => ({ ...item, status: "done" })),
+            },
+          },
+        });
+      });
+
+      expect(within(row).queryByText("running")).not.toBeInTheDocument();
+    });
+
+    it("an approval is answered elsewhere", async () => {
+      const asked = approval();
+      const { push } = await openChat(
+        session({ state: "waiting" }),
+        [...turnStarted, at(3, "approval.created", { approval: { ...asked } })],
+        { approvals: [asked] },
+      );
+      expect(screen.getByRole("group", { name: "Permission needed" })).toBeInTheDocument();
+
+      act(() => {
+        push({
+          session_id: "s1",
+          type: "approval.resolved",
+          payload: { approval: { ...asked, status: "resolved" } },
+        });
+      });
+
+      expect(screen.queryByRole("group", { name: "Permission needed" })).not.toBeInTheDocument();
+    });
+
+    it("the chat's folder changes", async () => {
+      const { push } = await openChat(session({ state: "idle" }), [
+        ...turnStarted,
+        blocks(3, [call("t1", "Read", { file_path: "/w/s1/app/form.ts" }), result("t1")]),
+        at(4, "session.state", { state: "idle", error: null }),
+      ]);
+      expect(screen.getByText("app/form.ts")).toBeInTheDocument();
+
+      act(() => {
+        push({
+          session_id: "s1",
+          type: "session.workspace",
+          payload: { branch: "agent/contact", path: "/w/s1/app" },
+        });
+      });
+
+      expect(screen.getByText("form.ts")).toBeInTheDocument();
     });
   });
 

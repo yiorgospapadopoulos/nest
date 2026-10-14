@@ -18,11 +18,16 @@ async function openChat(
   api: FakeApi = fakeApi(),
 ) {
   api.repos.mockResolvedValue([repo("todo-ui")]);
-  api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
+  api.sessions.mockImplementation((archived) =>
+    Promise.resolve((chat.archived_at !== null) === archived ? [chat] : []),
+  );
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
   await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  if (chat.archived_at !== null) {
+    await rendered.user.click(screen.getByRole("button", { name: /^Archived/ }));
+  }
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByText("Add zod");
   return rendered;
@@ -84,8 +89,10 @@ describe("restoring files to before a message", () => {
 
     await user.click(defined(screen.getAllByRole("button", { name: RESTORE })[0]));
 
-    expect(await screen.findByText("No file changed since this message.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Restore files" })).toBeNull();
+    expect(
+      await screen.findByText(/Nothing to restore\. No file changed since this message\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore files" })).toBeDisabled();
   });
 
   it("says why the files cannot be restored", async () => {
@@ -164,8 +171,21 @@ describe("restoring files to before a message", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("is offered only while the chat is idle", async () => {
-    await openChat(session({ state: "running" }));
+  it.each(["idle", "interrupted", "failed"] as const)(
+    "is offered when no turn runs: %s",
+    async (state) => {
+      await openChat(session({ state }));
+
+      expect(screen.getAllByRole("button", { name: RESTORE })).toHaveLength(2);
+    },
+  );
+
+  it.each([
+    ["while a turn runs", session({ state: "running" })],
+    ["while a turn starts", session({ state: "starting" })],
+    ["in an archived chat", session({ archived_at: "2026-10-06T11:00:00Z" })],
+  ])("is not offered %s", async (_, chat) => {
+    await openChat(chat);
 
     expect(screen.queryByRole("button", { name: RESTORE })).toBeNull();
   });

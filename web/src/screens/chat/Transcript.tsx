@@ -25,6 +25,9 @@ const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
 const NO_TASKS: ReadonlySet<string> = new Set();
 
+// Files can be restored when no turn runs, as the daemon allows (BUG-104).
+const AT_REST = new Set<Session["state"]>(["idle", "interrupted", "failed"]);
+
 interface Props {
   session: Session;
   // Background tasks, so a group knows which of its calls still run.
@@ -70,8 +73,8 @@ export function Transcript({ session, background, focus = null, history, onRetry
   const spoken = useAnnouncement(items, loaded);
   // The user message whose files are being restored to before it.
   const [rewinding, setRewinding] = useState<number | null>(null);
-  // Files go back only while the chat is idle.
-  const onRewind = session.state === "idle" ? setRewinding : undefined;
+  const onRewind =
+    AT_REST.has(session.state) && session.archived_at === null ? setRewinding : undefined;
 
   useLayoutEffect(() => {
     const el = box.current;

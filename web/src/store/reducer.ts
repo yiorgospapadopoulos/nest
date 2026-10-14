@@ -23,6 +23,17 @@ import {
   type Tracking,
 } from "./state.ts";
 
+function knownDrafts(
+  drafts: Record<string, Draft>,
+  { repos, sessions }: { repos: RepoConfig[]; sessions: Session[] },
+): Record<string, Draft> {
+  const known = new Set([
+    ...sessions.map((s) => draftKey({ session: s.id })),
+    ...repos.map((r) => draftKey({ repo: r.name })),
+  ]);
+  return Object.fromEntries(Object.entries(drafts).filter(([key]) => known.has(key)));
+}
+
 export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "auth":
@@ -39,6 +50,9 @@ export function reduce(state: State, action: Action): State {
         approvals: Object.fromEntries(
           action.approvals.filter((a) => a.status === "pending").map((a) => [a.id, a]),
         ),
+        // The first snapshot drops saved drafts of chats and projects removed while the app
+        // was closed; after that, the live events remove them.
+        drafts: state.auth === "ready" ? state.drafts : knownDrafts(state.drafts, action),
       };
     case "repo":
       return upsertRepo(state, action.repo);

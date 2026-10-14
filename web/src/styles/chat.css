@@ -767,6 +767,10 @@
 .asi.mid {
   justify-content: center;
 }
+.asi:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .asi.cxl {
   justify-content: center;
   font-weight: 650;
