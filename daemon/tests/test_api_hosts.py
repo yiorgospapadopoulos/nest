@@ -13,7 +13,7 @@ from nestd.api.app import create_app
 from nestd.api.hosts import host_allowed
 from nestd.context import AppContext
 from tests.api_support import build_context, local_token
-from tests.fakes import FakeClock, FakeSecretStore
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
 def app_client(
@@ -25,7 +25,9 @@ def app_client(
         path.write_text(settings, encoding="utf-8")
     context = asyncio.run(build_context(tmp_path, clock, secrets))
     try:
-        with TestClient(create_app(context), base_url="http://127.0.0.1:8765") as client:
+        with TestClient(
+            create_app(context, restart=RecordingRestart()), base_url="http://127.0.0.1:8765"
+        ) as client:
             yield client, context
     finally:
         asyncio.run(context.close())

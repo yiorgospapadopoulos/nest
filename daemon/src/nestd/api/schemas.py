@@ -13,6 +13,10 @@ class Health(BaseModel):
     version: str
 
 
+class Restarting(BaseModel):
+    restarting: Literal[True]
+
+
 class RedeemRequest(BaseModel):
     code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
     device_name: Annotated[

@@ -13,6 +13,7 @@ from nestd.auth.secrets import KeychainSecretStore, SecretStore
 from nestd.clock import Clock, SystemClock
 from nestd.server import run_uvicorn
 from nestd.service.launchd import CommandRunner, run_command
+from nestd.service.restart import Restarter, terminate_self
 
 type ServeRunner = Callable[[FastAPI, int], Awaitable[None]]
 
@@ -27,6 +28,7 @@ class Runtime:
     clock: Clock
     run_command: CommandRunner
     serve: ServeRunner
+    restart: Restarter
     out: TextIO
     err: TextIO
 
@@ -41,6 +43,7 @@ def default_runtime() -> Runtime:
         clock=SystemClock(),
         run_command=run_command,
         serve=run_uvicorn,
+        restart=terminate_self,
         out=sys.stdout,
         err=sys.stderr,
     )

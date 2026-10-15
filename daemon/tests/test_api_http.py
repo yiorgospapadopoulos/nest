@@ -17,7 +17,7 @@ from nestd.config.errors import ConfigError
 from nestd.context import AppContext
 from nestd.events import types
 from tests.api_support import build_context, local_token, make_paths
-from tests.fakes import FakeClock, FakeSecretStore
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ async def ctx(
 
 @pytest.fixture
 async def client(ctx: AppContext) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(ctx)
+    app = create_app(ctx, restart=RecordingRestart())
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
@@ -75,7 +75,7 @@ async def test_lifespan_starts_and_stops_enabled_modules(
 ) -> None:
     log: list[str] = []
     ctx = await build_context(tmp_path, clock, secrets, log)
-    app = create_app(ctx)
+    app = create_app(ctx, restart=RecordingRestart())
     try:
         async with app.router.lifespan_context(app):
             assert log == ["start 8765"]
@@ -104,7 +104,7 @@ async def test_lifespan_serves_the_local_token_on_its_socket(
     root = Path(tempfile.mkdtemp(prefix="hx-", dir="/tmp"))
     path = root / "data" / "token.sock"
     ctx = await build_context(tmp_path, clock, secrets, token_socket=path)
-    app = create_app(ctx)
+    app = create_app(ctx, restart=RecordingRestart())
     try:
         async with app.router.lifespan_context(app):
             first = local_token(secrets)
@@ -126,7 +126,7 @@ async def test_unknown_enabled_module_fails_startup(
     tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
 ) -> None:
     ctx = await AppContext.build(make_paths(tmp_path, ["missing"]), secrets, clock)
-    app = create_app(ctx)
+    app = create_app(ctx, restart=RecordingRestart())
     try:
         with pytest.raises(ConfigError, match="unknown modules: missing"):
             await run_lifespan(app)

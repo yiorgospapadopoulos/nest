@@ -2,9 +2,10 @@ import io
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 
@@ -16,7 +17,8 @@ from nestd.paths import AppPaths
 from nestd.runtime import Runtime, default_runtime
 from nestd.server import run_uvicorn
 from nestd.service.launchd import LABEL, CommandResult, run_command
-from tests.fakes import FakeClock, FakeSecretStore
+from nestd.service.restart import terminate_self
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
 class Recorder:
@@ -25,6 +27,8 @@ class Recorder:
         self.served: list[int] = []
         self.print_result = CommandResult(113, "", "Could not find service")
         self.bootstrap_result = CommandResult(0, "", "")
+        # Called inside the served app, as a client would act while the daemon runs.
+        self.while_serving: list[Callable[[FastAPI], Awaitable[None]]] = []
 
     def run(self, args: Sequence[str]) -> CommandResult:
         self.commands.append(list(args))
@@ -38,6 +42,8 @@ class Recorder:
         # Run the real startup and shutdown so the app is exercised in this event loop.
         async with app.router.lifespan_context(app):
             self.served.append(port)
+            for action in self.while_serving:
+                await action(app)
 
 
 class Rig:
@@ -47,6 +53,7 @@ class Rig:
         self.paths = AppPaths.from_env(self.env, self.home)
         self.recorder = Recorder()
         self.secrets = FakeSecretStore()
+        self.restart = RecordingRestart()
         self.out = io.StringIO()
         self.err = io.StringIO()
         self.runtime = Runtime(
@@ -58,6 +65,7 @@ class Rig:
             clock=FakeClock(),
             run_command=self.recorder.run,
             serve=self.recorder.serve,
+            restart=self.restart,
             out=self.out,
             err=self.err,
         )
@@ -106,6 +114,7 @@ def test_default_runtime_uses_the_real_system() -> None:
     assert isinstance(runtime.clock, SystemClock)
     assert runtime.run_command is run_command
     assert runtime.serve is run_uvicorn
+    assert runtime.restart is terminate_self
 
 
 def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:
@@ -114,6 +123,23 @@ def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:
     assert cli.recorder.served == [8765]
     assert cli.secrets.get(LOCAL_DEVICE_ACCOUNT)
     assert cli.paths.db_path.is_file()
+
+
+def test_served_app_restarts_through_the_runtime(cli: Rig) -> None:
+    async def ask_for_restart(app: FastAPI) -> None:
+        transport = httpx.ASGITransport(app=app)
+        token = cli.secrets.get(LOCAL_DEVICE_ACCOUNT)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as http:
+            response = await http.post(
+                "/api/service/restart", headers={"Authorization": f"Bearer {token}"}
+            )
+        assert response.status_code == 202
+
+    cli.recorder.while_serving.append(ask_for_restart)
+
+    assert cli.run("serve") == 0
+
+    assert cli.restart.calls == 1
 
 
 def test_serve_port_flag_overrides_settings(cli: Rig) -> None:

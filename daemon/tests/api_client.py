@@ -14,7 +14,7 @@ from tests.fake_opener import FakeOpener
 from tests.fake_probe import FakeProbeFactory
 from tests.fake_provider import FakeProvider
 from tests.fake_runner import FakeRunner
-from tests.fakes import FakeClock, FakeSecretStore
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
 class Api:
@@ -27,6 +27,7 @@ class Api:
         opener: FakeOpener,
         probes: FakeProbeFactory,
         engine: FakeInfoFactory,
+        restart: RecordingRestart,
     ) -> None:
         self.ctx = ctx
         self.http = http
@@ -35,6 +36,7 @@ class Api:
         self.opener = opener
         self.probes = probes
         self.engine = engine
+        self.restart = restart
 
 
 @asynccontextmanager
@@ -60,7 +62,8 @@ async def running_api(
         probe_factory=probes,
         engine_factory=engine,
     )
-    app = create_app(ctx)
+    restart = RecordingRestart()
+    app = create_app(ctx, restart=restart)
     transport = httpx.ASGITransport(app=app)
     try:
         async with (
@@ -68,6 +71,6 @@ async def running_api(
             httpx.AsyncClient(transport=transport, base_url="https://mac.tailnet.ts.net") as http,
         ):
             http.headers["Authorization"] = f"Bearer {local_token(secrets)}"
-            yield Api(ctx, http, provider, runner, opener, probes, engine)
+            yield Api(ctx, http, provider, runner, opener, probes, engine, restart)
     finally:
         await ctx.close()

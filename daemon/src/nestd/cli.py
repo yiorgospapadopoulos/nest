@@ -97,7 +97,8 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
 async def _run_server(paths: AppPaths, rt: Runtime, port: int | None) -> None:
     ctx = await AppContext.build(paths, rt.secrets, rt.clock)
     try:
-        await rt.serve(create_app(ctx), port if port is not None else ctx.settings.server.port)
+        app = create_app(ctx, restart=rt.restart)
+        await rt.serve(app, port if port is not None else ctx.settings.server.port)
     finally:
         await ctx.close()
 

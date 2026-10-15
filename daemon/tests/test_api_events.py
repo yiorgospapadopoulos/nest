@@ -14,7 +14,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus, SubscriptionOverflowError
 from nestd.events.models import Event
 from tests.api_support import build_context, local_token
-from tests.fakes import FakeClock, FakeSecretStore
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
 class OverflowingBus(EventBus):
@@ -36,7 +36,7 @@ def ctx(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Iterator[
 
 @pytest.fixture
 def client(ctx: AppContext) -> Iterator[TestClient]:
-    with TestClient(create_app(ctx), base_url=BASE_URL) as test_client:
+    with TestClient(create_app(ctx, restart=RecordingRestart()), base_url=BASE_URL) as test_client:
         yield test_client
 
 
@@ -216,7 +216,9 @@ def test_allowed_origins_from_settings_are_accepted(
     )
     context = asyncio.run(build_context(tmp_path, clock, secrets))
     try:
-        with TestClient(create_app(context), base_url=BASE_URL) as test_client:
+        with TestClient(
+            create_app(context, restart=RecordingRestart()), base_url=BASE_URL
+        ) as test_client:
             headers = {
                 "Authorization": f"Bearer {local_token(secrets)}",
                 "Origin": "https://mac.example.ts.net",

@@ -28,15 +28,19 @@ from nestd.api.routes import (
     repos,
     review,
     search,
+    service,
     sessions,
     stuck,
     usage,
 )
 from nestd.api.static import install_static
 from nestd.context import AppContext
+from nestd.service.restart import Restarter
 
 
-def create_app(ctx: AppContext) -> FastAPI:
+def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
+    """`restart` ends the daemon process for `POST /api/service/restart`."""
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         await ctx.devices.ensure_local_device()
@@ -85,6 +89,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         openapi_url=None,
     )
     app.state.ctx = ctx
+    app.state.restart = restart
     app.add_middleware(HostCheckMiddleware, allowed=lambda: ctx.settings.server.allowed_hosts)
     install_error_handlers(app)
     for module in (
@@ -112,6 +117,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         local_apps,
         push,
         notifications,
+        service,
     ):
         app.include_router(module.router)
     # Last, so every /api route matches first.

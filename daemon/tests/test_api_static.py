@@ -8,7 +8,7 @@ import pytest
 from nestd.api.app import create_app
 from nestd.context import AppContext
 from tests.api_support import build_context, local_token
-from tests.fakes import FakeClock, FakeSecretStore
+from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 INDEX = "<!doctype html><title>Nest</title>"
 IMMUTABLE = "public, max-age=31536000, immutable"
@@ -28,7 +28,7 @@ def dist(tmp_path: Path) -> Path:
 
 
 async def serving(ctx: AppContext) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(ctx)
+    app = create_app(ctx, restart=RecordingRestart())
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),

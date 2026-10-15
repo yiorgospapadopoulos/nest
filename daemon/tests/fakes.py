@@ -25,3 +25,13 @@ class FakeSecretStore:
 
     def set(self, account: str, value: str) -> None:
         self.values[account] = value
+
+
+class RecordingRestart:
+    """Stands in for ending the daemon process; counts the restarts asked for."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self) -> None:
+        self.calls += 1
