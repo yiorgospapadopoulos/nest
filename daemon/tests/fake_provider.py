@@ -14,6 +14,7 @@ from nestd.providers.base import (
     CommandCatalog,
     ContextUsage,
     EngineDetails,
+    ForkPoint,
     McpServer,
     MessageBlock,
     PermissionDecision,
@@ -60,6 +61,9 @@ class FakeRun:
         self.plans: list[PlanDecision] = []
         self.interrupted = asyncio.Event()
         self.closed = False
+        # Like Claude Code's queue of messages written into a running turn (B59).
+        self.steers = provider.steering
+        self.steered: list[tuple[str, UserInput]] = []
         self._turns: asyncio.Queue[Turn] = asyncio.Queue()
         self._reader = asyncio.create_task(self._read())
 
@@ -69,6 +73,26 @@ class FakeRun:
         if self.provider.send_gate is not None:
             # The turn runs before send returns, as a fast reply could in the real engine.
             await self.provider.send_gate.wait()
+
+    async def steer(self, user_input: UserInput, message_id: str) -> None:
+        if self.provider.steer_error is not None:
+            raise self.provider.steer_error
+        self.calls.append(("steer", message_id))
+        self.steered.append((message_id, user_input))
+
+    async def withdraw(self, message_id: str) -> bool:
+        self.calls.append(("withdraw", message_id))
+        kept = [item for item in self.steered if item[0] != message_id]
+        withdrawn = len(kept) != len(self.steered)
+        self.steered = kept
+        return withdrawn
+
+    async def read_steered(self) -> list[UserInput]:
+        """The agent reads every message written into its turn and echoes each."""
+        read, self.steered = self.steered, []
+        for message_id, _ in read:
+            await self.sink.message_taken(message_id, f"cp-{message_id}")
+        return [user_input for _, user_input in read]
 
     def emit(self, turn: Turn) -> None:
         """A turn the agent starts without a user message."""
@@ -102,6 +126,10 @@ class FakeRun:
     async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
         self.calls.append(("rewind_files", (checkpoint_id, dry_run)))
         return self.provider.rewind
+
+    async def stop_task(self, task_id: str) -> bool:
+        self.calls.append(("stop_task", task_id))
+        return task_id in self.provider.running_tasks
 
     async def close(self) -> None:
         self._reader.cancel()
@@ -149,6 +177,14 @@ class FakeProvider:
         self.context_error: Exception | None = None
         # What restoring files to a checkpoint previews or does.
         self.rewind = RewindResult(can_rewind=True, files_changed=["a.py"], insertions=2)
+        # The tasks a run says it has running, which it can stop.
+        self.running_tasks: set[str] = set()
+        # Whether runs take messages written into a running turn, and a failure to write.
+        self.steering = False
+        self.steer_error: Exception | None = None
+        # Where a conversation is cut to before a message, by (session id, message id).
+        self.fork_points: dict[tuple[str, str], ForkPoint] = {}
+        self.fork_calls: list[tuple[Path, str, str]] = []
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
@@ -161,13 +197,15 @@ class FakeProvider:
         self.runs.append(run)
         return run
 
+    async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
+        self.fork_calls.append((cwd, session_id, message_id))
+        return self.fork_points.get((session_id, message_id))
+
     def script(self, *turns: Turn) -> None:
         self.turns.extend(turns)
 
 
-RESULT = ResultInfo(
-    is_error=False, subtype="success", duration_ms=10, num_turns=1, cost_usd=0.01, errors=[]
-)
+RESULT = ResultInfo(is_error=False, subtype="success", duration_ms=10, num_turns=1, errors=[])
 
 
 def reply(text: str, provider_session_id: str = "sdk-1", tokens: TokenUsage | None = None) -> Turn:

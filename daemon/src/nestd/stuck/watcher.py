@@ -46,6 +46,10 @@ _ACTIVITY = frozenset(
         # is alive too (IMP-15, IMP-30).
         types.SESSION_THINKING,
         types.SESSION_NOTICE,
+        # Thinking and subagent text as they stream, and what hooks say (B59).
+        types.SESSION_THINKING_DELTA,
+        types.SESSION_SUBAGENT_DELTA,
+        types.SESSION_HOOK,
         types.SESSION_RESULT,
         types.SESSION_AGENT_TASK,
         types.APPROVAL_CREATED,

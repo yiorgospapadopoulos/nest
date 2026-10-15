@@ -56,6 +56,10 @@ async def test_a_preview_then_a_restore(api: Api) -> None:
         "insertions": 4,
         "deletions": 2,
         "error": None,
+        # Only files: nothing goes back to the composer (B59).
+        "restore": "code",
+        "text": None,
+        "attachments": [],
     }
     assert (preview.status_code, preview.json()) == (200, expected)
     assert (restored.status_code, restored.json()) == (200, expected)

@@ -68,6 +68,11 @@ class ReviewWatcher:
             f"{stats.files} files changed, +{stats.additions} -{stats.deletions}",
         )
 
+    async def refresh(self, session: Session) -> None:
+        """The work changed outside a turn (files restored, B59): review it as it is now."""
+        self._starts.pop(session.id, None)
+        await self.turn_ended(session)
+
     def forget(self, session_id: str) -> None:
         self._starts.pop(session_id, None)
 

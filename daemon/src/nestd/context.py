@@ -1,5 +1,6 @@
 """Everything the daemon shares between the API, CLI and modules."""
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta, tzinfo
@@ -19,6 +20,7 @@ from nestd.claude_sessions.archive import ChatArchive
 from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
+from nestd.composer.service import ComposerActions
 from nestd.config.loader import load_settings
 from nestd.config.models import Settings
 from nestd.connectors.registry import ConnectorRegistry
@@ -54,6 +56,7 @@ from nestd.pixies.teams import TeamService
 from nestd.pixies.triggers import HabitTriggers
 from nestd.providers.base import AgentProvider
 from nestd.providers.claude import ClaudeProvider
+from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
@@ -109,6 +112,7 @@ class AppContext:
     habit_scheduler: HabitScheduler
     habit_triggers: HabitTriggers
     reports: Reports
+    composer: ComposerActions
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -126,6 +130,7 @@ class AppContext:
         push_transport: httpx.AsyncBaseTransport | None = None,
         probe_factory: ProbeClientFactory = ClaudeSDKClient,
         engine_factory: InfoClientFactory = ClaudeSDKClient,
+        shell_env: ShellEnvSource | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -135,7 +140,8 @@ class AppContext:
         day a turn's usage counts for and when quiet hours are; None is the system's time
         zone. `push_transport` replaces the network for web push and ntfy in tests, and
         `probe_factory` the Claude client of the usage probe and `engine_factory` the one
-        that reads the model list and account.
+        that reads the model list and account. `shell_env` replaces the login shell's
+        environment read for the agent and `!` commands.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -163,6 +169,8 @@ class AppContext:
         pixie_files = PixieFiles(paths.pixies_dir)
         team_store = TeamStore(db, clock)
         activity = ActivityStore(db, clock)
+        shell = login_shell(os.environ, os.getuid())
+        shell_env = shell_env or LoginShellEnv(shell).get
 
         async def report(pixie_id: str, text: str) -> None:
             await pixies.send(pixie_id, text, [], sender=REPORT_BACK)
@@ -182,7 +190,12 @@ class AppContext:
             repos=repos,
             worktrees=WorktreeManager(paths),
             attachments=attachments,
-            provider=provider or ClaudeProvider(paths.agent_gh_dir),
+            provider=provider
+            or ClaudeProvider(
+                paths.agent_gh_dir,
+                shell_env=shell_env,
+                claude_dir=paths.claude_dir,
+            ),
             approvals=approvals,
             hooks=SessionReactions(
                 tracking,
@@ -365,6 +378,14 @@ class AppContext:
                 bus=bus, sessions=store, habits=habit_store, pixies=pixie_store, scheduler=scheduler
             ),
             reports=reports,
+            composer=ComposerActions(
+                sessions=store.get,
+                project_folder=lambda name: repos.get(name).path,
+                user_memory=None if paths.claude_dir is None else paths.claude_dir / "CLAUDE.md",
+                shell_env=shell_env,
+                shell=shell,
+                base_env=os.environ,
+            ),
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None

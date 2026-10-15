@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -63,6 +64,7 @@ async def create(api: Api, **fields: object) -> dict[str, object]:
         ("GET", "/api/sessions/x/events"),
         ("POST", "/api/sessions/x/messages"),
         ("POST", "/api/sessions/x/interrupt"),
+        ("POST", "/api/sessions/x/tasks/t1/stop"),
         ("PATCH", "/api/sessions/x"),
         ("DELETE", "/api/sessions/x"),
     ],
@@ -179,6 +181,30 @@ async def test_interrupt_update_and_close(api: Api) -> None:
     # The interrupt kept the queued message; closing drops it.
     assert (await api.http.get(f"/api/sessions/{session_id}")).json()["queued"] == []
     assert again.status_code == 409
+
+
+async def test_stop_one_task_of_a_live_run(api: Api) -> None:
+    """B59: a background task or subagent stops; the turn and the run go on."""
+    api.provider.script(hang())
+    api.provider.open_gate = asyncio.Event()
+    session = await create(api, mode="in_place")
+    session_id = str(session["id"])
+    before = await api.http.post(f"/api/sessions/{session_id}/tasks/t1/stop")
+    api.provider.open_gate.set()
+    await until(lambda: bool(api.provider.runs) and bool(api.provider.runs[0].inputs))
+    api.provider.running_tasks = {"t1"}
+
+    stopped = await api.http.post(f"/api/sessions/{session_id}/tasks/t1/stop")
+    unknown = await api.http.post(f"/api/sessions/{session_id}/tasks/t9/stop")
+    missing = await api.http.post("/api/sessions/nope/tasks/t1/stop")
+
+    assert stopped.status_code == 202
+    assert unknown.status_code == 404
+    assert missing.status_code == 404
+    # No agent running yet: nothing to stop.
+    assert before.status_code == 409
+    assert api.provider.runs[0].calls == [("stop_task", "t1"), ("stop_task", "t9")]
+    assert await state_of(api, session_id) == "running"
 
 
 async def test_in_place_sessions_start_on_a_dirty_checkout(api: Api, tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ for the runs that keep them (B58)."""
 import asyncio
 import logging
 from collections import deque
-from collections.abc import AsyncIterable, AsyncIterator, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Protocol
@@ -33,6 +33,7 @@ from nestd.logging_setup import ENGINE_STDERR_LOGGER
 from nestd.providers.base import (
     ApprovalHandler,
     ContextUsage,
+    ForkPoint,
     McpServer,
     PermissionRequest,
     PlanRequest,
@@ -44,6 +45,7 @@ from nestd.providers.base import (
 )
 from nestd.providers.claude_commands import context_usage, described_catalog
 from nestd.providers.claude_engine import engine_details
+from nestd.providers.claude_fork import fork_point
 from nestd.providers.claude_messages import (
     BackgroundTasks,
     TurnOutput,
@@ -56,7 +58,8 @@ from nestd.providers.claude_questions import (
     QuestionBridge,
 )
 from nestd.providers.claude_rewind import rewind
-from nestd.providers.claude_rules import always_rule
+from nestd.providers.claude_rules import always_updates
+from nestd.providers.claude_steering import engine_uuid, withdraw
 from nestd.providers.claude_thinking import ThinkingTimer
 from nestd.providers.claude_tools import (
     SUBAGENT_DENIED,
@@ -67,6 +70,7 @@ from nestd.providers.claude_tools import (
     write_guard,
 )
 from nestd.providers.git_guard import GIT_WRITE_RULES, block_git_writes
+from nestd.providers.shell_env import ShellEnvSource, no_shell_env
 
 DEFAULT_DENY_MESSAGE = "The user denied this action."
 # What the SDK puts in a crash's message where the CLI's own error belongs.
@@ -102,6 +106,8 @@ class SdkClient(Protocol):
     async def set_permission_mode(self, mode: SdkPermissionMode) -> None: ...
 
     async def get_mcp_status(self) -> McpStatusResponse: ...
+
+    async def stop_task(self, task_id: str) -> None: ...
 
     async def get_context_usage(self) -> ContextUsageResponse: ...
 
@@ -170,7 +176,9 @@ def build_options(
     handler: ApprovalHandler,
     gh_config_dir: Path,
     stderr: Callable[[str], None] | None = None,
+    shell_env: Mapping[str, str] | None = None,
 ) -> ClaudeAgentOptions:
+    """`shell_env` is the user's login shell environment (B59); Nest's own entries win."""
     questions = QuestionBridge(handler)
     own_tools = own_tool_names(spec.tools)
 
@@ -186,14 +194,15 @@ def build_options(
         if tool_name == EXIT_PLAN_MODE:
             return await _review_plan(handler, tool_input, context.tool_use_id)
         reason = context.decision_reason or context.blocked_path
-        rule = always_rule(context.suggestions)
+        updates, rule = always_updates(tool_name, tool_input, context.suggestions)
         decision = await handler.decide(
             PermissionRequest(tool_name, tool_input, context.title, reason, rule)
         )
         if decision.behavior == "allow":
-            if decision.always and rule is not None:
-                # Claude Code keeps them where it suggested: the session or a settings file.
-                return PermissionResultAllow(updated_permissions=list(context.suggestions))
+            if decision.always:
+                # Claude Code keeps suggested rules where it suggested: the session or a
+                # settings file; Nest's own rule for the exact call, the session (B59).
+                return PermissionResultAllow(updated_permissions=updates)
             return PermissionResultAllow()
         return PermissionResultDeny(message=decision.message or DEFAULT_DENY_MESSAGE)
 
@@ -223,11 +232,19 @@ def build_options(
         effort=spec.effort,
         permission_mode=spec.permission_mode,
         resume=spec.resume_id,
+        # A cut conversation continues as a new session; the resumed one stays whole (B59).
+        fork_session=spec.resume_at is not None,
+        resume_session_at=spec.resume_at,
+        resume_drops_turn=spec.drops_turn,
         add_dirs=list(spec.extra_dirs),
         system_prompt=system_prompt,
         # Load the user's own Claude Code setup: CLAUDE.md, skills, plugins, MCP, hooks.
         setting_sources=["user", "project", "local"],
         include_partial_messages=True,
+        # Shown as in Claude Code (B59): what hooks say, subagents' text as they write it,
+        # and thinking text, which newer models otherwise leave out.
+        include_hook_events=True,
+        forward_subagent_text=True,
         can_use_tool=can_use_tool,
         mcp_servers=tool_servers(spec.tools),
         allowed_tools=list(spec.allowed_tools),
@@ -236,13 +253,17 @@ def build_options(
         skills=list(spec.skills) or None,
         agents={name: _agent(sub, own_tools) for name, sub in spec.subagents.items()} or None,
         hooks={"PreToolUse": pre_tool_use},
-        env={**(agent_env(gh_config_dir) if spec.guard_git else {}), **CLAUDE_APP_ENV},
+        env={
+            **(shell_env or {}),
+            **(agent_env(gh_config_dir) if spec.guard_git else {}),
+            **CLAUDE_APP_ENV,
+        },
         stderr=stderr,
         max_buffer_size=MAX_MESSAGE_BYTES,
         # Files can be restored to before a user message; the echo of each message the
         # run is sent carries the id to restore to (IMP-02).
         enable_file_checkpointing=True,
-        extra_args={"replay-user-messages": None},
+        extra_args={"replay-user-messages": None, "thinking-display": "summarized"},
     )
 
 
@@ -250,6 +271,8 @@ class ClaudeRun:
     """One CLI process. A single reader consumes its output for the whole life of the run,
     so turns the agent starts on its own are reported like any other.
     """
+
+    steers = True
 
     def __init__(self, client: SdkClient, sink: ProviderEventSink, stderr: StderrTail) -> None:
         self._client = client
@@ -264,6 +287,19 @@ class ClaudeRun:
         self._thinking.mark()
         self._output.awaiting_replay = True
         await self._client.query(_single(_user_message(user_input)))
+
+    async def steer(self, user_input: UserInput, message_id: str) -> None:
+        uuid = engine_uuid(message_id)
+        # Its echo carries the uuid; known before the write, as the echo may come at once.
+        self._output.steered[uuid] = message_id
+        await self._client.query(_single({**_user_message(user_input), "uuid": uuid}))
+
+    async def withdraw(self, message_id: str) -> bool:
+        uuid = engine_uuid(message_id)
+        if not await withdraw(self._client, uuid):
+            return False
+        self._output.steered.pop(uuid, None)
+        return True
 
     async def interrupt(self) -> None:
         await self._client.interrupt()
@@ -284,6 +320,13 @@ class ClaudeRun:
 
     async def rewind_files(self, checkpoint_id: str, dry_run: bool) -> RewindResult:
         return await rewind(self._client, checkpoint_id, dry_run)
+
+    async def stop_task(self, task_id: str) -> bool:
+        running = self._tasks.running(task_id)
+        if running is None:
+            return False
+        await self._client.stop_task(running)
+        return True
 
     async def close(self) -> None:
         self._reader.cancel()
@@ -329,16 +372,28 @@ class ClaudeProvider:
     name = "claude"
 
     def __init__(
-        self, gh_config_dir: Path, client_factory: ClientFactory = ClaudeSDKClient
+        self,
+        gh_config_dir: Path,
+        client_factory: ClientFactory = ClaudeSDKClient,
+        shell_env: ShellEnvSource = no_shell_env,
+        claude_dir: Path | None = None,
     ) -> None:
+        """`shell_env` gives each run the user's login shell environment (B59);
+        `claude_dir` holds Claude Code's transcripts (None: none are read).
+        """
+        self._claude_dir = claude_dir
         self._gh_config_dir = gh_config_dir
         self._client_factory = client_factory
+        self._shell_env = shell_env
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> ClaudeRun:
         stderr = StderrTail(spec.cwd)
-        client = self._client_factory(build_options(spec, handler, self._gh_config_dir, stderr.add))
+        env = await self._shell_env()
+        client = self._client_factory(
+            build_options(spec, handler, self._gh_config_dir, stderr.add, env)
+        )
         try:
             await client.connect()
             info = await client.get_server_info()
@@ -354,6 +409,12 @@ class ClaudeProvider:
                 await client.disconnect()
             raise
         return ClaudeRun(client, sink, stderr)
+
+    async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
+        if self._claude_dir is None:
+            return None
+        projects = self._claude_dir / "projects"
+        return await asyncio.to_thread(fork_point, projects, cwd, session_id, message_id)
 
 
 async def _review_plan(

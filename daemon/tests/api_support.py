@@ -10,6 +10,7 @@ from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.paths import AppPaths
 from nestd.providers.base import AgentProvider
+from nestd.providers.shell_env import no_shell_env
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
 from tests.fake_probe import FakeProbeFactory
@@ -79,6 +80,8 @@ async def build_context(
         probe_factory=probe_factory or FakeProbeFactory(),
         # Never a real Claude Code process for the model list.
         engine_factory=engine_factory or FakeInfoFactory(),
+        # Never the user's real login shell.
+        shell_env=no_shell_env,
     )
 
 

@@ -106,6 +106,16 @@ class SessionReactions:
     async def engine_reported(self, details: EngineDetails) -> None:
         await self._engine.report(details)
 
+    async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
+        """The task list follows the shorter transcript; restored files change the work,
+        so its review is made again, or withdrawn when no work is left (B56, B59).
+        """
+        if conversation:
+            self._tracking.forget(session.id)
+            await self._tracking.sync(session.id)
+        if files and session.habit_run_id is None and await self._reviewable(session):
+            await self._reviews.refresh(session)
+
     async def purged(self, session_id: str) -> None:
         self._tracking.forget(session_id)
         self._reviews.forget(session_id)

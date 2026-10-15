@@ -85,7 +85,7 @@ async def test_chats_in_a_plain_folder_work_in_place_without_git(api: Api, folde
     assert stored["last_error"] is None
     assert "git_violation" not in stored
     files = await api.http.get(f"/api/sessions/{asked['id']}/files", params={"q": "todo"})
-    assert files.json() == {"files": []}
+    assert files.json() == {"files": ["todo.md"]}
 
 
 async def test_git_actions_are_refused_for_a_plain_folder(api: Api) -> None:

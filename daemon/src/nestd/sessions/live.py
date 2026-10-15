@@ -85,6 +85,14 @@ class LiveSession:
     # The user message event the agent was last given, until the engine echoes it with its
     # file checkpoint id (IMP-02).
     user_event: int | None = None
+    # Held while messages are written into the running turn or taken back from it, so a
+    # turn's end sees every message the agent has (B59).
+    steering: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # The turn ended while the agent had read a message written into it but not echoed it
+    # yet: the agent starts its next turn with that message, so the turn goes on (B59).
+    engine_next: bool = False
+    # The turn's end is being concluded: a message sent meanwhile waits in the queue (B59).
+    concluding: bool = False
     idle_task: asyncio.Task[None] | None = None
     # Reports that wait on the run's answer to a control request, off the reader of the
     # agent's messages (I-L); they end with the run.
@@ -177,6 +185,7 @@ class LiveSession:
         self.turn_started = None
         self.interrupted = False
         self.resume_queue = False
+        self.engine_next = False
         self.held = held
         self.schedule_idle_close(idle_close)
 

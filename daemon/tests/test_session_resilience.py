@@ -121,7 +121,7 @@ async def test_an_unreadable_queue_still_ends_the_turn(
         raise OSError("database is locked")
 
     env.provider.script(reply("one"))
-    monkeypatch.setattr(env.queue, "messages", broken)
+    monkeypatch.setattr(env.queue, "waiting", broken)
 
     with caplog.at_level(logging.WARNING):
         created = await env.create()

@@ -189,6 +189,35 @@ async def test_a_notice_is_activity(env: Env) -> None:
     assert await env.flags(session) == []
 
 
+@pytest.mark.parametrize(
+    ("event_type", "payload"),
+    [
+        (types.SESSION_THINKING_DELTA, {"text": "Let me", "parent_tool_use_id": None}),
+        (types.SESSION_SUBAGENT_DELTA, {"text": "Found", "parent_tool_use_id": "toolu_1"}),
+    ],
+)
+async def test_streamed_thinking_and_subagent_text_are_activity(
+    env: Env, event_type: str, payload: dict[str, JsonValue]
+) -> None:
+    """B59: the text streams before its finished block arrives."""
+    session = await env.running()
+    await env.wait(9)
+    await env.ephemeral(session, event_type, payload)
+    await env.wait(9)
+
+    assert await env.flags(session) == []
+
+
+async def test_a_hook_message_is_activity(env: Env) -> None:
+    """B59: a hook that speaks shows the turn is alive."""
+    session = await env.running()
+    await env.wait(9)
+    await env.send(session, types.SESSION_HOOK, {"hook_event": "PostToolUse", "output": "ok"})
+    await env.wait(9)
+
+    assert await env.flags(session) == []
+
+
 async def test_no_silence_while_a_prompt_waits_and_no_flags_once_the_turn_ends(env: Env) -> None:
     session = await env.running()
     await env.prompt(session, "a1", "question", "pending")

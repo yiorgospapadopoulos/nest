@@ -52,3 +52,9 @@ class SessionHooks(Protocol):
     async def purged(self, session_id: str) -> None:
         """The session was deleted for good; drop what is kept in memory for it."""
         ...
+
+    async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
+        """The chat was rewound to before a user message: its transcript from there was
+        deleted (`conversation`), its files restored (`files`), or both (B59).
+        """
+        ...

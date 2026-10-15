@@ -24,6 +24,16 @@ SESSION_MESSAGE: Final = "session.message"
 SESSION_DELTA: Final = "session.delta"
 # The main agent started (`{active: true}`) or finished a thinking block; ephemeral (D045).
 SESSION_THINKING: Final = "session.thinking"
+# Thinking text as it is written, `{text, parent_tool_use_id}` (null for the main agent);
+# ephemeral, the finished block arrives in a SESSION_MESSAGE (B59).
+SESSION_THINKING_DELTA: Final = "session.thinking_delta"
+# A subagent's text as it is written, `{text, parent_tool_use_id}` naming the Agent call
+# that started it; ephemeral, like SESSION_DELTA for the main agent (B59).
+SESSION_SUBAGENT_DELTA: Final = "session.subagent_delta"
+# A hook from the user's setup finished with something to show (B59): `{hook_id,
+# hook_name, hook_event, outcome, exit_code, system_message, output}`; stored, also
+# between turns.
+SESSION_HOOK: Final = "session.hook"
 SESSION_RESULT: Final = "session.result"
 # A note for the transcript, `{kind, text}`: compacted, cleared, model_fallback or
 # api_retry (the first of a turn). Clients show the text as a muted line.
@@ -36,8 +46,14 @@ SESSION_AGENTS: Final = "session.agents"
 # A subagent or background command the engine runs as a task started, moved to the
 # background or finished; stored, possibly between turns. Tracking reads it.
 SESSION_AGENT_TASK: Final = "session.agent_task"
-# The session's queued follow-up messages after any change, oldest first (D032).
+# The session's queued follow-up messages after any change, oldest first (D032); those
+# written into the running turn are `sent` until the agent reads them (B59).
 SESSION_QUEUED: Final = "session.queued"
+# The conversation was rewound to before the user message of event `message` (B59): the
+# session's events `message` to `through` are deleted; clients drop them too. Events after
+# `through` (what the cut run said as it opened) stay. `{message, through, text,
+# attachments}`, the message for the composer.
+SESSION_REWOUND: Final = "session.rewound"
 # How full the agent's context window is, after each turn (D032).
 SESSION_CONTEXT: Final = "session.context"
 # The session's pull request status on GitHub changed (D034): `{pr}`.

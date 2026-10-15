@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from nestd.config.models import Effort, PermissionMode, SessionMode
-from nestd.providers.base import ContextUsage
+from nestd.providers.base import ContextUsage, RewindResult
 from nestd.prs.models import PrStatus
 from nestd.stuck.models import StuckFlag
 
@@ -103,6 +103,12 @@ class Session(NewSession):
     pr_summary: str | None = None
     # Why the session looks stuck right now, if it does (D036).
     stuck: StuckFlag | None = None
+    # A rewound or forked conversation its next run cuts into a new engine session: resume
+    # `fork_from` up to the entry `fork_at`, refusing unless only the turn of `fork_drops`
+    # goes when that is set (B59). Cleared once the run reports the new session.
+    fork_from: str | None = Field(default=None, exclude=True)
+    fork_at: str | None = Field(default=None, exclude=True)
+    fork_drops: str | None = Field(default=None, exclude=True)
 
 
 type Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -138,10 +144,23 @@ class SendMessage(BaseModel):
     interrupt: bool = False
 
 
+# What a rewind restores to before a user message, as in Claude Code: the files the agent
+# changed (IMP-02), the conversation (B59), or both.
+type Restore = Literal["code", "conversation", "both"]
+
+
 class RewindRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # The id of the `session.user_message` event to restore files to before (IMP-02).
+    # The id of the `session.user_message` event to restore to before (IMP-02).
+    message: int = Field(ge=1)
+    restore: Restore = "code"
+
+
+class ForkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The id of the `session.user_message` event the new chat's conversation stops before.
     message: int = Field(ge=1)
 
 
@@ -152,13 +171,27 @@ class AttachmentSummary(BaseModel):
     size: int
 
 
+class RewindReply(RewindResult):
+    """A rewind previewed or done (B59). The file fields are the files' part; with only
+    the conversation restored they stay empty, `can_rewind` true.
+    """
+
+    restore: Restore = "code"
+    # The rewound message, for the composer when the conversation is restored ("edit").
+    text: str | None = None
+    attachments: list[AttachmentSummary] = Field(default_factory=list[AttachmentSummary])
+
+
 class QueuedMessage(BaseModel):
-    """A message sent while a turn ran, waiting to start the next one (D032)."""
+    """A message sent while a turn ran, waiting until the agent reads it (D032, B59)."""
 
     id: str
     text: str
     attachments: list[AttachmentSummary]
     created_at: datetime
+    # Written into the running turn: the agent reads it at its next step, or starts its
+    # next turn with it. Otherwise it waits for the turn to end (B59).
+    sent: bool = False
     # Kept for the message's event when it starts; not part of the queue's payload (B41).
     from_pixie: str | None = Field(default=None, exclude=True)
     origin: MessageOrigin | None = Field(default=None, exclude=True)
@@ -166,6 +199,14 @@ class QueuedMessage(BaseModel):
     @property
     def sender(self) -> Sender:
         return Sender(self.from_pixie, self.origin)
+
+
+class ForkReply(BaseModel):
+    """A new chat forked from a message (B59), and that message for its composer."""
+
+    session: Session
+    text: str
+    attachments: list[AttachmentSummary]
 
 
 class SendResult(Session):

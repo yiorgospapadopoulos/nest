@@ -170,6 +170,24 @@ def stream(event: dict[str, Any], parent: str | None = None) -> StreamEvent:
     return StreamEvent(uuid="u", session_id="sdk-1", event=event, parent_tool_use_id=parent)
 
 
+def hook_response(**data: object) -> HookEventMessage:
+    fields: dict[str, Any] = {
+        "type": "system",
+        "subtype": "hook_response",
+        "hook_id": "h1",
+        "hook_name": "PostToolUse:Edit",
+        "hook_event": "PostToolUse",
+        "output": "",
+        "stdout": "",
+        "stderr": "",
+        "outcome": "success",
+        **data,
+    }
+    return HookEventMessage(
+        subtype="hook_response", data=fields, hook_event_name=str(fields["hook_event"])
+    )
+
+
 TEXT_DELTA = {
     "type": "content_block_delta",
     "index": 0,
@@ -179,6 +197,31 @@ TEXT_DELTA = {
 
 async def test_text_deltas_are_streamed() -> None:
     assert await translated(stream(TEXT_DELTA)) == [("text_delta", "He")]
+
+
+def thinking_delta(text: str) -> dict[str, Any]:
+    return {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {"type": "thinking_delta", "thinking": text},
+    }
+
+
+async def test_thinking_streams_as_it_is_written() -> None:
+    """B59: as in Claude Code, for the main agent and for subagents."""
+    assert await translated(stream(thinking_delta("Let me"))) == [
+        ("thinking_delta", ("Let me", None))
+    ]
+    assert await translated(stream(thinking_delta("Hmm"), parent="toolu_1")) == [
+        ("thinking_delta", ("Hmm", "toolu_1"))
+    ]
+
+
+async def test_subagent_text_streams_under_its_tool_call() -> None:
+    """B59: a subagent's text, attributed to the Agent call that started it."""
+    assert await translated(stream(TEXT_DELTA, parent="toolu_1")) == [
+        ("subagent_delta", ("He", "toolu_1"))
+    ]
 
 
 async def test_the_main_agent_thinking_is_reported_as_it_starts_and_ends() -> None:
@@ -241,16 +284,157 @@ async def test_a_result_ends_the_turns_thinking_timings() -> None:
 @pytest.mark.parametrize(
     "event",
     [
-        stream(TEXT_DELTA, parent="subagent"),
         stream({"type": "content_block_delta", "delta": {"type": "thinking_delta"}}),
+        stream(
+            {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": ""}}
+        ),
+        stream({"type": "content_block_delta", "delta": {"type": "signature_delta"}}),
+        stream({"type": "content_block_delta", "delta": {"type": "text_delta"}}, parent="t"),
         stream({"type": "message_start", "message": {}}),
         SystemMessage(subtype="status", data={}),
         SystemMessage(subtype="status", data={"status": None, "permissionMode": "dontAsk"}),
         HookEventMessage(subtype="hook_started", data={}, hook_event_name="PreToolUse"),
+        # A hook that ran quietly, or whose output was context for Claude, shows nothing,
+        # as in Claude Code: SessionStart and UserPromptSubmit output goes to Claude.
+        hook_response(stdout=""),
+        hook_response(stdout='{"hookSpecificOutput": {"additionalContext": "x"}}'),
+        hook_response(stdout='{"systemMessage": 3}'),
+        hook_response(stdout="lint ok\n", exit_code=0),
+        hook_response(stdout="{oops"),
+        hook_response(hook_event="SessionStart", stdout="=== REMEMBER ===\nnotes"),
+        hook_response(hook_event="UserPromptSubmit", stdout="[14:37 EEST]", exit_code=0),
     ],
 )
 async def test_other_messages_are_ignored(event: Message) -> None:
     assert await translated(event) == []
+
+
+@pytest.mark.parametrize(
+    ("message", "shown"),
+    [
+        # The message a hook has for the user, as Claude Code shows it.
+        (
+            hook_response(stdout='  {"systemMessage": "Formatted 2 files", "continue": true}\n'),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="success",
+                system_message="Formatted 2 files",
+            ),
+        ),
+        # A message for the user with output for Claude shows the message only.
+        (
+            hook_response(
+                stdout='{"systemMessage": "Saved", "hookSpecificOutput": {"additionalContext": 1}}'
+            ),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="success",
+                system_message="Saved",
+            ),
+        ),
+        # A hook that failed shows, even with nothing to say.
+        (
+            hook_response(outcome="error", stdout="", stderr="", output=""),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+            ),
+        ),
+        (
+            hook_response(outcome="cancelled", stdout="partial"),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="cancelled",
+                output="partial",
+            ),
+        ),
+        # An exit code that is not 0 is a failure, whatever the outcome says.
+        (
+            hook_response(exit_code=1, stdout="bad config"),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+                exit_code=1,
+                output="bad config",
+            ),
+        ),
+        # A hook that blocks says why, as a failure, like Claude Code's blocking error.
+        (
+            hook_response(stdout='{"decision": "block", "reason": "Run the tests first"}'),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+                output="Run the tests first",
+            ),
+        ),
+        (
+            hook_response(stdout='{"continue": false, "stopReason": "Out of budget"}'),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+                output="Out of budget",
+            ),
+        ),
+        # A failure says what the hook wrote to stderr, else its other output.
+        (
+            hook_response(outcome="error", exit_code=2, stdout="x", stderr="Blocked: tests fail\n"),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+                exit_code=2,
+                output="Blocked: tests fail",
+            ),
+        ),
+        (
+            hook_response(outcome="error", exit_code=1, output="combined"),
+            base.HookOutput(
+                hook_id="h1",
+                hook_name="PostToolUse:Edit",
+                hook_event="PostToolUse",
+                outcome="error",
+                exit_code=1,
+                output="combined",
+            ),
+        ),
+        # Fields the engine left out or sent in another form.
+        (
+            HookEventMessage(
+                subtype="hook_response",
+                data={
+                    "stdout": '{"systemMessage": "hi"}',
+                    "outcome": "later",
+                    "exit_code": "0",
+                    "hook_id": 4,
+                },
+                hook_event_name="Stop",
+            ),
+            base.HookOutput(
+                hook_event="Stop", hook_name="Stop", outcome="success", system_message="hi"
+            ),
+        ),
+    ],
+)
+async def test_hook_messages_are_shown(message: HookEventMessage, shown: base.HookOutput) -> None:
+    """B59: a hook's message for the user and a hook that failed appear in the transcript,
+    as in Claude Code; output a hook gives Claude does not.
+    """
+    assert await translated(message) == [("hook", shown)]
 
 
 def system(subtype: str, **data: object) -> SystemMessage:
@@ -455,7 +639,6 @@ async def test_results_report_the_turn_and_the_session_id() -> None:
                 subtype="error_during_execution",
                 duration_ms=1200,
                 num_turns=3,
-                cost_usd=0.25,
                 errors=["boom"],
             ),
         ),
@@ -487,7 +670,8 @@ async def test_results_carry_the_turns_token_usage() -> None:
     )
 
 
-async def test_results_without_errors_or_cost() -> None:
+async def test_results_without_errors() -> None:
+    """B59: the cost of a turn is not reported; the context meter replaces it."""
     message = ResultMessage(
         subtype="success",
         duration_ms=5,
@@ -501,9 +685,7 @@ async def test_results_without_errors_or_cost() -> None:
 
     assert calls[1] == (
         "result",
-        base.ResultInfo(
-            is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=None, errors=[]
-        ),
+        base.ResultInfo(is_error=False, subtype="success", duration_ms=5, num_turns=1, errors=[]),
     )
 
 
