@@ -85,7 +85,6 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var worktreePath: String?
     public var branch: String?
     public var providerSessionID: String?
-    public var gitViolation: Bool
     public var createdAt: Date
     public var updatedAt: Date
     public var lastError: String?
@@ -126,7 +125,6 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case baseRef = "base_ref"
         case worktreePath = "worktree_path"
         case providerSessionID = "provider_session_id"
-        case gitViolation = "git_violation"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case lastError = "last_error"

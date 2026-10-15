@@ -234,7 +234,7 @@
                 "id": "adopted-\(id)", "repo": chat.repo, "title": chat.title,
                 "prompt": chat.title, "mode": "in_place", "cwd": chat.cwd, "model": "opus",
                 "effort": "high", "permission_mode": "default", "provider": "claude",
-                "state": "idle", "provider_session_id": id, "git_violation": false,
+                "state": "idle", "provider_session_id": id,
                 "created_at": SampleData.iso(chat.createdAt),
                 "updated_at": SampleData.iso(chat.lastActivityAt), "allowed_tools": [],
                 "pinned": false,
@@ -319,8 +319,6 @@
                     "remote: Permission to me/todo-ui.git denied to me.\nfatal: unable to access 'https://github.com/me/todo-ui.git/': The requested URL returned error: 403"
             )
         }
-
-        func reject(_ sessionID: String) async throws -> Session { try await session(sessionID) }
 
         func feedback(_ sessionID: String, text: String) async throws -> Session {
             try await session(sessionID)
@@ -1195,7 +1193,6 @@
             return try decode([
                 "base": "main",
                 "head": ["commit": "9f3c2e1a7b", "branch": "agent/dark-mode-contrast-3f2a"],
-                "commits": [["sha": "4d5e6f7a8b9c", "subject": "Add a release workflow"]],
                 "stats": ["files": 4, "additions": 48, "deletions": 19],
                 "files": [
                     file(
@@ -1278,7 +1275,7 @@
                 "id": id, "repo": repo, "title": title, "prompt": title, "mode": "worktree",
                 "model": model, "effort": effort, "permission_mode": permission,
                 "provider": "claude", "state": state, "branch": branch,
-                "git_violation": false, "created_at": ago(minutes + 30),
+                "created_at": ago(minutes + 30),
                 "updated_at": ago(minutes), "allowed_tools": [], "pinned": pinned,
             ]
             if archived {

@@ -5,7 +5,7 @@ public enum ApprovalKind: String, UnknownSafeEnum {
     case permission
     /// The agent's AskUserQuestion, waiting for answers.
     case question
-    /// Finished work to approve, reject or send feedback on.
+    /// Changed files to approve or send feedback on; it stays pending across turns.
     case review
     /// A plan Claude finished in plan mode: Approve plan or Keep planning.
     case plan

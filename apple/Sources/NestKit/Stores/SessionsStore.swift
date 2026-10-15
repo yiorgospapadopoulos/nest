@@ -298,8 +298,8 @@ public final class SessionsStore {
 
     /// Approves a review (`ApprovalsStore.publish`). A refusal (409) means the chat
     /// changed since it was shown, so the chat and its diff are read again before the
-    /// error is passed on: a violation's switch, the moved branch or the changed files then
-    /// show, and Approve waits for them.
+    /// error is passed on: the moved branch or the changed files then show, and Approve
+    /// waits for them.
     @discardableResult
     public func publish(_ approval: Approval, _ form: PublishForm) async throws -> Session {
         do {
@@ -385,9 +385,6 @@ public final class SessionsStore {
         case .unstuck:
             guard let id = event.sessionID else { return }
             sessions[id]?.stuck = nil
-        case .gitViolation:
-            guard let id = event.sessionID else { return }
-            sessions[id]?.gitViolation = true
         case .workspace(let workspace):
             guard let id = event.sessionID, var session = sessions[id] else { return }
             session.worktreePath = workspace.path

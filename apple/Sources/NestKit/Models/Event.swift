@@ -53,8 +53,6 @@ public enum EventType {
     public static let sessionPR = "session.pr"
     public static let sessionStuck = "session.stuck"
     public static let sessionUnstuck = "session.unstuck"
-    /// The agent changed git refs itself; publishing needs an acknowledgement.
-    public static let sessionGitViolation = "session.git_violation"
     /// A worktree chat's folder, branch and base, once the worktree exists.
     public static let sessionWorkspace = "session.workspace"
     /// A line from Claude Code for the transcript, such as "Conversation compacted".
@@ -132,8 +130,6 @@ public enum EventBody: Sendable, Hashable {
     case reposChanged
     /// A muted line for the transcript.
     case sessionNotice(text: String)
-    /// The agent changed git refs itself (D053).
-    case gitViolation
     case workspace(SessionWorkspace)
     case pixieUpdated(Pixie)
     case pixieDeleted(String)
@@ -202,7 +198,6 @@ public enum EventBody: Sendable, Hashable {
             self = .reposChanged
         case EventType.sessionNotice:
             self = .sessionNotice(text: try field("text", as: String.self))
-        case EventType.sessionGitViolation: self = .gitViolation
         case EventType.sessionWorkspace:
             self = .workspace(try payload.decode(SessionWorkspace.self))
         case EventType.pixieUpdated: self = .pixieUpdated(try field("pixie", as: Pixie.self))

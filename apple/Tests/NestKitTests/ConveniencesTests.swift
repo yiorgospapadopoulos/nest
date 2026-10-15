@@ -116,7 +116,7 @@ import Testing
         """
         {"id": "s1", "repo": "todo-ui", "title": "T", "prompt": "P", "mode": "worktree",
          "permission_mode": "default", "provider": "claude", "state": "running",
-         "git_violation": false, "created_at": "2026-10-07T01:00:00Z",
+         "created_at": "2026-10-07T01:00:00Z",
          "updated_at": "2026-10-07T01:00:00Z", "allowed_tools": [], "pinned": false\(extra)}
         """
     }

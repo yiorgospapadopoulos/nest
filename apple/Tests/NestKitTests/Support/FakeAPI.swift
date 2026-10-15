@@ -345,12 +345,6 @@ final class FakeAPI: NestAPI {
         }
     }
 
-    func reject(_ sessionID: String) async throws -> Session {
-        try call("reject", sessionID) { state in
-            session(sessionID, in: &state) { $0.state = .closed }
-        }
-    }
-
     func feedback(_ sessionID: String, text: String) async throws -> Session {
         try call("feedback", "\(sessionID) \(text)") { state in
             session(sessionID, in: &state) { $0.state = .running }

@@ -36,7 +36,6 @@ import Testing
         #expect(sessions[1].mode == .inPlace)
         #expect(sessions[1].model == nil)
         #expect(sessions[1].effort == nil)
-        #expect(sessions[1].gitViolation)
         #expect(sessions[1].prURL == "https://github.com/example/todo-ui/pull/14")
         #expect(sessions[1].tasks == nil)
         #expect(sessions[1].updatedAt == Date(timeIntervalSince1970: 1_791_223_200.25))
@@ -287,36 +286,24 @@ import Testing
                 == ReviewHead(
                     commit: "2222222222222222222222222222222222222222",
                     branch: "agent/dark-mode-1a2b3c"))
-        #expect(
-            diff.commits
-                == [
-                    ReviewCommit(
-                        sha: "3333333333333333333333333333333333333333",
-                        subject: "Add a CI workflow")
-                ])
-        #expect(diff.commits[0].shortSHA == "3333333")
-        #expect(diff.commits[0].id == diff.commits[0].sha)
-        #expect(diff.pushTarget == "Pushes to agent/dark-mode-1a2b3c")
+        #expect(diff.target(pushes: true) == "Pushes to agent/dark-mode-1a2b3c")
+        // An approve that only commits says it does not push (B56).
+        #expect(diff.target(pushes: false) == "Commits to agent/dark-mode-1a2b3c, not pushed")
         #expect(diff.fingerprint == "fp-1")
     }
 
-    @Test func aDiffFromAnOlderDaemonHasNoHeadOrCommits() {
+    @Test func aDiffFromAnOlderDaemonHasNoHead() {
         let empty = #""stats": {"files": 0, "additions": 0, "deletions": 0}, "files": []"#
         let diff = Fixture.decode(SessionDiff.self, json: #"{"base": null, \#(empty)}"#)
         #expect(diff.head == nil)
         #expect(diff.fingerprint == nil)
-        #expect(diff.commits.isEmpty)
-        #expect(diff.pushTarget == nil)
+        #expect(diff.target(pushes: true) == nil)
         // A detached HEAD names no branch.
-        let head = #""head": {"commit": "c", "branch": null}, "commits": []"#
+        let head = #""head": {"commit": "c", "branch": null}"#
         let detached = Fixture.decode(
             SessionDiff.self, json: #"{"base": null, \#(head), \#(empty)}"#)
         #expect(detached.head == ReviewHead(commit: "c", branch: nil))
-        #expect(detached.pushTarget == nil)
-        #expect(
-            SessionDiff.foreignCommitsWarning
-                == "These commits are on the branch, but Nest did not make them. "
-                + "Check them before publishing.")
+        #expect(detached.target(pushes: false) == nil)
     }
 }
 

@@ -1359,21 +1359,6 @@ final class Shell {
         }
     }
 
-    /// Resolves the review as rejected: nothing is undone or closed, in either mode (B54),
-    /// so the chat comes forward with its composer focused to say what to change. A refusal
-    /// leaves the review pending.
-    func reject(_ approval: Approval) {
-        if overlay == .diff(approval.id) || overlay == .publish(approval.id) {
-            close()
-        }
-        run("Could not reject") {
-            try await self.approvals.reject(approval)
-            self.reveal(chat: approval.sessionID, in: approval.repo)
-            self.draft(for: approval.sessionID).wantsFocus = true
-            self.show(RejectConsequence.done(approval.title), kind: .info)
-        }
-    }
-
     func sendFeedback(_ approval: Approval, text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -1393,16 +1378,11 @@ final class Shell {
     func publish(_ approval: Approval, _ form: PublishForm) {
         Task {
             // A refusal reads the chat and its diff again; the sheet shows why.
-            guard let session = try? await sessions.publish(approval, form) else { return }
+            guard (try? await sessions.publish(approval, form)) != nil else { return }
             if overlay == .publish(approval.id) {
                 close()
             }
-            let done =
-                session.prURL != nil
-                ? "Opened a pull request for \(approval.title)"
-                : form.push
-                    ? "Committed and pushed \(approval.title)" : "Committed \(approval.title)"
-            show(done, kind: .done)
+            show(form.done(approval.title), kind: .done)
         }
     }
 

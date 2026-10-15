@@ -100,8 +100,6 @@ public enum APIError: Error, Sendable, Equatable {
 
 /// Why the daemon refused to publish a review; its `detail` says it in words.
 public enum ApproveRefusal: String, Sendable {
-    /// The agent changed git refs itself; publishing needs an acknowledgement.
-    case gitViolation = "git_violation"
     /// HEAD is no longer the commit or branch the review showed.
     case headChanged = "head_changed"
     /// The chat's background tasks still run.

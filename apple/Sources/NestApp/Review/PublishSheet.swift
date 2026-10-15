@@ -1,8 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// Approving a review: the commit message, push and pull request choices, then each git
-/// step's progress; a failed step shows its error output and can be tried again.
+/// Approving a review: the commit message and, for a worktree chat without one, the pull
+/// request choice, then each git step's progress; a failed step shows its error output and
+/// can be tried again. Only opening a pull request pushes (B56).
 struct PublishSheet: View {
     let approvalID: String
     @Environment(Shell.self) private var shell
@@ -33,12 +34,6 @@ struct PublishSheet: View {
                     for: approval, session: shell.sessions.session(approval.sessionID))
             }
         }
-        // A violation found while the sheet is open, as after a refused approve.
-        .onChange(of: approval.flatMap { shell.sessions.session($0.sessionID)?.gitViolation }) {
-            if let approval {
-                form?.follow(shell.sessions.session(approval.sessionID))
-            }
-        }
         // Approve sends the HEAD and fingerprint of the diff it shows, so it is read again
         // on every opening and Approve waits for it.
         .task(id: approvalID) {
@@ -52,13 +47,7 @@ struct PublishSheet: View {
         }
     }
 
-    private var title: String {
-        guard let form else { return "Approve" }
-        if form.steps.contains(.pr) {
-            return "Approve and open PR"
-        }
-        return form.push ? "Approve and push" : "Approve and commit"
-    }
+    private var title: String { form?.title ?? "Approve" }
 
     @ViewBuilder private func content(_ approval: Approval, _ form: Binding<PublishForm>)
         -> some View
@@ -78,7 +67,7 @@ struct PublishSheet: View {
             }
             .padding(.top, 14)
             if let diff = shell.approvals.diffs[approval.sessionID] {
-                PublishTarget(diff: diff).padding(.top, 10)
+                PublishTarget(diff: diff, pushes: form.wrappedValue.pushes).padding(.top, 10)
             }
             if let loadFailure {
                 Text(loadFailure)
@@ -95,34 +84,21 @@ struct PublishSheet: View {
                 }
                 .padding(.top, 8)
             }
-            if form.wrappedValue.hasViolation {
-                ViolationNotice(approval: approval)
-                    .onChange(of: shell.approvals.acknowledgedViolations) { _, acknowledged in
-                        form.wrappedValue.acknowledgeViolation = acknowledged.contains(approval.id)
-                    }
-            }
             FieldLabel(text: "Commit message")
             SheetTextField(placeholder: "Commit message", text: form.commitMessage, lines: 3)
-            SheetRow(label: "Push the branch") {
-                Switch(isOn: form.wrappedValue.push) { form.wrappedValue.push.toggle() }
-                    .accessibilityLabel("Push the branch")
-            }
-            .padding(.top, 8)
-            SheetRow(label: "Open a pull request") {
-                Switch(isOn: form.wrappedValue.openPR && form.wrappedValue.canOpenPR) {
-                    form.wrappedValue.openPR.toggle()
+            if form.wrappedValue.canOpenPR {
+                SheetRow(label: "Push and open a pull request") {
+                    Switch(isOn: form.wrappedValue.openPR) { form.wrappedValue.openPR.toggle() }
+                        .accessibilityLabel("Push and open a pull request")
                 }
-                .disabled(!form.wrappedValue.canOpenPR)
-                .opacity(form.wrappedValue.canOpenPR ? 1 : 0.4)
-                .accessibilityLabel("Open a pull request")
+                .padding(.top, 8)
             }
-            if form.wrappedValue.mode == .inPlace {
-                Text(
-                    "This chat works in the project folder, so its files are committed on the current branch without a pull request."
-                )
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .fixedSize(horizontal: false, vertical: true)
+            if let note = form.wrappedValue.note {
+                Text(note)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
             }
             if form.wrappedValue.steps.contains(.pr) {
                 FieldLabel(text: "Pull request title (optional)")
@@ -143,12 +119,11 @@ struct PublishSheet: View {
                 Button {
                     shell.publish(approval, form.wrappedValue)
                 } label: {
+                    let icon = form.wrappedValue.pushes ? Icon.pullRequest : Icon.check
                     if running {
-                        Label("Publishing…", systemImage: Icon.pullRequest)
+                        Label("Publishing…", systemImage: icon)
                     } else {
-                        Label(
-                            progress?.failure == nil ? title : "Try again",
-                            systemImage: Icon.pullRequest)
+                        Label(progress?.failure == nil ? title : "Try again", systemImage: icon)
                     }
                 }
                 .buttonStyle(.nest(.primary))

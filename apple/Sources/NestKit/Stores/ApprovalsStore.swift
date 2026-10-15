@@ -16,10 +16,8 @@ public final class ApprovalsStore {
     private var loadedReviews: [String: String] = [:]
     /// Counts the reads of each session's diff, so only the latest one is kept.
     @ObservationIgnored private var diffReads: [String: Int] = [:]
-    /// Approvals with a resolve, approve, reject or feedback call in flight.
+    /// Approvals with a resolve, approve or feedback call in flight.
     public private(set) var busy: Set<String> = []
-    /// Reviews whose git violation the user acknowledged, by approval id.
-    public var acknowledgedViolations: Set<String> = []
     /// The latest approve call per session.
     public private(set) var publishing: [String: PublishProgress] = [:]
     /// Chosen labels by approval id and question text; starts with the recommended options.
@@ -186,11 +184,6 @@ public final class ApprovalsStore {
         let diff = try await api.diff(session)
         // A newer read, or the review going away, replaced this one meanwhile.
         guard diffReads[session] == read else { return diff }
-        if let shown = diffs[session],
-            shown.fingerprint != diff.fingerprint || shown.head != diff.head
-        {
-            acknowledgedViolations.remove(approval.id)
-        }
         diffs[session] = diff
         loadedReviews[session] = approval.id
         return diff
@@ -204,9 +197,7 @@ public final class ApprovalsStore {
 
     /// The approve sheet's starting point for a review of this session.
     public func publishForm(for approval: Approval, session: Session?) -> PublishForm {
-        PublishForm(
-            approval: approval, session: session,
-            acknowledged: acknowledgedViolations.contains(approval.id))
+        PublishForm(approval: approval, session: session)
     }
 
     public func progress(session: String) -> PublishProgress? {
@@ -242,23 +233,11 @@ public final class ApprovalsStore {
         }
     }
 
-    @discardableResult
-    public func reject(_ approval: Approval) async throws -> Session {
-        let session = try await track(approval) { try await self.api.reject(approval.sessionID) }
-        remove(approval.id)
-        forgetDiff(of: approval.sessionID)
-        return session
-    }
-
-    /// Sends a note back into the session; the daemon supersedes the review.
+    /// Sends a note back into the session. The review stays pending: a turn that changes
+    /// the work replaces it through its events (B56).
     @discardableResult
     public func feedback(_ approval: Approval, text: String) async throws -> Session {
-        let session = try await track(approval) {
-            try await self.api.feedback(approval.sessionID, text: text)
-        }
-        remove(approval.id)
-        forgetDiff(of: approval.sessionID)
-        return session
+        try await track(approval) { try await self.api.feedback(approval.sessionID, text: text) }
     }
 
     // MARK: Merges
@@ -342,6 +321,5 @@ public final class ApprovalsStore {
         freeAnswers[id] = nil
         planNotes[id] = nil
         planModes[id] = nil
-        acknowledgedViolations.remove(id)
     }
 }

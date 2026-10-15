@@ -124,12 +124,7 @@ import Testing
         #expect(session.title == "Dark mode contrast")
     }
 
-    @Test func gitViolationAndWorkspaceEvents() {
-        #expect(
-            Fixture.event(
-                EventType.sessionGitViolation,
-                #"{"changes": [{"ref": "HEAD", "before": "a", "after": "b"}]}"#
-            ).body == .gitViolation)
+    @Test func workspaceEvents() {
         #expect(
             Fixture.event(
                 EventType.sessionWorkspace,

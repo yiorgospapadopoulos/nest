@@ -20,7 +20,10 @@ struct PaneView: View {
                 TranscriptView(chat: chat)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if !shell.isClaudeChatPane(chat) {
-                            BackgroundBar(chat: chat)
+                            VStack(spacing: 0) {
+                                BackgroundBar(chat: chat)
+                                PendingReviewBar(chat: chat)
+                            }
                         }
                     }
             }

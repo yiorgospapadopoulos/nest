@@ -253,7 +253,7 @@ import Testing
         #expect(!store.isReviewLoaded(review))
     }
 
-    /// A new or resolved review, feedback, a reject and a publish each make the loaded
+    /// A new or resolved review and a publish each make the loaded
     /// diff stale, so it is dropped.
     @Test func theDiffIsDroppedWhenTheReviewChanges() async throws {
         let id = review.sessionID
@@ -275,12 +275,11 @@ import Testing
 
         store.apply(.approvalCreated(review))
         try await store.loadDiff(for: review)
+        // Feedback leaves the review and its diff: a turn that changes the work replaces
+        // the review, which drops the diff then (B56).
         try await store.feedback(review, text: "More tests")
-        #expect(store.diffs[id] == nil)
-
-        store.apply(.approvalCreated(review))
-        try await store.loadDiff(for: review)
-        try await store.reject(review)
+        #expect(store.isReviewLoaded(review))
+        store.apply(.approvalResolved(review))
         #expect(store.diffs[id] == nil)
 
         store.apply(.approvalCreated(review))
@@ -305,27 +304,6 @@ import Testing
 
         #expect(store.diffs[review.sessionID] == nil)
         #expect(!store.isReviewLoaded(review))
-    }
-
-    /// "I checked" holds for the changes the user checked: a reload that shows other
-    /// changes or another HEAD asks again (audit SEC-11 on the Mac).
-    @Test func changedChangesAskToCheckAgain() async throws {
-        try await loadReview()
-        store.acknowledgedViolations.insert(review.id)
-        try await store.loadDiff(for: review)
-        #expect(store.acknowledgedViolations == [review.id])
-
-        var changed = Fixture.diff
-        changed.fingerprint = "fp-2"
-        api.set { $0.diff = changed }
-        try await store.loadDiff(for: review)
-        #expect(store.acknowledgedViolations.isEmpty)
-
-        store.acknowledgedViolations.insert(review.id)
-        changed.head = ReviewHead(commit: "4444", branch: nil)
-        api.set { $0.diff = changed }
-        try await store.loadDiff(for: review)
-        #expect(store.acknowledgedViolations.isEmpty)
     }
 
     @Test func aRefusedApproveRunsNoStepAndKeepsTheReason() async throws {
@@ -394,32 +372,13 @@ import Testing
         #expect(store.progress(session: id) == nil)
     }
 
-    @Test func acknowledgedViolationsCarryIntoTheFormUntilResolved() async throws {
+    @Test func sendsFeedback() async throws {
         try await store.load()
-        var session = Fixture.session(review.sessionID)
-        session.gitViolation = true
-        #expect(!store.publishForm(for: review, session: session).canSubmit)
-        store.acknowledgedViolations.insert(review.id)
-        let form = store.publishForm(for: review, session: session)
-        #expect(form.canSubmit)
-        #expect(form.request.acknowledgeViolation)
-        try await store.reject(review)
-        #expect(store.acknowledgedViolations.isEmpty)
-    }
-
-    @Test func rejectsAndSendsFeedback() async throws {
-        try await store.load()
-        let closed = try await store.reject(review)
-        #expect(closed.state == .closed)
-        store.apply(.approvalCreated(review))
         let running = try await store.feedback(review, text: "Keep the old focus ring")
         #expect(running.state == .running)
-        #expect(
-            api.calls.suffix(2) == [
-                "reject \(review.sessionID)",
-                "feedback \(review.sessionID) Keep the old focus ring",
-            ])
-        #expect(store.pending(repo: "todo-ui").map(\.id) == ["ap-perm"])
+        #expect(api.calls.last == "feedback \(review.sessionID) Keep the old focus ring")
+        // The review stays pending: a turn that changes the work replaces it (B56).
+        #expect(store.pending(repo: "todo-ui").map(\.id) == ["ap-perm", "ap-review"])
     }
 
     @Test func loadsDiffs() async throws {

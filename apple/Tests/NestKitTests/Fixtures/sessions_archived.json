@@ -15,7 +15,6 @@
     "worktree_path": null,
     "branch": null,
     "provider_session_id": "0e6d2b8c-1f3a-4c5d-9e7f-8a9b0c1d2e3f",
-    "git_violation": true,
     "created_at": "2026-10-06T09:12:30.482113Z",
     "updated_at": "2026-10-05T18:00:00.250000+00:00",
     "last_error": "agent stopped",

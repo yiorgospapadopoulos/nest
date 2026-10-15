@@ -360,8 +360,8 @@ private struct FreeAnswerField: View {
     }
 }
 
-/// Stats, summary and files of the work, the git violation warning, a feedback field,
-/// and Approve and open PR, Reject (confirmed), Send feedback.
+/// Stats, summary and files of the work, a feedback field, Send feedback and Approve;
+/// a review has no Reject (B56).
 private struct ReviewBody: View {
     let approval: Approval
     let style: ApprovalCard.Style
@@ -371,8 +371,6 @@ private struct ReviewBody: View {
     var body: some View {
         let review = approval.review
         let session = shell.sessions.session(approval.sessionID)
-        let violation = session?.gitViolation ?? false
-        let acknowledged = shell.approvals.acknowledgedViolations.contains(approval.id)
         let git = shell.app.repo(approval.repo)?.git != false
         VStack(alignment: .leading, spacing: 0) {
             if style == .panel {
@@ -406,15 +404,13 @@ private struct ReviewBody: View {
                 FileList(
                     paths: review?.paths ?? [], diff: shell.approvals.diffs[approval.sessionID])
             }
-            if violation {
-                ViolationNotice(approval: approval)
-            }
             if style == .panel {
                 HStack(spacing: 6) {
+                    // The review stays pending after feedback (B56), so the field clears.
                     CardField(placeholder: "Feedback for Claude", text: $feedback) {
-                        shell.sendFeedback(approval, text: feedback)
+                        send()
                     }
-                    Button("Send") { shell.sendFeedback(approval, text: feedback) }
+                    Button("Send") { send() }
                         .buttonStyle(.nest(.soft))
                         .fixedSize()
                         .disabled(feedback.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -426,55 +422,20 @@ private struct ReviewBody: View {
                 Button {
                     shell.show(.publish(approval.id))
                 } label: {
-                    Text(
-                        session?.mode == .inPlace
-                            ? "Approve and commit" : "Approve and open PR"
-                    )
-                    .grows(style)
+                    Text(PublishForm.approveTitle(for: session)).grows(style)
                 }
                 .buttonStyle(.nest(.primary))
-                .disabled(!git || (violation && !acknowledged))
+                .disabled(!git)
                 .help(git ? "" : "Not a git repository: nothing to commit")
-                Button("Reject") { shell.reject(approval) }
-                    .buttonStyle(.nest(.soft))
-                    .help("Reject the review; the changes stay and the chat continues")
             }
         }
     }
 }
 
-/// The agent changed git refs itself; publishing needs the user to say they checked.
-struct ViolationNotice: View {
-    let approval: Approval
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let binding = Binding(
-            get: { shell.approvals.acknowledgedViolations.contains(approval.id) },
-            set: { on in
-                if on {
-                    shell.approvals.acknowledgedViolations.insert(approval.id)
-                } else {
-                    shell.approvals.acknowledgedViolations.remove(approval.id)
-                }
-            })
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: Icon.warning).font(.system(size: 11, weight: .semibold))
-                Text(
-                    "The agent ran git itself and changed this chat's branch. Check its commits before publishing."
-                )
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .font(.ui(TypeSize.ui))
-            .foregroundStyle(StatusTone.failed.color)
-            Toggle("I checked, publish anyway", isOn: binding)
-                .toggleStyle(SwitchRowStyle())
-                .font(.ui(TypeSize.ui))
-        }
-        .padding(9)
-        .background(StatusTone.failed.soft, in: .rounded(Radius.row))
-        .padding(.top, 8)
+extension ReviewBody {
+    fileprivate func send() {
+        shell.sendFeedback(approval, text: feedback)
+        feedback = ""
     }
 }
 
@@ -603,17 +564,6 @@ struct LinkButtonStyle: ButtonStyle {
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
                 .pointerStyle(.link)
-        }
-    }
-}
-
-/// The mockup's green switch, label on the left.
-struct SwitchRowStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            configuration.label
-            Spacer(minLength: 0)
-            Switch(isOn: configuration.isOn) { configuration.isOn.toggle() }
         }
     }
 }

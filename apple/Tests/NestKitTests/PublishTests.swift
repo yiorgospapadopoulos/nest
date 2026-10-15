@@ -3,48 +3,25 @@ import Testing
 
 @testable import NestKit
 
-@MainActor
-@Suite struct RejectConsequenceTests {
-    @Test func theToastSaysTheChangesStayAndTheChatContinues() {
-        // Rejecting only resolves the review: nothing is undone or closed, in either mode (B54).
-        #expect(
-            RejectConsequence.done("Fix")
-                == "Rejected Fix. The changes stay; tell Claude what to change.")
-    }
-}
-
 @Suite struct PublishFormTests {
     var review: Approval { Fixture.approval("ap-review") }
 
-    func session(mode: SessionMode = .worktree, violation: Bool = false) -> Session {
+    func session(mode: SessionMode = .worktree, pr: String? = nil) -> Session {
         var session = Fixture.session(review.sessionID)
         session.mode = mode
-        session.gitViolation = violation
+        session.prURL = pr
         return session
     }
 
     @Test func startsWithTheTitlePushAndAPullRequest() {
         let form = PublishForm(approval: review, session: session())
         #expect(form.commitMessage == "Dark mode contrast")
-        #expect(form.push && form.openPR && form.canOpenPR)
+        #expect(form.pushes && form.openPR && form.canOpenPR)
         #expect(form.steps == [.commit, .push, .pr])
         #expect(form.canSubmit)
         #expect(
             form.request
                 == ApproveRequest(commitMessage: "Dark mode contrast", push: true, openPR: true))
-    }
-
-    /// A violation found while the sheet is open needs the acknowledgement too.
-    @Test func followsAViolationFoundLater() {
-        var form = PublishForm(approval: review, session: session())
-        #expect(form.canSubmit)
-        form.follow(session(violation: true))
-        #expect(form.hasViolation)
-        #expect(!form.canSubmit)
-        form.acknowledgeViolation = true
-        #expect(form.canSubmit && form.request.acknowledgeViolation)
-        form.follow(nil)
-        #expect(!form.hasViolation)
     }
 
     /// "Push there" approves again with the address origin pushes to now (I-008).
@@ -53,7 +30,7 @@ import Testing
         #expect(form.request.confirmRemoteURL == nil)
         form.confirmRemoteURL = "git@github.com:me/cv.git"
         #expect(form.request.confirmRemoteURL == "git@github.com:me/cv.git")
-        form.push = false
+        form.openPR = false
         #expect(form.request.confirmRemoteURL == nil)
     }
 
@@ -83,40 +60,76 @@ import Testing
         #expect(!form.canSubmit)
     }
 
-    @Test func withoutPushOnlyTheCommitRuns() {
+    /// Without a pull request to open, Approve only commits: it never pushes (B56).
+    @Test func withoutAPullRequestOnlyTheCommitRuns() {
         var form = PublishForm(approval: review, session: session())
-        form.push = false
+        form.openPR = false
         form.prTitle = "Ignored"
+        form.confirmRemoteURL = "git@github.com:me/cv.git"
+        #expect(form.canOpenPR && !form.pushes)
         #expect(form.steps == [.commit])
-        #expect(!form.canOpenPR)
         #expect(
             form.request
                 == ApproveRequest(commitMessage: "Dark mode contrast", push: false, openPR: false))
-        form.push = true
-        form.openPR = false
-        #expect(form.steps == [.commit, .push])
-        #expect(!form.request.openPR)
-        #expect(form.request.prTitle == nil)
+        #expect(form.title == "Approve and commit")
+        #expect(form.done("Fix") == "Committed Fix without pushing")
     }
 
-    @Test func inPlaceSessionsCommitTheirFilesWithoutAPullRequest() {
+    /// An in-place chat commits its files on the current branch and never pushes (B56).
+    @Test func inPlaceSessionsOnlyCommitTheirFiles() {
         let form = PublishForm(approval: review, session: session(mode: .inPlace))
-        #expect(!form.canOpenPR)
-        #expect(form.steps == [.commit, .push])
-        #expect(form.request.files == review.review?.paths)
-        #expect(!form.request.openPR)
+        #expect(!form.canOpenPR && !form.pushes)
+        #expect(form.steps == [.commit])
+        #expect(form.title == "Approve and commit")
+        #expect(
+            form.request
+                == ApproveRequest(
+                    commitMessage: "Dark mode contrast", files: review.review?.paths,
+                    push: false, openPR: false))
+        #expect(form.done("Fix") == "Committed Fix without pushing")
+        #expect(
+            form.note
+                == "This chat works in the project folder, so its files are committed on the current branch, without pushing or a pull request."
+        )
     }
 
-    @Test func aGitViolationNeedsTheAcknowledgement() {
-        var form = PublishForm(approval: review, session: session(violation: true))
-        #expect(form.hasViolation)
-        #expect(!form.canSubmit)
-        form.acknowledgeViolation = true
-        #expect(form.canSubmit)
-        #expect(form.request.acknowledgeViolation)
-        var clean = PublishForm(approval: review, session: session())
-        clean.acknowledgeViolation = true
-        #expect(!clean.request.acknowledgeViolation)
+    /// A worktree chat whose pull request is open commits to its branch without pushing;
+    /// the user pushes to update the pull request (B56).
+    @Test func aChatWithAPullRequestOnlyCommits() {
+        let form = PublishForm(
+            approval: review, session: session(pr: "https://github.com/me/cv/pull/3"))
+        #expect(form.hasPullRequest)
+        #expect(!form.canOpenPR && !form.pushes)
+        #expect(form.steps == [.commit])
+        #expect(form.title == "Approve and commit")
+        #expect(
+            form.request
+                == ApproveRequest(commitMessage: "Dark mode contrast", push: false, openPR: false))
+        #expect(form.done("Fix") == "Committed Fix without pushing")
+        #expect(
+            form.note
+                == "This chat's pull request is already open. Approve commits to its branch without pushing; push it yourself to update the pull request."
+        )
+    }
+
+    @Test func openingAPullRequestSaysSo() {
+        let form = PublishForm(approval: review, session: session())
+        #expect(form.title == "Approve and open PR")
+        #expect(form.done("Fix") == "Opened a pull request for Fix")
+        #expect(form.note == nil)
+    }
+
+    /// The Approve button on the review card and the changes sheet (B56): only a worktree
+    /// chat without a pull request pushes, to open one.
+    @Test func theApproveButtonFollowsTheChat() {
+        let pr = session(pr: "https://github.com/me/cv/pull/3")
+        #expect(PublishForm.approveTitle(for: session()) == "Approve and open PR")
+        #expect(PublishForm.approveTitle(for: nil) == "Approve and open PR")
+        #expect(PublishForm.approveTitle(for: pr) == "Approve and commit")
+        #expect(PublishForm.approveTitle(for: session(mode: .inPlace)) == "Approve and commit")
+        #expect(PublishForm.pushes(for: session()) && PublishForm.pushes(for: nil))
+        #expect(!PublishForm.pushes(for: pr))
+        #expect(!PublishForm.pushes(for: session(mode: .inPlace)))
     }
 
     @Test func otherKindsHaveNoFiles() {

@@ -1,8 +1,8 @@
 import NestKit
 import SwiftUI
 
-/// A review's changes side by side (or unified), file by file, with Reject and Approve in
-/// the footer.
+/// A review's changes side by side (or unified), file by file, with Approve in the footer;
+/// a review has no Reject (B56).
 struct DiffSheet: View {
     enum Layout: Hashable {
         case split, unified
@@ -24,7 +24,10 @@ struct DiffSheet: View {
                 if let diff {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 10) {
-                            PublishTarget(diff: diff)
+                            PublishTarget(
+                                diff: diff,
+                                pushes: PublishForm.pushes(
+                                    for: session.flatMap(shell.sessions.session)))
                             if diff.files.isEmpty {
                                 Text("No changes against the base.")
                                     .font(.ui(TypeSize.ui))
@@ -98,26 +101,17 @@ struct DiffSheet: View {
 
     private func footer(_ approval: Approval) -> some View {
         let session = shell.sessions.session(approval.sessionID)
-        let violation = session?.gitViolation ?? false
-        let acknowledged = shell.approvals.acknowledgedViolations.contains(approval.id)
         return HStack(spacing: 6) {
-            if violation {
-                ViolationNotice(approval: approval).frame(maxWidth: 420)
-            }
             Spacer()
-            Button("Reject") { shell.reject(approval) }
-                .buttonStyle(.nest(.danger))
-                .help("Reject the review; the changes stay and the chat continues")
             Button {
                 shell.show(.publish(approval.id))
             } label: {
                 Label(
-                    session?.mode == .inPlace ? "Approve and commit" : "Approve and open PR",
-                    systemImage: Icon.pullRequest)
+                    PublishForm.approveTitle(for: session),
+                    systemImage: PublishForm.pushes(for: session) ? Icon.pullRequest : Icon.check)
             }
             .buttonStyle(.nest(.primary))
-            .disabled(
-                (violation && !acknowledged) || !shell.approvals.isReviewLoaded(approval))
+            .disabled(!shell.approvals.isReviewLoaded(approval))
         }
         .padding(EdgeInsets(top: 9, leading: 16, bottom: 10, trailing: 16))
         .overlay(alignment: .top) { Separator() }

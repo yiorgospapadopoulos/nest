@@ -790,7 +790,8 @@ private struct PixieCallSteps: View {
     }
 }
 
-/// An approval inside the transcript: actionable while pending, a short note after.
+/// An approval inside the transcript: actionable while pending, a short note after. A
+/// pending review never reaches it: it is the bar above the composer (B56).
 private struct ApprovalPlaceholder: View {
     let id: String
     let kind: ApprovalKind

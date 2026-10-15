@@ -49,6 +49,7 @@ enum Icon {
     static let globe = "globe"
     static let merge = "arrow.triangle.merge"
     static let server = "server.rack"
+    static let diff = "plus.forwardslash.minus"
 
     static func tool(_ kind: ToolSummary.Kind) -> String {
         switch kind {

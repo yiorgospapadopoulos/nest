@@ -243,8 +243,8 @@ public final class TranscriptStore {
     /// Opening the transcript should load it: it never loaded, or a catch-up failed.
     public var needsLoad: Bool { !isLoaded || behind }
 
-    /// The items the transcript shows: successful turn results and empty (redacted)
-    /// thinking of unknown length are left out. Kept until the items change, as views read
+    /// The items the transcript shows: successful turn results, empty (redacted) thinking
+    /// of unknown length, and pending or superseded reviews are left out. Kept until the items change, as views read
     /// it on every update (IMP-11).
     public var visibleItems: [TranscriptItem] {
         let items = self.items
@@ -256,6 +256,9 @@ public final class TranscriptStore {
             case .result(let result): result.isError
             case .thinking(let text, let duration):
                 duration != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // A pending review is the bar above the composer, and a superseded one is
+            // nothing to read (B56).
+            case .approval(_, .review, let status, _): status != .pending && status != .superseded
             default: true
             }
         }

@@ -147,6 +147,10 @@
                 try await renderWorkingCopies(model, shell, controller, folder)
                 return
             }
+            if only == "b56" {
+                try await renderReviewBar(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -274,6 +278,67 @@
             try await renderImprovements(model, shell, controller, folder)
             try await renderReviewFixes(model, shell, controller, folder)
             try await renderWorkingCopies(model, shell, controller, folder)
+            try await renderReviewBar(model, shell, controller, folder)
+        }
+
+        /// B56: a pending review is one line above the composer, not a card in the
+        /// transcript, and Review opens the changes with Approve as their only action.
+        private static func renderReviewBar(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            // Earlier sections resolve approvals for their own cards; start from the
+            // sample's full list, as when it renders on its own.
+            try await model.approvals.load()
+            let workspace = CGSize(width: 828, height: 790)
+            try await model.transcripts.transcript(for: "c3").load()
+            model.app.openProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c3", in: workspace)
+            }
+            try await pair(controller, "b56-review-bar", folder)
+
+            model.app.update("todo-ui") { state in
+                state.openChat("c1", in: workspace)
+                state.focusPane("c3")
+            }
+            try await snap(controller, "b56-review-bar-split-light", .aqua, folder)
+
+            let review = model.approvals.pending.first {
+                $0.sessionID == "c3" && $0.kind == .review
+            }!
+            shell.show(.diff(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await pair(controller, "b56-diff-sheet", folder)
+            shell.show(.publish(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await snap(controller, "b56-publish-open-pr-light", .aqua, folder)
+
+            // Approve and commit commits only: in place, and with a pull request open.
+            let original = model.sessions.session("c3")!
+            var inPlace = original
+            inPlace.mode = .inPlace
+            model.sessions.insert(inPlace)
+            shell.show(.diff(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await snap(controller, "b56-diff-sheet-in-place-light", .aqua, folder)
+            shell.close()
+            shell.show(.publish(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await pair(controller, "b56-publish-in-place", folder)
+            var withPR = original
+            withPR.prURL = "https://github.com/me/todo-ui/pull/38"
+            model.sessions.insert(withPR)
+            shell.close()
+            shell.show(.publish(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await snap(controller, "b56-publish-with-pr-light", .aqua, folder)
+            model.sessions.insert(original)
+            shell.close()
         }
 
         /// B55: where each chat works. Every sidebar row (Nest's and Claude Code's) and

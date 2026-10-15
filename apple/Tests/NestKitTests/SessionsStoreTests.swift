@@ -187,21 +187,6 @@ import Testing
         #expect(store.session("s2") == nil)
     }
 
-    /// The daemon found the agent changing git refs: Approve needs the acknowledgement
-    /// right away, without a reload (audit BUG-50).
-    @Test func aGitViolationFlagsTheSessionLive() async throws {
-        try await seed([Fixture.session("s1"), Fixture.session("s2")])
-        #expect(store.session("s1")?.gitViolation == false)
-
-        store.apply(Fixture.event(EventType.sessionGitViolation, #"{"changes": []}"#))
-
-        #expect(store.session("s1")?.gitViolation == true)
-        #expect(store.session("s2")?.gitViolation == false)
-        store.apply(
-            Fixture.event(EventType.sessionGitViolation, #"{"changes": []}"#, session: "zzz"))
-        #expect(store.session("zzz") == nil)
-    }
-
     /// A worktree chat learns its folder, branch and base once the worktree exists, so
     /// terminal commands run there and not in the main checkout (audit BUG-55).
     @Test func aWorkspaceEventGivesTheChatItsFolderAndBranch() async throws {
@@ -226,8 +211,8 @@ import Testing
         #expect(updated.baseRef == "abc")
     }
 
-    /// After any 409 from Approve the chat and its diff are read again, so the switch
-    /// for a violation and the moved branch show (audit BUG-50).
+    /// After any 409 from Approve the chat and its diff are read again, so the chat as it
+    /// is now and the moved branch show (audit BUG-50).
     @Test func aRefusedApproveReadsTheChatAndItsDiffAgain() async throws {
         let review = Fixture.approval("ap-review")
         let id = review.sessionID
@@ -235,7 +220,7 @@ import Testing
         approvals.apply(.approvalCreated(review))
         try await approvals.loadDiff(for: review)
         var flagged = Fixture.session(id)
-        flagged.gitViolation = true
+        flagged.title = "Read again"
         var moved = Fixture.diff
         moved.head = ReviewHead(commit: "4444", branch: "agent/dark-mode-1a2b3c")
         api.set {
@@ -252,7 +237,7 @@ import Testing
 
         let calls = api.calls.suffix(3).map { $0.components(separatedBy: " ")[0] }
         #expect(calls == ["approve", "session", "diff"])
-        #expect(store.session(id)?.gitViolation == true)
+        #expect(store.session(id)?.title == "Read again")
         #expect(approvals.diffs[id] == moved)
         #expect(approvals.isReviewLoaded(review))
     }

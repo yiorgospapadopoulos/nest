@@ -259,6 +259,40 @@ import Testing
             ])
     }
 
+    /// A pending review shows as the bar above the composer, and a superseded one not at
+    /// all; resolved reviews, rejected ones of old and other approvals keep their rows (B56).
+    @Test func reviewsShowOnlyOnceResolved() async throws {
+        let transcript = TranscriptStore(sessionID: "s1", api: api)
+        try await transcript.load()
+        let review = Fixture.approval("ap-review")
+        var superseded = review
+        superseded.id = "ap-superseded"
+        superseded.status = .superseded
+        var resolved = review
+        resolved.id = "ap-resolved"
+        resolved.status = .resolved
+        var rejected = resolved
+        rejected.id = "ap-rejected"
+        rejected.resolution = .object(["action": .string("rejected")])
+        var supersededPermission = Fixture.approval("ap-perm")
+        supersededPermission.id = "ap-perm-old"
+        supersededPermission.status = .superseded
+        let approvals = [
+            Fixture.approval("ap-perm"), review, superseded, resolved, rejected,
+            supersededPermission,
+        ]
+        for (index, approval) in approvals.enumerated() {
+            transcript.receive(
+                Fixture.event(
+                    EventType.approvalCreated, "{\"approval\": \(Fixture.json(approval))}",
+                    id: index + 1))
+        }
+        #expect(
+            transcript.visibleItems.map(\.id) == [
+                "ap-perm", "ap-resolved", "ap-rejected", "ap-perm-old",
+            ])
+    }
+
     @Test func aRejectedReviewIsMarkedRejected() async throws {
         // Its transcript line says the changes stay (B54); an approved review's does not.
         let transcript = TranscriptStore(sessionID: "s1", api: api)

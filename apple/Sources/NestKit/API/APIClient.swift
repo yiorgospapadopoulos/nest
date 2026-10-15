@@ -182,10 +182,6 @@ public struct APIClient: NestAPI {
         try await call("POST", ["sessions", sessionID, "approve"], body: request)
     }
 
-    public func reject(_ sessionID: String) async throws -> Session {
-        try await call("POST", ["sessions", sessionID, "reject"])
-    }
-
     public func feedback(_ sessionID: String, text: String) async throws -> Session {
         try await call(
             "POST", ["sessions", sessionID, "feedback"], body: FeedbackRequest(text: text))

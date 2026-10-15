@@ -77,8 +77,6 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
     public var openPR: Bool
     public var prTitle: String?
     public var prBody: String?
-    /// Publish even though the agent changed git refs itself.
-    public var acknowledgeViolation: Bool
     /// HEAD's commit as the review showed it; the daemon refuses if it moved since.
     public var expectedHead: String?
     /// The fingerprint of the review the user saw; the daemon refuses if the changes differ.
@@ -88,7 +86,7 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
 
     public init(
         commitMessage: String, files: [String]? = nil, push: Bool = true, openPR: Bool = true,
-        prTitle: String? = nil, prBody: String? = nil, acknowledgeViolation: Bool = false,
+        prTitle: String? = nil, prBody: String? = nil,
         expectedHead: String? = nil, expectedFingerprint: String? = nil,
         confirmRemoteURL: String? = nil
     ) {
@@ -98,7 +96,6 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         self.openPR = openPR
         self.prTitle = prTitle
         self.prBody = prBody
-        self.acknowledgeViolation = acknowledgeViolation
         self.expectedHead = expectedHead
         self.expectedFingerprint = expectedFingerprint
         self.confirmRemoteURL = confirmRemoteURL
@@ -110,7 +107,6 @@ public struct ApproveRequest: Encodable, Sendable, Hashable {
         case openPR = "open_pr"
         case prTitle = "pr_title"
         case prBody = "pr_body"
-        case acknowledgeViolation = "acknowledge_violation"
         case expectedHead = "expected_head"
         case expectedFingerprint = "expected_fingerprint"
         case confirmRemoteURL = "confirm_remote_url"

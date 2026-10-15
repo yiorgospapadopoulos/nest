@@ -308,33 +308,30 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:
-                #"{"acknowledge_violation":false,"commit_message":"Add zod","open_pr":true,"push":true}"#,
+                #"{"commit_message":"Add zod","open_pr":true,"push":true}"#,
             response: sessionJSON
         ) { _ = try await $0.approve("s1", ApproveRequest(commitMessage: "Add zod")) },
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:
-                #"{"acknowledge_violation":true,"commit_message":"M","files":["a.txt"],"open_pr":false,"pr_body":"B","pr_title":"T","push":false}"#,
+                #"{"commit_message":"M","files":["a.txt"],"open_pr":false,"pr_body":"B","pr_title":"T","push":false}"#,
             response: sessionJSON
         ) {
             _ = try await $0.approve(
                 "s1",
                 ApproveRequest(
                     commitMessage: "M", files: ["a.txt"], push: false, openPR: false, prTitle: "T",
-                    prBody: "B", acknowledgeViolation: true))
+                    prBody: "B"))
         },
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:
-                #"{"acknowledge_violation":false,"commit_message":"M","expected_fingerprint":"f","expected_head":"c","open_pr":true,"push":true}"#,
+                #"{"commit_message":"M","expected_fingerprint":"f","expected_head":"c","open_pr":true,"push":true}"#,
             response: sessionJSON
         ) {
             _ = try await $0.approve(
                 "s1",
                 ApproveRequest(commitMessage: "M", expectedHead: "c", expectedFingerprint: "f"))
-        },
-        RouteCase("POST", "/api/sessions/s1/reject", response: sessionJSON) {
-            _ = try await $0.reject("s1")
         },
         RouteCase(
             "POST", "/api/sessions/s1/feedback", body: #"{"text":"Use a DAG"}"#,
@@ -515,7 +512,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:
-                #"{"acknowledge_violation":false,"commit_message":"M","confirm_remote_url":"git@x:me/r.git","open_pr":true,"push":true}"#,
+                #"{"commit_message":"M","confirm_remote_url":"git@x:me/r.git","open_pr":true,"push":true}"#,
             response: sessionJSON
         ) {
             _ = try await $0.approve(
@@ -766,9 +763,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             await failure(409, #"{"detail": "other", "code": "something_else"}"#)
                 == .conflict("other"))
         #expect(
-            await failure(409, #"{"detail": "Check the git changes.", "code": "git_violation"}"#)
-                == .approveRefused("Check the git changes.", reason: .gitViolation))
-        #expect(
             await failure(409, #"{"detail": "The branch moved.", "code": "head_changed"}"#)
                 == .approveRefused("The branch moved.", reason: .headChanged))
         #expect(
@@ -883,7 +877,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     @Test func conflictsAreTold() {
         let conflicts: [APIError] = [
             .conflict("a"), .openInClaudeCode("a"),
-            .approveRefused("a", reason: .gitViolation),
+            .approveRefused("a", reason: .headChanged),
         ]
         #expect(conflicts.allSatisfy { $0.isConflict })
         #expect(!APIError.server(status: 500, detail: "a").isConflict)
@@ -898,7 +892,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(
             ApproveRefusal.reviewChanged.hint
                 == "The changes were read again. Check them before approving.")
-        #expect(ApproveRefusal.gitViolation.hint == nil)
         #expect(ApproveRefusal.backgroundRunning.hint == nil)
         #expect(ApproveRefusal.indexFlags.hint == nil)
         #expect(ApproveRefusal.lfsUnsupported.hint == nil)

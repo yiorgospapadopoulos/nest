@@ -57,8 +57,6 @@ public protocol NestAPI: Sendable {
 
     func diff(_ sessionID: String) async throws -> SessionDiff
     func approve(_ sessionID: String, _ request: ApproveRequest) async throws -> Session
-    /// Closes the chat; an in-place chat's edits by Claude are undone first (B53).
-    func reject(_ sessionID: String) async throws -> Session
     func feedback(_ sessionID: String, text: String) async throws -> Session
     /// Merges the session's pull request and closes the session.
     func merge(_ sessionID: String, _ request: MergeRequest) async throws -> Session

@@ -1,7 +1,7 @@
 import Foundation
 
-/// A session's work against its base, untracked files included, with what Approve
-/// publishes it on.
+/// A session's uncommitted work (HEAD against the working tree), untracked files
+/// included, with what Approve publishes it on.
 public struct SessionDiff: Decodable, Sendable, Hashable {
     /// The commit the work is compared with; nil when the repository had no commits.
     public var base: String?
@@ -9,32 +9,26 @@ public struct SessionDiff: Decodable, Sendable, Hashable {
     /// moved.
     /// Nil from daemons before B32.
     public var head: ReviewHead?
-    /// Commits on HEAD that neither the base nor Nest's own publishing accounts for;
-    /// Approve publishes them too.
-    public var commits: [ReviewCommit]
     public var files: [FileDiff]
     public var stats: DiffStats
-    /// A hash of HEAD, the commits and every file shown; Approve sends it back and is
+    /// A hash of HEAD and every file shown; Approve sends it back and is
     /// refused when the changes differ from this review. Nil from daemons before B34.
     public var fingerprint: String?
 
-    public static let foreignCommitsWarning =
-        "These commits are on the branch, but Nest did not make them. Check them before publishing."
-
-    /// "Pushes to <branch>"; nil when HEAD names no branch.
-    public var pushTarget: String? {
-        head?.branch.map { "Pushes to \($0)" }
+    /// Where Approve goes: "Pushes to <branch>", or "Commits to <branch>, not pushed" for
+    /// an approve that only commits (B56); nil when HEAD names no branch.
+    public func target(pushes: Bool) -> String? {
+        head?.branch.map { pushes ? "Pushes to \($0)" : "Commits to \($0), not pushed" }
     }
 
     enum CodingKeys: String, CodingKey {
-        case base, head, commits, files, stats, fingerprint
+        case base, head, files, stats, fingerprint
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         base = try container.decodeIfPresent(String.self, forKey: .base)
         head = try container.decodeIfPresent(ReviewHead.self, forKey: .head)
-        commits = try container.decodeIfPresent([ReviewCommit].self, forKey: .commits) ?? []
         files = try container.decode([FileDiff].self, forKey: .files)
         stats = try container.decode(DiffStats.self, forKey: .stats)
         fingerprint = try container.decodeIfPresent(String.self, forKey: .fingerprint)
@@ -50,20 +44,6 @@ public struct ReviewHead: Decodable, Sendable, Hashable {
         self.commit = commit
         self.branch = branch
     }
-}
-
-/// A commit Approve would publish that Nest did not make.
-public struct ReviewCommit: Decodable, Sendable, Hashable, Identifiable {
-    public var sha: String
-    public var subject: String
-
-    public init(sha: String, subject: String) {
-        self.sha = sha
-        self.subject = subject
-    }
-
-    public var id: String { sha }
-    public var shortSHA: String { String(sha.prefix(7)) }
 }
 
 public struct DiffStats: Decodable, Sendable, Hashable {
