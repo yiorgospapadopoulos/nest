@@ -29,7 +29,8 @@ import Testing
         #expect(sent.sent)
         let older = Fixture.decode(
             QueuedMessage.self,
-            json: #"{"id": "q2", "text": "x", "attachments": [], "created_at": "2026-10-15T14:02:11Z"}"#
+            json:
+                #"{"id": "q2", "text": "x", "attachments": [], "created_at": "2026-10-15T14:02:11Z"}"#
         )
         #expect(!older.sent)
     }
@@ -59,8 +60,9 @@ import Testing
         #expect(try await activity.remove("q1", session: "s1") == false)
         #expect(activity.queued(session: "s1").map(\.id) == ["q1"])
         #expect(activity.isTaken("q1", session: "s1"))
-        #expect(activity.note(for: activity.queued(session: "s1")[0], session: "s1", working: true)
-            == ActivityStore.takenNote)
+        #expect(
+            activity.note(for: activity.queued(session: "s1")[0], session: "s1", working: true)
+                == ActivityStore.takenNote)
 
         activity.apply(Fixture.event(EventType.sessionQueued, #"{"queued": []}"#))
         #expect(activity.queued(session: "s1").isEmpty)
@@ -135,14 +137,19 @@ import Testing
         let transcript = TranscriptStore(sessionID: "s1", api: api)
         try await transcript.load()
         transcript.receive(
-            Fixture.event(EventType.sessionState, #"{"state": "running", "turn_start": true}"#, id: 1))
-        transcript.receive(Fixture.event(EventType.sessionUserMessage, #"{"text": "Go", "attachments": []}"#, id: 2))
+            Fixture.event(
+                EventType.sessionState, #"{"state": "running", "turn_start": true}"#, id: 1))
+        transcript.receive(
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "Go", "attachments": []}"#, id: 2))
         transcript.receive(
             Fixture.event(
                 EventType.sessionMessage, #"{"blocks": [{"type": "text", "text": "Working"}]}"#,
                 id: 3))
         transcript.receive(
-            Fixture.event(EventType.sessionUserMessage, #"{"text": "also the tests", "attachments": []}"#, id: 4))
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "also the tests", "attachments": []}"#,
+                id: 4))
         transcript.receive(
             Fixture.event(
                 EventType.sessionMessage, #"{"blocks": [{"type": "text", "text": "Done"}]}"#,
@@ -163,13 +170,18 @@ import Testing
 
     func events() -> [Event] {
         [
-            Fixture.event(EventType.sessionUserMessage, #"{"text": "First", "attachments": []}"#, id: 1),
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "First", "attachments": []}"#, id: 1),
             Fixture.event(
                 EventType.sessionMessage,
                 #"{"blocks": [{"type": "text", "text": "One"}, {"type": "tool_use", "id": "toolu_2", "name": "Bash", "input": {}}]}"#,
                 id: 2),
-            Fixture.event(EventType.sessionResult, #"{"is_error": false, "subtype": "success", "duration_ms": 1000, "num_turns": 1, "errors": []}"#, id: 3),
-            Fixture.event(EventType.sessionUserMessage, #"{"text": "Second", "attachments": []}"#, id: 4),
+            Fixture.event(
+                EventType.sessionResult,
+                #"{"is_error": false, "subtype": "success", "duration_ms": 1000, "num_turns": 1, "errors": []}"#,
+                id: 3),
+            Fixture.event(
+                EventType.sessionUserMessage, #"{"text": "Second", "attachments": []}"#, id: 4),
             Fixture.event(
                 EventType.sessionMessage,
                 #"{"blocks": [{"type": "text", "text": "Two"}, {"type": "tool_use", "id": "toolu_5", "name": "Bash", "input": {}}]}"#,
@@ -178,7 +190,10 @@ import Testing
                 EventType.sessionAgentTask,
                 #"{"task_id": "t5", "phase": "finished", "tool_use_id": "toolu_5", "status": "completed"}"#,
                 id: 6),
-            Fixture.event(EventType.sessionResult, #"{"is_error": false, "subtype": "success", "duration_ms": 2000, "num_turns": 1, "errors": []}"#, id: 7),
+            Fixture.event(
+                EventType.sessionResult,
+                #"{"is_error": false, "subtype": "success", "duration_ms": 2000, "num_turns": 1, "errors": []}"#,
+                id: 7),
         ]
     }
 
@@ -238,7 +253,8 @@ import Testing
         let before = transcript.items
         transcript.receive(
             Fixture.event(
-                EventType.sessionRewound, #"{"message": 1, "through": 2, "text": "", "attachments": []}"#,
+                EventType.sessionRewound,
+                #"{"message": 1, "through": 2, "text": "", "attachments": []}"#,
                 id: 9))
         #expect(transcript.items == before)
         #expect(transcript.lastEventID == 9)

@@ -33,7 +33,6 @@ import Testing
     }
 }
 
-
 @Suite struct RewindReplyTests {
     /// A conversation rewind answers the message for the composer.
     @Test func readsTheRewoundMessage() {

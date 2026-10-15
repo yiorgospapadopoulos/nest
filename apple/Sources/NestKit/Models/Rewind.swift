@@ -258,7 +258,8 @@ public final class RewindFlow {
 
     private func preview(_ restore: RewindRestore) async -> Result<RewindPreview, any Error> {
         do {
-            return .success(try await api.rewindPreview(session, message: message, restore: restore))
+            return .success(
+                try await api.rewindPreview(session, message: message, restore: restore))
         } catch {
             return .failure(error)
         }

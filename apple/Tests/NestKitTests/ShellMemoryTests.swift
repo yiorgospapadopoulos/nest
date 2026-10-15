@@ -62,7 +62,8 @@ import Testing
         let broken = "<bash-input>ls</bash-input>\n<bash-stdout>half"
         #expect(BashBlocks.split(broken).blocks.isEmpty)
         #expect(BashBlocks.split(broken).rest == broken)
-        let only = "<bash-input>ls</bash-input>\n<bash-stdout>a</bash-stdout><bash-stderr></bash-stderr>"
+        let only =
+            "<bash-input>ls</bash-input>\n<bash-stdout>a</bash-stdout><bash-stderr></bash-stderr>"
         #expect(BashBlocks.split(only).rest == "")
         #expect(BashBlocks.split(only).blocks.count == 1)
         let glued =
@@ -289,7 +290,8 @@ import Testing
             text: "@no", caret: 3, session: "pixie-chat", repo: "", filesOnly: true)
         #expect(files?.items.map(\.label) == ["notes.md"])
         #expect(
-            store.suggestions(text: "/he", caret: 3, session: "pixie-chat", repo: "", filesOnly: true)
+            store.suggestions(
+                text: "/he", caret: 3, session: "pixie-chat", repo: "", filesOnly: true)
                 == nil)
     }
 }

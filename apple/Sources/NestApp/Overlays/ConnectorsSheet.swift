@@ -125,7 +125,8 @@ private struct ConnectorRow: View {
                         .help(
                             connector.managedOnClaudeAI
                                 ? "Opens claude.ai's connector settings"
-                                : "Runs claude /mcp in the terminal to sign in")
+                                : "Runs claude /mcp in the terminal to sign in"
+                        )
                         .accessibilityLabel("Sign in to \(connector.displayName)")
                 } else if state != .connected {
                     Button(

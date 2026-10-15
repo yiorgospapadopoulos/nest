@@ -90,7 +90,8 @@ extension Connector {
     /// How to sign in; nil unless it needs sign-in.
     public var signIn: ConnectorSignIn? {
         guard state == .needsSignIn else { return nil }
-        return managedOnClaudeAI ? .browser(ConnectorsStore.claudeAISettings) : .terminal("claude /mcp")
+        return managedOnClaudeAI
+            ? .browser(ConnectorsStore.claudeAISettings) : .terminal("claude /mcp")
     }
 }
 
@@ -110,7 +111,8 @@ public final class ConnectorsStore {
     }
 
     /// Where users sign in on claude.ai to the connectors that need it.
-    nonisolated public static let claudeAISettings = URL(string: "https://claude.ai/settings/connectors")!
+    nonisolated public static let claudeAISettings = URL(
+        string: "https://claude.ai/settings/connectors")!
 
     /// claude.ai connectors, then plugins and local servers; empty groups left out.
     public var sections: [ConnectorSection] {

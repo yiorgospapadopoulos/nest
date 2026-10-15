@@ -34,7 +34,8 @@ public enum APIError: Error, Sendable, Equatable {
         case .staleFile:
             "The file changed since you opened it."
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail),
-            .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail), .payloadTooLarge(let detail),
+            .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail),
+            .payloadTooLarge(let detail),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
             .gitFailed(let detail, _, _), .badGateway(let detail), .server(_, let detail),
             .transport(let detail), .decoding(let detail), .approveRefused(let detail, _, _):

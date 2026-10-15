@@ -113,7 +113,9 @@ struct Composer: View {
             Button("Replace") { draft.fill(message, keepingDraft: false) }
             Button("Keep both", role: .cancel) { draft.fill(message, keepingDraft: true) }
         } message: { _ in
-            Text("The message you took back goes into the composer. Keep both puts it before your draft.")
+            Text(
+                "The message you took back goes into the composer. Keep both puts it before your draft."
+            )
         }
         .confirmationDialog(
             "Save to memory",
@@ -486,28 +488,28 @@ private struct AttachmentChips: View {
     }
 
     private func chip(_ attachment: PendingAttachment) -> some View {
-                    HStack(spacing: 5) {
-                        if attachment.uploaded == nil {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: Icon.attach).font(.system(size: 10))
-                        }
-                        Text(attachment.filename)
-                            .font(.ui(TypeSize.meta))
-                            .lineLimit(1)
-                        Button {
-                            draft.remove(attachment.id)
-                        } label: {
-                            Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
-                        }
-                        .buttonStyle(SmallSquareStyle())
-                        .accessibilityLabel("Remove \(attachment.filename)")
-                    }
-                    .foregroundStyle(Palette.t2)
-                    .padding(.leading, 8)
-                    .padding(.trailing, 3)
-                    .frame(height: 22)
-                    .background(Palette.selection, in: .rounded(Radius.button))
+        HStack(spacing: 5) {
+            if attachment.uploaded == nil {
+                ProgressView().controlSize(.mini)
+            } else {
+                Image(systemName: Icon.attach).font(.system(size: 10))
+            }
+            Text(attachment.filename)
+                .font(.ui(TypeSize.meta))
+                .lineLimit(1)
+            Button {
+                draft.remove(attachment.id)
+            } label: {
+                Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
+            }
+            .buttonStyle(SmallSquareStyle())
+            .accessibilityLabel("Remove \(attachment.filename)")
+        }
+        .foregroundStyle(Palette.t2)
+        .padding(.leading, 8)
+        .padding(.trailing, 3)
+        .frame(height: 22)
+        .background(Palette.selection, in: .rounded(Radius.button))
     }
 }
 

@@ -74,7 +74,8 @@ private func shape(_ lines: [EditDiff.Line]) -> [String] {
     }
 
     @Test func callsWithoutAPathOrAChangeOrOfOtherToolsHaveNoDiff() {
-        #expect(EditDiff(edit("Edit", ["old_string": .string("a"), "new_string": .string("b")])) == nil)
+        #expect(
+            EditDiff(edit("Edit", ["old_string": .string("a"), "new_string": .string("b")])) == nil)
         #expect(
             EditDiff(
                 edit(
@@ -83,7 +84,8 @@ private func shape(_ lines: [EditDiff.Line]) -> [String] {
                         "file_path": .string("/a"), "old_string": .string("same"),
                         "new_string": .string("same"),
                     ])) == nil)
-        #expect(EditDiff(edit("Write", ["file_path": .string("/a"), "content": .string("")])) == nil)
+        #expect(
+            EditDiff(edit("Write", ["file_path": .string("/a"), "content": .string("")])) == nil)
         #expect(EditDiff(edit("MultiEdit", ["file_path": .string("/a")])) == nil)
         #expect(EditDiff(edit("Read", ["file_path": .string("/a")])) == nil)
         #expect(EditDiff(edit("Edit", ["file_path": .string("/a")])) == nil)
