@@ -168,7 +168,7 @@
             return before == nil ? Array(range.prefix(limit)) : Array(range.suffix(limit))
         }
 
-        /// Queued while the chat works, as the daemon does; a nudge is queued first.
+        /// Pending while the chat works, written into the turn as the daemon does.
         func sendMessage(
             _ id: String, text: String, attachmentIDs: [String], interrupt: Bool
         ) async throws -> SentMessage {
@@ -179,11 +179,29 @@
             let session = try await session(id)
             let queued =
                 session.state.isInFlight
-                ? QueuedMessage(id: UUID().uuidString, text: text, createdAt: Date()) : nil
+                ? QueuedMessage(id: UUID().uuidString, text: text, createdAt: Date(), sent: true)
+                : nil
             return SentMessage(session: session, queuedMessage: queued)
         }
 
         func cancelQueued(_ id: String, queuedID: String) async throws {}
+        func sendQueuedNow(_ id: String, queuedID: String) async throws {}
+
+        func runShell(_ id: String, command: String) async throws -> ShellRun {
+            ShellRun(
+                command: command, exitCode: 0, output: "", truncated: false, timedOut: false,
+                context: "<bash-input>\(command)</bash-input>")
+        }
+
+        func saveMemory(_ id: String, text: String, scope: MemoryScope) async throws
+            -> SavedMemory
+        {
+            throw APIError.invalidInput("Sample data is read-only")
+        }
+
+        func attachmentData(_ id: String) async throws -> Data {
+            throw APIError.notFound("unknown attachment '\(id)'")
+        }
 
         func sessionCommands(_ id: String) async throws -> CommandList {
             CommandList(source: .session, commands: SampleData.commands)
@@ -251,17 +269,28 @@
         }
 
         func interrupt(_ id: String) async throws {}
+        func stopTask(_ id: String, task: String) async throws {}
 
-        func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
-            if lock.withLock({ nothingToRestore }) {
-                return RewindPreview(canRewind: true)
+        func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
+            -> RewindPreview
+        {
+            if restore == .conversation || lock.withLock({ nothingToRestore }) {
+                return RewindPreview(canRewind: true, restore: restore)
             }
             return RewindPreview(
                 canRewind: true, files: ["src/App.tsx", "src/styles.css"], insertions: 12,
-                deletions: 4)
+                deletions: 4, restore: restore)
         }
 
-        func rewind(_ id: String, message: Int) async throws {}
+        func rewind(_ id: String, message: Int, restore: RewindRestore) async throws
+            -> RewindPreview
+        {
+            RewindPreview(canRewind: true, restore: restore)
+        }
+
+        func fork(_ id: String, message: Int) async throws -> ForkedChat {
+            throw APIError.invalidInput("Sample data is read-only")
+        }
 
         func ciFeedback(_ id: String) async throws {}
 
@@ -1090,7 +1119,7 @@
                     case .text(let text): ("assistant", text)
                     case .toolUse(_, let name, let input):
                         ("tool", "\(name) \(ToolSummary.argument(tool: name, input: input))")
-                    case .toolResult(_, let content, _): ("tool_result", content)
+                    case .toolResult(_, let content, _, _): ("tool_result", content)
                     default: nil
                     }
                 }

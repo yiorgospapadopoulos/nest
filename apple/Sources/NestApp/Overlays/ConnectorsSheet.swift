@@ -3,8 +3,8 @@ import NestKit
 import SwiftUI
 
 /// The MCP servers and claude.ai connectors Claude Code reported, with their status and
-/// where to set them up; Nest cannot sign in on the user's behalf. The same list is a
-/// section of Settings.
+/// where to set them up; Sign in opens Claude Code's `/mcp` in the terminal, or claude.ai
+/// for its connectors (B59). The same list is a section of Settings.
 struct ConnectorsSheet: View {
     var body: some View {
         SheetFrame(title: "Connectors") { ConnectorsList() }
@@ -97,6 +97,7 @@ private struct ConnectorRow: View {
     let connector: Connector
     let first: Bool
     @State private var showsHint = false
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         let state = connector.state
@@ -118,7 +119,15 @@ private struct ConnectorRow: View {
                 }
                 Spacer(minLength: 8)
                 StatusLabel(tone: state.tone, label: state.label, hollow: false)
-                if state != .connected {
+                if connector.signIn != nil {
+                    Button("Sign in") { shell.signIn(connector) }
+                        .buttonStyle(LinkButtonStyle())
+                        .help(
+                            connector.managedOnClaudeAI
+                                ? "Opens claude.ai's connector settings"
+                                : "Runs claude /mcp in the terminal to sign in")
+                        .accessibilityLabel("Sign in to \(connector.displayName)")
+                } else if state != .connected {
                     Button(
                         connector.managedOnClaudeAI
                             ? "Sign in on claude.ai" : "Set up in Claude Code"

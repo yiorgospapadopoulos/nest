@@ -283,6 +283,22 @@ import Testing
         #expect(list?.items.map(\.label) == ["/compact"])
     }
 
+    @Test func aChatsListAddsNestsOwnCommands() async {
+        api.set {
+            $0.commands["session:s1"] = CommandList(
+                source: .session, commands: [SlashCommand(name: "compact")])
+        }
+        await store.loadCommands(session: "s1", repo: "cv")
+        let list = store.suggestions(
+            text: "/m", caret: 2, session: "s1", repo: "cv", localCommands: true)
+        #expect(
+            list?.items.map(\.label) == ["/mcp", "/model", "/compact", "/permissions", "/resume"])
+        // Before the chat's own list arrives, Nest's commands are already there.
+        let fresh = store.suggestions(
+            text: "/re", caret: 3, session: nil, repo: "other", localCommands: true)
+        #expect(fresh?.items.map(\.label) == ["/resume"])
+    }
+
     @Test func aNewChatTakesItsProjectsCommands() async {
         api.set {
             $0.commands["repo:cv"] = CommandList(
@@ -370,10 +386,10 @@ import Testing
         #expect(action(.tab) == .ignore)
     }
 
-    @Test func theSendButtonQueuesOrInterruptsWhileWorking() {
+    @Test func theSendButtonSendsOrInterruptsWhileWorking() {
         #expect(SendButtonMode.of(working: false, hasText: false) == .send)
         #expect(SendButtonMode.of(working: false, hasText: true) == .send)
-        #expect(SendButtonMode.of(working: true, hasText: true) == .queue)
+        #expect(SendButtonMode.of(working: true, hasText: true) == .send)
         #expect(SendButtonMode.of(working: true, hasText: false) == .interrupt)
     }
 
@@ -516,12 +532,12 @@ import Testing
         activity.enqueue(two, session: "s1")
         #expect(activity.queued(session: "s1").map(\.id) == ["q1", "q2"])
 
-        try await activity.cancelQueued("q1", session: "s1")
+        try await activity.remove("q1", session: "s1")
         #expect(activity.queued(session: "s1").map(\.id) == ["q2"])
 
         // Already delivered: it leaves the list without an error.
         api.fail("cancelQueued", with: APIError.notFound("No queued message q2"))
-        try await activity.cancelQueued("q2", session: "s1")
+        try await activity.remove("q2", session: "s1")
         #expect(activity.queued(session: "s1").isEmpty)
         #expect(api.calls.suffix(2) == ["cancelQueued s1 q1", "cancelQueued s1 q2"])
 
@@ -542,7 +558,7 @@ import Testing
             QueuedMessage(id: "q1", text: "One", createdAt: .distantPast), session: "s1")
         api.fail("cancelQueued")
         await #expect(throws: APIError.self) {
-            try await activity.cancelQueued("q1", session: "s1")
+            try await activity.remove("q1", session: "s1")
         }
         #expect(activity.queued(session: "s1").count == 1)
     }

@@ -17,7 +17,7 @@ public struct Goals: Sendable, Hashable {
 
 /// Per session: the agent's tasks (Goals), its agents (main and subagents), its
 /// background work (subagents and background commands, which can outlive the turn) and
-/// the messages queued for the end of the turn.
+/// the pending messages Claude has not read yet.
 @MainActor @Observable
 public final class ActivityStore {
     public static let recentStepLimit = 5
@@ -28,6 +28,14 @@ public final class ActivityStore {
     private var agents: [String: [TrackedAgent]] = [:]
     private var background: [String: BackgroundSummary] = [:]
     private var queued: [String: [QueuedMessage]] = [:]
+    /// Pending messages Claude read before Remove reached it, until the next list.
+    private var taken: [String: Set<String>] = [:]
+    /// Pending messages whose Send now waits for the next list.
+    private var sendingNow: [String: Set<String>] = [:]
+    /// Tasks asked to stop, by session, until their end arrives (B59).
+    private var stopping: [String: Set<String>] = [:]
+    /// Sessions whose Claude Code run is closed, so nothing can be stopped until it runs.
+    private var noRun: Set<String> = []
 
     let api: any NestAPI
     @ObservationIgnored private let live = LiveEventLog()
@@ -46,6 +54,8 @@ public final class ActivityStore {
             agents[id] = detail.agents ?? []
             background[id] = detail.background ?? .empty
             queued[id] = detail.queued ?? []
+            taken[id] = nil
+            sendingNow[id] = nil
         } replay: {
             apply($0)
         }
@@ -97,7 +107,7 @@ public final class ActivityStore {
         }
     }
 
-    /// Messages waiting for the running turn, oldest first.
+    /// Pending messages Claude has not read yet, oldest first (B59).
     public func queued(session id: String) -> [QueuedMessage] {
         queued[id] ?? []
     }
@@ -108,14 +118,84 @@ public final class ActivityStore {
         queued[id, default: []].append(message)
     }
 
-    /// Cancels a queued message; one already delivered or gone is dropped from the list.
-    public func cancelQueued(_ message: String, session id: String) async throws {
+    /// What a pending message's row says when Remove came too late.
+    public static let takenNote = "Claude already read this message"
+
+    /// Remove was refused because Claude read the message; it leaves with the next list.
+    public func isTaken(_ message: String, session id: String) -> Bool {
+        taken[id]?.contains(message) == true
+    }
+
+    /// Send now was tapped and the daemon's next list has not come yet.
+    public func isSendingNow(_ message: String, session id: String) -> Bool {
+        sendingNow[id]?.contains(message) == true
+    }
+
+    /// The quiet line under a pending message.
+    public func note(for message: QueuedMessage, session id: String, working: Bool) -> String {
+        isTaken(message.id, session: id) ? Self.takenNote : message.note(working: working)
+    }
+
+    /// Removes a pending message; one already gone leaves the list too. False when Claude
+    /// already read it: the row stays, saying so, and the message shows in the transcript.
+    @discardableResult
+    public func remove(_ message: String, session id: String) async throws -> Bool {
         do {
             try await api.cancelQueued(id, queuedID: message)
         } catch APIError.notFound {
-            // Delivered or cancelled elsewhere in the meantime.
+            // Read or removed elsewhere in the meantime.
+        } catch APIError.messageTaken {
+            taken[id, default: []].insert(message)
+            return false
         }
         queued[id]?.removeAll { $0.id == message }
+        return true
+    }
+
+    /// Stops the turn and sends the message right after it; the control stays off until
+    /// the next list. A message Claude already read leaves the list.
+    public func sendNow(_ message: String, session id: String) async throws {
+        guard !isSendingNow(message, session: id) else { return }
+        sendingNow[id, default: []].insert(message)
+        do {
+            try await api.sendQueuedNow(id, queuedID: message)
+        } catch APIError.notFound {
+            sendingNow[id]?.remove(message)
+            queued[id]?.removeAll { $0.id == message }
+        } catch {
+            sendingNow[id]?.remove(message)
+            throw error
+        }
+    }
+
+    /// Whether the session's background tasks and subagents can be stopped one by one:
+    /// not while its Claude Code run is known to be closed.
+    public func canStop(session id: String) -> Bool {
+        !noRun.contains(id)
+    }
+
+    /// A stop was sent for the task (by its task or tool use id) and it has not ended yet.
+    public func isStopping(_ task: String, session id: String) -> Bool {
+        stopping[id]?.contains(task) == true
+    }
+
+    /// Stops one background task or subagent; the turn goes on. A task that is no longer
+    /// running reloads the rows, and a closed run hides the control.
+    public func stop(task: String, session id: String) async throws {
+        guard !isStopping(task, session: id) else { return }
+        stopping[id, default: []].insert(task)
+        do {
+            try await api.stopTask(id, task: task)
+        } catch APIError.notFound {
+            stopping[id]?.remove(task)
+            try? await load(session: id)
+        } catch APIError.conflict {
+            stopping[id]?.remove(task)
+            noRun.insert(id)
+        } catch {
+            stopping[id]?.remove(task)
+            throw error
+        }
     }
 
     /// An agent's last steps, oldest first.
@@ -137,18 +217,28 @@ public final class ActivityStore {
             }
         case .agentTask(let task):
             // The next snapshot confirms it; this keeps the counts right in between.
-            guard let id = event.sessionID, task.phase == .finished,
-                let toolUseID = task.toolUseID
-            else { return }
+            guard let id = event.sessionID, task.phase == .finished else { return }
+            stopping[id]?.remove(task.taskID)
+            guard let toolUseID = task.toolUseID else { return }
+            stopping[id]?.remove(toolUseID)
             background[id]?.finish(toolUseID: toolUseID, as: task.agentStatus, at: event.ts)
+        case .sessionState(.running, _):
+            guard let id = event.sessionID else { return }
+            noRun.remove(id)
         case .queued(let list):
             guard let id = event.sessionID else { return }
             queued[id] = list
+            taken[id] = nil
+            sendingNow[id] = nil
         case .sessionDeleted(let id):
             tasks[id] = nil
             agents[id] = nil
             background[id] = nil
             queued[id] = nil
+            taken[id] = nil
+            sendingNow[id] = nil
+            stopping[id] = nil
+            noRun.remove(id)
         default:
             break
         }

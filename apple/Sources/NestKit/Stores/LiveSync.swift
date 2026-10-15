@@ -135,6 +135,10 @@ public final class AppModel {
     public let connectors: ConnectorsStore
     public let claudeChats: ClaudeChatsStore
     public let completions: CompletionStore
+    /// `!` commands run since each chat's last message (B59).
+    public let bash: BashStore
+    /// Tool result images, read once each.
+    public let images: AttachmentImages
     public let settings: SettingsStore
     public let devices: DevicesStore
     public let visibility: VisibilityReporter
@@ -166,6 +170,8 @@ public final class AppModel {
         settings = SettingsStore(store: preferences)
         claudeChats = ClaudeChatsStore(api: api, settings: settings)
         completions = CompletionStore(api: api)
+        bash = BashStore(api: api)
+        images = AttachmentImages(api: api)
         devices = DevicesStore(api: api, now: now)
         visibility = VisibilityReporter(api: api, now: now)
         search = MessageSearch(api: api)

@@ -43,6 +43,12 @@ public enum EventType {
     public static let sessionDelta = "session.delta"
     /// Ephemeral: a main-agent thinking block started (`active` true) or ended.
     public static let sessionThinking = "session.thinking"
+    /// Ephemeral: the next piece of thinking text, the main agent's or a subagent's (B59).
+    public static let sessionThinkingDelta = "session.thinking_delta"
+    /// Ephemeral: the next piece of a subagent's text, under its Agent call (B59).
+    public static let sessionSubagentDelta = "session.subagent_delta"
+    /// A hook's message or output for the user (B59).
+    public static let sessionHook = "session.hook"
     public static let sessionResult = "session.result"
     public static let sessionDeleted = "session.deleted"
     public static let sessionTasks = "session.tasks"
@@ -50,6 +56,8 @@ public enum EventType {
     public static let sessionAgentTask = "session.agent_task"
     public static let sessionContext = "session.context"
     public static let sessionQueued = "session.queued"
+    /// The conversation was rewound: its events in a range were deleted (B59).
+    public static let sessionRewound = "session.rewound"
     public static let sessionPR = "session.pr"
     public static let sessionStuck = "session.stuck"
     public static let sessionUnstuck = "session.unstuck"
@@ -97,6 +105,12 @@ public enum EventBody: Sendable, Hashable {
     case delta(String)
     /// A main-agent thinking block started or ended (D045).
     case thinking(active: Bool)
+    /// Thinking text to append; `parent` names a subagent's Agent call, nil for the main
+    /// agent.
+    case thinkingDelta(String, parent: String?)
+    /// A subagent's text to append under its Agent call.
+    case subagentDelta(String, parent: String)
+    case hook(HookRun)
     case result(TurnResult)
     case sessionDeleted(sessionID: String)
     case tasks([TrackedTask])
@@ -108,6 +122,9 @@ public enum EventBody: Sendable, Hashable {
     case context(SessionContext?)
     /// The whole list of messages waiting for the turn, oldest first.
     case queued([QueuedMessage])
+    /// The conversation went back to before a user message; its events in the range are
+    /// gone.
+    case rewound(SessionRewind)
     /// The pull request's status changed on GitHub.
     case pullRequest(PullRequest)
     /// The chat looks stuck, or stuck for another reason now.
@@ -161,6 +178,15 @@ public enum EventBody: Sendable, Hashable {
         case EventType.sessionDelta: self = .delta(try field("text", as: String.self))
         case EventType.sessionThinking:
             self = .thinking(active: payload["active"]?.boolValue == true)
+        case EventType.sessionThinkingDelta:
+            self = .thinkingDelta(
+                try field("text", as: String.self),
+                parent: try field("parent_tool_use_id", as: String?.self))
+        case EventType.sessionSubagentDelta:
+            self = .subagentDelta(
+                try field("text", as: String.self),
+                parent: try field("parent_tool_use_id", as: String.self))
+        case EventType.sessionHook: self = .hook(try payload.decode(HookRun.self))
         case EventType.sessionResult: self = .result(try payload.decode(TurnResult.self))
         case EventType.sessionDeleted:
             self = .sessionDeleted(sessionID: try field("session_id", as: String.self))
@@ -173,6 +199,7 @@ public enum EventBody: Sendable, Hashable {
         case EventType.sessionContext:
             self = .context(try field("context", as: SessionContext?.self))
         case EventType.sessionQueued: self = .queued(try field("queued", as: [QueuedMessage].self))
+        case EventType.sessionRewound: self = .rewound(try payload.decode(SessionRewind.self))
         case EventType.sessionPR: self = .pullRequest(try field("pr", as: PullRequest.self))
         case EventType.sessionStuck: self = .stuck(try payload.decode(StuckFlag.self))
         case EventType.sessionUnstuck:
@@ -219,6 +246,20 @@ public enum EventBody: Sendable, Hashable {
             self = .pixieReportRead(ids: try field("ids", as: [String].self))
         default: self = .other
         }
+    }
+}
+
+/// `session.rewound`: the daemon deleted the chat's events with ids from `message`
+/// through `through`; later ones stay.
+public struct SessionRewind: Decodable, Sendable, Hashable {
+    /// The rewound user message's event id.
+    public var message: Int
+    public var through: Int
+    public var text: String
+    public var attachments: [Attachment]
+
+    public func contains(_ event: Int) -> Bool {
+        message <= event && event <= through
     }
 }
 
@@ -278,11 +319,12 @@ public enum MessageBlock: Decodable, Sendable, Hashable {
     /// Thinking text, with how long it took when the daemon timed it.
     case thinking(String, durationMS: Int?)
     case toolUse(id: String, name: String, input: JSONValue)
-    case toolResult(toolUseID: String, content: String, isError: Bool)
+    /// `images` are attachments the result carries (B59).
+    case toolResult(toolUseID: String, content: String, isError: Bool, images: [ToolImage] = [])
     case unknown
 
     enum CodingKeys: String, CodingKey {
-        case type, text, id, name, input, content
+        case type, text, id, name, input, content, images
         case durationMS = "duration_ms"
         case toolUseID = "tool_use_id"
         case isError = "is_error"
@@ -305,7 +347,8 @@ public enum MessageBlock: Decodable, Sendable, Hashable {
             self = .toolResult(
                 toolUseID: try container.decode(String.self, forKey: .toolUseID),
                 content: try container.decode(String.self, forKey: .content),
-                isError: try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false)
+                isError: try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false,
+                images: try container.decodeIfPresent([ToolImage].self, forKey: .images) ?? [])
         default: self = .unknown
         }
     }
@@ -318,20 +361,99 @@ public struct TurnResult: Decodable, Sendable, Hashable {
     /// How long the turn took; older events may lack it.
     public var durationMS: Int?
     public var numTurns: Int
-    public var costUSD: Double?
     public var errors: [String]
+    /// The turn ended only to make way for the next message (Send now, or Claude Code
+    /// ending it holding that message), so its error is no failure (B59).
+    public var handoff: Bool
+    /// The user stopped the turn: its error is no failure, the stopped line says it (B59).
+    public var stopped: Bool
 
     enum CodingKeys: String, CodingKey {
-        case subtype, errors
+        case subtype, errors, handoff, stopped
         case isError = "is_error"
         case durationMS = "duration_ms"
         case numTurns = "num_turns"
-        case costUSD = "cost_usd"
     }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isError = try container.decode(Bool.self, forKey: .isError)
+        subtype = try container.decode(String.self, forKey: .subtype)
+        durationMS = try container.decodeIfPresent(Int.self, forKey: .durationMS)
+        numTurns = try container.decode(Int.self, forKey: .numTurns)
+        errors = try container.decode([String].self, forKey: .errors)
+        handoff = try container.decodeIfPresent(Bool.self, forKey: .handoff) ?? false
+        stopped = try container.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
+    }
+
+    /// Whether the turn failed: an error result that neither handed off nor was stopped.
+    public var failed: Bool { isError && !handoff && !stopped }
 
     /// The line for a turn that ended in an error: its first error, else its subtype, as
     /// the daemon words the failed state (D045).
     public var failure: String { "Failed: \(errors.first ?? subtype)" }
+}
+
+public enum HookOutcome: String, UnknownSafeEnum {
+    case success, error, cancelled
+    case unknown
+}
+
+/// A hook that had something to say, from `session.hook`: its message for the user, what
+/// it printed, or why it failed. Shown as a muted line like Claude Code's.
+public struct HookRun: Decodable, Sendable, Hashable {
+    /// The event and what it matched, such as `PostToolUse:Edit`.
+    public var name: String
+    public var event: String
+    public var outcome: HookOutcome
+    public var exitCode: Int?
+    public var systemMessage: String?
+    public var output: String?
+
+    public init(
+        name: String, event: String, outcome: HookOutcome, exitCode: Int?,
+        systemMessage: String?, output: String?
+    ) {
+        self.name = name
+        self.event = event
+        self.outcome = outcome
+        self.exitCode = exitCode
+        self.systemMessage = systemMessage
+        self.output = output
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case outcome, output
+        case name = "hook_name"
+        case event = "hook_event"
+        case exitCode = "exit_code"
+        case systemMessage = "system_message"
+    }
+
+    public var isFailure: Bool { outcome == .error }
+
+    /// Whether Claude Code would show it: a message for the user, or a hook that did not
+    /// succeed. A successful hook's output was context for Claude (SessionStart,
+    /// UserPromptSubmit); the daemon no longer sends it, older chats stored it (B59).
+    public var isShown: Bool {
+        systemMessage != nil || outcome != .success || (exitCode ?? 0) != 0
+    }
+
+    /// "PreToolUse:Bash hook failed (exit 2)", "PostToolUse:Edit says: Formatted 2 files",
+    /// or "PostToolUse:Edit hook output".
+    public var title: String {
+        if isFailure {
+            return "\(name) hook failed" + (exitCode.map { " (exit \($0))" } ?? "")
+        }
+        return systemMessage.map { "\(name) says: \($0)" } ?? "\(name) hook output"
+    }
+
+    /// What the line opens to: the output, and on a failure its message first.
+    public var detail: String? {
+        let parts = isFailure ? [systemMessage, output] : [output]
+        let text = parts.compactMap { $0 }.joined(separator: "\n")
+        return text.isEmpty ? nil : text
+    }
 }
 
 public enum NoticeKind: String, UnknownSafeEnum {

@@ -54,16 +54,20 @@ public final class CompletionStore {
     /// The suggestions for the token at the caret; nil when nothing is being completed.
     /// Files need a session, so a new chat completes commands, and pixies where
     /// `mentions` offers them: the pixies and teams the chat may call, which "@" lists
-    /// before the files, filtered by what was typed (B40).
+    /// before the files, filtered by what was typed (B40). `localCommands` adds the
+    /// commands Nest runs itself (`LocalCommand`, B59). `filesOnly` leaves commands out,
+    /// as in a pixie's composer, which sends through the pixie.
     public func suggestions(
         text: String, caret: Int, session: String?, repo: String,
-        mentions: [PixieMention]? = nil
+        mentions: [PixieMention]? = nil, localCommands: Bool = false, filesOnly: Bool = false
     ) -> CompletionList? {
         guard let trigger = CompletionTrigger.at(text, caret: caret) else { return nil }
         switch trigger.kind {
         case .command:
+            guard !filesOnly else { return nil }
             let known = commands[Self.source(session: session, repo: repo)] ?? []
-            return .commands(known, for: trigger, in: text)
+            return .commands(
+                localCommands ? LocalCommand.merged(known) : known, for: trigger, in: text)
         case .file:
             guard session != nil || mentions != nil else { return nil }
             let files = found.flatMap { $0.session == session ? $0.files : nil } ?? []

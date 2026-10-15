@@ -68,7 +68,9 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
     public var title: String?
     /// Why Claude Code asks, when it says, such as the rule or path involved.
     public var reason: String?
-    /// The rule Claude Code suggests for "Always allow", such as `Bash(npm test:*)`.
+    /// What "Always allow" allows, in words: Claude Code's suggested rule, such as
+    /// `Bash(npm test:*)`, else the exact call, such as `Bash(rm -rf build)` (B59). Null
+    /// in older events and for other providers.
     public var alwaysRule: String?
 
     enum CodingKeys: String, CodingKey {
@@ -81,16 +83,15 @@ public struct PermissionRequest: Decodable, Sendable, Hashable {
         alwaysRule.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
     }
 
-    /// The "Always allow" button: with the suggested rule when there is one.
+    /// The "Always allow" button, naming exactly what it allows: the rule, else the tool.
     public var alwaysAllowTitle: String {
-        suggestedRule.map { "Always allow \($0)" } ?? "Always allow"
+        "Always allow \(suggestedRule ?? tool)"
     }
 
     /// What "Always allow" does, for its help text.
     public var alwaysAllowHelp: String {
-        suggestedRule == nil
-            ? "Allow this tool for the rest of the chat"
-            : "Allow this and anything matching the rule from now on, as Claude Code suggests"
+        suggestedRule.map { "Allow \($0) without asking again" }
+            ?? "Allow \(tool) without asking again in this chat"
     }
 }
 

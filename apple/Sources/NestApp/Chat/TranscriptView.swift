@@ -51,7 +51,7 @@ struct TranscriptView: View {
                         case .tools(let group):
                             ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
                         case .pixieCall(let call):
-                            PixieCallRow(entry: call)
+                            PixieCallRow(entry: call, chat: chat)
                                 .background {
                                     if highlighted == call.id {
                                         Highlight(accent: accent)
@@ -65,10 +65,15 @@ struct TranscriptView: View {
                         }
                     } else if working && !streaming {
                         WorkingLine(
-                            since: store?.turnStartedAt, thinking: store?.isThinking == true)
+                            since: store?.turnStartedAt, thinking: store?.isThinking == true,
+                            thought: store?.liveThinking ?? "")
                     }
-                    ForEach(shell.activity.queued(session: chat)) { message in
-                        QueuedBubble(message: message) { shell.cancelQueued(message, in: chat) }
+                    // `!` commands run since the last message, until it carries them (B59).
+                    ForEach(shell.bash.rows(chat: chat)) { row in
+                        BashRow(
+                            id: row.id, command: row.command, output: row.run?.output ?? "",
+                            notes: row.run?.notes ?? [], running: row.isRunning,
+                            failure: row.failure)
                     }
                     if let failure = store?.catchUpFailure {
                         // Live events wait until the missed ones load (audit BUG-101).
@@ -209,6 +214,7 @@ private struct TranscriptRow: View {
         switch item.content {
         case .user(let text, let attachments):
             let canRewind = RewindFlow.isAvailable(for: shell.sessions.session(chat))
+            let canFork = SessionsStore.canFork(shell.sessions.session(chat))
             VStack(alignment: .trailing, spacing: 4) {
                 if let from = item.fromPixie {
                     FromPixieLabel(label: PixieLabels.from(from, pixies: shell.pixies.pixies))
@@ -217,8 +223,14 @@ private struct TranscriptRow: View {
                     text: text, attachments: attachments,
                     mentions: MentionHighlights.find(
                         in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams),
-                    rewind: item.eventID.flatMap { event in
-                        canRewind ? { shell.startRewind(chat, message: event) } : nil
+                    actions: item.eventID.flatMap { event in
+                        canRewind || canFork
+                            ? MessageActions(
+                                edit: canRewind ? { shell.startEdit(chat, message: event) } : nil,
+                                rewind: canRewind
+                                    ? { shell.startRewind(chat, message: event) } : nil,
+                                fork: canFork ? { shell.fork(chat, message: event) } : nil)
+                            : nil
                     })
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -244,6 +256,10 @@ private struct TranscriptRow: View {
             PixieCardView(card: card, chat: chat, answered: answered)
         case .habitReport(let text):
             HabitReportRow(text: text)
+        case .hook(let run):
+            HookRow(id: item.id, run: run)
+        case .bash(let block):
+            BashRow(id: item.id, command: block.command, output: block.output)
         }
     }
 }
@@ -253,8 +269,8 @@ private struct UserBubble: View {
     let attachments: [Attachment]
     /// Pixie and team mentions, drawn in their colour and semibold (B40).
     let mentions: [MentionHighlight]
-    /// Restores the files to before this message, while the chat is idle.
-    let rewind: (() -> Void)?
+    /// Edit, Rewind and Fork from here, while no turn runs (B59).
+    let actions: MessageActions?
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
 
@@ -280,17 +296,10 @@ private struct UserBubble: View {
                 .padding(.vertical, 7)
                 .background(Palette.raised, in: .rounded(Radius.bubble))
                 .overlay(alignment: .leading) {
-                    if let rewind, hovering || reveal {
-                        Button(action: rewind) {
-                            Image(systemName: Icon.rewind)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Palette.t3)
-                        }
-                        .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
-                        .help("Restore files to before this message")
-                        .accessibilityLabel("Restore files to before this message")
-                        .offset(x: -30)
-                        .transition(.opacity)
+                    if let actions, hovering || reveal {
+                        MessageActionsMenu(actions: actions)
+                            .offset(x: -30)
+                            .transition(.opacity)
                     }
                 }
             }
@@ -402,44 +411,43 @@ private struct CommandBlock: View {
     }
 }
 
-/// A message waiting for the running turn, dimmed under the transcript, with a cancel
-/// button.
-private struct QueuedBubble: View {
-    let message: QueuedMessage
-    let cancel: () -> Void
+/// What can be done with one of the user's messages while no turn runs, as in Claude
+/// Code: edit it, rewind to before it, or fork a new chat from it (B59).
+private struct MessageActions {
+    let edit: (() -> Void)?
+    let rewind: (() -> Void)?
+    let fork: (() -> Void)?
+}
+
+/// The hover menu beside a user message.
+private struct MessageActionsMenu: View {
+    let actions: MessageActions
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: "clock").font(.system(size: 9))
-                Text("Queued")
-                Button(action: cancel) {
-                    Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
-                }
-                .buttonStyle(SmallSquareStyle())
-                .help("Cancel this message")
-                .accessibilityLabel("Cancel queued message")
+        Menu {
+            if let edit = actions.edit {
+                Button("Edit", systemImage: Icon.edit, action: edit)
             }
-            .font(.ui(TypeSize.meta))
-            .foregroundStyle(Palette.t3)
-            Text(message.text)
-                .font(.ui(TypeSize.reading))
-                .lineSpacing(3)
-                .foregroundStyle(Palette.t2)
-                .textSelection(.enabled)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 7)
-                .background(Palette.raised, in: .rounded(Radius.bubble))
-                .opacity(0.7)
-            ForEach(message.attachments) { attachment in
-                Chip(icon: Icon.attach, text: attachment.filename)
-                    .opacity(0.6)
+            if let rewind = actions.rewind {
+                Button("Rewind…", systemImage: Icon.rewind, action: rewind)
             }
+            if let fork = actions.fork {
+                Button("Fork from here", systemImage: Icon.fork, action: fork)
+            }
+        } label: {
+            Image(systemName: Icon.more)
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.t3)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.leading, 48)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Queued: \(message.text)")
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .pointerStyle(.link)
+        .fixedSize()
+        .help("Edit, rewind or fork from this message")
+        .accessibilityLabel("Message actions")
     }
 }
 
@@ -589,10 +597,9 @@ private struct ToolGroupRow: View {
     }
 }
 
-/// A tool call: icon, name, argument and result note; opens to show the output.
+/// A tool call: icon, name, argument and result note; opens to show the output, or for
+/// an agent call what its subagent did and is doing.
 private struct ToolRow: View {
-    static let outputLimit = 4000
-
     let id: String
     let call: ToolCall
     @Environment(Shell.self) private var shell
@@ -600,8 +607,12 @@ private struct ToolRow: View {
     var body: some View {
         let expanded = shell.expandedItems.contains(id)
         let output = ToolSummary.output(of: call).map { $0.trimmingCharacters(in: .newlines) } ?? ""
-        let expandable = !output.isEmpty
         let kind = ToolSummary.kind(of: call.name)
+        let isAgent = kind == .agent
+        let live = !call.liveText.isEmpty || !call.liveThinking.isEmpty
+        let diff = EditDiff(call)
+        let expandable =
+            diff == nil && (!output.isEmpty || isAgent && (!call.steps.isEmpty || live))
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 7) {
                 Image(systemName: Icon.tool(kind))
@@ -619,7 +630,17 @@ private struct ToolRow: View {
                     .truncationMode(.middle)
                     .layoutPriority(1)
                 let note = ToolSummary.result(of: call)
-                if kind == .edit && note == "done" {
+                if let diff {
+                    HStack(spacing: 4) {
+                        Text("+\(diff.additions)").foregroundStyle(StatusTone.review.color)
+                        Text("-\(diff.deletions)").foregroundStyle(StatusTone.failed.color)
+                    }
+                    .font(.ui(TypeSize.meta))
+                    .monospacedDigit()
+                    .fixedSize()
+                    .accessibilityLabel(
+                        "\(diff.additions) added, \(diff.deletions) removed")
+                } else if kind == .edit && note == "done" {
                     Image(systemName: Icon.check)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(StatusTone.review.color)
@@ -647,25 +668,192 @@ private struct ToolRow: View {
                     toggle(id, in: shell)
                 }
             }
-            if expanded {
-                let shown =
-                    output.count > Self.outputLimit
-                    ? output.prefix(Self.outputLimit) + "\n\u{2026}" : output
-                SelectableText(key: shown) {
-                    TextStyling.plain(
-                        shown, font: TextStyling.mono(TypeSize.meta),
-                        color: TextStyling.secondary, lineSpacing: 4)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(
-                    EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: HoverCopy.gutter + 4)
-                )
-                .hoverCopy(output)
-                .softFill()
-                .padding(.leading, 19)
+            if expanded && isAgent {
+                AgentCallSteps(call: call, answer: false)
+                    .padding(.leading, 6)
+            } else if !expanded, let line = ThinkingPreview.line(call.liveText) {
+                LivePreview(text: line)
+            }
+            if let diff {
+                EditDiffView(id: id, diff: diff)
+            } else if expanded && !output.isEmpty {
+                ToolOutputView(id: id, output: output)
+            }
+            if !call.images.isEmpty {
+                ToolImages(images: call.images)
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// An edit's change under its call, like Claude's apps: removed lines in red, added ones
+/// in green, its first lines with Show more when long (B59).
+private struct EditDiffView: View {
+    let id: String
+    let diff: EditDiff
+    @Environment(Shell.self) private var shell
+
+    private var showAllID: String { "\(id)-diff" }
+
+    var body: some View {
+        let showsAll = shell.expandedItems.contains(showAllID)
+        let hunks = diff.shown(expanded: showsAll)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(hunks.enumerated()), id: \.offset) { index, hunk in
+                if index > 0 {
+                    Text("\u{22EF}")
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                        .padding(.leading, 8)
+                        .padding(.vertical, 1)
+                }
+                ForEach(Array(hunk.enumerated()), id: \.offset) { _, line in
+                    EditDiffLine(line: line)
+                }
+            }
+            if let label = diff.expandLabel {
+                Button(showsAll ? "Show less" : label) {
+                    toggle(showAllID, in: shell)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.link)
+                .padding(EdgeInsets(top: 6, leading: 8, bottom: 2, trailing: 8))
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .softFill()
+        .clipShape(.rounded(Radius.card))
+        .padding(.leading, 19)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Changes to \(diff.path): \(diff.additions) added, \(diff.deletions) removed")
+    }
+}
+
+private struct EditDiffLine: View {
+    let line: EditDiff.Line
+
+    var body: some View {
+        let (mark, tint): (String, Color?) =
+            switch line.kind {
+            case .add: ("+", StatusTone.review.color)
+            case .delete: ("-", StatusTone.failed.color)
+            default: (" ", nil)
+            }
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(mark)
+                .foregroundStyle(tint ?? Palette.t3)
+                .frame(width: 8)
+            Text(line.text.isEmpty ? " " : line.text)
+                .foregroundStyle(tint == nil ? Palette.t2 : Palette.t1)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .font(.mono(TypeSize.meta))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.map { $0.opacity(0.12) } ?? .clear)
+    }
+}
+
+/// A tool's output, whole when short, else its first lines with Show more, like Claude's
+/// apps; nothing is cut (B59).
+private struct ToolOutputView: View {
+    let id: String
+    let output: String
+    @Environment(Shell.self) private var shell
+
+    private var showAllID: String { "\(id)-all" }
+
+    var body: some View {
+        let collapsed = CollapsedOutput(output)
+        let showsAll = shell.expandedItems.contains(showAllID)
+        let shown = showsAll ? collapsed.full : collapsed.preview
+        VStack(alignment: .leading, spacing: 6) {
+            SelectableText(key: shown) {
+                TextStyling.plain(
+                    shown, font: TextStyling.mono(TypeSize.meta),
+                    color: TextStyling.secondary, lineSpacing: 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let label = collapsed.expandLabel {
+                Button(showsAll ? "Show less" : label) {
+                    toggle(showAllID, in: shell)
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.link)
+            }
+        }
+        .padding(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: HoverCopy.gutter + 4))
+        .hoverCopy(output)
+        .softFill()
+        .padding(.leading, 19)
+    }
+}
+
+/// The latest line a subagent wrote, under its collapsed call while it streams.
+private struct LivePreview: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .lineLimit(1)
+            .truncationMode(.head)
+            .padding(.leading, 19)
+            .accessibilityLabel("Latest: \(text)")
+    }
+}
+
+/// A hook's line, muted like Claude Code's: what it says, or its output or failure
+/// opening below. A failure is tinted and opens by default.
+private struct HookRow: View {
+    let id: String
+    let run: HookRun
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let detail = run.detail
+        let expanded = detail != nil && run.isFailure != shell.expandedItems.contains(id)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Image(systemName: run.isFailure ? Icon.warning : Icon.hook)
+                    .font(.system(size: 10))
+                    .frame(width: 12)
+                Text(run.title)
+                    .lineLimit(expanded ? nil : 1)
+                    .truncationMode(.tail)
+                if detail != nil {
+                    Image(systemName: Icon.chevron)
+                        .font(.system(size: 8, weight: .medium))
+                        .rotationEffect(.degrees(expanded ? 0 : -90))
+                }
+                Spacer(minLength: 0)
+            }
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(run.isFailure ? StatusTone.waiting.color : Palette.t3)
+            .frame(minHeight: 21)
+            .contentShape(Rectangle())
+            .pointerStyle(detail != nil ? .link : nil)
+            .onTapGesture {
+                if detail != nil {
+                    toggle(id, in: shell)
+                }
+            }
+            if expanded, let detail {
+                ToolOutputView(id: id, output: detail)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(detail == nil ? "" : expanded ? "Expanded" : "Collapsed")
     }
 }
 
@@ -674,6 +862,7 @@ private struct ToolRow: View {
 /// name opens the pixie in the Pixies tab.
 struct PixieCallRow: View {
     let entry: PixieCallEntry
+    let chat: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -725,6 +914,9 @@ struct PixieCallRow: View {
                 .contentShape(Rectangle())
                 .pointerStyle(.link)
                 .onTapGesture { toggle(entry.id, in: shell) }
+                if entry.isRunning {
+                    StopTaskButton(chat: chat, task: entry.id)
+                }
             }
             .frame(minHeight: 21)
             .accessibilityElement(children: .contain)
@@ -733,21 +925,30 @@ struct PixieCallRow: View {
                 toggle(entry.id, in: shell)
             }
             if expanded {
-                PixieCallSteps(call: entry.call)
+                AgentCallSteps(call: entry.call, answer: true)
                     .padding(.leading, 6)
+            } else if let line = ThinkingPreview.line(entry.call.liveText) {
+                LivePreview(text: line)
             }
         }
     }
 }
 
-/// An opened pixie call: its text, its tool calls as grey lines, then its answer.
-private struct PixieCallSteps: View {
+/// An opened agent or pixie call: its subagent's thinking, text and tool calls in order,
+/// what it is writing now, then (for a pixie, with `answer`) its answer.
+private struct AgentCallSteps: View {
     let call: ToolCall
+    let answer: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(call.steps) { step in
                 switch step.kind {
+                case .thinking(let text):
+                    SelectableText(key: text) {
+                        TextStyling.plain(
+                            text, font: ThinkingRow.font, color: TextStyling.secondary)
+                    }
                 case .text(let text):
                     MarkdownText(text: text, copyable: false)
                 case .tool(let name, _):
@@ -761,11 +962,22 @@ private struct PixieCallSteps: View {
                             .truncationMode(.middle)
                     }
                     .foregroundStyle(Palette.t3)
+                case .images(let images):
+                    ToolImages(images: images, indent: 0)
                 }
             }
-            if let result = ToolSummary.output(of: call), !result.isEmpty {
+            if !call.liveThinking.isEmpty {
+                SelectableText(key: call.liveThinking) {
+                    TextStyling.plain(
+                        call.liveThinking, font: ThinkingRow.font, color: TextStyling.secondary)
+                }
+            }
+            if !call.liveText.isEmpty {
+                MarkdownText(text: call.liveText, copyable: false)
+            }
+            if answer, let result = ToolSummary.output(of: call), !result.isEmpty {
                 MarkdownText(text: result)
-            } else if call.steps.isEmpty {
+            } else if answer && call.steps.isEmpty && call.liveText.isEmpty {
                 Text(call.stopped ? "Stopped before it answered" : "Starting...")
                     .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
@@ -857,19 +1069,55 @@ struct SystemLine: View {
     }
 }
 
-/// Three blinking dots and how long the turn has been running: "Working... 12s".
+/// Three blinking dots and how long the turn has been running: "Working... 12s". While
+/// thinking streams (B59), "Thinking... 4s" previews its latest line and opens to all of
+/// it, like the finished "Thought for 8s" block.
 private struct WorkingLine: View {
+    static let expandID = "live-thinking"
+
     let since: Date?
     let thinking: Bool
+    let thought: String
+    @Environment(Shell.self) private var shell
 
     var body: some View {
-        HStack(spacing: 8) {
-            BlinkingDots()
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(TurnText.working(since: since, at: context.date, thinking: thinking))
+        let streams = thinking && !thought.isEmpty
+        let expanded = streams && shell.expandedItems.contains(Self.expandID)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                BlinkingDots()
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(TurnText.working(since: since, at: context.date, thinking: thinking))
+                        .font(.ui(TypeSize.meta))
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.t3)
+                }
+                if streams {
+                    Image(systemName: Icon.chevron)
+                        .font(.system(size: 8, weight: .medium))
+                        .rotationEffect(.degrees(expanded ? 0 : -90))
+                }
+            }
+            .contentShape(Rectangle())
+            .pointerStyle(streams ? .link : nil)
+            .onTapGesture {
+                if streams {
+                    toggle(Self.expandID, in: shell)
+                }
+            }
+            if expanded {
+                SelectableText(key: thought) {
+                    TextStyling.plain(
+                        thought, font: ThinkingRow.font, color: TextStyling.secondary)
+                }
+                .padding(.leading, 19)
+            } else if streams, let line = ThinkingPreview.line(thought) {
+                Text(line)
                     .font(.ui(TypeSize.meta))
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.t3)
+                    .italic()
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .padding(.leading, 19)
             }
         }
         .foregroundStyle(Palette.t3)
@@ -968,5 +1216,101 @@ private struct EmptyTranscript: View {
             .foregroundStyle(Palette.t3)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 60)
+    }
+}
+
+/// A `!` command the user ran: the command in mono, its output collapsed as a tool's, and
+/// muted notes for a failed exit, a timeout or a cut output (B59).
+private struct BashRow: View {
+    let id: String
+    let command: String
+    let output: String
+    var notes: [String] = []
+    var running = false
+    var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Text("!")
+                    .font(.mono(TypeSize.meta, .semibold))
+                    .foregroundStyle(StatusTone.waiting.color)
+                    .frame(width: 12)
+                Text(command)
+                    .font(.mono(TypeSize.meta))
+                    .foregroundStyle(Palette.t1)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+                if running {
+                    Spinner()
+                }
+                ForEach(notes, id: \.self) { note in
+                    Text("\u{00B7} \(note)")
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(Palette.t3)
+                        .fixedSize()
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 21)
+            let trimmed = output.trimmingCharacters(in: .newlines)
+            if !trimmed.isEmpty {
+                ToolOutputView(id: id, output: trimmed)
+            }
+            if let failure {
+                Text(failure)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(StatusTone.failed.color)
+                    .padding(.leading, 19)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Shell command: \(command)")
+    }
+}
+
+/// A tool result's images as thumbnails, read with the device token; a click opens one
+/// full size (B59).
+private struct ToolImages: View {
+    static let thumbnailWidth: Double = 320
+
+    let images: [ToolImage]
+    var indent: Double = 19
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(images) { image in
+                Group {
+                    if let data = shell.images.data(for: image.attachmentID),
+                        let picture = NSImage(data: data)
+                    {
+                        Button {
+                            shell.show(.image(image.attachmentID))
+                        } label: {
+                            Image(nsImage: picture)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: min(Self.thumbnailWidth, picture.size.width))
+                                .clipShape(.rounded(Radius.card))
+                        }
+                        .buttonStyle(.plain)
+                        .pointerStyle(.link)
+                        .help("Open full size")
+                        .accessibilityLabel("Image from the tool")
+                    } else if shell.images.failed(image.attachmentID) {
+                        Text("Image not available")
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                    } else {
+                        Spinner()
+                    }
+                }
+                .task(id: image.attachmentID) { await shell.images.load(image.attachmentID) }
+            }
+        }
+        .padding(.leading, indent)
     }
 }

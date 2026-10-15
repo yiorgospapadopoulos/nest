@@ -23,6 +23,15 @@ public enum TurnText {
     }
 }
 
+/// The live thinking row's preview while collapsed: the latest line written.
+public enum ThinkingPreview {
+    public static func line(_ text: String) -> String? {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .last { !$0.isEmpty }
+    }
+}
+
 /// One line for a run of tool calls: "Running 2 commands, reading 1 file" while any runs,
 /// then "Ran 3 commands, read 2 files, edited 1 file".
 public enum ToolActivity {
@@ -140,13 +149,14 @@ public enum TranscriptEntry: Sendable, Hashable, Identifiable {
 }
 
 public enum TranscriptGrouping {
-    /// The rows for these items: two or more tool calls with nothing but thinking between
-    /// them become a group; anything else, assistant text above all, ends it. `live` says
+    /// The rows for these items: two or more tool calls with nothing but thinking or hook
+    /// lines between them become a group; anything else, assistant text above all, ends it. `live` says
     /// the session's turn is running, so calls after the last turn end can still run.
     /// `background` holds the tool use ids of background tasks still running: a call that
     /// started one runs until it ends (D045). Other calls without a result that can no
     /// longer run are marked stopped (D054). An agent call of one of the `pixies` (by
-    /// slug) is a row of its own, never grouped (B40).
+    /// slug) is a row of its own, never grouped (B40), and so is an edit with a diff
+    /// (`EditDiff`, B59).
     public static func entries(
         _ items: [TranscriptItem], live: Bool, background: Set<String> = [],
         pixies: Set<String> = []
@@ -192,10 +202,17 @@ public enum TranscriptGrouping {
                 flush()
                 let open = live && index > (lastEnd ?? -1)
                 entries.append(.pixieCall(pixieCall(call, open: open, background: background)))
+            // An edit shows its diff, so it stands alone rather than folded away (B59).
+            case .tool(let call) where EditDiff(call) != nil:
+                flush()
+                run = [item]
+                runIsOpen = index > (lastEnd ?? -1)
+                flush()
             case .tool:
                 run.append(item)
                 runIsOpen = index > (lastEnd ?? -1)
-            case .thinking where !run.isEmpty:
+            // Thinking and hooks between calls stay with them.
+            case .thinking where !run.isEmpty, .hook where !run.isEmpty:
                 run.append(item)
             default:
                 flush()

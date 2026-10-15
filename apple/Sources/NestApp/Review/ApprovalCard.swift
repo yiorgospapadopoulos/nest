@@ -151,13 +151,17 @@ private struct PermissionBody: View {
         .buttonStyle(.nest(.soft))
     }
 
+    /// Names exactly what it allows; a long command is cut in the middle, whole in the help.
     private var always: some View {
-        Button(approval.permission?.alwaysAllowTitle ?? "Always allow") {
+        Button {
             shell.allow(approval, always: true)
+        } label: {
+            Text(approval.permission?.alwaysAllowTitle ?? "Always allow")
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
         .buttonStyle(.nest(.plain))
-        .fixedSize()
-        .help(approval.permission?.alwaysAllowHelp ?? "Allow this tool for the rest of the chat")
+        .help(approval.permission?.alwaysAllowHelp ?? "Allow without asking again")
     }
 }
 

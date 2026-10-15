@@ -26,8 +26,8 @@ private func call(_ id: String, _ subagent: String?, name: String = "Agent", res
 }
 
 @MainActor @Suite struct PixieCallTranscriptTests {
-    /// A call's own messages are kept with it: text and tool calls, in order; its thinking
-    /// and the results of its own tools are not shown.
+    /// A call's own messages are kept with it: thinking, text and tool calls, in order
+    /// (B59); the results of its own tools and blank text are not shown.
     @Test func aCallKeepsItsOwnMessages() async throws {
         let transcript = TranscriptStore(sessionID: "s1", api: FakeAPI())
         try await transcript.load()
@@ -60,15 +60,16 @@ private func call(_ id: String, _ subagent: String?, name: String = "Agent", res
         #expect(call.subagentType == "reviewer")
         #expect(
             call.steps.map(\.kind) == [
+                .thinking("hm"),
                 .text("Reading the diff."),
                 .tool(name: "Read", input: .object(["file_path": .string("src/a.ts")])),
                 .tool(name: "Bash", input: .object(["command": .string("npm test")])),
                 .text("Looks good."),
             ])
-        #expect(call.steps.map(\.id) == ["e2-1", "e2-2", "e4-0", "e4-1"])
+        #expect(call.steps.map(\.id) == ["e2-0", "e2-1", "e2-2", "e4-0", "e4-1"])
         #expect(
             call.steps.map(\.line) == [
-                "Reading the diff.", "Read src/a.ts", "Bash npm test", "Looks good.",
+                "hm", "Reading the diff.", "Read src/a.ts", "Bash npm test", "Looks good.",
             ])
     }
 
@@ -173,7 +174,7 @@ extension TranscriptEntry {
     /// The hand-back Claude Code stored for a pixie call, as the daemon keeps it.
     static let handBack: String = {
         let message = Fixture.decode(AgentMessage.self, "subagent_handback")
-        guard case .toolResult(_, let content, _) = message.blocks[0] else { return "" }
+        guard case .toolResult(_, let content, _, _) = message.blocks[0] else { return "" }
         return content
     }()
 

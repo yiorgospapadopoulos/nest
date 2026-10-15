@@ -44,10 +44,57 @@ import Testing
         guard case .result(let turn) = bodies[10] else { throw Unexpected(bodies[10]) }
         #expect(turn.durationMS == 41_250)
         #expect(turn.numTurns == 6)
-        #expect(turn.costUSD == nil)
         #expect(!turn.isError)
         #expect(turn.subtype == "success")
         #expect(turn.errors.isEmpty)
+    }
+
+    /// B59: thinking and subagent text stream, hooks are stored, and results carry no
+    /// cost any more (stored ones still have it, and it is ignored).
+    @Test func typedBodiesOfTheStreams() throws {
+        #expect(
+            Fixture.event(
+                EventType.sessionThinkingDelta,
+                #"{"text": "Let me check", "parent_tool_use_id": null}"#, id: nil
+            ).body == .thinkingDelta("Let me check", parent: nil))
+        #expect(
+            Fixture.event(
+                EventType.sessionThinkingDelta, #"{"text": "Hm", "parent_tool_use_id": "t1"}"#,
+                id: nil
+            ).body == .thinkingDelta("Hm", parent: "t1"))
+        #expect(
+            Fixture.event(
+                EventType.sessionSubagentDelta,
+                #"{"text": "Found 3", "parent_tool_use_id": "toolu_01ABC"}"#, id: nil
+            ).body == .subagentDelta("Found 3", parent: "toolu_01ABC"))
+        let hook = Fixture.event(
+            EventType.sessionHook,
+            #"{"hook_id": "a1b2", "hook_name": "PostToolUse:Edit", "hook_event": "PostToolUse", "outcome": "success", "exit_code": 0, "system_message": "Formatted 2 files", "output": null}"#,
+            id: 820
+        ).body
+        #expect(
+            hook
+                == .hook(
+                    HookRun(
+                        name: "PostToolUse:Edit", event: "PostToolUse", outcome: .success,
+                        exitCode: 0, systemMessage: "Formatted 2 files", output: nil)))
+        let failed = Fixture.event(
+            EventType.sessionHook,
+            #"{"hook_id": null, "hook_name": "PreToolUse:Bash", "hook_event": "PreToolUse", "outcome": "error", "exit_code": null, "system_message": null, "output": "Blocked"}"#
+        ).body
+        #expect(
+            failed
+                == .hook(
+                    HookRun(
+                        name: "PreToolUse:Bash", event: "PreToolUse", outcome: .error,
+                        exitCode: nil, systemMessage: nil, output: "Blocked")))
+        let result = Fixture.event(
+            EventType.sessionResult,
+            #"{"is_error": false, "subtype": "success", "duration_ms": 41200, "num_turns": 3, "errors": [], "tokens": {"input_tokens": 12}}"#
+        ).body
+        guard case .result(let turn) = result else { throw Unexpected(result) }
+        #expect(turn.durationMS == 41_200)
+        #expect(!turn.isError)
     }
 
     @Test func typedBodiesOfLiveEvents() throws {

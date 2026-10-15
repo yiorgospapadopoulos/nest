@@ -205,6 +205,21 @@ struct ArchiveRequest: Encodable {
 struct RewindRequest: Encodable {
     /// The user message's event id.
     var message: Int
+    var restore: RewindRestore
+}
+
+struct ShellRequest: Encodable {
+    var command: String
+}
+
+struct MemoryRequest: Encodable {
+    var text: String
+    var scope: MemoryScope
+}
+
+struct ForkRequest: Encodable {
+    /// The user message's event id.
+    var message: Int
 }
 
 /// `POST /api/pixies`; fields left nil use the daemon's defaults.
