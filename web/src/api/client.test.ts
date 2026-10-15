@@ -20,6 +20,7 @@ const file = new File(["hi"], "note.txt", { type: "text/plain" });
 
 const calls: Call[] = [
   ["repos", (a) => a.repos(), "GET", "/api/repos", undefined],
+  ["repo", (a) => a.repo("todo ui"), "GET", "/api/repos/todo%20ui", undefined],
   ["sessions", (a) => a.sessions(false), "GET", "/api/sessions?archived=false", undefined],
   ["archived", (a) => a.sessions(true), "GET", "/api/sessions?archived=true", undefined],
   ["session", (a) => a.session("s/1"), "GET", "/api/sessions/s%2F1", undefined],

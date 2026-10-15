@@ -38,6 +38,7 @@ export function repo(name: string): RepoConfig {
     path: `/Users/me/${name}`,
     git: true,
     default_branch: "main",
+    current_branch: "main",
     worktree: { default: true, link: [], setup: [], setup_timeout_seconds: 900 },
   };
 }

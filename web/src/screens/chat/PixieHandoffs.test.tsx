@@ -36,7 +36,9 @@ describe("chats a pixie started (B41)", () => {
     await user.click(screen.getByRole("tab", { name: "Projects" }));
 
     const started = screen.getByRole("button", { name: /^Check the form,/ });
-    expect(started).toHaveAccessibleName("Check the form, Idle, Started by Tester");
+    expect(started).toHaveAccessibleName(
+      "Check the form, Idle, Started by Tester, worktree agent/contact",
+    );
     expect(within(started).getByText("Started by Tester")).toBeInTheDocument();
     expect(within(started).getByRole("img", { hidden: true, name: "owl" })).toBeInTheDocument();
     const old = screen.getByRole("button", { name: /^Old check,/ });

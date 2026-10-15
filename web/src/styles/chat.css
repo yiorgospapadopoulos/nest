@@ -493,6 +493,76 @@
   font-size: 0.8235rem;
   border-radius: var(--r-tab);
 }
+/* A new chat's place, chosen above the composer before its first message (B55). */
+.ncp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 8px;
+  min-width: 0;
+  flex: none;
+}
+/* A capsule selector: a 32 point pill in a 44 point tap target. */
+.ncp-b {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 10px 0 11px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--t1);
+  font-size: 0.7647rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: none;
+}
+.ncp-b::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+.ncp-b > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ncp-b .ic {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--t2);
+}
+.ncp-b .ncp-c {
+  width: 12px;
+  height: 12px;
+  color: var(--t3);
+}
+.ncp-b[aria-expanded="true"] {
+  background: var(--fill2);
+}
+.ncp-n {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 0.8235rem;
+}
+.ncp-n::placeholder {
+  color: var(--t3);
+}
 .tx-empty {
   display: grid;
   justify-items: center;

@@ -6,8 +6,8 @@ import { ActionSheet, Sheet } from "../../ui/Sheet.tsx";
 // Where the project's new chats work; null follows the agent default.
 const MODES: { value: boolean | null; label: string }[] = [
   { value: null, label: "Agent default" },
-  { value: true, label: "Worktree" },
-  { value: false, label: "In place" },
+  { value: false, label: "Current branch" },
+  { value: true, label: "New worktree" },
 ];
 
 /** One entry per line, blank lines and surrounding spaces left out. */

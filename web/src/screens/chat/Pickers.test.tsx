@@ -169,6 +169,8 @@ describe("thinking selector", () => {
       repo: "todo-ui",
       prompt: "Go",
       attachment_ids: [],
+      mode: "worktree",
+      base: "main",
     });
   });
 });

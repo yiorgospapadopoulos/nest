@@ -12,6 +12,9 @@ import { ClaudeChatView } from "./ClaudeChatView.tsx";
 import { Composer } from "./Composer.tsx";
 import { Frame } from "./Frame.tsx";
 import { GoalsStrip } from "./GoalsStrip.tsx";
+import { NewChat } from "./NewChat.tsx";
+import { sessionPlace } from "./place.ts";
+import { PlaceChip } from "./PlaceMarks.tsx";
 import { PrChip } from "./PrChip.tsx";
 import { Transcript } from "./Transcript.tsx";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
@@ -58,21 +61,13 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
     );
   }
   return "draft" in target ? (
-    <Frame title="New chat" back={target.draft} onBack={onBack}>
-      <div className="ch-tx">
-        <div className="tx-empty">
-          <Icon name="spark" />
-          <b>New chat</b>
-          <span>Describe the task. The agent starts when you send it.</span>
-        </div>
-      </div>
-      <Composer
-        repo={target.draft}
-        onCreated={(session) => {
-          onOpen(session.id);
-        }}
-      />
-    </Frame>
+    <NewChat
+      repo={target.draft}
+      onBack={onBack}
+      onCreated={(session) => {
+        onOpen(session.id);
+      }}
+    />
   ) : (
     <SessionChat
       id={target.id}
@@ -205,15 +200,15 @@ function runBack(pixies: Record<string, Pixie>, session: Session): string {
 }
 
 function Details({ session, label, tone }: { session: Session } & Parameters<typeof Pill>[0]) {
+  const { state } = useStore();
+  const place = sessionPlace(
+    session,
+    state.repos.find((r) => r.name === session.repo),
+  );
   return (
     <div className="ch-r2">
       <Pill tone={tone} label={label} />
-      {session.branch !== null && (
-        <span className="chip">
-          <Icon name="branch" />
-          <span>{session.branch}</span>
-        </span>
-      )}
+      <PlaceChip place={place} />
       <PrChip session={session} />
       {session.started_by_pixie !== null && (
         <StartedBy id={session.started_by_pixie} className="chip" />

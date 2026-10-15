@@ -12,8 +12,8 @@ import {
 } from "../chat/options.ts";
 
 const MODES: { mode: SessionMode; label: string }[] = [
-  { mode: "in_place", label: "In place" },
-  { mode: "worktree", label: "Worktree" },
+  { mode: "in_place", label: "Work on current branch" },
+  { mode: "worktree", label: "New worktree" },
 ];
 
 /** What new chats use unless the composer chooses otherwise; saved to the Mac at once. */
@@ -130,7 +130,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
           )}
         </select>
       </div>
-      <div className="srow">
+      <div className="srow col">
         <span id="default-mode-label">New chats work in</span>
         <div className="mseg" role="group" aria-labelledby="default-mode-label">
           {MODES.map(({ mode, label }) => (

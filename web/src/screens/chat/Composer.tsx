@@ -6,7 +6,13 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import type { Effort, PermissionMode, Session, UpdateSessionBody } from "../../api/types.ts";
+import type {
+  CreateSessionBody,
+  Effort,
+  PermissionMode,
+  Session,
+  UpdateSessionBody,
+} from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -47,12 +53,15 @@ interface Choices {
   permission: PermissionMode | null;
 }
 
+export type NewChatPlace = Pick<CreateSessionBody, "mode" | "base" | "branch">;
+
 // `focusOnOpen`: the field takes focus when it appears, as after a reject (B54).
 type Props = { focusOnOpen?: boolean } & (
   | {
       session: Session;
       repo?: undefined;
       onCreated?: undefined;
+      place?: undefined;
       pixie?: undefined;
       chat?: undefined;
     }
@@ -60,6 +69,8 @@ type Props = { focusOnOpen?: boolean } & (
       session?: undefined;
       repo: string;
       onCreated: (session: Session) => void;
+      // Where the new chat works, as its place choice says (B55).
+      place?: NewChatPlace;
       pixie?: undefined;
       chat?: undefined;
     }
@@ -71,6 +82,7 @@ type Props = { focusOnOpen?: boolean } & (
       session?: undefined;
       repo?: undefined;
       onCreated?: undefined;
+      place?: undefined;
     }
 );
 
@@ -79,7 +91,7 @@ type Props = { focusOnOpen?: boolean } & (
  * selectors. In a new chat the first message creates the session with those choices.
  * While a turn runs, a message is queued and sent when the turn ends.
  */
-export function Composer({ session, repo, onCreated, pixie, chat, focusOnOpen }: Props) {
+export function Composer({ session, repo, onCreated, place, pixie, chat, focusOnOpen }: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
   const key = draftKey(
@@ -172,6 +184,7 @@ export function Composer({ session, repo, onCreated, pixie, chat, focusOnOpen }:
         ...(draft.model === null ? {} : { model: draft.model }),
         ...(draft.effort === null ? {} : { effort: draft.effort }),
         ...(draft.permission === null ? {} : { permission_mode: draft.permission }),
+        ...place,
       });
       setSending(false);
       if (created === null) return;

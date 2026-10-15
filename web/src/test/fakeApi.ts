@@ -17,12 +17,13 @@ import {
   session,
   team,
 } from "./fixtures.ts";
+import { defined } from "./defined.ts";
 
 export type FakeApi = { [K in keyof Api]: Mock<Api[K]> };
 
 /** Every API call resolves with a small, valid answer unless a test overrides it. */
 export function fakeApi(): FakeApi {
-  return {
+  const fake: FakeApi = {
     redeem: vi.fn<Api["redeem"]>().mockResolvedValue({
       token: "t",
       device: {
@@ -35,6 +36,11 @@ export function fakeApi(): FakeApi {
       },
     }),
     repos: vi.fn<Api["repos"]>().mockResolvedValue([repo("todo-ui")]),
+    // The repo as the list has it, without counting a call to `repos`.
+    repo: vi.fn<Api["repo"]>().mockImplementation(async (name) => {
+      const listed = await defined(fake.repos.getMockImplementation())();
+      return defined(listed.find((r) => r.name === name));
+    }),
     removeRepo: vi.fn<Api["removeRepo"]>().mockResolvedValue(null),
     updateRepo: vi
       .fn<Api["updateRepo"]>()
@@ -135,4 +141,5 @@ export function fakeApi(): FakeApi {
     readReport: vi.fn<Api["readReport"]>().mockResolvedValue(null),
     readPixieReports: vi.fn<Api["readPixieReports"]>().mockResolvedValue(null),
   };
+  return fake;
 }

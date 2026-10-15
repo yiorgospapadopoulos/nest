@@ -225,7 +225,18 @@ describe("tap targets", () => {
     }
     reach(await screen.findByRole("button", { name: "Show email" }), "height");
     // A segmented control's segments.
-    reach(await screen.findByRole("button", { name: "In place" }), "height");
+    reach(await screen.findByRole("button", { name: "Work on current branch" }), "height");
+  });
+
+  it("are at least 44 points for a new chat's place selector", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
+
+    const place = screen.getByRole("button", { name: /^Where the chat works: / });
+    expect(hitBox(place).height).toBeGreaterThanOrEqual(TAP);
   });
 
   it("are at least 44 points for pixie limits, activity links and cards", async () => {

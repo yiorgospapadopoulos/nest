@@ -33,10 +33,10 @@ describe("project settings", () => {
         .map((b) => b.textContent);
 
     expect(sheet).toHaveTextContent("/Users/me/todo-ui");
-    expect(pressed()).toEqual(["Worktree"]);
-    await user.click(within(modes).getByRole("button", { name: "In place" }));
+    expect(pressed()).toEqual(["New worktree"]);
+    await user.click(within(modes).getByRole("button", { name: "Current branch" }));
     await waitFor(() => {
-      expect(pressed()).toEqual(["In place"]);
+      expect(pressed()).toEqual(["Current branch"]);
     });
     await user.click(within(modes).getByRole("button", { name: "Agent default" }));
 
@@ -117,7 +117,7 @@ describe("project settings", () => {
 
     expect(within(sheet).getByLabelText("Linked files")).toHaveValue(".env");
     expect(within(sheet).getByLabelText("Setup commands")).toHaveValue("npm ci\nnpm run db");
-    await user.click(within(sheet).getByRole("button", { name: "Worktree" }));
+    await user.click(within(sheet).getByRole("button", { name: "New worktree" }));
 
     expect(await screen.findByText("Could not write the config")).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Agent default" })).toHaveAttribute(

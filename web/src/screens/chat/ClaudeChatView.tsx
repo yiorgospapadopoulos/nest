@@ -5,6 +5,8 @@ import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts"
 import { Pill } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { Frame } from "./Frame.tsx";
+import { claudeChatPlace } from "./place.ts";
+import { PlaceChip } from "./PlaceMarks.tsx";
 import { MessageItem, type MessageEntry } from "./Transcript.tsx";
 
 interface Props {
@@ -58,12 +60,12 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
             tone={open ? "run" : "idle"}
             label={open ? "Open in Claude Code" : "Claude Code chat"}
           />
-          {chat.worktree !== null && (
-            <span className="chip">
-              <Icon name="branch" />
-              <span>{chat.worktree}</span>
-            </span>
-          )}
+          <PlaceChip
+            place={claudeChatPlace(
+              chat,
+              state.repos.find((r) => r.name === chat.repo),
+            )}
+          />
         </div>
       }
     >

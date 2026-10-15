@@ -76,10 +76,15 @@ describe("agent defaults", () => {
         .map((o) => o.textContent),
     ).toEqual(["Model default", "Low", "Medium", "High", "Extra high", "Max"]);
     expect(within(card).getByLabelText("Permission mode")).toHaveValue("plan");
-    expect(within(card).getByRole("button", { name: "Worktree" })).toHaveAttribute(
+    expect(within(card).getByRole("button", { name: "New worktree" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+    expect(
+      within(within(card).getByRole("group", { name: "New chats work in" }))
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Work on current branch", "New worktree"]);
   });
 
   it("saves each change, dropping a thinking level the new model does not take", async () => {
@@ -94,7 +99,7 @@ describe("agent defaults", () => {
     await user.selectOptions(within(card).getByLabelText("Model"), "claude-opus-4-6");
     await user.selectOptions(within(card).getByLabelText("Thinking"), "max");
     await user.selectOptions(within(card).getByLabelText("Permission mode"), "acceptEdits");
-    await user.click(within(card).getByRole("button", { name: "Worktree" }));
+    await user.click(within(card).getByRole("button", { name: "New worktree" }));
     await user.selectOptions(within(card).getByLabelText("Thinking"), "");
 
     expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
@@ -225,7 +230,7 @@ describe("agent defaults", () => {
       expect(within(card).getByLabelText("Permission mode")).toHaveValue("auto");
     });
 
-    await user.click(within(card).getByRole("button", { name: "Worktree" }));
+    await user.click(within(card).getByRole("button", { name: "New worktree" }));
 
     expect(api.saveAgentDefaults).toHaveBeenCalledWith(
       agentDefaults({ permission_mode: "auto", mode: "worktree" }),

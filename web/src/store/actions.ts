@@ -657,6 +657,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return attempt(() => api.search(query));
     },
 
+    /**
+     * For a new chat's place (B55): the project read again, for the branch checked out in
+     * its folder now. Quiet: without it the choice shows the branch the list had.
+     */
+    async refreshRepo(name: string): Promise<void> {
+      const fresh = await quietly(() => api.repo(name));
+      if (fresh !== null) dispatch({ type: "repo", repo: fresh });
+    },
+
     async create(body: CreateSessionBody): Promise<Session | null> {
       const created = await attempt(() => api.createSession(body));
       if (created !== null) dispatch({ type: "session", session: created });

@@ -78,6 +78,7 @@ export class ApiError extends Error {
 export interface Api {
   redeem(code: string, deviceName: string): Promise<RedeemResponse>;
   repos(): Promise<RepoConfig[]>;
+  repo(name: string): Promise<RepoConfig>;
   // Unregisters the project (its folder stays); `purge` deletes its chats first.
   removeRepo(name: string, purge: boolean): Promise<null>;
   updateRepo(name: string, patch: RepoPatch): Promise<RepoConfig>;
@@ -189,6 +190,10 @@ export class HttpApi implements Api {
 
   repos() {
     return this.json<RepoConfig[]>("GET", "/api/repos");
+  }
+
+  repo(name: string) {
+    return this.json<RepoConfig>("GET", repo(name));
   }
 
   removeRepo(name: string, purge: boolean) {

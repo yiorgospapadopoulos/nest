@@ -614,6 +614,45 @@ a.b {
   align-items: center;
   gap: 4px;
 }
+/* A chat row's body: its whole title, wrapping, over a line of marks (B55). */
+.rbody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rbody .rt {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.rsub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.7647rem;
+  color: var(--t3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rsub .ic {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+/* "main · 12m": a dot before the text marks that follow another mark. */
+.rsub > .rby:not(:first-child)::before,
+.rsub > .ago:not(:first-child)::before {
+  content: "\00b7";
+  margin-right: 4px;
+  color: var(--t3);
+}
+.rsub .ago {
+  flex: none;
+}
 .rm .ic {
   width: 12px;
   height: 12px;
@@ -1129,15 +1168,18 @@ a.b {
   font-weight: 600;
   margin: 6px 0 2px;
 }
-.ccm {
+/* Where a chat row works: its worktree or the folder's branch (B55). */
+.plm {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--fill);
-  font-size: 0.6471rem;
+  min-width: 0;
   color: var(--t2);
+}
+.plm > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* The per-device "Show automated chats" switch under a project's chats. */
 .pauto {

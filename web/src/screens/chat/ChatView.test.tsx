@@ -105,7 +105,7 @@ describe("chat view", () => {
     const chat = within(screen.getByRole("region", { name: "Validate contact form" }));
     expect(chat.getByRole("heading", { name: "Validate contact form" })).toBeInTheDocument();
     expect(chat.getByText("Running")).toBeInTheDocument();
-    expect(screen.getByText("agent/contact")).toBeInTheDocument();
+    expect(chat.getByTitle("Worktree agent/contact in /w/s1")).toBeInTheDocument();
     expect(screen.getByText("Fix it")).toBeInTheDocument();
     expect(screen.getByText("a.png")).toBeInTheDocument();
     expect(screen.getByText("Looking.")).toBeInTheDocument();
@@ -939,6 +939,9 @@ describe("composer", () => {
       model: "opus",
       effort: "xhigh",
       permission_mode: "acceptEdits",
+      // The project's default, from the folder's current branch (B55).
+      mode: "worktree",
+      base: "main",
     });
     expect(await screen.findByRole("region", { name: "Add tests" })).toBeInTheDocument();
   });
@@ -984,6 +987,8 @@ describe("composer", () => {
       repo: "todo-ui",
       prompt: "Go",
       attachment_ids: [],
+      mode: "worktree",
+      base: "main",
     });
     act(() => undefined);
   });

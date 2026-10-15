@@ -44,7 +44,7 @@ async function setup(chats: ClaudeChat[] = [claudeChat()], sessions: Session[] =
 }
 
 describe("Claude Code chats", () => {
-  it("are listed among the idle chats with a marker", async () => {
+  it("are listed among the idle chats", async () => {
     await setup(
       [
         claudeChat(),
@@ -60,11 +60,12 @@ describe("Claude Code chats", () => {
       name: /, (Idle|Claude Code chat)/,
     });
     expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual([
-      "Tune the hero section, Claude Code chat",
-      "Open one, Claude Code chat, open in Claude Code",
-      "Validate contact form, Idle",
+      "Tune the hero section, Claude Code chat, on main",
+      "Open one, Claude Code chat, open in Claude Code, on main",
+      "Validate contact form, Idle, worktree agent/contact",
     ]);
-    expect(screen.getAllByText("Claude Code")).toHaveLength(2);
+    // No "Claude Code" marker: a row shows only where the chat works (B55).
+    expect(screen.queryByText("Claude Code")).not.toBeInTheDocument();
     expect(screen.queryByText("Elsewhere")).not.toBeInTheDocument();
   });
 

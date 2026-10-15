@@ -256,6 +256,9 @@ export interface RepoConfig {
   git: boolean;
   // Null for a plain folder.
   default_branch: string | null;
+  // The branch checked out in the folder when the repo was read; null when HEAD is
+  // detached, the branch has no commits yet, or the folder is not git (B55).
+  current_branch: string | null;
   worktree: WorktreeConfig;
 }
 
@@ -400,6 +403,10 @@ export interface CreateSessionBody {
   effort?: Effort;
   permission_mode?: PermissionMode;
   attachment_ids?: string[];
+  mode?: SessionMode;
+  // Worktree chats only (B55): the local branch to start from, and the new branch's name.
+  base?: string;
+  branch?: string;
 }
 
 export interface UpdateSessionBody {
