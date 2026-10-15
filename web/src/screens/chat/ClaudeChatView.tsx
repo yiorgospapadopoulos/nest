@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { NestEvent } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts";
-import { Pill } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { Frame } from "./Frame.tsx";
 import { claudeChatPlace } from "./place.ts";
@@ -52,14 +51,15 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
   return (
     <Frame
       title={chat.title}
+      status={
+        open
+          ? { tone: "run", label: "Open in Claude Code" }
+          : { tone: "idle", label: "Claude Code chat" }
+      }
       back={chat.repo}
       onBack={onBack}
       details={
         <div className="ch-r2">
-          <Pill
-            tone={open ? "run" : "idle"}
-            label={open ? "Open in Claude Code" : "Claude Code chat"}
-          />
           <PlaceChip
             place={claudeChatPlace(
               chat,

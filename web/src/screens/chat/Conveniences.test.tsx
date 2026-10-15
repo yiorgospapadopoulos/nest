@@ -248,7 +248,7 @@ describe("plan approval", () => {
     const card = screen.getByRole("group", { name: "Plan ready" });
     expect(within(card).getByRole("heading", { name: "Plan", level: 4 })).toBeInTheDocument();
     expect(within(card).getByText("zod").tagName).toBe("STRONG");
-    expect(screen.getByText("Plan ready", { selector: ".sp span" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Plan ready" })).toHaveClass("dot s-wait");
     const modes = within(card).getByRole("radiogroup", { name: "Then" });
     expect(within(modes).getByRole("radio", { name: "Auto-accept edits" })).toBeChecked();
     await user.click(within(card).getByRole("button", { name: "Approve plan" }));

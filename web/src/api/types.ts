@@ -739,3 +739,9 @@ export interface HabitBody {
 }
 
 export type UpdateHabitBody = Partial<HabitBody>;
+
+/** The daemon's answer to /api/health. */
+export interface Health {
+  status: "ok";
+  version: string;
+}

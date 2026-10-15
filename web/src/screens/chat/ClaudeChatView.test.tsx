@@ -85,7 +85,7 @@ describe("Claude Code chats", () => {
     expect(await view.findByText("Make the hero taller")).toBeInTheDocument();
     expect(view.getByText("Raised it to 80vh.")).toBeInTheDocument();
     expect(view.getByText("a.css")).toBeInTheDocument();
-    expect(view.getByText("Claude Code chat")).toBeInTheDocument();
+    expect(view.getByRole("img", { name: "Claude Code chat" })).toHaveClass("dot s-idle");
     expect(view.getByText("agent-x")).toBeInTheDocument();
     expect(view.getByText(/Read only/)).toBeInTheDocument();
     expect(view.queryByLabelText("Message")).not.toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("Claude Code chats", () => {
     const view = within(await screen.findByRole("region", { name: "Tune the hero section" }));
 
     expect(await view.findByText("No messages yet")).toBeInTheDocument();
-    expect(view.getByText("Open in Claude Code")).toBeInTheDocument();
+    expect(view.getByRole("img", { name: "Open in Claude Code" })).toHaveClass("dot s-run");
     expect(view.getByText(/Close it there before sending/)).toBeInTheDocument();
     const button = view.getByRole("button", { name: "Continue in Nest" });
     await user.click(button);

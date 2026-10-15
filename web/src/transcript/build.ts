@@ -84,6 +84,8 @@ export type TranscriptItem =
   | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
   | { kind: "approval"; key: string; approval: InlineAsk }
   | { kind: "system"; key: string; text: string }
+  // The user's answer to a question Claude asked, shown as a message they sent (B60).
+  | { kind: "answer"; key: string; question: string; text: string }
   // "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn.
   | { kind: "turn"; key: string; text: string };
 
@@ -184,7 +186,16 @@ export function buildTranscript(
         if (current !== undefined) {
           if (isInline(current)) items.push({ kind: "approval", key, approval: current });
         } else {
-          note(items, key, resolvedText(finals.get(approval.id), root));
+          const final = finals.get(approval.id);
+          answersOf(final).forEach(([question, text], i) =>
+            items.push({
+              kind: "answer",
+              key: i === 0 ? key : `${key}-${String(i)}`,
+              question,
+              text,
+            }),
+          );
+          note(items, key, resolvedText(final, root));
         }
         break;
       }
@@ -460,6 +471,15 @@ function note(items: TranscriptItem[], key: string, text: string | null): void {
   if (text !== null) items.push({ kind: "system", key, text });
 }
 
+/** An answered question's questions with the text answers given, in the order sent (B60). */
+function answersOf(approval: Approval | undefined): [string, string][] {
+  if (approval?.kind !== "question" || approval.status !== "resolved") return [];
+  return Object.entries(obj(approval.resolution?.answers)).flatMap(([q, a]) => {
+    const text = str(a);
+    return text === null ? [] : [[q, text] as [string, string]];
+  });
+}
+
 function resolvedText(approval: Approval | undefined, root: string | null): string | null {
   if (approval === undefined || approval.status === "superseded") return null;
   if (approval.status === "expired") return "Request expired";
@@ -470,9 +490,8 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
       return r.behavior === "allow" ? `Allowed: ${command}` : `Rejected: ${command}`;
     }
     case "question":
-      return r.dismissed === true
-        ? "Question dismissed"
-        : `Answered: ${Object.values(obj(r.answers)).map(String).join("; ")}`;
+      // Answers show as the user's messages instead (answersOf).
+      return r.dismissed === true ? "Question dismissed" : null;
     case "plan": {
       if (r.decision === "approve") return "Plan approved";
       const message = str(r.message);

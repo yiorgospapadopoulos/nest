@@ -13,6 +13,7 @@ import type {
   Habit,
   HabitBody,
   HabitRun,
+  Health,
   NestEvent,
   MergeBody,
   ModelList,
@@ -123,6 +124,9 @@ export interface Api {
   usageMonth(year: number, month: number): Promise<MonthUsage>;
   usageLimits(): Promise<UsageLimits>;
   refreshUsage(): Promise<UsageLimits>;
+  // 202 at once; the daemon then exits and launchd starts it again.
+  restartService(): Promise<{ restarting: boolean }>;
+  health(): Promise<Health>;
   reportVisibility(visible: boolean): Promise<null>;
   vapidKey(): Promise<{ public_key: string }>;
   subscribePush(subscription: PushSubscriptionBody): Promise<null>;
@@ -348,6 +352,14 @@ export class HttpApi implements Api {
   /** Asks Claude for fresh limits now; 429 within 20 s of the last refresh. */
   refreshUsage() {
     return this.json<UsageLimits>("POST", "/api/usage/refresh");
+  }
+
+  restartService() {
+    return this.json<{ restarting: boolean }>("POST", "/api/service/restart");
+  }
+
+  health() {
+    return this.json<Health>("GET", "/api/health");
   }
 
   reportVisibility(visible: boolean) {

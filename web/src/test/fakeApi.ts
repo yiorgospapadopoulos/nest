@@ -86,6 +86,8 @@ export function fakeApi(): FakeApi {
     usageMonth: vi.fn<Api["usageMonth"]>((y, m) => Promise.resolve(month(y, m))),
     usageLimits: vi.fn<Api["usageLimits"]>().mockResolvedValue(limits()),
     refreshUsage: vi.fn<Api["refreshUsage"]>().mockResolvedValue(limits()),
+    restartService: vi.fn<Api["restartService"]>().mockResolvedValue({ restarting: true }),
+    health: vi.fn<Api["health"]>().mockResolvedValue({ status: "ok", version: "0.1.0" }),
     reportVisibility: vi.fn<Api["reportVisibility"]>().mockResolvedValue(null),
     vapidKey: vi.fn<Api["vapidKey"]>().mockResolvedValue({ public_key: "BAEC" }),
     subscribePush: vi.fn<Api["subscribePush"]>().mockResolvedValue(null),

@@ -5,6 +5,7 @@ import { AppearanceCard } from "./AppearanceCard.tsx";
 import { ConnectorsCard } from "./ConnectorsCard.tsx";
 import { NotificationsCard } from "./NotificationsCard.tsx";
 import { ProfileCard } from "./ProfileCard.tsx";
+import { RestartCard } from "./RestartCard.tsx";
 import { UsageCard } from "./UsageCard.tsx";
 
 export function Account() {
@@ -25,6 +26,7 @@ export function Account() {
       <ConnectorsCard />
       <NotificationsCard />
       <AppearanceCard />
+      <RestartCard />
     </>
   );
 }

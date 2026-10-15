@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { UsageLimits } from "../../api/types.ts";
 import { STORAGE_KEY } from "../../appearance/appearance.ts";
+import { RESTART_POLL_MS, RESTART_POLLS } from "../../store/actions.ts";
 import { StoreProvider } from "../../store/StoreProvider.tsx";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
@@ -382,5 +383,107 @@ describe("appearance", () => {
     await renderApp({ storage });
 
     expect(document.documentElement).toHaveAttribute("data-glass", "frosted");
+  });
+});
+
+describe("restart", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const restartButton = () => screen.getByRole("button", { name: /^Restart/ });
+
+  /** Confirms the restart with fake timers, so the waits between checks are in the test's hands. */
+  async function confirmRestart(user: Awaited<ReturnType<typeof openAccount>>["user"]) {
+    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Restart Nest?" });
+    const reload = vi.fn();
+    vi.stubGlobal("location", { pathname: window.location.pathname, reload });
+    vi.useFakeTimers();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restart" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    return reload;
+  }
+
+  const wait = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it("sits at the very bottom and asks first", async () => {
+    const api = fakeApi();
+    const { user } = await openAccount(api);
+
+    const sections = screen.getAllByRole("region");
+    expect(sections.at(-1)).toHaveAccessibleName("Restart Nest");
+    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Restart Nest?" });
+    expect(dialog).toHaveTextContent(/Running turns are interrupted/);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.restartService).not.toHaveBeenCalled();
+  });
+
+  it("restarts Nest and reloads the page once it answers again", async () => {
+    const api = fakeApi();
+    api.health
+      .mockRejectedValueOnce(new ApiError(502, "Bad gateway"))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { user } = await openAccount(api);
+
+    const reload = await confirmRestart(user);
+
+    expect(api.restartService).toHaveBeenCalledOnce();
+    expect(restartButton()).toHaveTextContent("Restarting...");
+    expect(restartButton()).toBeDisabled();
+    expect(api.health).not.toHaveBeenCalled();
+    await wait(RESTART_POLL_MS);
+    expect(api.health).toHaveBeenCalledTimes(1);
+    await wait(RESTART_POLL_MS);
+    expect(api.health).toHaveBeenCalledTimes(2);
+    expect(reload).not.toHaveBeenCalled();
+    await wait(RESTART_POLL_MS);
+
+    expect(api.health).toHaveBeenCalledTimes(3);
+    expect(reload).toHaveBeenCalledOnce();
+    // No error toast for the checks that found Nest still restarting.
+    expect(screen.queryByText("Bad gateway")).not.toBeInTheDocument();
+  });
+
+  it("says so when Nest does not answer again", async () => {
+    const api = fakeApi();
+    api.health.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { user } = await openAccount(api);
+
+    const reload = await confirmRestart(user);
+    await wait(RESTART_POLL_MS * RESTART_POLLS);
+
+    expect(api.health).toHaveBeenCalledTimes(RESTART_POLLS);
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Nest did not come back. Check that the Mac is awake, then reload.",
+    );
+    expect(restartButton()).toHaveTextContent("Restart Nest");
+    expect(restartButton()).toBeEnabled();
+  });
+
+  it("stays as it was when the Mac refuses the restart", async () => {
+    const api = fakeApi();
+    api.restartService.mockRejectedValue(new ApiError(500, "cannot restart"));
+    const { user } = await openAccount(api);
+
+    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
+    await user.click(screen.getByRole("button", { name: "Restart" }));
+
+    expect(await screen.findByText("cannot restart")).toBeInTheDocument();
+    expect(restartButton()).toHaveTextContent("Restart Nest");
+    expect(restartButton()).toBeEnabled();
+    expect(api.health).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

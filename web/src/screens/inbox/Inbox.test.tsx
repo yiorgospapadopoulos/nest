@@ -262,13 +262,94 @@ describe("question cards", () => {
     expect(await screen.findByText("Answer sent")).toBeInTheDocument();
   });
 
-  it("send typed text instead of a choice", async () => {
+  it("send typed text through Other instead of a choice", async () => {
     const api = withItems([question()]);
     const { user } = await renderApp({ api });
+    const send = screen.getByRole("button", { name: "Send answer" });
 
-    await user.type(screen.getByLabelText("Your own answer"), "  Both  {Enter}");
+    // No text box until Other is chosen.
+    expect(screen.queryByPlaceholderText("Type your answer")).not.toBeInTheDocument();
+    const other = screen.getByRole("radio", { name: "Other" });
+    expect(other).toHaveAttribute("aria-checked", "false");
+    await user.click(other);
+    expect(other).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /DAG/ })).toHaveAttribute("aria-checked", "false");
+    const box = screen.getByRole("textbox", { name: "Your answer" });
+    expect(box).toHaveAttribute("placeholder", "Type your answer");
+    expect(box).toHaveFocus();
+    expect(send).toBeDisabled();
+    await user.type(box, "   ");
+    expect(send).toBeDisabled();
+
+    // Another choice puts the text box away, and Other brings it back empty.
+    await user.click(screen.getByRole("radio", { name: /Tree/ }));
+    expect(other).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
+    expect(send).toBeEnabled();
+    await user.click(other);
+    expect(screen.getByRole("textbox", { name: "Your answer" })).toHaveValue("");
+    await user.type(screen.getByRole("textbox", { name: "Your answer" }), "  Both  ");
+    // Choosing Other again keeps what was typed.
+    await user.click(other);
+    expect(screen.getByRole("textbox", { name: "Your answer" })).toHaveValue("  Both  ");
+    await user.type(screen.getByRole("textbox", { name: "Your answer" }), "{Enter}");
 
     expect(api.resolveApproval).toHaveBeenCalledWith("q2", { answers: { "DAG or tree?": "Both" } });
+  });
+
+  it("add Other's text to the picked choices of a multiple choice question", async () => {
+    const multi = question({
+      payload: {
+        questions: [
+          {
+            question: "Which checks?",
+            multi_select: true,
+            options: [{ label: "Lint", recommended: true }, { label: "Tests" }],
+          },
+        ],
+      },
+    });
+    const api = withItems([multi]);
+    const { user } = await renderApp({ api });
+    const send = screen.getByRole("button", { name: "Send answer" });
+
+    await user.click(screen.getByRole("checkbox", { name: "Other" }));
+    // Other leaves the other choices as they are.
+    expect(screen.getByRole("checkbox", { name: /Lint/ })).toHaveAttribute("aria-checked", "true");
+    expect(send).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "Your answer" }), " Types ");
+    expect(send).toBeEnabled();
+    await user.click(send);
+
+    expect(api.resolveApproval).toHaveBeenLastCalledWith("q2", {
+      answers: { "Which checks?": ["Lint", "Types"] },
+    });
+  });
+
+  it("drop Other's text when Other is unchecked", async () => {
+    const multi = question({
+      payload: {
+        questions: [
+          { question: "Which checks?", multi_select: true, options: [{ label: "Lint" }] },
+        ],
+      },
+    });
+    const api = withItems([multi]);
+    const { user } = await renderApp({ api });
+    const send = screen.getByRole("button", { name: "Send answer" });
+
+    const other = screen.getByRole("checkbox", { name: "Other" });
+    await user.click(other);
+    await user.type(screen.getByRole("textbox", { name: "Your answer" }), "Types");
+    await user.click(screen.getByRole("checkbox", { name: "Lint" }));
+    await user.click(other);
+    expect(other).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
+    await user.click(send);
+
+    expect(api.resolveApproval).toHaveBeenLastCalledWith("q2", {
+      answers: { "Which checks?": ["Lint"] },
+    });
   });
 
   it("need an answer for every question and allow several choices", async () => {

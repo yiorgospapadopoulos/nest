@@ -410,6 +410,15 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
           {item.text}
         </div>
       );
+    case "answer":
+      return (
+        <div className="m-ans" data-ev={ev}>
+          <small>{item.question}</small>
+          <div className="m-u">
+            <UserText text={item.text} />
+          </div>
+        </div>
+      );
     case "system":
       return (
         <div className="m-sys" data-ev={ev}>

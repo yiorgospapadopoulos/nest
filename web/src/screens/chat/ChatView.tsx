@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { Pixie, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
-import { Pill } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "../projects/ChatActions.tsx";
 import { NO_BACKGROUND } from "../../store/state.ts";
@@ -122,6 +121,7 @@ function SessionChat({
   return (
     <Frame
       title={session.title}
+      status={status}
       back={session.habit_run_id == null ? session.repo : runBack(state.pixies, session)}
       onBack={onBack}
       tools={
@@ -149,7 +149,7 @@ function SessionChat({
           </button>
         </>
       }
-      details={<Details session={session} label={status.label} tone={status.tone} />}
+      details={<Details session={session} />}
     >
       <GoalsStrip tasks={tracking.tasks} />
       <Transcript
@@ -199,7 +199,7 @@ function runBack(pixies: Record<string, Pixie>, session: Session): string {
   return Object.values(pixies).find((p) => p.id === session.pixie_id)?.name ?? "Pixie";
 }
 
-function Details({ session, label, tone }: { session: Session } & Parameters<typeof Pill>[0]) {
+function Details({ session }: { session: Session }) {
   const { state } = useStore();
   const place = sessionPlace(
     session,
@@ -207,7 +207,6 @@ function Details({ session, label, tone }: { session: Session } & Parameters<typ
   );
   return (
     <div className="ch-r2">
-      <Pill tone={tone} label={label} />
       <PlaceChip place={place} />
       <PrChip session={session} />
       {session.started_by_pixie !== null && (

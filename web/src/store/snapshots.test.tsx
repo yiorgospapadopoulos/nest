@@ -45,7 +45,7 @@ describe("a snapshot that loads while live events arrive", () => {
     });
 
     expect(await screen.findByText("First", { selector: ".tx *" })).toBeInTheDocument();
-    expect(within(region).getByText("Idle")).toBeInTheDocument();
+    expect(within(region).getByRole("img", { name: "Idle" })).toBeInTheDocument();
     expect(screen.queryByText(/^Working/)).not.toBeInTheDocument();
   });
 

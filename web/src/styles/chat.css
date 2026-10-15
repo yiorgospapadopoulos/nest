@@ -54,8 +54,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The name, then its status dot right after it; a long name truncates, the dot stays. */
 .ch-t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 12px;
+  min-width: 0;
+}
+.ch-t h2 {
+  margin: 0;
+  min-width: 0;
   font-size: 1.0588rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -196,6 +205,23 @@
   display: flex;
   flex-direction: column;
   gap: var(--glass-spacing-transcript-gap);
+}
+/* An answer to a question Claude asked: the question, quiet, over the user's bubble (B60). */
+.m-ans {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 82%;
+}
+.m-ans > small {
+  color: var(--t3);
+  font-size: 12px;
+  text-align: right;
+}
+.m-ans .m-u {
+  max-width: 100%;
 }
 .m-u {
   align-self: flex-end;

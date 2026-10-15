@@ -118,8 +118,12 @@ describe("chat view", () => {
     });
 
     const chat = within(screen.getByRole("region", { name: "Validate contact form" }));
-    expect(chat.getByRole("heading", { name: "Validate contact form" })).toBeInTheDocument();
-    expect(chat.getByText("Running")).toBeInTheDocument();
+    const heading = chat.getByRole("heading", { name: "Validate contact form" });
+    // The status is a dot right after the name, with no pill in the details row.
+    const dot = chat.getByRole("img", { name: "Running" });
+    expect(dot).toHaveClass("dot s-run");
+    expect(heading.nextElementSibling).toBe(dot);
+    expect(chat.queryByText("Running")).not.toBeInTheDocument();
     expect(chat.getByTitle("Worktree agent/contact in /w/s1")).toBeInTheDocument();
     expect(screen.getByText("Fix it")).toBeInTheDocument();
     expect(screen.getByText("a.png")).toBeInTheDocument();
@@ -150,7 +154,7 @@ describe("chat view", () => {
       type: "session.state",
       payload: { state: "idle", error: null },
     });
-    expect(chat.getByText("Idle")).toBeInTheDocument();
+    expect(chat.getByRole("img", { name: "Idle" })).toHaveClass("dot s-idle");
     expect(screen.queryByText(/^Working/)).not.toBeInTheDocument();
   });
 
@@ -599,6 +603,39 @@ describe("inline approvals", () => {
     await user.click(within(box).getByRole("button", { name: "Send answer" }));
 
     expect(api.resolveApproval).toHaveBeenCalledWith("q2", { answers: { "DAG or tree?": "DAG" } });
+  });
+
+  it("answer a question in place with Other's text", async () => {
+    const q = question();
+    const { user, api } = await openChat({ approvals: [q], events: [created(q, 1)] });
+
+    const box = within(screen.getByRole("group", { name: "Question" }));
+    expect(box.queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
+    await user.click(box.getByRole("radio", { name: "Other" }));
+    expect(box.getByRole("button", { name: "Send answer" })).toBeDisabled();
+    await user.type(box.getByRole("textbox", { name: "Your answer" }), "Both");
+    await user.click(box.getByRole("button", { name: "Send answer" }));
+
+    expect(api.resolveApproval).toHaveBeenCalledWith("q2", { answers: { "DAG or tree?": "Both" } });
+  });
+
+  it("shows an answered question as the user's message under the question", async () => {
+    const q = question();
+    const { push } = await openChat({ approvals: [q], events: [created(q, 1)] });
+
+    push({
+      id: 2,
+      session_id: "s1",
+      type: "approval.resolved",
+      payload: {
+        approval: { ...q, status: "resolved", resolution: { answers: { "DAG or tree?": "Both" } } },
+      },
+    });
+
+    const answer = await screen.findByText("Both");
+    expect(answer.closest(".m-u")).not.toBeNull();
+    expect(answer.closest(".m-ans")).toHaveTextContent("DAG or tree?");
+    expect(screen.queryByText(/Answered:/)).not.toBeInTheDocument();
   });
 });
 

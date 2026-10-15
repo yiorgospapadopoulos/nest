@@ -154,6 +154,8 @@ const calls: Call[] = [
   ["month", (a) => a.usageMonth(2026, 10), "GET", "/api/usage/month?year=2026&month=10", undefined],
   ["limits", (a) => a.usageLimits(), "GET", "/api/usage/limits", undefined],
   ["refresh usage", (a) => a.refreshUsage(), "POST", "/api/usage/refresh", undefined],
+  ["restart", (a) => a.restartService(), "POST", "/api/service/restart", undefined],
+  ["health", (a) => a.health(), "GET", "/api/health", undefined],
   [
     "visibility",
     (a) => a.reportVisibility(true),

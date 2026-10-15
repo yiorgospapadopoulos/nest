@@ -164,7 +164,7 @@ describe("buildTranscript", () => {
       { kind: "approval", key: "1", approval: pending },
       { kind: "system", key: "2", text: "Allowed: npm install zod" },
       { kind: "system", key: "3", text: "Rejected: npm install zod" },
-      { kind: "system", key: "4", text: "Answered: DAG" },
+      { kind: "answer", key: "4", question: "DAG or tree?", text: "DAG" },
       { kind: "system", key: "5", text: "Question dismissed" },
       { kind: "system", key: "6", text: "Approved. Pull request opened" },
       { kind: "system", key: "7", text: "Approved and committed" },
@@ -172,6 +172,27 @@ describe("buildTranscript", () => {
       { kind: "system", key: "12", text: "Approved and committed, not pushed" },
       { kind: "system", key: "9", text: "Request expired" },
       { kind: "system", key: "92", text: "Approved and committed" },
+    ]);
+  });
+
+  it("shows each text answer to a question as the user's message, in the order sent", () => {
+    const asked = question({ id: "q2" });
+    const answers = { "DAG or tree?": "My own", "Formats?": "JSON, Ink", Broken: 3 };
+    const items = buildTranscript(
+      [
+        event({ id: 1, type: "approval.created", payload: { approval: json(asked) } }),
+        event({
+          id: 2,
+          type: "approval.resolved",
+          payload: { approval: json({ ...asked, status: "resolved", resolution: { answers } }) },
+        }),
+      ],
+      {},
+      null,
+    );
+    expect(items).toEqual([
+      { kind: "answer", key: "1", question: "DAG or tree?", text: "My own" },
+      { kind: "answer", key: "1-1", question: "Formats?", text: "JSON, Ink" },
     ]);
   });
 

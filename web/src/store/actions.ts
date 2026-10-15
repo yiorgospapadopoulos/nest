@@ -82,6 +82,11 @@ export interface RemotePrompt {
 // "remote": refused until the user confirms where origin pushes.
 export type ApproveResult = "approved" | "refused" | "failed" | { remote: RemotePrompt };
 
+// After a restart is asked for, how long to wait between checks that Nest answers again,
+// and how many checks to make before giving up.
+export const RESTART_POLL_MS = 1500;
+export const RESTART_POLLS = 20;
+
 // The daemon's code for an approve refused because HEAD is no longer the one reviewed.
 const HEAD_CHANGED = "head_changed";
 // Codes of an approve refused until the push address is confirmed.
@@ -845,6 +850,25 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
           report(error);
         }
       }
+    },
+
+    /**
+     * Asks the Mac to restart Nest, then waits until it answers again: "back", "timeout"
+     * when it never does, or null when the request itself failed (shown as a toast). The
+     * first check waits, as the daemon answers the request before it exits.
+     */
+    async restartService(): Promise<"back" | "timeout" | null> {
+      if ((await attempt(() => api.restartService())) === null) return null;
+      for (let check = 0; check < RESTART_POLLS; check += 1) {
+        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
+        try {
+          await api.health();
+          return "back";
+        } catch {
+          // Still restarting.
+        }
+      }
+      return "timeout";
     },
 
     async loadAccount(): Promise<void> {
