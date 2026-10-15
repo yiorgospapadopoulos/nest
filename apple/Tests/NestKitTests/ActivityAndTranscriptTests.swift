@@ -259,6 +259,55 @@ import Testing
             ])
     }
 
+    /// An answered question keeps each question with the answer given, typed ones
+    /// included, in the question's order (B60); a dismissed one keeps none.
+    @Test func answeredQuestionsKeepTheirAnswers() async throws {
+        let transcript = TranscriptStore(sessionID: "s1", api: api)
+        try await transcript.load()
+        var answered = Fixture.approval("ap-question")
+        answered.status = .resolved
+        answered.resolution = .object([
+            "answers": .object([
+                "Which formats should export support?": .string("JSON, Ink"),
+                "Store branches as a DAG or a tree?": .string("dfad"),
+            ])
+        ])
+        var dismissed = Fixture.approval("ap-question")
+        dismissed.id = "ap-dismissed"
+        dismissed.status = .resolved
+        dismissed.resolution = .object(["dismissed": .bool(true)])
+        for (index, approval) in [answered, dismissed].enumerated() {
+            transcript.receive(
+                Fixture.event(
+                    EventType.approvalResolved, "{\"approval\": \(Fixture.json(approval))}",
+                    id: index + 1))
+        }
+        #expect(
+            transcript.items.map(\.content) == [
+                .approval(
+                    id: "ap-question", kind: .question, status: .resolved,
+                    answers: [
+                        QuestionAnswer(
+                            question: "Store branches as a DAG or a tree?", answer: "dfad"),
+                        QuestionAnswer(
+                            question: "Which formats should export support?", answer: "JSON, Ink"),
+                    ]),
+                .approval(id: "ap-dismissed", kind: .question, status: .resolved),
+            ])
+    }
+
+    @Test func aQuestionWithoutAnAnswerForItIsLeftOut() {
+        var approval = Fixture.approval("ap-question")
+        approval.resolution = .object([
+            "answers": .object(["Store branches as a DAG or a tree?": .string("Tree")])
+        ])
+        #expect(
+            approval.answeredQuestions == [
+                QuestionAnswer(question: "Store branches as a DAG or a tree?", answer: "Tree")
+            ])
+        #expect(Fixture.approval("ap-review").answeredQuestions.isEmpty)
+    }
+
     /// A pending review shows as the bar above the composer, and a superseded one not at
     /// all; resolved reviews, rejected ones of old and other approvals keep their rows (B56).
     @Test func reviewsShowOnlyOnceResolved() async throws {

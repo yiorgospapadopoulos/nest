@@ -62,9 +62,11 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         case thinking(String, durationMS: Int?)
         case tool(ToolCall)
         /// An inline marker for an approval of this session; `rejected` for a review the
-        /// user rejected, whose line says the changes stay (B54).
+        /// user rejected, whose line says the changes stay (B54); `answers` for an answered
+        /// question, which shows each question with its answer (B60).
         case approval(
-            id: String, kind: ApprovalKind, status: ApprovalStatus, rejected: Bool = false)
+            id: String, kind: ApprovalKind, status: ApprovalStatus, rejected: Bool = false,
+            answers: [QuestionAnswer] = [])
         case result(TurnResult)
         /// The end of a turn whose length is known: "Worked for 1m 12s".
         case turnEnd(TurnEnd)
@@ -258,7 +260,8 @@ public final class TranscriptStore {
                 duration != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             // A pending review is the bar above the composer, and a superseded one is
             // nothing to read (B56).
-            case .approval(_, .review, let status, _): status != .pending && status != .superseded
+            case .approval(_, .review, let status, _, _):
+                status != .pending && status != .superseded
             default: true
             }
         }
@@ -681,7 +684,8 @@ public final class TranscriptStore {
         let content = TranscriptItem.Content.approval(
             id: approval.id, kind: approval.kind, status: approval.status,
             rejected: approval.kind == .review
-                && approval.resolution?["action"]?.stringValue == "rejected")
+                && approval.resolution?["action"]?.stringValue == "rejected",
+            answers: approval.answeredQuestions)
         if let index = items.firstIndex(where: { $0.id == approval.id }) {
             items[index].content = content
         } else {

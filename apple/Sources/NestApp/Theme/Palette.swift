@@ -186,6 +186,12 @@ enum Metrics {
     static let rowHeight = Tokens.macRowHeight
     /// A small button.
     static let buttonHeight = Tokens.macButtonHeight
+    /// Every project tab's widest width (B60): about 16 characters of its name at the
+    /// tab's size, with the icon, the status and the close button; longer names truncate.
+    static let projectTabWidth = 180.0
+    /// The narrowest a project tab gets when the window is too narrow for every tab at
+    /// full width: the tabs shrink together, keeping one width, down to this.
+    static let projectTabMinWidth = 56.0
     /// One scanline every this many points.
     static let scanlinePeriod = Tokens.macScanlinePeriod
 }

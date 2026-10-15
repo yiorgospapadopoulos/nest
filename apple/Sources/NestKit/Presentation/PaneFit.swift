@@ -1,10 +1,10 @@
 import Foundation
 
-/// What a pane's header and composer show at the pane's width, as the mockup's container
-/// queries: the elapsed time goes first, then the name of where the chat works (its icon
-/// stays, B55), then the status label (the dot stays) and the pull request chip. The
-/// composer shortens, then hides, the context and shortens the model's name; attach,
-/// dictation and send always stay.
+/// What a pane's header and composer show at the pane's width. A chat's header keeps its
+/// name first (B60): its right group drops the elapsed time, then the pull request chip,
+/// then shortens where the chat works to its icon (B55). A pixie's header also drops its
+/// status word. The composer shortens, then hides, the context and shortens the model's
+/// name; attach, dictation and send always stay.
 public struct PaneFit: Sendable, Equatable {
     public enum ContextStyle: Sendable, Equatable {
         case full, percent, hidden
@@ -21,6 +21,7 @@ public struct PaneFit: Sendable, Equatable {
     public let showsElapsed: Bool
     /// The branch or worktree name beside its icon; narrower panes show the icon only.
     public let showsPlaceName: Bool
+    /// The status word beside its dot, in a pixie's header; a chat's header shows the dot.
     public let showsStatusLabel: Bool
     public let showsPullRequest: Bool
     public let context: ContextStyle
@@ -29,10 +30,10 @@ public struct PaneFit: Sendable, Equatable {
     public let compact: Bool
 
     public init(width: Double) {
-        showsElapsed = width >= 470
-        showsPlaceName = width >= 420
+        showsElapsed = width >= 480
+        showsPullRequest = width >= 420
+        showsPlaceName = width >= 360
         showsStatusLabel = width >= 380
-        showsPullRequest = width >= 330
         context = width >= 460 ? .full : width >= 360 ? .percent : .hidden
         compact = width < 380
     }

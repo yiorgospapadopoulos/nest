@@ -17,8 +17,8 @@ enum Ink {
 
 /// The bar along the bottom of the window (the approved design's footer): 28 points, no fill of its
 /// own, a 1 point line on top. On the left, Settings (as Cmd-comma); on the right, where
-/// a project is open, the Terminal button opens the project's terminal pane, or a new one
-/// in the project folder. the approved design shows a running command's chip there instead; the
+/// a project is open, the Terminal button opens a terminal where the focused chat works,
+/// else the project's terminal pane, or a new one in the project folder. the approved design shows a running command's chip there instead; the
 /// terminal panes do not report their foreground process, so it is left out.
 struct StatusBar: View {
     static let height = 28.0
@@ -49,7 +49,7 @@ struct StatusBar: View {
                     }
                 }
                 .buttonStyle(FooterButtonStyle())
-                .help("Open the project's terminal")
+                .help("Open a terminal where the focused chat works")
                 .accessibilityLabel("Terminal")
             }
         }

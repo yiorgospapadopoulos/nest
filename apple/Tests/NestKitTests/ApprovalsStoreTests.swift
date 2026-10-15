@@ -78,12 +78,60 @@ import Testing
         store.select("Twine", for: question, question: questions[1])
         #expect(store.selection(for: question, question: questions[1]) == ["JSON", "Twine"])
         #expect(store.answer(for: question, question: questions[0]) == ["Tree"])
-        store.answerFreely("  A graph of scenes ", for: question, question: questions[0])
-        #expect(store.freeAnswer(for: question, question: questions[0]) == "  A graph of scenes ")
-        #expect(store.answer(for: question, question: questions[0]) == ["A graph of scenes"])
-        #expect(store.selection(for: question, question: questions[0]) == ["Tree"])
-        store.answerFreely("   ", for: question, question: questions[0])
-        #expect(store.answer(for: question, question: questions[0]) == ["Tree"])
+        #expect(!store.isOtherChosen(for: question, question: questions[0]))
+    }
+
+    /// Other is the last option (B60): with one answer allowed it replaces the options,
+    /// and its text, trimmed, is the answer.
+    @Test func otherIsExclusiveWhenOneAnswerIsAllowed() throws {
+        let single = try #require(question.question).questions[0]
+
+        store.chooseOther(for: question, question: single)
+        #expect(store.isOtherChosen(for: question, question: single))
+        #expect(store.selection(for: question, question: single).isEmpty)
+        #expect(store.answer(for: question, question: single).isEmpty)
+        store.answerOther("  A graph of scenes ", for: question, question: single)
+        #expect(store.otherAnswer(for: question, question: single) == "  A graph of scenes ")
+        #expect(store.answer(for: question, question: single) == ["A graph of scenes"])
+        // Choosing it again keeps it chosen.
+        store.chooseOther(for: question, question: single)
+        #expect(store.isOtherChosen(for: question, question: single))
+
+        store.select("Tree", for: question, question: single)
+        #expect(!store.isOtherChosen(for: question, question: single))
+        #expect(store.answer(for: question, question: single) == ["Tree"])
+        // The typed text waits for Other to be chosen again.
+        store.chooseOther(for: question, question: single)
+        #expect(store.answer(for: question, question: single) == ["A graph of scenes"])
+    }
+
+    /// With several answers allowed, Other toggles like an option and its text joins the
+    /// picked labels.
+    @Test func otherJoinsThePickedOptionsWhenSeveralAreAllowed() throws {
+        let multiple = try #require(question.question).questions[1]
+
+        store.chooseOther(for: question, question: multiple)
+        #expect(store.isOtherChosen(for: question, question: multiple))
+        #expect(store.answer(for: question, question: multiple) == ["JSON", "Ink"])
+        store.answerOther(" YAML ", for: question, question: multiple)
+        #expect(store.answer(for: question, question: multiple) == ["JSON", "Ink", "YAML"])
+        store.select("Twine", for: question, question: multiple)
+        #expect(store.isOtherChosen(for: question, question: multiple))
+        #expect(
+            store.answer(for: question, question: multiple) == ["JSON", "Ink", "Twine", "YAML"])
+
+        store.chooseOther(for: question, question: multiple)
+        #expect(!store.isOtherChosen(for: question, question: multiple))
+        #expect(store.answer(for: question, question: multiple) == ["JSON", "Ink", "Twine"])
+    }
+
+    /// Text typed without Other chosen is not sent.
+    @Test func otherTextCountsOnlyWhileOtherIsChosen() throws {
+        let questions = try #require(question.question).questions
+        store.answerOther("Neither", for: question, question: questions[0])
+        #expect(store.answer(for: question, question: questions[0]) == ["DAG"])
+        store.chooseOther(for: question, question: questions[0])
+        #expect(store.answer(for: question, question: questions[0]) == ["Neither"])
     }
 
     @Test func answersNeedSomethingForEveryQuestion() throws {
@@ -92,9 +140,22 @@ import Testing
         store.select("JSON", for: question, question: questions[1])
         store.select("Ink", for: question, question: questions[1])
         #expect(!store.canSubmitAnswers(question))
-        store.answerFreely("YAML", for: question, question: questions[1])
+        store.chooseOther(for: question, question: questions[1])
+        #expect(!store.canSubmitAnswers(question))
+        store.answerOther("YAML", for: question, question: questions[1])
         #expect(store.canSubmitAnswers(question))
         #expect(!store.canSubmitAnswers(permission))
+    }
+
+    /// Other chosen with blank text holds Send back, even beside picked options.
+    @Test func aBlankOtherCannotBeSent() throws {
+        let questions = try #require(question.question).questions
+        store.chooseOther(for: question, question: questions[1])
+        #expect(!store.canSubmitAnswers(question))
+        store.answerOther("   ", for: question, question: questions[1])
+        #expect(!store.canSubmitAnswers(question))
+        store.chooseOther(for: question, question: questions[1])
+        #expect(store.canSubmitAnswers(question))
     }
 
     @Test func submitsEveryQuestionsAnswer() async throws {
@@ -113,10 +174,23 @@ import Testing
         #expect(store.selection(for: question, question: questions[1]) == ["JSON", "Ink"])
     }
 
-    @Test func aFreeAnswerCanComeFirst() throws {
+    @Test func submitsOtherAnswersInTheSameShape() async throws {
+        try await store.load()
         let questions = try #require(question.question).questions
-        store.answerFreely("Neither", for: question, question: questions[0])
-        #expect(store.answer(for: question, question: questions[0]) == ["Neither"])
+        store.chooseOther(for: question, question: questions[0])
+        store.answerOther("Neither", for: question, question: questions[0])
+        store.chooseOther(for: question, question: questions[1])
+        store.answerOther("YAML", for: question, question: questions[1])
+
+        try await store.submitAnswers(question)
+
+        #expect(
+            api.calls.last
+                == #"resolveApproval ap-question {"always":false,"answers":{"Store branches as a DAG or a tree?":["Neither"],"Which formats should export support?":["JSON","Ink","YAML"]},"dismiss":false}"#
+        )
+        // A later item with the same id starts without Other.
+        #expect(!store.isOtherChosen(for: question, question: questions[0]))
+        #expect(store.otherAnswer(for: question, question: questions[1]).isEmpty)
     }
 
     @Test func onlyQuestionsTakeAnswers() async throws {

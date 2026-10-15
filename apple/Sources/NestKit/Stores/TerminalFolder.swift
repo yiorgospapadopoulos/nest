@@ -16,6 +16,16 @@ public enum TerminalFolder: Sendable, Equatable {
     }
 }
 
+/// Where the bottom bar's Terminal button opens a shell (B60).
+public enum TerminalButtonTarget: Sendable, Equatable {
+    /// The focused chat's folder: the terminal pane there, or a new one.
+    case chat(String)
+    /// No chat is focused: the project's terminal pane, or a new one in the project folder.
+    case project(String)
+    /// The focused chat's folder is gone (`TerminalFolder.goneMessage`).
+    case gone(String)
+}
+
 extension AppModel {
     /// The folder a pane's chat works in: its worktree, its folder in place (else its
     /// project's), or a Claude Code chat's folder. Nil for a new chat and tool panes.
@@ -36,5 +46,17 @@ extension AppModel {
         guard let path = pane.flatMap(folder(ofPane:)) ?? project.flatMap(app.repo)?.path
         else { return nil }
         return exists(path) ? .ready(path) : .gone(path)
+    }
+
+    /// Where the Terminal button opens a shell: the folder of the focused chat pane (its
+    /// worktree when it has one), else the project's folder. Nil without either.
+    public func terminalButtonTarget(
+        focusedPane pane: String?, project: String?,
+        exists: (String) -> Bool = TerminalFolder.exists
+    ) -> TerminalButtonTarget? {
+        if let folder = pane.flatMap(folder(ofPane:)) {
+            return exists(folder) ? .chat(folder) : .gone(folder)
+        }
+        return project.flatMap(app.repo).map { .project($0.path) }
     }
 }

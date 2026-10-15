@@ -1,9 +1,10 @@
+import AppKit
 import NestKit
 import SwiftUI
 
 /// Settings: appearance and the chat background, defaults for new chats, the usage
-/// refresh, Claude Code chats, stuck chats, notifications, paired devices, the account and
-/// its connectors.
+/// refresh, Claude Code chats, stuck chats, notifications, paired devices, the account,
+/// its connectors and Restart Nest.
 struct SettingsSheet: View {
     @Environment(Shell.self) private var shell
 
@@ -19,6 +20,63 @@ struct SettingsSheet: View {
             DevicesSection()
             AccountSection()
             SheetSection(title: "Connectors") { ConnectorsList(top: 4) }
+            RestartSection()
+        }
+    }
+}
+
+/// Restart Nest (B60): after a confirmation, restarts the Nest service, then quits and
+/// reopens the app. When the service cannot restart, the app stays open and says why.
+private struct RestartSection: View {
+    @Environment(AppController.self) private var controller
+    @State private var confirming = false
+    @State private var restarting = false
+    @State private var failure: String?
+
+    var body: some View {
+        SheetSection(title: "Restart") {
+            HStack(spacing: 12) {
+                Text("Restarts the Nest service and reopens the app.")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                Spacer()
+                if restarting {
+                    ProgressView().controlSize(.small)
+                }
+                Button("Restart Nest") { confirming = true }
+                    .buttonStyle(.nest(.soft))
+                    .disabled(restarting)
+            }
+            .padding(.vertical, 6)
+            if let failure {
+                Text(failure)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(StatusTone.failed.color)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 6)
+            }
+        }
+        .alert("Restart Nest?", isPresented: $confirming) {
+            Button("Restart") { restart() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Running turns are interrupted and can be resumed afterwards.")
+        }
+    }
+
+    private func restart() {
+        restarting = true
+        failure = nil
+        Task {
+            let result = await AppRestarter.local(service: controller.service).restart()
+            switch result {
+            case .relaunching:
+                NSApp.terminate(nil)
+            case .failed(let reason):
+                failure = reason
+                restarting = false
+            }
         }
     }
 }

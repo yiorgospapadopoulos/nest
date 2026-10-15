@@ -22,8 +22,10 @@ public final class ApprovalsStore {
     public private(set) var publishing: [String: PublishProgress] = [:]
     /// Chosen labels by approval id and question text; starts with the recommended options.
     private var choices: [String: [String: [String]]] = [:]
-    /// The user's own answers by approval id and question text.
-    private var freeAnswers: [String: [String: String]] = [:]
+    /// Questions whose Other option is chosen, by approval id.
+    private var others: [String: Set<String>] = [:]
+    /// The text typed under Other, by approval id and question text.
+    private var otherAnswers: [String: [String: String]] = [:]
     /// Notes for Keep planning, by approval id.
     private var planNotes: [String: String] = [:]
     /// How the chat goes on after Approve plan, by approval id, when the user chose.
@@ -81,11 +83,13 @@ public final class ApprovalsStore {
         return question.multiSelect ? recommended : Array(recommended.prefix(1))
     }
 
-    /// Picks an option: replaces the choice, or toggles it when several are allowed.
+    /// Picks an option: replaces the choice (and Other), or toggles it when several are
+    /// allowed.
     public func select(_ label: String, for approval: Approval, question: Question) {
         var chosen = selection(for: approval, question: question)
         if !question.multiSelect {
             chosen = [label]
+            others[approval.id]?.remove(question.question)
         } else if let index = chosen.firstIndex(of: label) {
             chosen.remove(at: index)
         } else {
@@ -94,26 +98,54 @@ public final class ApprovalsStore {
         choices[approval.id, default: [:]][question.question] = chosen
     }
 
-    /// The user's own answer as typed; it replaces the options while it is not blank.
-    public func freeAnswer(for approval: Approval, question: Question) -> String {
-        freeAnswers[approval.id]?[question.question] ?? ""
+    /// Whether the question's last option, Other, is chosen.
+    public func isOtherChosen(for approval: Approval, question: Question) -> Bool {
+        others[approval.id]?.contains(question.question) == true
     }
 
-    public func answerFreely(_ text: String, for approval: Approval, question: Question) {
-        freeAnswers[approval.id, default: [:]][question.question] = text
+    /// Chooses Other: in place of the options when one answer is allowed, else toggled
+    /// beside them.
+    public func chooseOther(for approval: Approval, question: Question) {
+        if !question.multiSelect {
+            choices[approval.id, default: [:]][question.question] = []
+            others[approval.id, default: []].insert(question.question)
+        } else if isOtherChosen(for: approval, question: question) {
+            others[approval.id]?.remove(question.question)
+        } else {
+            others[approval.id, default: []].insert(question.question)
+        }
     }
 
-    /// What is sent for a question: the user's own answer, or the chosen options.
+    /// The text typed under Other; it counts only while Other is chosen.
+    public func otherAnswer(for approval: Approval, question: Question) -> String {
+        otherAnswers[approval.id]?[question.question] ?? ""
+    }
+
+    public func answerOther(_ text: String, for approval: Approval, question: Question) {
+        otherAnswers[approval.id, default: [:]][question.question] = text
+    }
+
+    /// What is sent for a question: the chosen options, then Other's trimmed text.
     public func answer(for approval: Approval, question: Question) -> [String] {
-        let free = freeAnswer(for: approval, question: question)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return free.isEmpty ? selection(for: approval, question: question) : [free]
+        let chosen = selection(for: approval, question: question)
+        let other = otherText(for: approval, question: question)
+        return chosen + (other.map { $0.isEmpty ? [] : [$0] } ?? [])
     }
 
-    /// Every question has an answer to send.
+    /// Every question has an answer to send, and no chosen Other is blank.
     public func canSubmitAnswers(_ approval: Approval) -> Bool {
         guard let request = approval.question else { return false }
-        return request.questions.allSatisfy { !answer(for: approval, question: $0).isEmpty }
+        return request.questions.allSatisfy { question in
+            otherText(for: approval, question: question) != ""
+                && !answer(for: approval, question: question).isEmpty
+        }
+    }
+
+    /// Other's trimmed text while Other is chosen, else nil.
+    private func otherText(for approval: Approval, question: Question) -> String? {
+        guard isOtherChosen(for: approval, question: question) else { return nil }
+        return otherAnswer(for: approval, question: question)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Sends the answer of every question; other kinds are left alone.
@@ -318,7 +350,8 @@ public final class ApprovalsStore {
     private func remove(_ id: String) {
         pending.removeAll { $0.id == id }
         choices[id] = nil
-        freeAnswers[id] = nil
+        others[id] = nil
+        otherAnswers[id] = nil
         planNotes[id] = nil
         planModes[id] = nil
     }

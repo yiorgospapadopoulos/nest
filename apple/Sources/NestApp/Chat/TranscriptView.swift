@@ -228,8 +228,9 @@ private struct TranscriptRow: View {
             ThinkingRow(id: item.id, text: text, durationMS: duration)
         case .tool(let call):
             ToolRow(id: item.id, call: call)
-        case .approval(let id, let kind, let status, let rejected):
-            ApprovalPlaceholder(id: id, kind: kind, status: status, rejected: rejected)
+        case .approval(let id, let kind, let status, let rejected, let answers):
+            ApprovalPlaceholder(
+                id: id, kind: kind, status: status, rejected: rejected, answers: answers)
         case .result(let result):
             SystemLine(text: result.failure)
                 .frame(maxWidth: .infinity)
@@ -797,11 +798,14 @@ private struct ApprovalPlaceholder: View {
     let kind: ApprovalKind
     let status: ApprovalStatus
     let rejected: Bool
+    let answers: [QuestionAnswer]
     @Environment(Shell.self) private var shell
 
     var body: some View {
         if status == .pending, let approval = shell.approval(id) {
             ApprovalCard(approval: approval, style: .inline)
+        } else if !answers.isEmpty {
+            AnsweredQuestions(answers: answers)
         } else if status != .pending {
             SystemLine(text: resolvedText)
                 .frame(maxWidth: .infinity)
@@ -823,6 +827,30 @@ private struct ApprovalPlaceholder: View {
         case .superseded: return "\(what) superseded"
         default: return "\(what) resolved"
         }
+    }
+}
+
+/// An answered question in the transcript (B60): the answer the user gave, an option or
+/// their own text, as a message they sent, under the question it answers.
+private struct AnsweredQuestions: View {
+    let answers: [QuestionAnswer]
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            ForEach(answers, id: \.self) { pair in
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(pair.question)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                        .multilineTextAlignment(.trailing)
+                    UserBubble(text: pair.answer, attachments: [], mentions: [], rewind: nil)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            answers.map { "\($0.question) You answered: \($0.answer)" }.joined(separator: ". "))
     }
 }
 

@@ -62,6 +62,34 @@ import Testing
                 == "This chat's folder no longer exists, so nothing was run there.")
     }
 
+    /// The bottom bar's Terminal button opens a shell where the focused chat works (B60);
+    /// without a focused chat it opens the project's terminal as before.
+    @Test func theTerminalButtonFollowsTheFocusedChat() throws {
+        let chat = try #require(model.claudeChats.chats(in: "todo-ui").first)
+        let existing: Set<String> = ["/w/wt", chat.cwd]
+        func target(_ pane: String?, _ project: String?) -> TerminalButtonTarget? {
+            model.terminalButtonTarget(focusedPane: pane, project: project) {
+                existing.contains($0)
+            }
+        }
+        let project = "/Users/example/projects/todo-ui"
+        #expect(target("wt", "todo-ui") == .chat("/w/wt"))
+        #expect(target(chat.paneID, "todo-ui") == .chat(chat.cwd))
+        // A merged chat's worktree is gone: nothing opens there.
+        #expect(target("new", "todo-ui") == .gone("/w/new"))
+        // A new chat, a tool pane or no focus at all: the project's terminal, which
+        // opens even before the disk is asked, as the button always did.
+        #expect(target("draft-1", "todo-ui") == .project(project))
+        #expect(target("terminal-1", "todo-ui") == .project(project))
+        #expect(target(nil, "todo-ui") == .project(project))
+        #expect(target("wt", nil) == .chat("/w/wt"))
+        #expect(target(nil, nil) == nil)
+        #expect(target(nil, "no-such-project") == nil)
+        // By default the disk tells.
+        #expect(
+            model.terminalButtonTarget(focusedPane: "wt", project: "todo-ui") == .gone("/w/wt"))
+    }
+
     @Test func onlyAnExistingFolderCounts() throws {
         let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         FileManager.default.createFile(atPath: file.path, contents: Data())

@@ -245,7 +245,8 @@ struct CommandBox: View {
 }
 
 /// Each question with its options as radio rows (the recommended one marked and chosen
-/// to start with), a free answer, and Send answer or Dismiss.
+/// to start with), ending in Other with a field for the user's own answer, and Send
+/// answer or Dismiss.
 private struct QuestionBody: View {
     let approval: Approval
     let style: ApprovalCard.Style
@@ -261,9 +262,6 @@ private struct QuestionBody: View {
                         .padding(.top, 6)
                         .padding(.bottom, 2)
                     OptionList(approval: approval, question: question)
-                    if style == .panel {
-                        FreeAnswerField(approval: approval, question: question)
-                    }
                 }
             }
             ActionRow {
@@ -283,6 +281,9 @@ private struct QuestionBody: View {
     }
 }
 
+/// A question's options, then Other (B60): choosing it shows a focused field under it
+/// for the user's own answer. With one answer allowed Other replaces the options; with
+/// several its text joins them.
 private struct OptionList: View {
     let approval: Approval
     let question: Question
@@ -290,51 +291,68 @@ private struct OptionList: View {
     @Environment(\.accentColors) private var accent
 
     var body: some View {
-        let chosen = shell.approvals.selection(for: approval, question: question)
-        let typing = !shell.approvals.freeAnswer(for: approval, question: question)
-            .trimmingCharacters(in: .whitespaces).isEmpty
+        let approvals = shell.approvals
+        let chosen = approvals.selection(for: approval, question: question)
+        let other = approvals.isOtherChosen(for: approval, question: question)
         VStack(spacing: 4) {
             ForEach(question.options, id: \.label) { option in
-                let on = chosen.contains(option.label) && !typing
-                Button {
-                    shell.approvals.answerFreely("", for: approval, question: question)
-                    shell.approvals.select(option.label, for: approval, question: question)
-                } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        mark(on: on, multiple: question.multiSelect)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
-                                Text(option.label).font(.ui(TypeSize.ui, .medium))
-                                if option.recommended {
-                                    Text("Recommended")
-                                        .font(.ui(TypeSize.meta))
-                                        .foregroundStyle(StatusTone.review.color)
-                                }
-                            }
-                            if let description = option.description {
-                                Text(description)
-                                    .font(.ui(TypeSize.meta))
-                                    .foregroundStyle(Palette.t2)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(Palette.t1)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 7)
-                    .background(
-                        on ? accent.selection : Palette.soft, in: .rounded(Radius.row)
-                    )
-                    .contentShape(Rectangle())
+                row(
+                    on: chosen.contains(option.label), label: option.label,
+                    recommended: option.recommended, description: option.description
+                ) {
+                    approvals.select(option.label, for: approval, question: question)
                 }
-                .buttonStyle(.plain)
-                .pointerStyle(.link)
-                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+            row(on: other, label: "Other", recommended: false, description: nil) {
+                approvals.chooseOther(for: approval, question: question)
+            }
+            if other {
+                CardField(
+                    placeholder: "Type your answer",
+                    text: Binding(
+                        get: { approvals.otherAnswer(for: approval, question: question) },
+                        set: { approvals.answerOther($0, for: approval, question: question) }),
+                    focusOnAppear: true)
             }
         }
         .padding(.top, 6)
+    }
+
+    private func row(
+        on: Bool, label: String, recommended: Bool, description: String?,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 8) {
+                mark(on: on, multiple: question.multiSelect)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(label).font(.ui(TypeSize.ui, .medium))
+                        if recommended {
+                            Text("Recommended")
+                                .font(.ui(TypeSize.meta))
+                                .foregroundStyle(StatusTone.review.color)
+                        }
+                    }
+                    if let description {
+                        Text(description)
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Palette.t1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(on ? accent.selection : Palette.soft, in: .rounded(Radius.row))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     @ViewBuilder private func mark(on: Bool, multiple: Bool) -> some View {
@@ -342,21 +360,6 @@ private struct OptionList: View {
             .strokeBorder(on ? accent.accent : Palette.t3, lineWidth: on ? 4 : 1.2)
             .frame(width: 12, height: 12)
             .padding(.top, 1.5)
-    }
-}
-
-/// The user's own answer; typing replaces the options.
-private struct FreeAnswerField: View {
-    let approval: Approval
-    let question: Question
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let binding = Binding(
-            get: { shell.approvals.freeAnswer(for: approval, question: question) },
-            set: { shell.approvals.answerFreely($0, for: approval, question: question) })
-        CardField(placeholder: "Your own answer", text: binding)
-            .padding(.top, 8)
     }
 }
 
@@ -515,6 +518,8 @@ struct CardField: View {
     let placeholder: String
     @Binding var text: String
     var submit: (() -> Void)?
+    /// Takes the keyboard as soon as it shows, as Other's field does.
+    var focusOnAppear = false
     @Environment(\.accentColors) private var accent
     @FocusState private var focused: Bool
 
@@ -525,6 +530,7 @@ struct CardField: View {
             .textFieldStyle(.plain)
             .font(.ui(TypeSize.ui))
             .focused($focused)
+            .onAppear { if focusOnAppear { focused = true } }
             .onSubmit { submit?() }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)

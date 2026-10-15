@@ -32,8 +32,9 @@ struct TabStrip: View {
             }
             addButton
             Spacer(minLength: 12)
-            UsageButton().padding(.trailing, 6)
-            SearchButton()
+            // The meter and search keep their size; the project tabs shrink first.
+            UsageButton().fixedSize().padding(.trailing, 6)
+            SearchButton().fixedSize()
         }
         .padding(.leading, fullScreen ? Self.fullScreenInset : Self.leadingInset)
         .padding(.trailing, 10)
@@ -71,12 +72,14 @@ struct TabStrip: View {
     }
 }
 
-/// A flat tab sized to its content: a soft fill when current, a fainter one while hovered.
+/// A flat tab: a soft fill when current, a fainter one while hovered.
 private struct TabBackground: ViewModifier {
     let isCurrent: Bool
     let hovering: Bool
+    /// A project tab's side padding.
+    static let padding = 10.0
     /// The Pixies tab is a little roomier than a project tab.
-    var padding = 10.0
+    var padding = Self.padding
     @Environment(\.accentColors) private var accent
 
     func body(content: Content) -> some View {
@@ -127,8 +130,10 @@ private struct TabCloseButton: View {
 }
 
 /// One project tab: its icon, name, and how many chats need the user or a running dot.
-/// The current tab ends with its close button; a background tab shows it over its end
-/// while hovered, so no tab changes width.
+/// Every project tab has the same width (`Metrics.projectTabWidth`), a long name ending
+/// in an ellipsis; in a narrow window the tabs shrink together, down to
+/// `Metrics.projectTabMinWidth`. The current tab ends with its close button; a background tab shows it
+/// over its end while hovered.
 private struct ProjectTab: View {
     let name: String
     @Environment(Shell.self) private var shell
@@ -149,14 +154,20 @@ private struct ProjectTab: View {
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(isCurrent ? Palette.t1 : Palette.t2)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             TabStatus(isCurrent: isCurrent, attention: attention, running: running)
+                .fixedSize()
                 .opacity(closesOnHover ? 0 : 1)
             if canClose && isCurrent {
                 TabCloseButton(name: name) { shell.app.closeProject(name) }
                     .padding(.leading, 1)
             }
         }
-        .fixedSize()
+        .frame(
+            minWidth: Metrics.projectTabMinWidth - 2 * TabBackground.padding,
+            maxWidth: Metrics.projectTabWidth - 2 * TabBackground.padding
+        )
         .modifier(TabBackground(isCurrent: isCurrent, hovering: hovering))
         .overlay(alignment: .trailing) {
             if closesOnHover {

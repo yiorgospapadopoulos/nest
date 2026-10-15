@@ -14,17 +14,25 @@ import Testing
         #expect(!fit.compact)
     }
 
-    @Test func theHeaderDropsItsPartsInTheMockupsOrder() {
-        #expect(PaneFit(width: 470).showsElapsed)
-        #expect(!PaneFit(width: 469).showsElapsed)
-        #expect(PaneFit(width: 469).showsPlaceName)
-        #expect(PaneFit(width: 420).showsPlaceName)
-        #expect(!PaneFit(width: 419).showsPlaceName)
-        #expect(PaneFit(width: 419).showsStatusLabel)
+    /// The chat's name keeps its room: the header's right group drops the elapsed time
+    /// first, then the pull request chip, then shortens the place to its icon (B60).
+    @Test func theHeadersRightGroupGivesWayInOrder() {
+        #expect(PaneFit(width: 480).showsElapsed)
+        #expect(!PaneFit(width: 479).showsElapsed)
+        #expect(PaneFit(width: 479).showsPullRequest)
+        #expect(PaneFit(width: 420).showsPullRequest)
+        #expect(!PaneFit(width: 419).showsPullRequest)
+        #expect(PaneFit(width: 419).showsPlaceName)
+        #expect(PaneFit(width: 360).showsPlaceName)
+        #expect(!PaneFit(width: 359).showsPlaceName)
+        let narrow = PaneFit(width: 280)
+        #expect(!narrow.showsElapsed && !narrow.showsPullRequest && !narrow.showsPlaceName)
+    }
+
+    /// A pixie's header still shows its status word while it fits.
+    @Test func theStatusWordFitsWidePixieHeaders() {
         #expect(PaneFit(width: 380).showsStatusLabel)
         #expect(!PaneFit(width: 379).showsStatusLabel)
-        #expect(PaneFit(width: 330).showsPullRequest)
-        #expect(!PaneFit(width: 329).showsPullRequest)
     }
 
     @Test func theComposerShortensThenHidesTheContext() {

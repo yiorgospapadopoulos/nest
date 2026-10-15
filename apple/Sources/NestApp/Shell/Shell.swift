@@ -1055,12 +1055,19 @@ final class Shell {
         update { $0.openTool(.terminal(in: path), in: size) }
     }
 
-    /// The bottom bar's Terminal button: the project's terminal pane, or a new one in the
-    /// project folder.
+    /// The bottom bar's Terminal button (B60): the terminal pane in the focused chat's
+    /// folder, or a new one there; without a focused chat, the project's terminal pane, or
+    /// a new one in the project folder. Nothing opens for a chat whose folder is gone.
     func openProjectTerminal() {
-        guard let path = repo?.path else { return }
+        let target = model.terminalButtonTarget(
+            focusedPane: projectState.layout.focused, project: project)
         let size = workspaceSize
-        update { $0.projectTerminal(folder: path, in: size) }
+        switch target {
+        case .chat(let folder): update { $0.terminal(for: folder, in: size) }
+        case .project(let folder): update { $0.projectTerminal(folder: folder, in: size) }
+        case .gone: show(TerminalFolder.goneMessage, kind: .failed)
+        case nil: break
+        }
     }
 
     func newBrowser(url: String? = nil) {

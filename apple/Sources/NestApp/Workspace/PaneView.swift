@@ -145,7 +145,9 @@ enum PaneColors {
     }
 }
 
-/// Grip, title, status, branch, elapsed, menu, maximize and close; drag it to swap panes.
+/// On the left the grip, the chat's name, its status dot and who started it; on the
+/// right, at the trailing edge whatever the pane's width, where it works, the elapsed time,
+/// the pull request chip, Stuck, maximize and close (B60). Drag it to swap panes.
 private struct PaneHeader: View {
     let chat: String
     @Environment(Shell.self) private var shell
@@ -176,8 +178,16 @@ private struct PaneHeader: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(minWidth: 24, alignment: .leading)
-                .layoutPriority(0.5)
+                .layoutPriority(1)
                 .allowsHitTesting(false)
+            if let session {
+                // The word is gone; its tooltip and VoiceOver still say it.
+                let status = shell.statusLabel(of: session)
+                StatusLabel(
+                    tone: tone, label: status, hollow: shell.isHollow(session), showsLabel: false
+                )
+                .help(status)
+            }
             if let session,
                 let startedBy = PixieLabels.startedBy(
                     session, pixies: shell.pixies.pixies)
@@ -188,22 +198,12 @@ private struct PaneHeader: View {
                     .layoutPriority(0.2)
             }
             Spacer(minLength: 0)
-            if let session {
-                StatusLabel(
-                    tone: tone, label: shell.statusLabel(of: session),
-                    hollow: shell.isHollow(session), showsLabel: fit.showsStatusLabel
-                )
-                .allowsHitTesting(false)
-                if let stuck = session.stuck {
-                    StuckBadge(flag: stuck)
-                }
-            }
             if let place {
                 if fit.showsPlaceName {
                     PlaceLabel(place: place, showsName: true)
-                        .frame(maxWidth: width * 0.4, alignment: .trailing)
+                        .frame(maxWidth: width * 0.3, alignment: .trailing)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(minWidth: min(70, width * 0.25))
+                        .frame(minWidth: min(60, width * 0.15), alignment: .trailing)
                 } else {
                     PlaceLabel(place: place, showsName: false)
                 }
@@ -216,26 +216,12 @@ private struct PaneHeader: View {
                         .foregroundStyle(Palette.t3)
                 }
                 .fixedSize()
-                .layoutPriority(1)
             }
             if let pr = session?.pr, fit.showsPullRequest {
                 PRChip(session: chat, pr: pr)
             }
-            if let folder = shell.folder(ofPane: chat) {
-                PaneMenu {
-                    Button {
-                        shell.openTerminal(in: folder)
-                    } label: {
-                        Label("Terminal here", systemImage: Icon.terminal)
-                    }
-                    if let pr = session?.pr {
-                        Button {
-                            shell.openOnGitHub(pr.url)
-                        } label: {
-                            Label("Open pull request on GitHub", systemImage: Icon.pullRequest)
-                        }
-                    }
-                }
+            if let stuck = session?.stuck {
+                StuckBadge(flag: stuck)
             }
             PaneButtons(pane: chat)
         }
@@ -333,27 +319,6 @@ struct PaneButtons: View {
         .buttonStyle(.nest(.plain, iconOnly: true))
         .help("Close")
         .accessibilityLabel("Close pane")
-    }
-}
-
-/// A pane's "..." menu.
-struct PaneMenu<Items: View>: View {
-    @ViewBuilder let items: () -> Items
-
-    var body: some View {
-        Menu(content: items) {
-            Image(systemName: Icon.more)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Palette.t3)
-                .frame(width: Metrics.buttonHeight, height: Metrics.buttonHeight)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.nest(.plain, iconOnly: true))
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("More")
-        .accessibilityLabel("Pane actions")
     }
 }
 

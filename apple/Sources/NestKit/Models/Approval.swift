@@ -59,6 +59,28 @@ public struct Approval: Codable, Sendable, Hashable, Identifiable {
     public var merge: MergeProposal? {
         kind == .merge ? try? payload.decode(MergeProposal.self) : nil
     }
+
+    /// An answered question's questions, each with the answer the user gave (an option
+    /// or their own text), in the question's order (B60). Empty for anything else.
+    public var answeredQuestions: [QuestionAnswer] {
+        guard let question, let answers = resolution?["answers"] else { return [] }
+        return question.questions.compactMap { asked in
+            answers[asked.question]?.stringValue.map {
+                QuestionAnswer(question: asked.question, answer: $0)
+            }
+        }
+    }
+}
+
+/// One question of an answered AskUserQuestion and the answer given.
+public struct QuestionAnswer: Sendable, Hashable {
+    public var question: String
+    public var answer: String
+
+    public init(question: String, answer: String) {
+        self.question = question
+        self.answer = answer
+    }
 }
 
 public struct PermissionRequest: Decodable, Sendable, Hashable {
