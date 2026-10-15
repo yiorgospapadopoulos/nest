@@ -10,8 +10,7 @@ from nestd.gitops.safety import HARDENED
 from nestd.review import head
 from nestd.review.diff_parser import RawEntry, parse_patch, parse_raw
 from nestd.review.diffs import MAX_LINES_PER_FILE, session_diff
-from nestd.review.errors import HiddenHistoryError
-from nestd.review.models import ReviewCommit, ReviewHead
+from nestd.review.models import ReviewHead
 from nestd.review.untracked import MAX_SHOWN_BYTES
 from tests.git_support import commit_file, git, init_repo
 from tests.nested_support import add_nested_repo, plant_filter
@@ -130,7 +129,7 @@ async def test_session_diff_covers_every_kind_of_change(repo: Path) -> None:
     (repo / ".gitignore").write_text("ignored.log\n", encoding="utf-8")
     (repo / "ignored.log").write_text("noise\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     by_path = {f.path: f for f in diff.files}
     assert [f.path for f in diff.files] == sorted(by_path)
@@ -170,7 +169,7 @@ async def test_session_diff_covers_every_kind_of_change(repo: Path) -> None:
 async def test_untracked_files_are_truncated_too(repo: Path) -> None:
     (repo / "long.txt").write_text("x\n" * 5000, encoding="utf-8")
 
-    diff = await session_diff(repo, git(repo, "rev-parse", "HEAD").strip())
+    diff = await session_diff(repo)
 
     (long,) = diff.files
     assert long.truncated is True
@@ -184,22 +183,17 @@ async def test_without_a_base_everything_is_new(tmp_path: Path) -> None:
     git(repo, "init", "-q")
     (repo / "a.txt").write_text("hi\n", encoding="utf-8")
 
-    diff = await session_diff(repo, None)
+    diff = await session_diff(repo)
 
     assert [(f.path, f.status) for f in diff.files] == [("a.txt", "added")]
     assert diff.base is None
 
 
 async def test_a_clean_tree_has_no_files(repo: Path) -> None:
-    diff = await session_diff(repo, git(repo, "rev-parse", "HEAD").strip())
+    diff = await session_diff(repo)
 
     assert diff.files == []
     assert (diff.stats.files, diff.stats.additions, diff.stats.deletions) == (0, 0, 0)
-
-
-async def test_an_unknown_base_is_a_git_error(repo: Path) -> None:
-    with pytest.raises(GitError):
-        await session_diff(repo, "0" * 40)
 
 
 async def test_planted_filters_textconv_and_fsmonitor_never_run_for_a_diff(
@@ -209,7 +203,6 @@ async def test_planted_filters_textconv_and_fsmonitor_never_run_for_a_diff(
     marker = tmp_path / "ran"
     program = f"sh -c 'echo ran >> {marker}; cat'"
     commit_file(repo, "notes.txt", "one\n")
-    base = git(repo, "rev-parse", "HEAD").strip()
     git(repo, "config", "filter.Evil.Driver.clean", program)
     git(repo, "config", "filter.Evil.Driver.smudge", program)
     git(repo, "config", "filter.Evil.Driver.required", "true")
@@ -218,7 +211,7 @@ async def test_planted_filters_textconv_and_fsmonitor_never_run_for_a_diff(
     (repo / ".gitattributes").write_text("*.txt filter=Evil.Driver diff=evil\n", encoding="utf-8")
     (repo / "notes.txt").write_text("one\ntwo\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     assert not marker.exists()
     notes = next(f for f in diff.files if f.path == "notes.txt")
@@ -226,21 +219,19 @@ async def test_planted_filters_textconv_and_fsmonitor_never_run_for_a_diff(
 
 
 async def test_a_filter_driver_that_cannot_be_switched_off_stops_the_diff(repo: Path) -> None:
-    base = git(repo, "rev-parse", "HEAD").strip()
     git(repo, "config", "filter.a=b.clean", "evil")
 
     with pytest.raises(GitError, match="cannot be switched off"):
-        await session_diff(repo, base)
+        await session_diff(repo)
 
 
 async def test_a_file_replaced_by_a_symlink_is_one_change(repo: Path) -> None:
     """BUG-01: git lists a typechange once but patches it as a deletion and an addition."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / "keep.txt").unlink()
     (repo / "keep.txt").symlink_to("old.txt")
     (repo / "gone.txt").write_text("bye\nfor now\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     gone, keep = diff.files
     assert (keep.path, keep.status, keep.additions, keep.deletions) == (
@@ -255,11 +246,10 @@ async def test_a_file_replaced_by_a_symlink_is_one_change(repo: Path) -> None:
 
 async def test_an_untracked_nested_repository_is_listed_as_a_folder(repo: Path) -> None:
     """BUG-01: an agent may clone a repository into the tree."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     init_repo(repo / "lib")
     (repo / "fresh.txt").write_text("one\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     fresh, nested = diff.files
     assert (nested.path, nested.status, nested.additions, nested.hunks) == ("lib/", "added", 0, [])
@@ -277,7 +267,6 @@ async def test_unusual_paths_get_their_own_changes(repo: Path) -> None:
         (repo / name).write_text(rows, encoding="utf-8")
         git(repo, "add", name)
     git(repo, "commit", "-q", "-m", "unusual names")
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / spaced).write_text(f"{rows}more\n", encoding="utf-8")
     (repo / cafe).write_text(rows[2:], encoding="utf-8")
     (repo / "\u00fcber").mkdir()
@@ -285,7 +274,7 @@ async def test_unusual_paths_get_their_own_changes(repo: Path) -> None:
     git(repo, "mv", tabbed, moved)
     (repo / moved).write_text(f"{rows}more\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     by_path = {f.path: f for f in diff.files}
     assert set(by_path) == {spaced, cafe, moved}
@@ -308,7 +297,6 @@ async def test_diff_prefix_settings_never_blank_a_change(
     repo: Path, settings: list[tuple[str, str]]
 ) -> None:
     """BUG-52: the agent may set these with an allowed `git config`; the user may have them."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     for key, value in settings:
         git(repo, "config", key, value)
     (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
@@ -318,20 +306,20 @@ async def test_diff_prefix_settings_never_blank_a_change(
     git(repo, "commit", "-q", "-m", "quoted name")
     spaced.write_text("one\ntwo\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     by_path = {f.path: f for f in diff.files}
     assert (by_path["keep.txt"].additions, by_path["keep.txt"].deletions) == (1, 1)
     assert len(by_path["keep.txt"].hunks) == 1
-    assert (by_path[spaced.name].additions, len(by_path[spaced.name].hunks)) == (2, 1)
+    assert (by_path[spaced.name].additions, len(by_path[spaced.name].hunks)) == (1, 1)
 
 
 async def test_the_diff_names_head_and_its_branch(repo: Path) -> None:
     head = git(repo, "rev-parse", "HEAD").strip()
 
-    diff = await session_diff(repo, head)
+    diff = await session_diff(repo)
     git(repo, "checkout", "-q", "--detach")
-    detached = await session_diff(repo, head)
+    detached = await session_diff(repo)
 
     assert diff.head == ReviewHead(commit=head, branch="main")
     assert detached.head == ReviewHead(commit=head, branch=None)
@@ -342,54 +330,50 @@ async def test_a_repository_without_commits_has_no_head(tmp_path: Path) -> None:
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
 
-    diff = await session_diff(repo, None)
+    diff = await session_diff(repo)
 
     assert diff.head == ReviewHead(commit=None, branch="main")
-    assert diff.commits == []
+    assert diff.base is None
 
 
-async def test_commits_the_base_and_the_published_work_do_not_hold_are_listed(repo: Path) -> None:
-    """SEC-02: a commit made behind the review's back is shown, whatever made it."""
-    base = git(repo, "rev-parse", "HEAD").strip()
-    published = commit_file(repo, "approved.txt")
-    hidden = commit_file(repo, "hidden.txt")
-    second = commit_file(repo, "also hidden.txt")
-
-    diff = await session_diff(repo, base, published)
-    nothing_published = await session_diff(repo, base)
-    without_base = await session_diff(repo, None)
-
-    assert diff.commits == [
-        ReviewCommit(sha=second, subject="add also hidden.txt"),
-        ReviewCommit(sha=hidden, subject="add hidden.txt"),
-    ]
-    assert [c.sha for c in nothing_published.commits] == [second, hidden, published]
-    assert len(without_base.commits) == 7
-    assert without_base.commits[-1] == ReviewCommit(
-        sha=git(repo, "rev-list", "--max-parents=0", "HEAD").strip(), subject="init"
-    )
-    assert (await session_diff(repo, base, second)).commits == []
-
-
-async def test_replace_refs_hide_neither_changes_nor_commits(repo: Path) -> None:
-    """`git replace` (allowed by the git guard) could make the base look like the work, or
-    the work's commits look like the base's; the daemon's git reads the real objects.
+async def test_the_diff_shows_only_what_is_not_committed(repo: Path) -> None:
+    """B58: Claude may commit in the chat; the review covers the changes left uncommitted,
+    against HEAD, whatever the session started from.
     """
-    base = git(repo, "rev-parse", "HEAD").strip()
-    hidden = commit_file(repo, "keep.txt", "a\nB\nc\n")
-    git(repo, "replace", "--graft", base, hidden)
+    commit_file(repo, "committed.txt")
+    (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
+    git(repo, "add", "keep.txt")
+    (repo / "fresh.txt").write_text("new\n", encoding="utf-8")
+    head = git(repo, "rev-parse", "HEAD").strip()
+
+    diff = await session_diff(repo)
+    # The staged change goes with it, as in the terminal.
+    commit_file(repo, "fresh.txt", "new\n")
+    committed = await session_diff(repo)
+
+    assert [(f.path, f.status) for f in diff.files] == [
+        ("fresh.txt", "added"),
+        ("keep.txt", "modified"),
+    ]
+    assert (diff.base, diff.head.commit) == (head, head)
+    assert "commits" not in diff.model_dump()
+    assert committed.files == []
+
+
+async def test_replace_refs_never_hide_changes(repo: Path) -> None:
+    """`git replace` (which the agent can run) could make HEAD's files look like the work;
+    the daemon's git reads the real objects.
+    """
     (repo / "notes.txt").write_text("new\n", encoding="utf-8")
-    original = git(repo, "rev-parse", f"{base}:old.txt").strip()
+    original = git(repo, "rev-parse", "HEAD:old.txt").strip()
     planted = git(repo, "hash-object", "-w", "notes.txt").strip()
     git(repo, "replace", original, planted)
     (repo / "old.txt").write_text("new\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
-    assert [c.sha for c in diff.commits] == [hidden]
     by_path = {f.path: f for f in diff.files}
     assert by_path["old.txt"].deletions == 20
-    assert by_path["keep.txt"].additions == 1
 
 
 async def test_reading_head_reports_unexpected_git_failures(
@@ -401,14 +385,13 @@ async def test_reading_head_reports_unexpected_git_failures(
     monkeypatch.setattr(head, "run_git", failing)
 
     with pytest.raises(GitError, match="bad object"):
-        await session_diff(repo, git(repo, "rev-parse", "HEAD").strip())
+        await session_diff(repo)
 
 
 async def test_every_git_command_of_a_diff_is_hardened(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """SEC-17: the config listing too, not only the commands that read the tree."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
     (repo / "fresh.txt").write_text("new\n", encoding="utf-8")
     commands: list[Sequence[str]] = []
@@ -420,7 +403,7 @@ async def test_every_git_command_of_a_diff_is_hardened(
 
     monkeypatch.setattr(runner, "run_command", recording)
 
-    await session_diff(repo, base)
+    await session_diff(repo)
 
     assert len(commands) > 3
     assert [argv for argv in commands if tuple(argv[1 : 1 + len(HARDENED)]) != HARDENED] == []
@@ -433,12 +416,11 @@ async def test_a_filter_planted_in_a_nested_repository_never_runs_for_a_diff(
     own config, which the agent can write.
     """
     nested = add_nested_repo(repo)
-    base = git(repo, "rev-parse", "HEAD").strip()
     marker = tmp_path / "filter-ran"
     plant_filter(nested, marker)
     (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     assert not marker.exists()
     assert [f.path for f in diff.files] == ["keep.txt"]
@@ -454,11 +436,10 @@ async def test_a_submodule_pointer_change_is_shown_whatever_the_config_says(repo
     )
     git(repo, "add", ".gitmodules")
     git(repo, "commit", "-q", "-m", "gitmodules")
-    base = git(repo, "rev-parse", "HEAD").strip()
     old = git(nested, "rev-parse", "HEAD").strip()
     new = commit_file(nested, "more.txt")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     (pointer,) = diff.files
     assert (pointer.path, pointer.status, pointer.nested_repository) == ("lib", "modified", False)
@@ -513,7 +494,6 @@ async def test_settings_never_hide_a_changed_text_file_as_binary(
     """SEC-09: `git add` ignores all of these, so approve would commit lines never shown."""
     commit_file(repo, "app.py", APP)
     commit_file(repo, "moved.py", APP)
-    base = git(repo, "rev-parse", "HEAD").strip()
     hide(repo)
     (repo / "app.py").write_text(APP + EVIL, encoding="utf-8")
     git(repo, "mv", "moved.py", "renamed.py")
@@ -521,7 +501,7 @@ async def test_settings_never_hide_a_changed_text_file_as_binary(
     (repo / "link.py").symlink_to("app.py")
     git(repo, "add", "link.py")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     by_path = {f.path: f for f in diff.files}
     for path in ("app.py", "renamed.py"):
@@ -537,14 +517,13 @@ async def test_binary_files_are_still_binary(repo: Path) -> None:
     for name in ("logo.png", "tail.txt"):
         commit_file(repo, name, "placeholder\n")
     commit_file(repo, "doomed.bin", "\0gone")
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / ".git" / "info" / "attributes").write_text("* -diff\n", encoding="utf-8")
     (repo / "logo.png").write_bytes(b"\x89PNG\r\n\x00\x00" + b"x\n" * 10)
     (repo / "doomed.bin").unlink()
     # A NUL byte past the part git's own test reads leaves a file text.
     (repo / "tail.txt").write_bytes(b"line\n" * 2000 + b"\x00\n")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     by_path = {f.path: f for f in diff.files}
     assert (by_path["logo.png"].binary, by_path["logo.png"].hunks) == (True, [])
@@ -553,60 +532,23 @@ async def test_binary_files_are_still_binary(repo: Path) -> None:
     assert (tail.binary, tail.additions, tail.deletions) == (False, 2001, 1)
 
 
-def plant_graft(repo: Path, work: str, base: str) -> None:
-    (repo / ".git" / "info" / "grafts").write_text(f"{work} {base}\n", encoding="utf-8")
-
-
-def plant_shallow(repo: Path, work: str, base: str) -> None:
-    (repo / ".git" / "shallow").write_text(f"{work}\n", encoding="utf-8")
-
-
-@pytest.mark.parametrize("plant", [plant_graft, plant_shallow])
-async def test_history_cut_to_hide_a_commit_stops_the_review(
-    repo: Path, plant: Callable[[Path, str, str], None]
-) -> None:
-    """SEC-13: grafts and shallow boundaries make git skip commits, replace refs or not."""
-    base = git(repo, "rev-parse", "HEAD").strip()
-    commit_file(repo, "secret.txt")
-    work = commit_file(repo, "work.txt")
-    plant(repo, work, base)
-
-    with pytest.raises(HiddenHistoryError) as caught:
-        await session_diff(repo, base)
-
-    assert caught.value.status_code == 409
-    assert caught.value.payload() == {"detail": str(caught.value), "code": "hidden_history"}
-    assert "Terminal" in str(caught.value)
-
-
-async def test_an_empty_grafts_file_hides_nothing(repo: Path) -> None:
-    base = git(repo, "rev-parse", "HEAD").strip()
-    work = commit_file(repo, "work.txt")
-    (repo / ".git" / "info" / "grafts").write_text("\n", encoding="utf-8")
-
-    diff = await session_diff(repo, base)
-
-    assert [c.sha for c in diff.commits] == [work]
-
-
 async def test_a_shallow_clone_is_reviewed_as_usual(repo: Path, tmp_path: Path) -> None:
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "-q", "--depth", "1", f"file://{repo}", str(clone))
-    base = git(clone, "rev-parse", "HEAD").strip()
-    work = commit_file(clone, "work.txt")
+    commit_file(clone, "work.txt")
+    (clone / "more.txt").write_text("more\n", encoding="utf-8")
 
-    diff = await session_diff(clone, base)
+    diff = await session_diff(clone)
 
-    assert [c.sha for c in diff.commits] == [work]
+    assert [f.path for f in diff.files] == ["more.txt"]
 
 
 async def test_a_repository_the_agent_staged_itself_is_flagged(repo: Path) -> None:
     """SEC-14: `git add lib` stages a gitlink that points nowhere once pushed."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     init_repo(repo / "lib")
     git(repo, "-c", "advice.addEmbeddedRepo=false", "add", "lib")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     (staged,) = diff.files
     assert (staged.path, staged.status, staged.nested_repository) == ("lib", "added", True)
@@ -617,7 +559,6 @@ async def test_a_new_submodule_named_in_gitmodules_is_not_flagged(
     repo: Path, ignored: bool, flagged: bool
 ) -> None:
     """A `.gitmodules` that is ignored is never committed, so it does not count."""
-    base = git(repo, "rev-parse", "HEAD").strip()
     init_repo(repo / "lib")
     git(repo, "-c", "advice.addEmbeddedRepo=false", "add", "lib")
     (repo / ".gitmodules").write_text(
@@ -627,34 +568,31 @@ async def test_a_new_submodule_named_in_gitmodules_is_not_flagged(
     if ignored:
         (repo / ".git" / "info" / "exclude").write_text(".gitmodules\n", encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     lib = next(f for f in diff.files if f.path == "lib")
     assert lib.nested_repository is flagged
 
 
 async def test_a_gitmodules_git_cannot_read_declares_nothing(repo: Path) -> None:
-    base = git(repo, "rev-parse", "HEAD").strip()
     init_repo(repo / "lib")
     git(repo, "-c", "advice.addEmbeddedRepo=false", "add", "lib")
     (repo / ".gitmodules").write_text('[submodule "lib"\n\tpath = lib\n', encoding="utf-8")
 
-    diff = await session_diff(repo, base)
+    diff = await session_diff(repo)
 
     assert next(f for f in diff.files if f.path == "lib").nested_repository is True
 
 
 async def test_the_fingerprint_is_a_sha256_that_stays_while_nothing_changes(repo: Path) -> None:
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
     (repo / "fresh.txt").write_text("new\n", encoding="utf-8")
 
-    first = await session_diff(repo, base)
-    second = await session_diff(repo, base)
+    first = await session_diff(repo)
+    second = await session_diff(repo)
 
     assert re.fullmatch(r"[0-9a-f]{64}", first.fingerprint)
     assert first.fingerprint == second.fingerprint
-    assert (await session_diff(repo, base, base)).fingerprint == first.fingerprint
 
 
 def rewrite_line(path: Path, number: int, text: str) -> None:
@@ -685,14 +623,13 @@ async def test_the_fingerprint_changes_with_anything_approving_would_publish(
     """The review fingerprint ties an approval to the review the user saw."""
     commit_file(repo, "long.txt", "".join(f"{n}\n" for n in range(3000)))
     commit_file(repo, "blob.bin", "\0one")
-    base = git(repo, "rev-parse", "HEAD").strip()
     (repo / "keep.txt").write_text("a\nB\nc\n", encoding="utf-8")
     (repo / "long.txt").write_text("".join(f"{n}!\n" for n in range(3000)), encoding="utf-8")
     (repo / "dump.txt").write_bytes(b"y" * (2 * MAX_SHOWN_BYTES) + b"y")
     (repo / "blob.bin").write_bytes(b"\x00one")
-    before = await session_diff(repo, base)
+    before = await session_diff(repo)
 
     mutation(repo)
-    after = await session_diff(repo, base)
+    after = await session_diff(repo)
 
     assert after.fingerprint != before.fingerprint

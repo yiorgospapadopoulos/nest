@@ -21,15 +21,3 @@ async def save_changes(
         session_id,
     )
     return session
-
-
-async def set_git_violation(
-    store: SessionStore, bus: EventBus, session_id: str, flagged: bool
-) -> Session:
-    """Set or clear the flag that holds publishing until the user acknowledges what the
-    agent did with git (D013 layer 4); announced only when it changes (BUG-50).
-    """
-    session = await store.get(session_id)
-    if session.git_violation == flagged:
-        return session
-    return await save_changes(store, bus, session_id, {"git_violation": flagged})

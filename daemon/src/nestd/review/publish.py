@@ -173,13 +173,10 @@ class GitPublisher:
             session = await self._store.update(session.id, commit_sha=sha)
             await self._bus.publish(types.GIT_COMMITTED, {"sha": sha}, session.id)
             return session, sha
-        if plan.head is None or (session.commit_sha is None and plan.head == session.base_ref):
+        if plan.head is None or plan.head != session.commit_sha:
             msg = "there are no changes to commit"
             raise NothingToCommitError(msg)
-        if session.commit_sha is None:
-            # Commits the agent made itself, which the user chose to publish (D013 layer 4).
-            session = await self._store.update(session.id, commit_sha=plan.head)
-        # Otherwise committed by an earlier attempt.
+        # Committed by an earlier attempt, whose push failed.
         return session, plan.head
 
     async def _require_parent(

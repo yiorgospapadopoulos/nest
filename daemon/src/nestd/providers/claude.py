@@ -1,4 +1,5 @@
-"""Claude provider on the Claude Agent SDK (D003), with the agent git block layers (D013)."""
+"""Claude provider on the Claude Agent SDK (D003), with the agent git block layers (D013)
+for the runs that keep them (B58)."""
 
 import asyncio
 import logging
@@ -113,7 +114,7 @@ type ClientFactory = Callable[[ClaudeAgentOptions], SdkClient]
 
 
 def agent_env(gh_config_dir: Path) -> dict[str, str]:
-    """Layer 3: no git credential helpers, prompts or GitHub token for the agent."""
+    """Layer 3 of a guarded run: no git credential helpers, prompts or GitHub token."""
     return {
         # An empty credential.helper resets every configured helper.
         "GIT_CONFIG_COUNT": "1",
@@ -199,14 +200,15 @@ def build_options(
     system_prompt: SystemPromptPreset = {"type": "preset", "preset": "claude_code"}
     if spec.system_prompt_append:
         system_prompt["append"] = spec.system_prompt_append
-    pre_tool_use = [
-        HookMatcher(matcher="*", hooks=[block_git_writes]),
+    # A guarded run checks every tool, so MCP and other shell tools are checked too (D049).
+    pre_tool_use = [HookMatcher(matcher="*", hooks=[block_git_writes])] if spec.guard_git else []
+    pre_tool_use.append(
         HookMatcher(
             matcher=ASK_USER_QUESTION,
             hooks=[questions.hook],
             timeout=QUESTION_TIMEOUT_SECONDS,
-        ),
-    ]
+        )
+    )
     if own_tools:
         pre_tool_use.append(
             HookMatcher(matcher="|".join(sorted(own_tools)), hooks=[subagent_guard(own_tools)])
@@ -229,12 +231,12 @@ def build_options(
         can_use_tool=can_use_tool,
         mcp_servers=tool_servers(spec.tools),
         allowed_tools=list(spec.allowed_tools),
-        disallowed_tools=[*GIT_WRITE_RULES, *spec.disallowed_tools],
+        disallowed_tools=[*(GIT_WRITE_RULES if spec.guard_git else ()), *spec.disallowed_tools],
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,
         agents={name: _agent(sub, own_tools) for name, sub in spec.subagents.items()} or None,
         hooks={"PreToolUse": pre_tool_use},
-        env={**agent_env(gh_config_dir), **CLAUDE_APP_ENV},
+        env={**(agent_env(gh_config_dir) if spec.guard_git else {}), **CLAUDE_APP_ENV},
         stderr=stderr,
         max_buffer_size=MAX_MESSAGE_BYTES,
         # Files can be restored to before a user message; the echo of each message the

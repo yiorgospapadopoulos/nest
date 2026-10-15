@@ -24,7 +24,6 @@ def session(cwd: Path | None, provider_session_id: str | None = "sdk-1") -> Sess
         worktree_path=None,
         branch=None,
         provider_session_id=provider_session_id,
-        git_violation=False,
         created_at=START,
         updated_at=START,
         last_error=None,

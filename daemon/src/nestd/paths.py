@@ -95,7 +95,7 @@ class AppPaths:
 
     @property
     def agent_gh_dir(self) -> Path:
-        """An empty GitHub CLI config dir for agents, so `gh` has no login (D013)."""
+        """An empty GitHub CLI config dir for guarded runs, so `gh` has no login (D013, B58)."""
         return self.data_dir / "agent-gh"
 
     @property

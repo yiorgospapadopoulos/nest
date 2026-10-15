@@ -1,4 +1,4 @@
-"""A session's background work: setup, turns on the agent run, and the post-turn git audit."""
+"""A session's background work: setup and turns on the agent run."""
 
 import asyncio
 import logging
@@ -22,7 +22,6 @@ from nestd.providers.base import (
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated
 from nestd.sessions.extras import RunExtras, RunExtrasSource
-from nestd.sessions.git_audit import changed_refs, for_publish, snapshot_refs
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.models import USER, Sender, Session, SessionState
@@ -32,7 +31,6 @@ from nestd.sessions.sink import SessionSink
 from nestd.sessions.states import StateWriter
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource
-from nestd.sessions.updates import set_git_violation
 from nestd.sessions.workspace import prepare_worktree
 from nestd.worktrees.manager import WorktreeManager
 
@@ -50,15 +48,21 @@ _CONNECTORS_NOTE = (
     "Mention MCP servers that need authorization or failed to connect only when the user "
     "asks about them or the task needs one of them."
 )
+# A chat uses git as in the terminal (B58).
 NEST_PROMPT = (
+    "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
+    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE}"
+)
+# A plain folder's work is never reviewed, committed or pushed by Nest (D041).
+PLAIN_FOLDER_PROMPT = (
+    f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE}"
+)
+# A chat a pixie started, whose git writes stay blocked (D072, B58); a pixie's own runs
+# have their own prompt.
+GUARDED_PROMPT = (
     "You are running inside Nest. Do not run git commit, git push, gh pr create or "
     "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
     f"your work. {_CONNECTORS_NOTE}"
-)
-# A plain folder's work is never reviewed, committed or pushed (D041).
-PLAIN_FOLDER_PROMPT = (
-    "You are running inside Nest, in a folder that is not a git repository. Do not run "
-    f"git commit, git push, gh pr create or gh pr merge. {_CONNECTORS_NOTE}"
 )
 
 # The state a background task ends in, and the error that caused it, if any.
@@ -192,9 +196,9 @@ class TurnRunner:
 
     async def _run_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
         session = await self._start_turn(live)
+        await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         cwd = require_cwd(session)
         run = await self._ensure_run(live, session, cwd)
-        live.baseline = await snapshot_refs(cwd)
         live.turn_active = True
         # Teams the message calls get their instruction; the chat shows what was typed.
         await run.send(user_input(live.run_agents.message(text), attachments))
@@ -219,12 +223,11 @@ class TurnRunner:
         )
 
     async def turn_finished(self, live: LiveSession, error: str | None) -> None:
-        """Audit and report the turn, then end it or deliver the next queued message.
-        The audit and reports are bookkeeping: their failure never keeps the turn open.
-        A turn the engine ended with an error fails; the run stays for the next message.
+        """Report the turn, then end it or deliver the next queued message. The reports are
+        bookkeeping: their failure never keeps the turn open. A turn the engine ended with
+        an error fails; the run stays for the next message.
         """
         session_id = live.session_id
-        await isolated("the git audit", session_id, self.audit(live))
         run = live.run
         if run is not None:
             await isolated("the context report", session_id, self._report_context(live, run))
@@ -425,6 +428,7 @@ class TurnRunner:
                 allowed_tools=extras.allowed_tools if extras else (),
                 disallowed_tools=extras.disallowed_tools if extras else (),
                 subagents=agents.subagents,
+                guard_git=_guarded(session),
             )
             sink = SessionSink(
                 live, self._bus, self._store, self, self._hooks, session.provider_session_id
@@ -457,26 +461,17 @@ class TurnRunner:
         return await self._agents(session)
 
     async def _nest_prompt(self, session: Session) -> str:
+        if _guarded(session):
+            return GUARDED_PROMPT
         git = await self._repos.has_git(session.repo)
         return NEST_PROMPT if git else PLAIN_FOLDER_PROMPT
 
-    async def audit(self, live: LiveSession, publishing: bool = False) -> None:
-        """Compare refs with the last audit, at the end of each turn (all refs) and right
-        before the daemon publishes (only what the publish uses: HEAD, the branch it names
-        and that branch; other changes wait for the next turn end). What this one saw is
-        the next one's baseline.
-        """
-        cwd = require_cwd(await self._store.get(live.session_id))
-        after = await snapshot_refs(cwd)
-        if publishing and live.baseline is not None:
-            after = for_publish(live.baseline, after)
-        changes = [] if live.baseline is None else changed_refs(live.baseline, after)
-        live.baseline = after
-        if changes:
-            await set_git_violation(self._store, self._bus, live.session_id, True)
-            await self._bus.publish(
-                types.SESSION_GIT_VIOLATION, {"changes": changes}, live.session_id
-            )
+
+def _guarded(session: Session) -> bool:
+    """A pixie may never commit or push (D072, D078): its chats, habit runs (which carry its
+    `pixie_id`) and the chats it starts keep git writes blocked (B58).
+    """
+    return session.pixie_id is not None or session.started_by_pixie is not None
 
 
 def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:

@@ -110,7 +110,7 @@ def test_question_payloads_without_questions_accept_no_answers() -> None:
 
 
 def test_reviews_use_the_review_actions() -> None:
-    with pytest.raises(InvalidInputError, match="approve, reject or feedback"):
+    with pytest.raises(InvalidInputError, match="approve or feedback"):
         resolution_for(approval(ApprovalKind.REVIEW), body(behavior="allow"))
 
 

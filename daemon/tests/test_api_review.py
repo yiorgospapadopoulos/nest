@@ -14,11 +14,12 @@ from nestd.gitops.runner import CommandError
 from nestd.providers.base import AgentTask, MessageBlock
 from nestd.review import watch
 from nestd.review.models import SessionDiff
-from nestd.sessions.git_audit import HEAD_BRANCH
 from nestd.sessions.models import SendResult
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import (
+    FakeRun,
+    Turn,
     background,
     commit,
     crash,
@@ -31,7 +32,7 @@ from tests.fake_provider import (
 from tests.fake_runner import PR_URL
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import commit_file, git, init_repo, with_origin
-from tests.test_api_sessions import create, notified, reach, state_of
+from tests.test_api_sessions import create, notified, reach
 from tests.tracking_fixture import create_task, start_agent_message
 
 APPROVE = {"commit_message": "Fix the bug"}
@@ -80,7 +81,6 @@ async def approve(api: Api, session_id: str, body: dict[str, Any] = APPROVE) -> 
     [
         ("GET", "/api/sessions/x/diff"),
         ("POST", "/api/sessions/x/approve"),
-        ("POST", "/api/sessions/x/reject"),
         ("POST", "/api/sessions/x/feedback"),
         ("GET", "/api/approvals"),
         ("GET", "/api/approvals/x"),
@@ -249,7 +249,7 @@ async def test_a_remote_added_after_registration_needs_confirmation(
     assert confirmed.json()["pr_url"] == PR_URL
 
 
-async def test_after_approval_the_daemons_own_refs_are_not_a_violation(api: Api) -> None:
+async def test_after_approval_the_approved_work_is_not_reviewed_again(api: Api) -> None:
     session_id = await finished_with_changes(api)
     await approve(api, session_id, APPROVE)
 
@@ -259,8 +259,7 @@ async def test_after_approval_the_daemons_own_refs_are_not_a_violation(api: Api)
     await notified(api, session_id, "finished")
 
     session = (await api.http.get(f"/api/sessions/{session_id}")).json()
-    assert session["git_violation"] is False
-    # The approved work is not up for review again.
+    assert "git_violation" not in session
     assert [a["status"] for a in await approvals(api)] == ["resolved"]
 
 
@@ -315,67 +314,55 @@ async def test_without_changes_there_is_no_review_and_nothing_to_commit(api: Api
     assert "no changes" in response.json()["detail"]
 
 
-async def test_a_git_violation_blocks_approval_until_acknowledged(api: Api) -> None:
-    api.provider.script(commit(reply("I committed it myself.")))
+async def test_a_commit_of_all_the_work_leaves_nothing_to_review(api: Api) -> None:
+    """B58: the user asked Claude to commit; that is no violation and needs no review."""
+    api.provider.script(commit(reply("Committed.")))
     session_id = str((await create(api))["id"])
     await reach(api, session_id, "idle")
-    await notified(api, session_id, "review_ready")
+    await notified(api, session_id, "finished")
 
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+    diff = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
     refused = await approve(api, session_id, APPROVE)
-    accepted = await approve(
-        api,
-        session_id,
-        {**APPROVE, "acknowledge_violation": True, "open_pr": False},
-    )
 
+    assert await approvals(api) == []
+    assert "git_violation" not in session
+    assert diff["files"] == []
+    assert "commits" not in diff
+    assert diff["base"] == diff["head"]["commit"] != session["base_ref"]
     assert refused.status_code == 409
-    assert refused.json() == {"detail": refused.json()["detail"], "code": "git_violation"}
-    assert_readable(refused.json()["detail"])
-    assert accepted.status_code == 200
-    assert accepted.json()["commit_sha"] is not None
-    # BUG-51: published with the user's say-so, the flag is cleared.
-    assert accepted.json()["git_violation"] is False
+    assert "no changes" in refused.json()["detail"]
+    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
+    assert "agent/" not in git(origin, "for-each-ref")
 
 
-async def test_the_violation_flag_reaches_clients_as_a_session_update(api: Api) -> None:
-    """BUG-50: clients patch sessions from `session.updated`, set and cleared alike."""
-    api.provider.script(commit(reply("I committed it myself.")))
+async def test_approving_after_the_agents_own_commit_publishes_both(api: Api) -> None:
+    """B58: the review shows only what is left uncommitted; the worktree's branch is pushed
+    with the agent's commit and Nest's, and the pull request opened from it.
+    """
+    api.provider.script(commit(edit({"fix.txt": "fixed\n"}, reply("Committed part."))))
     session_id = str((await create(api))["id"])
     await reach(api, session_id, "idle")
     await notified(api, session_id, "review_ready")
-    flagged = await flag_updates(api, session_id)
+    worktree = await session_cwd(api, session_id)
+    agents = git(worktree, "rev-parse", "HEAD").strip()
 
-    await approve(
-        api,
-        session_id,
-        {**APPROVE, "acknowledge_violation": True, "open_pr": False},
-    )
+    (review,) = await approvals(api, status="pending")
+    approved = await approve(api, session_id, APPROVE)
+    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
+    branch = approved.json()["branch"]
 
-    assert flagged == [True]
-    assert await flag_updates(api, session_id) == [True, False]
-    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
-    (violation,) = [e for e in events if e["type"] == types.SESSION_GIT_VIOLATION]
-    (update, _) = [e for e in events if e["type"] == types.SESSION_UPDATED]
-    # Stored and announced before the changes are, so a client that reads the session
-    # on either event finds the flag set.
-    assert events.index(update) < events.index(violation)
-    assert update["payload"]["session"]["id"] == session_id
-    assert update["payload"]["session"]["git_violation"] is True
+    assert review["payload"]["paths"] == ["fix.txt"]
+    assert review["payload"]["base"] == agents
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["pr_url"] == PR_URL
+    pushed = git(origin, "rev-parse", f"refs/heads/{branch}").strip()
+    assert pushed == approved.json()["commit_sha"]
+    assert git(worktree, "rev-parse", "HEAD^").strip() == agents
+    assert git(worktree, "show", "--name-only", "--format=", "HEAD").split() == ["fix.txt"]
 
 
-async def flag_updates(api: Api, session_id: str) -> list[bool]:
-    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
-    return [
-        e["payload"]["changes"]["git_violation"]
-        for e in events
-        if e["type"] == types.SESSION_UPDATED
-        and e["payload"]["changes"] == {"git_violation": e["payload"]["session"]["git_violation"]}
-    ]
-
-
-# The fields whose names read as code; `files` and `push` are plain words too.
 API_FIELDS = (
-    "acknowledge_violation",
     "confirm_remote_url",
     "expected_fingerprint",
     "expected_head",
@@ -388,11 +375,6 @@ def assert_readable(detail: str) -> None:
     assert detail
     for field in API_FIELDS:
         assert field not in detail, (field, detail)
-
-
-async def violations(api: Api, session_id: str) -> list[list[dict[str, Any]]]:
-    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
-    return [e["payload"]["changes"] for e in events if e["type"] == types.SESSION_GIT_VIOLATION]
 
 
 def commit_behind_the_review(cwd: Path, name: str = "extra.txt") -> str:
@@ -413,38 +395,8 @@ async def session_cwd(api: Api, session_id: str) -> Path:
     return Path(str((await api.http.get(f"/api/sessions/{session_id}")).json()["cwd"]))
 
 
-async def test_refs_changed_after_the_turn_are_caught_before_publishing(api: Api) -> None:
-    """SEC-01: a background command can change refs after the turn's audit (D013 layer 4)."""
-    session_id = await finished_with_changes(api)
-    worktree = await session_cwd(api, session_id)
-    branch = git(worktree, "symbolic-ref", "HEAD").strip()
-    before = git(worktree, "rev-parse", "HEAD").strip()
-    sha = commit_behind_the_review(worktree)
-    origin = api.ctx.repos.get("repo").path.parent / "origin.git"
-
-    refused = await approve(api, session_id, APPROVE)
-    flagged = (await api.http.get(f"/api/sessions/{session_id}")).json()
-    pushed_before = git(origin, "for-each-ref")
-    again = await approve(api, session_id, APPROVE)
-    accepted = await approve(api, session_id, {**APPROVE, "acknowledge_violation": True})
-
-    assert refused.status_code == 409
-    assert refused.json()["code"] == "git_violation"
-    assert flagged["git_violation"] is True
-    assert "agent/" not in pushed_before
-    assert again.status_code == 409
-    # Reported once: the second check compares with the refs the first one saw.
-    assert await violations(api, session_id) == [
-        [
-            {"ref": "HEAD", "before": before, "after": sha},
-            {"ref": branch, "before": before, "after": sha},
-        ]
-    ]
-    assert accepted.status_code == 200, accepted.text
-
-
 async def test_other_branches_do_not_block_approval(api: Api) -> None:
-    """BUG-51: other chats' branches and the user's own commits are not this agent's doing."""
+    """BUG-51: other chats' branches and the user's own commits are not this chat's work."""
     session_id = await finished_with_changes(api)
     api.provider.script(reply("Nothing to do."))
     other = str((await create(api, prompt="Another task"))["id"])
@@ -456,81 +408,61 @@ async def test_other_branches_do_not_block_approval(api: Api) -> None:
     approved = await approve(api, session_id, APPROVE)
 
     assert approved.status_code == 200, approved.text
-    assert approved.json()["git_violation"] is False
-    assert await violations(api, session_id) == []
-    assert await flag_updates(api, session_id) == []
 
 
 async def test_a_moved_head_is_caught_before_publishing(api: Api) -> None:
     session_id = await finished_with_changes(api)
     worktree = await session_cwd(api, session_id)
+    seen = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()["fingerprint"]
     elsewhere = git(worktree, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "x").strip()
     git(worktree, "update-ref", "--no-deref", "HEAD", elsewhere)
 
-    refused = await approve(api, session_id, APPROVE)
+    refused = await approve(api, session_id, {**APPROVE, "expected_fingerprint": seen})
 
-    assert refused.status_code == 409
-    ((moved, detached),) = await violations(api, session_id)
-    assert (moved["ref"], moved["after"]) == ("HEAD", elsewhere)
-    assert (detached["ref"], detached["after"]) == (HEAD_BRANCH, None)
+    assert (refused.status_code, refused.json()["code"]) == (409, "review_changed")
+    assert api.runner.calls == []
 
 
 async def test_a_branch_switch_on_the_same_commit_is_caught_before_publishing(
     api: Api,
 ) -> None:
-    """SEC-06: an in-place push goes to the branch HEAD names."""
+    """SEC-06: an in-place push goes to the branch HEAD names, which the review shows."""
     repo = api.ctx.repos.get("repo").path
     git(repo, "branch", "deploy")
     api.provider.script(edit({"agent.txt": "agent\n"}, reply("Done.")))
     session_id = str((await create(api, mode="in_place"))["id"])
     await reach(api, session_id, "idle")
     await notified(api, session_id, "review_ready")
+    seen = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
     git(repo, "symbolic-ref", "HEAD", "refs/heads/deploy")
     body = {**APPROVE, "open_pr": False, "files": ["agent.txt"]}
 
     diff = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
-    refused = await approve(api, session_id, body)
+    refused = await approve(api, session_id, {**body, "expected_fingerprint": seen["fingerprint"]})
 
-    assert diff["head"]["branch"] == "deploy"
-    assert refused.status_code == 409
-    assert refused.json()["code"] == "git_violation"
-    assert await violations(api, session_id) == [
-        [{"ref": HEAD_BRANCH, "before": "refs/heads/main", "after": "refs/heads/deploy"}]
-    ]
+    assert (seen["head"]["branch"], diff["head"]["branch"]) == ("main", "deploy")
+    assert (refused.status_code, refused.json()["code"]) == (409, "review_changed")
+    assert api.runner.calls == []
 
 
-async def test_a_fetch_between_the_turn_and_approve_waits_for_the_next_turn_end(
-    api: Api,
-) -> None:
-    """Only HEAD and local branches decide what is pushed; a fetch (yours, or an editor's)
-    does not block approve, and the next turn-end audit still reports it (D013 layer 4).
+async def test_a_fetch_between_the_turn_and_approve_does_not_block_it(api: Api) -> None:
+    """Only HEAD and the working tree decide what is published; a fetch (yours, or an
+    editor's) changes neither.
     """
     session_id = await finished_with_changes(api)
     repo = api.ctx.repos.get("repo").path
     fetched = git(repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "upstream").strip()
-    before = git(repo, "rev-parse", "refs/remotes/origin/main").strip()
     git(repo, "update-ref", "refs/remotes/origin/main", fetched)
     git(repo, "tag", "fetched-tag", fetched)
 
     approved = await approve(api, session_id, APPROVE)
 
     assert approved.status_code == 200, approved.text
-    assert approved.json()["git_violation"] is False
-    assert await violations(api, session_id) == []
-    api.provider.runs[0].emit(reply("background job done"))
-    await reach(api, session_id, "idle", results=2)
-    await notified(api, session_id, "finished")
-    assert await violations(api, session_id) == [
-        [
-            {"ref": "refs/remotes/origin/main", "before": before, "after": fetched},
-            {"ref": "refs/tags/fetched-tag", "before": None, "after": fetched},
-        ]
-    ]
 
 
 async def test_an_agent_cannot_turn_an_approved_push_into_a_mirror_push(api: Api) -> None:
     """SEC-01 end to end: the agent switches the checkout to a branch named `--mirror`
-    after its turn; approving reports that and, even when acknowledged, pushes nothing.
+    after its turn; approving the review as it now shows pushes nothing.
     """
     repo = api.ctx.repos.get("repo").path
     origin = repo.parent / "origin.git"
@@ -545,42 +477,16 @@ async def test_an_agent_cannot_turn_an_approved_push_into_a_mirror_push(api: Api
     body = {**APPROVE, "open_pr": False, "files": ["agent.txt"]}
 
     refused = await approve(api, session_id, body)
-    acknowledged = await approve(api, session_id, {**body, "acknowledge_violation": True})
 
     assert refused.status_code == 409
-    assert refused.json()["code"] == "git_violation"
-    assert [[c["ref"] for c in changes] for changes in await violations(api, session_id)] == [
-        [HEAD_BRANCH, "refs/heads/--mirror"]
-    ]
-    assert acknowledged.status_code == 409
-    assert acknowledged.json()["code"] == "unsafe_branch"
-    assert_readable(acknowledged.json()["detail"])
+    assert refused.json()["code"] == "unsafe_branch"
+    assert_readable(refused.json()["detail"])
     assert git(origin, "for-each-ref") == before
     (review,) = await approvals(api)
     assert review["status"] == "pending"
 
 
-async def test_refs_changed_while_publishing_are_reported_after_the_next_turn(api: Api) -> None:
-    """Only the daemon's own commit and push are taken into the audit's baseline."""
-    session_id = await finished_with_changes(api)
-    repo = api.ctx.repos.get("repo").path
-    api.runner.before["git push"] = lambda: git(repo, "update-ref", "refs/heads/sneaky", "HEAD")
-    approved = await approve(api, session_id, APPROVE)
-
-    api.provider.runs[0].emit(reply("background job done"))
-    await reach(api, session_id, "idle", results=2)
-    await notified(api, session_id, "finished")
-
-    assert approved.status_code == 200, approved.text
-    assert [change["ref"] for (change,) in await violations(api, session_id)] == [
-        "refs/heads/sneaky"
-    ]
-
-
-async def test_work_of_an_agent_that_never_started_is_published_without_a_violation(
-    api: Api,
-) -> None:
-    """No audit ran before, so the refs as they are now become the baseline."""
+async def test_work_of_an_agent_that_never_started_is_published(api: Api) -> None:
     api.provider.open_error = RuntimeError("the agent could not start")
     session_id = str((await create(api))["id"])
     await reach(api, session_id, "failed")
@@ -590,15 +496,13 @@ async def test_work_of_an_agent_that_never_started_is_published_without_a_violat
     approved = await approve(api, session_id, APPROVE)
 
     assert approved.status_code == 200, approved.text
-    assert approved.json()["git_violation"] is False
-    assert await violations(api, session_id) == []
 
 
-async def test_the_review_shows_where_the_work_goes_and_commits_it_never_showed(
+async def test_the_review_shows_where_the_work_goes_and_what_is_not_committed(
     tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore
 ) -> None:
-    """SEC-02: after a restart there is no audit to compare with, yet a commit made behind
-    the review's back is listed and must be acknowledged before it is published.
+    """A commit made after the review, here after a restart, moves HEAD: the review then
+    compares the working tree with the new HEAD, and approving publishes on top of it (B58).
     """
     repo = init_repo(tmp_path / "repo")
     with_origin(repo, tmp_path / "origin.git")
@@ -607,50 +511,31 @@ async def test_the_review_shows_where_the_work_goes_and_commits_it_never_showed(
         session_id = await finished_with_changes(first)
         worktree = await session_cwd(first, session_id)
         clean = (await first.http.get(f"/api/sessions/{session_id}/diff")).json()
-    sha = commit_behind_the_review(worktree)
+    sha = commit_file(worktree, "extra.txt")
 
     async with running_api(tmp_path, clock, secrets) as second:
         url = f"/api/sessions/{session_id}"
         diff = (await second.http.get(f"{url}/diff")).json()
-        refused = await approve(second, session_id, APPROVE)
-        flagged = (await second.http.get(url)).json()
-        accepted = await approve(second, session_id, {**APPROVE, "acknowledge_violation": True})
+        stale = await approve(
+            second, session_id, {**APPROVE, "expected_fingerprint": clean["fingerprint"]}
+        )
+        accepted = await approve(second, session_id, APPROVE)
         after = (await second.http.get(f"{url}/diff")).json()
 
-    branch = flagged["branch"]
+    branch = accepted.json()["branch"]
     assert clean["head"] == {"commit": clean["base"], "branch": branch}
-    assert clean["commits"] == []
     assert diff["head"] == {"commit": sha, "branch": branch}
-    assert diff["commits"] == [{"sha": sha, "subject": "unreviewed"}]
+    assert diff["base"] == sha
     assert [f["path"] for f in diff["files"]] == ["fix.txt"]
-    assert (refused.status_code, refused.json()["code"]) == (409, "git_violation")
-    assert flagged["git_violation"] is True
+    assert (stale.status_code, stale.json()["code"]) == (409, "review_changed")
     assert accepted.status_code == 200, accepted.text
-    assert accepted.json()["git_violation"] is False
-    assert after["commits"] == []
+    assert git(worktree, "rev-parse", "HEAD^").strip() == sha
+    assert after["files"] == []
     assert after["head"]["commit"] == accepted.json()["commit_sha"]
 
 
-async def test_a_commit_the_next_turns_start_absorbs_is_still_caught(api: Api) -> None:
-    """SEC-02: each turn starts from the refs as they are, so the audit misses this one."""
-    session_id = await finished_with_changes(api)
-    sha = commit_behind_the_review(await session_cwd(api, session_id))
-    api.provider.script(reply("Nothing more."))
-    await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "anything else?"})
-    await reach(api, session_id, "idle", results=2)
-    await notified(api, session_id, "review_ready", 2)
-
-    diff = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
-    refused = await approve(api, session_id, APPROVE)
-
-    assert await violations(api, session_id) == []
-    assert [c["sha"] for c in diff["commits"]] == [sha]
-    assert (refused.status_code, refused.json()["code"]) == (409, "git_violation")
-    assert await flag_updates(api, session_id) == [True]
-
-
-async def test_the_daemons_own_commits_are_never_listed(api: Api) -> None:
-    """Approving twice, with more work in between, leaves nothing to acknowledge."""
+async def test_approving_twice_reviews_only_the_new_work(api: Api) -> None:
+    """Approving twice, with more work in between: the second review starts at Nest's commit."""
     session_id = await finished_with_changes(api)
     url = f"/api/sessions/{session_id}"
     first = await approve(api, session_id, APPROVE)
@@ -664,11 +549,11 @@ async def test_the_daemons_own_commits_are_never_listed(api: Api) -> None:
     after = (await api.http.get(f"{url}/diff")).json()
 
     assert first.status_code == 200, first.text
-    assert between["commits"] == []
+    assert [f["path"] for f in between["files"]] == ["more.txt"]
     assert between["head"]["commit"] == first.json()["commit_sha"]
     assert second.status_code == 200, second.text
     assert second.json()["commit_sha"] != first.json()["commit_sha"]
-    assert after["commits"] == []
+    assert after["files"] == []
 
 
 async def test_approval_is_refused_when_head_moved_since_the_review(api: Api) -> None:
@@ -691,7 +576,6 @@ async def test_approval_is_refused_when_head_moved_since_the_review(api: Api) ->
             **APPROVE,
             "expected_head": again["head"]["commit"],
             "expected_fingerprint": again["fingerprint"],
-            "acknowledge_violation": True,
         },
     )
 
@@ -910,17 +794,22 @@ async def test_a_turn_the_agent_starts_while_the_work_is_published_waits(api: Ap
     assert kinds[-4:] == ["idle", types.GIT_PUSHED, "running", "idle"]
 
 
-async def test_a_message_sent_as_a_turn_ends_supersedes_its_review(
+async def test_a_message_sent_as_a_turn_ends_waits_for_its_review(
     api: Api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """BUG-18: the review is made before the next message starts, never during its turn."""
     entered, release = asyncio.Event(), asyncio.Event()
     real_diff = watch.session_diff
 
-    async def slow_diff(cwd: Path, base: str | None) -> SessionDiff:
-        entered.set()
-        await release.wait()
-        return await real_diff(cwd, base)
+    calls = 0
+
+    async def slow_diff(cwd: Path) -> SessionDiff:
+        nonlocal calls
+        calls += 1
+        if calls == 2:  # the first turn's end; its start came first
+            entered.set()
+            await release.wait()
+        return await real_diff(cwd)
 
     monkeypatch.setattr(watch, "session_diff", slow_diff)
     api.provider.script(edit({"fix.txt": "fixed\n"}, reply("Fixed the bug.")), hang())
@@ -938,7 +827,7 @@ async def test_a_message_sent_as_a_turn_ends_supersedes_its_review(
 
     assert sent.status_code == 202
     assert not started_early
-    assert [a["status"] for a in await approvals(api)] == ["superseded"]
+    assert [a["status"] for a in await approvals(api)] == ["pending"]
 
 
 async def test_approval_waits_for_a_running_turn(api: Api) -> None:
@@ -952,81 +841,78 @@ async def test_approval_waits_for_a_running_turn(api: Api) -> None:
     assert "wait until its turn ends" in response.json()["detail"]
 
 
-async def reject(api: Api, session_id: str) -> httpx.Response:
-    return await api.http.post(f"/api/sessions/{session_id}/reject")
-
-
-async def rewinds(api: Api) -> list[object]:
-    return [args for run in api.provider.runs for name, args in run.calls if name == "rewind_files"]
-
-
-async def test_rejecting_an_in_place_chat_keeps_its_files_and_the_chat_open(api: Api) -> None:
-    """B54: Reject only dismisses the review; nothing is restored or closed."""
-    session_id, repo = await in_place_review(api)
-
-    rejected = await reject(api, session_id)
-
-    assert (rejected.status_code, rejected.json()["state"]) == (200, "idle")
-    assert await state_of(api, session_id) == "idle"
-    assert (repo / "agent.txt").read_text(encoding="utf-8") == "agent\n"
-    assert await rewinds(api) == []
-    (review,) = await approvals(api)
-    assert (review["status"], review["resolution"]) == ("resolved", {"action": "rejected"})
-
-
-async def test_rejecting_a_worktree_chat_keeps_its_worktree_branch_and_chat(api: Api) -> None:
+async def test_there_is_no_reject_route(api: Api) -> None:
+    """B56: a review the user does not want simply waits; the chat goes on."""
     session_id = await finished_with_changes(api)
-    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
 
-    rejected = await reject(api, session_id)
-    diff = await api.http.get(f"/api/sessions/{session_id}/diff")
+    response = await api.http.post(f"/api/sessions/{session_id}/reject")
 
-    assert (rejected.status_code, rejected.json()["state"]) == (200, "idle")
-    assert exists(session["worktree_path"])
-    assert (Path(session["worktree_path"]) / "fix.txt").read_text(encoding="utf-8") == "fixed\n"
-    assert session["branch"] in git(api.ctx.repos.get("repo").path, "branch")
-    assert [f["path"] for f in diff.json()["files"]] == ["fix.txt"]
-    (review,) = await approvals(api)
-    assert (review["status"], review["resolution"]) == ("resolved", {"action": "rejected"})
+    assert response.status_code in (404, 405)
+    assert [a["status"] for a in await approvals(api)] == ["pending"]
 
 
-async def test_after_a_reject_the_chat_takes_a_message_and_a_new_review(api: Api) -> None:
+def remove(names: list[str], then: Turn) -> Turn:
+    """Deletes files in the session's working directory, as an agent undoing its work."""
+
+    async def turn(run: FakeRun) -> None:
+        for name in names:
+            (Path(run.spec.cwd) / name).unlink()
+        await then(run)
+
+    return turn
+
+
+async def send(api: Api, session_id: str, text: str) -> httpx.Response:
+    return await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": text})
+
+
+async def test_a_chat_turn_that_changes_nothing_keeps_the_review(api: Api) -> None:
+    """B56: "hi" gets an answer, not a new "Ready for review"."""
     session_id = await finished_with_changes(api)
-    await reject(api, session_id)
-    api.provider.script(edit({"fix.txt": "fixed better\n"}, reply("Improved.")))
+    (before,) = await approvals(api)
+    api.provider.script(reply("Hello!"))
 
-    sent = await api.http.post(
-        f"/api/sessions/{session_id}/messages", json={"text": "Handle the edge case"}
-    )
+    sent = await send(api, session_id, "hi")
     await reach(api, session_id, "idle", results=2)
-    await notified(api, session_id, "review_ready", 2)
+    await notified(api, session_id, "finished")
 
     assert sent.status_code == 202
-    first, second = await approvals(api)
-    assert (first["status"], first["resolution"]) == ("resolved", {"action": "rejected"})
-    assert (second["status"], second["payload"]["summary"]) == ("pending", "Improved.")
+    assert await approvals(api) == [before]
 
 
-async def test_rejecting_without_a_pending_review_changes_nothing(api: Api) -> None:
+async def test_a_chat_turn_in_a_dirty_checkout_gets_no_review(api: Api) -> None:
+    """The user's own uncommitted work is not the chat's turn changing anything."""
+    repo = api.ctx.repos.get("repo").path
+    (repo / "mine.txt").write_text("the user's\n", encoding="utf-8")
+    api.provider.script(reply("Hello!"))
+
+    session_id = str((await create(api, mode="in_place", prompt="hi"))["id"])
+    await reach(api, session_id, "idle")
+    await notified(api, session_id, "finished")
+
+    assert await approvals(api) == []
+
+
+async def test_a_turn_that_undoes_the_work_withdraws_the_review(api: Api) -> None:
     session_id = await finished_with_changes(api)
-    await reject(api, session_id)
+    api.provider.script(remove(["fix.txt"], reply("Undone.")))
 
-    again = await reject(api, session_id)
+    await send(api, session_id, "undo that")
+    await reach(api, session_id, "idle", results=2)
+    await notified(api, session_id, "finished")
 
-    assert (again.status_code, again.json()["state"]) == (200, "idle")
-    (review,) = await approvals(api)
-    assert review["resolution"] == {"action": "rejected"}
+    assert [a["status"] for a in await approvals(api)] == ["superseded"]
 
 
-async def test_a_closed_chat_cannot_be_rejected(api: Api) -> None:
+async def test_sending_a_message_keeps_the_pending_review(api: Api) -> None:
     session_id = await finished_with_changes(api)
-    await api.http.delete(f"/api/sessions/{session_id}")
+    api.provider.script(hang())
 
-    refused = await reject(api, session_id)
+    sent = await send(api, session_id, "what did you change?")
+    await reach(api, session_id, "running")
 
-    assert refused.status_code == 409
-    (review,) = await approvals(api)
-    assert review["resolution"] != {"action": "rejected"}
+    assert sent.status_code == 202
+    assert [a["status"] for a in await approvals(api)] == ["pending"]
 
 
 async def test_feedback_supersedes_the_review_and_continues_the_session(api: Api) -> None:
@@ -1083,26 +969,24 @@ async def test_in_place_sessions_commit_only_the_chosen_files(api: Api) -> None:
     assert api.runner.gh_calls() == []
     after = (await api.http.get(f"/api/sessions/{session_id}/diff")).json()
     assert after["head"] == {"commit": approved.json()["commit_sha"], "branch": "main"}
-    assert after["commits"] == []
+    # The user's own file stays out of the commit, so it is still in the review.
+    assert [f["path"] for f in after["files"]] == ["mine.txt"]
 
 
-async def test_your_own_commits_on_the_pushed_branch_are_listed_too(api: Api) -> None:
-    """In place, a push publishes every commit on the branch, the user's own included."""
+async def test_your_own_commits_on_the_pushed_branch_go_with_the_work(api: Api) -> None:
+    """In place, a push publishes every commit on the branch, the user's own included, as a
+    push from Terminal would (B58).
+    """
     repo = api.ctx.repos.get("repo").path
     api.provider.script(edit({"agent.txt": "agent\n"}, reply("Done.")))
     session_id = str((await create(api, mode="in_place"))["id"])
     await reach(api, session_id, "idle")
     await notified(api, session_id, "review_ready")
     mine = commit_file(repo, "mine.txt")
-    url = f"/api/sessions/{session_id}"
     body = {**APPROVE, "open_pr": False, "files": ["agent.txt"]}
 
-    diff = (await api.http.get(f"{url}/diff")).json()
-    refused = await approve(api, session_id, body)
-    accepted = await approve(api, session_id, {**body, "acknowledge_violation": True})
+    accepted = await approve(api, session_id, body)
 
-    assert diff["commits"] == [{"sha": mine, "subject": "add mine.txt"}]
-    assert (refused.status_code, refused.json()["code"]) == (409, "git_violation")
     assert accepted.status_code == 200, accepted.text
     assert git(repo, "rev-parse", "HEAD^").strip() == mine
 
@@ -1221,7 +1105,6 @@ async def test_unknown_sessions_are_404(api: Api) -> None:
     for method, path in (
         ("GET", "/api/sessions/nope/diff"),
         ("POST", "/api/sessions/nope/approve"),
-        ("POST", "/api/sessions/nope/reject"),
         ("POST", "/api/sessions/nope/feedback"),
     ):
         body = (

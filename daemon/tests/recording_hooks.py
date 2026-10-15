@@ -18,9 +18,13 @@ class RecordingHooks:
         self.commands: list[tuple[str, CommandCatalog]] = []
         self.engine: list[EngineDetails] = []
         self.purges: list[str] = []
+        self.starts: list[tuple[str, SessionState]] = []
 
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))
+
+    async def turn_starting(self, session: Session) -> None:
+        self.starts.append((session.id, session.state))
 
     async def message(self, session_id: str) -> None:
         self.messages.append(session_id)

@@ -1,4 +1,7 @@
-"""A session's work as a diff: its working tree, untracked files included, against its base.
+"""A session's work as a diff: its working tree, untracked files included, against HEAD.
+
+The review covers what is not committed yet (B58): the agent may commit when the user
+asks, as in the terminal, and its commits are the chat's business, not the review's.
 
 The diff runs with the user's credentials in a tree the agent could change, so git runs
 with no hooks, fsmonitor, textconv, external diff or replace refs, and with the
@@ -22,8 +25,8 @@ from pathlib import Path
 from nestd.gitops.runner import GitError, run_git
 from nestd.gitops.safety import GIT_CONFIG_LIST, HARDENED, filter_overrides, repo_settings
 from nestd.review.diff_parser import PatchFile, RawEntry, by_path, parse_patch, parse_raw
-from nestd.review.head import read_head, unaccounted_commits
-from nestd.review.models import DiffStats, FileDiff, ReviewCommit, ReviewHead, SessionDiff
+from nestd.review.head import read_head
+from nestd.review.models import DiffStats, FileDiff, ReviewHead, SessionDiff
 from nestd.review.untracked import is_text, untracked_diff
 
 MAX_LINES_PER_FILE = 2000
@@ -33,12 +36,12 @@ GITLINK = "160000"
 GITMODULES = ".gitmodules"
 
 
-async def session_diff(cwd: Path, base: str | None, published: str | None = None) -> SessionDiff:
-    """The work in `cwd` against `base`; `published` is the work Nest last published
-    (the session's commit), whose commits on HEAD are accounted for.
-    """
-    ref = base or EMPTY_TREE
+async def session_diff(cwd: Path) -> SessionDiff:
+    """The changes in `cwd` that are not committed: staged, unstaged and untracked."""
     safe = await _safe_options(cwd)
+    # HEAD's commit, read once, so both diffs and the review name the same one.
+    head = await read_head(cwd, safe)
+    ref = head.commit or EMPTY_TREE
     # The same rename detection for both, so git lists the files in the same order.
     diff = [*safe, "diff", "--no-color", "--no-ext-diff", "--no-textconv"]
     diff += ["--ignore-submodules=dirty", "-M"]
@@ -62,19 +65,16 @@ async def session_diff(cwd: Path, base: str | None, published: str | None = None
         files.append(file)
         digests.append((path, digest))
     files.sort(key=lambda f: f.path)
-    head = await read_head(cwd, safe)
-    commits = await unaccounted_commits(cwd, safe, head.commit, base, published)
     return SessionDiff(
-        base=base,
+        base=head.commit,
         head=head,
-        commits=commits,
         files=files,
         stats=DiffStats(
             files=len(files),
             additions=sum(f.additions for f in files),
             deletions=sum(f.deletions for f in files),
         ),
-        fingerprint=_fingerprint(head, commits, files, statuses, patch, text_patch, digests),
+        fingerprint=_fingerprint(head, files, statuses, patch, text_patch, digests),
     )
 
 
@@ -138,7 +138,6 @@ async def _declared_submodules(cwd: Path, safe: Sequence[str], entries: list[Raw
 
 def _fingerprint(
     head: ReviewHead,
-    commits: list[ReviewCommit],
     files: list[FileDiff],
     *outputs: str | list[tuple[str, str]],
 ) -> str:
@@ -148,7 +147,6 @@ def _fingerprint(
     digest = sha256()
     parts = [
         head.model_dump_json(),
-        json.dumps([commit.model_dump() for commit in commits]),
         json.dumps([file.model_dump() for file in files]),
         *(json.dumps(output) for output in outputs),
     ]

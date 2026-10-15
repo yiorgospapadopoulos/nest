@@ -329,7 +329,7 @@ def crash(message: str) -> Turn:
 
 
 def commit(then: Turn) -> Turn:
-    """Commits in the session's working directory, as an agent bypassing the git block would."""
+    """Commits in the session's working directory, as Claude does when the user asks (B58)."""
 
     async def turn(run: FakeRun) -> None:
         commit_file(Path(run.spec.cwd), "sneaky.txt")

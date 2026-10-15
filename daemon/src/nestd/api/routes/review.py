@@ -19,15 +19,6 @@ async def approve(session_id: str, body: ApproveRequest, ctx: Context) -> Sessio
     return await ctx.reviews.approve(session_id, body)
 
 
-@router.post("/{session_id}/reject")
-async def reject(session_id: str, ctx: Context) -> Session:
-    """Dismiss the pending review; the session stays open with its files, worktree and
-    branch as they are, ready for a new message (B54). Without a pending review it
-    changes nothing; a closed session is a 409.
-    """
-    return await ctx.reviews.reject(session_id)
-
-
 @router.post("/{session_id}/feedback", status_code=status.HTTP_202_ACCEPTED)
 async def feedback(session_id: str, body: FeedbackRequest, ctx: Context) -> Session:
     """Send a note back into the same session."""

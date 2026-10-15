@@ -31,7 +31,6 @@ class SessionStore:
             worktree_path=None,
             branch=branch,
             provider_session_id=None,
-            git_violation=False,
             created_at=now,
             updated_at=now,
             last_error=None,

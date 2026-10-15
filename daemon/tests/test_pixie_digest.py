@@ -33,7 +33,6 @@ def chat(**fields: object) -> Session:
         "worktree_path": None,
         "branch": None,
         "provider_session_id": None,
-        "git_violation": False,
         "created_at": NOW,
         "updated_at": NOW,
         "last_error": None,

@@ -39,7 +39,7 @@ def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonV
         return _plan(body)
     if approval.kind is ApprovalKind.MERGE:
         return _merge(body)
-    msg = "reviews are resolved with the session's approve, reject or feedback actions"
+    msg = "reviews are resolved with the session's approve or feedback actions"
     raise InvalidInputError(msg)
 
 

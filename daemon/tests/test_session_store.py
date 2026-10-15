@@ -38,11 +38,18 @@ async def test_create_and_get(store: SessionStore, clock: FakeClock) -> None:
     assert len(session.id) == 32
     assert session.state is SessionState.STARTING
     assert session.created_at == session.updated_at == clock.current
-    assert session.git_violation is False
     assert session.provider_session_id is None
     assert session.base_ref is None
     assert (session.commit_sha, session.pr_url, session.allowed_tools) == (None, None, [])
     assert await store.get(session.id) == session
+
+
+async def test_sessions_no_longer_store_a_git_violation(db: Database) -> None:
+    """B58: the agent's own commits are no violation, so the flag's column is gone."""
+    columns = {row["name"] for row in await db.fetch_all("PRAGMA table_info(sessions)")}
+
+    assert "git_violation" not in columns
+    assert {"base_ref", "commit_sha"} <= columns
 
 
 async def test_an_in_place_session_records_its_starting_commit(store: SessionStore) -> None:
@@ -71,14 +78,13 @@ async def test_update_changes_fields_and_timestamp(store: SessionStore, clock: F
         session.id,
         state=SessionState.IDLE,
         worktree_path=Path("/wt"),
-        git_violation=True,
-        last_error=None,
+        last_error="it broke",
     )
 
     assert updated.state is SessionState.IDLE
     assert updated.worktree_path == Path("/wt")
     assert updated.cwd == Path("/repo")
-    assert updated.git_violation is True
+    assert updated.last_error == "it broke"
     assert updated.updated_at == clock.current
     assert updated.created_at == session.created_at
 

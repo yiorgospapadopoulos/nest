@@ -94,6 +94,7 @@ async def test_a_scheduled_habit_runs_in_a_fresh_session_and_ends_quiet(
     )
     assert session.cwd == agent.spec.cwd
     assert agent.spec.resume_id is None
+    assert agent.spec.guard_git is True
     assert (agent.spec.system_prompt_append or "").endswith(HABIT_RUN_NOTE)
     assert messages == ['Run your habit "Check":\nLook at CI.']
     assert (run.outcome, run.reason, run.ended_at) == ("quiet", None, clock.now())

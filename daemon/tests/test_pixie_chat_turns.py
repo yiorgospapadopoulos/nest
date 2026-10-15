@@ -70,6 +70,7 @@ async def test_a_pixie_chat_runs_with_its_extras_and_never_resumes(env: Env) -> 
     assert Path("/repos/web") in first.extra_dirs
     assert first.write_root == Path("/pixies/p1/workdir")
     assert first.resume_id is None
+    assert first.guard_git is True
     assert await env.manager.list_sessions() == []
     assert await env.manager.files(session.id, "") == []
 

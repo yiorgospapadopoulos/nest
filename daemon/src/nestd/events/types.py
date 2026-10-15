@@ -25,7 +25,6 @@ SESSION_DELTA: Final = "session.delta"
 # The main agent started (`{active: true}`) or finished a thinking block; ephemeral (D045).
 SESSION_THINKING: Final = "session.thinking"
 SESSION_RESULT: Final = "session.result"
-SESSION_GIT_VIOLATION: Final = "session.git_violation"
 # A note for the transcript, `{kind, text}`: compacted, cleared, model_fallback or
 # api_retry (the first of a turn). Clients show the text as a muted line.
 SESSION_NOTICE: Final = "session.notice"

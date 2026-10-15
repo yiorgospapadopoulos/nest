@@ -23,7 +23,6 @@ from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.gitops.remotes import REMOTE
 from nestd.providers.base import AgentProvider, ApprovalHandler, ModelOption, RewindResult
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.errors import (
@@ -35,7 +34,6 @@ from nestd.sessions.errors import (
 )
 from nestd.sessions.extras import RunExtrasSource
 from nestd.sessions.files import FileIndex
-from nestd.sessions.git_audit import with_own_changes
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import BYPASS, LiveSession
 from nestd.sessions.models import (
@@ -65,7 +63,7 @@ from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import ChatAgentsSource
 from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
-from nestd.sessions.updates import save_changes, set_git_violation
+from nestd.sessions.updates import save_changes
 from nestd.worktrees.manager import WorktreeManager
 
 # What a session following Claude Code's own mode shows until the engine reports it.
@@ -390,8 +388,9 @@ class SessionManager:
         the message starts as soon as it ends, ahead of the rest of the queue.
 
         Refused while Claude Code has the chat open elsewhere, since both would write it.
-        A pending review of the session's work is superseded: the work is changing. While
-        the daemon publishes the work, the message is queued and starts once that is done.
+        A pending review of the session's work stays: only a turn that changes the work
+        replaces it (B56). While the daemon publishes the work, the message is queued and
+        starts once that is done.
         """
         session = await self._store.get(session_id)
         require_open(session)
@@ -412,7 +411,9 @@ class SessionManager:
             return await self._enqueue(live, session, text, attachments, interrupt, sender)
         require_cwd(session)
         live.start(
-            lambda: self._turns.guard(live, self._send_turn(live, text, attachments, sender))
+            lambda: self._turns.guard(
+                live, self._turns.submit(live, text, attachments, sender=sender)
+            )
         )
         return SendResult(**session.model_dump())
 
@@ -435,12 +436,6 @@ class SessionManager:
         # What held the session may have ended while the message was stored (BUG-85).
         await self._turns.release_held(live)
         return SendResult(**session.model_dump(), queued_message=queued)
-
-    async def _send_turn(
-        self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
-    ) -> None:
-        await self._approvals.supersede(live.session_id, ApprovalKind.REVIEW)
-        await self._turns.submit(live, text, attachments, sender=sender)
 
     async def queued(self, session_id: str) -> list[QueuedMessage]:
         await self._store.get(session_id)
@@ -617,36 +612,10 @@ class SessionManager:
             if self._live.get(session_id) is live:
                 await self._turns.release_held(live)
 
-    async def audit_refs(self, session_id: str) -> None:
-        """Check what the publish uses right before the daemon publishes: HEAD, the branch
-        it names and that branch. A background command of the agent may have changed them
-        after the last turn's audit (D013 layer 4). A change sets `git_violation`. Other
-        refs, such as other chats' branches or those a fetch moves, are left to the next
-        turn-end audit (BUG-51). Without an audit in this process (after a restart) there
-        is nothing to compare with, and the refs as they are become the baseline.
-        """
-        live = self._live.setdefault(session_id, LiveSession(session_id))
-        await self._turns.audit(live, publishing=True)
-
-    async def set_git_violation(self, session_id: str, flagged: bool) -> Session:
-        """Flag what the agent did with git for the user to acknowledge, or clear the flag
-        once the user published anyway (BUG-50, BUG-51).
-        """
-        return await set_git_violation(self._store, self._bus, session_id, flagged)
-
     def background_running(self, session_id: str) -> bool:
         """Whether the agent reports background tasks running in this process (BUG-57)."""
         live = self._live.get(session_id)
         return live is not None and live.background_tasks > 0
-
-    async def refresh_refs(self, session_id: str) -> None:
-        """The daemon changed the session's refs itself (commit, push); the next turn's
-        ref audit (D013 layer 4) must not report that as the agent's doing, but still
-        reports any other change.
-        """
-        live = self._live.setdefault(session_id, LiveSession(session_id))
-        cwd = require_cwd(await self._store.get(session_id))
-        live.baseline = await with_own_changes(cwd, live.baseline, REMOTE)
 
     async def recover(self) -> None:
         """On startup, turns cut off by the previous process can only be resumed."""

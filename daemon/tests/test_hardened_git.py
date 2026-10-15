@@ -18,7 +18,6 @@ from nestd.gitops.safety import HARDENED
 from nestd.paths import AppPaths
 from nestd.repos.service import RepoService
 from nestd.sessions.files import FileIndex
-from nestd.sessions.git_audit import snapshot_refs, with_own_changes
 from nestd.worktrees.manager import WorktreeManager
 from tests.fakes import FakeClock
 from tests.git_support import git, init_repo
@@ -85,9 +84,6 @@ async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     manager = WorktreeManager(paths)
     worktree = await manager.create(repo, "0123456789", "task")
     await manager.head(repo)
-    baseline = await snapshot_refs(worktree.path)
-    await with_own_changes(worktree.path, baseline, "origin")
-    assert await snapshot_refs(plain) == {}
     await FileIndex(FakeClock(), ttl=timedelta(0)).search(worktree.path, "read")
     assert await repos.suggest_links(repo.name) == [".env"]
     (plain / ".git").mkdir()  # a stat says maybe; git says no

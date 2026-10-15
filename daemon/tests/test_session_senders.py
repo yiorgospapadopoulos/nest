@@ -10,6 +10,7 @@ from pydantic import JsonValue
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.sessions.models import CreateSession, Sender, SessionState
+from nestd.sessions.turns import GUARDED_PROMPT
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, reply
@@ -109,6 +110,11 @@ async def test_a_chat_a_pixie_starts_records_it_on_the_session_and_first_message
 
     assert (stored.started_by_pixie, stored.pixie_batch) == ("p1", "b1")
     assert stored.worktree_path is not None
+    # A pixie may never commit or push (D072, B58), nor the chats it starts.
+    (run,) = env.provider.runs
+    assert run.spec.guard_git is True
+    assert run.spec.system_prompt_append == GUARDED_PROMPT
+    assert "Do not run git commit, git push, gh pr create or gh pr merge" in GUARDED_PROMPT
     assert await senders(env, created.id) == [("List the files", "p1", None)]
 
 

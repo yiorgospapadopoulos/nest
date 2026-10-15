@@ -55,21 +55,14 @@ class ReviewHead(BaseModel):
     branch: str | None
 
 
-class ReviewCommit(BaseModel):
-    sha: str
-    subject: str
-
-
 class SessionDiff(BaseModel):
-    # The commit the work is compared with; None when the repository had no commits.
+    # The commit the work is compared with, HEAD's (B58); None when the repository has no
+    # commits.
     base: str | None
     head: ReviewHead
-    # Commits on HEAD that neither the base nor the work Nest published holds: made
-    # behind the review's back, they are published with the work (SEC-02), newest first.
-    commits: list[ReviewCommit]
     files: list[FileDiff]
     stats: DiffStats
-    # A sha256 (hex) of the head, the commits and every file's status, mode and content,
+    # A sha256 (hex) of the head and every file's status, mode and content,
     # shown or not; approving needs it, so it publishes only what the user saw.
     fingerprint: str
 
@@ -87,8 +80,6 @@ class ApproveRequest(BaseModel):
     pr_title: Text | None = None
     # Defaults to the session title and the agent's last summary.
     pr_body: str | None = None
-    # Publish even though the agent changed git refs itself (D013 layer 4).
-    acknowledge_violation: bool = False
     # HEAD's commit as the review showed it; approving is refused if HEAD moved since.
     expected_head: str | None = None
     # The review's fingerprint; approving is refused when the work no longer matches it.

@@ -230,11 +230,15 @@ class SessionSpec:
     write_root: Path | None = None
     # Claude Code skill names for this run; empty leaves Claude Code's default (all).
     skills: tuple[str, ...] = ()
-    # Permission rules that never prompt, and ones added to the git rules (D072).
+    # Permission rules that never prompt, and ones denied besides any git rules (D072).
     allowed_tools: tuple[str, ...] = ()
     disallowed_tools: tuple[str, ...] = ()
     # Subagents by the name the agent calls them with; fixed for the run's life (B40).
     subagents: Mapping[str, Subagent] = field(default_factory=dict[str, Subagent])
+    # Commits, pushes and pull request writes blocked, and git and gh without credentials
+    # (D013): pixie chats, habit runs and chats a pixie started (D072). A normal chat uses
+    # git and gh as in the terminal, with the user's own login (B58).
+    guard_git: bool = True
 
 
 @dataclass(frozen=True)

@@ -22,7 +22,7 @@ async def get_approval(approval_id: str, ctx: Context) -> Approval:
 
 @router.post("/{approval_id}/resolve")
 async def resolve_approval(approval_id: str, body: ResolveApproval, ctx: Context) -> Approval:
-    """Permissions, questions and plans; reviews use the session's approve, reject and
+    """Permissions, questions and plans; reviews use the session's approve and
     feedback. A plan approved in Auto mode needs a model that supports it (422).
     """
     approval = await ctx.approvals.get(approval_id)

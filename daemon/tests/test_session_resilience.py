@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from nestd.providers.base import McpServer, ResultInfo
-from nestd.sessions import turns
 from nestd.sessions.models import Session, SessionState, UpdateSession
 from nestd.storage.db import Database
 from tests.async_support import until
@@ -111,26 +110,6 @@ async def test_failing_hooks_never_end_the_run(
     assert [item.text for item in run.inputs][1:] == ["and then?"]
     assert "failed" not in await env.states(created.id)
     assert f"{kind} of session {created.id} failed (RuntimeError: {failing} broke)" in caplog.text
-
-
-async def test_a_failing_git_audit_still_ends_the_turn_and_keeps_the_run(
-    env: Env, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def broken(*_args: object) -> object:
-        raise OSError("refs unreadable")
-
-    monkeypatch.setattr(turns, "changed_refs", broken)
-    env.provider.script(reply("one"), reply("two"))
-
-    with caplog.at_level(logging.WARNING):
-        created = await env.create()
-        await until_results(env, created.id, 1)
-        await env.manager.send(created.id, "again", [])
-        await until_results(env, created.id, 2)
-
-    (run,) = env.provider.runs
-    assert run.closed is False
-    assert f"the git audit of session {created.id} failed (OSError: refs unreadable)" in caplog.text
 
 
 async def test_an_unreadable_queue_still_ends_the_turn(

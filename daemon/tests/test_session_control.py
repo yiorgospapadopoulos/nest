@@ -90,6 +90,21 @@ async def test_permission_prompt_waits_for_the_queue(env: Env) -> None:
     ]
 
 
+async def test_the_hooks_hear_when_a_message_starts_a_turn(env: Env) -> None:
+    """B56: a review compares with the work as the agent gets the message; a turn the agent
+    starts on its own has no such moment.
+    """
+    env.provider.script(reply("one"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+    (run,) = env.provider.runs
+
+    run.emit(reply("on my own"))
+    await until(lambda: env.hooks.states.count((created.id, SessionState.IDLE)) == 2)
+
+    assert env.hooks.starts == [(created.id, SessionState.RUNNING)]
+
+
 async def test_questions_wait_for_answers_from_the_queue(env: Env) -> None:
     request = QuestionRequest((Question("Which?", None, (QuestionOption("A"),), False),))
     env.provider.script(question(request, reply("thanks")))
@@ -388,22 +403,18 @@ async def test_errors_while_closing_a_run_are_ignored(env: Env) -> None:
     assert closed.state is SessionState.CLOSED
 
 
-async def test_ref_changes_during_a_turn_are_flagged(env: Env) -> None:
-    env.provider.script(reply("clean"), commit(reply("committed anyway")))
+async def test_a_commit_the_user_asked_for_is_not_flagged(env: Env) -> None:
+    """B58: Claude commits when asked, as in the terminal."""
+    env.provider.script(reply("clean"), commit(reply("committed")))
     created = await env.create()
-    clean = await env.reach(created.id, SessionState.IDLE)
+    await env.reach(created.id, SessionState.IDLE)
 
     await env.manager.send(created.id, "commit it", [])
     await until(lambda: len(env.provider.runs[0].inputs) == 2)
-    flagged = await env.reach(created.id, SessionState.IDLE)
+    committed = await env.reach(created.id, SessionState.IDLE)
 
-    assert clean.git_violation is False
-    assert flagged.git_violation is True
-    violation = next(
-        e for e in await env.bus.session_events(created.id) if e.type == types.SESSION_GIT_VIOLATION
-    )
-    refs = [change["ref"] for change in violation.payload["changes"]]  # type: ignore[index, union-attr]
-    assert refs == ["HEAD", f"refs/heads/{flagged.branch}"]
+    assert "git_violation" not in committed.model_dump()
+    assert "session.git_violation" not in {e.type for e in await env.bus.session_events(created.id)}
 
 
 async def test_recover_marks_in_flight_sessions_interrupted(env: Env) -> None:
@@ -529,7 +540,7 @@ async def test_a_message_is_queued_while_the_agent_works_on_its_own(env: Env) ->
     assert env.provider.runs[0].calls == [("interrupt", None)]
 
 
-async def test_agent_initiated_ref_changes_are_flagged(env: Env) -> None:
+async def test_a_commit_in_a_turn_the_agent_started_is_not_flagged(env: Env) -> None:
     env.provider.script(reply("ok"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)
@@ -537,7 +548,7 @@ async def test_agent_initiated_ref_changes_are_flagged(env: Env) -> None:
     env.provider.runs[0].emit(commit(reply("committed later")))
     await until_results(env, created.id, 2)
 
-    assert (await env.store.get(created.id)).git_violation is True
+    assert "session.git_violation" not in {e.type for e in await env.bus.session_events(created.id)}
 
 
 async def test_idle_close_waits_for_background_tasks(env: Env) -> None:

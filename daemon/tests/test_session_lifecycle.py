@@ -62,6 +62,12 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     assert run.spec.resume_id is None
     assert run.spec.extra_dirs == ()
     assert run.spec.system_prompt_append == NEST_PROMPT
+    # B58: Claude commits when asked; it pushes or opens a pull request only when told to.
+    assert run.spec.guard_git is False
+    assert NEST_PROMPT.startswith(
+        "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
+        "request only when the user explicitly asks for it in this chat."
+    )
     # Claude Code tells SDK hosts which MCP servers need sign-in; replies should still
     # read like the Claude app's, which does not list them unprompted.
     assert "MCP servers" in NEST_PROMPT

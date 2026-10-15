@@ -121,7 +121,7 @@ async def test_reviews_and_unknown_items_cannot_be_resolved_here(api: Api) -> No
     bad_status = await api.http.get("/api/approvals", params={"status": "maybe"})
 
     assert as_review.status_code == 422
-    assert "approve, reject or feedback" in as_review.json()["detail"]
+    assert "approve or feedback" in as_review.json()["detail"]
     assert unknown.status_code == 404
     assert missing.status_code == 404
     assert fetched.json() == review

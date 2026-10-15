@@ -64,17 +64,29 @@ class SessionReactions:
         # A habit run speaks only through its reports (B42).
         quiet = session.habit_run_id is not None
         if session.state is SessionState.IDLE and not quiet:
-            # The agent may have made a plain folder a git repository (D041); a plain
-            # folder and a pixie chat have nothing to review (D072).
-            git = session.pixie_id is None and await self._repos.has_git(session.repo)
             # A review announces itself; otherwise the user hears the turn finished.
-            if not git or await self._reviews.turn_ended(session) is None:
+            if (
+                not await self._reviewable(session)
+                or await self._reviews.turn_ended(session) is None
+            ):
                 await self._notify(session, "finished", tracker.summary or "The turn finished.")
         elif session.state is SessionState.FAILED and not quiet:
             await self._notify(session, "failed", session.last_error or "The session failed.")
         # After the review: a follower sees whether the turn's work is ready for review.
         for follower in self._followers:
             await follower.state_changed(session)
+
+    async def turn_starting(self, session: Session) -> None:
+        """Note the work before the agent gets the message, for the turn's end to compare
+        with (B56). Queued turns that follow without an idle between are one run: the first
+        start counts. A turn the agent starts on its own, say after background work changed
+        files, has no start and is reviewed as it is.
+        """
+        quiet = session.habit_run_id is not None
+        if quiet or self._reviews.has_start(session.id):
+            return
+        if await self._reviewable(session):
+            await self._reviews.turn_started(session)
 
     async def message(self, session_id: str) -> None:
         await self._tracking.sync(session_id)
@@ -96,8 +108,15 @@ class SessionReactions:
 
     async def purged(self, session_id: str) -> None:
         self._tracking.forget(session_id)
+        self._reviews.forget(session_id)
         for follower in self._followers:
             await follower.purged(session_id)
+
+    async def _reviewable(self, session: Session) -> bool:
+        """The agent may have made a plain folder a git repository (D041); a plain folder
+        and a pixie chat have nothing to review (D072).
+        """
+        return session.pixie_id is None and await self._repos.has_git(session.repo)
 
     async def _notify(self, session: Session, kind: NotifyKind, text: str) -> None:
         await self._notifier.notify(

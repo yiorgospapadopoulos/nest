@@ -25,23 +25,6 @@ class NothingToCommitError(ConflictError):
     pass
 
 
-class GitViolationError(ConflictError):
-    """The agent changed git refs itself, or HEAD holds commits the review never showed;
-    publishing needs the user's acknowledgement (D013 layer 4, SEC-02).
-    """
-
-    code = "git_violation"
-
-    def __init__(self) -> None:
-        super().__init__(
-            "The agent, or another program, changed git branches or commits outside "
-            "Nest. Check what changed, then confirm that you want to publish anyway."
-        )
-
-    def payload(self) -> dict[str, JsonValue]:
-        return {"detail": str(self), "code": self.code}
-
-
 class HeadChangedError(ConflictError):
     """HEAD is not the commit the review showed (SEC-02)."""
 
@@ -57,19 +40,8 @@ class HeadChangedError(ConflictError):
         return {"detail": str(self), "code": self.code}
 
 
-class HiddenHistoryError(ConflictError):
-    """Grafts or a shallow boundary make git skip commits a push would publish, so the
-    review cannot list them (SEC-13).
-    """
-
-    code = "hidden_history"
-
-    def payload(self) -> dict[str, JsonValue]:
-        return {"detail": str(self), "code": self.code}
-
-
 class ReviewChangedError(ConflictError):
-    """The work, HEAD or its commits differ from the review the user approved."""
+    """The work, HEAD or its branch differ from the review the user approved."""
 
     code = "review_changed"
 

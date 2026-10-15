@@ -290,6 +290,9 @@ class BrokenHooks:
     async def state_changed(self, session: Session) -> None:
         raise LookupError("state")
 
+    async def turn_starting(self, session: Session) -> None:
+        raise LookupError("start")
+
     async def message(self, session_id: str) -> None:
         raise LookupError("message")
 

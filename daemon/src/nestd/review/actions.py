@@ -1,13 +1,13 @@
-"""Approve, reject or send feedback on a session's work.
+"""Approve or send feedback on a session's work.
 
 Approving commits, pushes and opens a pull request with the daemon's credentials; the
 pending review is resolved only when every step succeeded, so a failure can be retried.
 
-Approving waits for the agent's background tasks (BUG-57), refuses a HEAD other than the
-one the review showed and work that differs from the review (its fingerprint), and needs
-the user's acknowledgement when the agent changed what the publish uses, or HEAD holds
-commits the review diff never showed (SEC-02). A refusal's text is shown to the user as it
-is, so it names no API field.
+The review covers the changes not committed yet (B58): the agent may commit when the user
+asks, and a push sends its commits with Nest's. Approving waits for the agent's background
+tasks (BUG-57), and refuses a HEAD other than the one the review showed and work that
+differs from the review (its fingerprint, which covers HEAD and its branch too). A
+refusal's text is shown to the user as it is, so it names no API field.
 """
 
 import asyncio
@@ -28,7 +28,6 @@ from nestd.review.checks import index_flagged, uses_lfs
 from nestd.review.diffs import session_diff
 from nestd.review.errors import (
     BackgroundRunningError,
-    GitViolationError,
     HeadChangedError,
     IndexFlagsError,
     LfsUnsupportedError,
@@ -68,46 +67,33 @@ class ReviewActions:
         session = await self._sessions.get(session_id)
         await self._repos.require_git(session.repo)
         cwd = require_workspace(session)
-        return await session_diff(cwd, session.base_ref, session.commit_sha)
+        return await session_diff(cwd)
 
     async def approve(self, session_id: str, request: ApproveRequest) -> Session:
         # Refused, in this order (409 unless noted): a turn still running; background tasks
-        # (`background_running`); a missing working folder; not a git project; a review that
-        # cannot list every commit (`hidden_history`); HEAD moved since the review
-        # (`head_changed`); work that differs from the review (`review_changed`); git-lfs
-        # (`lfs_unsupported`); unacknowledged ref changes or commits (`git_violation`); an
-        # invalid request (422, or 409 for a pull request from a chat in the checkout); a
-        # nested repository among the files to commit (`nested_repository`); index flags on
-        # them (`index_flags`); a remote URL to confirm that origin does not push to
-        # (`remote_changed`); then the publisher's own checks, in `GitPublisher.publish`.
+        # (`background_running`); a missing working folder; not a git project; HEAD moved
+        # since the review (`head_changed`); work that differs from the review
+        # (`review_changed`); git-lfs (`lfs_unsupported`); an invalid request (422, or 409
+        # for a pull request from a chat in the checkout); a nested repository among the
+        # files to commit (`nested_repository`); index flags on them (`index_flags`); a
+        # remote URL to confirm that origin does not push to (`remote_changed`); then the
+        # publisher's own checks, in `GitPublisher.publish`.
         async with self._lock(session_id), self._sessions.publishing(session_id):
             session = await self._idle(session_id)
             cwd = require_workspace(session)
             await self._repos.require_git(session.repo)
-            await self._sessions.audit_refs(session_id)
-            diff = await session_diff(cwd, session.base_ref, session.commit_sha)
-            if diff.commits:
-                await self._sessions.set_git_violation(session_id, True)
+            diff = await session_diff(cwd)
             if request.expected_head is not None and diff.head.commit != request.expected_head:
                 raise HeadChangedError
             if diff.fingerprint != request.expected_fingerprint:
                 raise ReviewChangedError
             if await uses_lfs(cwd):
                 raise LfsUnsupportedError
-            session = await self._sessions.get(session_id)
-            if session.git_violation and not request.acknowledge_violation:
-                raise GitViolationError
             plan = await self._plan(session, request, diff)
             await self._require_committable(cwd, diff, plan)
             if plan.push:
                 plan = replace(plan, remote_url=await self._remote_url(session, request))
-            try:
-                session = await self._publisher.publish(session, plan)
-            finally:
-                await self._sessions.refresh_refs(session_id)
-            if session.git_violation:
-                # The user published anyway: what was flagged is now part of the work.
-                session = await self._sessions.set_git_violation(session_id, False)
+            session = await self._publisher.publish(session, plan)
             if plan.push and session.pr_url is not None:
                 # A new pull request, or new commits on one: read it without waiting.
                 self._prs.check_soon(session_id)
@@ -122,19 +108,10 @@ class ReviewActions:
             )
             return session
 
-    async def reject(self, session_id: str) -> Session:
-        """Dismiss the pending review and keep the chat open with its work: no file is
-        restored and no worktree or branch removed, so the user can say what to change
-        (B54). Without a pending review it changes nothing.
-        """
-        async with self._lock(session_id):
-            session = await self._sessions.get(session_id)
-            require_open(session)
-            await self._resolve_review(session_id, {"action": "rejected"})
-            return session
-
     async def feedback(self, session_id: str, text: str) -> Session:
-        """Send the user's note into the same session; that supersedes the review."""
+        """Send the user's note into the same session; a turn that changes the work replaces
+        the review (B56).
+        """
         return await self._sessions.send(session_id, text, [])
 
     async def _idle(self, session_id: str) -> Session:

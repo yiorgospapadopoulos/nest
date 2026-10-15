@@ -17,6 +17,12 @@ class SessionHooks(Protocol):
         """The session moved to `session.state`; called after the state event."""
         ...
 
+    async def turn_starting(self, session: Session) -> None:
+        """A message is about to go to the agent, after the session's running state; a turn
+        the agent starts on its own has no such moment (B56).
+        """
+        ...
+
     async def message(self, session_id: str) -> None:
         """The agent's transcript grew by a message or task event."""
         ...

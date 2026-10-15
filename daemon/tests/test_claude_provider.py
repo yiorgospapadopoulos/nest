@@ -111,6 +111,9 @@ def test_provider_name(tmp_path: Path) -> None:
 
 
 async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
+    """A guarded run (a pixie's, D072): git writes are blocked and git and gh have no
+    credentials (D013).
+    """
     opened = Opened(tmp_path)
     spec = SessionSpec(
         cwd=tmp_path / "wt",
@@ -120,6 +123,7 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
         resume_id="sdk-0",
         extra_dirs=(tmp_path / "a1", tmp_path / "a2"),
         system_prompt_append="Do not commit.",
+        guard_git=True,
     )
 
     _, client = await opened.open(spec)
@@ -164,6 +168,40 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
         "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
         "DISABLE_MICROCOMPACT": "1",
     }
+
+
+async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) -> None:
+    """B58: Claude commits when asked, and pushes or opens a pull request when the user
+    says so, with the user's own git and gh login: no git block and no credential changes.
+    """
+    spec = SessionSpec(
+        cwd=tmp_path, permission_mode="default", disallowed_tools=("WebFetch",), guard_git=False
+    )
+
+    _, client = await Opened(tmp_path).open(spec)
+
+    options = client.options
+    assert options.disallowed_tools == ["WebFetch"]
+    assert options.hooks is not None
+    assert [m.matcher for m in options.hooks["PreToolUse"]] == ["AskUserQuestion"]
+    assert all(block_git_writes not in m.hooks for m in options.hooks["PreToolUse"])
+    assert options.env == {
+        "MCP_CONNECTION_NONBLOCKING": "true",
+        "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
+        "DISABLE_MICROCOMPACT": "1",
+    }
+
+
+def test_a_run_is_guarded_unless_it_says_otherwise(tmp_path: Path) -> None:
+    options = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default"),
+        ScriptedHandler(PermissionDecision("allow")),
+        tmp_path / "agent-gh",
+    )
+
+    assert options.disallowed_tools == list(GIT_WRITE_RULES)
+    assert options.env is not None
+    assert options.env["GH_CONFIG_DIR"] == str(tmp_path / "agent-gh")
 
 
 async def test_a_stream_message_over_a_megabyte_reaches_the_reader(

@@ -82,7 +82,8 @@ async def test_chats_in_a_plain_folder_work_in_place_without_git(api: Api, folde
         )
     assert (await api.http.get("/api/approvals")).json() == []
     stored = (await api.http.get(f"/api/sessions/{asked['id']}")).json()
-    assert (stored["git_violation"], stored["last_error"]) == (False, None)
+    assert stored["last_error"] is None
+    assert "git_violation" not in stored
     files = await api.http.get(f"/api/sessions/{asked['id']}/files", params={"q": "todo"})
     assert files.json() == {"files": []}
 
@@ -146,3 +147,4 @@ async def test_the_agent_is_promised_no_review_commit_or_pull_request(api: Api) 
     for promise in ("approve", "commits", "pull request"):
         assert promise not in prompt
     assert "only when the user asks" in prompt
+    assert api.provider.runs[0].spec.guard_git is False

@@ -85,15 +85,12 @@ class LiveSession:
     # The user message event the agent was last given, until the engine echoes it with its
     # file checkpoint id (IMP-02).
     user_event: int | None = None
-    # Refs as the last audit saw them, for the next one (D013 layer 4); None before the
-    # first turn of this process.
-    baseline: dict[str, str] | None = None
     idle_task: asyncio.Task[None] | None = None
     # Reports that wait on the run's answer to a control request, off the reader of the
     # agent's messages (I-L); they end with the run.
     reports: set[asyncio.Task[None]] = field(default_factory=set[asyncio.Task[None]])
     # Cleared while a turn's end is announced, which makes its review: a message sent
-    # then waits, so it supersedes that review instead of running beside it (BUG-18).
+    # then waits, so its turn starts after that review instead of beside it (BUG-18).
     settled: asyncio.Event = field(default_factory=_set_event)
     # Cleared while the daemon commits, pushes or merges the session's work: messages
     # sent meanwhile are queued and a turn the agent starts on its own waits (BUG-14).

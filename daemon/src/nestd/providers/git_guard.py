@@ -1,4 +1,5 @@
 """Layers 1 and 2 of the agent git block (D013, D049): permission rules and a PreToolUse hook.
+Pixie chats, habit runs and chats a pixie started keep the block; other chats do not (B58).
 
 The hook runs for every tool, not only Bash. It denies:
 - a tool whose input holds a command line (`command`, `cmd`, `script`, `shell_command`,

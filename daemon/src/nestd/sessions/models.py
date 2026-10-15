@@ -86,7 +86,6 @@ class Session(NewSession):
     worktree_path: Path | None
     branch: str | None
     provider_session_id: str | None
-    git_violation: bool
     created_at: datetime
     updated_at: datetime
     last_error: str | None

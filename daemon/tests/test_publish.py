@@ -236,14 +236,18 @@ async def test_nothing_to_commit(env: Env) -> None:
         await env.publisher.publish(session, env.plan())
 
 
-async def test_work_the_agent_committed_itself_is_published_as_is(env: Env) -> None:
+async def test_work_the_agent_committed_itself_leaves_nothing_to_commit(env: Env) -> None:
+    """B58: the review covers what is not committed; the agent pushes its own commits when
+    the user asks it to.
+    """
     session = await env.worktree_session()
-    sha = commit_file(env.worktree, "sneaky.txt")
+    commit_file(env.worktree, "committed.txt")
 
-    published = await env.publisher.publish(session, env.plan(pull_request=None))
+    with pytest.raises(NothingToCommitError, match="no changes to commit"):
+        await env.publisher.publish(session, env.plan(pull_request=None))
 
-    assert published.commit_sha == sha
-    assert git(env.origin, "rev-parse", "agent/fix").strip() == sha
+    assert (await env.store.get(session.id)).commit_sha is None
+    assert "agent/fix" not in git(env.origin, "for-each-ref")
 
 
 HOOKS = (
