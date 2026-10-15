@@ -542,12 +542,13 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return "approved";
     },
 
+    /** Dismisses the review; the chat stays open with its changes (B54). */
     async rejectReview(review: Approval): Promise<boolean> {
       const updated = await attempt(() => api.reject(review.session_id));
       if (updated === null) return false;
       dispatch({ type: "session", session: updated });
       dispatch({ type: "approval", approval: { ...review, status: "resolved" } });
-      toast("Rejected. Nothing merged", "info");
+      toast("Review rejected. The changes stay; tell Claude what to change.", "info");
       return true;
     },
 

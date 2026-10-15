@@ -367,7 +367,6 @@ private struct ReviewBody: View {
     let style: ApprovalCard.Style
     @Environment(Shell.self) private var shell
     @State private var feedback = ""
-    @State private var confirmingReject = false
 
     var body: some View {
         let review = approval.review
@@ -423,32 +422,22 @@ private struct ReviewBody: View {
                 }
                 .padding(.top, 8)
             }
-            if confirmingReject {
-                RejectConfirmation(mode: session?.mode) {
-                    confirmingReject = false
-                    shell.reject(approval)
-                } cancel: {
-                    confirmingReject = false
+            ActionRow {
+                Button {
+                    shell.show(.publish(approval.id))
+                } label: {
+                    Text(
+                        session?.mode == .inPlace
+                            ? "Approve and commit" : "Approve and open PR"
+                    )
+                    .grows(style)
                 }
-            } else {
-                ActionRow {
-                    Button {
-                        shell.show(.publish(approval.id))
-                    } label: {
-                        Text(
-                            session?.mode == .inPlace
-                                ? "Approve and commit" : "Approve and open PR"
-                        )
-                        .grows(style)
-                    }
-                    .buttonStyle(.nest(.primary))
-                    .disabled(!git || (violation && !acknowledged))
-                    .help(git ? "" : "Not a git repository: nothing to commit")
-                    Button("Reject") {
-                        withAnimation(.smooth(duration: 0.2)) { confirmingReject = true }
-                    }
+                .buttonStyle(.nest(.primary))
+                .disabled(!git || (violation && !acknowledged))
+                .help(git ? "" : "Not a git repository: nothing to commit")
+                Button("Reject") { shell.reject(approval) }
                     .buttonStyle(.nest(.soft))
-                }
+                    .help("Reject the review; the changes stay and the chat continues")
             }
         }
     }
@@ -525,32 +514,6 @@ private struct FileList: View {
             }
         }
         .padding(.top, 8)
-    }
-}
-
-/// "Reject this work?" with the consequence and the two choices.
-struct RejectConfirmation: View {
-    let mode: SessionMode?
-    let reject: () -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Reject this work?").font(.ui(TypeSize.ui, .medium))
-            Text(RejectConsequence.of(mode))
-                .font(.ui(TypeSize.ui))
-                .foregroundStyle(Palette.t2)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                Button(action: reject) { Text("Reject").frame(maxWidth: .infinity) }
-                    .buttonStyle(.nest(.destructive))
-                Button(action: cancel) { Text("Cancel").frame(maxWidth: .infinity) }
-                    .buttonStyle(.nest(.soft))
-            }
-            .padding(.top, 5)
-        }
-        .padding(.top, 9)
-        .transition(.opacity)
     }
 }
 

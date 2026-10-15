@@ -64,7 +64,7 @@ export function fakeApi(): FakeApi {
     resolveApproval: vi.fn<Api["resolveApproval"]>(),
     diff: vi.fn<Api["diff"]>().mockResolvedValue(diff()),
     approve: vi.fn<Api["approve"]>().mockResolvedValue(session({ state: "idle" })),
-    reject: vi.fn<Api["reject"]>().mockResolvedValue(session({ state: "closed" })),
+    reject: vi.fn<Api["reject"]>().mockResolvedValue(session()),
     feedback: vi.fn<Api["feedback"]>().mockResolvedValue(session({ state: "running" })),
     ciFeedback: vi.fn<Api["ciFeedback"]>().mockResolvedValue(null),
     rewindPreview: vi.fn<Api["rewindPreview"]>().mockResolvedValue({

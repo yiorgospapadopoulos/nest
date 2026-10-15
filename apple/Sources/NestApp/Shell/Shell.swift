@@ -1358,16 +1358,18 @@ final class Shell {
         }
     }
 
-    /// Discards the work: the daemon closes the chat and removes its worktree and branch,
-    /// or for an in-place chat undoes Claude's file edits (B53). A refusal leaves it open.
+    /// Resolves the review as rejected: nothing is undone or closed, in either mode (B54),
+    /// so the chat comes forward with its composer focused to say what to change. A refusal
+    /// leaves the review pending.
     func reject(_ approval: Approval) {
         if overlay == .diff(approval.id) || overlay == .publish(approval.id) {
             close()
         }
-        let mode = sessions.session(approval.sessionID)?.mode
         run("Could not reject") {
             try await self.approvals.reject(approval)
-            self.show(RejectConsequence.done(approval.title, mode: mode), kind: .failed)
+            self.reveal(chat: approval.sessionID, in: approval.repo)
+            self.draft(for: approval.sessionID).wantsFocus = true
+            self.show(RejectConsequence.done(approval.title), kind: .info)
         }
     }
 

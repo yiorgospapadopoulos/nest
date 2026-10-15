@@ -228,8 +228,8 @@ private struct TranscriptRow: View {
             ThinkingRow(id: item.id, text: text, durationMS: duration)
         case .tool(let call):
             ToolRow(id: item.id, call: call)
-        case .approval(let id, let kind, let status):
-            ApprovalPlaceholder(id: id, kind: kind, status: status)
+        case .approval(let id, let kind, let status, let rejected):
+            ApprovalPlaceholder(id: id, kind: kind, status: status, rejected: rejected)
         case .result(let result):
             SystemLine(text: result.failure)
                 .frame(maxWidth: .infinity)
@@ -795,6 +795,7 @@ private struct ApprovalPlaceholder: View {
     let id: String
     let kind: ApprovalKind
     let status: ApprovalStatus
+    let rejected: Bool
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -807,6 +808,7 @@ private struct ApprovalPlaceholder: View {
     }
 
     private var resolvedText: String {
+        if rejected { return RejectConsequence.transcript }
         let what =
             switch kind {
             case .permission, .unknown: "Permission"

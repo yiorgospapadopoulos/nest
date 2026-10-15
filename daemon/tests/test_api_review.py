@@ -11,7 +11,7 @@ from pydantic import TypeAdapter
 
 from nestd.events import types
 from nestd.gitops.runner import CommandError
-from nestd.providers.base import AgentTask, MessageBlock, RewindResult
+from nestd.providers.base import AgentTask, MessageBlock
 from nestd.review import watch
 from nestd.review.models import SessionDiff
 from nestd.sessions.git_audit import HEAD_BRANCH
@@ -22,7 +22,6 @@ from tests.fake_provider import (
     background,
     commit,
     crash,
-    echoed,
     edit,
     hang,
     messages,
@@ -953,109 +952,81 @@ async def test_approval_waits_for_a_running_turn(api: Api) -> None:
     assert "wait until its turn ends" in response.json()["detail"]
 
 
-async def test_reject_discards_the_work(api: Api) -> None:
-    session_id = await finished_with_changes(api)
-    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
-
-    rejected = await api.http.post(f"/api/sessions/{session_id}/reject")
-    again = await api.http.post(f"/api/sessions/{session_id}/reject")
-    diff = await api.http.get(f"/api/sessions/{session_id}/diff")
-
-    assert rejected.json()["state"] == "closed"
-    (review,) = await approvals(api)
-    assert (review["status"], review["resolution"]) == ("resolved", {"action": "rejected"})
-    assert not exists(session["worktree_path"])
-    assert session["branch"] not in git(api.ctx.repos.get("repo").path, "branch")
-    assert again.status_code == 409
-    assert diff.status_code == 409
-
-
-async def in_place_with_checkpoints(api: Api) -> str:
-    """An in-place chat of two turns, each with its own file checkpoint."""
-    api.provider.script(echoed("msg-1", edit({"agent.txt": "agent\n"}, reply("Done."))))
-    session_id = str((await create(api, mode="in_place"))["id"])
-    await reach(api, session_id, "idle")
-    api.provider.script(echoed("msg-2", edit({"agent.txt": "more\n"}, reply("More."))))
-    await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "and more"})
-    await reach(api, session_id, "idle", results=2)
-    await notified(api, session_id, "review_ready", 2)
-    return session_id
+async def reject(api: Api, session_id: str) -> httpx.Response:
+    return await api.http.post(f"/api/sessions/{session_id}/reject")
 
 
 async def rewinds(api: Api) -> list[object]:
     return [args for run in api.provider.runs for name, args in run.calls if name == "rewind_files"]
 
 
-async def reject(api: Api, session_id: str) -> httpx.Response:
-    return await api.http.post(f"/api/sessions/{session_id}/reject")
-
-
-async def test_rejecting_a_worktree_chat_restores_no_files(api: Api) -> None:
-    session_id = await finished_with_changes(api)
-
-    rejected = await reject(api, session_id)
-
-    assert rejected.json()["state"] == "closed"
-    assert await rewinds(api) == []
-
-
-async def test_rejecting_an_in_place_chat_restores_the_files_from_its_first_message(
-    api: Api,
-) -> None:
-    session_id = await in_place_with_checkpoints(api)
-
-    rejected = await reject(api, session_id)
-
-    assert (rejected.status_code, rejected.json()["state"]) == (200, "closed")
-    assert await rewinds(api) == [("msg-1", False)]
-    resolutions = [r["resolution"] for r in await approvals(api)]
-    assert {"action": "rejected"} in resolutions
-    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
-    assert {"kind": "files_restored", "text": "Restored 1 file to before your message"} in [
-        e["payload"] for e in events if e["type"] == types.SESSION_NOTICE
-    ]
-
-
-async def test_an_in_place_chat_without_a_checkpoint_is_not_rejected(api: Api) -> None:
+async def test_rejecting_an_in_place_chat_keeps_its_files_and_the_chat_open(api: Api) -> None:
+    """B54: Reject only dismisses the review; nothing is restored or closed."""
     session_id, repo = await in_place_review(api)
 
-    refused = await reject(api, session_id)
+    rejected = await reject(api, session_id)
 
-    assert refused.status_code == 409
-    assert refused.json() == {
-        "detail": "Claude's edits in this chat cannot be restored: it has no file checkpoint.",
-        "code": "cannot_rewind",
-    }
+    assert (rejected.status_code, rejected.json()["state"]) == (200, "idle")
     assert await state_of(api, session_id) == "idle"
     assert (repo / "agent.txt").read_text(encoding="utf-8") == "agent\n"
+    assert await rewinds(api) == []
     (review,) = await approvals(api)
-    assert review["status"] == "pending"
+    assert (review["status"], review["resolution"]) == ("resolved", {"action": "rejected"})
 
 
-async def test_a_refused_restore_keeps_the_chat_and_its_review(api: Api) -> None:
-    session_id = await in_place_with_checkpoints(api)
-    api.provider.rewind = RewindResult(can_rewind=False, error="the checkpoint is gone")
+async def test_rejecting_a_worktree_chat_keeps_its_worktree_branch_and_chat(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    session = (await api.http.get(f"/api/sessions/{session_id}")).json()
+
+    rejected = await reject(api, session_id)
+    diff = await api.http.get(f"/api/sessions/{session_id}/diff")
+
+    assert (rejected.status_code, rejected.json()["state"]) == (200, "idle")
+    assert exists(session["worktree_path"])
+    assert (Path(session["worktree_path"]) / "fix.txt").read_text(encoding="utf-8") == "fixed\n"
+    assert session["branch"] in git(api.ctx.repos.get("repo").path, "branch")
+    assert [f["path"] for f in diff.json()["files"]] == ["fix.txt"]
+    (review,) = await approvals(api)
+    assert (review["status"], review["resolution"]) == ("resolved", {"action": "rejected"})
+
+
+async def test_after_a_reject_the_chat_takes_a_message_and_a_new_review(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    await reject(api, session_id)
+    api.provider.script(edit({"fix.txt": "fixed better\n"}, reply("Improved.")))
+
+    sent = await api.http.post(
+        f"/api/sessions/{session_id}/messages", json={"text": "Handle the edge case"}
+    )
+    await reach(api, session_id, "idle", results=2)
+    await notified(api, session_id, "review_ready", 2)
+
+    assert sent.status_code == 202
+    first, second = await approvals(api)
+    assert (first["status"], first["resolution"]) == ("resolved", {"action": "rejected"})
+    assert (second["status"], second["payload"]["summary"]) == ("pending", "Improved.")
+
+
+async def test_rejecting_without_a_pending_review_changes_nothing(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    await reject(api, session_id)
+
+    again = await reject(api, session_id)
+
+    assert (again.status_code, again.json()["state"]) == (200, "idle")
+    (review,) = await approvals(api)
+    assert review["resolution"] == {"action": "rejected"}
+
+
+async def test_a_closed_chat_cannot_be_rejected(api: Api) -> None:
+    session_id = await finished_with_changes(api)
+    await api.http.delete(f"/api/sessions/{session_id}")
 
     refused = await reject(api, session_id)
 
     assert refused.status_code == 409
-    assert refused.json() == {"detail": "the checkpoint is gone", "code": "cannot_rewind"}
-    assert await state_of(api, session_id) == "idle"
-    assert [r["status"] for r in await approvals(api)].count("pending") == 1
-
-
-async def test_rejecting_an_in_place_chat_waits_for_its_turn(api: Api) -> None:
-    api.provider.script(echoed("msg-1", hang()))
-    session_id = str((await create(api, mode="in_place"))["id"])
-    await reach(api, session_id, "running")
-
-    async def refused() -> bool:
-        # Once the engine's echo gave the message its checkpoint.
-        response = await reject(api, session_id)
-        return response.status_code == 409 and "no turn is running" in response.json()["detail"]
-
-    await until(refused)
-    assert await state_of(api, session_id) == "running"
+    (review,) = await approvals(api)
+    assert review["resolution"] != {"action": "rejected"}
 
 
 async def test_feedback_supersedes_the_review_and_continues_the_session(api: Api) -> None:

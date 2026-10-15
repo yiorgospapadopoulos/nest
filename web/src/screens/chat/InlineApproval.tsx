@@ -6,11 +6,7 @@ import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { useMerge, usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import {
-  RejectConfirmation,
-  RemoteConfirmation,
-  ViolationNotice,
-} from "../approvals/ReviewGuards.tsx";
+import { RemoteConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
 
 interface Props {
   approval: Approval;
@@ -98,6 +94,11 @@ function InlineReview({ approval, session }: Props) {
   const review = useReview(approval, session);
   const [diffOpen, setDiffOpen] = useState(false);
   const approve = () => void review.approve(review.title);
+  // The chat stays open after a reject: its message field is next, to say what to change.
+  const reject = () =>
+    void review.reject(() => {
+      document.getElementById("composer")?.focus();
+    });
   return (
     <div className="ask rv" role="group" aria-label="Ready for review">
       <div className="ask-h">
@@ -141,14 +142,13 @@ function InlineReview({ approval, session }: Props) {
               >
                 {review.approveLabel}
               </button>
-              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
+              <button className="b b-no" disabled={review.busy} onClick={reject}>
                 Reject
               </button>
             </>
           }
         />
       )}
-      <RejectConfirmation review={review} />
       <RemoteConfirmation review={review} />
     </div>
   );

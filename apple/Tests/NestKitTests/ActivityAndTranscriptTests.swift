@@ -259,6 +259,30 @@ import Testing
             ])
     }
 
+    @Test func aRejectedReviewIsMarkedRejected() async throws {
+        // Its transcript line says the changes stay (B54); an approved review's does not.
+        let transcript = TranscriptStore(sessionID: "s1", api: api)
+        try await transcript.load()
+        var rejected = Fixture.approval("ap-review")
+        rejected.status = .resolved
+        rejected.resolution = .object(["action": .string("rejected")])
+        var approved = rejected
+        approved.id = "ap-approved"
+        approved.resolution = .object(["pr_url": .string("https://github.com/me/x/pull/1")])
+        for (id, approval) in [rejected, approved].enumerated() {
+            transcript.receive(
+                Fixture.event(
+                    EventType.approvalResolved, "{\"approval\": \(Fixture.json(approval))}",
+                    id: id + 1))
+        }
+        #expect(
+            transcript.items.map(\.content) == [
+                .approval(id: "ap-review", kind: .review, status: .resolved, rejected: true),
+                .approval(id: "ap-approved", kind: .review, status: .resolved),
+            ])
+        #expect(RejectConsequence.transcript == "Rejected. Changes kept, nothing committed")
+    }
+
     @Test func liveEventsBeforeTheHistoryWaitAndDuplicatesAreSkipped() async throws {
         let transcript = TranscriptStore(sessionID: sessionID, api: api)
         let replayed = Fixture.events[10]

@@ -198,14 +198,6 @@ class SessionStore:
         )
         return None if row is None else row["checkpoint_id"]
 
-    async def first_checkpoint(self, session_id: str) -> int | None:
-        """The user message event of the session's earliest file checkpoint, if any."""
-        row = await self._db.fetch_one(
-            "SELECT event_id FROM checkpoints WHERE session_id = ? ORDER BY event_id LIMIT 1",
-            (session_id,),
-        )
-        return None if row is None else row["event_id"]
-
     async def interrupt_in_flight(self) -> list[str]:
         """After a restart, turns that were in progress can only be resumed."""
         placeholders = ", ".join("?" for _ in IN_FLIGHT)

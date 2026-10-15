@@ -61,8 +61,10 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         /// Thinking text, with how long it took when known.
         case thinking(String, durationMS: Int?)
         case tool(ToolCall)
-        /// An inline marker for an approval of this session.
-        case approval(id: String, kind: ApprovalKind, status: ApprovalStatus)
+        /// An inline marker for an approval of this session; `rejected` for a review the
+        /// user rejected, whose line says the changes stay (B54).
+        case approval(
+            id: String, kind: ApprovalKind, status: ApprovalStatus, rejected: Bool = false)
         case result(TurnResult)
         /// The end of a turn whose length is known: "Worked for 1m 12s".
         case turnEnd(TurnEnd)
@@ -674,7 +676,9 @@ public final class TranscriptStore {
 
     private func mark(_ approval: Approval, _ eventID: Int?) {
         let content = TranscriptItem.Content.approval(
-            id: approval.id, kind: approval.kind, status: approval.status)
+            id: approval.id, kind: approval.kind, status: approval.status,
+            rejected: approval.kind == .review
+                && approval.resolution?["action"]?.stringValue == "rejected")
         if let index = items.firstIndex(where: { $0.id == approval.id }) {
             items[index].content = content
         } else {

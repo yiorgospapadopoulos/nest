@@ -32,30 +32,6 @@ export function ViolationNotice({ review }: { review: Review }) {
   );
 }
 
-/** Asks before rejecting, saying what happens to the work, with the Mac's words. */
-export function RejectConfirmation({ review }: { review: Review }) {
-  if (!review.rejecting) return null;
-  return (
-    <ActionSheet
-      label="Reject this work?"
-      role="alertdialog"
-      onClose={review.cancelReject}
-      title={
-        <>
-          <b>Reject this work?</b>
-          {review.inPlace
-            ? "The chat closes and the files Claude edited go back to how they were before the chat. Changes made by commands it ran are not undone."
-            : "The chat closes and its worktree and branch are removed. Nothing is merged."}
-        </>
-      }
-    >
-      <button className="asi dng mid" onClick={() => void review.reject()}>
-        Reject
-      </button>
-    </ActionSheet>
-  );
-}
-
 /**
  * Publishing waits until the user confirms where origin pushes (D050). With one address,
  * "Push there" approves again with it; otherwise origin needs fixing on the Mac first.

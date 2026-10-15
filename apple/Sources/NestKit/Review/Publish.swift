@@ -14,22 +14,15 @@ public enum PublishStepKind: String, Sendable, CaseIterable {
     }
 }
 
-/// What rejecting a review does to the chat's changes, for its confirmation and toast: an
-/// in-place chat has no worktree to remove, so the daemon undoes Claude's file edits in
-/// the folder instead (B53).
+/// What rejecting a review does: it only resolves the review, for an in-place or a
+/// worktree chat alike; the changes stay and the chat stays open to say what to change (B54).
 public enum RejectConsequence {
-    public static func of(_ mode: SessionMode?) -> String {
-        mode == .inPlace
-            ? "The chat closes and the files Claude edited go back to how they were before it. "
-                + "Changes made by commands it ran are not undone."
-            : "The chat closes and its worktree and branch are removed. Nothing is merged."
-    }
+    /// The transcript's line for a rejected review.
+    public static let transcript = "Rejected. Changes kept, nothing committed"
 
     /// The toast after rejecting.
-    public static func done(_ title: String, mode: SessionMode?) -> String {
-        mode == .inPlace
-            ? "Rejected \(title). Claude's edits were undone"
-            : "Rejected \(title). Nothing was merged"
+    public static func done(_ title: String) -> String {
+        "Rejected \(title). The changes stay; tell Claude what to change."
     }
 }
 

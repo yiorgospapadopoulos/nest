@@ -5,25 +5,11 @@ import Testing
 
 @MainActor
 @Suite struct RejectConsequenceTests {
-    @Test func rejectingSaysWhatHappensToTheChatsChanges() {
-        // The daemon undoes an in-place chat's edits by Claude when it is rejected (B53).
+    @Test func theToastSaysTheChangesStayAndTheChatContinues() {
+        // Rejecting only resolves the review: nothing is undone or closed, in either mode (B54).
         #expect(
-            RejectConsequence.of(.inPlace)
-                == "The chat closes and the files Claude edited go back to how they were before it. Changes made by commands it ran are not undone."
-        )
-        #expect(
-            RejectConsequence.of(.worktree)
-                == "The chat closes and its worktree and branch are removed. Nothing is merged.")
-        #expect(RejectConsequence.of(nil) == RejectConsequence.of(.worktree))
-    }
-
-    @Test func theToastSaysWhatHappenedToTheEdits() {
-        #expect(
-            RejectConsequence.done("Fix", mode: .inPlace)
-                == "Rejected Fix. Claude's edits were undone")
-        #expect(
-            RejectConsequence.done("Fix", mode: .worktree) == "Rejected Fix. Nothing was merged")
-        #expect(RejectConsequence.done("Fix", mode: nil) == "Rejected Fix. Nothing was merged")
+            RejectConsequence.done("Fix")
+                == "Rejected Fix. The changes stay; tell Claude what to change.")
     }
 }
 

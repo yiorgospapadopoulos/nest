@@ -481,10 +481,6 @@ class SessionManager:
             await self._turns.apply_controls(live)
         return session
 
-    async def first_checkpoint(self, session_id: str) -> int | None:
-        """The user message the chat's earliest file checkpoint belongs to (B53)."""
-        return await self._store.first_checkpoint(session_id)
-
     async def rewind(self, session_id: str, event_id: int, dry_run: bool) -> RewindResult:
         """Restore the files the agent changed since the user message of event `event_id`
         to how they were before it, or with `dry_run` say what that would change. Only

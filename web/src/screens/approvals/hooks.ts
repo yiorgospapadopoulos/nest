@@ -110,8 +110,6 @@ export function useReview(approval: Approval, session: Session | undefined) {
   // and asks again when the review they checked changes.
   const [checked, setChecked] = useState<string | null>(null);
   const acknowledged = checked !== null && checked === reviewed;
-  // Reject asks first, from a button or a swipe.
-  const [rejecting, setRejecting] = useState(false);
   // Publishing waits for the push address to be confirmed, with the message it was for.
   const [remote, setRemote] = useState<(RemotePrompt & { message: string }) | null>(null);
   const view = reviewOf(approval);
@@ -169,17 +167,13 @@ export function useReview(approval: Approval, session: Session | undefined) {
       setRemote(null);
       return publish(message, url);
     },
-    rejecting,
-    askReject: () => {
-      setRejecting(true);
-    },
-    cancelReject: () => {
-      setRejecting(false);
-    },
-    reject: () => {
-      setRejecting(false);
-      return run(() => actions.rejectReview(approval));
-    },
+    // Nothing is lost, so it asks nothing; `then` takes the user to the chat's message field.
+    reject: (then: () => void) =>
+      run(async () => {
+        const rejected = await actions.rejectReview(approval);
+        if (rejected) then();
+        return rejected;
+      }),
     feedback: (text: string) => run(() => actions.feedback(approval, text)),
   };
 }

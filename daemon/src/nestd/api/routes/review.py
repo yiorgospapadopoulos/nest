@@ -21,10 +21,9 @@ async def approve(session_id: str, body: ApproveRequest, ctx: Context) -> Sessio
 
 @router.post("/{session_id}/reject")
 async def reject(session_id: str, ctx: Context) -> Session:
-    """Discard the work and close the session. A worktree session's worktree and branch
-    are removed; a session in the checkout first has the files Claude edited restored to
-    before its first message, and with no file checkpoint, or a refused restore, it is a
-    409 and the session stays open (B53).
+    """Dismiss the pending review; the session stays open with its files, worktree and
+    branch as they are, ready for a new message (B54). Without a pending review it
+    changes nothing; a closed session is a 409.
     """
     return await ctx.reviews.reject(session_id)
 

@@ -364,24 +364,24 @@ describe("review cards", () => {
 
   it("swipe to approve or reject", async () => {
     const api = withItems([review(), review({ id: "q4", session_id: "s2" })]);
-    const { user } = await renderApp({ api });
+    await renderApp({ api });
 
     const [first, second] = screen.getAllByRole("article");
     await reviewLoaded();
-    swipe(defined(second), -150);
-    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
-    expect(api.reject).not.toHaveBeenCalled();
-    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     swipe(defined(first), 150);
+    await waitFor(() => {
+      expect(api.approve).toHaveBeenCalledWith("s1", {
+        commit_message: "Validate contact form",
+        ...SEEN,
+      });
+    });
+    // Nothing is lost by rejecting, so a swipe rejects at once.
+    swipe(defined(second), -150);
 
     await waitFor(() => {
       expect(api.reject).toHaveBeenCalledWith("s2");
     });
-    expect(api.approve).toHaveBeenCalledWith("s1", {
-      commit_message: "Validate contact form",
-      ...SEEN,
-    });
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("name what a swipe to approve does", async () => {
@@ -443,40 +443,35 @@ describe("review cards", () => {
     expect(await screen.findByText("All clear")).toBeInTheDocument();
   });
 
-  it("reject the work after confirming", async () => {
+  it("reject without asking, then open the chat to say what to change", async () => {
     const api = withItems([review()]);
     api.reject.mockRejectedValueOnce(new ApiError(502, "push failed"));
     const { user } = await renderApp({ api });
-    const reject = async () => {
-      await user.click(screen.getByRole("button", { name: "Reject" }));
-      const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
-      expect(confirm).toHaveTextContent(
-        "The chat closes and its worktree and branch are removed. Nothing is merged.",
-      );
-      // A stray Enter or a VoiceOver tap lands on the safe choice.
-      expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus();
-      return confirm;
-    };
 
-    await user.click(within(await reject()).getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Reject" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(api.reject).not.toHaveBeenCalled();
-    await user.click(within(await reject()).getByRole("button", { name: "Reject" }));
     expect(await screen.findByText("push failed")).toBeInTheDocument();
-    await user.click(within(await reject()).getByRole("button", { name: "Reject" }));
+    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reject" }));
 
-    expect(await screen.findByText("Rejected. Nothing merged")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Review rejected. The changes stay; tell Claude what to change."),
+    ).toBeInTheDocument();
+    expect(api.reject).toHaveBeenLastCalledWith("s1");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Message")).toHaveFocus();
+    });
+    expect(window.location.pathname).toBe("/chat/s1");
   });
 
-  it("say that rejecting in-place work restores the files Claude edited", async () => {
+  it("reject in-place work without asking too", async () => {
     const api = withItems([review()], [session({ mode: "in_place", worktree_path: null })]);
     const { user } = await renderApp({ api });
 
     await user.click(screen.getByRole("button", { name: "Reject" }));
 
-    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
-      "The chat closes and the files Claude edited go back to how they were before the chat. Changes made by commands it ran are not undone.",
-    );
+    expect(api.reject).toHaveBeenCalledWith("s1");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("need the agent's own git changes checked before publishing", async () => {
@@ -1053,8 +1048,6 @@ describe("review cards", () => {
     sheet = await open();
     expect(await within(sheet).findByText("The changes could not be loaded.")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Reject" }));
-    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
-    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     expect(api.reject).toHaveBeenCalledWith("s1");
   });
 });

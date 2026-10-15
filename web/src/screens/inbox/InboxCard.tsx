@@ -7,17 +7,16 @@ import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import {
-  RejectConfirmation,
-  RemoteConfirmation,
-  ViolationNotice,
-} from "../approvals/ReviewGuards.tsx";
+import { RemoteConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
 import { Card, SwipeCard } from "../approvals/SwipeCard.tsx";
 import { MergeCard } from "./PrCards.tsx";
 
+// With `compose`, the chat opens with its message field focused.
+type OpenChat = (sessionId: string, compose?: boolean) => void;
+
 interface Props {
   approval: Approval;
-  onOpenChat: (sessionId: string) => void;
+  onOpenChat: OpenChat;
 }
 
 export function InboxCard({ approval, onOpenChat }: Props) {
@@ -112,13 +111,13 @@ function PermissionCard({ approval, session, head }: CardProps) {
   );
 }
 
-function ReviewCard({
-  approval,
-  session,
-  head,
-  onOpenChat,
-}: CardProps & { onOpenChat: (sessionId: string) => void }) {
+function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpenChat: OpenChat }) {
   const review = useReview(approval, session);
+  // The chat stays open after a reject: go there to say what to change.
+  const reject = () =>
+    void review.reject(() => {
+      onOpenChat(approval.session_id, true);
+    });
   const [message, setMessage] = useState(review.title);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -137,7 +136,7 @@ function ReviewCard({
           // Does nothing until the changes are loaded: nothing is reviewed yet.
           else void review.approve(message);
         }}
-        onReject={review.askReject}
+        onReject={reject}
       >
         {head}
         <div className="cq">{review.title}</div>
@@ -178,7 +177,7 @@ function ReviewCard({
               >
                 {review.approveLabel}
               </button>
-              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
+              <button className="b b-no" disabled={review.busy} onClick={reject}>
                 Reject
               </button>
               <button
@@ -245,14 +244,13 @@ function ReviewCard({
               >
                 {review.approveLabel}
               </button>
-              <button className="b b-no" disabled={review.busy} onClick={review.askReject}>
+              <button className="b b-no" disabled={review.busy} onClick={reject}>
                 Reject
               </button>
             </>
           }
         />
       )}
-      <RejectConfirmation review={review} />
       <RemoteConfirmation review={review} />
     </>
   );

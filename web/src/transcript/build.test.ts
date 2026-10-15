@@ -165,7 +165,7 @@ describe("buildTranscript", () => {
       { kind: "system", key: "5", text: "Question dismissed" },
       { kind: "system", key: "6", text: "Approved. Pull request opened" },
       { kind: "system", key: "7", text: "Approved and committed" },
-      { kind: "system", key: "8", text: "Rejected. Nothing merged" },
+      { kind: "system", key: "8", text: "Rejected. Changes kept, nothing committed" },
       { kind: "system", key: "9", text: "Request expired" },
       { kind: "system", key: "92", text: "Approved and committed" },
     ]);

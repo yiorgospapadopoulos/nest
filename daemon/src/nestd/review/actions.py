@@ -37,7 +37,7 @@ from nestd.review.errors import (
 )
 from nestd.review.models import ApproveRequest, SessionDiff
 from nestd.review.publish import GitPublisher, PublishPlan, PullRequest
-from nestd.sessions.errors import CannotRewindError, SessionBusyError
+from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import IN_FLIGHT, Session
 from nestd.sessions.rules import require_open, require_workspace
@@ -123,27 +123,15 @@ class ReviewActions:
             return session
 
     async def reject(self, session_id: str) -> Session:
-        """Discard the work: close the session and remove its worktree and branch. A chat
-        in the checkout first has the files Claude edited restored to before its first
-        message (B53); a refused restore closes nothing.
+        """Dismiss the pending review and keep the chat open with its work: no file is
+        restored and no worktree or branch removed, so the user can say what to change
+        (B54). Without a pending review it changes nothing.
         """
         async with self._lock(session_id):
             session = await self._sessions.get(session_id)
             require_open(session)
-            if session.mode == "in_place":
-                await self._discard_edits(session)
             await self._resolve_review(session_id, {"action": "rejected"})
-            return await self._sessions.close(session_id, remove_worktree=True)
-
-    async def _discard_edits(self, session: Session) -> None:
-        """Restore the files to before the chat's first file checkpoint; the session
-        manager's own checks refuse a busy or pixie chat.
-        """
-        event_id = await self._sessions.first_checkpoint(session.id)
-        if event_id is None:
-            msg = "Claude's edits in this chat cannot be restored: it has no file checkpoint."
-            raise CannotRewindError(msg)
-        await self._sessions.rewind(session.id, event_id, dry_run=False)
+            return session
 
     async def feedback(self, session_id: str, text: str) -> Session:
         """Send the user's note into the same session; that supersedes the review."""

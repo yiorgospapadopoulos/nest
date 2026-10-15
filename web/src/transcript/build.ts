@@ -473,7 +473,7 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
       return message === null ? "Keep planning" : `Keep planning: ${message}`;
     }
     case "review":
-      if (r.action === "rejected") return "Rejected. Nothing merged";
+      if (r.action === "rejected") return "Rejected. Changes kept, nothing committed";
       return str(r.pr_url) === null ? "Approved and committed" : "Approved. Pull request opened";
     case "merge":
       // A merge shows as the "Pull request merged" line of its own event.

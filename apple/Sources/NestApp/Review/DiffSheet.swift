@@ -13,7 +13,6 @@ struct DiffSheet: View {
     @State private var layout = Layout.split
     @State private var collapsed: Set<String> = []
     @State private var failure: String?
-    @State private var confirmingReject = false
 
     var body: some View {
         let approval = shell.approval(approvalID)
@@ -106,31 +105,19 @@ struct DiffSheet: View {
                 ViolationNotice(approval: approval).frame(maxWidth: 420)
             }
             Spacer()
-            if confirmingReject {
-                Text("Reject? \(RejectConsequence.of(session?.mode))")
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(Palette.t2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 520, alignment: .trailing)
-                    .multilineTextAlignment(.trailing)
-                Button("Cancel") { confirmingReject = false }
-                    .buttonStyle(.nest(.soft))
-                Button("Reject") { shell.reject(approval) }
-                    .buttonStyle(.nest(.destructive))
-            } else {
-                Button("Reject") { confirmingReject = true }
-                    .buttonStyle(.nest(.danger))
-                Button {
-                    shell.show(.publish(approval.id))
-                } label: {
-                    Label(
-                        session?.mode == .inPlace ? "Approve and commit" : "Approve and open PR",
-                        systemImage: Icon.pullRequest)
-                }
-                .buttonStyle(.nest(.primary))
-                .disabled(
-                    (violation && !acknowledged) || !shell.approvals.isReviewLoaded(approval))
+            Button("Reject") { shell.reject(approval) }
+                .buttonStyle(.nest(.danger))
+                .help("Reject the review; the changes stay and the chat continues")
+            Button {
+                shell.show(.publish(approval.id))
+            } label: {
+                Label(
+                    session?.mode == .inPlace ? "Approve and commit" : "Approve and open PR",
+                    systemImage: Icon.pullRequest)
             }
+            .buttonStyle(.nest(.primary))
+            .disabled(
+                (violation && !acknowledged) || !shell.approvals.isReviewLoaded(approval))
         }
         .padding(EdgeInsets(top: 9, leading: 16, bottom: 10, trailing: 16))
         .overlay(alignment: .top) { Separator() }

@@ -595,9 +595,15 @@ describe("inline approvals", () => {
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
     await within(sheet).findByText("app/globals.css");
     await user.click(within(sheet).getByRole("button", { name: "Reject" }));
-    const confirm = await screen.findByRole("alertdialog", { name: "Reject this work?" });
-    await user.click(within(confirm).getByRole("button", { name: "Reject" }));
     expect(api.reject).toHaveBeenCalledWith("s1");
+    // The chat stays open, ready for what to change.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Message")).toHaveFocus();
+    });
+    expect(
+      screen.getByText("Review rejected. The changes stay; tell Claude what to change."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Ready for review" })).not.toBeInTheDocument();
 
     push({
       id: 5,
