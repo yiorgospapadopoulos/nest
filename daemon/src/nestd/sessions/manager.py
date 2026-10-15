@@ -207,6 +207,7 @@ class SessionManager:
         mode = (
             (request.mode or _repo_mode(repo) or defaults.default_mode) if repo.git else "in_place"
         )
+        base_ref = await self._worktree_start(repo, mode, request)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
         session = await self._store.create(
             NewSession(
@@ -220,11 +221,11 @@ class SessionManager:
                 permission_mode=permission_mode or DEFAULT_MODE,
                 follows_claude_code_mode=permission_mode is None,
                 provider=self._provider.name,
-                # Worktree sessions get their base when the worktree is created.
-                base_ref=await self._worktrees.head(repo) if mode == "in_place" else None,
+                base_ref=base_ref,
                 started_by_pixie=started_by_pixie,
                 pixie_batch=pixie_batch,
-            )
+            ),
+            branch=request.branch,
         )
         sender = Sender(from_pixie=started_by_pixie)
         await self._bus.publish(
@@ -240,6 +241,24 @@ class SessionManager:
             )
         )
         return session
+
+    async def _worktree_start(
+        self, repo: RepoConfig, mode: SessionMode, request: CreateSession
+    ) -> str | None:
+        """The new session's base: HEAD for an in-place chat; for a worktree chat, the
+        commit of the `base` branch asked for, else None until the worktree is created.
+        Checks the branch name asked for (B55).
+        """
+        if mode == "in_place":
+            if request.branch is not None or request.base is not None:
+                msg = "a branch and a base are only for a new worktree chat"
+                raise InvalidInputError(msg)
+            return await self._worktrees.head(repo)
+        if request.branch is not None:
+            await self._worktrees.check_new_branch(repo, request.branch)
+        if request.base is None:
+            return None
+        return await self._worktrees.branch_commit(repo, request.base)
 
     async def create_pixie_chat(
         self,

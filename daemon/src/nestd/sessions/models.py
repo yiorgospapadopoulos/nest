@@ -123,6 +123,10 @@ class CreateSession(BaseModel):
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
     attachment_ids: list[str] = Field(default_factory=list[str])
+    # Only for a worktree chat (B55): its new branch's name instead of a generated one, and
+    # the local branch it starts from instead of the default branch.
+    branch: str | None = None
+    base: str | None = None
 
 
 class SendMessage(BaseModel):

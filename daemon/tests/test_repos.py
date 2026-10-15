@@ -212,7 +212,9 @@ async def test_a_plain_folder_becomes_a_git_repo_once_initialized(
     assert again == [became]
     assert load_repos(paths) == [became]
     assert "git =" not in (paths.repos_dir / "notes.toml").read_text(encoding="utf-8")
-    assert await updated_events(db) == [{"name": "notes", "repo": became.model_dump(mode="json")}]
+    # Announced as clients see it: no commits yet, so no branch is checked out (B55).
+    announced = {**became.model_dump(mode="json"), "current_branch": None}
+    assert await updated_events(db) == [{"name": "notes", "repo": announced}]
 
 
 async def test_a_detected_repo_takes_its_current_branch(

@@ -27,6 +27,7 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("POST", "/api/repos"),
         ("GET", "/api/repos/x"),
         ("GET", "/api/repos/x/link-suggestions"),
+        ("GET", "/api/repos/x/branches"),
         ("PATCH", "/api/repos/x"),
         ("DELETE", "/api/repos/x"),
         ("POST", "/api/attachments"),
@@ -56,6 +57,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "path": str(repo.resolve()),
         "git": True,
         "default_branch": "main",
+        # Read from git on each request (B55).
+        "current_branch": "main",
         # No origin when it was registered, so a push needs the user's confirmation (D050).
         "remote_url": None,
         # No icon set: the project shows its initials in the default colour.

@@ -4,7 +4,8 @@ from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, ConfigDict
 
 from nestd.api.deps import Context, RequireDevice
-from nestd.config.models import Color, Mascot, RepoConfig
+from nestd.config.models import Color, Mascot
+from nestd.repos.service import RepoView
 from nestd.sessions.commands import CommandList
 from nestd.sessions.repo_removal import remove_repo
 
@@ -47,19 +48,19 @@ _CLEARABLE = frozenset({"default", "icon", "icon_color"})
 
 
 @router.get("")
-async def list_repos(ctx: Context) -> list[RepoConfig]:
+async def list_repos(ctx: Context) -> list[RepoView]:
     """Plain folders that became git repositories are updated on the way (D041)."""
-    return await ctx.repos.list_current()
+    return [await ctx.repos.view(repo) for repo in await ctx.repos.list_current()]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def register_repo(body: RegisterRepo, ctx: Context) -> RepoConfig:
-    return await ctx.repos.register(body.path, body.name)
+async def register_repo(body: RegisterRepo, ctx: Context) -> RepoView:
+    return await ctx.repos.view(await ctx.repos.register(body.path, body.name))
 
 
 @router.get("/{name}")
-async def get_repo(name: str, ctx: Context) -> RepoConfig:
-    return await ctx.repos.current(name)
+async def get_repo(name: str, ctx: Context) -> RepoView:
+    return await ctx.repos.view(await ctx.repos.current(name))
 
 
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
@@ -78,6 +79,16 @@ async def repo_commands(name: str, ctx: Context) -> CommandList:
     return await ctx.commands.for_repo(name)
 
 
+class BranchList(BaseModel):
+    branches: list[str]
+
+
+@router.get("/{name}/branches")
+async def repo_branches(name: str, ctx: Context) -> BranchList:
+    """Local branch names, sorted: where a new worktree chat can start from (B55)."""
+    return BranchList(branches=await ctx.repos.branches(name))
+
+
 @router.get("/{name}/link-suggestions")
 async def link_suggestions(name: str, ctx: Context) -> list[str]:
     """Gitignored files in the checkout worth adding to `worktree.link`."""
@@ -85,8 +96,8 @@ async def link_suggestions(name: str, ctx: Context) -> list[str]:
 
 
 @router.patch("/{name}")
-async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoConfig:
+async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoView:
     """Edit the worktree default, links and setup (IMP-09, BUG-102) and the icon (B36); 422
     for a link outside the repository. Announced as `repo.updated`.
     """
-    return await ctx.repos.edit(name, body.changes())
+    return await ctx.repos.view(await ctx.repos.edit(name, body.changes()))

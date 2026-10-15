@@ -46,7 +46,10 @@ async def _create(
     store: SessionStore,
     bus: EventBus,
 ) -> Worktree:
-    worktree = await worktrees.create(repo, session.id, session.title)
+    # A branch name and base asked for are recorded when the session is created (B55).
+    worktree = await worktrees.create(
+        repo, session.id, session.title, session.branch, session.base_ref
+    )
     await store.update(
         session.id,
         cwd=worktree.path,

@@ -21,14 +21,15 @@ class SessionStore:
         self._db = db
         self._clock = clock
 
-    async def create(self, new: NewSession) -> Session:
+    async def create(self, new: NewSession, branch: str | None = None) -> Session:
+        """`branch` is a worktree chat's branch name asked for before its worktree exists."""
         now = self._clock.now()
         session = Session(
             **new.model_dump(),
             id=uuid4().hex,
             state=SessionState.STARTING,
             worktree_path=None,
-            branch=None,
+            branch=branch,
             provider_session_id=None,
             git_violation=False,
             created_at=now,

@@ -18,10 +18,20 @@ from nestd.gitops.runner import GitError, run_command
 from nestd.paths import AppPaths
 
 FALLBACK_BRANCH = "main"
+BRANCH_REF = "refs/heads/"
 # Project settings outside `[worktree]` that `edit` sets.
 _TOP_LEVEL_KEYS = frozenset({"icon", "icon_color"})
 LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
+
+
+class RepoView(RepoConfig):
+    """A repo as clients see it: its config and the branch checked out in its folder now,
+    read fresh from git (B55); None when HEAD is detached, the branch has no commits yet,
+    or the folder is not a git repository.
+    """
+
+    current_branch: str | None = None
 
 
 class RepoNotFoundError(NotFoundError):
@@ -101,6 +111,21 @@ class RepoService:
             return (await self.current(name)).git
         except RepoNotFoundError:
             return True
+
+    async def view(self, repo: RepoConfig) -> RepoView:
+        branch = await current_branch(repo.path) if repo.git else None
+        return RepoView(**repo.model_dump(), current_branch=branch)
+
+    async def branches(self, name: str) -> list[str]:
+        """The repo's local branches, sorted."""
+        repo = await self.current(name)
+        require_folder(repo)
+        if not repo.git:
+            raise NotAGitRepositoryError(name)
+        output = await run_hardened_git(
+            ["for-each-ref", "--format=%(refname)", BRANCH_REF], repo.path
+        )
+        return sorted(line.removeprefix(BRANCH_REF) for line in output.splitlines())
 
     async def require_git(self, name: str) -> None:
         if not await self.has_git(name):
@@ -208,9 +233,23 @@ class RepoService:
 
     async def _announce(self, event_type: str, repo: RepoConfig) -> None:
         if self._bus is not None:
+            view = await self.view(repo)
             await self._bus.publish(
-                event_type, {"name": repo.name, "repo": repo.model_dump(mode="json")}
+                event_type, {"name": repo.name, "repo": view.model_dump(mode="json")}
             )
+
+
+async def current_branch(path: Path) -> str | None:
+    """The branch checked out at `path`; None when HEAD is detached or has no commits, or
+    git cannot tell (the folder is gone).
+    """
+    try:
+        output = await run_hardened_git(["rev-parse", "--symbolic-full-name", "HEAD"], path)
+    except GitError:
+        return None
+    ref = output.strip()
+    # A detached HEAD reads as "HEAD".
+    return ref.removeprefix(BRANCH_REF) if ref.startswith(BRANCH_REF) else None
 
 
 async def _work_tree_root(path: Path) -> Path | None:
