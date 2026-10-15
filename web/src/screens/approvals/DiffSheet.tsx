@@ -30,7 +30,7 @@ export function DiffSheet({ review, onClose, footer }: Props) {
         ))}
       {diff !== null && (
         <>
-          <ReviewHead diff={diff} />
+          <ReviewHead diff={diff} commitOnly={review.commitOnly} />
           <div className="dsum">
             <DiffStats {...diff.stats} />
           </div>
@@ -44,9 +44,9 @@ export function DiffSheet({ review, onClose, footer }: Props) {
   );
 }
 
-/** On a review card: where approving pushes and what is on the branch, once loaded. */
+/** On a review card: where approving goes, once loaded. */
 export function ReviewSummary({ review }: { review: Review }) {
-  if (review.diff !== null) return <ReviewHead diff={review.diff} />;
+  if (review.diff !== null) return <ReviewHead diff={review.diff} commitOnly={review.commitOnly} />;
   if (!review.diffFailed) return null;
   return (
     <p className="note">
@@ -58,34 +58,14 @@ export function ReviewSummary({ review }: { review: Review }) {
   );
 }
 
-/** Where approving pushes, and any commits on it that Nest did not make. */
-export function ReviewHead({ diff }: { diff: SessionDiff }) {
+/** Where approving pushes or only commits. */
+export function ReviewHead({ diff, commitOnly }: { diff: SessionDiff; commitOnly: boolean }) {
+  if (diff.head.branch === null) return null;
   return (
-    <>
-      {diff.head.branch !== null && (
-        <p className="dpush">
-          <Icon name="branch" />
-          Pushes to {diff.head.branch}
-        </p>
-      )}
-      {diff.commits.length > 0 && (
-        <div className="vio" role="group" aria-label="Commits Nest did not make">
-          <p>
-            <Icon name="shield" />
-            These commits are on the branch, but Nest did not make them. Check them before
-            publishing.
-          </p>
-          <ul className="dcommits">
-            {diff.commits.map((commit) => (
-              <li key={commit.sha}>
-                <code>{commit.sha.slice(0, 7)}</code>
-                {commit.subject}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
+    <p className="dpush">
+      <Icon name="branch" />
+      {commitOnly ? `Commits to ${diff.head.branch}, not pushed` : `Pushes to ${diff.head.branch}`}
+    </p>
   );
 }
 

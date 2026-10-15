@@ -110,7 +110,6 @@ export interface Api {
   resolveApproval(id: string, body: ResolveBody): Promise<Approval>;
   diff(sessionId: string): Promise<SessionDiff>;
   approve(sessionId: string, body: ApproveBody): Promise<Session>;
-  reject(sessionId: string): Promise<Session>;
   feedback(sessionId: string, text: string): Promise<Session>;
   // The daemon reads the failing checks' logs with its own GitHub login and sends them in.
   ciFeedback(sessionId: string): Promise<unknown>;
@@ -300,10 +299,6 @@ export class HttpApi implements Api {
 
   approve(sessionId: string, body: ApproveBody) {
     return this.json<Session>("POST", `${session(sessionId)}/approve`, body);
-  }
-
-  reject(sessionId: string) {
-    return this.json<Session>("POST", `${session(sessionId)}/reject`);
   }
 
   feedback(sessionId: string, text: string) {

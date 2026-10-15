@@ -82,10 +82,15 @@ export type TranscriptItem =
   | PixieCallItem
   // Consecutive tool calls (two or more) with the thinking between them (D045).
   | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
-  | { kind: "approval"; key: string; approval: Approval }
+  | { kind: "approval"; key: string; approval: InlineAsk }
   | { kind: "system"; key: string; text: string }
   // "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn.
   | { kind: "turn"; key: string; text: string };
+
+/** A pending approval answered in the transcript; a review shows above the composer. */
+export type InlineAsk = Approval & { kind: Exclude<Approval["kind"], "review"> };
+
+const isInline = (approval: Approval): approval is InlineAsk => approval.kind !== "review";
 
 // States that end a turn; the others continue it or have nothing to do with turns.
 const TURN_ENDS = new Set<JsonValue | undefined>(["idle", "interrupted", "failed"]);
@@ -107,9 +112,10 @@ const TRIGGERS: ReadonlySet<string> = new Set(["stuck", "failed", "review_ready"
 /**
  * The chat transcript from its stored events. Subagent messages are left out (they show
  * in the Agents sheet), except those of a call to one of `pixies` (by slug), which go
- * into that call's row. Approvals still pending render as inline cards, finished ones as
- * a short note. Calls without a result stop when their turn ends, except those whose
- * background task (by tool use id in `running`) still runs.
+ * into that call's row. Approvals still pending render as inline cards, except a review,
+ * which the bar above the composer shows; finished ones show as a short note. Calls
+ * without a result stop when their turn ends, except those whose background task (by tool
+ * use id in `running`) still runs.
  */
 export function buildTranscript(
   events: NestEvent[],
@@ -176,7 +182,7 @@ export function buildTranscript(
         const approval = p.approval as unknown as Approval;
         const current = pending[approval.id];
         if (current !== undefined) {
-          items.push({ kind: "approval", key, approval: current });
+          if (isInline(current)) items.push({ kind: "approval", key, approval: current });
         } else {
           note(items, key, resolvedText(finals.get(approval.id), root));
         }
@@ -474,6 +480,7 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
     }
     case "review":
       if (r.action === "rejected") return "Rejected. Changes kept, nothing committed";
+      if (r.pushed === false) return "Approved and committed, not pushed";
       return str(r.pr_url) === null ? "Approved and committed" : "Approved. Pull request opened";
     case "merge":
       // A merge shows as the "Pull request merged" line of its own event.
@@ -490,8 +497,6 @@ function systemText(e: NestEvent): string | null {
   switch (e.type) {
     case "session.setup_failed":
       return `Setup failed: ${str(p.command) ?? ""}`;
-    case "session.git_violation":
-      return "The agent changed git refs itself";
     case "session.notice":
       // Compaction, a cleared context, a model fallback or an API retry.
       return str(p.text);

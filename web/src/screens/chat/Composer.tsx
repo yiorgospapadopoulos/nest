@@ -55,8 +55,7 @@ interface Choices {
 
 export type NewChatPlace = Pick<CreateSessionBody, "mode" | "base" | "branch">;
 
-// `focusOnOpen`: the field takes focus when it appears, as after a reject (B54).
-type Props = { focusOnOpen?: boolean } & (
+type Props =
   | {
       session: Session;
       repo?: undefined;
@@ -83,15 +82,14 @@ type Props = { focusOnOpen?: boolean } & (
       repo?: undefined;
       onCreated?: undefined;
       place?: undefined;
-    }
-);
+    };
 
 /**
  * The message field with attachments and the quiet model, thinking and permission
  * selectors. In a new chat the first message creates the session with those choices.
  * While a turn runs, a message is queued and sent when the turn ends.
  */
-export function Composer({ session, repo, onCreated, place, pixie, chat, focusOnOpen }: Props) {
+export function Composer({ session, repo, onCreated, place, pixie, chat }: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
   const key = draftKey(
@@ -327,7 +325,6 @@ export function Composer({ session, repo, onCreated, place, pixie, chat, focusOn
         <textarea
           id="composer"
           ref={field}
-          autoFocus={focusOnOpen}
           rows={1}
           placeholder={closed ? "This chat is closed" : uploads > 0 ? "Uploading..." : "Message"}
           value={text}

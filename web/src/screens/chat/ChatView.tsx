@@ -16,16 +16,16 @@ import { NewChat } from "./NewChat.tsx";
 import { sessionPlace } from "./place.ts";
 import { PlaceChip } from "./PlaceMarks.tsx";
 import { PrChip } from "./PrChip.tsx";
+import { ReviewBar } from "./ReviewBar.tsx";
 import { Transcript } from "./Transcript.tsx";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
 import { StartedBy } from "../pixies/StartedBy.tsx";
 
-// An open chat (optionally at an event, such as a search hit, or with its message field
-// focused, as after a reject), a new one in a project that
+// An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
 // continued in Nest, or a pixie's page (D072).
 export type ChatTarget =
-  | { id: string; event?: number; compose?: boolean }
+  | { id: string; event?: number }
   | { draft: string }
   | { claude: string }
   | { pixie: string; tab?: PixieTab };
@@ -72,7 +72,6 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
     <SessionChat
       id={target.id}
       focus={target.event ?? null}
-      compose={target.compose === true}
       onBack={onBack}
       onOpenPixie={onOpenPixie}
       onOpenChat={onOpen}
@@ -83,14 +82,12 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
 function SessionChat({
   id,
   focus,
-  compose,
   onBack,
   onOpenPixie,
   onOpenChat,
 }: {
   id: string;
   focus: number | null;
-  compose: boolean;
   onBack: () => void;
   onOpenPixie: (id: string) => void;
   onOpenChat: (sessionId: string) => void;
@@ -169,7 +166,10 @@ function SessionChat({
         <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
       )}
       {session.habit_run_id == null ? (
-        <Composer session={session} focusOnOpen={compose} />
+        <>
+          <ReviewBar session={session} />
+          <Composer session={session} />
+        </>
       ) : (
         <p className="note pxrun">A habit run. Its chat is read only.</p>
       )}

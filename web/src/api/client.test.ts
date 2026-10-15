@@ -136,7 +136,6 @@ const calls: Call[] = [
     "/api/sessions/s1/approve",
     { commit_message: "m", expected_fingerprint: "f1" },
   ],
-  ["reject", (a) => a.reject("s1"), "POST", "/api/sessions/s1/reject", undefined],
   [
     "feedback",
     (a) => a.feedback("s1", "more"),

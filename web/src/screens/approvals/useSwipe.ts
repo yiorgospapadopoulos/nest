@@ -11,11 +11,12 @@ interface Gesture {
 }
 
 /**
- * Horizontal swipe on a card: right past the threshold calls onRight, left calls onLeft.
+ * Horizontal swipe on a card: right past the threshold calls onRight, left calls onLeft
+ * when there is one.
  * A vertical move hands the gesture back to scrolling. Buttons and fields never start one,
  * and nothing does while `busy`, so a second swipe cannot send the answer twice.
  */
-export function useSwipe(onRight: () => void, onLeft: () => void, busy = false) {
+export function useSwipe(onRight: () => void, onLeft?: () => void, busy = false) {
   const gesture = useRef<Gesture | null>(null);
   const [dx, setDx] = useState(0);
 
@@ -49,7 +50,7 @@ export function useSwipe(onRight: () => void, onLeft: () => void, busy = false) 
       const moved = gesture.current?.dx ?? 0;
       reset();
       if (moved > SWIPE_THRESHOLD) onRight();
-      else if (moved < -SWIPE_THRESHOLD) onLeft();
+      else if (moved < -SWIPE_THRESHOLD) onLeft?.();
     },
     onPointerCancel: reset,
   };

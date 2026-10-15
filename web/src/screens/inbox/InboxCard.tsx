@@ -7,12 +7,11 @@ import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import { RemoteConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
+import { RemoteConfirmation } from "../approvals/ReviewGuards.tsx";
 import { Card, SwipeCard } from "../approvals/SwipeCard.tsx";
 import { MergeCard } from "./PrCards.tsx";
 
-// With `compose`, the chat opens with its message field focused.
-type OpenChat = (sessionId: string, compose?: boolean) => void;
+type OpenChat = (sessionId: string) => void;
 
 interface Props {
   approval: Approval;
@@ -54,7 +53,6 @@ export function InboxCard({ approval, onOpenChat }: Props) {
           approval={approval}
           session={session}
           head={head("check", "Ready for review", true)}
-          onOpenChat={onOpenChat}
         />
       );
     case "plan":
@@ -111,13 +109,8 @@ function PermissionCard({ approval, session, head }: CardProps) {
   );
 }
 
-function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpenChat: OpenChat }) {
+function ReviewCard({ approval, session, head }: CardProps) {
   const review = useReview(approval, session);
-  // The chat stays open after a reject: go there to say what to change.
-  const reject = () =>
-    void review.reject(() => {
-      onOpenChat(approval.session_id, true);
-    });
   const [message, setMessage] = useState(review.title);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -127,16 +120,10 @@ function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpe
     <>
       <SwipeCard
         label={`Ready for review: ${review.title}`}
-        // Unchecked git changes turn a swipe into opening the chat.
-        approveLabel={review.blocked ? "Open chat" : review.approveLabel}
+        approveLabel={review.approveLabel}
         busy={review.busy}
-        onApprove={() => {
-          // Never publish unchecked git changes with a swipe: show the chat instead.
-          if (review.blocked) onOpenChat(approval.session_id);
-          // Does nothing until the changes are loaded: nothing is reviewed yet.
-          else void review.approve(message);
-        }}
-        onReject={reject}
+        // Does nothing until the changes are loaded: nothing is reviewed yet.
+        onApprove={() => void review.approve(message)}
       >
         {head}
         <div className="cq">{review.title}</div>
@@ -154,7 +141,6 @@ function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpe
           <Icon name="chevr" />
         </button>
         <ReviewSummary review={review} />
-        <ViolationNotice review={review} />
         {feedback === null ? (
           <>
             <label className="flbl" htmlFor={fieldId}>
@@ -172,13 +158,10 @@ function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpe
             <div className="acts">
               <button
                 className="b b-ok"
-                disabled={review.busy || review.blocked || !review.ready}
+                disabled={review.busy || !review.ready}
                 onClick={() => void review.approve(message)}
               >
                 {review.approveLabel}
-              </button>
-              <button className="b b-no" disabled={review.busy} onClick={reject}>
-                Reject
               </button>
               <button
                 className="b qb2"
@@ -236,18 +219,13 @@ function ReviewCard({ approval, session, head, onOpenChat }: CardProps & { onOpe
             setDiffOpen(false);
           }}
           footer={
-            <>
-              <button
-                className="b b-ok"
-                disabled={review.busy || review.blocked || !review.ready}
-                onClick={() => void review.approve(message)}
-              >
-                {review.approveLabel}
-              </button>
-              <button className="b b-no" disabled={review.busy} onClick={reject}>
-                Reject
-              </button>
-            </>
+            <button
+              className="b b-ok"
+              disabled={review.busy || !review.ready}
+              onClick={() => void review.approve(message)}
+            >
+              {review.approveLabel}
+            </button>
           }
         />
       )}

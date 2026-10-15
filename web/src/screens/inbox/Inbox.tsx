@@ -12,8 +12,7 @@ import { StuckCard } from "./StuckCard.tsx";
 const PIXIE_REPO = "pixie:";
 
 interface Props {
-  // With `compose`, the chat opens with its message field focused.
-  onOpenChat: (sessionId: string, compose?: boolean) => void;
+  onOpenChat: (sessionId: string) => void;
   onOpenPixie: (id: string) => void;
 }
 

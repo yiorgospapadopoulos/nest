@@ -1,13 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { Approval, JsonValue } from "../../api/types.ts";
+import type { Approval } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import {
   approval,
   check,
-  detail,
   diff,
   mergeApproval,
   pixie,
@@ -328,23 +327,56 @@ describe("review cards", () => {
     expect(screen.getByText("All clear")).toBeInTheDocument();
   });
 
-  it("push in-place work with only its changed files, falling back to the title", async () => {
+  it("commit in-place work with only its changed files, without pushing", async () => {
     const api = withItems(
       [review({ payload: { paths: ["a.ts"] } })],
       [session({ mode: "in_place" })],
     );
     const { user } = await renderApp({ api });
 
+    expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
+    expect(screen.queryByText(/Pushes to/)).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText("Commit message"));
-    await user.click(await reviewLoaded("Approve and push"));
+    await user.click(await reviewLoaded("Approve and commit"));
 
     expect(api.approve).toHaveBeenCalledWith("s1", {
       commit_message: "Validate contact form",
       files: ["a.ts"],
       open_pr: false,
+      push: false,
       ...SEEN,
     });
-    expect(await screen.findByText("Approved and committed")).toBeInTheDocument();
+    expect(await screen.findByText("Committed to agent/contact, not pushed")).toBeInTheDocument();
+  });
+
+  it("commit in-place work on a detached HEAD without naming a branch", async () => {
+    const api = withItems([review()], [session({ mode: "in_place" })]);
+    api.diff.mockResolvedValue({ ...diff(), head: { ...diff().head, branch: null } });
+    const { user } = await renderApp({ api });
+
+    await user.click(await reviewLoaded("Approve and commit"));
+
+    expect(await screen.findByText("Committed, not pushed")).toBeInTheDocument();
+  });
+
+  it("only commit a worktree chat whose pull request is already open", async () => {
+    const url = "https://github.com/me/todo-ui/pull/7";
+    const api = withItems([review()], [session({ pr_url: url })]);
+    api.approve.mockResolvedValueOnce(session({ pr_url: url }));
+    const { user } = await renderApp({ api });
+
+    expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
+    expect(screen.queryByText(/Pushes to/)).not.toBeInTheDocument();
+    await user.click(await reviewLoaded("Approve and commit"));
+
+    expect(api.approve).toHaveBeenCalledWith("s1", {
+      commit_message: "Validate contact form",
+      open_pr: false,
+      push: false,
+      ...SEEN,
+    });
+    expect(await screen.findByText("Committed to agent/contact, not pushed")).toBeInTheDocument();
+    expect(screen.queryByText("Pull request opened")).not.toBeInTheDocument();
   });
 
   it("stay up for review when approving or sending feedback fails", async () => {
@@ -362,7 +394,7 @@ describe("review cards", () => {
     expect(screen.getByRole("button", { name: "Send feedback" })).toBeEnabled();
   });
 
-  it("swipe to approve or reject", async () => {
+  it("swipe right to approve, while a swipe left does nothing", async () => {
     const api = withItems([review(), review({ id: "q4", session_id: "s2" })]);
     await renderApp({ api });
 
@@ -375,13 +407,26 @@ describe("review cards", () => {
         ...SEEN,
       });
     });
-    // Nothing is lost by rejecting, so a swipe rejects at once.
+    // A review has no reject: nothing hints at it, and the card stays.
+    fireEvent.pointerDown(defined(second), { button: 0, clientX: 200, clientY: 10 });
+    fireEvent.pointerMove(defined(second), { clientX: 140, clientY: 10 });
+    expect(defined(second).parentElement?.querySelector(".swbg .sr2")).toBeNull();
+    fireEvent.pointerCancel(defined(second));
     swipe(defined(second), -150);
 
-    await waitFor(() => {
-      expect(api.reject).toHaveBeenCalledWith("s2");
-    });
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.approve).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("article", { name: /Ready for review/ })).toBeInTheDocument();
+  });
+
+  it("offer no reject for a review", async () => {
+    const { user } = await renderApp({ api: withItems([review()]) });
+
+    const article = card(/Ready for review/);
+    expect(within(article).queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    await user.click(within(article).getByRole("button", { name: "View changes" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Approve and open PR" })).toBeInTheDocument();
   });
 
   it("name what a swipe to approve does", async () => {
@@ -401,17 +446,7 @@ describe("review cards", () => {
 
     const [worktree, inPlace] = screen.getAllByRole("article");
     expect(hint(defined(worktree))).toBe("Approve and open PR");
-    expect(hint(defined(inPlace))).toBe("Approve and push");
-  });
-
-  it("name opening the chat when unchecked git changes stop a swipe from publishing", async () => {
-    await renderApp({ api: withItems([review()], [session({ git_violation: true })]) });
-
-    const article = card(/Ready for review/);
-    fireEvent.pointerDown(article, { button: 0, clientX: 100, clientY: 10 });
-    fireEvent.pointerMove(article, { clientX: 140, clientY: 10 });
-
-    expect(article.parentElement?.querySelector(".swbg .sl")).toHaveTextContent("Open chat");
+    expect(hint(defined(inPlace))).toBe("Approve and commit");
   });
 
   it("send one approval for two quick swipes", async () => {
@@ -443,98 +478,10 @@ describe("review cards", () => {
     expect(await screen.findByText("All clear")).toBeInTheDocument();
   });
 
-  it("reject without asking, then open the chat to say what to change", async () => {
-    const api = withItems([review()]);
-    api.reject.mockRejectedValueOnce(new ApiError(502, "push failed"));
-    const { user } = await renderApp({ api });
-
-    await user.click(screen.getByRole("button", { name: "Reject" }));
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(await screen.findByText("push failed")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Reject" }));
-
-    expect(
-      await screen.findByText("Review rejected. The changes stay; tell Claude what to change."),
-    ).toBeInTheDocument();
-    expect(api.reject).toHaveBeenLastCalledWith("s1");
-    await waitFor(() => {
-      expect(screen.getByLabelText("Message")).toHaveFocus();
-    });
-    expect(window.location.pathname).toBe("/chat/s1");
-  });
-
-  it("reject in-place work without asking too", async () => {
-    const api = withItems([review()], [session({ mode: "in_place", worktree_path: null })]);
-    const { user } = await renderApp({ api });
-
-    await user.click(screen.getByRole("button", { name: "Reject" }));
-
-    expect(api.reject).toHaveBeenCalledWith("s1");
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-  });
-
-  it("need the agent's own git changes checked before publishing", async () => {
-    const api = withItems([review()], [session({ git_violation: true })]);
-    api.session.mockResolvedValue(detail({ git_violation: true }));
-    const { user } = await renderApp({ api });
-    const approve = screen.getByRole("button", { name: "Approve and open PR" });
-
-    expect(
-      screen.getByText(
-        "The agent ran git itself and changed this chat's branch. Check its commits before publishing.",
-      ),
-    ).toBeInTheDocument();
-    expect(approve).toBeDisabled();
-    // A swipe does not publish it either: it opens the chat instead.
-    swipe(card(/Ready for review/), 150);
-    expect(
-      await screen.findByRole("region", { name: "Validate contact form" }),
-    ).toBeInTheDocument();
-    expect(api.approve).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Back to todo-ui" }));
-
-    await user.click(screen.getByRole("switch", { name: "I checked, publish anyway" }));
-    await user.click(await reviewLoaded());
-
-    expect(api.approve).toHaveBeenCalledWith("s1", {
-      commit_message: "Validate contact form",
-      acknowledge_violation: true,
-      ...SEEN,
-    });
-  });
-
-  it("show the acknowledge switch for a violation found while the app is open", async () => {
-    const api = withItems([], [session({ state: "running" })]);
-    const { user, push } = await renderApp({ api });
-
-    // The usual order: the turn ends with a violation, then the review arrives.
-    push({ id: 5, type: "session.git_violation", session_id: "s1", payload: { changes: [] } });
-    push({ id: 6, type: "session.state", session_id: "s1", payload: { state: "idle" } });
-    push({
-      id: 7,
-      type: "approval.created",
-      session_id: "s1",
-      payload: { approval: review() as unknown as JsonValue },
-    });
-
-    const approve = await screen.findByRole("button", { name: "Approve and open PR" });
-    expect(approve).toBeDisabled();
-    await screen.findByText("Pushes to agent/contact");
-    await user.click(screen.getByRole("switch", { name: "I checked, publish anyway" }));
-    await user.click(approve);
-    expect(api.approve).toHaveBeenCalledWith("s1", {
-      commit_message: "Validate contact form",
-      acknowledge_violation: true,
-      ...SEEN,
-    });
-  });
-
   it("refetch the session and the diff when approving is refused, then say why", async () => {
     const api = withItems([review()]);
-    const why = "The agent changed git refs itself. Check them, then publish anyway.";
-    api.approve.mockRejectedValueOnce(new ApiError(409, why, "git_violation"));
-    api.session.mockResolvedValue(detail({ git_violation: true }));
+    const why = "Large files need git-lfs.";
+    api.approve.mockRejectedValueOnce(new ApiError(409, why, "lfs_unsupported"));
     await renderApp({ api });
     await reviewLoaded();
 
@@ -542,37 +489,25 @@ describe("review cards", () => {
 
     expect(await screen.findByText(why)).toBeInTheDocument();
     expect(api.session).toHaveBeenCalledWith("s1");
-    expect(api.diff).toHaveBeenCalledWith("s1");
-    expect(
-      await screen.findByRole("switch", { name: "I checked, publish anyway" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeDisabled();
+    await waitFor(() => {
+      expect(api.diff).toHaveBeenCalledTimes(2);
+    });
+    // Approving is possible again once the branch as it is now has loaded.
+    await reviewLoaded();
   });
 
-  it("show where the work is pushed and commits Nest did not make", async () => {
+  it("show where the work is pushed", async () => {
     const api = withItems([review()]);
-    api.diff.mockResolvedValue({
-      ...diff(),
-      commits: [{ sha: "0123456789abcdef", subject: "Squash old work" }],
-    });
     const { user } = await renderApp({ api });
 
     // On the card, before the diff is opened.
     const onCard = card(/Ready for review/);
     expect(await within(onCard).findByText("Pushes to agent/contact")).toBeInTheDocument();
-    expect(
-      within(onCard).getByRole("group", { name: "Commits Nest did not make" }),
-    ).toHaveTextContent("0123456Squash old work");
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
 
     expect(await within(sheet).findByText("Pushes to agent/contact")).toBeInTheDocument();
-    const commits = within(sheet).getByRole("group", { name: "Commits Nest did not make" });
-    expect(commits).toHaveTextContent(
-      "These commits are on the branch, but Nest did not make them. Check them before publishing.",
-    );
-    expect(within(commits).getByRole("listitem")).toHaveTextContent("0123456Squash old work");
     const approve = within(sheet).getByRole("button", { name: "Approve and open PR" });
     await waitFor(() => {
       expect(approve).toBeEnabled();
@@ -613,8 +548,7 @@ describe("review cards", () => {
   });
 
   it("keep the reviewed changes on screen but not approvable while they reload", async () => {
-    const api = withItems([review()], [session({ git_violation: true })]);
-    api.session.mockResolvedValue(detail({ git_violation: true }));
+    const api = withItems([review()]);
     api.approve.mockRejectedValueOnce(
       new ApiError(409, "The changes are different from the review you saw.", "review_changed"),
     );
@@ -625,9 +559,6 @@ describe("review cards", () => {
       }),
     );
     const { user } = await renderApp({ api });
-    await screen.findByText("Pushes to agent/contact");
-    const checked = screen.getByRole("switch", { name: "I checked, publish anyway" });
-    await user.click(checked);
     await user.click(await reviewLoaded());
 
     // The daemon's reason, then the review it refused stays shown while the new one loads.
@@ -637,7 +568,6 @@ describe("review cards", () => {
     const approve = screen.getByRole("button", { name: "Approve and open PR" });
     expect(screen.getByText("Pushes to agent/contact")).toBeInTheDocument();
     expect(approve).toBeDisabled();
-    expect(checked).toHaveAttribute("aria-checked", "true");
     await user.click(approve);
     swipe(card(/Ready for review/), 150);
     expect(api.approve).toHaveBeenCalledOnce();
@@ -646,38 +576,14 @@ describe("review cards", () => {
       finish({ ...diff(), fingerprint: "changed" });
       await Promise.resolve();
     });
-    // A different review: what was checked no longer counts.
-    expect(checked).toHaveAttribute("aria-checked", "false");
-    expect(approve).toBeDisabled();
-    await user.click(checked);
+    // Approving now sends the review that is on screen.
+    expect(approve).toBeEnabled();
     await user.click(approve);
     expect(api.approve).toHaveBeenLastCalledWith("s1", {
       commit_message: "Validate contact form",
-      acknowledge_violation: true,
       expected_fingerprint: "changed",
       expected_head: "c0ffee0000000000000000000000000000000000",
     });
-  });
-
-  it("keep what was checked when the reloaded review is the same", async () => {
-    const api = withItems([review()], [session({ git_violation: true })]);
-    api.session.mockResolvedValue(detail({ git_violation: true }));
-    api.approve.mockRejectedValueOnce(
-      new ApiError(409, "Large files need git-lfs.", "lfs_unsupported"),
-    );
-    const { user } = await renderApp({ api });
-    await screen.findByText("Pushes to agent/contact");
-    await user.click(screen.getByRole("switch", { name: "I checked, publish anyway" }));
-    await user.click(await reviewLoaded());
-
-    expect(await screen.findByText("Large files need git-lfs.")).toBeInTheDocument();
-    await reviewLoaded();
-    expect(api.diff).toHaveBeenCalledTimes(2);
-    const checked = screen.getByRole("switch", { name: "I checked, publish anyway" });
-    expect(checked).toHaveAttribute("aria-checked", "true");
-    await user.click(checked);
-    expect(checked).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("button", { name: "Approve and open PR" })).toBeDisabled();
   });
 
   it("load the changes again when the chat changes", async () => {
@@ -686,7 +592,7 @@ describe("review cards", () => {
     await reviewLoaded();
     expect(api.diff).toHaveBeenCalledOnce();
 
-    push({ id: 5, type: "session.git_violation", session_id: "s1", payload: { changes: [] } });
+    push({ id: 5, type: "session.state", session_id: "s1", payload: { state: "idle" } });
 
     await waitFor(() => {
       expect(api.diff).toHaveBeenCalledTimes(2);
@@ -1047,8 +953,7 @@ describe("review cards", () => {
 
     sheet = await open();
     expect(await within(sheet).findByText("The changes could not be loaded.")).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "Reject" }));
-    expect(api.reject).toHaveBeenCalledWith("s1");
+    expect(within(sheet).getByRole("button", { name: "Approve and open PR" })).toBeDisabled();
   });
 });
 

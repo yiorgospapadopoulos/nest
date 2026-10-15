@@ -252,12 +252,6 @@ describe("live events", () => {
     expect(state.sessions.s1?.pr).toEqual(pr);
     state = apply(state, event({ type: "session.pr", payload: { pr: "garbled" } }));
     expect(state.sessions.s1?.pr).toBeNull();
-    expect(state.sessions.s1?.git_violation).toBe(false);
-    state = apply(
-      state,
-      event({ type: "session.git_violation", payload: { changes: ["refs/heads/x"] } }),
-    );
-    expect(state.sessions.s1?.git_violation).toBe(true);
     const unknown = apply(state, event({ type: "session.state", session_id: "nope" }));
     expect(unknown).toBe(state);
     expect(apply(state, event({ type: "session.state", session_id: null }))).toBe(state);

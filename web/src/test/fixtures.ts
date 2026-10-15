@@ -60,7 +60,6 @@ export function session(overrides: Partial<Session> = {}): Session {
     worktree_path: "/w/s1",
     branch: "agent/contact",
     provider_session_id: null,
-    git_violation: false,
     created_at: NOW,
     updated_at: NOW,
     last_error: null,
@@ -349,7 +348,6 @@ export function diff(): SessionDiff {
   return {
     base: "abc",
     head: { commit: "c0ffee0000000000000000000000000000000000", branch: "agent/contact" },
-    commits: [],
     fingerprint: "f1ngerprint",
     stats: { files: 2, additions: 2, deletions: 1 },
     files: [

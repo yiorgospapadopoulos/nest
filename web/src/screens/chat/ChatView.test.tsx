@@ -56,6 +56,21 @@ async function openChat({
   return rendered;
 }
 
+/** Opens the pending review's changes from the bar above the composer. */
+async function openReview(user: Awaited<ReturnType<typeof openChat>>["user"]) {
+  const bar = screen.getByRole("group", { name: "Changes to review" });
+  await user.click(within(bar).getByRole("button", { name: "Review" }));
+  return screen.findByRole("dialog", { name: "Validate contact form" });
+}
+
+/** Approving waits for the diff to load. */
+async function enabled(button: HTMLElement) {
+  await waitFor(() => {
+    expect(button).toBeEnabled();
+  });
+  return button;
+}
+
 const agent = (overrides: Partial<TrackedAgent> = {}): TrackedAgent => ({
   id: "main",
   name: "main",
@@ -534,7 +549,7 @@ describe("inline approvals", () => {
     expect(await screen.findByText("Always allowed: Read")).toBeInTheDocument();
   });
 
-  it("confirm the push address of a review in place", async () => {
+  it("confirm the push address of a review from its sheet", async () => {
     const r = review();
     const { user, api } = await openChat({ approvals: [r], events: [created(r, 1)] });
     api.approve.mockRejectedValueOnce(
@@ -543,11 +558,13 @@ describe("inline approvals", () => {
         confirmed_url: null,
       }),
     );
-    const box = screen.getByRole("group", { name: "Ready for review" });
-    // Where it pushes shows on the card itself.
-    expect(await within(box).findByText("Pushes to agent/contact")).toBeInTheDocument();
+    const sheet = await openReview(user);
+    // Where it pushes shows in the sheet.
+    expect(await within(sheet).findByText("Pushes to agent/contact")).toBeInTheDocument();
 
-    await user.click(within(box).getByRole("button", { name: "Approve and open PR" }));
+    await user.click(
+      await enabled(within(sheet).getByRole("button", { name: "Approve and open PR" })),
+    );
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
     const pushThere = within(confirm).getByRole("button", { name: "Push there" });
     await waitFor(() => {
@@ -583,72 +600,87 @@ describe("inline approvals", () => {
 
     expect(api.resolveApproval).toHaveBeenCalledWith("q2", { answers: { "DAG or tree?": "DAG" } });
   });
-
-  it("approve a review in place or from its diff", async () => {
-    const r = review();
-    const { user, api, push } = await openChat({ approvals: [r], events: [created(r, 1)] });
-    const box = screen.getByRole("group", { name: "Ready for review" });
-
-    await user.click(within(box).getByRole("button", { name: "View changes" }));
-    await user.click(await screen.findByRole("button", { name: "Done" }));
-    await user.click(within(box).getByRole("button", { name: "View changes" }));
-    const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
-    await within(sheet).findByText("app/globals.css");
-    await user.click(within(sheet).getByRole("button", { name: "Reject" }));
-    expect(api.reject).toHaveBeenCalledWith("s1");
-    // The chat stays open, ready for what to change.
-    await waitFor(() => {
-      expect(screen.getByLabelText("Message")).toHaveFocus();
-    });
-    expect(
-      screen.getByText("Review rejected. The changes stay; tell Claude what to change."),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Ready for review" })).not.toBeInTheDocument();
-
-    push({
-      id: 5,
-      session_id: "s1",
-      type: "approval.created",
-      payload: { approval: { ...review({ id: "q5" }) } },
-    });
-    const again = screen.getByRole("group", { name: "Ready for review" });
-    await user.click(within(again).getByRole("button", { name: "View changes" }));
-    const second = await screen.findByRole("dialog");
-    await user.click(within(second).getByRole("button", { name: "Approve and open PR" }));
-    push({
-      id: 6,
-      session_id: "s1",
-      type: "approval.created",
-      payload: { approval: { ...review({ id: "q6" }) } },
-    });
-    await user.click(await screen.findByRole("button", { name: "Approve and open PR" }));
-
-    expect(api.approve).toHaveBeenCalledTimes(2);
-  });
 });
 
-describe("inline review of work with the agent's own git changes", () => {
-  it("publishes only once they are checked", async () => {
-    const r = review();
-    const { user, api } = await openChat({
-      chat: session({ git_violation: true }),
-      approvals: [r],
-      events: [event({ id: 1, type: "approval.created", payload: { approval: { ...r } } })],
-    });
-    const box = screen.getByRole("group", { name: "Ready for review" });
-    const approve = within(box).getByRole("button", { name: "Approve and open PR" });
+describe("review bar", () => {
+  const created = (a: Approval, id: number) =>
+    event({ id, type: "approval.created", payload: { approval: { ...a } } });
 
-    expect(approve).toBeDisabled();
-    await within(box).findByText("Pushes to agent/contact");
-    await user.click(within(box).getByRole("switch", { name: "I checked, publish anyway" }));
-    await user.click(approve);
+  it("sits above the composer while a review is pending, not in the transcript", async () => {
+    const r = review();
+    await openChat({ approvals: [r], events: [created(r, 1)] });
+
+    const bar = screen.getByRole("group", { name: "Changes to review" });
+    expect(bar).toHaveTextContent("3 files changed");
+    expect(within(bar).getByText("+48")).toBeInTheDocument();
+    expect(within(bar).getByText("-19")).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Review" })).toBeInTheDocument();
+    // Right above the message field.
+    expect(bar.closest(".rvbw")?.nextElementSibling).toHaveClass("comp");
+    expect(screen.queryByRole("group", { name: "Ready for review" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Raised contrast")).not.toBeInTheDocument();
+  });
+
+  it("names a single changed file", async () => {
+    const r = review({ payload: { files: 1, additions: 2, deletions: 0, paths: ["a.css"] } });
+    await openChat({ approvals: [r], events: [created(r, 1)] });
+
+    expect(screen.getByRole("group", { name: "Changes to review" })).toHaveTextContent(
+      "1 file changed",
+    );
+  });
+
+  it("is hidden without a pending review", async () => {
+    const p = approval();
+    await openChat({ approvals: [p], events: [created(p, 1)] });
+
+    expect(screen.queryByRole("group", { name: "Changes to review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+  });
+
+  it("opens the changes, approved from the sheet and never rejected", async () => {
+    const r = review();
+    const { user, api } = await openChat({ approvals: [r], events: [created(r, 1)] });
+
+    let sheet = await openReview(user);
+    await within(sheet).findByText("app/globals.css");
+    expect(within(sheet).queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    sheet = await openReview(user);
+    await user.click(
+      await enabled(within(sheet).getByRole("button", { name: "Approve and open PR" })),
+    );
 
     expect(api.approve).toHaveBeenCalledWith("s1", {
       commit_message: "Validate contact form",
-      acknowledge_violation: true,
       expected_fingerprint: "f1ngerprint",
       expected_head: "c0ffee0000000000000000000000000000000000",
     });
+    // Approved: the bar and its sheet go.
+    await waitFor(() => {
+      expect(screen.queryByRole("group", { name: "Changes to review" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+  });
+
+  it("shows nothing for a superseded review", async () => {
+    const r = review();
+    const { push } = await openChat({ approvals: [r], events: [created(r, 1)] });
+
+    push({
+      id: 2,
+      session_id: "s1",
+      type: "approval.resolved",
+      payload: { approval: { ...r, status: "superseded" } },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("group", { name: "Changes to review" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Approved|Rejected/)).not.toBeInTheDocument();
   });
 });
 

@@ -118,6 +118,7 @@ describe("buildTranscript", () => {
     const merged = review({ id: "r1" });
     const committed = review({ id: "r2" });
     const rejected = review({ id: "r3" });
+    const local = review({ id: "r4" });
     const expired = approval({ id: "e1" });
     const superseded = review({ id: "x1" });
     const pending = approval({ id: "live" });
@@ -132,6 +133,7 @@ describe("buildTranscript", () => {
         created(merged, 6),
         created(committed, 7),
         created(rejected, 8),
+        created(local, 12),
         created(expired, 9),
         created(superseded, 10),
         created(approval({ id: "unknown" }), 11),
@@ -141,6 +143,7 @@ describe("buildTranscript", () => {
         resolved(dismissed, { dismissed: true }, "resolved"),
         resolved(merged, { action: "approved", pr_url: "https://pr" }, "resolved"),
         resolved(committed, { action: "approved", pr_url: null }, "resolved"),
+        resolved(local, { action: "approved", pushed: false, pr_url: null }, "resolved"),
         resolved(rejected, { action: "rejected" }, "resolved"),
         resolved(expired, { reason: "x" }, "expired"),
         resolved(superseded, {}, "superseded"),
@@ -166,9 +169,21 @@ describe("buildTranscript", () => {
       { kind: "system", key: "6", text: "Approved. Pull request opened" },
       { kind: "system", key: "7", text: "Approved and committed" },
       { kind: "system", key: "8", text: "Rejected. Changes kept, nothing committed" },
+      { kind: "system", key: "12", text: "Approved and committed, not pushed" },
       { kind: "system", key: "9", text: "Request expired" },
       { kind: "system", key: "92", text: "Approved and committed" },
     ]);
+  });
+
+  it("leaves a pending review to the bar above the composer", () => {
+    const pending = review();
+    const items = buildTranscript(
+      [event({ id: 1, type: "approval.created", payload: { approval: json(pending) } })],
+      { [pending.id]: pending },
+      null,
+    );
+
+    expect(items).toEqual([]);
   });
 
   it("leaves a merge to its own line and notes a dismissed one", () => {
@@ -238,7 +253,6 @@ describe("buildTranscript", () => {
         event({ id: 6, type: "session.result", payload: { is_error: false } }),
         event({ id: 7, type: "session.setup_failed", payload: { command: "npm ci" } }),
         event({ id: 8, type: "session.setup_failed", payload: {} }),
-        event({ id: 9, type: "session.git_violation", payload: {} }),
         event({ id: 10, type: "git.failed", payload: { step: "push" } }),
         event({ id: 11, type: "git.failed", payload: {} }),
         event({ id: 12, type: "pr.opened", payload: { url: "u" } }),
@@ -258,7 +272,6 @@ describe("buildTranscript", () => {
       "The turn ended with an error",
       "Setup failed: npm ci",
       "Setup failed: ",
-      "The agent changed git refs itself",
       "Git push failed",
       "Git  failed",
       "Pull request opened",

@@ -95,14 +95,7 @@ export function Shell() {
         role="tabpanel"
         aria-labelledby={`tab-${tab}`}
       >
-        {tab === "inbox" && (
-          <Inbox
-            onOpenChat={(id, compose) => {
-              show(compose === true ? { id, compose } : { id });
-            }}
-            onOpenPixie={openPixie}
-          />
-        )}
+        {tab === "inbox" && <Inbox onOpenChat={openChat} onOpenPixie={openPixie} />}
         {tab === "projects" && (
           <Projects
             project={current}

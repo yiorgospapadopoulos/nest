@@ -249,9 +249,6 @@ export function applyEvent(state: State, event: NestEvent): State {
       return patchSession(next, id, { stuck: stuckOf(p) });
     case "session.unstuck":
       return patchSession(next, id, { stuck: null });
-    case "session.git_violation":
-      // Publishing now waits for the user to say they checked (the acknowledge switch).
-      return patchSession(next, id, { git_violation: true });
     case "session.queued":
       // The full list after every change; the last one wins.
       return id === null ? next : { ...next, queued: { ...next.queued, [id]: queuedOf(p.queued) } };

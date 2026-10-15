@@ -8,7 +8,8 @@ interface Props {
   label: string;
   approveLabel: string;
   onApprove: () => void;
-  onReject: () => void;
+  // Without it, as for a review, a swipe left does nothing.
+  onReject?: () => void;
   // An answer is on its way: swipes do nothing, as the buttons are disabled.
   busy: boolean;
   children: ReactNode;
@@ -25,10 +26,12 @@ export function SwipeCard({ label, approveLabel, onApprove, onReject, busy, chil
           <Icon name="check" />
           {approveLabel}
         </span>
-        <span className="sr2">
-          Reject
-          <Icon name="x" />
-        </span>
+        {onReject !== undefined && (
+          <span className="sr2">
+            Reject
+            <Icon name="x" />
+          </span>
+        )}
       </div>
       <article
         className={dx === 0 ? "card gl" : "card gl drag"}

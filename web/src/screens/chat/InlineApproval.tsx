@@ -1,15 +1,12 @@
-import { useState } from "react";
 import type { Approval, Session } from "../../api/types.ts";
-import { DiffStats } from "../../ui/bits.tsx";
+import type { InlineAsk } from "../../transcript/build.ts";
 import { Icon } from "../../ui/Icon.tsx";
-import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
-import { useMerge, usePermission, useReview } from "../approvals/hooks.ts";
+import { useMerge, usePermission } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
-import { RemoteConfirmation, ViolationNotice } from "../approvals/ReviewGuards.tsx";
 
 interface Props {
-  approval: Approval;
+  approval: InlineAsk;
   session: Session;
 }
 
@@ -28,8 +25,6 @@ export function InlineApproval({ approval, session }: Props) {
           <QuestionForm approval={approval} inline />
         </div>
       );
-    case "review":
-      return <InlineReview approval={approval} session={session} />;
     case "plan":
       return (
         <div className="ask pl" role="group" aria-label="Plan ready">
@@ -86,70 +81,6 @@ function InlinePermission({ approval, session }: Props) {
           Always allow {view.always}
         </button>
       </div>
-    </div>
-  );
-}
-
-function InlineReview({ approval, session }: Props) {
-  const review = useReview(approval, session);
-  const [diffOpen, setDiffOpen] = useState(false);
-  const approve = () => void review.approve(review.title);
-  // The chat stays open after a reject: its message field is next, to say what to change.
-  const reject = () =>
-    void review.reject(() => {
-      document.getElementById("composer")?.focus();
-    });
-  return (
-    <div className="ask rv" role="group" aria-label="Ready for review">
-      <div className="ask-h">
-        <Icon name="check" />
-        Ready for review
-      </div>
-      <div className="crr">
-        <DiffStats {...review.view} />
-      </div>
-      <ReviewSummary review={review} />
-      <ViolationNotice review={review} />
-      <div className="acts">
-        <button
-          className="b b-ok"
-          disabled={review.busy || review.blocked || !review.ready}
-          onClick={approve}
-        >
-          {review.approveLabel}
-        </button>
-        <button
-          className="b"
-          onClick={() => {
-            setDiffOpen(true);
-          }}
-        >
-          View changes
-        </button>
-      </div>
-      {diffOpen && (
-        <DiffSheet
-          review={review}
-          onClose={() => {
-            setDiffOpen(false);
-          }}
-          footer={
-            <>
-              <button
-                className="b b-ok"
-                disabled={review.busy || review.blocked || !review.ready}
-                onClick={approve}
-              >
-                {review.approveLabel}
-              </button>
-              <button className="b b-no" disabled={review.busy} onClick={reject}>
-                Reject
-              </button>
-            </>
-          }
-        />
-      )}
-      <RemoteConfirmation review={review} />
     </div>
   );
 }

@@ -1201,6 +1201,34 @@
   color: var(--t3);
 }
 
+/* "3 files changed +48 -19 · Review" just above the composer while changes wait (B56). */
+.rvbw {
+  flex: none;
+  margin: 0 10px 6px;
+}
+.rvbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--r-pane);
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.rvbar .ic {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--t3);
+}
+.rvbar .ds {
+  flex: 1;
+}
+.rvbar .b {
+  flex: none;
+}
+
 /* Completions for a "/command" or "@path", in the column just above the composer. */
 .sug {
   flex: none;

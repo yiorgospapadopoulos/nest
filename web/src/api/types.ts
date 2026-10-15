@@ -85,7 +85,6 @@ export interface Session {
   worktree_path: string | null;
   branch: string | null;
   provider_session_id: string | null;
-  git_violation: boolean;
   created_at: string;
   updated_at: string;
   last_error: string | null;
@@ -304,16 +303,9 @@ export interface ReviewHead {
   branch: string | null;
 }
 
-export interface ReviewCommit {
-  sha: string;
-  subject: string;
-}
-
 export interface SessionDiff {
   base: string | null;
   head: ReviewHead;
-  // Commits on HEAD that neither the base nor Nest's own publishing accounts for.
-  commits: ReviewCommit[];
   files: FileDiff[];
   stats: DiffStats;
   // A hash of everything shown; approving sends it back as `expected_fingerprint`.
@@ -436,8 +428,8 @@ export interface ApproveBody {
   commit_message: string;
   files?: string[];
   open_pr?: boolean;
-  // The user checked the git refs the agent changed itself (session.git_violation).
-  acknowledge_violation?: boolean;
+  // False commits without pushing, as for in-place chats (B56); the daemon pushes by default.
+  push?: boolean;
   // The HEAD the user reviewed; the daemon refuses with `head_changed` if it moved.
   expected_head?: string;
   // The reviewed diff's fingerprint; the daemon refuses with `review_changed` if it differs.

@@ -104,38 +104,45 @@ export function useReview(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
   const { diff, loading, failed, loadDiff } = useDiff(approval, session);
-  // What approving would publish: the reviewed HEAD and the daemon's hash of the review.
-  const reviewed = diff === null ? null : `${diff.head.commit ?? ""} ${diff.fingerprint}`;
-  // The agent changed git refs itself: publishing waits until the user says they checked,
-  // and asks again when the review they checked changes.
-  const [checked, setChecked] = useState<string | null>(null);
-  const acknowledged = checked !== null && checked === reviewed;
   // Publishing waits for the push address to be confirmed, with the message it was for.
   const [remote, setRemote] = useState<(RemotePrompt & { message: string }) | null>(null);
   const view = reviewOf(approval);
   const inPlace = session?.mode === "in_place";
-  const violation = session?.git_violation === true;
+  // Only a worktree chat without a pull request yet pushes (and opens one); the others
+  // commit and leave pushing to the user (B56).
+  const commitOnly = inPlace || session?.pr_url != null;
   // Approving sends what the user saw, so it waits for the diff, and for any reload of it.
   const ready = diff !== null && !loading;
   const publish = async (message: string, confirmUrl?: string) => {
     // A swipe can come before the diff has loaded: nothing to publish yet.
     if (diff === null || loading) return;
     await run(async () => {
-      const result = await actions.approveReview(approval, {
-        ...body(diff, message.trim() || approval.title),
-        ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
-      });
+      const result = await actions.approveReview(
+        approval,
+        {
+          ...body(diff, message.trim() || approval.title),
+          ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
+        },
+        approved(diff),
+      );
       if (typeof result === "object") setRemote({ ...result.remote, message });
-      // Refused: show the branch as it is now, with any commits Nest did not make.
+      // Refused: show the branch as it is now.
       if (result === "refused" || typeof result === "object") loadDiff();
       return result === "approved";
     });
   };
+  // What the toast says once approved.
+  const approved = (seen: SessionDiff): string => {
+    if (!commitOnly) return "Pull request opened";
+    return seen.head.branch === null
+      ? "Committed, not pushed"
+      : `Committed to ${seen.head.branch}, not pushed`;
+  };
   const body = (seen: SessionDiff, message: string): ApproveBody => ({
     commit_message: message,
-    // In-place work is pushed without a pull request, committing only the changed files.
-    ...(inPlace ? { files: view.paths, open_pr: false } : {}),
-    ...(violation && acknowledged ? { acknowledge_violation: true } : {}),
+    // In-place work commits only the changed files.
+    ...(inPlace ? { files: view.paths } : {}),
+    ...(commitOnly ? { open_pr: false, push: false } : {}),
     // Publish exactly what was reviewed, or be told it changed.
     expected_fingerprint: seen.fingerprint,
     ...(seen.head.commit === null ? {} : { expected_head: seen.head.commit }),
@@ -143,17 +150,10 @@ export function useReview(approval: Approval, session: Session | undefined) {
   return {
     view,
     busy,
-    inPlace,
-    violation,
-    acknowledged,
-    setAcknowledged: (on: boolean) => {
-      setChecked(on ? reviewed : null);
-    },
-    // Approving would be refused until the violation is acknowledged.
-    blocked: violation && !acknowledged,
+    commitOnly,
     ready,
     title: session?.title ?? approval.title,
-    approveLabel: inPlace ? "Approve and push" : "Approve and open PR",
+    approveLabel: commitOnly ? "Approve and commit" : "Approve and open PR",
     diff,
     diffFailed: failed,
     loadDiff,
@@ -167,13 +167,6 @@ export function useReview(approval: Approval, session: Session | undefined) {
       setRemote(null);
       return publish(message, url);
     },
-    // Nothing is lost, so it asks nothing; `then` takes the user to the chat's message field.
-    reject: (then: () => void) =>
-      run(async () => {
-        const rejected = await actions.rejectReview(approval);
-        if (rejected) then();
-        return rejected;
-      }),
     feedback: (text: string) => run(() => actions.feedback(approval, text)),
   };
 }

@@ -1,36 +1,5 @@
-import { useId } from "react";
-import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import type { Review } from "./hooks.ts";
-
-/** The agent ran git itself; publishing waits for the switch, as on the Mac. */
-export function ViolationNotice({ review }: { review: Review }) {
-  const id = useId();
-  if (!review.violation) return null;
-  return (
-    <div className="vio">
-      <p>
-        <Icon name="shield" />
-        The agent ran git itself and changed this chat&apos;s branch. Check its commits before
-        publishing.
-      </p>
-      <div className="vio-r">
-        <span id={id}>I checked, publish anyway</span>
-        <button
-          className="sw"
-          role="switch"
-          aria-checked={review.acknowledged}
-          aria-labelledby={id}
-          // What was checked is the loaded review; a new one asks again.
-          disabled={review.diff === null}
-          onClick={() => {
-            review.setAcknowledged(!review.acknowledged);
-          }}
-        />
-      </div>
-    </div>
-  );
-}
 
 /**
  * Publishing waits until the user confirms where origin pushes (D050). With one address,

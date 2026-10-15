@@ -512,11 +512,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     /**
-     * "refused": the daemon said no (409), for example for a git violation or a branch that
-     * moved. The session is fetched again so the screen shows why, then the reason. A push
-     * address to confirm comes back for the screen to ask about instead.
+     * "refused": the daemon said no (409), for example for a branch that moved. The session
+     * is fetched again so the screen shows why, then the reason. A push address to confirm
+     * comes back for the screen to ask about instead.
      */
-    async approveReview(review: Approval, body: ApproveBody): Promise<ApproveResult> {
+    async approveReview(review: Approval, body: ApproveBody, done: string): Promise<ApproveResult> {
       let updated: Session;
       try {
         updated = await api.approve(review.session_id, body);
@@ -538,18 +538,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
       dispatch({ type: "session", session: updated });
       dispatch({ type: "approval", approval: { ...review, status: "resolved" } });
-      toast(updated.pr_url === null ? "Approved and committed" : "Pull request opened");
+      toast(done);
       return "approved";
-    },
-
-    /** Dismisses the review; the chat stays open with its changes (B54). */
-    async rejectReview(review: Approval): Promise<boolean> {
-      const updated = await attempt(() => api.reject(review.session_id));
-      if (updated === null) return false;
-      dispatch({ type: "session", session: updated });
-      dispatch({ type: "approval", approval: { ...review, status: "resolved" } });
-      toast("Review rejected. The changes stay; tell Claude what to change.", "info");
-      return true;
     },
 
     async feedback(review: Approval, text: string): Promise<boolean> {

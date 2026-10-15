@@ -262,28 +262,7 @@
   white-space: pre-line;
   margin-bottom: 4px;
 }
-/* The agent changed git refs itself: a warning with the switch that allows publishing. */
-.vio {
-  margin: 8px 0 2px;
-  padding: 8px 10px;
-  border-radius: var(--r-sm);
-  background: var(--fail-soft);
-  color: var(--fail-t);
-  font-size: 0.7353rem;
-  line-height: 1.4;
-}
-.vio p {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  font-weight: 600;
-}
-.vio p .ic {
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
-}
-/* Where approving pushes, and commits on the branch that Nest did not make. */
+/* Where approving pushes. */
 .dpush {
   display: flex;
   align-items: center;
@@ -295,23 +274,6 @@
 .dpush .ic {
   width: 14px;
   height: 14px;
-}
-.dcommits {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  color: var(--t1);
-}
-.dcommits code {
-  margin-right: 6px;
-  font: 600 0.7059rem var(--mono);
-}
-.vio-r {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
-  color: var(--t1);
 }
 .cilist {
   margin: 6px 0 0;
