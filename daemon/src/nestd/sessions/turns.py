@@ -23,6 +23,7 @@ from nestd.providers.base import (
 )
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated
+from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.extras import RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
@@ -235,8 +236,12 @@ class TurnRunner:
 
     async def _run_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
         session = await self._start_turn(live)
-        await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         cwd = require_cwd(session)
+        if not cwd.is_dir():
+            # The turn fails before the agent gets the message (B61).
+            msg = f"the working directory {cwd} does not exist"
+            raise NoWorkspaceError(msg)
+        await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
         # Teams the message calls get their instruction; the chat shows what was typed.
