@@ -182,12 +182,17 @@ export interface QueuedAttachment {
   size: number;
 }
 
-/** A message sent while a turn runs; the next turn that ends normally delivers it. */
+/**
+ * A message sent while a turn runs that Claude has not read yet (B59): `sent` when it went
+ * into the running turn, which reads it at its next step; otherwise it waits for the turn
+ * to end (or, after a Stop, for the next message or Send now).
+ */
 export interface QueuedMessage {
   id: string;
   text: string;
   attachments: QueuedAttachment[];
   created_at: string;
+  sent: boolean;
 }
 
 export interface SessionDetail extends Session {
@@ -438,15 +443,53 @@ export interface ApproveBody {
   confirm_remote_url?: string;
 }
 
-/** What restoring files to before a message would do (`GET .../rewind?message=`). */
+/** What a rewind restores (B59): the files, the conversation, or both. */
+export type Restore = "code" | "conversation" | "both";
+
+/** What rewinding to before a message would do (`GET .../rewind?message=&restore=`). */
 export interface RewindPreview {
   can_rewind: boolean;
   // The paths, or only how many (the SDK reports paths; a count is accepted too).
   files_changed: string[] | number;
   insertions: number;
   deletions: number;
-  // Why the files cannot be restored, when they cannot.
+  // Why it cannot be done, when it cannot.
   error: string | null;
+}
+
+/** What a rewind did; `text` and `attachments` are the rewound message, for the composer. */
+export interface RewindReply extends RewindPreview {
+  restore: Restore;
+  text: string | null;
+  attachments: QueuedAttachment[];
+}
+
+/** A `!` command run in the chat's folder (B59); `context` goes before the next message. */
+export interface ShellResult {
+  command: string;
+  // Null when it timed out.
+  exit_code: number | null;
+  output: string;
+  truncated: boolean;
+  timed_out: boolean;
+  context: string;
+}
+
+/** Where a `#` memory goes (B59): the project's CLAUDE.md, or the user's. */
+export type MemoryScope = "project" | "user";
+
+export interface MemoryReply {
+  // The file written.
+  path: string;
+  scope: MemoryScope;
+  line: string;
+}
+
+/** A chat forked from a message (B59), with that message for its composer. */
+export interface ForkReply {
+  session: Session;
+  text: string;
+  attachments: QueuedAttachment[];
 }
 
 /** Project settings to change (`PATCH /api/repos/{name}`); only the keys sent change. */

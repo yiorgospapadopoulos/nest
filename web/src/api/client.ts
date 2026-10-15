@@ -30,7 +30,13 @@ import type {
   RepoConfig,
   RepoPatch,
   ResolveBody,
+  ForkReply,
+  MemoryReply,
+  MemoryScope,
+  Restore,
   RewindPreview,
+  RewindReply,
+  ShellResult,
   SearchResults,
   SendResponse,
   Session,
@@ -95,7 +101,12 @@ export interface Api {
     interrupt?: boolean,
   ): Promise<SendResponse>;
   interrupt(id: string): Promise<null>;
+  // Stops one background task or subagent, by its task id or the tool use id that started it.
+  stopTask(id: string, taskId: string): Promise<null>;
+  // Takes back a message Claude has not read; 409 `message_taken` once it has.
   cancelQueued(id: string, queuedId: string): Promise<null>;
+  // Stops the turn if one runs and starts this pending message next.
+  sendNow(id: string, queuedId: string): Promise<null>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -113,9 +124,17 @@ export interface Api {
   feedback(sessionId: string, text: string): Promise<Session>;
   // The daemon reads the failing checks' logs with its own GitHub login and sends them in.
   ciFeedback(sessionId: string): Promise<unknown>;
-  rewindPreview(sessionId: string, eventId: number): Promise<RewindPreview>;
-  // Restores files (not the conversation) to before the user message `eventId`.
-  rewind(sessionId: string, eventId: number): Promise<unknown>;
+  rewindPreview(sessionId: string, eventId: number, restore?: Restore): Promise<RewindPreview>;
+  // Restores the files, the conversation or both to before the user message `eventId`.
+  rewind(sessionId: string, eventId: number, restore?: Restore): Promise<RewindReply>;
+  // A new chat with the conversation before the user message `eventId`.
+  fork(sessionId: string, eventId: number): Promise<ForkReply>;
+  // Runs a `!` command in the chat's folder; 200 even when the command fails.
+  shell(sessionId: string, command: string): Promise<ShellResult>;
+  // Appends a `#` memory to the project's or the user's CLAUDE.md.
+  remember(sessionId: string, text: string, scope: MemoryScope): Promise<MemoryReply>;
+  // A stored file, such as an image in a tool result, as data.
+  attachment(id: string): Promise<Blob>;
   // Merges the pull request, then closes the session and removes its worktree.
   merge(sessionId: string, body: MergeBody): Promise<Session>;
   uploadAttachment(file: File): Promise<Attachment>;
@@ -231,8 +250,16 @@ export class HttpApi implements Api {
     return this.json<null>("POST", `${session(id)}/interrupt`);
   }
 
+  stopTask(id: string, taskId: string) {
+    return this.json<null>("POST", `${session(id)}/tasks/${encodeURIComponent(taskId)}/stop`);
+  }
+
   cancelQueued(id: string, queuedId: string) {
     return this.json<null>("DELETE", `${session(id)}/queue/${encodeURIComponent(queuedId)}`);
+  }
+
+  sendNow(id: string, queuedId: string) {
+    return this.json<null>("POST", `${session(id)}/queue/${encodeURIComponent(queuedId)}/send-now`);
   }
 
   sessionCommands(id: string) {
@@ -309,15 +336,37 @@ export class HttpApi implements Api {
     return this.json<unknown>("POST", `${session(sessionId)}/ci-feedback`);
   }
 
-  rewindPreview(sessionId: string, eventId: number) {
+  rewindPreview(sessionId: string, eventId: number, restore: Restore = "code") {
     return this.json<RewindPreview>(
       "GET",
-      `${session(sessionId)}/rewind?message=${String(eventId)}`,
+      `${session(sessionId)}/rewind?message=${String(eventId)}&restore=${restore}`,
     );
   }
 
-  rewind(sessionId: string, eventId: number) {
-    return this.json<unknown>("POST", `${session(sessionId)}/rewind`, { message: eventId });
+  rewind(sessionId: string, eventId: number, restore: Restore = "code") {
+    return this.json<RewindReply>("POST", `${session(sessionId)}/rewind`, {
+      message: eventId,
+      restore,
+    });
+  }
+
+  fork(sessionId: string, eventId: number) {
+    return this.json<ForkReply>("POST", `${session(sessionId)}/fork`, { message: eventId });
+  }
+
+  shell(sessionId: string, command: string) {
+    return this.json<ShellResult>("POST", `${session(sessionId)}/shell`, { command });
+  }
+
+  remember(sessionId: string, text: string, scope: MemoryScope) {
+    return this.json<MemoryReply>("POST", `${session(sessionId)}/memory`, { text, scope });
+  }
+
+  async attachment(id: string) {
+    const path = `/api/attachments/${encodeURIComponent(id)}`;
+    const response = await this.fetchFn(path, { credentials: "same-origin" });
+    if (!response.ok) throw failure(response.status, parse(await response.text()));
+    return response.blob();
   }
 
   merge(sessionId: string, body: MergeBody) {
@@ -521,16 +570,19 @@ export class HttpApi implements Api {
     const response = await this.fetchFn(path, { ...init, credentials: "same-origin" });
     const text = await response.text();
     const data: unknown = text ? parse(text) : null;
-    if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        field(data, "detail") ?? `Request failed (${String(response.status)})`,
-        field(data, "code"),
-        isRecord(data) ? data : {},
-      );
-    }
+    if (!response.ok) throw failure(response.status, data);
     return data as T;
   }
+}
+
+/** The error of a refused request, with the daemon's detail and code when it gave them. */
+function failure(status: number, data: unknown): ApiError {
+  return new ApiError(
+    status,
+    field(data, "detail") ?? `Request failed (${String(status)})`,
+    field(data, "code"),
+    isRecord(data) ? data : {},
+  );
 }
 
 function parse(text: string): unknown {

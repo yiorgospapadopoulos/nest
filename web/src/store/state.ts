@@ -17,6 +17,7 @@ import type {
   QueuedMessage,
   RepoConfig,
   Session,
+  ShellResult,
   TrackedAgent,
   TrackedTask,
   UsageLimits,
@@ -31,6 +32,17 @@ export interface Tracking {
 }
 
 export const NO_BACKGROUND: BackgroundSummary = { running: 0, completed: 0, items: [] };
+
+/**
+ * A `!` command run in a chat (B59): running until it has a result or an error. Kept on
+ * this device only, like a draft, until a message gives Claude what ran.
+ */
+export interface BashRun {
+  id: number;
+  command: string;
+  result: ShellResult | null;
+  error: string | null;
+}
 
 // A message being written: kept per chat (by session id) or per project for a new chat
 // (see draftKey), so switching chats never carries it along.
@@ -90,9 +102,15 @@ export interface State {
   live: Record<string, string>;
   // When the agent started the thinking it is doing now (D045); live only.
   thinking: Record<string, string>;
-  // Messages waiting for the running turn to end, oldest first.
+  // That thinking's text as it streams in, until its block arrives (B59).
+  thoughts: Record<string, string>;
+  // Subagents' text as it streams in, per chat by the id of the Agent call (B59).
+  agentLive: Record<string, Record<string, string>>;
+  // Messages sent while a turn runs that Claude has not read yet, oldest first (B59).
   queued: Record<string, QueuedMessage[]>;
   drafts: Record<string, Draft>;
+  // Each chat's `!` commands since its last message, oldest first (B59).
+  bash: Record<string, BashRun[]>;
   connectors: Connector[] | null;
   limits: UsageLimits | null;
   // The daemon's notification rules, once the Account tab asked for them.
@@ -123,8 +141,11 @@ export const initialState: State = {
   history: {},
   live: {},
   thinking: {},
+  thoughts: {},
+  agentLive: {},
   queued: {},
   drafts: {},
+  bash: {},
   connectors: null,
   limits: null,
   notifications: null,
@@ -177,9 +198,15 @@ export type Action =
   | { type: "draftText"; key: string; text: string }
   | { type: "draftFileAdded"; key: string; file: Attachment }
   | { type: "draftFileRemoved"; key: string; fileId: string }
+  // A message taken back (a pending one edited, a rewind, a fork) put in the draft.
+  | { type: "draftFilled"; key: string; text: string; files: Attachment[] }
   // A message from the draft went out: what was typed or attached since stays.
   // `to`: the new chat the first message created, which takes what is left of the draft.
   | { type: "draftSent"; key: string; text: string; fileIds: string[]; to?: string }
+  | { type: "bashStarted"; id: string; runId: number; command: string }
+  | { type: "bashFinished"; id: string; runId: number; result?: ShellResult; error?: string }
+  // A message carried these runs to Claude, or they ended in an error before it.
+  | { type: "bashSent"; id: string; runIds: number[] }
   | { type: "connectors"; connectors: Connector[] }
   | { type: "limits"; limits: UsageLimits }
   | { type: "notifications"; notifications: NotificationSettings }

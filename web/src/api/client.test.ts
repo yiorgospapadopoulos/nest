@@ -55,10 +55,24 @@ const calls: Call[] = [
   ],
   ["interrupt", (a) => a.interrupt("s1"), "POST", "/api/sessions/s1/interrupt", undefined],
   [
+    "stop task",
+    (a) => a.stopTask("s/1", "toolu 1"),
+    "POST",
+    "/api/sessions/s%2F1/tasks/toolu%201/stop",
+    undefined,
+  ],
+  [
     "cancel queued",
     (a) => a.cancelQueued("s1", "m/1"),
     "DELETE",
     "/api/sessions/s1/queue/m%2F1",
+    undefined,
+  ],
+  [
+    "send a pending message now",
+    (a) => a.sendNow("s1", "m/1"),
+    "POST",
+    "/api/sessions/s1/queue/m%2F1/send-now",
     undefined,
   ],
   [
@@ -234,10 +248,45 @@ const calls: Call[] = [
     "rewind preview",
     (a) => a.rewindPreview("s1", 42),
     "GET",
-    "/api/sessions/s1/rewind?message=42",
+    "/api/sessions/s1/rewind?message=42&restore=code",
     undefined,
   ],
-  ["rewind", (a) => a.rewind("s1", 42), "POST", "/api/sessions/s1/rewind", { message: 42 }],
+  [
+    "conversation rewind preview",
+    (a) => a.rewindPreview("s1", 42, "conversation"),
+    "GET",
+    "/api/sessions/s1/rewind?message=42&restore=conversation",
+    undefined,
+  ],
+  [
+    "rewind",
+    (a) => a.rewind("s1", 42),
+    "POST",
+    "/api/sessions/s1/rewind",
+    { message: 42, restore: "code" },
+  ],
+  [
+    "rewind both",
+    (a) => a.rewind("s1", 42, "both"),
+    "POST",
+    "/api/sessions/s1/rewind",
+    { message: 42, restore: "both" },
+  ],
+  ["fork", (a) => a.fork("s/1", 42), "POST", "/api/sessions/s%2F1/fork", { message: 42 }],
+  [
+    "shell",
+    (a) => a.shell("s/1", "git status"),
+    "POST",
+    "/api/sessions/s%2F1/shell",
+    { command: "git status" },
+  ],
+  [
+    "remember",
+    (a) => a.remember("s1", "Run make check", "project"),
+    "POST",
+    "/api/sessions/s1/memory",
+    { text: "Run make check", scope: "project" },
+  ],
   [
     "redeem",
     (a) => a.redeem("ABCD2345", "iPhone"),
@@ -397,6 +446,29 @@ describe("HttpApi", () => {
     expect(init?.method).toBe("POST");
     const form = init?.body as FormData;
     expect((form.get("file") as File).name).toBe("note.txt");
+  });
+
+  it("reads an attachment as data, with the device's credentials", async () => {
+    const fetchFn = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response("png", { headers: { "Content-Type": "image/png" } })),
+    );
+    const api = new HttpApi(fetchFn);
+
+    const blob = await api.attachment("a/1");
+
+    expect(await blob.text()).toBe("png");
+    const [url, init] = fetchFn.mock.calls[0] ?? [];
+    expect(url).toBe("/api/attachments/a%2F1");
+    expect(init?.credentials).toBe("same-origin");
+  });
+
+  it("raises an attachment the Mac does not have", async () => {
+    const { api } = setup(404, { detail: "unknown attachment 'x'" });
+
+    await expect(api.attachment("x")).rejects.toMatchObject({
+      status: 404,
+      message: "unknown attachment 'x'",
+    });
   });
 
   it("raises the daemon's detail message with the status", async () => {

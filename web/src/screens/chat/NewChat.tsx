@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import type { RepoConfig, Session, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import type { ChatNav } from "./CommandSheets.tsx";
 import { Composer, type NewChatPlace } from "./Composer.tsx";
 import { Frame } from "./Frame.tsx";
 import type { Option } from "./options.ts";
@@ -13,10 +14,11 @@ interface Props {
   repo: string;
   onBack: () => void;
   onCreated: (session: Session) => void;
+  nav: ChatNav;
 }
 
 /** A new chat in a project: it starts with its first message. */
-export function NewChat({ repo: name, onBack, onCreated }: Props) {
+export function NewChat({ repo: name, onBack, onCreated, nav }: Props) {
   const { state } = useStore();
   const repo = state.repos.find((r) => r.name === name);
   const [place, setPlace] = useState<NewChatPlace>({});
@@ -30,7 +32,7 @@ export function NewChat({ repo: name, onBack, onCreated }: Props) {
         </div>
       </div>
       {repo?.git === true && <PlaceChoice repo={repo} onChange={setPlace} />}
-      <Composer repo={name} place={place} onCreated={onCreated} />
+      <Composer repo={name} place={place} onCreated={onCreated} nav={nav} />
     </Frame>
   );
 }

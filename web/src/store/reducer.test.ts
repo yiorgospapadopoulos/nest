@@ -428,6 +428,70 @@ describe("live events", () => {
     expect(apply(state, event({ type: "session.queued", session_id: null }))).toBe(state);
   });
 
+  it("drop the events a conversation rewind removed (B59)", () => {
+    const said = (id: number, sessionId = "s1") =>
+      event({ id, session_id: sessionId, type: "session.user_message", payload: { text: "x" } });
+    let state = reduce(loaded(), { type: "transcriptOpened", id: "s1" });
+    state = reduce(state, { type: "transcriptOpened", id: "s2" });
+    state = reduce(state, { type: "transcriptLoaded", id: "s1", events: [said(3), said(5)] });
+    state = reduce(state, { type: "transcriptLoaded", id: "s2", events: [said(6, "s2")] });
+    state = apply(state, said(7));
+    state = apply(state, said(8));
+    const rewound = event({
+      id: 9,
+      type: "session.rewound",
+      payload: { message: 5, through: 7, text: "x", attachments: [] },
+    });
+
+    state = apply(state, rewound);
+
+    expect(state.transcripts.s1?.map((e) => e.id)).toEqual([3, 8, 9]);
+    expect(state.transcripts.s2?.map((e) => e.id)).toEqual([6]);
+    // A malformed one, or one for a chat not open, changes nothing.
+    const bare = event({ id: 10, type: "session.rewound", payload: {} });
+    expect(apply(state, bare).transcripts.s1?.map((e) => e.id)).toEqual([3, 8, 9, 10]);
+    const closed = event({ id: 11, session_id: "s9", type: "session.rewound", payload: {} });
+    expect(apply(state, closed).transcripts).toBe(state.transcripts);
+    const global = event({ id: 12, session_id: null, type: "session.rewound", payload: {} });
+    expect(apply(state, global).transcripts).toBe(state.transcripts);
+  });
+
+  it("keep the chat's shell commands until a message carries them (B59)", () => {
+    const result = {
+      command: "ls",
+      exit_code: 0,
+      output: "a",
+      truncated: false,
+      timed_out: false,
+      context: "<bash-input>ls</bash-input>",
+    };
+    let state = reduce(loaded(), { type: "bashStarted", id: "s1", runId: 1, command: "ls" });
+    state = reduce(state, { type: "bashStarted", id: "s1", runId: 2, command: "pwd" });
+    state = reduce(state, { type: "bashStarted", id: "s2", runId: 3, command: "id" });
+    state = reduce(state, { type: "bashFinished", id: "s1", runId: 1, result });
+    state = reduce(state, { type: "bashFinished", id: "s1", runId: 2, error: "folder gone" });
+    // One for a chat or run no longer there changes nothing.
+    expect(reduce(state, { type: "bashFinished", id: "s9", runId: 1, error: "x" })).toEqual(state);
+
+    expect(state.bash.s1).toEqual([
+      { id: 1, command: "ls", result, error: null },
+      { id: 2, command: "pwd", result: null, error: "folder gone" },
+    ]);
+    state = reduce(state, { type: "bashSent", id: "s1", runIds: [1, 2] });
+    expect(state.bash.s1).toEqual([]);
+    expect(state.bash.s2).toHaveLength(1);
+    state = apply(state, event({ type: "session.deleted", payload: { session_id: "s2" } }));
+    expect(state.bash.s2).toBeUndefined();
+  });
+
+  it("fill a draft with a message taken back", () => {
+    const file = { id: "a1", filename: "a.png", media_type: "image/png", size: 3, created_at: "" };
+    let state = reduce(loaded(), { type: "draftText", key: "session:s1", text: "old" });
+    state = reduce(state, { type: "draftFilled", key: "session:s1", text: "Again", files: [file] });
+
+    expect(state.drafts["session:s1"]).toEqual({ text: "Again", files: [file] });
+  });
+
   it("track the context window of known sessions", () => {
     const context = { percent: 41.4, used: 82_000, limit: 200_000 };
     let state = apply(loaded(), event({ type: "session.context", payload: { context } }));
@@ -633,5 +697,88 @@ describe("live events", () => {
     state = apply(state, event({ type: "pixie.deleted", payload: { pixie_id: "p1" } }));
     expect(state.habits.p1).toBeUndefined();
     expect(Object.keys(state.reports)).toEqual(["b"]);
+  });
+  describe("streams (B59)", () => {
+    const delta = (type: string, text: string, parent: string | null = null) =>
+      event({ id: null, type, payload: { text, parent_tool_use_id: parent } });
+
+    it("streams the main agent's thinking text until its block arrives", () => {
+      let state = apply(
+        loaded(),
+        event({ id: null, type: "session.thinking", payload: { active: true } }),
+      );
+      state = apply(state, delta("session.thinking_delta", "Let me check "));
+      state = apply(state, delta("session.thinking_delta", "the test"));
+      expect(state.thoughts).toEqual({ s1: "Let me check the test" });
+      // A subagent's thinking is not the main agent's.
+      expect(apply(state, delta("session.thinking_delta", "sub", "a1")).thoughts).toEqual(
+        state.thoughts,
+      );
+      expect(apply(state, event({ type: "session.message" })).thoughts).toEqual({});
+      expect(
+        apply(state, event({ id: null, type: "session.thinking", payload: { active: true } }))
+          .thoughts,
+      ).toEqual({});
+      expect(
+        apply(state, event({ type: "session.state", payload: { state: "idle" } })).thoughts,
+      ).toEqual({});
+      expect(apply(state, { ...delta("session.thinking_delta", "x"), session_id: null })).toBe(
+        state,
+      );
+    });
+
+    it("streams a subagent's text under its call, apart from the main text", () => {
+      let state = apply(loaded(), delta("session.subagent_delta", "Found 3 ", "a1"));
+      state = apply(state, delta("session.subagent_delta", "call sites", "a1"));
+      state = apply(state, delta("session.subagent_delta", "Other", "a2"));
+      state = apply(state, delta("session.delta", "Main"));
+      expect(state.agentLive).toEqual({ s1: { a1: "Found 3 call sites", a2: "Other" } });
+      expect(state.live).toEqual({ s1: "Main" });
+      expect(apply(state, delta("session.subagent_delta", "x"))).toBe(state);
+      expect(
+        apply(state, { ...delta("session.subagent_delta", "x", "a1"), session_id: null }),
+      ).toBe(state);
+
+      // A subagent's message replaces its streamed text, and leaves the main text alone.
+      const sub = apply(
+        state,
+        event({ type: "session.message", payload: { parent_tool_use_id: "a1", blocks: [] } }),
+      );
+      expect(sub.agentLive).toEqual({ s1: { a2: "Other" } });
+      expect(sub.live).toEqual({ s1: "Main" });
+      const other = event({
+        type: "session.message",
+        payload: { parent_tool_use_id: "zz", blocks: [] },
+      });
+      expect(apply(state, other)).toBe(state);
+      expect(apply(state, { ...other, session_id: null })).toBe(state);
+      expect(
+        apply(
+          state,
+          event({
+            id: null,
+            type: "session.subagent_delta",
+            payload: { parent_tool_use_id: "a2" },
+          }),
+        ).agentLive,
+      ).toEqual(state.agentLive);
+      const main = apply(state, event({ type: "session.message", payload: { blocks: [] } }));
+      expect(main.agentLive).toEqual(state.agentLive);
+      expect(main.live).toEqual({});
+
+      // Leaving running drops them all; running itself keeps them.
+      expect(
+        apply(state, event({ type: "session.state", payload: { state: "running" } })).agentLive,
+      ).toEqual(state.agentLive);
+      expect(
+        apply(state, event({ type: "session.state", payload: { state: "idle" } })).agentLive,
+      ).toEqual({});
+      expect(reduce(state, { type: "liveCleared", id: "s1" }).agentLive).toEqual({});
+      expect(reduce(state, { type: "sessionRemoved", id: "s1" }).agentLive).toEqual({});
+      // Replayed stored events keep what streamed meanwhile.
+      expect(
+        reduce(state, { type: "replayed", events: [event({ type: "session.message" })] }).agentLive,
+      ).toEqual(state.agentLive);
+    });
   });
 });

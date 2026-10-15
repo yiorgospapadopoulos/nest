@@ -167,14 +167,14 @@ export function mergeOf(approval: Approval): MergeView {
   };
 }
 
-/** The queued messages of a `session.queued` event, oldest first. */
+/** The pending messages of a `session.queued` event, oldest first. */
 export function queuedOf(value: JsonValue | undefined): QueuedMessage[] {
   return list(value).flatMap((value) => {
     const q = obj(value);
     const { id, text } = q;
     if (typeof id !== "string" || typeof text !== "string") return [];
     const attachments = list(q.attachments).map(obj) as unknown as QueuedAttachment[];
-    return [{ id, text, attachments, created_at: str(q.created_at) ?? "" }];
+    return [{ id, text, attachments, created_at: str(q.created_at) ?? "", sent: q.sent === true }];
   });
 }
 

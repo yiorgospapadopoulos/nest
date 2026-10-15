@@ -442,6 +442,119 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A subagent's thinking, and the text it is writing now (B59). */
+.pxthink {
+  color: var(--t3);
+  font-style: italic;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pxtext.live {
+  color: var(--t2);
+}
+.tool > .pxsteps {
+  border-top: 1px solid var(--hair);
+}
+/* Stops one running task or subagent; a 44 point target in a 40 point row. */
+.tstop {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px -4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.tstop .ic {
+  width: 12px;
+  height: 12px;
+}
+.tstop:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* An edit's changes inline, like Claude's apps (B59): red and green lines, folded. */
+.tedit .ds {
+  flex: none;
+}
+.tdiff {
+  border-top: 1px solid var(--hair);
+  background: var(--code-bg);
+  padding: 4px 0;
+}
+.tdiff .dl {
+  grid-template-columns: 14px minmax(0, 1fr);
+  padding-left: 18px;
+}
+.tdiff .dl.g b {
+  color: var(--t3);
+}
+.tedit .tmore {
+  display: block;
+  margin: 0;
+  max-width: none;
+  min-height: 44px;
+  padding: 0 12px 0 32px;
+  font-size: 0.6471rem;
+  border-top: 1px solid var(--hair);
+}
+/* A long output's first lines, opening to all of it (B59). */
+.tout .lnk {
+  display: block;
+  margin: 0;
+  max-width: none;
+  min-height: 44px;
+  padding: 0 12px 0 32px;
+  font-size: 0.6471rem;
+}
+.bgg li .tstop {
+  margin: -12px -10px -12px -6px;
+}
+/* What a hook said, quiet like Claude Code's (B59); a failure is tinted. */
+.m-hook {
+  align-self: flex-start;
+  max-width: 96%;
+  font-size: 0.6471rem;
+  color: var(--t3);
+  overflow-wrap: anywhere;
+}
+.m-hook.bad {
+  color: var(--fail-t);
+}
+.m-hook summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  cursor: pointer;
+}
+.m-hook summary::-webkit-details-marker {
+  display: none;
+}
+.m-hook .cv {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
+}
+.m-hook[open] .cv {
+  transform: none;
+}
+.m-hook pre {
+  margin: 2px 0 4px 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--hair);
+  font: 0.6471rem/1.5 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
 .pxstep {
   font: 0.6471rem var(--mono);
   color: var(--t3);
@@ -613,6 +726,17 @@
   padding-right: 2px;
 }
 /* A 44 point target that takes the 22 point place of the icon. */
+/* A pasted or chosen image shows as its thumbnail (B59). */
+.atts .chip.thumb {
+  padding-left: 3px;
+}
+.atts .chip img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+}
 .atts .chip button {
   border: 0;
   background: transparent;
@@ -1171,7 +1295,7 @@
 }
 .bgg li {
   display: grid;
-  grid-template-columns: 8px 14px auto minmax(0, 1fr) auto;
+  grid-template-columns: 8px 14px auto minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   font-size: 0.7647rem;
@@ -1304,35 +1428,78 @@
 }
 
 /* A message waiting for the running turn to end. */
-.m-u.queued {
-  opacity: 0.55;
+/* Messages Claude has not read yet (B59), just above the composer, oldest first. */
+.pend {
+  list-style: none;
+  margin: 0 10px 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+  max-height: 30vh;
+  overflow-y: auto;
 }
-.m-u .qh {
+.pm {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.6471rem;
-  font-weight: 650;
-  opacity: 0.8;
-  margin: -2px -6px 2px 0;
+  gap: 2px;
+  padding: 2px 2px 2px 12px;
+  border-radius: var(--r-inner);
 }
-/* A 44 point target that takes the 26 point place of the icon. */
-.m-u .qh button {
+.pmt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  font-size: 0.8824rem;
+  line-height: 1.35;
+  color: var(--t1);
+  overflow-wrap: anywhere;
+}
+.pmt > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+.pmt small {
+  font-size: 0.6471rem;
+  color: var(--t3);
+}
+.pmb {
+  flex: none;
+  height: 44px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
-  color: inherit;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.7647rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pmb:disabled {
+  color: var(--t3);
+  cursor: default;
+}
+.pmi {
+  flex: none;
   width: 44px;
   height: 44px;
-  margin: -9px;
+  border: 0;
   padding: 0;
+  background: transparent;
+  color: var(--t3);
   display: grid;
   place-items: center;
   cursor: pointer;
 }
-.m-u .qh .ic {
-  width: 13px;
-  height: 13px;
+.pmi .ic {
+  width: 15px;
+  height: 15px;
 }
 
 /* A plan from plan mode, in the chat and in the Inbox. */
@@ -1611,4 +1778,102 @@
 .pxrun {
   margin: 8px 16px calc(12px + env(safe-area-inset-bottom));
   text-align: center;
+}
+
+/* A `!` command and its output, as Claude Code's bash mode shows them (B59). */
+.bash {
+  max-width: 100%;
+  border-radius: calc(var(--r-item) + 1px);
+  background: var(--fill);
+  overflow: hidden;
+}
+.bash .bcmd {
+  display: block;
+  padding: 8px 12px;
+  font: 600 0.7059rem/1.4 var(--mono);
+  color: var(--t1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bash pre {
+  margin: 0;
+  padding: 8px 12px 10px;
+  font: 0.6471rem/1.6 var(--mono);
+  color: var(--t2);
+  border-top: 1px solid var(--hair);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+.bash .tout .lnk {
+  padding-left: 12px;
+}
+.bash .bnote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+  font-size: 0.6471rem;
+  color: var(--t3);
+}
+.bash .bnote.bad {
+  color: var(--fail-t);
+}
+/* The composer while it holds a shell command or a memory, with what it will do. */
+.comp.bash textarea {
+  font-family: var(--mono);
+}
+.cmode {
+  margin: 6px 0 0;
+  font-size: 0.6471rem;
+  color: var(--t3);
+}
+.cmode b {
+  color: var(--accent);
+  font-weight: 650;
+  margin-right: 4px;
+}
+.pmc {
+  font-family: var(--mono);
+}
+
+/* Images a tool returned (B59): thumbnails under its row, full size on a tap. */
+.timgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0;
+}
+.timg {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: var(--fill);
+  border-radius: var(--r-inner);
+  overflow: hidden;
+  cursor: zoom-in;
+  min-height: 44px;
+  min-width: 44px;
+}
+.timg img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 320px;
+  height: auto;
+}
+.timg.wait {
+  width: 120px;
+  height: 80px;
+}
+.timg.none {
+  padding: 12px;
+  font-size: 0.6471rem;
+  color: var(--t3);
+  cursor: default;
+}
+.timg-full {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
 }

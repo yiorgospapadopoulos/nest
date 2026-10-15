@@ -101,8 +101,9 @@ describe("tap targets", () => {
 
     const controls = [
       await screen.findByRole("button", { name: "Remove shot.png" }),
-      await screen.findByRole("button", { name: "Cancel queued message" }),
-      screen.getByRole("button", { name: "Queue" }),
+      await screen.findByRole("button", { name: "Remove pending message" }),
+      screen.getByRole("button", { name: "Edit pending message" }),
+      screen.getByRole("button", { name: "Send" }),
     ];
     for (const control of controls) {
       expect(box(control), control.getAttribute("aria-label") ?? "").toEqual({
@@ -110,6 +111,8 @@ describe("tap targets", () => {
         height: TAP,
       });
     }
+    // A text button: its height is what counts.
+    expect(box(screen.getByRole("button", { name: "Send now" })).height).toBe(TAP);
     // The background bar spans the column; its height is what counts.
     expect(box(screen.getByRole("button", { name: "1 running task" })).height).toBe(TAP);
   });

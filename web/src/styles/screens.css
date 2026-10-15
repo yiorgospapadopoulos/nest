@@ -703,6 +703,32 @@ a.b {
   font-size: 0.7059rem;
   color: var(--t3);
 }
+/* A connector that needs signing in to, with how (B59). */
+.crow1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.csign {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 42px;
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.csign code {
+  font: 0.7059rem var(--mono);
+}
+.csign .lnk2 {
+  flex: none;
+  min-height: 44px;
+}
+a.csign {
+  color: var(--accent);
+}
 .sw {
   width: 51px;
   height: 31px;

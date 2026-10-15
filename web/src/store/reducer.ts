@@ -21,6 +21,7 @@ import type {
 import {
   draftKey,
   NO_BACKGROUND,
+  type BashRun,
   NO_DRAFT,
   type Action,
   type Draft,
@@ -181,10 +182,11 @@ export function reduce(state: State, action: Action): State {
     case "replayed": {
       // Streamed text and thinking already followed these events when they arrived.
       const next = action.events.reduce(applyEvent, state);
-      return { ...next, live: state.live, thinking: state.thinking };
+      const { live, thinking, thoughts, agentLive } = state;
+      return { ...next, live, thinking, thoughts, agentLive };
     }
     case "liveCleared":
-      return clearThinking(clearLive(state, action.id), action.id);
+      return clearAgents(clearThinking(clearLive(state, action.id), action.id), action.id);
     case "draftText":
       return patchDraft(state, action.key, () => ({ text: action.text }));
     case "draftFileAdded":
@@ -193,8 +195,27 @@ export function reduce(state: State, action: Action): State {
       return patchDraft(state, action.key, (d) => ({
         files: d.files.filter((f) => f.id !== action.fileId),
       }));
+    case "draftFilled":
+      return patchDraft(state, action.key, () => ({ text: action.text, files: action.files }));
     case "draftSent":
       return draftSent(state, action.key, action.text, action.fileIds, action.to ?? action.key);
+    case "bashStarted": {
+      const run = { id: action.runId, command: action.command, result: null, error: null };
+      return { ...state, bash: { ...state.bash, [action.id]: [...bashOf(state, action.id), run] } };
+    }
+    case "bashFinished": {
+      const { result = null, error = null } = action;
+      // A chat deleted meanwhile has none.
+      if (!bashOf(state, action.id).some((run) => run.id === action.runId)) return state;
+      const runs = bashOf(state, action.id).map((run) =>
+        run.id === action.runId ? { ...run, result, error } : run,
+      );
+      return { ...state, bash: { ...state.bash, [action.id]: runs } };
+    }
+    case "bashSent": {
+      const runs = bashOf(state, action.id).filter((run) => !action.runIds.includes(run.id));
+      return { ...state, bash: { ...state.bash, [action.id]: runs } };
+    }
     case "connectors":
       return { ...state, connectors: action.connectors };
     case "limits":
@@ -232,11 +253,13 @@ export function applyEvent(state: State, event: NestEvent): State {
     case "session.created":
     case "session.updated":
       return upsertSession(next, p.session as unknown as Session);
-    case "session.state":
-      return patchSession(clearThinking(next, id), id, {
+    case "session.state": {
+      const cleared = clearThinking(next, id);
+      return patchSession(p.state === "running" ? cleared : clearAgents(cleared, id), id, {
         state: p.state as Session["state"],
         last_error: str(p.error),
       });
+    }
     case "session.workspace":
       return patchSession(next, id, { branch: str(p.branch), worktree_path: str(p.path) });
     case "pr.opened":
@@ -254,6 +277,8 @@ export function applyEvent(state: State, event: NestEvent): State {
       return id === null ? next : { ...next, queued: { ...next.queued, [id]: queuedOf(p.queued) } };
     case "session.deleted":
       return removeSession(next, str(p.session_id) ?? "");
+    case "session.rewound":
+      return rewound(next, id, p);
     case "approval.created":
     case "approval.resolved":
       return upsertApproval(next, p.approval as unknown as Approval);
@@ -274,8 +299,26 @@ export function applyEvent(state: State, event: NestEvent): State {
     case "session.thinking":
       return id === null || p.active !== true
         ? clearThinking(next, id)
-        : { ...next, thinking: { ...next.thinking, [id]: event.ts } };
-    case "session.message":
+        : { ...clearThinking(next, id), thinking: { ...next.thinking, [id]: event.ts } };
+    case "session.thinking_delta":
+      // A subagent's thinking shows once its message arrives.
+      return id === null || p.parent_tool_use_id != null
+        ? next
+        : { ...next, thoughts: { ...next.thoughts, [id]: (next.thoughts[id] ?? "") + text(p) } };
+    case "session.subagent_delta": {
+      const parent = str(p.parent_tool_use_id);
+      if (id === null || parent === null) return next;
+      const streams = next.agentLive[id] ?? {};
+      const streamed = { ...streams, [parent]: (streams[parent] ?? "") + text(p) };
+      return { ...next, agentLive: { ...next.agentLive, [id]: streamed } };
+    }
+    case "session.message": {
+      // A subagent's message replaces only its own streamed text.
+      const parent = str(p.parent_tool_use_id);
+      return parent === null
+        ? clearThinking(clearLive(next, id), id)
+        : clearAgent(next, id, parent);
+    }
     case "session.result":
       return clearThinking(clearLive(next, id), id);
     case "pixie.updated": {
@@ -407,10 +450,28 @@ function withTranscript(state: State, event: NestEvent): State {
   return { ...state, transcripts: { ...state.transcripts, [id]: [...events, event] } };
 }
 
+/**
+ * A conversation rewind (B59) deleted the chat's events from the rewound message through
+ * `through`; the transcript drops them too. What is built from them follows.
+ */
+function rewound(state: State, id: string | null, p: JsonObject): State {
+  const events = id === null ? undefined : state.transcripts[id];
+  const { message, through } = p;
+  if (events === undefined || typeof message !== "number" || typeof through !== "number") {
+    return state;
+  }
+  const kept = events.filter((e) => Number(e.id) < message || Number(e.id) > through);
+  return { ...state, transcripts: { ...state.transcripts, [String(id)]: kept } };
+}
+
 function merge(current: NestEvent[], loaded: NestEvent[]): NestEvent[] {
   // Every transcript event is a stored one, so ids are never null here.
   const byId = new Map([...loaded, ...current].map((event) => [Number(event.id), event]));
   return [...byId.values()].sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+function bashOf(state: State, id: string): BashRun[] {
+  return state.bash[id] ?? [];
 }
 
 function upsertRepo(state: State, repo: RepoConfig): State {
@@ -446,7 +507,10 @@ function removeSession(state: State, id: string): State {
     history: without(state.history),
     live: without(state.live),
     thinking: without(state.thinking),
+    thoughts: without(state.thoughts),
+    agentLive: without(state.agentLive),
     queued: without(state.queued),
+    bash: without(state.bash),
     drafts: omit(state.drafts, draftKey({ session: id })),
   };
 }
@@ -470,8 +534,24 @@ function clearLive(state: State, id: string | null): State {
 }
 
 function clearThinking(state: State, id: string | null): State {
-  if (id === null || !(id in state.thinking)) return state;
-  return { ...state, thinking: omit(state.thinking, id) };
+  if (id === null || !(id in state.thinking || id in state.thoughts)) return state;
+  return { ...state, thinking: omit(state.thinking, id), thoughts: omit(state.thoughts, id) };
+}
+
+function clearAgents(state: State, id: string | null): State {
+  if (id === null || !(id in state.agentLive)) return state;
+  return { ...state, agentLive: omit(state.agentLive, id) };
+}
+
+function clearAgent(state: State, id: string | null, parent: string): State {
+  const streams = id === null ? undefined : state.agentLive[id];
+  if (id === null || streams === undefined || !(parent in streams)) return state;
+  return { ...state, agentLive: { ...state.agentLive, [id]: omit(streams, parent) } };
+}
+
+/** A delta's text; the daemon never sends an empty one. */
+function text(p: JsonObject): string {
+  return str(p.text) ?? "";
 }
 
 function patchDraft(state: State, key: string, patch: (draft: Draft) => Partial<Draft>): State {

@@ -80,6 +80,10 @@ export function Shell() {
     show(event === undefined ? { id } : { id, event });
   };
 
+  const openClaudeChat = (id: string) => {
+    show({ claude: id });
+  };
+
   // A pixie's page opens over the projects tab, where its row is.
   const openPixie = (id: string, pixieTab: PixieTab = "chat") => {
     setTab("projects");
@@ -101,9 +105,7 @@ export function Shell() {
             project={current}
             onProject={setProject}
             onOpenChat={openChat}
-            onOpenClaudeChat={(id) => {
-              show({ claude: id });
-            }}
+            onOpenClaudeChat={openClaudeChat}
             onNewChat={(repo) => {
               show({ draft: repo });
             }}
@@ -124,6 +126,7 @@ export function Shell() {
             setChat(null);
           }}
           onOpen={openChat}
+          onOpenClaudeChat={openClaudeChat}
           onOpenPixie={openPixie}
         />
       )}
