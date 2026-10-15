@@ -1,86 +1,125 @@
 import { useEffect, useState } from "react";
-import type { RewindPreview } from "../../api/types.ts";
+import type { Restore, RewindPreview } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { ActionSheet } from "../../ui/Sheet.tsx";
+import { changes, changesFiles } from "./rewind.ts";
 
 interface Props {
   sessionId: string;
-  // The user message whose turn the files go back to before.
+  // The user message to rewind to before.
   eventId: number;
   onClose: () => void;
+  onRestore: (restore: Restore) => void;
 }
 
-function fileCount(preview: RewindPreview): number {
-  const files = preview.files_changed;
-  return Array.isArray(files) ? files.length : files;
-}
+// Loading (undefined), failed (null) or loaded.
+type Loaded = RewindPreview | null | undefined;
 
-/** What restoring would change, in a sentence. */
-function changes(preview: RewindPreview): string {
-  const files = preview.files_changed;
-  const count = fileCount(preview);
-  if (count === 0) return "Nothing to restore. No file changed since this message.";
-  const lines = `(+${String(preview.insertions)} -${String(preview.deletions)})`;
-  const what =
-    count === 1
-      ? `1 file goes back to how it was before this message ${lines}`
-      : `${String(count)} files go back to how they were before this message ${lines}`;
-  return Array.isArray(files) ? `${what}: ${files.join(", ")}.` : `${what}.`;
+function codeLine(preview: Loaded): string {
+  if (preview === undefined) return "Loading...";
+  if (preview === null) return "What would change could not be loaded.";
+  return preview.can_rewind
+    ? changes(preview)
+    : (preview.error ?? "The files cannot be restored to before this message.");
 }
 
 /**
- * Asks before restoring files to before a message, with what would change. Claude Code's
- * file checkpoints restore files only: the conversation stays as it is.
+ * Rewinds to before a message, like Claude Code's Esc Esc (B59): the conversation (the
+ * message and everything after it leave the chat, and the message goes back in the
+ * composer), the code (files as they were), or both. Each choice is offered only when its
+ * preview says it can be done.
  */
-export function RewindSheet({ sessionId, eventId, onClose }: Props) {
+export function RewindSheet({ sessionId, eventId, onClose, onRestore }: Props) {
   const { actions } = useStore();
-  // Loading (undefined), failed (null) or loaded.
-  const [preview, setPreview] = useState<RewindPreview | null | undefined>(undefined);
+  const [code, setCode] = useState<Loaded>(undefined);
+  const [talk, setTalk] = useState<Loaded>(undefined);
 
   useEffect(() => {
     let live = true;
-    void actions.rewindPreview(sessionId, eventId).then((found) => {
-      if (live) setPreview(found);
+    void actions.rewindPreview(sessionId, eventId, "code").then((found) => {
+      if (live) setCode(found);
+    });
+    void actions.rewindPreview(sessionId, eventId, "conversation").then((found) => {
+      if (live) setTalk(found);
     });
     return () => {
       live = false;
     };
   }, [actions, sessionId, eventId]);
 
-  const restorable = preview?.can_rewind === true;
+  const files = changesFiles(code);
+  const conversation = talk?.can_rewind === true;
+  const choice = (restore: Restore, label: string, enabled: boolean) => (
+    <button
+      className="asi mid"
+      disabled={!enabled}
+      onClick={() => {
+        onClose();
+        onRestore(restore);
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <ActionSheet
-      label="Restore files?"
+      label="Rewind?"
       role="alertdialog"
       onClose={onClose}
       title={
         <>
-          <b>Restore files?</b>
-          <span className="rwp">
-            {preview === undefined
-              ? "Loading..."
-              : preview === null
-                ? "What would change could not be loaded."
-                : preview.can_rewind
-                  ? changes(preview)
-                  : (preview.error ?? "The files cannot be restored to before this message.")}
-          </span>
-          Only files are restored. The conversation stays as it is, and Claude is not told.
+          <b>Rewind?</b>
+          <span className="rwp">{codeLine(code)}</span>
+          {talk?.can_rewind === false && (
+            <span className="rwp">
+              {talk.error ?? "The conversation cannot be rewound to before this message."}
+            </span>
+          )}
+          Restoring the conversation takes this message and everything after it out of the chat, and
+          puts the message back in the composer.
         </>
       }
     >
-      {restorable && (
-        <button
-          className="asi dng mid"
-          disabled={fileCount(preview) === 0}
-          onClick={() => {
-            onClose();
-            void actions.rewind(sessionId, eventId);
-          }}
-        >
-          Restore files
-        </button>
-      )}
+      {choice("conversation", "Restore conversation", conversation)}
+      {choice("code", "Restore code", files)}
+      {choice("both", "Restore conversation and code", conversation && files)}
+    </ActionSheet>
+  );
+}
+
+interface EditProps {
+  // The code preview that found changed files.
+  preview: RewindPreview;
+  onClose: () => void;
+  onEdit: (restore: Restore) => void;
+}
+
+/** Editing a message after files changed since it: restore them too, or keep them. */
+export function EditSheet({ preview, onClose, onEdit }: EditProps) {
+  const pick = (restore: Restore) => () => {
+    onClose();
+    onEdit(restore);
+  };
+  return (
+    <ActionSheet
+      label="Files changed since this message"
+      role="alertdialog"
+      onClose={onClose}
+      title={
+        <>
+          <b>Files changed since this message</b>
+          <span className="rwp">{changes(preview)}</span>
+          Editing takes this message and everything after it out of the chat.
+        </>
+      }
+    >
+      <button className="asi" onClick={pick("both")}>
+        Edit and restore code
+      </button>
+      <button className="asi" onClick={pick("conversation")}>
+        Edit message only
+      </button>
     </ActionSheet>
   );
 }

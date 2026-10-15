@@ -22,8 +22,10 @@ struct BackgroundBar: View {
                 if expanded {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
-                            BackgroundSection(title: "Running", items: summary.runningItems)
-                            BackgroundSection(title: "Completed", items: summary.finishedItems)
+                            BackgroundSection(
+                                chat: chat, title: "Running", items: summary.runningItems)
+                            BackgroundSection(
+                                chat: chat, title: "Completed", items: summary.finishedItems)
                         }
                         .padding(EdgeInsets(top: 10, leading: 12, bottom: 8, trailing: 12))
                     }
@@ -68,6 +70,7 @@ struct BackgroundBar: View {
 
 /// A heading and its items; nothing when there are none.
 private struct BackgroundSection: View {
+    let chat: String
     let title: String
     let items: [BackgroundItem]
 
@@ -76,7 +79,7 @@ private struct BackgroundSection: View {
             VStack(alignment: .leading, spacing: 6) {
                 SectionLabel(text: title)
                 ForEach(items) { item in
-                    BackgroundRow(item: item)
+                    BackgroundRow(chat: chat, item: item)
                 }
             }
             .accessibilityElement(children: .contain)
@@ -85,8 +88,9 @@ private struct BackgroundSection: View {
     }
 }
 
-/// Status, kind icon, name, description and how long it ran.
+/// Status, kind icon, name, description and how long it ran; Stop while it runs.
 private struct BackgroundRow: View {
+    let chat: String
     let item: BackgroundItem
 
     var body: some View {
@@ -116,6 +120,9 @@ private struct BackgroundRow: View {
                 }
             }
             .fixedSize()
+            if item.isRunning {
+                StopTaskButton(chat: chat, task: item.id)
+            }
         }
         .help(item.description.map { "\(item.name): \($0)" } ?? item.name)
     }
@@ -141,6 +148,32 @@ private struct BackgroundRow: View {
         case .done: "Done"
         case .failed: "Failed"
         case .unknown: ""
+        }
+    }
+}
+
+/// Stops one running subagent or background command, apart from the composer's Stop,
+/// which interrupts the turn (B59). Disabled until its end arrives; hidden while the
+/// chat's Claude Code run is closed.
+struct StopTaskButton: View {
+    let chat: String
+    /// The task id, or the id of the tool call that started it.
+    let task: String
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if shell.activity.canStop(session: chat) {
+            let stopping = shell.activity.isStopping(task, session: chat)
+            Button {
+                shell.stopTask(task, in: chat)
+            } label: {
+                Image(systemName: Icon.stop).font(.system(size: 7))
+            }
+            .buttonStyle(SmallSquareStyle())
+            .disabled(stopping)
+            .opacity(stopping ? 0.4 : 1)
+            .help(stopping ? "Stopping" : "Stop")
+            .accessibilityLabel(stopping ? "Stopping" : "Stop")
         }
     }
 }

@@ -199,6 +199,19 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         hinted.manageHint = .claudeAI
         #expect(hinted.managedOnClaudeAI)
     }
+
+    @Test func aServerThatNeedsSignInSignsInWhereItIsManaged() {
+        var local = Fixture.connectors[1]
+        local.status = "needs-auth"
+        #expect(local.signIn == .terminal("claude /mcp"))
+        var claudeAI = Fixture.connectors[0]
+        claudeAI.status = "needs_auth"
+        #expect(claudeAI.signIn == .browser(ConnectorsStore.claudeAISettings))
+        for status in ["connected", "failed", "pending", "disabled"] {
+            local.status = status
+            #expect(local.signIn == nil)
+        }
+    }
 }
 
 @MainActor

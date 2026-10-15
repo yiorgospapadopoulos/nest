@@ -13,7 +13,7 @@ from nestd.events import types
 from nestd.providers.base import RewindResult
 from nestd.sessions.errors import NoTurnInProgressError, NoWorkspaceError, SessionBusyError
 from nestd.sessions.live import LiveSession
-from nestd.sessions.models import SessionState, UpdateSession
+from nestd.sessions.models import RewindReply, SessionState, UpdateSession
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import (
@@ -235,7 +235,7 @@ async def test_a_preview_never_starts_claude_code(env: Env) -> None:
 
     preview = await env.manager.rewind(session_id, message, dry_run=True)
 
-    assert preview == RewindResult(
+    assert preview == RewindReply(
         can_rewind=False,
         error="Claude Code is not running for this chat, so the files to restore cannot be "
         "listed. Send a message to start it again, then try again.",

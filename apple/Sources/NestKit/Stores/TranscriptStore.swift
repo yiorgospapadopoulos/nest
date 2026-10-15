@@ -13,6 +13,12 @@ public struct ToolCall: Sendable, Hashable {
     /// An agent call's own messages, from `session.message` events naming it as their
     /// parent: what a pixie call shows when opened (B40).
     public var steps: [CallStep] = []
+    /// An agent call's subagent text and thinking as they stream, until its message with
+    /// them arrives or the turn ends (B59).
+    public var liveText = ""
+    public var liveThinking = ""
+    /// Images the result carries, such as a screenshot (B59).
+    public var images: [ToolImage] = []
 
     /// The subagent an agent call ran, such as a pixie's slug; nil for other tools.
     public var subagentType: String? {
@@ -21,11 +27,14 @@ public struct ToolCall: Sendable, Hashable {
     }
 }
 
-/// A line of what a subagent did: its text, or a tool it called.
+/// A line of what a subagent did: its thinking, its text, or a tool it called.
 public struct CallStep: Sendable, Hashable, Identifiable {
     public enum Kind: Sendable, Hashable {
+        case thinking(String)
         case text(String)
         case tool(name: String, input: JSONValue)
+        /// Images a subagent's tool result carried.
+        case images([ToolImage])
     }
 
     public let id: String
@@ -34,10 +43,12 @@ public struct CallStep: Sendable, Hashable, Identifiable {
     /// The text, or a tool call as one plain line: "Read src/app.ts".
     public var line: String {
         switch kind {
-        case .text(let text): text
+        case .thinking(let text), .text(let text): text
         case .tool(let name, let input):
             [name, ToolSummary.argument(tool: name, input: input)].filter { !$0.isEmpty }
                 .joined(separator: " ")
+        case .images(let images):
+            images.count == 1 ? "1 image" : "\(images.count) images"
         }
     }
 }
@@ -56,6 +67,8 @@ public struct TurnEnd: Sendable, Hashable {
 public struct TranscriptItem: Sendable, Hashable, Identifiable {
     public enum Content: Sendable, Hashable {
         case user(text: String, attachments: [Attachment])
+        /// A `!` command the user ran, from the start of a sent message (B59).
+        case bash(BashBlock)
         /// Assistant text; `streaming` while deltas arrive before the final message.
         case assistant(String, streaming: Bool)
         /// Thinking text, with how long it took when known.
@@ -80,6 +93,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         /// "Report from habit <name>: <title>", the message that starts a pixie's turn
         /// after a habit run reported (B42).
         case habitReport(String)
+        /// A hook's message, output or failure, as a muted line (B59).
+        case hook(HookRun)
     }
 
     public let id: String
@@ -155,6 +170,11 @@ public final class TranscriptStore {
     private var thinkingLive = false
     /// The daemon sends `session.thinking`; older daemons do not.
     private var reportsThinking = false
+    /// The main agent's thinking text as it streams, until the finished block arrives, a
+    /// new block starts or the turn ends (B59).
+    public private(set) var liveThinking = ""
+    /// Agent calls whose subagent text or thinking streams.
+    private var streamingCalls: Set<String> = []
     /// The end of the last turn, while no other turn started since: an interruption or
     /// failure reported after the result marks it stopped.
     private var lastTurnEnd: String?
@@ -242,6 +262,13 @@ public final class TranscriptStore {
         }
     }
 
+    /// The event of the user's latest message shown, for Esc Esc (B59).
+    public var lastUserMessage: Int? {
+        items.last { item in
+            if case .user = item.content { item.eventID != nil } else { false }
+        }?.eventID
+    }
+
     /// Opening the transcript should load it: it never loaded, or a catch-up failed.
     public var needsLoad: Bool { !isLoaded || behind }
 
@@ -255,7 +282,7 @@ public final class TranscriptStore {
         }
         let visible = items.filter { item in
             switch item.content {
-            case .result(let result): result.isError
+            case .result(let result): result.failed
             case .thinking(let text, let duration):
                 duration != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             // A pending review is the bar above the composer, and a superseded one is
@@ -436,6 +463,7 @@ public final class TranscriptStore {
         turnStartedAt = nil
         lastTurnEnd = nil
         lastErrorResult = nil
+        streamingCalls = []
     }
 
     // MARK: Events
@@ -444,6 +472,9 @@ public final class TranscriptStore {
         if case .thinking(let active) = event.body {
             reportsThinking = true
             thinkingLive = active
+            if active {
+                liveThinking = ""
+            }
             return
         }
         if event.isUserMessage {
@@ -475,6 +506,17 @@ public final class TranscriptStore {
         default:
             break
         }
+        if case .sessionState(let state, _) = event.body, state != .running {
+            endLiveStreams()
+        }
+        switch event.body {
+        case .message(let message) where message.parentToolUseID == nil:
+            if message.blocks.contains(where: \.isThinking) {
+                liveThinking = ""
+            }
+        default:
+            break
+        }
         switch event.body {
         case .userMessage(let message):
             startTurn(at: event.ts)
@@ -484,9 +526,15 @@ public final class TranscriptStore {
             } else if message.origin == .report {
                 append(key, .habitReport(message.text), eventID)
             } else {
-                append(
-                    key, .user(text: message.text, attachments: message.attachments), eventID,
-                    fromPixie: message.fromPixie)
+                let split = BashBlocks.split(message.text)
+                for (index, block) in split.blocks.enumerated() {
+                    append("\(key)-bash-\(index)", .bash(block), eventID)
+                }
+                if split.blocks.isEmpty || !split.rest.isEmpty || !message.attachments.isEmpty {
+                    append(
+                        key, .user(text: split.rest, attachments: message.attachments), eventID,
+                        fromPixie: message.fromPixie)
+                }
             }
         case .message(let message) where message.parentToolUseID == nil:
             noteTaskStarts(message, eventID)
@@ -496,12 +544,21 @@ public final class TranscriptStore {
             }
         case .delta(let text):
             stream(text)
+        case .thinkingDelta(let text, nil):
+            liveThinking += text
+        case .thinkingDelta(let text, let parent?):
+            streamIntoCall(parent) { $0.liveThinking += text }
+        case .subagentDelta(let text, let parent):
+            streamIntoCall(parent) { $0.liveText += text }
+        case .hook(let run) where run.isShown:
+            append(key, .hook(run), eventID)
         case .result(let result):
             endStreaming()
             endTurn(
-                key, eventID, at: event.ts, durationMS: result.durationMS, stopped: result.isError)
+                key, eventID, at: event.ts, durationMS: result.durationMS,
+                stopped: result.failed || result.stopped)
             append(key, .result(result), eventID)
-            lastErrorResult = result.isError ? key : nil
+            lastErrorResult = result.failed ? key : nil
         case .sessionState(.running, _):
             startTurn(at: event.ts, marked: event.payload["turn_start"]?.boolValue == true)
         case .sessionState(.idle, _):
@@ -538,9 +595,26 @@ public final class TranscriptStore {
             append(key, .notice(text), eventID)
         case .pixieCard(let card):
             append(key, .pixieCard(card), eventID)
+        case .rewound(let rewind):
+            drop(rewind)
         default:
             break
         }
+    }
+
+    /// The daemon deleted the rewound events: the items are built again without them, so
+    /// approvals, turn lines and the exchange follow (B59).
+    private func drop(_ rewind: SessionRewind) {
+        // Stored events, the only ones kept here, all have ids.
+        let kept = history.filter { event in event.id.map(rewind.contains) != true }
+        guard kept.count != history.count else { return }
+        if let start = exchangeStartEvent, rewind.contains(start) {
+            exchangeStartEvent = nil
+            exchangeStartedAt = nil
+        }
+        taskStarts = taskStarts.filter { !rewind.contains($0.value) }
+        taskEnds = taskEnds.filter { !rewind.contains($0.value) }
+        rebuild(kept)
     }
 
     private func add(_ block: MessageBlock, id: String, eventID: Int?) {
@@ -556,36 +630,78 @@ public final class TranscriptStore {
                 toolID,
                 .tool(ToolCall(id: toolID, name: name, input: input, result: nil, isError: false)),
                 eventID)
-        case .toolResult(let toolID, let content, let isError):
+        case .toolResult(let toolID, let content, let isError, let images):
             guard let index = items.firstIndex(where: { $0.id == toolID }),
                 case .tool(var call) = items[index].content
             else { return }
             call.result = content
             call.isError = isError
+            call.images = images
             items[index].content = .tool(call)
         case .unknown:
             break
         }
     }
 
-    /// A subagent's text and tool calls go with its agent call; its thinking and the
-    /// results of its own tools are not shown. A call this page does not hold drops them.
+    /// A subagent's thinking, text and tool calls go with its agent call, replacing what
+    /// streamed of them; the results of its own tools are not shown. A call this page does
+    /// not hold drops them.
     private func addSteps(_ blocks: [MessageBlock], to parent: String, key: String) {
-        guard let index = items.firstIndex(where: { $0.id == parent }),
-            case .tool(var call) = items[index].content, ToolSummary.kind(of: call.name) == .agent
+        guard let index = agentCallIndex(parent), case .tool(var call) = items[index].content
         else { return }
         for (offset, block) in blocks.enumerated() {
             let id = "\(key)-\(offset)"
             switch block {
-            case .text(let text) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
-                call.steps.append(CallStep(id: id, kind: .text(text)))
+            case .thinking(let text, _):
+                call.liveThinking = ""
+                if !text.isBlank {
+                    call.steps.append(CallStep(id: id, kind: .thinking(text)))
+                }
+            case .text(let text):
+                call.liveText = ""
+                if !text.isBlank {
+                    call.steps.append(CallStep(id: id, kind: .text(text)))
+                }
             case .toolUse(_, let name, let input):
                 call.steps.append(CallStep(id: id, kind: .tool(name: name, input: input)))
+            case .toolResult(_, _, _, let images) where !images.isEmpty:
+                call.steps.append(CallStep(id: id, kind: .images(images)))
             default:
                 break
             }
         }
         items[index].content = .tool(call)
+    }
+
+    /// The item of an agent call by its tool use id.
+    private func agentCallIndex(_ id: String) -> Int? {
+        guard let index = items.firstIndex(where: { $0.id == id }),
+            case .tool(let call) = items[index].content, ToolSummary.kind(of: call.name) == .agent
+        else { return nil }
+        return index
+    }
+
+    /// Appends a subagent's streamed text or thinking to its agent call.
+    private func streamIntoCall(_ parent: String, _ change: (inout ToolCall) -> Void) {
+        guard let index = agentCallIndex(parent), case .tool(var call) = items[index].content
+        else { return }
+        change(&call)
+        items[index].content = .tool(call)
+        streamingCalls.insert(parent)
+    }
+
+    /// The turn ended: what streamed of thinking and subagents' text is dropped.
+    private func endLiveStreams() {
+        liveThinking = ""
+        for id in streamingCalls {
+            guard let index = items.firstIndex(where: { $0.id == id }),
+                case .tool(var call) = items[index].content
+            else { continue }
+            call.liveText = ""
+            call.liveThinking = ""
+            items[index].content = .tool(call)
+        }
+        streamingCalls = []
     }
 
     private func stream(_ text: String) {
@@ -755,5 +871,17 @@ public final class Transcripts {
         for store in Array(stores.values) {
             await store.catchUp(missed: missed)
         }
+    }
+}
+
+extension MessageBlock {
+    fileprivate var isThinking: Bool {
+        if case .thinking = self { true } else { false }
+    }
+}
+
+extension String {
+    fileprivate var isBlank: Bool {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

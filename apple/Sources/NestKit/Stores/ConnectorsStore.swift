@@ -71,12 +71,26 @@ public enum ConnectorState: Sendable, Hashable {
     }
 }
 
+/// Where a connector that needs sign-in is signed into (B59): Nest cannot start an MCP
+/// server's sign-in itself, so a server opens Terminal on Claude Code's `/mcp` and a
+/// claude.ai connector opens its settings page.
+public enum ConnectorSignIn: Sendable, Hashable {
+    case terminal(String)
+    case browser(URL)
+}
+
 extension Connector {
     public var state: ConnectorState { ConnectorState(status: status) }
 
     /// claude.ai connectors are signed into on claude.ai; others are set up in Claude Code.
     public var managedOnClaudeAI: Bool {
         group == .claudeAI || manageHint == .claudeAI
+    }
+
+    /// How to sign in; nil unless it needs sign-in.
+    public var signIn: ConnectorSignIn? {
+        guard state == .needsSignIn else { return nil }
+        return managedOnClaudeAI ? .browser(ConnectorsStore.claudeAISettings) : .terminal("claude /mcp")
     }
 }
 
@@ -96,7 +110,7 @@ public final class ConnectorsStore {
     }
 
     /// Where users sign in on claude.ai to the connectors that need it.
-    public static let claudeAISettings = URL(string: "https://claude.ai/settings/connectors")!
+    nonisolated public static let claudeAISettings = URL(string: "https://claude.ai/settings/connectors")!
 
     /// claude.ai connectors, then plugins and local servers; empty groups left out.
     public var sections: [ConnectorSection] {

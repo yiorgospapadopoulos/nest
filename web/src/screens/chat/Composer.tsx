@@ -4,11 +4,14 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type KeyboardEvent,
 } from "react";
 import type {
+  Attachment,
   CreateSessionBody,
   Effort,
+  MemoryScope,
   PermissionMode,
   Session,
   UpdateSessionBody,
@@ -16,7 +19,11 @@ import type {
 import { useStore } from "../../store/context.ts";
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import { ActionSheet } from "../../ui/Sheet.tsx";
+import { ConnectorsSheet, ResumeSheet, type ChatNav } from "./CommandSheets.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
+import { prepareImage } from "./images.ts";
+import { localCommand, namedModel, type LocalCommand } from "./localCommands.ts";
 import {
   AGENT_DEFAULT,
   CLAUDE_DEFAULT,
@@ -31,8 +38,10 @@ import {
   type Option,
   type PickerKind,
 } from "./options.ts";
+import { Pending } from "./Pending.tsx";
 import { PickerSheet } from "./PickerSheet.tsx";
 import { Suggestions, type Suggestion } from "./Suggestions.tsx";
+import { dropThumbnail, keepThumbnail, useThumbnail } from "./thumbnails.ts";
 import { useSuggestions } from "./useSuggestions.ts";
 
 const BUSY = new Set<Session["state"]>(["starting", "running", "waiting"]);
@@ -53,11 +62,23 @@ interface Choices {
   permission: PermissionMode | null;
 }
 
+/**
+ * What text starting with `!` or `#` is (B59), as in Claude Code: a shell command, a
+ * memory, or (null) a message. `## ...` stays a Markdown heading.
+ */
+function modeOf(text: string, shell: boolean, memory: boolean): "bash" | "memory" | null {
+  if (shell && text.startsWith("!")) return "bash";
+  if (memory && text.startsWith("#") && !text.startsWith("##")) return "memory";
+  return null;
+}
+
 export type NewChatPlace = Pick<CreateSessionBody, "mode" | "base" | "branch">;
 
 type Props =
   | {
       session: Session;
+      // Where `/resume` opens a chat (B59).
+      nav: ChatNav;
       repo?: undefined;
       onCreated?: undefined;
       place?: undefined;
@@ -66,6 +87,7 @@ type Props =
     }
   | {
       session?: undefined;
+      nav: ChatNav;
       repo: string;
       onCreated: (session: Session) => void;
       // Where the new chat works, as its place choice says (B55).
@@ -78,6 +100,7 @@ type Props =
   | {
       pixie: string;
       chat: Session | undefined;
+      nav?: undefined;
       session?: undefined;
       repo?: undefined;
       onCreated?: undefined;
@@ -87,9 +110,12 @@ type Props =
 /**
  * The message field with attachments and the quiet model, thinking and permission
  * selectors. In a new chat the first message creates the session with those choices.
- * While a turn runs, a message is queued and sent when the turn ends.
+ * While a turn runs, a message goes into it (B59) and waits above the composer until Claude
+ * reads it at its next step, or for the turn to end when it cannot go in. Claude Code's
+ * interactive commands (`/model`, `/permissions`, `/mcp`, `/resume`) open Nest's own
+ * pickers and sheets instead of being sent (B59).
  */
-export function Composer({ session, repo, onCreated, place, pixie, chat }: Props) {
+export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
   const key = draftKey(
@@ -104,6 +130,9 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
   const [uploads, setUploads] = useState(0);
   const [sending, setSending] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
+  const [sheet, setSheet] = useState<
+    { kind: "mcp" } | { kind: "resume"; query: string } | { kind: "memory" } | null
+  >(null);
   // Set when the last send was refused because Claude Code has the chat open.
   const [elsewhere, setElsewhere] = useState(false);
   const [draft, setDraft] = useState<Choices>({ model: null, effort: null, permission: null });
@@ -113,12 +142,14 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
   const fileInput = useRef<HTMLInputElement>(null);
   // Where the caret goes once a completion is in the field.
   const caretAfter = useRef<number | null>(null);
+  const project = session?.repo ?? repo ?? "";
   const suggest = useSuggestions({
     text,
     caret,
-    focused: focused && pixie === undefined,
-    sessionId: session?.id,
-    repo: session?.repo ?? repo ?? "",
+    focused,
+    sessionId: live?.id,
+    repo: project,
+    filesOnly: pixie !== undefined,
   });
 
   useLayoutEffect(() => {
@@ -146,23 +177,82 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
   const runModel = choices.model ?? (session === undefined ? state.agentDefaults?.model : null);
   const levels = thinkingLevels(models, runModel ?? null);
   const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed;
+  // A pixie's messages carry text only.
+  const takesFiles = pixie === undefined && !closed;
   const context = session?.context ?? null;
+  // A pixie's chats, and chats a pixie started, run no shell commands.
+  const shellChat =
+    session !== undefined && session.pixie_id == null && session.started_by_pixie === null
+      ? session
+      : undefined;
+  const mode = modeOf(text, shellChat !== undefined, live !== undefined);
+  const runs = shellChat === undefined ? [] : (state.bash[shellChat.id] ?? []);
 
-  /** Sends to the open chat; the daemon queues it while a turn runs. */
+  /** Sends to the open chat; while a turn runs it goes into that turn. */
   const deliver = async (id: string, prompt: string, ids: string[]) => {
     const result = await actions.send(id, prompt, ids);
     setElsewhere(result === "elsewhere");
     return result === "sent";
   };
 
+  const runLocal = (command: LocalCommand) => {
+    switch (command.name) {
+      case "model": {
+        const model = command.arg === "" ? null : namedModel(models ?? [], command.arg);
+        if (model === null) setPicker("model");
+        else pick("model", model);
+        break;
+      }
+      case "permissions":
+        setPicker("permission");
+        break;
+      case "mcp":
+        setSheet({ kind: "mcp" });
+        break;
+      case "resume":
+        setSheet({ kind: "resume", query: command.arg });
+        break;
+    }
+  };
+
+  /** Runs `typed` as one of Nest's own commands instead of sending it; false for others. */
+  const ranLocally = (typed: string) => {
+    const command = nav === undefined ? null : localCommand(typed);
+    if (command === null) return false;
+    setText("");
+    runLocal(command);
+    return true;
+  };
+
   const choose = ({ result }: Suggestion) => {
+    // Like Claude Code, choosing one of these runs it.
+    if (ranLocally(result.text)) return;
     caretAfter.current = result.caret;
     setText(result.text);
     setCaret(result.caret);
   };
 
+  /** Saves the `#` memory being typed; the composer clears once it is saved. */
+  const remember = async (chatId: string, scope: MemoryScope) => {
+    setSheet(null);
+    const typed = text;
+    const saved = await actions.remember(chatId, typed.slice(1).trim(), scope);
+    if (saved !== null) actions.draftSent(key, typed, []);
+  };
+
   const send = async () => {
-    if (!canSend) return;
+    if (!canSend || ranLocally(text)) return;
+    if (mode === "bash" && shellChat !== undefined) {
+      const command = text.slice(1).trim();
+      if (command === "") return;
+      actions.draftSent(key, text, []);
+      void actions.runShell(shellChat.id, command);
+      return;
+    }
+    if (mode === "memory") {
+      if (text.slice(1).trim() !== "") setSheet({ kind: "memory" });
+      return;
+    }
     setSending(true);
     // As typed now: anything added while it sends stays in the draft.
     const typed = text;
@@ -191,22 +281,52 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
       onCreated(created);
       return;
     }
-    const ok = await deliver(session.id, prompt, ids);
+    // What `!` commands printed goes first, as Claude Code sends it; a slash command goes
+    // as typed, and they wait for a message.
+    const done = prompt.startsWith("/") ? [] : runs.filter((r) => r.result ?? r.error);
+    const contexts = done.flatMap((r) => (r.result === null ? [] : [r.result.context]));
+    const full = contexts.length === 0 ? prompt : `${contexts.join("\n")}\n\n${prompt}`;
+    const ok = await deliver(session.id, full, ids);
     setSending(false);
     // By key: the user may have moved on to another chat meanwhile.
-    if (ok) actions.draftSent(key, typed, ids);
+    if (ok) {
+      actions.draftSent(key, typed, ids);
+      ids.forEach(dropThumbnail);
+      if (done.length > 0)
+        actions.bashSent(
+          session.id,
+          done.map((r) => r.id),
+        );
+    }
+  };
+
+  /** Uploads chosen, pasted or dropped files; images get ready first (HEIC, size). */
+  const addFiles = async (chosen: File[]) => {
+    setUploads((n) => n + chosen.length);
+    await Promise.all(
+      chosen.map(async (file) => {
+        const ready = await prepareImage(file);
+        const uploaded = await actions.attachToDraft(key, ready);
+        if (uploaded !== null) keepThumbnail(uploaded.id, ready);
+        setUploads((n) => n - 1);
+      }),
+    );
   };
 
   const attach = async (event: ChangeEvent<HTMLInputElement>) => {
     const chosen = Array.from(event.target.files ?? []);
     event.target.value = "";
-    setUploads((n) => n + chosen.length);
-    await Promise.all(
-      chosen.map(async (file) => {
-        await actions.attachToDraft(key, file);
-        setUploads((n) => n - 1);
-      }),
-    );
+    await addFiles(chosen);
+  };
+
+  const dragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (takesFiles && event.dataTransfer.types.includes("Files")) event.preventDefault();
+  };
+
+  const drop = (event: DragEvent<HTMLDivElement>) => {
+    if (!takesFiles) return;
+    event.preventDefault();
+    void addFiles(Array.from(event.dataTransfer.files));
   };
 
   const optionsOf = (kind: PickerKind): Option<string>[] => {
@@ -283,6 +403,7 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
 
   return (
     <>
+      {live !== undefined && <Pending session={live} draft={key} />}
       {/* In the column just above the composer, like the background bar. */}
       {suggest.items.length > 0 && (
         <Suggestions
@@ -292,7 +413,21 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
           onPick={choose}
         />
       )}
-      <div className="comp gl">
+      <div
+        className={mode === null ? "comp gl" : `comp gl ${mode}`}
+        onDragOver={dragOver}
+        onDrop={drop}
+      >
+        {mode === "bash" && (
+          <p className="cmode">
+            <b>Bash mode</b> Runs in the chat&apos;s folder
+          </p>
+        )}
+        {mode === "memory" && (
+          <p className="cmode">
+            <b>Memory</b> Saved to CLAUDE.md, not sent
+          </p>
+        )}
         {/* Always there, as VoiceOver often misses a live region inserted with its text. */}
         <div aria-live="polite">
           {elsewhere && (
@@ -304,18 +439,14 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
         {files.length > 0 && (
           <ul className="atts" aria-label="Attachments">
             {files.map((file) => (
-              <li key={file.id} className="chip">
-                <Icon name="file" />
-                <span>{file.filename}</span>
-                <button
-                  aria-label={`Remove ${file.filename}`}
-                  onClick={() => {
-                    actions.removeDraftFile(key, file.id);
-                  }}
-                >
-                  <Icon name="x" />
-                </button>
-              </li>
+              <AttachmentChip
+                key={file.id}
+                file={file}
+                onRemove={() => {
+                  actions.removeDraftFile(key, file.id);
+                  dropThumbnail(file.id);
+                }}
+              />
             ))}
           </ul>
         )}
@@ -343,6 +474,12 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
             setFocused(false);
           }}
           onKeyDown={onKeyDown}
+          onPaste={(event) => {
+            const pasted = pastedFiles(event.clipboardData);
+            if (!takesFiles || pasted.length === 0) return;
+            event.preventDefault();
+            void addFiles(pasted);
+          }}
         />
         <div className="crow">
           {pixie === undefined && (
@@ -400,8 +537,7 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
           ) : (
             <button
               className="send"
-              aria-label={busy ? "Queue" : "Send"}
-              title={busy ? "Sends when Claude finishes" : undefined}
+              aria-label="Send"
               disabled={!canSend}
               onClick={() => void send()}
             >
@@ -409,6 +545,47 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
             </button>
           )}
         </div>
+        {sheet?.kind === "memory" && live !== undefined && (
+          <ActionSheet
+            label="Save to memory"
+            onClose={() => {
+              setSheet(null);
+            }}
+          >
+            {live.pixie_id == null && (
+              <button
+                className="asi"
+                role="menuitem"
+                onClick={() => void remember(live.id, "project")}
+              >
+                Project memory
+                <small>CLAUDE.md in this project</small>
+              </button>
+            )}
+            <button className="asi" role="menuitem" onClick={() => void remember(live.id, "user")}>
+              User memory
+              <small>Your CLAUDE.md, for all projects</small>
+            </button>
+          </ActionSheet>
+        )}
+        {sheet?.kind === "mcp" && (
+          <ConnectorsSheet
+            onClose={() => {
+              setSheet(null);
+            }}
+          />
+        )}
+        {sheet?.kind === "resume" && nav !== undefined && (
+          <ResumeSheet
+            repo={project}
+            current={session?.id}
+            query={sheet.query}
+            nav={nav}
+            onClose={() => {
+              setSheet(null);
+            }}
+          />
+        )}
         {picker !== null && (
           <PickerSheet
             title={PICKER_TITLES[picker]}
@@ -424,5 +601,32 @@ export function Composer({ session, repo, onCreated, place, pixie, chat }: Props
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The files on the clipboard. Safari on iPhone may list a pasted image among the items
+ * only, so those are read when the file list is empty.
+ */
+function pastedFiles(data: DataTransfer): File[] {
+  const files = Array.from(data.files);
+  if (files.length > 0) return files;
+  return Array.from(data.items).flatMap((item) => {
+    const file = item.kind === "file" ? item.getAsFile() : null;
+    return file === null ? [] : [file];
+  });
+}
+
+/** An attached file: an image by its thumbnail, others by an icon, with its name. */
+function AttachmentChip({ file, onRemove }: { file: Attachment; onRemove: () => void }) {
+  const thumbnail = useThumbnail(file.id);
+  return (
+    <li className={thumbnail === null ? "chip" : "chip thumb"}>
+      {thumbnail === null ? <Icon name="file" /> : <img src={thumbnail} alt={file.filename} />}
+      <span>{file.filename}</span>
+      <button aria-label={`Remove ${file.filename}`} onClick={onRemove}>
+        <Icon name="x" />
+      </button>
+    </li>
   );
 }

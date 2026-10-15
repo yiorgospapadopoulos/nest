@@ -263,6 +263,19 @@ public final class SessionsStore {
         }
     }
 
+    /// A chat forks from one of its messages while no turn runs, as it rewinds (B59).
+    public static func canFork(_ session: Session?) -> Bool {
+        RewindFlow.isAvailable(for: session)
+    }
+
+    /// Starts a new chat continuing the conversation as it was before the message; the
+    /// new chat is listed at once, and the message comes back for its composer.
+    public func fork(_ id: String, message: Int) async throws -> ForkedChat {
+        let fork = try await api.fork(id, message: message)
+        store(fork.session)
+        return fork
+    }
+
     /// Asks Claude Code to compact the chat's context; queued while a turn runs.
     @discardableResult
     public func compact(_ id: String) async throws -> QueuedMessage? {

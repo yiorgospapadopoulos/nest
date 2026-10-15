@@ -12,6 +12,7 @@ from nestd.providers.base import (
     AgentTask,
     CommandCatalog,
     EngineDetails,
+    HookOutput,
     McpServer,
     ResultInfo,
     TextBlock,
@@ -22,7 +23,7 @@ from nestd.providers.base import (
 )
 from nestd.sessions.live import LiveSession
 from nestd.sessions.models import Session
-from nestd.sessions.sink import SessionSink
+from nestd.sessions.sink import SessionSink, TurnEnd
 from nestd.sessions.store import SessionStore
 from nestd.storage.db import Database
 from tests.fakes import FakeClock
@@ -31,14 +32,18 @@ from tests.test_session_store import new_session
 
 
 class RecordingTurns:
-    def __init__(self) -> None:
+    def __init__(self, end: TurnEnd | None = None) -> None:
         self.calls: list[tuple[object, ...]] = []
+        self.end: TurnEnd | None = end
 
     async def agent_active(self, live: LiveSession) -> None:
         self.calls.append(("active", live.session_id))
 
-    async def turn_finished(self, live: LiveSession, error: str | None) -> None:
-        self.calls.append(("finished", live.session_id, error))
+    async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
+        return self.end
+
+    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
+        self.calls.append(("finished", live.session_id, error, handoff))
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         self.calls.append(("stopped", error))
@@ -51,6 +56,9 @@ class RecordingTurns:
 
     async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
         self.calls.append(("checkpoint", checkpoint_id))
+
+    async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
+        self.calls.append(("taken", message_id, checkpoint_id))
 
 
 @pytest.fixture
@@ -78,7 +86,6 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
         subtype="success",
         duration_ms=5,
         num_turns=1,
-        cost_usd=0.1,
         errors=[],
         tokens=TokenUsage(input_tokens=3),
     )
@@ -95,7 +102,7 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
     assert turns.calls == [
         ("active", session.id),
         ("active", session.id),
-        ("finished", session.id, None),
+        ("finished", session.id, None, False),
         ("background", 2),
         ("stopped", "process ended"),
     ]
@@ -126,7 +133,6 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
                 "subtype": "success",
                 "duration_ms": 5,
                 "num_turns": 1,
-                "cost_usd": 0.1,
                 "errors": [],
                 "tokens": {
                     "input_tokens": 3,
@@ -204,6 +210,80 @@ async def test_thinking_is_announced_live_and_never_stored(
     assert await bus.session_events(session.id) == []
 
 
+async def test_thinking_and_subagent_text_stream_live_and_are_never_stored(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    """B59: the finished blocks are stored as messages; their text streams before."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns()
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
+
+    async with aclosing(bus.subscribe()) as live:
+        pending = asyncio.ensure_future(anext(live))
+        await asyncio.sleep(0)
+        await sink.thinking_delta("Let me", None)
+        thought = await pending
+        pending = asyncio.ensure_future(anext(live))
+        await sink.subagent_delta("Found it", "toolu_1")
+        written = await pending
+
+    assert turns.calls == [("active", session.id), ("active", session.id)]
+    assert [(e.type, e.id, e.session_id, e.payload) for e in (thought, written)] == [
+        (
+            types.SESSION_THINKING_DELTA,
+            None,
+            session.id,
+            {"text": "Let me", "parent_tool_use_id": None},
+        ),
+        (
+            types.SESSION_SUBAGENT_DELTA,
+            None,
+            session.id,
+            {"text": "Found it", "parent_tool_use_id": "toolu_1"},
+        ),
+    ]
+    assert await bus.session_events(session.id) == []
+
+
+HOOK = HookOutput(
+    hook_id="h1",
+    hook_name="PostToolUse:Edit",
+    hook_event="PostToolUse",
+    outcome="success",
+    system_message="Formatted 2 files",
+)
+
+
+async def test_hook_messages_are_stored_without_starting_a_turn(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    """B59: a SessionStart or Stop hook speaks outside any turn."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns()
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
+
+    await sink.hook(HOOK)
+
+    assert turns.calls == []
+    events = await bus.session_events(session.id)
+    assert [(e.type, e.payload) for e in events] == [
+        (
+            types.SESSION_HOOK,
+            {
+                "hook_id": "h1",
+                "hook_name": "PostToolUse:Edit",
+                "hook_event": "PostToolUse",
+                "outcome": "success",
+                "exit_code": None,
+                "system_message": "Formatted 2 files",
+                "output": None,
+            },
+        )
+    ]
+
+
 async def test_provider_session_id_is_stored_once_per_change(
     db: Database, clock: FakeClock, bus: EventBus
 ) -> None:
@@ -232,6 +312,53 @@ async def test_provider_session_id_is_stored_once_per_change(
     assert await store.find_by_provider_session("old") == stored
 
 
+async def test_a_cut_conversation_is_done_once_the_run_reports_its_new_session(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    """B59: the run resumed `old` cut; its own id clears the pending cut."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    await store.update(session.id, provider_session_id="old", fork_from="old", fork_at="a-1")
+    turns = RecordingTurns()
+    sink = SessionSink(
+        LiveSession(session.id), bus, store, turns, RecordingHooks(), "old", forking="old"
+    )
+
+    await sink.provider_session_id("old")
+    pending = await store.get(session.id)
+    await sink.provider_session_id("forked")
+    await sink.message_taken("m1", "cp-1")
+    done = await store.get(session.id)
+
+    assert (pending.fork_from, pending.fork_at) == ("old", "a-1")
+    assert (done.provider_session_id, done.fork_from, done.fork_at) == ("forked", None, None)
+    assert await store.find_by_provider_session("old") == done
+    assert turns.calls == [("taken", "m1", "cp-1")]
+
+
+@pytest.mark.parametrize(("end", "handoff"), [("handoff", True), ("stopped", False)])
+async def test_a_result_that_is_no_failure_is_marked(
+    db: Database, clock: FakeClock, bus: EventBus, end: TurnEnd, handoff: bool
+) -> None:
+    """B59: an error result that only makes way for the next message, or of a turn the
+    user stopped, is no failure; only a handoff ends the turn as one.
+    """
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    turns = RecordingTurns(end)
+    sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
+    result = ResultInfo(
+        is_error=True, subtype="error_during_execution", duration_ms=5, num_turns=1, errors=["x"]
+    )
+
+    await sink.result(result)
+
+    (event,) = [e for e in await bus.session_events(session.id) if e.type == "session.result"]
+    assert event.payload[end] is True
+    assert event.payload["errors"] == ["x"]
+    assert turns.calls == [("finished", session.id, "x", handoff)]
+
+
 async def notices(bus: EventBus, session_id: str) -> list[object]:
     return [e.payload for e in await bus.session_events(session_id) if e.type == "session.notice"]
 
@@ -244,9 +371,7 @@ async def test_notices_are_stored_and_a_retry_only_once_a_turn(
     session = await store.create(new_session())
     turns = RecordingTurns()
     sink = SessionSink(LiveSession(session.id), bus, store, turns, RecordingHooks(), None)
-    result = ResultInfo(
-        is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=0.1, errors=[]
-    )
+    result = ResultInfo(is_error=False, subtype="success", duration_ms=5, num_turns=1, errors=[])
 
     await sink.notice("api_retry", "API error, retrying")
     await sink.notice("api_retry", "API error (overloaded), retrying")
@@ -270,7 +395,10 @@ class BrokenTurns:
     async def agent_active(self, live: LiveSession) -> None:
         raise RuntimeError("active")
 
-    async def turn_finished(self, live: LiveSession, error: str | None) -> None:
+    async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
+        raise RuntimeError("how")
+
+    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
         raise RuntimeError("finished")
 
     async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:
@@ -284,6 +412,9 @@ class BrokenTurns:
 
     async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
         raise RuntimeError("checkpoint")
+
+    async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
+        raise RuntimeError("taken")
 
 
 class BrokenHooks:
@@ -314,6 +445,9 @@ class BrokenHooks:
     async def purged(self, session_id: str) -> None:
         raise LookupError("purged")
 
+    async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
+        raise LookupError("rewound")
+
 
 async def test_no_error_reaches_the_agent_run(
     db: Database, clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
@@ -323,14 +457,15 @@ async def test_no_error_reaches_the_agent_run(
     session = await store.create(new_session())
     sink = SessionSink(LiveSession(session.id), bus, store, BrokenTurns(), BrokenHooks(), None)
     await db.close()  # every event and store write fails from here on
-    result = ResultInfo(
-        is_error=False, subtype="success", duration_ms=5, num_turns=1, cost_usd=0.1, errors=[]
-    )
+    result = ResultInfo(is_error=False, subtype="success", duration_ms=5, num_turns=1, errors=[])
 
     with caplog.at_level(logging.WARNING):
         await sink.message([TextBlock(text="Hello")], None)
         await sink.text_delta("Hel")
         await sink.thinking(True)
+        await sink.thinking_delta("Hmm", None)
+        await sink.subagent_delta("Hi", "toolu_1")
+        await sink.hook(HOOK)
         await sink.result(result)
         await sink.usage(UsageInfo(five_hour=None, seven_day=None))
         await sink.connectors([])
@@ -342,6 +477,7 @@ async def test_no_error_reaches_the_agent_run(
         await sink.notice("compacted", "Conversation compacted")
         await sink.permission_mode("plan")
         await sink.checkpoint("msg-1")
+        await sink.message_taken("m1", "cp-1")
         await sink.stopped("process ended")
 
     kinds = [record.getMessage().split(" of session ")[0] for record in caplog.records]
@@ -351,6 +487,10 @@ async def test_no_error_reaches_the_agent_run(
         "the message hooks",
         "starting a turn",
         "starting a turn",
+        "starting a turn",
+        "starting a turn",
+        "the hook event",
+        "how the turn ended",
         "the result event",
         "the turn result hooks",
         "ending the turn",
@@ -366,5 +506,6 @@ async def test_no_error_reaches_the_agent_run(
         "the notice event",
         "the mode change",
         "the message checkpoint",
+        "the message read in the turn",
         "the run's end",
     ]

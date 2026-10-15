@@ -88,10 +88,12 @@ enum Overlay: Equatable {
     case publish(String)
     /// A project's settings, by repo name.
     case project(String)
-    /// Restoring files to before a message (`Shell.rewinding`).
+    /// Rewinding to before a message, or editing one (`Shell.rewinding`).
     case rewind
     /// A habit run's transcript, read-only, by session id (B42).
     case habitRun(String)
+    /// A tool result's image full size, by attachment id (B59).
+    case image(String)
 }
 
 /// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
@@ -121,7 +123,7 @@ final class Shell {
     let model: AppModel
     let userName: String
     var overlay: Overlay?
-    /// The restore the rewind sheet shows.
+    /// The rewind the rewind sheet shows.
     var rewinding: RewindFlow?
     /// The palette while it is open.
     var palette = CommandPalette(items: [])
@@ -174,6 +176,8 @@ final class Shell {
     var settings: SettingsStore { model.settings }
     var claudeChats: ClaudeChatsStore { model.claudeChats }
     var completions: CompletionStore { model.completions }
+    var bash: BashStore { model.bash }
+    var images: AttachmentImages { model.images }
     var agents: AgentsStore { model.agents }
     var pixies: PixiesStore { model.pixies }
     var reports: PixieReportsStore { model.reports }
@@ -472,6 +476,12 @@ final class Shell {
         let draft = draft(for: Self.pixieDraft(id))
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !draft.sending else { return }
+        if case .memory(let memory) = composerInput(for: Self.pixieDraft(id), text: draft.text) {
+            if !memory.isEmpty {
+                draft.memory = memory
+            }
+            return
+        }
         let typed = draft.text
         draft.sending = true
         dictation.cancel()
@@ -905,6 +915,23 @@ final class Shell {
         let draft = draft(for: chat)
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !draft.sending, !draft.isUploading else { return }
+        switch composerInput(for: chat, text: draft.text) {
+        case .bash(let command):
+            runShell(command, in: chat, draft: draft)
+            return
+        case .memory(let memory):
+            if !memory.isEmpty {
+                draft.memory = memory
+            }
+            return
+        case .message:
+            break
+        }
+        if let command = LocalCommand(text) {
+            draft.replaceText("", caret: 0)
+            runLocal(command, in: chat)
+            return
+        }
         let typed = draft.text
         let attachments = draft.uploadedIDs
         draft.sending = true
@@ -918,8 +945,11 @@ final class Shell {
                         from: chat, draft: draft, prompt: text, attachments: attachments)
                     sentMessages.record(text, chat: session)
                 } else {
+                    // The `!` commands run since the last message go first, for Claude.
+                    let outgoing = bash.outgoing(text, chat: chat)
                     let queued = try await sessions.send(
-                        chat, text: text, attachmentIDs: attachments)
+                        chat, text: outgoing.text, attachmentIDs: attachments)
+                    bash.sent(outgoing.rows, chat: chat)
                     if let queued {
                         activity.enqueue(queued, session: chat)
                     }
@@ -933,6 +963,56 @@ final class Shell {
                 show(error, doing: "Could not send")
             }
         }
+    }
+
+    // MARK: `!` and `#` (B59)
+
+    /// What the composer's text is in this chat: `!` runs in the user's own chats once
+    /// they exist, `#` saves a memory in any chat that exists (a pixie's: `pixieDraft`).
+    func composerInput(for draftKey: String, text: String) -> ComposerInput {
+        guard let session = memorySession(for: draftKey) else { return .message }
+        let bash =
+            Pixie.id(ofRepo: draftKey) == nil
+            && ComposerInput.canRunShell(in: sessions.session(session))
+        return ComposerInput.of(text, bash: bash, memory: true)
+    }
+
+    /// The chat a composer's `#` and `!` act on; nil before the chat exists.
+    func memorySession(for draftKey: String) -> String? {
+        if let id = Pixie.id(ofRepo: draftKey) {
+            return pixies.pixies.first { $0.id == id }?.chatSessionID
+        }
+        return isDraft(draftKey) ? nil : draftKey
+    }
+
+    /// Runs a `!` command in the chat's folder; its row shows below the transcript.
+    private func runShell(_ command: String, in chat: String, draft: ComposerDraft) {
+        guard !command.isEmpty else { return }
+        draft.replaceText("", caret: 0)
+        Task { await bash.run(command, chat: chat) }
+    }
+
+    /// Saves the composer's `#` memory where the user chose; the text stays on failure.
+    func saveMemory(_ text: String, scope: MemoryScope, from draftKey: String) {
+        let draft = draft(for: draftKey)
+        draft.memory = nil
+        guard let session = memorySession(for: draftKey) else { return }
+        let typed = draft.text
+        Task {
+            do {
+                let saved = try await model.api.saveMemory(session, text: text, scope: scope)
+                if draft.text == typed {
+                    draft.replaceText("", caret: 0)
+                }
+                show("\(saved.confirmation): \(Self.abbreviate(saved.path))", kind: .done)
+            } catch {
+                show(error, doing: "Could not save the memory")
+            }
+        }
+    }
+
+    private static func abbreviate(_ path: String) -> String {
+        (path as NSString).abbreviatingWithTildeInPath
     }
 
     /// The new session's id.
@@ -959,6 +1039,11 @@ final class Shell {
         run("Could not interrupt") { try await self.sessions.interrupt(chat) }
     }
 
+    /// Stops one background task or subagent of the chat; its turn goes on (B59).
+    func stopTask(_ task: String, in chat: String) {
+        run("Could not stop it") { try await self.activity.stop(task: task, session: chat) }
+    }
+
     /// Stops a stuck chat's turn and asks it to try a different approach.
     func nudge(_ session: Session) {
         run("Could not send the nudge") {
@@ -983,9 +1068,42 @@ final class Shell {
         draft(for: draftKey ?? chat).replaceText(text, caret: text.count)
     }
 
-    /// Puts a picked suggestion into the composer.
+    /// Puts a picked suggestion into the composer; a command Nest runs itself runs at
+    /// once, as Claude Code's do.
     func complete(_ completion: Completion, in chat: String) {
+        if completion.mention == nil, completion.label == "/\(completion.id)",
+            let command = LocalCommand(named: completion.id)
+        {
+            draft(for: chat).replaceText("", caret: 0)
+            runLocal(command, in: chat)
+            return
+        }
         draft(for: chat).replaceText(completion.text, caret: completion.caret)
+    }
+
+    /// Opens what Claude Code shows for a command the SDK cannot run (B59).
+    func runLocal(_ command: LocalCommand, in chat: String) {
+        let draft = draft(for: chat)
+        switch command {
+        case .model(nil):
+            withAnimation(.smooth(duration: 0.15)) { draft.picker = .model }
+        case .model(let name?):
+            if let info = LocalCommand.model(named: name, in: agents.models) {
+                setModel(info, for: chat)
+                show("Model set to \(info.displayName)", kind: .done)
+            } else {
+                show("No model named \(name)", kind: .failed)
+            }
+        case .permissions:
+            withAnimation(.smooth(duration: 0.15)) { draft.picker = .permissions }
+        case .mcp:
+            show(.connectors)
+        case .resume(let search):
+            show(.palette)
+            if let search {
+                searchPalette(search)
+            }
+        }
     }
 
     /// Sends /compact, which Claude Code runs as a command; queued while a turn runs.
@@ -998,9 +1116,41 @@ final class Shell {
         }
     }
 
-    func cancelQueued(_ message: QueuedMessage, in chat: String) {
-        run("Could not cancel the queued message") {
-            try await self.activity.cancelQueued(message.id, session: chat)
+    // MARK: Pending messages (B59)
+
+    /// Removes a message Claude has not read yet; when it already has, the row says so.
+    func removePending(_ message: QueuedMessage, in chat: String) {
+        run("Could not remove the message") {
+            try await self.activity.remove(message.id, session: chat)
+        }
+    }
+
+    /// Stops the turn and sends the pending message right after it.
+    func sendPendingNow(_ message: QueuedMessage, in chat: String) {
+        run("Could not send the message now") {
+            try await self.activity.sendNow(message.id, session: chat)
+        }
+    }
+
+    /// Takes the pending message back into the composer (`draftKey`, the pane's); one
+    /// Claude already read stays where it is.
+    func editPending(_ message: QueuedMessage, in chat: String, draftKey: String) {
+        run("Could not edit the message") {
+            guard try await self.activity.remove(message.id, session: chat) else { return }
+            self.restore(
+                RestoredMessage(text: message.text, attachments: message.attachments),
+                into: draftKey)
+        }
+    }
+
+    /// Puts a message taken back (pending, rewound or forked) into a composer: at once
+    /// into an empty one, otherwise after asking (`ComposerDraft.offered`).
+    func restore(_ message: RestoredMessage, into draftKey: String) {
+        let draft = draft(for: draftKey)
+        if message.needsAsking(draft: draft.text) {
+            draft.offered = message
+        } else {
+            draft.fill(message, keepingDraft: false)
         }
     }
 
@@ -1026,6 +1176,25 @@ final class Shell {
         syncTools()
         if let target, !tools.terminal(for: target).run(line: line) {
             show(TerminalFolder.goneMessage, kind: .failed)
+        }
+    }
+
+    /// A connector's Sign in (B59): a server's runs Claude Code's `/mcp` in this
+    /// project's terminal for the focused chat's folder, a claude.ai connector's opens its
+    /// settings page.
+    func signIn(_ connector: Connector) {
+        switch connector.signIn {
+        case .browser(let url):
+            NSWorkspace.shared.open(url)
+        case .terminal(let command):
+            guard project != nil else {
+                show("Open a project to sign in to \(connector.displayName)", kind: .info)
+                return
+            }
+            close()
+            runInTerminal(command: command, from: projectState.layout.focused)
+        case nil:
+            break
         }
     }
 
@@ -1091,18 +1260,37 @@ final class Shell {
     }
 
     func attach(_ urls: [URL], to chat: String) {
-        let draft = draft(for: chat)
         for url in urls {
-            let pending = PendingAttachment(filename: url.lastPathComponent)
-            draft.attachments.append(pending)
-            Task {
-                do {
-                    let uploaded = try await AttachmentFile.upload(url, with: model.api)
-                    draft.finish(pending.id, with: uploaded)
-                } catch {
-                    draft.remove(pending.id)
-                    show(error, doing: "Could not attach \(url.lastPathComponent)")
-                }
+            attach(url.lastPathComponent, to: chat) { try await AttachmentFile.prepare(url) }
+        }
+    }
+
+    /// Attaches pasted or dropped image data of a pasteboard type (B59).
+    func attach(data: Data, type: String, to chat: String) {
+        let filename = ImagePaste.filename(type: type)
+        attach(filename, to: chat) {
+            try await AttachmentFile.prepare(data: data, filename: filename)
+        }
+    }
+
+    /// Shows the file at once, then prepares it (an image converted and scaled, with its
+    /// thumbnail) and uploads it.
+    private func attach(
+        _ filename: String, to chat: String,
+        prepare: @escaping @Sendable () async throws -> PreparedAttachment
+    ) {
+        let draft = draft(for: chat)
+        let pending = PendingAttachment(filename: filename)
+        draft.attachments.append(pending)
+        Task {
+            do {
+                let prepared = try await prepare()
+                draft.prepared(pending.id, as: prepared)
+                let uploaded = try await AttachmentFile.upload(prepared, with: model.api)
+                draft.finish(pending.id, with: uploaded)
+            } catch {
+                draft.remove(pending.id)
+                show(error, doing: "Could not attach \(filename)")
             }
         }
     }
@@ -1417,9 +1605,10 @@ final class Shell {
         }
     }
 
-    // MARK: Restoring files
+    // MARK: Rewind, edit and fork (B59)
 
-    /// Asks to restore the chat's files to before one of its messages, with a preview.
+    /// Rewind on a user message: restore the conversation, the code or both, with
+    /// previews.
     func startRewind(_ chat: String, message: Int) {
         let flow = RewindFlow(session: chat, message: message, api: model.api)
         rewinding = flow
@@ -1427,14 +1616,63 @@ final class Shell {
         Task { await flow.load() }
     }
 
+    /// Esc Esc in an idle chat: Rewind on its latest message of the user.
+    func rewindLast(_ chat: String) {
+        guard RewindFlow.isAvailable(for: sessions.session(chat)),
+            let message = model.transcripts.existing(chat)?.lastUserMessage
+        else { return }
+        startRewind(chat, message: message)
+    }
+
+    /// Edit on a user message: the conversation goes back to before it and the message
+    /// into the composer; when files changed since, the sheet asks whether they go back
+    /// too.
+    func startEdit(_ chat: String, message: Int) {
+        let flow = RewindFlow(session: chat, message: message, purpose: .edit, api: model.api)
+        Task {
+            await flow.load()
+            if let reason = flow.reason(.conversation) {
+                show("Could not edit the message: \(reason)", kind: .failed)
+            } else if flow.needsChoice {
+                rewinding = flow
+                show(.rewind)
+            } else {
+                await finishRewind(flow, in: chat)
+            }
+        }
+    }
+
     func confirmRewind() {
         guard let flow = rewinding else { return }
-        Task {
-            guard await flow.restore() else { return }
-            if overlay == .rewind {
-                close()
+        Task { await finishRewind(flow, in: flow.session) }
+    }
+
+    private func finishRewind(_ flow: RewindFlow, in chat: String) async {
+        guard let reply = await flow.confirm() else {
+            if overlay != .rewind, let failure = flow.failure {
+                show("Could not rewind: \(failure)", kind: .failed)
             }
+            return
+        }
+        if overlay == .rewind {
+            close()
+        }
+        if let message = reply.restoredMessage {
+            restore(message, into: chat)
+            draft(for: chat).wantsFocus = true
+        } else {
             show("Restored the files to before that message", kind: .done)
+        }
+    }
+
+    /// Fork from here: a new chat continuing the conversation as it was before the
+    /// message, opened with the message in its composer.
+    func fork(_ chat: String, message: Int) {
+        run("Could not fork the chat") {
+            let fork = try await self.sessions.fork(chat, message: message)
+            self.openChat(fork.session.id)
+            self.restore(fork.message, into: fork.session.id)
+            self.draft(for: fork.session.id).wantsFocus = true
         }
     }
 
@@ -1506,8 +1744,15 @@ final class Shell {
 
 struct PendingAttachment: Identifiable, Equatable {
     let id = UUID()
-    let filename: String
+    var filename: String
+    /// An image's small PNG, once prepared.
+    var thumbnail: Data?
     var uploaded: Attachment?
+}
+
+/// What a composer's picker chooses.
+enum ComposerPicker: Equatable {
+    case model, permissions
 }
 
 /// What the user is writing in one pane.
@@ -1536,6 +1781,12 @@ final class ComposerDraft {
     var wantsFocus = false
     /// The highlighted suggestion, and whether Esc closed the list.
     var completion = CompletionSelection()
+    /// The picker `/model` or `/permissions` opened above the field (B59).
+    var picker: ComposerPicker?
+    /// A message taken back while the field had text: the composer asks what to keep.
+    var offered: RestoredMessage?
+    /// A `#` memory waiting for the user to choose where it goes (B59).
+    var memory: String?
 
     /// The caret as a character offset; the end of the text when unknown.
     var caret: Int {
@@ -1557,6 +1808,13 @@ final class ComposerDraft {
     var isUploading: Bool { attachments.contains { $0.uploaded == nil } }
     var uploadedIDs: [String] { attachments.compactMap(\.uploaded?.id) }
 
+    /// The name and thumbnail the prepared file goes with, such as a HEIC sent as JPEG.
+    func prepared(_ id: UUID, as file: PreparedAttachment) {
+        guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
+        attachments[index].filename = file.filename
+        attachments[index].thumbnail = file.thumbnail
+    }
+
     func finish(_ id: UUID, with attachment: Attachment) {
         guard let index = attachments.firstIndex(where: { $0.id == id }) else { return }
         attachments[index].uploaded = attachment
@@ -1564,6 +1822,21 @@ final class ComposerDraft {
 
     func remove(_ id: UUID) {
         attachments.removeAll { $0.id == id }
+    }
+
+    /// Puts a message taken back into the field, before the draft when it stays, with
+    /// its attachments (already uploaded to the chat).
+    func fill(_ message: RestoredMessage, keepingDraft: Bool) {
+        let newText = keepingDraft ? message.combined(with: text) : message.text
+        replaceText(newText, caret: message.text.count)
+        let files = message.attachments.map { attachment in
+            var pending = PendingAttachment(filename: attachment.filename)
+            pending.uploaded = attachment
+            return pending
+        }
+        attachments = keepingDraft ? files + attachments : files
+        offered = nil
+        wantsFocus = true
     }
 
     func clear() {

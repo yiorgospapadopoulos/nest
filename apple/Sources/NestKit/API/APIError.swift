@@ -8,6 +8,8 @@ public enum APIError: Error, Sendable, Equatable {
     case conflict(String)
     /// The chat is open in Claude Code right now; it has to be closed there first.
     case openInClaudeCode(String)
+    /// Claude already read the pending message, so it can no longer be removed (B59).
+    case messageTaken(String)
     /// A pixie file changed since it was read; carries the current text and hash.
     case staleFile(text: String, hash: String)
     case invalidInput(String)
@@ -32,7 +34,7 @@ public enum APIError: Error, Sendable, Equatable {
         case .staleFile:
             "The file changed since you opened it."
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail),
-            .openInClaudeCode(let detail), .invalidInput(let detail), .payloadTooLarge(let detail),
+            .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail), .payloadTooLarge(let detail),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
             .gitFailed(let detail, _, _), .badGateway(let detail), .server(_, let detail),
             .transport(let detail), .decoding(let detail), .approveRefused(let detail, _, _):
@@ -43,7 +45,7 @@ public enum APIError: Error, Sendable, Equatable {
     /// A 409: the chat changed since the app last read it.
     public var isConflict: Bool {
         switch self {
-        case .conflict, .openInClaudeCode, .approveRefused: true
+        case .conflict, .openInClaudeCode, .messageTaken, .approveRefused: true
         default: false
         }
     }
@@ -63,6 +65,8 @@ public enum APIError: Error, Sendable, Equatable {
         case 404: return .notFound(detail)
         case 409 where body["code"]?.stringValue == "open_in_claude_code":
             return .openInClaudeCode(detail)
+        case 409 where body["code"]?.stringValue == "message_taken":
+            return .messageTaken(detail)
         case 409:
             if body["code"]?.stringValue == "stale_file", let text = body["text"]?.stringValue,
                 let hash = body["hash"]?.stringValue

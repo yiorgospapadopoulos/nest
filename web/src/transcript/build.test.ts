@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Approval, JsonObject } from "../api/types.ts";
+import type { Approval, JsonObject, JsonValue } from "../api/types.ts";
 import {
   approval,
   event,
@@ -403,6 +403,36 @@ describe("tool groups", () => {
     ]);
   });
 
+  it("shows an edit with its diff on its own, between groups of other calls", () => {
+    const edit = {
+      type: "tool_use",
+      id: "e",
+      name: "Edit",
+      input: { file_path: "/w/a.ts", old_string: "a", new_string: "b" },
+    };
+    const items = buildTranscript(
+      [blocks(1, call("a"), call("b"), edit, call("c"), call("d")), blocks(2, done("e"))],
+      {},
+      "/w",
+    );
+
+    expect(shape(items)).toEqual(["group:1.0,1.1", "tool:1.2", "group:1.3,1.4"]);
+    expect(items[1]).toMatchObject({
+      kind: "tool",
+      name: "Edit",
+      arg: "a.ts",
+      result: "ok",
+      diff: {
+        added: 1,
+        removed: 1,
+        lines: [
+          { kind: "del", text: "a" },
+          { kind: "add", text: "b" },
+        ],
+      },
+    });
+  });
+
   it("leaves a single call as a plain row", () => {
     const items = buildTranscript([blocks(1, call("a"), { type: "text", text: "ok" })], {}, null);
 
@@ -538,6 +568,43 @@ describe("error turns", () => {
     ]);
   });
 
+  it("show no error for a turn that made way for the next message (B59)", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        event({
+          id: 2,
+          type: "session.result",
+          payload: { is_error: true, duration_ms: 8_000, handoff: true },
+        }),
+        user(3),
+        event({ id: 4, type: "session.state", payload: { state: "idle", duration_ms: 2_000 } }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual(["user", "turn:Worked for 8s", "user", "turn:Worked for 2s"]);
+  });
+
+  it("show only the stopped line for a turn the user stopped (B59)", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        event({
+          id: 2,
+          type: "session.result",
+          payload: { is_error: true, duration_ms: 3_000, stopped: true },
+        }),
+        event({ id: 3, type: "session.state", payload: { state: "interrupted" } }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual(["user", "turn:Stopped after 3s"]);
+  });
+
   it("keep older error turns, which ended idle, readable", () => {
     const items = buildTranscript(
       [
@@ -620,6 +687,103 @@ describe("notices", () => {
   });
 });
 
+describe("bash mode and images (B59)", () => {
+  const said = (text: string, attachments: JsonValue[] = []) =>
+    event({ id: 1, type: "session.user_message", payload: { text, attachments } });
+  const block = (command: string, stdout: string, stderr = "") =>
+    `<bash-input>${command}</bash-input>\n<bash-stdout>${stdout}</bash-stdout><bash-stderr>${stderr}</bash-stderr>`;
+
+  it("shows a message's leading shell commands as bash rows, then its text", () => {
+    const text = `${block("ls", "a\nb", "oops")}\n${block("pwd", "/w")}\n\nWhat now?`;
+
+    expect(buildTranscript([said(text)], {}, null)).toEqual([
+      { kind: "bash", key: "1.b0", command: "ls", output: "a\nb\noops" },
+      { kind: "bash", key: "1.b1", command: "pwd", output: "/w" },
+      { kind: "user", key: "1", text: "What now?", attachments: [] },
+    ]);
+  });
+
+  it("shows no bubble for a message of commands only, unless it has files", () => {
+    expect(buildTranscript([said(block("ls", "", "nope"))], {}, null)).toEqual([
+      { kind: "bash", key: "1.b0", command: "ls", output: "nope" },
+    ]);
+    expect(
+      buildTranscript([said(block("ls", "a"), [{ filename: "a.png" }])], {}, null).map(
+        (i) => i.kind,
+      ),
+    ).toEqual(["bash", "user"]);
+  });
+
+  it("leaves text that only looks like a command as it is", () => {
+    const text = "Why does <bash-input>ls</bash-input> fail?";
+    expect(buildTranscript([said(text)], {}, null)).toEqual([
+      { kind: "user", key: "1", text, attachments: [] },
+    ]);
+  });
+
+  it("keeps the images of a tool's result, also a subagent's", () => {
+    const image = { attachment_id: "i1", media_type: "image/png" };
+    const items = buildTranscript(
+      [
+        event({
+          id: 2,
+          type: "session.message",
+          payload: {
+            parent_tool_use_id: null,
+            blocks: [
+              { type: "tool_use", id: "t1", name: "Read", input: { file_path: "/w/shot.png" } },
+              { type: "tool_use", id: "t2", name: "Agent", input: { description: "Look" } },
+            ],
+          },
+        }),
+        event({
+          id: 3,
+          type: "session.message",
+          payload: {
+            parent_tool_use_id: null,
+            blocks: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "",
+                images: [image, {}, { attachment_id: "i2" }],
+              },
+            ],
+          },
+        }),
+        event({
+          id: 4,
+          type: "session.message",
+          payload: {
+            parent_tool_use_id: "t2",
+            blocks: [
+              { type: "tool_result", tool_use_id: "x", content: "Shot", images: [image] },
+              { type: "tool_result", tool_use_id: "y", content: "None" },
+              { type: "redacted_thinking" },
+            ],
+          },
+        }),
+      ],
+      {},
+      "/w",
+    );
+
+    const tools = items.flatMap((i) => (i.kind === "tools" ? i.items : [i]));
+    expect(tools[0]).toMatchObject({
+      name: "Read",
+      images: [
+        { id: "i1", mediaType: "image/png" },
+        { id: "i2", mediaType: "image/png" },
+      ],
+    });
+    expect(tools[1]).toMatchObject({
+      name: "Agent",
+      steps: [{ kind: "images", key: "4.0", images: [{ id: "i1", mediaType: "image/png" }] }],
+    });
+    expect(tools[1]).not.toHaveProperty("images");
+  });
+});
+
 describe("turnStart", () => {
   const at = (id: number, type: string, payload: JsonObject = {}) =>
     event({ id, type, payload, ts: `2026-01-01T12:00:0${String(id)}Z` });
@@ -638,6 +802,25 @@ describe("turnStart", () => {
         at(4, "session.state", { state: "running" }),
       ]),
     ).toBe("2026-01-01T12:00:02Z");
+  });
+
+  it("keeps the turn's start when a message is read during it (B59)", () => {
+    expect(
+      turnStart([
+        at(1, "session.state", { state: "idle" }),
+        at(2, "session.user_message"),
+        at(3, "session.message"),
+        at(4, "session.user_message"),
+        at(5, "session.message"),
+      ]),
+    ).toBe("2026-01-01T12:00:02Z");
+    expect(
+      turnStart([
+        at(1, "session.state", { state: "running", turn_start: true }),
+        at(2, "session.message"),
+        at(3, "session.user_message"),
+      ]),
+    ).toBe("2026-01-01T12:00:01Z");
   });
 
   it("is null once the turn ended", () => {
@@ -702,6 +885,7 @@ describe("pixie calls", () => {
         failed: false,
       },
       steps: [
+        { kind: "thinking", key: "2.0", text: "hmm" },
         { kind: "text", key: "2.1", text: "Looking." },
         { kind: "call", key: "2.3", text: "Read a.ts" },
         { kind: "call", key: "2.4", text: "Glob" },
@@ -758,6 +942,152 @@ describe("pixie calls", () => {
 
     expect(shape(items)).toEqual(["group:1.0,1.1,1.2", "pixie:2.0"]);
     expect(items[1]).toMatchObject({ kind: "pixie", call: { result: "stopped" }, steps: [] });
+  });
+});
+
+describe("subagents (B59)", () => {
+  const agent = (id: string, name = "Agent") => ({
+    type: "tool_use",
+    id,
+    name,
+    input: { description: "Find call sites", subagent_type: "Explore" },
+  });
+  const sub = (id: number, parent: string, ...list: JsonObject[]) =>
+    event({ id, type: "session.message", payload: { parent_tool_use_id: parent, blocks: list } });
+
+  it("puts a subagent's thinking, text and tools in its call's row, in order", () => {
+    const items = buildTranscript(
+      [
+        blocks(1, agent("a1"), call("b1")),
+        sub(
+          2,
+          "a1",
+          { type: "thinking", text: "The tests import...", duration_ms: null },
+          { type: "thinking", text: " " },
+          { type: "tool_use", id: "s1", name: "Grep", input: { pattern: "helper" } },
+        ),
+        sub(3, "a1", { type: "text", text: "The helper is used in 3 places." }),
+        sub(4, "b1", { type: "text", text: "not an agent" }),
+        blocks(5, { type: "tool_result", tool_use_id: "a1", content: "Done" }, done("b1")),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: "tools",
+      items: [
+        {
+          id: "a1",
+          result: "Done",
+          steps: [
+            { kind: "thinking", key: "2.0", text: "The tests import..." },
+            { kind: "call", key: "2.2", text: "Grep helper" },
+            { kind: "text", key: "3.0", text: "The helper is used in 3 places." },
+          ],
+        },
+        { id: "b1", result: "ok" },
+      ],
+    });
+    // Never in the main transcript, and only an agent's call takes steps.
+    expect(JSON.stringify(items)).not.toContain("not an agent");
+  });
+
+  it("gives an agent call no steps until its subagent sends a message", () => {
+    const [item] = buildTranscript([blocks(1, agent("a1", "Task"))], {}, null);
+    expect(item).toMatchObject({ kind: "tool", id: "a1" });
+    expect(item).not.toHaveProperty("steps");
+  });
+});
+
+describe("tool output", () => {
+  it("keeps the whole output, however long", () => {
+    const long = Array.from({ length: 3000 }, (_, i) => `line ${String(i)}`).join("\n");
+    const [item] = buildTranscript(
+      [blocks(1, call("b1")), blocks(2, { type: "tool_result", tool_use_id: "b1", content: long })],
+      {},
+      null,
+    );
+    expect(item).toMatchObject({ kind: "tool", detail: long, result: "3000 lines" });
+  });
+});
+
+describe("hooks (B59)", () => {
+  const hook = (id: number, payload: JsonObject) =>
+    event({
+      id,
+      type: "session.hook",
+      payload: { hook_id: "h", exit_code: 0, system_message: null, output: null, ...payload },
+    });
+
+  it("shows a hook's message, failure or output as a quiet row, not output for Claude", () => {
+    const items = buildTranscript(
+      [
+        hook(1, {
+          hook_name: "PostToolUse:Edit",
+          outcome: "success",
+          system_message: "Formatted 2 files",
+          output: "prettier ran",
+        }),
+        hook(2, {
+          hook_name: "PreToolUse:Bash",
+          outcome: "error",
+          exit_code: 2,
+          output: "Blocked: run the tests first",
+        }),
+        // Output of a hook that succeeded was context for Claude; Claude Code hides it.
+        hook(3, { hook_name: "Stop", outcome: "success", output: "lint ok" }),
+        hook(9, { hook_name: "Stop", outcome: "success", exit_code: 1, output: "bad config" }),
+        hook(10, { hook_name: "SessionStart", outcome: "success", exit_code: null, output: "x" }),
+        hook(4, {
+          hook_name: "SessionStart:startup",
+          outcome: "error",
+          exit_code: null,
+          system_message: "Setup failed",
+        }),
+        hook(5, { outcome: "cancelled", output: "slow" }),
+        hook(6, { hook_name: "Quiet", outcome: "success" }),
+        hook(7, { outcome: "error", exit_code: null }),
+        hook(8, { system_message: "Remember the tests", outcome: "success" }),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      {
+        kind: "hook",
+        key: "1",
+        tone: "message",
+        text: "PostToolUse:Edit says: Formatted 2 files",
+        detail: "prettier ran",
+      },
+      {
+        kind: "hook",
+        key: "2",
+        tone: "error",
+        text: "PreToolUse:Bash hook failed (exit 2)",
+        detail: "Blocked: run the tests first",
+      },
+      { kind: "hook", key: "9", tone: "output", text: "Stop hook output", detail: "bad config" },
+      {
+        kind: "hook",
+        key: "4",
+        tone: "error",
+        text: "SessionStart:startup hook failed",
+        detail: "Setup failed",
+      },
+      { kind: "hook", key: "5", tone: "output", text: "Hook output", detail: "slow" },
+      { kind: "hook", key: "7", tone: "error", text: "A hook failed", detail: null },
+      {
+        kind: "hook",
+        key: "8",
+        tone: "message",
+        text: "A hook says: Remember the tests",
+        detail: null,
+      },
+    ]);
   });
 });
 

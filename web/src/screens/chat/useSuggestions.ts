@@ -3,6 +3,7 @@ import type { SlashCommand } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { availablePixies, availableTeams } from "../../store/selectors.ts";
 import type { Suggestion } from "./Suggestions.tsx";
+import { withLocalCommands } from "./localCommands.ts";
 import { matchCommands, pixieMentions, replaceTrigger, soulLine, triggerAt } from "./suggest.ts";
 
 // Typing pauses this long before the files are asked for.
@@ -16,25 +17,28 @@ interface Input {
   sessionId: string | undefined;
   // The project chat's repo, for the pixies and teams it can call (B40).
   repo: string;
+  // A pixie's chat: files only, no commands or pixies (B59).
+  filesOnly?: boolean;
 }
 
 /**
  * Completions for the composer: the chat's slash commands after a leading "/" (asked for
- * once per chat or project), and after an "@" the pixies and teams the chat can call, then
+ * once per chat or project) with Nest's own, and after an "@" the pixies and teams the chat can call, then
  * repo files (latest request wins).
  */
-export function useSuggestions({ text, caret, focused, sessionId, repo }: Input) {
+export function useSuggestions({ text, caret, focused, sessionId, repo, filesOnly }: Input) {
   const { state, actions } = useStore();
   const [commands, setCommands] = useState<Record<string, SlashCommand[]>>({});
   const requested = useRef(new Set<string>());
   const [found, setFound] = useState<string[]>([]);
   const [nav, setNav] = useState({ key: "", index: 0 });
 
-  const trigger = focused ? triggerAt(text, caret) : null;
+  const typed = focused ? triggerAt(text, caret) : null;
+  const trigger = filesOnly === true && typed?.kind === "command" ? null : typed;
   const source = sessionId === undefined ? `repo:${repo}` : `session:${sessionId}`;
   const wantsCommands = trigger?.kind === "command";
   const fileQuery = trigger?.kind === "file" && sessionId !== undefined ? trigger.query : null;
-  const mentioning = trigger?.kind === "file";
+  const mentioning = trigger?.kind === "file" && filesOnly !== true;
   const callable = mentioning ? availablePixies(state, repo) : [];
   const teams = mentioning ? availableTeams(state, repo) : [];
   // The first line of each callable pixie's soul, read once while mentioning.
@@ -81,7 +85,8 @@ export function useSuggestions({ text, caret, focused, sessionId, repo }: Input)
 
   let items: Suggestion[] = [];
   if (trigger?.kind === "command") {
-    items = matchCommands(commands[source] ?? [], trigger.query).map((c) => ({
+    // Nest's own commands are offered whether or not the chat's have loaded (B59).
+    items = matchCommands(withLocalCommands(commands[source] ?? []), trigger.query).map((c) => ({
       key: c.name,
       label: `/${c.name}`,
       hint: c.argument_hint,

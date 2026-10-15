@@ -322,7 +322,14 @@ export function mergeApproval(overrides: Partial<Approval> = {}): Approval {
 }
 
 export function queuedMessage(overrides: Partial<QueuedMessage> = {}): QueuedMessage {
-  return { id: "m1", text: "Then add tests", attachments: [], created_at: NOW, ...overrides };
+  return {
+    id: "m1",
+    text: "Then add tests",
+    attachments: [],
+    created_at: NOW,
+    sent: false,
+    ...overrides,
+  };
 }
 
 export function commandList(overrides: Partial<CommandList> = {}): CommandList {

@@ -412,6 +412,42 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(failures == ["Failed: API Error: 529", "Failed: error_max_turns"])
     }
 
+    /// Send now, or Claude Code ending a turn holding the next message: the result made
+    /// way for that message and is no failure (B59).
+    @Test func aResultThatHandsOffShowsNoFailure() async throws {
+        let transcript = try await loaded()
+        transcript.receive(user(1, at: 0))
+        transcript.receive(
+            event(
+                EventType.sessionResult,
+                #"{"is_error": true, "subtype": "error_during_execution", "duration_ms": 8000, "num_turns": 3, "errors": ["[ede_diagnostic] result_type=user"], "handoff": true}"#,
+                id: 2, at: 8))
+        transcript.receive(user(3, at: 9))
+        #expect(ends(transcript) == [TurnEnd(durationMS: 8_000, stopped: false)])
+        #expect(
+            !transcript.visibleItems.contains { item in
+                if case .result = item.content { true } else { false }
+            })
+    }
+
+    /// A turn the user stopped shows only its stopped line, never "Failed:" (B59).
+    @Test func aStoppedTurnsErrorResultIsNoFailure() async throws {
+        let transcript = try await loaded()
+        transcript.receive(user(1, at: 0))
+        transcript.receive(
+            event(
+                EventType.sessionResult,
+                #"{"is_error": true, "subtype": "error_during_execution", "duration_ms": 3000, "num_turns": 1, "errors": ["[ede_diagnostic] result_type=user"], "stopped": true}"#,
+                id: 2, at: 3))
+        transcript.receive(state("interrupted", 3, at: 4))
+        #expect(ends(transcript) == [TurnEnd(durationMS: 3_000, stopped: true)])
+        #expect(
+            !transcript.visibleItems.contains { item in
+                if case .result = item.content { true } else { false }
+            })
+        #expect(!transcript.items.contains { $0.content == .notice("Interrupted") })
+    }
+
     @Test func anInterruptionAfterTheResultMarksThatTurnStopped() async throws {
         let transcript = try await loaded()
         transcript.receive(user(1, at: 0))

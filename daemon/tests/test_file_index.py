@@ -88,9 +88,11 @@ async def test_listings_are_reused_for_a_few_seconds(tmp_path: Path, clock: Fake
     assert len(calls) == 2
 
 
-async def test_folders_outside_git_have_no_suggestions(
+async def test_a_git_failure_gives_no_suggestions(
     tmp_path: Path, clock: FakeClock, caplog: pytest.LogCaptureFixture
 ) -> None:
+    write(tmp_path, "notes.md")
+
     async def git(args: Sequence[str], cwd: Path) -> str:
         raise GitError(args, 128, "not a git repository")
 
@@ -99,3 +101,65 @@ async def test_folders_outside_git_have_no_suggestions(
 
     assert files == []
     assert "listing the files" in caplog.text
+
+
+async def test_a_folder_outside_git_is_walked_without_hidden_and_build_folders(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    write(
+        tmp_path,
+        "notes.md",
+        ".env",
+        "docs/plan.md",
+        ".git/config",
+        ".cache/x.md",
+        "node_modules/pkg/index.js",
+        ".venv/lib/site.py",
+        "venv/lib/site.py",
+        "__pycache__/a.pyc",
+        "build/out.js",
+        "dist/app.js",
+        "target/debug/app",
+        "DerivedData/x",
+        "Pods/x",
+        "src/build/skipped.md",
+        "src/builder/kept.md",
+    )
+    (tmp_path / "linked").symlink_to(tmp_path / "docs")
+
+    async def git(args: Sequence[str], cwd: Path) -> str:
+        raise AssertionError("git is not used for a plain folder")
+
+    index = FileIndex(clock, git)
+
+    assert sorted(await index.search(tmp_path, "", git=False)) == [
+        ".env",
+        "docs/plan.md",
+        "notes.md",
+        "src/builder/kept.md",
+    ]
+    assert await index.search(tmp_path, "plan", git=False) == ["docs/plan.md"]
+
+
+async def test_a_walk_stops_after_enough_files_and_is_reused_for_a_few_seconds(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    write(tmp_path, "a.md", "b.md", "c.md")
+    index = FileIndex(clock, max_walked=2, ttl=timedelta(seconds=10))
+
+    first = await index.search(tmp_path, "", git=False)
+    write(tmp_path, "d.md")
+    cached = await index.search(tmp_path, "", git=False)
+    clock.advance(timedelta(seconds=11))
+    (tmp_path / "a.md").unlink()
+    (tmp_path / "b.md").unlink()
+    (tmp_path / "c.md").unlink()
+    fresh = await index.search(tmp_path, "", git=False)
+
+    assert len(first) == 2
+    assert cached == first
+    assert fresh == ["d.md"]
+
+
+async def test_an_unreadable_folder_walks_to_nothing(tmp_path: Path, clock: FakeClock) -> None:
+    assert await FileIndex(clock).search(tmp_path / "gone", "", git=False) == []

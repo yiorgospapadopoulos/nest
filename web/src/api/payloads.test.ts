@@ -157,7 +157,7 @@ describe("contextOf", () => {
 describe("queuedOf", () => {
   it("keeps well formed queued messages in order", () => {
     const attachment = { id: "a1", filename: "a.png", media_type: "image/png", size: 3 };
-    const first = queuedMessage({ attachments: [attachment] });
+    const first = queuedMessage({ attachments: [attachment], sent: true });
     const second = queuedMessage({ id: "m2", text: "And docs" });
 
     expect(
@@ -168,7 +168,11 @@ describe("queuedOf", () => {
         { ...second },
         { id: "m3", text: "Bare" },
       ] as never),
-    ).toEqual([first, second, { id: "m3", text: "Bare", attachments: [], created_at: "" }]);
+    ).toEqual([
+      first,
+      second,
+      { id: "m3", text: "Bare", attachments: [], created_at: "", sent: false },
+    ]);
     expect(queuedOf(undefined)).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import { NO_BACKGROUND } from "../../store/state.ts";
 import { AgentsSheet } from "./AgentsSheet.tsx";
 import { BackgroundBar } from "./BackgroundBar.tsx";
 import { ClaudeChatView } from "./ClaudeChatView.tsx";
+import type { ChatNav } from "./CommandSheets.tsx";
 import { Composer } from "./Composer.tsx";
 import { Frame } from "./Frame.tsx";
 import { GoalsStrip } from "./GoalsStrip.tsx";
@@ -17,6 +18,7 @@ import { PlaceChip } from "./PlaceMarks.tsx";
 import { PrChip } from "./PrChip.tsx";
 import { ReviewBar } from "./ReviewBar.tsx";
 import { Transcript } from "./Transcript.tsx";
+import { useStopTask } from "./useStopTask.ts";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
 import { StartedBy } from "../pixies/StartedBy.tsx";
 
@@ -32,11 +34,12 @@ export type ChatTarget =
 interface Props {
   target: ChatTarget;
   onBack: () => void;
-  onOpen: (sessionId: string) => void;
+  onOpen: (sessionId: string, event?: number) => void;
+  onOpenClaudeChat: (chatId: string) => void;
   onOpenPixie: (id: string) => void;
 }
 
-export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
+export function ChatView({ target, onBack, onOpen, onOpenClaudeChat, onOpenPixie }: Props) {
   const { state } = useStore();
   // A pixie's chat shows on its page, also when opened by its address or an inbox card.
   // A habit run's chat has the pixie too, but shows on its own, read only (B42).
@@ -45,6 +48,11 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
   useEffect(() => {
     if (pixieOfChat != null) onOpenPixie(pixieOfChat);
   }, [pixieOfChat, onOpenPixie]);
+  const nav: ChatNav = {
+    openChat: onOpen,
+    openClaudeChat: onOpenClaudeChat,
+    openPixie: onOpenPixie,
+  };
   if ("claude" in target) {
     return <ClaudeChatView id={target.claude} onBack={onBack} onOpen={onOpen} />;
   }
@@ -66,6 +74,7 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
       onCreated={(session) => {
         onOpen(session.id);
       }}
+      nav={nav}
     />
   ) : (
     <SessionChat
@@ -74,6 +83,7 @@ export function ChatView({ target, onBack, onOpen, onOpenPixie }: Props) {
       onBack={onBack}
       onOpenPixie={onOpenPixie}
       onOpenChat={onOpen}
+      nav={nav}
     />
   );
 }
@@ -84,17 +94,20 @@ function SessionChat({
   onBack,
   onOpenPixie,
   onOpenChat,
+  nav,
 }: {
   id: string;
   focus: number | null;
   onBack: () => void;
   onOpenPixie: (id: string) => void;
   onOpenChat: (sessionId: string) => void;
+  nav: ChatNav;
 }) {
   const { state, actions } = useStore();
   const session = state.sessions[id];
   const [sheet, setSheet] = useState<"agents" | "actions" | null>(null);
   const history = state.history[id];
+  const stopper = useStopTask(id);
   // Whether the first fetch is over: the history itself goes when the chat is deleted.
   const [loaded, setLoaded] = useState(false);
 
@@ -163,12 +176,15 @@ function SessionChat({
       />
       {/* Until the history is in, the latest exchange and so its tasks are unknown. */}
       {history === "loaded" && (
-        <BackgroundBar summary={exchangeBackground(tracking.background, state.transcripts[id])} />
+        <BackgroundBar
+          summary={exchangeBackground(tracking.background, state.transcripts[id])}
+          stopper={stopper}
+        />
       )}
       {session.habit_run_id == null ? (
         <>
           <ReviewBar session={session} />
-          <Composer session={session} />
+          <Composer session={session} nav={nav} />
         </>
       ) : (
         <p className="note pxrun">A habit run. Its chat is read only.</p>

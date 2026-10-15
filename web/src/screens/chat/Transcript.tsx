@@ -1,24 +1,37 @@
 import {
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import type { BackgroundSummary, QueuedMessage, Session } from "../../api/types.ts";
+import type {
+  BackgroundSummary,
+  Restore,
+  RewindPreview,
+  Session,
+  ShellResult,
+} from "../../api/types.ts";
+import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
-import type { HistoryStatus } from "../../store/state.ts";
-import { elapsed, summarizeTools, thoughtLabel } from "../../transcript/activity.ts";
+import { draftKey, type BashRun, type HistoryStatus } from "../../store/state.ts";
+import { elapsed, summarizeTools, thoughtLabel, toolKind } from "../../transcript/activity.ts";
 import {
   buildTranscript,
   turnStart,
+  type HookItem,
   type PixieCallItem,
+  type SubStep,
   type ThinkingItem,
   type ToolItem,
   type TranscriptItem,
 } from "../../transcript/build.ts";
 import { mentionColors, mentionParts } from "../../transcript/mentions.ts";
+import type { DiffLine, EditDiff } from "../../transcript/edits.ts";
+import { outputPreview } from "../../transcript/output.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { toolIcon } from "../../ui/toolIcon.ts";
 import { usePageVisible } from "../../ui/visible.ts";
@@ -26,7 +39,13 @@ import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
-import { RewindSheet } from "./RewindSheet.tsx";
+import { ResultImages } from "./ResultImages.tsx";
+import { ActionSheet } from "../../ui/Sheet.tsx";
+import { changesFiles } from "./rewind.ts";
+import { EditSheet, RewindSheet } from "./RewindSheet.tsx";
+import { usePrefill } from "./usePrefill.tsx";
+import { StopTask } from "./StopTask.tsx";
+import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
 
 // Within this many pixels of the bottom, new output is followed. Anywhere else the
 // reading position never moves, not even when the user sends a message.
@@ -35,8 +54,11 @@ const FOLLOW_DISTANCE = 40;
 const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
 const NO_TASKS: ReadonlySet<string> = new Set();
+const NO_STREAMS: Readonly<Record<string, string>> = {};
+const NO_RUNS: BashRun[] = [];
 
-// Files can be restored when no turn runs, as the daemon allows (BUG-104).
+// A message can be edited, rewound to or forked from when no turn runs, as the daemon
+// allows (BUG-104, B59).
 const AT_REST = new Set<Session["state"]>(["idle", "interrupted", "failed"]);
 
 interface Props {
@@ -68,7 +90,11 @@ export function Transcript({
   const { state, actions } = useStore();
   const events = state.transcripts[session.id];
   const live = state.live[session.id] ?? "";
-  const queued = state.queued[session.id] ?? [];
+  const thought = state.thoughts[session.id] ?? "";
+  const agentLive = state.agentLive[session.id] ?? NO_STREAMS;
+  const stopper = useStopTask(session.id);
+  // `!` commands run since the last message (B59).
+  const runs = state.bash[session.id] ?? NO_RUNS;
   // By value, so a new background summary with the same running tasks changes nothing.
   const runningKey = background.items
     .filter((i) => i.status === "running")
@@ -99,18 +125,48 @@ export function Transcript({
   const thinking = session.id in state.thinking;
   const focused = useRef<number | null>(null);
   const spoken = useAnnouncement(items, loaded);
-  // The user message whose files are being restored to before it.
-  const [rewinding, setRewinding] = useState<number | null>(null);
+  // The user message whose actions are open, being rewound to, or edited after files changed.
+  const [sheet, setSheet] = useState<
+    | { kind: "actions" | "rewind"; event: number }
+    | { kind: "edit"; event: number; preview: RewindPreview }
+    | null
+  >(null);
+  const { fill, ask } = usePrefill(draftKey({ session: session.id }));
   // Never in a pixie's chat: each run starts fresh, so earlier runs' checkpoints are gone.
-  const onRewind =
+  const onActions =
     AT_REST.has(session.state) && session.archived_at === null && session.pixie_id == null
-      ? setRewinding
+      ? (event: number) => {
+          setSheet({ kind: "actions", event });
+        }
       : undefined;
+  const close = () => {
+    setSheet(null);
+  };
+
+  /** Rewinds; the conversation's message goes back in the composer. */
+  const rewind = async (event: number, restore: Restore) => {
+    const done = await actions.rewind(session.id, event, restore);
+    if (done?.text != null && restore !== "code") {
+      fill({ text: done.text, files: asDraftFiles(done.attachments) });
+    }
+  };
+
+  /** Edit: rewinds the conversation, asking first whether files changed since go back too. */
+  const edit = async (event: number) => {
+    const preview = await actions.rewindPreview(session.id, event, "code", true);
+    if (preview !== null && changesFiles(preview)) setSheet({ kind: "edit", event, preview });
+    else await rewind(event, "conversation");
+  };
+
+  const fork = async (event: number) => {
+    const forked = await actions.fork(session.id, event);
+    if (forked !== null) onOpenChat(forked.session.id);
+  };
 
   useLayoutEffect(() => {
     const el = box.current;
     if (el !== null && follow.current) el.scrollTop = el.scrollHeight;
-  }, [items.length, live, working, jumps, queued.length]);
+  }, [items.length, live, agentLive, working, jumps, runs]);
 
   // Once the focused event is on screen, stop following and show it highlighted.
   useLayoutEffect(() => {
@@ -130,6 +186,8 @@ export function Transcript({
       { once: true },
     );
   }, [focus, items.length]);
+
+  const calls: CallControls = { agentLive, running, stopper };
 
   const jump = () => {
     follow.current = true;
@@ -165,40 +223,55 @@ export function Transcript({
         )}
         {/* Not a live region: it holds the ticking timer and streamed text. */}
         <div className="tx">
-          {items.map((item) => (
-            <Item
-              key={item.key}
-              item={item}
-              session={session}
-              running={running}
-              onRewind={onRewind}
-              onOpenPixie={onOpenPixie}
-              onOpenChat={onOpenChat}
-            />
-          ))}
+          <CallContext value={calls}>
+            {items.map((item) => (
+              <Item
+                key={item.key}
+                item={item}
+                session={session}
+                running={running}
+                onActions={onActions}
+                onOpenPixie={onOpenPixie}
+                onOpenChat={onOpenChat}
+              />
+            ))}
+          </CallContext>
           {live && <div className="m-a">{live}</div>}
-          {working && <WorkingLine thinking={thinking} start={start} />}
-          {queued.map((message) => (
-            <Queued
-              key={message.id}
-              message={message}
-              onCancel={() => void actions.cancelQueued(session.id, message.id)}
-            />
+          {runs.map((run) => (
+            <LocalBash key={run.id} run={run} />
           ))}
+          {working && <WorkingLine thinking={thinking} thought={thought} start={start} />}
         </div>
       </div>
       <p className="sr" role="status">
         {spoken}
       </p>
-      {rewinding !== null && (
-        <RewindSheet
-          sessionId={session.id}
-          eventId={rewinding}
-          onClose={() => {
-            setRewinding(null);
+      {sheet?.kind === "actions" && (
+        <MessageActions
+          onClose={close}
+          onEdit={() => void edit(sheet.event)}
+          onRewind={() => {
+            setSheet({ kind: "rewind", event: sheet.event });
           }}
+          onFork={() => void fork(sheet.event)}
         />
       )}
+      {sheet?.kind === "rewind" && (
+        <RewindSheet
+          sessionId={session.id}
+          eventId={sheet.event}
+          onClose={close}
+          onRestore={(restore) => void rewind(sheet.event, restore)}
+        />
+      )}
+      {sheet?.kind === "edit" && (
+        <EditSheet
+          preview={sheet.preview}
+          onClose={close}
+          onEdit={(restore) => void rewind(sheet.event, restore)}
+        />
+      )}
+      {ask}
       {away && (
         <button className="jump gl" onClick={jump}>
           <Icon name="chev" />
@@ -273,20 +346,36 @@ function ticks(onTick: () => void): () => void {
   };
 }
 
+interface WorkingProps {
+  thinking: boolean;
+  // The thinking text streamed so far (B59).
+  thought: string;
+  start: string | null;
+}
+
 /**
  * "Working... 12s", ticking on its own so the transcript does not render every second.
- * It stops while the app is hidden and catches up when it shows again.
+ * It stops while the app is hidden and catches up when it shows again. While thinking
+ * streams, it opens to the text, folded like a finished thought.
  */
-function WorkingLine({ thinking, start }: { thinking: boolean; start: string | null }) {
+function WorkingLine({ thinking, thought, start }: WorkingProps) {
   const visible = usePageVisible();
   const now = useSyncExternalStore(visible ? ticks : noTicks, seconds) * 1000;
+  const line = (
+    <span className="glow">
+      {thinking ? "Thinking..." : "Working..."}
+      {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
+    </span>
+  );
+  if (!thinking || !thought) return <div className="m-live">{line}</div>;
   return (
-    <div className="m-live">
-      <span className="glow">
-        {thinking ? "Thinking..." : "Working..."}
-        {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
-      </span>
-    </div>
+    <details className="m-live think">
+      <summary>
+        {line}
+        <Icon name="chev" className="cv" />
+      </summary>
+      <div className="tht">{thought}</div>
+    </details>
   );
 }
 
@@ -307,12 +396,12 @@ interface ItemProps {
   item: TranscriptItem;
   session: Session;
   running: ReadonlySet<string>;
-  onRewind: ((eventId: number) => void) | undefined;
+  onActions: ((eventId: number) => void) | undefined;
   onOpenPixie: (id: string) => void;
   onOpenChat: (sessionId: string) => void;
 }
 
-function Item({ item, session, running, onRewind, onOpenPixie, onOpenChat }: ItemProps) {
+function Item({ item, session, running, onActions, onOpenPixie, onOpenChat }: ItemProps) {
   const ev = item.key.replace(/\..*$/, "");
   switch (item.kind) {
     case "approval":
@@ -325,25 +414,37 @@ function Item({ item, session, running, onRewind, onOpenPixie, onOpenChat }: Ite
         <PixieCard item={item} ev={ev} pixieId={session.pixie_id} onOpenChat={onOpenChat} />
       );
     default:
-      return <MessageItem item={item} ev={ev} running={running} onRewind={onRewind} />;
+      return <MessageItem item={item} ev={ev} running={running} onActions={onActions} />;
   }
 }
 
-/** A message waiting for the running turn to end, dimmed until it is sent. */
-function Queued({ message, onCancel }: { message: QueuedMessage; onCancel: () => void }) {
+interface MessageActionsProps {
+  onClose: () => void;
+  onEdit: () => void;
+  onRewind: () => void;
+  onFork: () => void;
+}
+
+/** What can be done with one of the user's messages (B59), as in Claude Code. */
+function MessageActions({ onClose, onEdit, onRewind, onFork }: MessageActionsProps) {
+  const item = (label: string, run: () => void) => (
+    <button
+      className="asi"
+      role="menuitem"
+      onClick={() => {
+        onClose();
+        run();
+      }}
+    >
+      {label}
+    </button>
+  );
   return (
-    <div className="m-u queued">
-      <span className="qh">
-        Queued
-        <button aria-label="Cancel queued message" onClick={onCancel}>
-          <Icon name="x" />
-        </button>
-      </span>
-      {message.text}
-      {message.attachments.length > 0 && (
-        <small>{message.attachments.map((a) => a.filename).join(", ")}</small>
-      )}
-    </div>
+    <ActionSheet label="Message" onClose={onClose}>
+      {item("Edit", onEdit)}
+      {item("Rewind...", onRewind)}
+      {item("Fork from here", onFork)}
+    </ActionSheet>
   );
 }
 
@@ -355,12 +456,12 @@ interface EntryProps {
   ev?: string;
   // Calls whose background task still runs.
   running?: ReadonlySet<string>;
-  // Offers restoring files to before a user message (by its event id).
-  onRewind?: ((eventId: number) => void) | undefined;
+  // Offers editing, rewinding to or forking from a user message (by its event id).
+  onActions?: ((eventId: number) => void) | undefined;
 }
 
 /** A message, tool call or note; read-only transcripts show only these. */
-export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryProps) {
+export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryProps) {
   switch (item.kind) {
     case "user": {
       const bubble = (
@@ -370,7 +471,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
         </div>
       );
       const from = item.from === undefined ? null : <FromPixie id={item.from} />;
-      if (onRewind === undefined) {
+      if (onActions === undefined) {
         return (
           <>
             {from}
@@ -384,13 +485,13 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
           <div className="m-ur">
             <button
               className="rwd"
-              aria-label="Restore files to before this message"
+              aria-label="Message actions"
               aria-haspopup="dialog"
               onClick={() => {
-                onRewind(Number(item.key));
+                onActions(Number(item.key));
               }}
             >
-              <Icon name="restore" />
+              <Icon name="dots" />
             </button>
             {bubble}
           </div>
@@ -425,6 +526,14 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
           {item.text}
         </div>
       );
+    case "hook":
+      return <Hook item={item} ev={ev} />;
+    case "bash":
+      return (
+        <Bash command={item.command} ev={ev}>
+          {item.output && <Output text={item.output} />}
+        </Bash>
+      );
     case "turn":
       return (
         <div className="m-turn" data-ev={ev}>
@@ -434,7 +543,11 @@ export function MessageItem({ item, ev, running = NO_TASKS, onRewind }: EntryPro
     case "thinking":
       return <Thinking item={item} ev={ev} />;
     case "tool":
-      return <Tool item={item} ev={ev} />;
+      return item.diff === undefined ? (
+        <Tool item={item} ev={ev} />
+      ) : (
+        <EditTool item={item} diff={item.diff} ev={ev} />
+      );
     case "tools":
       return <ToolGroup items={item.items} ev={ev} running={running} />;
   }
@@ -453,6 +566,7 @@ interface PixieCallProps {
  */
 function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
   const [open, setOpen] = useState(false);
+  const { agentLive, stopper } = useContext(CallContext);
   const { pixie, call, steps } = item;
   const busy = call.result === null || running.has(call.id);
   return (
@@ -483,21 +597,16 @@ function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
           </span>
           <Icon name="chev" className="cv" />
         </button>
+        {busy && <StopTask id={call.id} name={pixie.name} stopper={stopper} />}
       </div>
       {open && (
         <div className="tgl pxsteps" role="group" aria-label={`${pixie.name}'s steps`}>
-          {steps.map((step) =>
-            step.kind === "text" ? (
-              <div key={step.key} className="pxtext">
-                {step.text}
-              </div>
-            ) : (
-              <div key={step.key} className="pxstep">
-                {step.text}
-              </div>
-            ),
+          <SubSteps steps={steps} live={agentLive[call.id] ?? ""} />
+          {busy || call.detail === null ? (
+            <div className="pxans">{busy ? "running" : call.result}</div>
+          ) : (
+            <Output text={call.detail} />
           )}
-          <div className="pxans">{busy ? "running" : (call.detail ?? call.result)}</div>
         </div>
       )}
     </div>
@@ -559,26 +668,229 @@ function Thinking({ item, ev }: { item: ThinkingItem; ev?: string | undefined })
   );
 }
 
+/** A subagent's thinking, text and tools as lines, then the text it is writing now. */
+function SubSteps({ steps, live }: { steps: SubStep[]; live: string }) {
+  return (
+    <>
+      {steps.map((step) =>
+        step.kind === "images" ? (
+          <ResultImages key={step.key} images={step.images} from="a subagent" />
+        ) : (
+          <div key={step.key} className={STEP_CLASSES[step.kind]}>
+            {step.text}
+          </div>
+        ),
+      )}
+      {live && <div className="pxtext live">{live}</div>}
+    </>
+  );
+}
+
+const STEP_CLASSES: Record<Exclude<SubStep["kind"], "images">, string> = {
+  text: "pxtext",
+  call: "pxstep",
+  thinking: "pxthink",
+};
+
 function Tool({ item, ev }: { item: ToolItem; ev?: string | undefined }) {
+  const { agentLive, running, stopper } = useContext(CallContext);
+  const agent = toolKind(item.name) === "agent";
+  const busy = agent && (item.result === null || running.has(item.id));
+  const steps = item.steps ?? [];
+  const live = agent ? (agentLive[item.id] ?? "") : "";
   const summary = (
     <>
       <Icon name={toolIcon(item.name)} />
       <span className="tn">{item.name}</span>
       <span className="ta">{item.arg}</span>
       <span className={item.failed ? "tr bad" : "tr"}>{item.result ?? "running"}</span>
+      {busy && <StopTask id={item.id} name={item.arg || item.name} stopper={stopper} />}
     </>
   );
+  const images = item.images && <ResultImages images={item.images} from={item.name} />;
+  if (item.detail === null && steps.length === 0 && !live) {
+    return (
+      <>
+        <div className="tool" data-ev={ev}>
+          <div className="tsum">{summary}</div>
+        </div>
+        {images}
+      </>
+    );
+  }
+  const row = (
+    <details className="tool" data-ev={ev}>
+      <summary>
+        {summary}
+        <Icon name="chev" className="cv" />
+      </summary>
+      {(steps.length > 0 || live) && (
+        <div className="pxsteps">
+          <SubSteps steps={steps} live={live} />
+        </div>
+      )}
+      {item.detail !== null && <Output text={item.detail} />}
+    </details>
+  );
+  return (
+    <>
+      {row}
+      {images}
+    </>
+  );
+}
+
+// An edit shows this many lines of its diff until opened further.
+const DIFF_PREVIEW = 8;
+const SIGNS: Record<DiffLine["kind"], string> = { add: "+", del: "-", ctx: " ", gap: "…" };
+const LINE_CLASSES: Record<DiffLine["kind"], string> = {
+  add: "dl a",
+  del: "dl d",
+  ctx: "dl",
+  gap: "dl g",
+};
+
+interface EditProps {
+  item: ToolItem;
+  diff: EditDiff;
+  ev?: string | undefined;
+}
+
+/**
+ * An edit as Claude's apps show it (B59): the file with what it adds and removes, and the
+ * changed lines in red and green, folded to the first lines. A failure says why.
+ */
+function EditTool({ item, diff, ev }: EditProps) {
+  const [all, setAll] = useState(false);
+  const shown = all ? diff.lines : diff.lines.slice(0, DIFF_PREVIEW);
+  const counts = `${String(diff.added)} added, ${String(diff.removed)} removed`;
+  const status = item.failed ? "failed" : item.result === null ? "running" : null;
+  return (
+    <div className="tool tedit" data-ev={ev}>
+      <div className="tsum">
+        <Icon name={toolIcon(item.name)} />
+        <span className="tn">{item.name}</span>
+        <span className="ta">{item.arg}</span>
+        <span className="ds" aria-label={counts}>
+          <span className="a">{`+${String(diff.added)}`}</span>{" "}
+          <span className="d">{`-${String(diff.removed)}`}</span>
+        </span>
+        {status !== null && <span className={item.failed ? "tr bad" : "tr"}>{status}</span>}
+      </div>
+      <div className="tdiff" role="group" aria-label={`Changes to ${item.arg}`}>
+        {shown.map((line, index) => (
+          <div key={index} className={LINE_CLASSES[line.kind]}>
+            <b>{SIGNS[line.kind]}</b>
+            <code>{line.text}</code>
+          </div>
+        ))}
+      </div>
+      {diff.lines.length > DIFF_PREVIEW && (
+        <button
+          className="lnk tmore"
+          onClick={() => {
+            setAll(!all);
+          }}
+        >
+          {all ? "Show less" : `Show all ${String(diff.lines.length)} lines`}
+        </button>
+      )}
+      {item.failed && item.detail !== null && <Output text={item.detail} />}
+    </div>
+  );
+}
+
+/** A tool's output: its first lines, and all of it on request (B59). */
+function Output({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  const preview = useMemo(() => outputPreview(text), [text]);
+  if (!preview.cut) return <pre>{text}</pre>;
+  const more = preview.lines > 1 ? `Show all ${String(preview.lines)} lines` : "Show all";
+  return (
+    <div className="tout">
+      <pre>{all ? text : preview.text}</pre>
+      <button
+        className="lnk"
+        onClick={() => {
+          setAll(!all);
+        }}
+      >
+        {all ? "Show less" : more}
+      </button>
+    </div>
+  );
+}
+
+interface BashProps {
+  command: string;
+  ev?: string | undefined;
+  children: ReactNode;
+}
+
+/** A `!` command as Claude Code's bash mode shows it (B59), with what it printed. */
+function Bash({ command, ev, children }: BashProps) {
+  return (
+    <div className="bash" data-ev={ev}>
+      <code className="bcmd">{`! ${command}`}</code>
+      {children}
+    </div>
+  );
+}
+
+/** How a command ended, when not plainly. */
+function ending({ exit_code, timed_out, truncated }: ShellResult): string[] {
+  return [
+    ...(timed_out ? ["timed out after 2 minutes"] : []),
+    ...(exit_code !== null && exit_code !== 0 ? [`exit ${String(exit_code)}`] : []),
+    ...(truncated ? ["output cut"] : []),
+  ];
+}
+
+/** A command run here that no message has carried to Claude yet. */
+function LocalBash({ run }: { run: BashRun }) {
+  const { result, error } = run;
+  return (
+    <Bash command={run.command}>
+      {result === null && error === null && (
+        <span className="bnote" role="status">
+          <span className="spin" aria-hidden="true" />
+          Running
+        </span>
+      )}
+      {result?.output && <Output text={result.output} />}
+      {result !== null &&
+        ending(result).map((line) => (
+          <span key={line} className="bnote">
+            {line}
+          </span>
+        ))}
+      {error !== null && <span className="bnote bad">{error}</span>}
+    </Bash>
+  );
+}
+
+/** What a hook said, as a quiet line like Claude Code's; a failure shows its output. */
+function Hook({ item, ev }: { item: HookItem; ev?: string | undefined }) {
+  const className = item.tone === "error" ? "m-hook bad" : "m-hook";
   if (item.detail === null) {
     return (
-      <div className="tool" data-ev={ev}>
-        <div className="tsum">{summary}</div>
+      <div className={className} data-ev={ev}>
+        {item.text}
+      </div>
+    );
+  }
+  if (item.tone === "error") {
+    return (
+      <div className={className} data-ev={ev}>
+        <span>{item.text}</span>
+        <pre>{item.detail}</pre>
       </div>
     );
   }
   return (
-    <details className="tool" data-ev={ev}>
+    <details className={className} data-ev={ev}>
       <summary>
-        {summary}
+        <span>{item.text}</span>
         <Icon name="chev" className="cv" />
       </summary>
       <pre>{item.detail}</pre>

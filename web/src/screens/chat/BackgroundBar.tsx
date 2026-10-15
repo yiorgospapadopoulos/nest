@@ -4,6 +4,8 @@ import { ago } from "../../format.ts";
 import type { Tone } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
+import { StopTask } from "./StopTask.tsx";
+import type { Stopper } from "./useStopTask.ts";
 
 const TONES: Record<BackgroundItem["status"], Tone> = {
   running: "run",
@@ -22,9 +24,15 @@ const STATUS: Record<BackgroundItem["status"], string> = {
  * background commands of the current exchange (`exchangeBackground`), which can outlive
  * the turn that started them. Expands to the list. Before any completes it reads "1 running
  * task" or "N running tasks", as on the Mac;
- * running work glows (D045).
+ * running work glows (D045). Each running task can be stopped on its own (B59).
  */
-export function BackgroundBar({ summary }: { summary: BackgroundSummary }) {
+export function BackgroundBar({
+  summary,
+  stopper = null,
+}: {
+  summary: BackgroundSummary;
+  stopper?: Stopper | null;
+}) {
   const [open, setOpen] = useState(false);
   const hidden = summary.running === 0 && summary.completed === 0;
   // It comes back collapsed.
@@ -37,8 +45,8 @@ export function BackgroundBar({ summary }: { summary: BackgroundSummary }) {
       <div className="bgbar gl">
         {open && (
           <div className="bgl">
-            <Group label="Running" items={running} />
-            <Group label="Completed" items={finished} />
+            <Group label="Running" items={running} stopper={stopper} />
+            <Group label="Completed" items={finished} stopper={null} />
           </div>
         )}
         <button
@@ -62,7 +70,13 @@ function label({ running, completed }: BackgroundSummary): string {
   return `${String(running)} running · ${String(completed)} completed`;
 }
 
-function Group({ label, items }: { label: string; items: BackgroundItem[] }) {
+interface GroupProps {
+  label: string;
+  items: BackgroundItem[];
+  stopper: Stopper | null;
+}
+
+function Group({ label, items, stopper }: GroupProps) {
   if (items.length === 0) return null;
   const now = new Date();
   return (
@@ -80,6 +94,7 @@ function Group({ label, items }: { label: string; items: BackgroundItem[] }) {
                 ? ago(item.started_at, now)
                 : STATUS[item.status]}
             </span>
+            <StopTask id={item.id} name={item.name} stopper={stopper} />
           </li>
         ))}
       </ul>

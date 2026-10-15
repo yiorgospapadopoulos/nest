@@ -1,8 +1,8 @@
 """Session lifecycle commands: create, send, interrupt, update, close, purge.
 
 Each session has at most one background task (setup plus the first turn, or a later turn),
-so turns are serialized: a message sent while one runs is queued and starts the next turn
-once this one ends (D032).
+so turns are serialized: a message sent while one runs goes into that turn when the agent
+can take it (B59), else it is queued and starts the next turn once this one ends (D032).
 """
 
 import asyncio
@@ -23,14 +23,16 @@ from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.providers.base import AgentProvider, ApprovalHandler, ModelOption, RewindResult
+from nestd.providers.base import AgentProvider, ApprovalHandler, ModelOption
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.errors import (
     CannotRewindError,
+    NoAgentRunError,
     NoTurnInProgressError,
     NoWorkspaceError,
     PixieChatError,
     SessionBusyError,
+    TaskNotFoundError,
 )
 from nestd.sessions.extras import RunExtrasSource
 from nestd.sessions.files import FileIndex
@@ -40,8 +42,11 @@ from nestd.sessions.models import (
     USER,
     ChatImport,
     CreateSession,
+    ForkReply,
     NewSession,
     QueuedMessage,
+    Restore,
+    RewindReply,
     Sender,
     SendResult,
     Session,
@@ -51,6 +56,7 @@ from nestd.sessions.models import (
 )
 from nestd.sessions.prompts import SessionPrompts
 from nestd.sessions.queue import MessageQueue
+from nestd.sessions.rewinds import NO_CHECKPOINT, NO_PIXIE_RESTORE, Rewinds
 from nestd.sessions.rules import (
     require_cwd,
     require_open,
@@ -69,20 +75,6 @@ from nestd.worktrees.manager import WorktreeManager
 # What a session following Claude Code's own mode shows until the engine reports it.
 DEFAULT_MODE: PermissionMode = "default"
 AUTO: PermissionMode = "auto"
-
-NO_CHECKPOINT = (
-    "Nest has no file checkpoint for this message: it was sent before checkpoints were "
-    "kept, in Claude Code, or as a command"
-)
-
-NO_RUN_TO_PREVIEW = (
-    "Claude Code is not running for this chat, so the files to restore cannot be listed. "
-    "Send a message to start it again, then try again."
-)
-NO_PIXIE_RESTORE = (
-    "Files cannot be restored in a pixie's chat: each of its runs starts fresh, so the "
-    "earlier ones' checkpoints are gone."
-)
 
 # The engine's entry for a model (None is Claude Code's default), or None when unknown.
 type ModelLookup = Callable[[str | None], Awaitable[ModelOption | None]]
@@ -146,6 +138,16 @@ class SessionManager:
             clock=clock,
             extras=extras,
             agents=agents,
+        )
+        self._rewinds = Rewinds(
+            store=store,
+            bus=bus,
+            provider=provider,
+            turns=self._turns,
+            hooks=hooks,
+            repos=repos,
+            worktrees=worktrees,
+            attachments=attachments,
         )
         self._live: dict[str, LiveSession] = {}
         # Set when the daemon stops its agents: no message starts a turn after that.
@@ -409,6 +411,17 @@ class SessionManager:
             raise SessionBusyError(msg)
         if live.busy or live.publishing:
             return await self._enqueue(live, session, text, attachments, interrupt, sender)
+        if _forked_worktree(session):
+            # A forked worktree chat gets its worktree with its first message (B59); a
+            # chat whose worktree could not be made has failed instead.
+            repo = self._repos.get(session.repo)
+            live.start(
+                lambda: self._turns.guard(
+                    live,
+                    self._turns.start_later(live, session, repo, attachments, sender, text),
+                )
+            )
+            return SendResult(**session.model_dump())
         require_cwd(session)
         live.start(
             lambda: self._turns.guard(
@@ -426,13 +439,15 @@ class SessionManager:
         interrupt: bool,
         sender: Sender,
     ) -> SendResult:
+        if not interrupt:
+            steered = await self._turns.steering.send(live, text, attachments, sender)
+            if steered is not None:
+                return SendResult(**session.model_dump(), queued_message=steered)
         if not live.turn_active:
             live.held = True
         queued = await self._queue.add(session.id, text, attachments, interrupt, sender)
         if interrupt and live.nudgeable:
-            live.resume_queue = True
-            await self._approvals.expire(session.id, BLOCKING, "interrupted by the user")
-            await live.interrupt()
+            await self._nudge(live)
         # What held the session may have ended while the message was stored (BUG-85).
         await self._turns.release_held(live)
         return SendResult(**session.model_dump(), queued_message=queued)
@@ -442,26 +457,79 @@ class SessionManager:
         return await self._queue.messages(session_id)
 
     async def cancel_queued(self, session_id: str, message_id: str) -> None:
+        """Remove a queued message; one written into the turn only until the agent reads
+        it (409 `message_taken`, B59).
+        """
         await self._store.get(session_id)
-        await self._queue.cancel(session_id, message_id)
+        await self._turns.steering.remove(self._live.get(session_id), session_id, message_id)
+
+    async def send_now(self, session_id: str, message_id: str) -> None:
+        """Send a queued message now, like Claude Code's Send now: it goes first, and a
+        running turn is stopped so it starts right after, as a nudge does (D036). On an
+        idle session it starts at once; while the work is published or a restore holds the
+        session it waits, first in line. One the agent already read stays in its turn (B59).
+        """
+        session = await self._store.get(session_id)
+        require_open(session)
+        await self._queue.make_urgent(session_id, message_id)
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        if live.nudgeable:
+            await self._nudge(live, message_id)
+        elif not live.busy and not live.publishing and not live.stopped and not self._stopping:
+            await self._require_not_open_elsewhere(session)
+            require_cwd(session)
+            live.start(lambda: self._turns.guard(live, self._turns.deliver_next(live)))
+
+    async def _nudge(self, live: LiveSession, message_id: str | None = None) -> None:
+        """Stop the turn so the queue's first message starts right after it. Messages in
+        the turn the agent has not read wait in the queue again; when it already read
+        `message_id`, the turn goes on (B59).
+        """
+        async with live.steering:
+            taken = await self._turns.steering.retract(live)
+            if message_id is not None and message_id in taken:
+                return
+            live.resume_queue = True
+            await self._approvals.expire(live.session_id, BLOCKING, "interrupted by the user")
+            await live.interrupt()
 
     async def files(self, session_id: str, query: str) -> list[str]:
         """Files in the session's working directory matching `query`, for @ mentions."""
         session = await self._store.get(session_id)
         cwd = require_workspace(session)
-        if session.pixie_id is not None:
-            return []  # a pixie's workdir is not a repository
-        if not await self._repos.has_git(session.repo):
-            return []  # the listing comes from git (D041)
+        if session.pixie_id is not None or not await self._repos.has_git(session.repo):
+            return await self._files.search(cwd, query, git=False)
         return await self._files.search(cwd, query)
 
     async def interrupt(self, session_id: str) -> None:
+        """Stop the turn. Messages written into it that the agent has not read are taken
+        back first, so they wait for the next turn instead of running after the Stop (B59).
+        """
         await self._store.get(session_id)
         await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
         live = self._live.get(session_id)
-        if live is None or not await live.interrupt():
+        stopped = False
+        if live is not None:
+            async with live.steering:
+                await self._turns.steering.retract(live)
+                stopped = await live.interrupt()
+        if not stopped:
             msg = f"session {session_id!r} has no turn in progress"
             raise NoTurnInProgressError(msg)
+
+    async def stop_task(self, session_id: str, task_id: str) -> None:
+        """Stop one running task of the session's agent, a background command or a
+        subagent, without stopping the turn; its end arrives as a task event (B59).
+        """
+        await self._store.get(session_id)
+        live = self._live.get(session_id)
+        run = live.run if live is not None else None
+        if run is None:
+            msg = f"session {session_id!r} has no agent running"
+            raise NoAgentRunError(msg)
+        if not await run.stop_task(task_id):
+            msg = f"session {session_id!r} has no running task {task_id!r}"
+            raise TaskNotFoundError(msg)
 
     async def close_idle_run(self, session_id: str) -> None:
         """Close the session's agent run now if it is idle, as before the chat continues in
@@ -495,12 +563,16 @@ class SessionManager:
             await self._turns.apply_controls(live)
         return session
 
-    async def rewind(self, session_id: str, event_id: int, dry_run: bool) -> RewindResult:
-        """Restore the files the agent changed since the user message of event `event_id`
-        to how they were before it, or with `dry_run` say what that would change. Only
-        while no turn runs (idle, interrupted or failed), in a chat that is not archived,
-        not being published and has no background tasks running; the conversation stays
-        as it is (IMP-02, BUG-104). A preview never starts Claude Code (BUG-94).
+    async def rewind(
+        self, session_id: str, event_id: int, dry_run: bool, restore: Restore = "code"
+    ) -> RewindReply:
+        """Rewind the chat to before the user message of event `event_id`, as Claude Code
+        does: the files the agent changed since (`code`, IMP-02), the conversation (that
+        message and all after it leave the chat; its text comes back for the composer,
+        B59), or both; with `dry_run` say what that would do. Only while no turn runs
+        (idle, interrupted or failed), in a chat that is not archived, not being published
+        and has no background tasks running (BUG-104). A preview never starts Claude Code
+        (BUG-94).
         """
         session = await self._store.get(session_id)
         if session.pixie_id is not None:
@@ -508,29 +580,43 @@ class SessionManager:
             raise PixieChatError(NO_PIXIE_RESTORE)
         require_open(session)
         checkpoint = await self._store.checkpoint(session_id, event_id)
-        if checkpoint is None:
-            result = RewindResult(can_rewind=False, error=NO_CHECKPOINT)
-        else:
-            require_workspace(session)
-            await self._require_not_open_elsewhere(session)
-            live = self._live.setdefault(session_id, LiveSession(session_id))
-            problem = self._restore_problem(session, live)
-            if problem is not None:
-                raise SessionBusyError(problem)
-            if dry_run and live.run is None:
-                result = RewindResult(can_rewind=False, error=NO_RUN_TO_PREVIEW)
-            else:
-                result = await self._turns.rewind(live, checkpoint, dry_run)
+        message = await self._rewinds.user_message(session_id, event_id)
+        if checkpoint is None or message is None:
+            if dry_run:
+                return RewindReply(can_rewind=False, error=NO_CHECKPOINT, restore=restore)
+            raise CannotRewindError(NO_CHECKPOINT)
+        require_workspace(session)
+        await self._require_not_open_elsewhere(session)
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        problem = self._restore_problem(session, live)
+        if problem is not None:
+            raise SessionBusyError(problem)
         if dry_run:
-            return result
-        if not result.can_rewind:
-            raise CannotRewindError(result.error or "the files could not be restored")
-        await self._bus.publish(
-            types.SESSION_NOTICE,
-            {"kind": "files_restored", "text": _restored_text(result.files_changed)},
-            session_id,
-        )
-        return result
+            return await self._rewinds.preview(live, session, message, checkpoint, restore)
+        return await self._rewinds.rewind(live, session, message, checkpoint, restore)
+
+    async def fork(self, session_id: str, event_id: int) -> ForkReply:
+        """A new chat whose conversation is this one's up to before the user message of
+        event `event_id`, in the same project and work mode; this chat stays as it is
+        (B59). Refused while a turn runs, in a pixie's chat, and for a message Nest has no
+        checkpoint for.
+        """
+        source = await self._store.get(session_id)
+        if source.pixie_id is not None:
+            raise PixieChatError("A pixie's chat cannot be forked.")
+        require_open(source)
+        try:
+            require_folder(self._repos.get(source.repo))
+        except RepoNotFoundError as error:
+            raise InvalidInputError(str(error)) from error
+        if self.busy(session_id):
+            msg = "A chat can be forked only when no turn is running. Wait for it, or stop it."
+            raise SessionBusyError(msg)
+        checkpoint = await self._store.checkpoint(session_id, event_id)
+        message = await self._rewinds.user_message(session_id, event_id)
+        if checkpoint is None or message is None:
+            raise CannotRewindError(NO_CHECKPOINT)
+        return await self._rewinds.fork(source, message, checkpoint)
 
     def _restore_problem(self, session: Session, live: LiveSession) -> str | None:
         """Why the chat's files cannot be restored now, in words for the user."""
@@ -618,7 +704,10 @@ class SessionManager:
         return live is not None and live.background_tasks > 0
 
     async def recover(self) -> None:
-        """On startup, turns cut off by the previous process can only be resumed."""
+        """On startup, turns cut off by the previous process can only be resumed, and
+        messages written into them wait for a turn again (B59).
+        """
+        await self._queue.unsend_all()
         for session_id in await self._store.interrupt_in_flight():
             await self._bus.publish(
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
@@ -685,6 +774,8 @@ class SessionManager:
     async def _shut_down(self, live: LiveSession, reason: str) -> None:
         await self._approvals.expire(live.session_id, BLOCKING, reason)
         await live.stop()
+        # The agent is gone; what was written into its turn waits for a turn again (B59).
+        await self._queue.unsend_all(live.session_id)
         if live.turn_active:
             live.turn_active = False
             duration = live.turn_ms(self._clock.now())
@@ -795,15 +886,17 @@ class SessionManager:
                 await self._states.set(session_id, target)
 
 
+def _forked_worktree(session: Session) -> bool:
+    """An idle worktree chat without its worktree yet: a fork (B59)."""
+    return (
+        session.mode == "worktree"
+        and session.worktree_path is None
+        and session.state is SessionState.IDLE
+    )
+
+
 def _repo_mode(repo: RepoConfig) -> SessionMode | None:
     """The repo's own choice, when its config sets `[worktree] default`."""
     if repo.worktree.default is None:
         return None
     return "worktree" if repo.worktree.default else "in_place"
-
-
-def _restored_text(files: list[str]) -> str:
-    if not files:
-        return "Restored files to before your message"
-    count = "1 file" if len(files) == 1 else f"{len(files)} files"
-    return f"Restored {count} to before your message"

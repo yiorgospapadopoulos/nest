@@ -3,6 +3,7 @@ from nestd.providers.base import (
     AgentTask,
     CommandCatalog,
     EngineDetails,
+    HookOutput,
     McpServer,
     MessageBlock,
     NoticeKind,
@@ -23,6 +24,15 @@ class RecordingSink:
 
     async def thinking(self, active: bool) -> None:
         self.calls.append(("thinking", active))
+
+    async def thinking_delta(self, text: str, parent_tool_use_id: str | None) -> None:
+        self.calls.append(("thinking_delta", (text, parent_tool_use_id)))
+
+    async def subagent_delta(self, text: str, parent_tool_use_id: str) -> None:
+        self.calls.append(("subagent_delta", (text, parent_tool_use_id)))
+
+    async def hook(self, output: HookOutput) -> None:
+        self.calls.append(("hook", output))
 
     async def result(self, info: ResultInfo) -> None:
         self.calls.append(("result", info))
@@ -59,3 +69,6 @@ class RecordingSink:
 
     async def checkpoint(self, checkpoint_id: str) -> None:
         self.calls.append(("checkpoint", checkpoint_id))
+
+    async def message_taken(self, message_id: str, checkpoint_id: str) -> None:
+        self.calls.append(("message_taken", (message_id, checkpoint_id)))

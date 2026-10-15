@@ -1,25 +1,16 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { Approval, NestEvent, QueuedMessage, Session } from "../../api/types.ts";
+import type { Approval, NestEvent, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import {
-  commandList,
-  detail,
-  event,
-  plan,
-  queuedMessage,
-  repo,
-  session,
-} from "../../test/fixtures.ts";
+import { commandList, detail, event, plan, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 
 interface Setup {
   chat?: Session;
   events?: NestEvent[];
   approvals?: Approval[];
-  queued?: QueuedMessage[];
   api?: FakeApi;
 }
 
@@ -27,13 +18,12 @@ async function openChat({
   chat = session(),
   events = [],
   approvals = [],
-  queued = [],
   api = fakeApi(),
 }: Setup = {}) {
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.approvals.mockResolvedValue(approvals);
-  api.session.mockResolvedValue(detail({ ...chat, queued }));
+  api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   api.resolveApproval.mockImplementation((id) =>
     Promise.resolve({ ...defined(approvals.find((a) => a.id === id)), status: "resolved" }),
@@ -64,13 +54,18 @@ describe("slash commands", () => {
 
     await user.type(field, "/");
     expect(await screen.findByRole("listbox", { name: "Commands" })).toBeInTheDocument();
+    // With Nest's own commands, by name (B59).
     expect(options("Commands")).toEqual([
       "/clearClear the conversation",
       "/compact [focus]Summarise the conversation",
+      "/mcpShow MCP servers and connectors",
+      "/model [model]Set the model for this chat",
+      "/permissionsChoose the permission mode",
+      "/resume [search]Resume another chat",
       "/reviewReview a pull request",
       "/security-review",
     ]);
-    await user.type(field, "re");
+    await user.type(field, "rev");
     expect(options("Commands")).toEqual(["/reviewReview a pull request", "/security-review"]);
     await user.click(screen.getByRole("option", { name: /security-review/ }));
     expect(field).toHaveValue("/security-review ");
@@ -125,7 +120,7 @@ describe("slash commands", () => {
     expect(screen.getByRole("listbox", { name: "Commands" })).toBeInTheDocument();
   });
 
-  it("shows nothing when the list cannot be loaded", async () => {
+  it("shows only Nest's own commands when the list cannot be loaded", async () => {
     const api = fakeApi();
     api.sessionCommands.mockRejectedValue(new ApiError(500, "boom"));
     const { user, field } = await openChat({ api });
@@ -134,7 +129,12 @@ describe("slash commands", () => {
     await waitFor(() => {
       expect(api.sessionCommands).toHaveBeenCalled();
     });
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(options("Commands")).toEqual([
+      "/mcpShow MCP servers and connectors",
+      "/model [model]Set the model for this chat",
+      "/permissionsChoose the permission mode",
+      "/resume [search]Resume another chat",
+    ]);
     expect(screen.queryByText("boom")).not.toBeInTheDocument();
   });
 
@@ -436,69 +436,5 @@ describe("context meter", () => {
   it("is hidden until a turn reports it", async () => {
     await openChat();
     expect(screen.queryByRole("button", { name: /^Context/ })).not.toBeInTheDocument();
-  });
-});
-
-describe("queued follow-ups", () => {
-  it("queues a message while a turn runs and shows it until it is delivered", async () => {
-    const { user, api, field, push } = await openChat({ chat: session({ state: "running" }) });
-    api.sendMessage.mockResolvedValue({
-      ...session({ state: "running" }),
-      queued_message: queuedMessage(),
-    });
-
-    expect(screen.getByRole("button", { name: "Interrupt" })).toBeInTheDocument();
-    await user.type(field, "Then add tests");
-    expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Queue" }));
-    expect(api.sendMessage).toHaveBeenCalledWith("s1", "Then add tests", []);
-    await waitFor(() => {
-      expect(field).toHaveValue("");
-    });
-
-    const attachment = { id: "a1", filename: "a.png", media_type: "image/png", size: 3 };
-    push({
-      id: 5,
-      session_id: "s1",
-      type: "session.queued",
-      payload: { queued: [queuedMessage({ attachments: [attachment] })] as never },
-    });
-    const bubble = defined(screen.getByText("Then add tests").closest(".m-u"));
-    expect(bubble).toHaveClass("queued");
-    expect(bubble).toHaveTextContent("Queued");
-    expect(bubble).toHaveTextContent("a.png");
-
-    push({ id: 6, session_id: "s1", type: "session.queued", payload: { queued: [] } });
-    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
-  });
-
-  it("cancels a queued message", async () => {
-    const api = fakeApi();
-    api.cancelQueued
-      .mockRejectedValueOnce(new ApiError(500, "boom"))
-      .mockResolvedValueOnce(null)
-      .mockRejectedValueOnce(new ApiError(404, "unknown queued message"));
-    const { user } = await openChat({
-      api,
-      chat: session({ state: "running" }),
-      queued: [queuedMessage(), queuedMessage({ id: "m2", text: "And docs" })],
-    });
-
-    const [first, second] = screen.getAllByRole("button", { name: "Cancel queued message" });
-    await user.click(defined(first));
-    expect(await screen.findByText("boom")).toBeInTheDocument();
-    expect(screen.getByText("Then add tests")).toBeInTheDocument();
-    await user.click(defined(first));
-    await waitFor(() => {
-      expect(screen.queryByText("Then add tests")).not.toBeInTheDocument();
-    });
-    await user.click(defined(second));
-    expect(await screen.findByText("Already sent")).toBeInTheDocument();
-    expect(screen.queryByText("And docs")).not.toBeInTheDocument();
-    expect(api.cancelQueued.mock.calls).toEqual([
-      ["s1", "m1"],
-      ["s1", "m1"],
-      ["s1", "m2"],
-    ]);
   });
 });

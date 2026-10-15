@@ -173,6 +173,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/sessions/s1/interrupt", response: "") {
             try await $0.interrupt("s1")
         },
+        RouteCase("POST", "/api/sessions/s1/tasks/toolu_01/stop", response: "") {
+            try await $0.stopTask("s1", task: "toolu_01")
+        },
         RouteCase(
             "POST", "/api/sessions/s1/open-in-claude-code",
             response: #"{"launcher": "/tmp/x.command", "warning": null}"#
@@ -499,13 +502,34 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.linkSuggestions("todo-ui")
         },
         RouteCase(
-            "GET", "/api/sessions/s1/rewind?message=42",
+            "GET", "/api/sessions/s1/rewind?message=42&restore=code",
             response:
                 #"{"can_rewind": true, "files_changed": ["a"], "insertions": 1, "deletions": 0}"#
-        ) { _ = try await $0.rewindPreview("s1", message: 42) },
-        RouteCase("POST", "/api/sessions/s1/rewind", body: #"{"message":42}"#, response: "") {
-            try await $0.rewind("s1", message: 42)
+        ) { _ = try await $0.rewindPreview("s1", message: 42, restore: .code) },
+        RouteCase(
+            "POST", "/api/sessions/s1/rewind", body: #"{"message":42,"restore":"both"}"#,
+            response: #"{"can_rewind": true, "restore": "both", "text": "t", "attachments": []}"#
+        ) { _ = try await $0.rewind("s1", message: 42, restore: .both) },
+        RouteCase(
+            "POST", "/api/sessions/s1/shell", body: #"{"command":"ls"}"#,
+            response:
+                #"{"command": "ls", "exit_code": 0, "output": "a", "truncated": false, "timed_out": false, "context": "c"}"#
+        ) { _ = try await $0.runShell("s1", command: "ls") },
+        RouteCase(
+            "POST", "/api/sessions/s1/memory", body: #"{"scope":"user","text":"x"}"#,
+            response: #"{"path": "/h/CLAUDE.md", "scope": "user", "line": "- x"}"#
+        ) { _ = try await $0.saveMemory("s1", text: "x", scope: .user) },
+        RouteCase("GET", "/api/attachments/img1", response: "png") {
+            let data = try await $0.attachmentData("img1")
+            #expect(data == Data("png".utf8))
         },
+        RouteCase("POST", "/api/sessions/s1/queue/q9/send-now", response: "") {
+            try await $0.sendQueuedNow("s1", queuedID: "q9")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/fork", body: #"{"message":42}"#,
+            response: #"{"session": \#(sessionJSON), "text": "t", "attachments": []}"#
+        ) { _ = try await $0.fork("s1", message: 42) },
         RouteCase("POST", "/api/sessions/s1/ci-feedback", response: "") {
             try await $0.ciFeedback("s1")
         },
@@ -759,6 +783,11 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             await failure(
                 409, #"{"detail": "Close it there first.", "code": "open_in_claude_code"}"#)
                 == .openInClaudeCode("Close it there first."))
+        #expect(
+            await failure(409, #"{"detail": "Too late", "code": "message_taken"}"#)
+                == .messageTaken("Too late"))
+        #expect(APIError.messageTaken("Too late").isConflict)
+        #expect(APIError.messageTaken("Too late").message == "Too late")
         #expect(
             await failure(409, #"{"detail": "other", "code": "something_else"}"#)
                 == .conflict("other"))

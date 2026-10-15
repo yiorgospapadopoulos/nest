@@ -196,13 +196,14 @@ import Testing
         #expect(approval.permission?.reason == "No allow rule matches rm")
     }
 
-    /// "Always allow" names the rule Claude Code suggests (IMP-06).
+    /// "Always allow" names exactly what it allows: the daemon's rule (IMP-06, B59), else,
+    /// for older events and other providers, the tool.
     @Test func permissionPayloadCarriesTheSuggestedRule() throws {
         var approval = Fixture.approval("ap-perm")
         let plain = try #require(approval.permission)
         #expect(plain.alwaysRule == nil)
-        #expect(plain.alwaysAllowTitle == "Always allow")
-        #expect(plain.alwaysAllowHelp == "Allow this tool for the rest of the chat")
+        #expect(plain.alwaysAllowTitle == "Always allow Bash")
+        #expect(plain.alwaysAllowHelp == "Allow Bash without asking again in this chat")
 
         approval.payload = Fixture.decode(
             JSONValue.self,
@@ -210,11 +211,16 @@ import Testing
         let ruled = try #require(approval.permission)
         #expect(ruled.alwaysRule == "Bash(npm test:*)")
         #expect(ruled.alwaysAllowTitle == "Always allow Bash(npm test:*)")
-        #expect(ruled.alwaysAllowHelp.hasPrefix("Allow this and anything matching the rule"))
+        #expect(ruled.alwaysAllowHelp == "Allow Bash(npm test:*) without asking again")
+
+        approval.payload = Fixture.decode(
+            JSONValue.self,
+            json: #"{"tool": "Bash", "input": {}, "always_rule": "Bash(rm -rf build)"}"#)
+        #expect(approval.permission?.alwaysAllowTitle == "Always allow Bash(rm -rf build)")
 
         approval.payload = Fixture.decode(
             JSONValue.self, json: #"{"tool": "Bash", "input": {}, "always_rule": "  "}"#)
-        #expect(approval.permission?.alwaysAllowTitle == "Always allow")
+        #expect(approval.permission?.alwaysAllowTitle == "Always allow Bash")
         #expect(approval.permission?.suggestedRule == nil)
     }
 

@@ -224,3 +224,24 @@ describe("pixie actions", () => {
     expect(dispatched).toContainEqual({ type: "pixies", pixies: [pixie()] });
   });
 });
+
+describe("stopping a background task (B59)", () => {
+  it("sends the stop, and tells a finished task and a closed run apart", async () => {
+    const { api, dispatched, actions } = setup();
+    expect(await actions.stopTask("s1", "a1")).toBe("sent");
+    expect(api.stopTask).toHaveBeenCalledWith("s1", "a1");
+
+    // A task that already finished: its row is fetched again.
+    api.stopTask.mockRejectedValueOnce(new ApiError(404, "session 's1' has no running task 'a1'"));
+    expect(await actions.stopTask("s1", "a1")).toBe("gone");
+    expect(api.session).toHaveBeenCalledWith("s1");
+
+    api.stopTask.mockRejectedValueOnce(new ApiError(409, "session 's1' has no agent running"));
+    expect(await actions.stopTask("s1", "a1")).toBe("closed");
+    expect(dispatched.filter((a) => a.type === "toast")).toEqual([]);
+
+    api.stopTask.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.stopTask("s1", "a1")).toBe("failed");
+    expect(dispatched.at(-1)).toMatchObject({ type: "toast", toast: { text: "down" } });
+  });
+});

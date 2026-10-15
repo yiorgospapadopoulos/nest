@@ -198,6 +198,21 @@ class SessionStore:
         )
         return None if row is None else row["checkpoint_id"]
 
+    async def drop_events(self, session_id: str, first: int, last: int) -> None:
+        """Forget the session's events `first` to `last`, with their checkpoints and search
+        entries (a rewound conversation, B59).
+        """
+        async with self._db.transaction() as tx:
+            for table, column in (("checkpoints", "event_id"), ("search_index", "event_id")):
+                await tx.execute(
+                    f"DELETE FROM {table} WHERE session_id = ? AND {column} BETWEEN ? AND ?",  # noqa: S608
+                    (session_id, first, last),
+                )
+            await tx.execute(
+                "DELETE FROM events WHERE session_id = ? AND id BETWEEN ? AND ?",
+                (session_id, first, last),
+            )
+
     async def interrupt_in_flight(self) -> list[str]:
         """After a restart, turns that were in progress can only be resumed."""
         placeholders = ", ".join("?" for _ in IN_FLIGHT)

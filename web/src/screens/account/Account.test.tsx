@@ -271,12 +271,19 @@ describe("connectors", () => {
     const ai = screen.getByRole("region", { name: /claude\.ai connectors/ });
     expect(aiToggle).toHaveAttribute("aria-controls", ai.id);
     expect(within(ai).getByText("Gmail")).toBeInTheDocument();
-    expect(within(ai).getByText("Sign in on claude.ai")).toBeInTheDocument();
+    expect(within(ai).getByRole("link", { name: "Sign in on claude.ai" })).toHaveAttribute(
+      "href",
+      "https://claude.ai/settings/connectors",
+    );
+    expect(within(ai).getByText("Needs sign-in")).toBeInTheDocument();
     expect(screen.queryByText("spawn ENOENT")).not.toBeInTheDocument();
 
     await user.click(localToggle);
     const local = screen.getByRole("region", { name: /Plugins and local servers/ });
-    expect(within(local).getAllByText("Set up with /mcp in Claude Code")).toHaveLength(3);
+    expect(within(local).getAllByText("Set up with /mcp in Claude Code")).toHaveLength(2);
+    expect(within(local).getByText(/Sign in from the Mac: run/)).toHaveTextContent(
+      "Sign in from the Mac: run claude /mcp in Terminal",
+    );
     expect(within(local).getByText("spawn ENOENT")).toBeInTheDocument();
     expect(within(local).getByText("disabled")).toBeInTheDocument();
     expect(within(local).getByText("Connecting")).toBeInTheDocument();
@@ -287,6 +294,51 @@ describe("connectors", () => {
 
     push({ id: 3, type: "connectors.updated", payload: { connectors: [] } });
     expect(screen.getByText(/None reported yet/)).toBeInTheDocument();
+  });
+
+  it("copies the command that signs in to a server on the Mac", async () => {
+    const api = fakeApi();
+    api.connectors.mockResolvedValue([
+      connector({
+        name: "linear",
+        display_name: "linear",
+        group: "local",
+        status: "needs-auth",
+        manage_hint: "claude_code",
+      }),
+    ]);
+    const { user } = await openAccount(api);
+    await user.click(await screen.findByRole("button", { name: /Plugins and local servers/ }));
+
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(await navigator.clipboard.readText()).toBe("claude /mcp");
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  it("keeps offering the copy when the clipboard refuses", async () => {
+    const api = fakeApi();
+    api.connectors.mockResolvedValue([
+      connector({
+        name: "linear",
+        group: "local",
+        status: "needs-auth",
+        manage_hint: "claude_code",
+      }),
+    ]);
+    const { user } = await openAccount(api);
+    await user.click(await screen.findByRole("button", { name: /Plugins and local servers/ }));
+    const refuse = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockRejectedValue(new Error("not allowed"));
+
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(refuse).toHaveBeenCalledWith("claude /mcp");
+    });
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    refuse.mockRestore();
   });
 
   it("shows no attention hint when every connector in a group is fine", async () => {

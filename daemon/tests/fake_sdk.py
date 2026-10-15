@@ -80,6 +80,9 @@ class FakeSdkClient:
     async def set_permission_mode(self, mode: PermissionMode) -> None:
         self.calls.append(("set_permission_mode", mode))
 
+    async def stop_task(self, task_id: str) -> None:
+        self.calls.append(("stop_task", task_id))
+
     async def get_mcp_status(self) -> McpStatusResponse:
         return self.mcp_status
 

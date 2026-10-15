@@ -31,11 +31,34 @@ class ToolUseBlock(BaseModel):
     input: dict[str, JsonValue]
 
 
+class ResultImage(BaseModel):
+    """An image a tool returned, kept as a session attachment the clients fetch (B59)."""
+
+    attachment_id: str
+    media_type: str
+
+
+class ImageData(BaseModel):
+    """An image as the engine returned it in a tool result: its base64 data."""
+
+    media_type: str
+    data: str
+
+
+def _no_images(images: list[ResultImage]) -> bool:
+    return not images
+
+
 class ToolResultBlock(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
     content: str
     is_error: bool = False
+    # Images in the result (a Read of a PNG, a screenshot tool) once the session stored
+    # them (B59); left out of the payload when there are none.
+    images: list[ResultImage] = Field(default_factory=list[ResultImage], exclude_if=_no_images)
+    # The images as the engine returned them, until the session stores them; never sent.
+    image_data: list[ImageData] = Field(default_factory=list[ImageData], exclude=True)
 
 
 type MessageBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
@@ -65,9 +88,24 @@ class ResultInfo(BaseModel):
     subtype: str
     duration_ms: int
     num_turns: int
-    cost_usd: float | None
     errors: list[str]
     tokens: TokenUsage = Field(default_factory=TokenUsage)
+
+
+class HookOutput(BaseModel):
+    """What a hook from the user's setup said when it finished, for the transcript (B59)."""
+
+    hook_id: str | None = None
+    # The hook's event and what it matched, such as `PostToolUse:Edit`.
+    hook_name: str
+    # The event, such as `PreToolUse`, `PostToolUse`, `Stop` or `SessionStart`.
+    hook_event: str
+    outcome: Literal["success", "error", "cancelled"]
+    exit_code: int | None = None
+    # The message the hook has for the user (its JSON `systemMessage`).
+    system_message: str | None = None
+    # What else it printed for the user: its plain output, or why it failed.
+    output: str | None = None
 
 
 class UsageWindow(BaseModel):
@@ -239,6 +277,12 @@ class SessionSpec:
     # (D013): pixie chats, habit runs and chats a pixie started (D072). A normal chat uses
     # git and gh as in the terminal, with the user's own login (B58).
     guard_git: bool = True
+    # With `resume_id`: load the conversation only up to and including this entry, into a
+    # new engine session (a fork), leaving the resumed one as it was (B59).
+    resume_at: str | None = None
+    # With `resume_at`: the user message whose turn the cut drops. The engine refuses the
+    # resume when anything after `resume_at` is not that turn's (B59).
+    drops_turn: str | None = None
 
 
 @dataclass(frozen=True)
@@ -263,8 +307,9 @@ class PermissionRequest:
     title: str | None = None
     # Why the engine asks, such as a hook's reason or the path outside the allowed folders.
     reason: str | None = None
-    # The rule the engine suggests for "Always allow", in words such as `Bash(npm test:*)`;
-    # None when it suggests none, and "always" then allows the tool by name (IMP-06).
+    # What "Always allow" allows, in words such as `Bash(npm test:*)`: the rule the engine
+    # suggests, else that exact call (B59). None when a provider has no rule to offer, and
+    # "always" then allows the tool by name (IMP-06).
     always_rule: str | None = None
 
 
@@ -335,6 +380,15 @@ class RewindResult(BaseModel):
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class ForkPoint:
+    """Where a conversation is cut to before one of its user messages (B59)."""
+
+    # The engine's last transcript entry to keep; None when the message began the
+    # conversation, so nothing is kept.
+    keep_through: str | None
+
+
 class ApprovalHandler(Protocol):
     """Where an agent run takes what needs the user: tool permissions, questions and plans."""
 
@@ -358,6 +412,18 @@ class ProviderEventSink(Protocol):
 
     async def thinking(self, active: bool) -> None:
         """The main agent started (True) or finished (False) a thinking block (D045)."""
+        ...
+
+    async def thinking_delta(self, text: str, parent_tool_use_id: str | None) -> None:
+        """Thinking text as it is written, by the main agent or a subagent (B59)."""
+        ...
+
+    async def subagent_delta(self, text: str, parent_tool_use_id: str) -> None:
+        """A subagent's text as it is written, under the tool call that started it (B59)."""
+        ...
+
+    async def hook(self, output: HookOutput) -> None:
+        """A hook finished with something to show the user, even between turns (B59)."""
         ...
 
     async def result(self, info: ResultInfo) -> None: ...
@@ -410,12 +476,36 @@ class ProviderEventSink(Protocol):
         """
         ...
 
+    async def message_taken(self, message_id: str, checkpoint_id: str) -> None:
+        """The engine read a message written into the running turn (`AgentRun.steer`): at
+        a step of that turn, or as the start of its next one. `checkpoint_id` is its id
+        in the engine's transcript (B59).
+        """
+        ...
+
 
 class AgentRun(Protocol):
     """A live agent process for one session."""
 
+    # Whether messages can be written into a running turn (`steer`); a provider that
+    # cannot gets them after the turn instead (B59).
+    steers: bool
+
     async def send(self, user_input: UserInput) -> None:
         """Submit a user message; what the agent does comes through the sink."""
+        ...
+
+    async def steer(self, user_input: UserInput, message_id: str) -> None:
+        """Write a message into the running turn. The engine reads it at its next step
+        (after a tool call) or, when the turn ends first, starts its next turn with it;
+        either way the sink hears `message_taken(message_id, ...)` (B59).
+        """
+        ...
+
+    async def withdraw(self, message_id: str) -> bool:
+        """Take back a steered message the engine has not read yet. False when it already
+        has (or is about to): it will be or was echoed (B59).
+        """
         ...
 
     async def interrupt(self) -> None: ...
@@ -439,6 +529,13 @@ class AgentRun(Protocol):
         """
         ...
 
+    async def stop_task(self, task_id: str) -> bool:
+        """Stop one running task (a background command or a subagent), named by its task
+        id or the id of the tool call that started it, without stopping the turn; its end
+        is reported as a task update. False when no such task runs (B59).
+        """
+        ...
+
     async def close(self) -> None:
         """Stop the agent and wait for its process (and its exit hooks) to finish."""
         ...
@@ -451,3 +548,9 @@ class AgentProvider(Protocol):
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> AgentRun: ...
+
+    async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
+        """Where the engine session `session_id`, run in `cwd`, is cut to before its user
+        message `message_id` (a checkpoint id); None when its transcript lacks it (B59).
+        """
+        ...

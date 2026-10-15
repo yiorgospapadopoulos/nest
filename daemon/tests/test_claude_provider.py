@@ -143,6 +143,10 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
     }
     assert options.setting_sources == ["user", "project", "local"]
     assert options.include_partial_messages is True
+    # As Claude Code shows them (B59): hooks' messages, subagents' text and thinking text.
+    assert options.include_hook_events is True
+    assert options.forward_subagent_text is True
+    assert options.extra_args["thinking-display"] == "summarized"
     # Bypass is never offered to a run that did not start in it (D046).
     assert "allow-dangerously-skip-permissions" not in options.extra_args
     assert options.disallowed_tools == list(GIT_WRITE_RULES)
@@ -249,7 +253,9 @@ async def test_permission_callback_is_bridged_to_the_handler(tmp_path: Path) -> 
 
     assert isinstance(result, PermissionResultAllow)
     assert allow.requests == [
-        PermissionRequest("Bash", {"command": "ls"}, "Claude wants to run ls")
+        PermissionRequest(
+            "Bash", {"command": "ls"}, "Claude wants to run ls", always_rule="Bash(ls)"
+        )
     ]
 
 
@@ -271,7 +277,9 @@ async def test_permission_requests_carry_the_engines_reason(
 
     await client.options.can_use_tool("Read", {"file_path": "/x"}, context)
 
-    assert allow.requests == [PermissionRequest("Read", {"file_path": "/x"}, None, reason)]
+    assert allow.requests == [
+        PermissionRequest("Read", {"file_path": "/x"}, None, reason, "Read(/x)")
+    ]
 
 
 async def test_a_crash_says_what_the_agent_wrote_to_stderr(tmp_path: Path) -> None:
@@ -619,6 +627,29 @@ async def test_task_lifecycles_are_reported(tmp_path: Path) -> None:
         AgentTask(task_id="t1", phase="finished", tool_use_id="toolu_1", status="completed"),
         AgentTask(task_id="t9", phase="finished", status="stopped"),
     ]
+
+
+async def test_one_running_task_can_be_stopped(tmp_path: Path) -> None:
+    """B59: a background task or subagent stops without stopping the turn."""
+    opened = Opened(tmp_path)
+    run, client = await opened.open(SessionSpec(tmp_path, "default"))
+    client.push(
+        task_started("t1"),
+        task_started("t2"),
+        task_done("t2", "completed"),
+        task_started("t3", "toolu_3"),
+    )
+    await until(lambda: len(tasks_reported(opened.sink)) == 4)
+
+    stopped = await run.stop_task("t1")
+    # The Agent or Bash call that started it names it too, as the session's rows do.
+    by_call = await run.stop_task("toolu_3")
+    finished = await run.stop_task("t2")
+    unknown = await run.stop_task("t9")
+    await run.close()
+
+    assert (stopped, by_call, finished, unknown) == (True, True, False, False)
+    assert client.calls == [("stop_task", "t1"), ("stop_task", "t3")]
 
 
 async def test_tasks_still_running_when_the_run_closes_are_stopped(tmp_path: Path) -> None:

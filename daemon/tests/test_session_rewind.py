@@ -10,7 +10,7 @@ import pytest
 from nestd.events import types
 from nestd.providers.base import RewindResult
 from nestd.sessions.errors import CannotRewindError, SessionBusyError, SessionClosedError
-from nestd.sessions.models import SessionState
+from nestd.sessions.models import RewindReply, SessionState
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import echoed, hang, reply
@@ -48,7 +48,7 @@ async def test_each_message_keeps_its_checkpoint_for_a_preview(env: Env) -> None
     preview = await env.manager.rewind(created.id, first, dry_run=True)
     await env.manager.rewind(created.id, second, dry_run=True)
 
-    assert preview == RewindResult(can_rewind=True, files_changed=["a.py"], insertions=2)
+    assert preview == RewindReply(can_rewind=True, files_changed=["a.py"], insertions=2)
     assert env.provider.runs[0].calls == [
         ("rewind_files", ("msg-1", True)),
         ("rewind_files", ("msg-2", True)),
@@ -201,3 +201,30 @@ async def test_a_message_sent_while_restoring_starts_afterwards(env: Env) -> Non
     assert sent.queued_message is not None
     assert env.provider.runs[1].calls == [("rewind_files", ("msg-1", False))]
     assert [i.text for i in env.provider.runs[1].inputs] == ["carry on"]
+
+
+async def test_changed_files_are_named_from_the_chats_folder(env: Env) -> None:
+    """B59: the rewind sheet lists `src/a.ts`, not the full path; outside files stay whole."""
+    env.provider.script(echoed("msg-1", reply("one")))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+    (message,) = await user_messages(env, created.id)
+    cwd = (await env.store.get(created.id)).cwd
+    assert cwd is not None
+    folder = Path(cwd)
+    env.provider.rewind = RewindResult(
+        can_rewind=True,
+        files_changed=[
+            str(folder / "notes.md"),
+            str(folder / "src" / "a.ts"),
+            "/etc/hosts",
+            "b.py",
+        ],
+    )
+
+    preview = await env.manager.rewind(created.id, message, dry_run=True)
+    restored = await env.manager.rewind(created.id, message, dry_run=False)
+
+    names = ["notes.md", "src/a.ts", "/etc/hosts", "b.py"]
+    assert preview.files_changed == names
+    assert restored.files_changed == names

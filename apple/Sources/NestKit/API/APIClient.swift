@@ -109,8 +109,31 @@ public struct APIClient: NestAPI {
         try await perform("DELETE", ["sessions", id, "queue", queuedID])
     }
 
+    public func runShell(_ id: String, command: String) async throws -> ShellRun {
+        try await call("POST", ["sessions", id, "shell"], body: ShellRequest(command: command))
+    }
+
+    public func saveMemory(_ id: String, text: String, scope: MemoryScope) async throws
+        -> SavedMemory
+    {
+        try await call(
+            "POST", ["sessions", id, "memory"], body: MemoryRequest(text: text, scope: scope))
+    }
+
+    public func attachmentData(_ id: String) async throws -> Data {
+        try await send(try encodedRequest("GET", ["attachments", id], query: [], body: nil)).body
+    }
+
+    public func sendQueuedNow(_ id: String, queuedID: String) async throws {
+        try await perform("POST", ["sessions", id, "queue", queuedID, "send-now"])
+    }
+
     public func interrupt(_ id: String) async throws {
         try await perform("POST", ["sessions", id, "interrupt"])
+    }
+
+    public func stopTask(_ id: String, task: String) async throws {
+        try await perform("POST", ["sessions", id, "tasks", task, "stop"])
     }
 
     public func sessionCommands(_ id: String) async throws -> CommandList {
@@ -127,15 +150,27 @@ public struct APIClient: NestAPI {
         try await call("POST", ["sessions", id, "open-in-claude-code"])
     }
 
-    public func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
+    public func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    {
         try await call(
             "GET", ["sessions", id, "rewind"],
-            query: [URLQueryItem(name: "message", value: "\(message)")])
+            query: [
+                URLQueryItem(name: "message", value: "\(message)"),
+                URLQueryItem(name: "restore", value: restore.rawValue),
+            ])
     }
 
-    public func rewind(_ id: String, message: Int) async throws {
-        try await perform(
-            "POST", ["sessions", id, "rewind"], body: RewindRequest(message: message))
+    public func rewind(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    {
+        try await call(
+            "POST", ["sessions", id, "rewind"],
+            body: RewindRequest(message: message, restore: restore))
+    }
+
+    public func fork(_ id: String, message: Int) async throws -> ForkedChat {
+        try await call("POST", ["sessions", id, "fork"], body: ForkRequest(message: message))
     }
 
     public func ciFeedback(_ id: String) async throws {

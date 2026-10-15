@@ -19,6 +19,7 @@ class RecordingHooks:
         self.engine: list[EngineDetails] = []
         self.purges: list[str] = []
         self.starts: list[tuple[str, SessionState]] = []
+        self.rewinds: list[tuple[str, bool, bool]] = []
 
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))
@@ -46,3 +47,6 @@ class RecordingHooks:
 
     async def purged(self, session_id: str) -> None:
         self.purges.append(session_id)
+
+    async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
+        self.rewinds.append((session.id, conversation, files))

@@ -42,7 +42,7 @@ private struct AgentGroup: View {
                 AgentRow(session: session.id, agent: agent)
             }
             ForEach(shell.activity.background(session: session.id).runningCommands) { command in
-                CommandRow(command: command)
+                CommandRow(chat: session.id, command: command)
             }
         }
     }
@@ -50,6 +50,7 @@ private struct AgentGroup: View {
 
 /// A background command still running, under its chat's agents.
 private struct CommandRow: View {
+    let chat: String
     let command: BackgroundItem
 
     var body: some View {
@@ -78,6 +79,7 @@ private struct CommandRow: View {
                     .monospacedDigit()
                     .foregroundStyle(Palette.t3)
             }
+            StopTaskButton(chat: chat, task: command.id)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
@@ -93,6 +95,8 @@ private struct AgentRow: View {
     var body: some View {
         let key = "\(session)/\(agent.id)"
         let expanded = shell.projectState.expandedAgents.contains(key)
+        // The main agent stops with the composer's Stop.
+        let stoppable = !agent.isMain && agent.status == .running
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 shell.update {
@@ -121,12 +125,22 @@ private struct AgentRow: View {
                             .monospacedDigit()
                             .foregroundStyle(Palette.t3)
                     }
+                    if stoppable {
+                        // Room for Stop, which sits over the row as a button of its own.
+                        Color.clear.frame(width: 18, height: 1)
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowHoverStyle())
+            .overlay(alignment: .trailing) {
+                if stoppable {
+                    StopTaskButton(chat: session, task: agent.id)
+                        .padding(.trailing, 8)
+                }
+            }
             .padding(.horizontal, 6)
             .accessibilityAddTraits(expanded ? .isSelected : [])
             if expanded {

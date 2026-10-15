@@ -23,8 +23,18 @@ class NoWorkspaceError(ConflictError):
     pass
 
 
+class NoAgentRunError(ConflictError):
+    """The session has no agent running, so nothing of it can be stopped (B59)."""
+
+
+class TaskNotFoundError(NotFoundError):
+    """The session's agent runs no task by that id (B59)."""
+
+
 class CannotRewindError(ConflictError):
-    """The files cannot be restored to before the message (IMP-02)."""
+    """The files or the conversation cannot be restored to before the message, or a chat
+    forked from it (IMP-02, B59).
+    """
 
     code = "cannot_rewind"
 
@@ -43,6 +53,15 @@ class PixieChatError(ConflictError):
         self, detail: str = "this is a pixie's chat; reset or delete the pixie instead"
     ) -> None:
         super().__init__(detail)
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
+class MessageTakenError(ConflictError):
+    """The agent already read the queued message, so it can no longer be removed (B59)."""
+
+    code = "message_taken"
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code}

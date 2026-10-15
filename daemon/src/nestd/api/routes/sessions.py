@@ -5,11 +5,14 @@ from fastapi import APIRouter, Query, Response, status
 from nestd.api.deps import Context, RequireDevice
 from nestd.api.schemas import FileList, SessionDetail
 from nestd.events.models import Event
-from nestd.providers.base import RewindResult
 from nestd.sessions.commands import CommandList
 from nestd.sessions.errors import PixieChatError
 from nestd.sessions.models import (
     CreateSession,
+    ForkReply,
+    ForkRequest,
+    Restore,
+    RewindReply,
     RewindRequest,
     SendMessage,
     SendResult,
@@ -73,8 +76,20 @@ async def send_message(session_id: str, body: SendMessage, ctx: Context) -> Send
 
 @router.delete("/{session_id}/queue/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_queued(session_id: str, message_id: str, ctx: Context) -> Response:
+    """Remove a pending message. One written into the running turn (`sent`) only while
+    Claude has not read it: 409 `message_taken` once it has (B59).
+    """
     await ctx.sessions.cancel_queued(session_id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{session_id}/queue/{message_id}/send-now", status_code=status.HTTP_202_ACCEPTED)
+async def send_now(session_id: str, message_id: str, ctx: Context) -> Response:
+    """Send a pending message now: the running turn is stopped and the message starts right
+    after it, first in line; on an idle chat it starts at once (B59).
+    """
+    await ctx.sessions.send_now(session_id, message_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.get("/{session_id}/commands")
@@ -98,25 +113,53 @@ async def interrupt(session_id: str, ctx: Context) -> Response:
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
+@router.post("/{session_id}/tasks/{task_id}/stop", status_code=status.HTTP_202_ACCEPTED)
+async def stop_task(session_id: str, task_id: str, ctx: Context) -> Response:
+    """Stop one background task or subagent of the chat's agent, not the turn (B59);
+    `task_id` is its task id or the id of the Agent or Bash call that started it (the id
+    of its row in the session's agents and background). Its end arrives as a
+    `session.agent_task` event. 404 for an unknown session or a task that
+    is not running, 409 when the chat has no agent running.
+    """
+    await ctx.sessions.stop_task(session_id, task_id)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
 @router.get("/{session_id}/rewind")
 async def preview_rewind(
-    session_id: str, ctx: Context, message: Annotated[int, Query(ge=1)]
-) -> RewindResult:
-    """What restoring files to before the user message of event `message` would change;
-    `can_rewind` false with `error` when it cannot. 409 unless the chat is idle (IMP-02),
-    and 409 `pixie_chat` for a pixie's chat (D072).
+    session_id: str,
+    ctx: Context,
+    message: Annotated[int, Query(ge=1)],
+    restore: Restore = "code",
+) -> RewindReply:
+    """What rewinding to before the user message of event `message` would do: the files it
+    would restore (`code`, `both`), and whether Claude Code's transcript can be cut there
+    (`conversation`, `both`); `can_rewind` false with `error` when it cannot. 409 unless
+    the chat is idle (IMP-02), and 409 `pixie_chat` for a pixie's chat (D072).
     """
-    return await ctx.sessions.rewind(session_id, message, dry_run=True)
+    return await ctx.sessions.rewind(session_id, message, dry_run=True, restore=restore)
 
 
 @router.post("/{session_id}/rewind")
-async def rewind(session_id: str, body: RewindRequest, ctx: Context) -> RewindResult:
-    """Restore the files the agent changed since that message to how they were before it,
-    then note it in the chat (`session.notice` of kind `files_restored`). Only files: the
-    conversation stays. 409 unless the chat is idle, or `cannot_rewind` with the reason,
-    or `pixie_chat` for a pixie's chat.
+async def rewind(session_id: str, body: RewindRequest, ctx: Context) -> RewindReply:
+    """Rewind to before that message, as Claude Code does (B59). `code` restores the files
+    the agent changed since (noted in the chat as a `session.notice` of kind
+    `files_restored`); `conversation` drops the message and everything after it from the
+    chat (a `session.rewound` event) and the next message continues from before it, the
+    reply's `text` and `attachments` going back to the composer; `both` does both. 409
+    unless the chat is idle, `cannot_rewind` with the reason, or `pixie_chat`.
     """
-    return await ctx.sessions.rewind(session_id, body.message, dry_run=False)
+    return await ctx.sessions.rewind(session_id, body.message, dry_run=False, restore=body.restore)
+
+
+@router.post("/{session_id}/fork", status_code=status.HTTP_201_CREATED)
+async def fork(session_id: str, body: ForkRequest, ctx: Context) -> ForkReply:
+    """A new chat whose conversation is this one's up to before the user message of event
+    `message`, in the same project and work mode; this chat is untouched (B59). The reply's
+    `text` and `attachments` go to the new chat's composer. 409 while a turn runs,
+    `cannot_rewind` when the message cannot be forked from, `pixie_chat` for a pixie's.
+    """
+    return await ctx.sessions.fork(session_id, body.message)
 
 
 @router.patch("/{session_id}")

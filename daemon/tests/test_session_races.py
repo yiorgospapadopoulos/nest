@@ -274,19 +274,19 @@ async def test_stop_while_the_turn_end_reads_the_queue_keeps_the_queue_waiting(
     await until(lambda: len(run.inputs) == 2)
     await env.manager.send(created.id, "message B", [])
     in_gap, leave_gap = asyncio.Event(), asyncio.Event()
-    original = env.queue.messages
+    original = env.queue.waiting
 
     async def slow_messages(session_id: str) -> list[QueuedMessage]:
         in_gap.set()
         await leave_gap.wait()
         return await original(session_id)
 
-    monkeypatch.setattr(env.queue, "messages", slow_messages)
+    monkeypatch.setattr(env.queue, "waiting", slow_messages)
     release_first.set()
     await asyncio.wait_for(in_gap.wait(), 5)
 
     await env.manager.interrupt(created.id)
-    monkeypatch.setattr(env.queue, "messages", original)
+    monkeypatch.setattr(env.queue, "waiting", original)
     leave_gap.set()
     await env.reach(created.id, SessionState.INTERRUPTED)
 

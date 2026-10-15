@@ -239,6 +239,29 @@ final class FakeAPI: NestAPI {
         try call("cancelQueued", "\(id) \(queuedID)") { _ in }
     }
 
+    func runShell(_ id: String, command: String) async throws -> ShellRun {
+        await pass("runShell")
+        return try call("runShell", "\(id) \(command)") { _ in
+            ShellRun(
+                command: command, exitCode: 0, output: "output of \(command)", truncated: false,
+                timedOut: false, context: "context of \(command)")
+        }
+    }
+
+    func saveMemory(_ id: String, text: String, scope: MemoryScope) async throws -> SavedMemory {
+        try call("saveMemory", "\(id) \(scope.rawValue) \(text)") { _ in
+            SavedMemory(path: "/\(scope.rawValue)/CLAUDE.md", scope: scope, line: "- \(text)")
+        }
+    }
+
+    func attachmentData(_ id: String) async throws -> Data {
+        try call("attachmentData", id) { _ in Data("image \(id)".utf8) }
+    }
+
+    func sendQueuedNow(_ id: String, queuedID: String) async throws {
+        try call("sendQueuedNow", "\(id) \(queuedID)") { _ in }
+    }
+
     func sessionCommands(_ id: String) async throws -> CommandList {
         try call("sessionCommands", id) { state in
             state.commands["session:\(id)"] ?? CommandList(source: .none, commands: [])
@@ -260,15 +283,42 @@ final class FakeAPI: NestAPI {
         try call("interrupt", id) { _ in }
     }
 
-    func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview {
-        try call("rewindPreview", "\(id) \(message)") { state in
-            state.rewinds[id] ?? RewindPreview(canRewind: true)
+    func stopTask(_ id: String, task: String) async throws {
+        try call("stopTask", "\(id) \(task)") { _ in }
+    }
+
+    func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    {
+        try call("rewindPreview", "\(id) \(message) \(restore.rawValue)") { state in
+            state.rewinds["\(id) \(restore.rawValue)"] ?? RewindPreview(canRewind: true)
         }
     }
 
-    func rewind(_ id: String, message: Int) async throws {
+    /// A conversation rewind answers "message <id>" for the composer.
+    func rewind(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    {
         await pass("rewind")
-        try call("rewind", "\(id) \(message)") { _ in }
+        return try call("rewind", "\(id) \(message) \(restore.rawValue)") { _ in
+            RewindPreview(
+                canRewind: true, restore: restore,
+                text: restore == .code ? nil : "message \(message)")
+        }
+    }
+
+    func fork(_ id: String, message: Int) async throws -> ForkedChat {
+        try call("fork", "\(id) \(message)") { state in
+            let original = state.sessions.first { $0.id == id }!
+            var session = Fixture.session(
+                "fork-\(state.sessions.count)", repo: original.repo,
+                title: "\(original.title) (fork)")
+            session.mode = original.mode
+            state.sessions.append(session)
+            return ForkedChat(
+                session: session,
+                message: RestoredMessage(text: "message \(message)", attachments: []))
+        }
     }
 
     func ciFeedback(_ id: String) async throws {

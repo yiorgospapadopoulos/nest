@@ -29,18 +29,35 @@ public protocol NestAPI: Sendable {
     /// turn and runs this message next.
     func sendMessage(_ id: String, text: String, attachmentIDs: [String], interrupt: Bool)
         async throws -> SentMessage
-    /// Cancels a queued message before its turn starts.
+    /// Removes a pending message Claude has not read yet; `messageTaken` when it has.
     func cancelQueued(_ id: String, queuedID: String) async throws
+    /// Sends a pending message now: the running turn stops and it starts right after.
+    func sendQueuedNow(_ id: String, queuedID: String) async throws
+    /// Runs a `!` command in the chat's folder; answers even when the command fails.
+    func runShell(_ id: String, command: String) async throws -> ShellRun
+    /// Appends a `#` memory to the project's or the user's CLAUDE.md.
+    func saveMemory(_ id: String, text: String, scope: MemoryScope) async throws
+        -> SavedMemory
+    /// An attachment's bytes, such as a tool result's image.
+    func attachmentData(_ id: String) async throws -> Data
     func interrupt(_ id: String) async throws
+    /// Stops one background task or subagent by its task id or the id of the tool call
+    /// that started it; the turn goes on (B59).
+    func stopTask(_ id: String, task: String) async throws
     /// The session's slash commands, or its repo's while it has none.
     func sessionCommands(_ id: String) async throws -> CommandList
     /// Up to 50 paths relative to the session's folder, for an @ mention.
     func sessionFiles(_ id: String, query: String) async throws -> [String]
     func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch
-    /// What restoring the files to before a user message (by event id) would change.
-    func rewindPreview(_ id: String, message: Int) async throws -> RewindPreview
-    /// Restores the files to before a user message; the chat must be idle.
-    func rewind(_ id: String, message: Int) async throws
+    /// What rewinding to before a user message (by event id) would change.
+    func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    /// Rewinds the files, the conversation or both to before a user message; no turn may
+    /// run. A conversation rewind answers the message for the composer.
+    func rewind(_ id: String, message: Int, restore: RewindRestore) async throws
+        -> RewindPreview
+    /// A new chat continuing the conversation as it was before a user message.
+    func fork(_ id: String, message: Int) async throws -> ForkedChat
     /// The daemon reads the failing checks' logs with its own GitHub login and sends them
     /// to the chat.
     func ciFeedback(_ id: String) async throws

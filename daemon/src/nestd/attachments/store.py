@@ -13,7 +13,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from nestd.clock import Clock
-from nestd.errors import InvalidInputError, NestError
+from nestd.errors import InvalidInputError, NestError, NotFoundError
 from nestd.storage.db import Database
 
 MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
@@ -27,6 +27,10 @@ class AttachmentTooLargeError(NestError):
 
 
 class UnknownAttachmentError(InvalidInputError):
+    pass
+
+
+class AttachmentNotFoundError(NotFoundError):
     pass
 
 
@@ -92,6 +96,13 @@ class AttachmentStore:
             ),
         )
         return attachment
+
+    async def get(self, attachment_id: str) -> Attachment:
+        row = await self._db.fetch_one("SELECT * FROM attachments WHERE id = ?", (attachment_id,))
+        if row is None:
+            msg = f"unknown attachment {attachment_id!r}"
+            raise AttachmentNotFoundError(msg)
+        return _attachment(row)
 
     async def for_session(self, ids: list[str], session_id: str | None) -> list[Attachment]:
         """The given attachments, in order, if each is unused or already in this session."""

@@ -27,23 +27,47 @@ public struct SessionContext: Codable, Sendable, Hashable {
     }
 }
 
-/// A message sent while a turn ran, waiting to start the next one.
+/// A message sent while a turn ran that Claude has not read yet (B59): written into the
+/// running turn (`sent`), or waiting for the turn to end.
 public struct QueuedMessage: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var text: String
     public var attachments: [Attachment]
     public var createdAt: Date
+    /// In the running turn: Claude reads it at its next step. Otherwise it waits for the
+    /// turn to end, or after a Stop for the next message or Send now.
+    public var sent: Bool
 
-    public init(id: String, text: String, attachments: [Attachment] = [], createdAt: Date) {
+    public init(
+        id: String, text: String, attachments: [Attachment] = [], createdAt: Date,
+        sent: Bool = false
+    ) {
         self.id = id
         self.text = text
         self.attachments = attachments
         self.createdAt = createdAt
+        self.sent = sent
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, text, attachments
+        case id, text, attachments, sent
         case createdAt = "created_at"
+    }
+
+    /// Older daemons queued every message for the end of the turn and left `sent` out.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        attachments = try container.decode([Attachment].self, forKey: .attachments)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        sent = try container.decodeIfPresent(Bool.self, forKey: .sent) ?? false
+    }
+
+    /// The quiet line under the pending message: when Claude gets it.
+    public func note(working: Bool) -> String {
+        guard working else { return "Waiting" }
+        return sent ? "Claude reads this at its next step" : "Sends when this turn ends"
     }
 }
 

@@ -56,9 +56,7 @@ describe("Pixie page", () => {
     expect(api.session).toHaveBeenCalledWith("c1");
     expect(screen.queryByText("Say hi to Tester")).not.toBeInTheDocument();
     // Each run starts fresh, so earlier runs' checkpoints are gone (D072).
-    expect(
-      screen.queryByRole("button", { name: "Restore files to before this message" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Message actions" })).not.toBeInTheDocument();
   });
 
   it("loads the pixie's chat again from Retry", async () => {
@@ -93,7 +91,7 @@ describe("Pixie page", () => {
     await user.click(await screen.findByRole("button", { name: "Interrupt" }));
     expect(api.interrupt).toHaveBeenCalledWith("c1");
     await user.type(screen.getByLabelText("Message"), "and then");
-    expect(screen.getByRole("button", { name: "Queue" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
   it("uses the pixie's background", async () => {

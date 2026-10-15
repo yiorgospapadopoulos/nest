@@ -20,6 +20,8 @@ struct Composer: View {
     @Environment(\.accentColors) private var accent
     @FocusState private var focused: Bool
     @State private var dropTargeted = false
+    /// Esc Esc opens Rewind, as in Claude Code (B59).
+    @State private var escapes = EscapeRepeat()
     /// Snapshots show the suggestions without focus.
     @Environment(\.revealsHoverControls) private var reveal
 
@@ -51,11 +53,17 @@ struct Composer: View {
         let suggestions = suggestions(draft)
         let open = draft.completion.isOpen(suggestions)
         VStack(spacing: 4) {
+            if let live, !start {
+                PendingMessages(chat: live, draftKey: chat)
+            }
             if let blocked = draft.blocked {
                 BlockedNote(text: blocked) { withAnimation { draft.blocked = nil } }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            if open, let suggestions {
+            if let picker = draft.picker, pixie == nil {
+                CommandPicker(chat: chat, picker: picker, draft: draft)
+                    .transition(.opacity)
+            } else if open, let suggestions {
                 SuggestionList(list: suggestions, active: draft.completion.active(in: suggestions))
                 {
                     shell.complete($0, in: chat)
@@ -72,7 +80,7 @@ struct Composer: View {
                 } send: {
                     send()
                 }
-                .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+                .onDrop(of: Self.dropTypes, isTargeted: $dropTargeted) { providers in
                     loadFiles(providers)
                     return true
                 }
@@ -89,6 +97,39 @@ struct Composer: View {
         }
         .padding(.horizontal, start ? 0 : 12)
         .padding(.bottom, start ? 0 : 6)
+        .background {
+            ImagePasteCatcher(isActive: focused && pixie == nil) { urls in
+                shell.attach(urls, to: chat)
+            } attachData: { data, type in
+                shell.attach(data: data, type: type, to: chat)
+            }
+        }
+        .alert(
+            "Replace your draft?",
+            isPresented: Binding(
+                get: { draft.offered != nil }, set: { if !$0 { draft.offered = nil } }),
+            presenting: draft.offered
+        ) { message in
+            Button("Replace") { draft.fill(message, keepingDraft: false) }
+            Button("Keep both", role: .cancel) { draft.fill(message, keepingDraft: true) }
+        } message: { _ in
+            Text("The message you took back goes into the composer. Keep both puts it before your draft.")
+        }
+        .confirmationDialog(
+            "Save to memory",
+            isPresented: Binding(
+                get: { draft.memory != nil }, set: { if !$0 { draft.memory = nil } }),
+            presenting: draft.memory
+        ) { memory in
+            ForEach(MemoryScope.choices(pixie: pixie != nil), id: \.self) { scope in
+                Button(scope.label) { shell.saveMemory(memory, scope: scope, from: chat) }
+            }
+            Button("Cancel", role: .cancel) { draft.memory = nil }
+        } message: { memory in
+            Text(
+                "\u{201C}\(memory)\u{201D} goes into CLAUDE.md: the project's, or yours for all projects."
+            )
+        }
         .onChange(of: suggestions?.trigger) { _, trigger in
             draft.completion.update(for: trigger)
         }
@@ -115,14 +156,28 @@ struct Composer: View {
         }
     }
 
-    /// The chat's session id; nil for a new chat, which completes its project's commands.
-    private var session: String? { shell.isDraft(chat) ? nil : chat }
+    /// The chat's session id: the pixie's chat for a pixie, nil for a new chat, which
+    /// completes its project's commands.
+    private var session: String? {
+        if pixie != nil {
+            return live
+        }
+        return shell.isDraft(chat) ? nil : chat
+    }
 
+    /// A pixie's composer suggests the files of its folder, not commands (B59).
     private func suggestions(_ draft: ComposerDraft) -> CompletionList? {
-        guard pixie == nil, focused || reveal, let repo = shell.project else { return nil }
+        guard focused || reveal else { return nil }
+        if pixie != nil {
+            guard let session else { return nil }
+            return shell.completions.suggestions(
+                text: draft.text, caret: draft.caret, session: session,
+                repo: shell.sessions.session(session)?.repo ?? "", filesOnly: true)
+        }
+        guard let repo = shell.project else { return nil }
         return shell.completions.suggestions(
             text: draft.text, caret: draft.caret, session: session, repo: repo,
-            mentions: shell.pixieMentions(forChat: chat))
+            mentions: shell.pixieMentions(forChat: chat), localCommands: true)
     }
 
     /// The pixies the "@" list offers, whose souls' first lines it shows.
@@ -147,8 +202,11 @@ struct Composer: View {
         -> Bool
     {
         let working = live.flatMap(shell.sessions.session)?.state.isInFlight ?? false
+        let repeated =
+            key == .escape && suggestions == nil && !working && escapes.press(at: Date())
         let action = ComposerKeyAction.of(
-            key, suggesting: suggestions != nil, isEmpty: draft.text.isEmpty, working: working)
+            key, suggesting: suggestions != nil, isEmpty: draft.text.isEmpty, working: working,
+            repeated: repeated)
         switch action {
         case .move(let delta):
             if let suggestions {
@@ -172,6 +230,10 @@ struct Composer: View {
             if let live {
                 shell.recallLastMessage(live, into: chat)
             }
+        case .rewind:
+            if let live {
+                shell.rewindLast(live)
+            }
         case .ignore:
             return false
         }
@@ -189,8 +251,14 @@ struct Composer: View {
     private func field(_ draft: ComposerDraft, suggestions: CompletionList?) -> some View {
         let shape = RoundedRectangle.rounded(Self.fieldRadius)
         let status = shell.dictation.status(for: chat)
+        let input = shell.composerInput(for: chat, text: draft.text)
+        let bashMode = if case .bash = input { true } else { false }
         return HStack(alignment: .bottom, spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
+                if input != .message {
+                    InputModeLabel(bash: bashMode)
+                        .padding(.top, 6)
+                }
                 if !draft.attachments.isEmpty {
                     AttachmentChips(draft: draft)
                         .padding(.top, 6)
@@ -220,9 +288,11 @@ struct Composer: View {
         .background(shape.fill(Palette.soft))
         .overlay(
             shape.strokeBorder(
-                focused || dropTargeted ? accent.focus : Palette.divider, lineWidth: 1)
+                bashMode
+                    ? StatusTone.waiting.color
+                    : focused || dropTargeted ? accent.focus : Palette.divider, lineWidth: 1)
         )
-        .onDrop(of: pixie == nil ? [.fileURL] : [], isTargeted: $dropTargeted) { providers in
+        .onDrop(of: pixie == nil ? Self.dropTypes : [], isTargeted: $dropTargeted) { providers in
             loadFiles(providers)
             return true
         }
@@ -232,12 +302,24 @@ struct Composer: View {
     /// as it grows.
     static let fieldRadius = 19.0
 
+    /// Files, and image data dragged from a browser or an app without a file (B59).
+    static let dropTypes: [UTType] = [.fileURL, .image]
+
     private func loadFiles(_ providers: [NSItemProvider]) {
         for provider in providers {
             // Called on a background queue: nonisolated, then back to the main actor.
-            _ = provider.loadObject(ofClass: URL.self) { @Sendable url, _ in
-                guard let url else { return }
-                Task { @MainActor in shell.attach([url], to: chat) }
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                _ = provider.loadObject(ofClass: URL.self) { @Sendable url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in shell.attach([url], to: chat) }
+                }
+            } else if let type = provider.registeredTypeIdentifiers.first(where: {
+                UTType($0)?.conforms(to: .image) == true
+            }) {
+                _ = provider.loadDataRepresentation(forTypeIdentifier: type) { @Sendable data, _ in
+                    guard let data else { return }
+                    Task { @MainActor in shell.attach(data: data, type: type, to: chat) }
+                }
             }
         }
     }
@@ -390,6 +472,20 @@ private struct AttachmentChips: View {
         ScrollView(.horizontal) {
             HStack(spacing: 6) {
                 ForEach(draft.attachments) { attachment in
+                    if let thumbnail = attachment.thumbnail.flatMap(NSImage.init(data:)) {
+                        ImageChip(attachment: attachment, image: thumbnail) {
+                            draft.remove(attachment.id)
+                        }
+                    } else {
+                        chip(attachment)
+                    }
+                }
+            }
+        }
+        .scrollIndicators(.never)
+    }
+
+    private func chip(_ attachment: PendingAttachment) -> some View {
                     HStack(spacing: 5) {
                         if attachment.uploaded == nil {
                             ProgressView().controlSize(.mini)
@@ -412,10 +508,45 @@ private struct AttachmentChips: View {
                     .padding(.trailing, 3)
                     .frame(height: 22)
                     .background(Palette.selection, in: .rounded(Radius.button))
+    }
+}
+
+/// An image's thumbnail with its remove button in the corner, like Claude's apps; a
+/// spinner over it while it uploads.
+private struct ImageChip: View {
+    static let size = 44.0
+
+    let attachment: PendingAttachment
+    let image: NSImage
+    let remove: () -> Void
+
+    var body: some View {
+        Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: Self.size, height: Self.size)
+            .clipShape(.rounded(Radius.button))
+            .overlay {
+                RoundedRectangle.rounded(Radius.button).strokeBorder(Palette.divider)
+            }
+            .overlay {
+                if attachment.uploaded == nil {
+                    ProgressView().controlSize(.small)
                 }
             }
-        }
-        .scrollIndicators(.never)
+            .overlay(alignment: .topTrailing) {
+                Button(action: remove) {
+                    Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
+                }
+                .buttonStyle(SmallSquareStyle())
+                .background(Palette.soft, in: .rounded(Radius.button))
+                .padding(2)
+                .accessibilityLabel("Remove \(attachment.filename)")
+            }
+            .padding(.vertical, 2)
+            .help(attachment.filename)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(attachment.filename)
     }
 }
 
@@ -790,8 +921,8 @@ private struct MicButton: View {
     }
 }
 
-/// The send button for the composer's state: Send, or while Claude works Queue once text
-/// is typed and Interrupt (stop) while it is empty.
+/// The send button for the composer's state: Send, or Interrupt (stop) while Claude works
+/// and the field is empty. Text sent while Claude works goes into the running turn.
 private struct SendControl: View {
     let chat: String
     let live: String?
@@ -818,7 +949,7 @@ private struct SendControl: View {
 }
 
 /// A round button inside the field: the accent's fill once there is something to send,
-/// a quiet fill while empty; a round stop while Claude works; Queue as a small oval.
+/// a quiet fill while empty; a round stop while Claude works.
 private struct SendButton: View {
     let mode: SendButtonMode
     let hasText: Bool
@@ -836,13 +967,6 @@ private struct SendButton: View {
                     .foregroundStyle(Palette.t1)
                     .frame(width: 28, height: 28)
                     .background(Palette.selection, in: Circle())
-            case .queue:
-                Text("Queue")
-                    .font(.ui(TypeSize.button, .medium))
-                    .foregroundStyle(accent.onAccent)
-                    .padding(.horizontal, 11)
-                    .frame(height: 28)
-                    .background(accent.accent, in: Capsule())
             case .send:
                 let ready = hasText || sending
                 Group {
@@ -866,7 +990,6 @@ private struct SendButton: View {
     private var label: String {
         switch mode {
         case .send: "Send"
-        case .queue: "Queue"
         case .interrupt: "Interrupt"
         }
     }
@@ -874,7 +997,6 @@ private struct SendButton: View {
     private var help: String {
         switch mode {
         case .send: "Send"
-        case .queue: "Queue: sent when Claude finishes this turn"
         case .interrupt: "Interrupt (Esc)"
         }
     }
@@ -918,5 +1040,18 @@ private struct ContextMeter: View {
 
     private var color: Color {
         context.isHigh ? StatusTone.waiting.color : hovering ? Palette.t2 : Palette.t3
+    }
+}
+
+/// "! bash mode" or "# memory" over the field while the text starts with `!` or `#`, as in
+/// Claude Code (B59).
+private struct InputModeLabel: View {
+    let bash: Bool
+
+    var body: some View {
+        Text(bash ? "! bash mode: runs in the chat's folder" : "# memory: saved to CLAUDE.md")
+            .font(.ui(TypeSize.meta, .medium))
+            .foregroundStyle(bash ? StatusTone.waiting.color : Palette.t3)
+            .padding(.horizontal, 5)
     }
 }

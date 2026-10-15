@@ -10,6 +10,7 @@ import type {
 } from "../api/types.ts";
 import { permissionOf } from "../api/payloads.ts";
 import { turnLabel } from "./activity.ts";
+import { editDiff, type EditDiff } from "./edits.ts";
 import { agentReport } from "./report.ts";
 
 export interface ToolItem {
@@ -20,8 +21,29 @@ export interface ToolItem {
   name: string;
   arg: string;
   result: string | null;
+  // The whole output; the row shows its first lines until opened further.
   detail: string | null;
   failed: boolean;
+  // An Agent call's subagent: its own thinking, text and tools, once it sent any (B59).
+  steps?: SubStep[];
+  // An edit's changes, shown inline like Claude's apps (B59).
+  diff?: EditDiff;
+  // Images in its result (B59).
+  images?: ResultImage[];
+}
+
+/** An image a tool returned, stored by the Mac as an attachment (B59). */
+export interface ResultImage {
+  id: string;
+  mediaType: string;
+}
+
+/** A `!` command and its output, as Claude Code's bash mode shows them (B59). */
+export interface BashItem {
+  kind: "bash";
+  key: string;
+  command: string;
+  output: string;
 }
 
 export interface ThinkingItem {
@@ -33,11 +55,22 @@ export interface ThinkingItem {
   ms: number | null;
 }
 
-/** A line inside a pixie call: its text, or a tool it used as a plain line. */
-export interface PixieStep {
-  kind: "text" | "call";
+/**
+ * A line inside a subagent's or pixie's call: its thinking, text, a tool it used, or the
+ * images a tool gave it (B59).
+ */
+export type SubStep =
+  | { kind: "text" | "call" | "thinking"; key: string; text: string }
+  | { kind: "images"; key: string; images: ResultImage[] };
+
+/** What a hook said (B59): its message, its failure, or its other output. */
+export interface HookItem {
+  kind: "hook";
   key: string;
+  tone: "message" | "error" | "output";
   text: string;
+  // Shown on opening; for a failure, always shown.
+  detail: string | null;
 }
 
 /** A call to a pixie (B40): the agent call, labelled with the pixie, and its own messages. */
@@ -46,7 +79,7 @@ export interface PixieCallItem {
   key: string;
   pixie: Pixie;
   call: ToolItem;
-  steps: PixieStep[];
+  steps: SubStep[];
 }
 
 /** A habit a pixie suggests in its chat (B42); nothing runs until the user starts it. */
@@ -77,6 +110,7 @@ export type TranscriptItem =
   | { kind: "report"; key: string; text: string; title?: string }
   | CardItem
   | { kind: "assistant"; key: string; text: string }
+  | BashItem
   | ToolItem
   | ThinkingItem
   | PixieCallItem
@@ -84,6 +118,7 @@ export type TranscriptItem =
   | { kind: "tools"; key: string; items: (ToolItem | ThinkingItem)[] }
   | { kind: "approval"; key: string; approval: InlineAsk }
   | { kind: "system"; key: string; text: string }
+  | HookItem
   // The user's answer to a question Claude asked, shown as a message they sent (B60).
   | { kind: "answer"; key: string; question: string; text: string }
   // "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn.
@@ -97,7 +132,6 @@ const isInline = (approval: Approval): approval is InlineAsk => approval.kind !=
 // States that end a turn; the others continue it or have nothing to do with turns.
 const TURN_ENDS = new Set<JsonValue | undefined>(["idle", "interrupted", "failed"]);
 
-const DETAIL_LIMIT = 4000;
 // Task list bookkeeping shows in the Goals strip instead.
 const HIDDEN_TOOLS = new Set(["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]);
 const SUMMARY_LIMIT = 40;
@@ -112,9 +146,9 @@ const MAX_CHOICES = 4;
 const TRIGGERS: ReadonlySet<string> = new Set(["stuck", "failed", "review_ready", "ci_failed"]);
 
 /**
- * The chat transcript from its stored events. Subagent messages are left out (they show
- * in the Agents sheet), except those of a call to one of `pixies` (by slug), which go
- * into that call's row. Approvals still pending render as inline cards, except a review,
+ * The chat transcript from its stored events. Subagent messages go into the row of the
+ * Agent call that started them, or of a call to one of `pixies` (by slug), never into the
+ * main transcript. Approvals still pending render as inline cards, except a review,
  * which the bar above the composer shows; finished ones show as a short note. Calls
  * without a result stop when their turn ends, except those whose background task (by tool
  * use id in `running`) still runs.
@@ -158,12 +192,12 @@ export function buildTranscript(
         result = null;
         settle();
         {
-          const item = userItem(key, p);
-          if (item.kind === "user") {
+          const said = userItems(key, p);
+          if (said.some((item) => item.kind === "user" || item.kind === "bash")) {
             for (const choices of open) choices.answered = true;
             open = [];
           }
-          items.push(item);
+          items.push(...said);
         }
         break;
       case "pixie.card": {
@@ -176,8 +210,9 @@ export function buildTranscript(
         if (p.parent_tool_use_id === null || p.parent_tool_use_id === undefined) {
           addBlocks(items, { tools, calls, pixies }, list(p.blocks).map(obj), key, root);
         } else {
-          const parent = calls.get(str(p.parent_tool_use_id) ?? "");
-          if (parent !== undefined) addSteps(parent.steps, list(p.blocks).map(obj), key, root);
+          const parent = str(p.parent_tool_use_id) ?? "";
+          const steps = calls.get(parent)?.steps ?? agentSteps(tools.get(parent));
+          if (steps !== null) addSteps(steps, list(p.blocks).map(obj), key, root);
         }
         break;
       case "approval.created": {
@@ -200,9 +235,11 @@ export function buildTranscript(
         break;
       }
       case "session.result": {
-        // Daemons before B31 end an error turn idle, with this note as its only trace.
+        // Daemons before B31 end an error turn idle, with this note as its only trace. A
+        // turn that made way for the next message (Send now) or that the user stopped
+        // ended without failing (B59).
         const error: TranscriptItem | null =
-          p.is_error === true
+          p.is_error === true && p.handoff !== true && p.stopped !== true
             ? { kind: "system", key, text: "The turn ended with an error" }
             : null;
         result = { ms: num(p.duration_ms), key, error };
@@ -217,11 +254,49 @@ export function buildTranscript(
           settle();
         }
         break;
+      case "session.hook": {
+        const hook = hookItem(key, p);
+        if (hook !== null) items.push(hook);
+        break;
+      }
       default:
         note(items, key, systemText(e));
     }
   }
   return groupTools(items);
+}
+
+/** The steps of an Agent call's subagent, started on its first message; null for others. */
+function agentSteps(tool: ToolItem | undefined): SubStep[] | null {
+  if (tool === undefined || !AGENT_TOOLS.has(tool.name)) return null;
+  tool.steps ??= [];
+  return tool.steps;
+}
+
+/**
+ * A hook's row, like Claude Code's: its message, its failure, or what it printed when it
+ * did not succeed. A successful hook's output was context for Claude (SessionStart,
+ * UserPromptSubmit) and shows nothing, as in Claude Code; older chats stored it (B59).
+ */
+function hookItem(key: string, p: JsonObject): HookItem | null {
+  const name = str(p.hook_name);
+  const message = str(p.system_message);
+  const output = str(p.output);
+  if (p.outcome === "error") {
+    const code = num(p.exit_code);
+    const exit = code === null ? "" : ` (exit ${String(code)})`;
+    const detail = [message, output].filter((part) => part !== null).join("\n");
+    const text = `${name ?? "A"} hook failed${exit}`;
+    return { kind: "hook", key, tone: "error", text, detail: detail || null };
+  }
+  if (message !== null) {
+    const text = `${name ?? "A hook"} says: ${message}`;
+    return { kind: "hook", key, tone: "message", text, detail: output };
+  }
+  const succeeded = p.outcome === "success" && (num(p.exit_code) ?? 0) === 0;
+  if (output === null || succeeded) return null;
+  const text = name === null ? "Hook output" : `${name} hook output`;
+  return { kind: "hook", key, tone: "output", text, detail: output };
 }
 
 /** A card from its payload; null for a kind not known or a malformed one. */
@@ -283,21 +358,44 @@ function scheduleOf(s: JsonObject): HabitSchedule | null {
   }
 }
 
-function userItem(key: string, p: JsonObject): TranscriptItem {
+function userItems(key: string, p: JsonObject): TranscriptItem[] {
   const text = str(p.text) ?? "";
-  if (p.origin === "report_back") return { kind: "report", key, text: reportLines(text) };
+  if (p.origin === "report_back") return [{ kind: "report", key, text: reportLines(text) }];
   // Its first line names the habit and the report; the report card shows the details.
   if (p.origin === "report") {
-    return { kind: "report", key, title: "Habit report", text: text.replace(/\n[\s\S]*$/, "") };
+    return [{ kind: "report", key, title: "Habit report", text: text.replace(/\n[\s\S]*$/, "") }];
   }
-  const item: TranscriptItem = {
-    kind: "user",
-    key,
-    text,
-    attachments: list(p.attachments).map((a) => str(obj(a).filename) ?? "file"),
-  };
+  const { commands, rest } = bashBlocks(text);
+  const bash = commands.map((c, index): BashItem => ({
+    ...c,
+    kind: "bash",
+    key: `${key}.b${String(index)}`,
+  }));
+  const attachments = list(p.attachments).map((a) => str(obj(a).filename) ?? "file");
+  // A message of commands only has no bubble.
+  if (commands.length > 0 && rest === "" && attachments.length === 0) return bash;
+  const item: TranscriptItem = { kind: "user", key, text: rest, attachments };
   const from = str(p.from_pixie);
-  return from === null ? item : { ...item, from };
+  return [...bash, from === null ? item : { ...item, from }];
+}
+
+// A `!` command a message carries before its text (B59), as Claude Code writes it.
+const BASH_BLOCK =
+  /^<bash-input>([\s\S]*?)<\/bash-input>\n<bash-stdout>([\s\S]*?)<\/bash-stdout><bash-stderr>([\s\S]*?)<\/bash-stderr>(?:\n\n|\n|$)/;
+
+/** The commands a message starts with, and the text typed after them. */
+export function bashBlocks(text: string): {
+  commands: { command: string; output: string }[];
+  rest: string;
+} {
+  const commands: { command: string; output: string }[] = [];
+  let rest = text;
+  for (let found = BASH_BLOCK.exec(rest); found !== null; found = BASH_BLOCK.exec(rest)) {
+    const [whole, command = "", stdout = "", stderr = ""] = found;
+    commands.push({ command, output: [stdout, stderr].filter(Boolean).join("\n") });
+    rest = rest.slice(whole.length);
+  }
+  return { commands, rest };
 }
 
 const REPORT_HEAD = "Chats you started have finished:";
@@ -332,16 +430,22 @@ function endTurn(items: TranscriptItem[], key: string, p: JsonObject, ms: number
  * message in history from before the mark existed. Null when no turn runs.
  */
 export function turnStart(events: NestEvent[]): string | null {
+  // The earliest message since the turn's mark: one Claude read during the turn (B59)
+  // does not start it again.
+  let message: string | null = null;
   for (const e of [...events].reverse()) {
-    if (e.type === "session.user_message") return e.ts;
+    if (e.type === "session.user_message") message = e.ts;
     if (e.type !== "session.state") continue;
     if (e.payload.turn_start === true) return e.ts;
-    if (TURN_ENDS.has(e.payload.state) || e.payload.state === "closed") return null;
+    if (TURN_ENDS.has(e.payload.state) || e.payload.state === "closed") return message;
   }
-  return null;
+  return message;
 }
 
-/** Runs of two or more tool calls become one group; thinking between them joins it. */
+/**
+ * Runs of two or more tool calls become one group; thinking between them joins it. An edit
+ * with a diff stays on its own, so its changes show without opening a group.
+ */
 function groupTools(items: TranscriptItem[]): TranscriptItem[] {
   const grouped: TranscriptItem[] = [];
   // The run so far, from its first call to its last, and thinking since its last call.
@@ -359,7 +463,7 @@ function groupTools(items: TranscriptItem[]): TranscriptItem[] {
     tail = [];
   };
   for (const item of items) {
-    if (item.kind === "tool") {
+    if (item.kind === "tool" && item.diff === undefined) {
       if (run.length === 0) key = item.key;
       run = [...run, ...tail, item];
       tail = [];
@@ -390,13 +494,16 @@ function calledPixie(block: JsonObject, pixies: ReadonlyMap<string, Pixie>): Pix
   return pixies.get(str(obj(block.input).subagent_type) ?? "");
 }
 
-/** A pixie call's own text, and the tools it used as plain lines. */
-function addSteps(steps: PixieStep[], blocks: JsonObject[], key: string, root: string | null) {
+/** A subagent's own thinking and text, and the tools it used as plain lines. */
+function addSteps(steps: SubStep[], blocks: JsonObject[], key: string, root: string | null) {
   blocks.forEach((block, index) => {
     const stepKey = `${key}.${String(index)}`;
-    if (block.type === "text") {
+    if (block.type === "text" || block.type === "thinking") {
       const text = str(block.text) ?? "";
-      if (text.trim()) steps.push({ kind: "text", key: stepKey, text });
+      if (text.trim()) steps.push({ kind: block.type, key: stepKey, text });
+    } else if (block.type === "tool_result") {
+      const images = imagesOf(block);
+      if (images.length > 0) steps.push({ kind: "images", key: stepKey, images });
     } else if (block.type === "tool_use") {
       const arg = toolArg(obj(block.input), root);
       const name = str(block.name) ?? "Tool";
@@ -435,6 +542,8 @@ function addBlocks(
         detail: null,
         failed: false,
       };
+      const diff = editDiff(tool.name, obj(block.input));
+      if (diff !== null) tool.diff = diff;
       tools.set(tool.id, tool);
       const pixie = calledPixie(block, pixies);
       if (pixie !== undefined) {
@@ -452,9 +561,20 @@ function addBlocks(
         const content = AGENT_TOOLS.has(tool.name) ? agentReport(raw) : raw;
         tool.failed = block.is_error === true;
         tool.result = resultSummary(content, tool.failed);
-        tool.detail = content.trim() ? content.slice(0, DETAIL_LIMIT) : null;
+        tool.detail = content.trim() ? content : null;
+        const images = imagesOf(block);
+        if (images.length > 0) tool.images = images;
       }
     }
+  });
+}
+
+/** The images a tool result lists, by their attachment. */
+function imagesOf(block: JsonObject): ResultImage[] {
+  return list(block.images).flatMap((value) => {
+    const image = obj(value);
+    const id = str(image.attachment_id);
+    return id === null ? [] : [{ id, mediaType: str(image.media_type) ?? "image/png" }];
   });
 }
 

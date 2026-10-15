@@ -10,6 +10,7 @@ import type {
   AgentDefaults,
   Approval,
   ApproveBody,
+  Attachment,
   ClaudeChat,
   CreatePixieBody,
   CommandList,
@@ -27,7 +28,13 @@ import type {
   RepoConfig,
   RepoPatch,
   ResolveBody,
+  ForkReply,
+  MemoryReply,
+  MemoryScope,
+  QueuedAttachment,
+  Restore,
   RewindPreview,
+  RewindReply,
   SearchResults,
   Session,
   SessionDiff,
@@ -43,7 +50,7 @@ import {
   saveShowAutomated,
 } from "./devicePrefs.ts";
 import { nudgeText } from "./selectors.ts";
-import type { Action, Toast } from "./state.ts";
+import { draftKey, type Action, type Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
 
@@ -71,6 +78,26 @@ const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
 // "elsewhere": refused because Claude Code has the chat open right now.
 export type SendResult = "sent" | "failed" | "elsewhere";
+
+// "taken": Claude already read the message (or the Mac no longer has it), so it stays sent.
+export type RemoveResult = "removed" | "taken" | "failed";
+
+// The daemon's code for a pending message Claude already read (B59).
+const MESSAGE_TAKEN = "message_taken";
+
+const RESTORED: Record<Restore, string> = {
+  code: "Files restored",
+  conversation: "Rewound",
+  both: "Rewound, and the files restored",
+};
+
+/** A message's attachments as a draft holds them. */
+export function asDraftFiles(attachments: QueuedAttachment[]): Attachment[] {
+  return attachments.map((a) => ({ ...a, created_at: "" }));
+}
+
+// "gone": the task no longer runs; "closed": the chat's Claude Code run is not open.
+export type StopResult = "sent" | "gone" | "closed" | "failed";
 
 /** Where origin pushes now, when publishing waits for the user to confirm it (I-008). */
 export interface RemotePrompt {
@@ -106,6 +133,8 @@ function remotePrompt(data: Record<string, unknown>): RemotePrompt {
  */
 export function createActions(api: Api, dispatch: Dispatch, storage: () => Storage) {
   let toastId = 0;
+  // Numbers the `!` commands run on this page.
+  let bashRuns = 0;
   let showAutomated = loadShowAutomated(storage);
   let foldedTeams = loadFoldedTeams(storage);
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
@@ -597,20 +626,49 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
-    /** What restoring files to before the user message `eventId` would change. */
-    rewindPreview(sessionId: string, eventId: number): Promise<RewindPreview | null> {
-      return attempt(() => api.rewindPreview(sessionId, eventId));
+    /**
+     * What rewinding to before the user message `eventId` would do. `quiet`: a failure is
+     * not reported, for a check the user did not ask for.
+     */
+    rewindPreview(
+      sessionId: string,
+      eventId: number,
+      restore: Restore,
+      quiet = false,
+    ): Promise<RewindPreview | null> {
+      const call = () => api.rewindPreview(sessionId, eventId, restore);
+      return quiet ? quietly(call) : attempt(call);
     },
 
-    /** Restores the files, not the conversation, to before the user message `eventId`. */
-    async rewind(sessionId: string, eventId: number): Promise<boolean> {
-      const done = await attempt(async () => {
-        await api.rewind(sessionId, eventId);
-        return true;
+    /**
+     * Restores the files, the conversation or both to before the user message `eventId`.
+     * A conversation rewind's `session.rewound` event takes the messages out of the chat.
+     */
+    async rewind(
+      sessionId: string,
+      eventId: number,
+      restore: Restore,
+    ): Promise<RewindReply | null> {
+      const done = await attempt(() => api.rewind(sessionId, eventId, restore));
+      if (done !== null) toast(RESTORED[restore]);
+      return done;
+    },
+
+    /**
+     * Forks the chat from the user message `eventId` into a new chat, whose draft gets that
+     * message; the screen then opens it.
+     */
+    async fork(sessionId: string, eventId: number): Promise<ForkReply | null> {
+      const forked = await attempt(() => api.fork(sessionId, eventId));
+      if (forked === null) return null;
+      dispatch({ type: "session", session: forked.session });
+      dispatch({
+        type: "draftFilled",
+        key: draftKey({ session: forked.session.id }),
+        text: forked.text,
+        files: asDraftFiles(forked.attachments),
       });
-      if (done === null) return false;
-      toast("Files restored");
-      return true;
+      return forked;
     },
 
     /** Squash-merges the pull request; the daemon then closes the chat and its worktree. */
@@ -682,18 +740,98 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
     },
 
-    /** Takes a queued message back; one already delivered just leaves the list. */
-    async cancelQueued(sessionId: string, queuedId: string): Promise<void> {
+    /**
+     * Stops one background task or subagent; its end arrives as a `session.agent_task`
+     * event. A task that already finished gets its chat fetched again.
+     */
+    async stopTask(sessionId: string, taskId: string): Promise<StopResult> {
+      try {
+        await api.stopTask(sessionId, taskId);
+        return "sent";
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) return "closed";
+        if (!(error instanceof ApiError && error.status === 404)) {
+          report(error);
+          return "failed";
+        }
+      }
+      await fetchChat(sessionId);
+      return "gone";
+    },
+
+    /**
+     * Takes back a message Claude has not read. One it already read (or the Mac no longer
+     * has) leaves the list too: it shows in the transcript where Claude read it.
+     */
+    async cancelQueued(sessionId: string, queuedId: string): Promise<RemoveResult> {
+      let result: RemoveResult = "removed";
       try {
         await api.cancelQueued(sessionId, queuedId);
       } catch (error) {
-        if (!(error instanceof ApiError && error.status === 404)) {
+        const taken =
+          error instanceof ApiError && (error.status === 404 || error.code === MESSAGE_TAKEN);
+        if (!taken) {
           report(error);
-          return;
+          return "failed";
         }
-        toast("Already sent", "info");
+        toast("Claude already read this message", "info");
+        result = "taken";
       }
       dispatch({ type: "queuedRemoved", id: sessionId, queuedId });
+      return result;
+    },
+
+    /** Stops the running turn, if any, and starts the pending message next. */
+    async sendNow(sessionId: string, queuedId: string): Promise<boolean> {
+      const done = await attempt(async () => {
+        await api.sendNow(sessionId, queuedId);
+        return true;
+      });
+      return done !== null;
+    },
+
+    /**
+     * Runs a `!` command in the chat's folder (B59). Its row shows at once; what it printed
+     * goes to Claude with the next message. A refusal shows in the row.
+     */
+    async runShell(sessionId: string, command: string): Promise<void> {
+      bashRuns += 1;
+      const runId = bashRuns;
+      dispatch({ type: "bashStarted", id: sessionId, runId, command });
+      try {
+        const result = await api.shell(sessionId, command);
+        dispatch({ type: "bashFinished", id: sessionId, runId, result });
+      } catch (error) {
+        if (error instanceof ApiError && error.unauthorized) report(error);
+        const message = (error as Error).message;
+        dispatch({ type: "bashFinished", id: sessionId, runId, error: message });
+      }
+    },
+
+    /** The chat's `!` commands went to Claude with a message, or are done with. */
+    bashSent(sessionId: string, runIds: number[]): void {
+      dispatch({ type: "bashSent", id: sessionId, runIds });
+    },
+
+    /** Saves a `#` memory to the project's or the user's CLAUDE.md (B59). */
+    async remember(
+      sessionId: string,
+      text: string,
+      scope: MemoryScope,
+    ): Promise<MemoryReply | null> {
+      const saved = await attempt(() => api.remember(sessionId, text, scope));
+      if (saved !== null) toast(`Saved to ${scope} memory: ${saved.path}`);
+      return saved;
+    },
+
+    /** A stored image, such as one in a tool result; null when it cannot be had. */
+    attachment(id: string): Promise<Blob | null> {
+      return quietly(() => api.attachment(id));
+    },
+
+    /** Puts a message taken back into a draft, replacing it. */
+    fillDraft(key: string, text: string, files: Attachment[]): void {
+      dispatch({ type: "draftFilled", key, text, files });
     },
 
     /** The chat's slash commands, or the project's last known ones before the chat exists. */
@@ -786,9 +924,10 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     /** Uploads a file into the draft it was chosen for, even if another chat is open by then. */
-    async attachToDraft(key: string, file: File): Promise<void> {
+    async attachToDraft(key: string, file: File): Promise<Attachment | null> {
       const uploaded = await attempt(() => api.uploadAttachment(file));
       if (uploaded !== null) dispatch({ type: "draftFileAdded", key, file: uploaded });
+      return uploaded;
     },
 
     diff(sessionId: string): Promise<SessionDiff | null> {
@@ -869,6 +1008,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         }
       }
       return "timeout";
+    },
+
+    /** The connectors alone, for `/mcp` in a chat (B59). */
+    async loadConnectors(): Promise<void> {
+      const connectors = await attempt(() => api.connectors());
+      if (connectors !== null) dispatch({ type: "connectors", connectors });
     },
 
     async loadAccount(): Promise<void> {

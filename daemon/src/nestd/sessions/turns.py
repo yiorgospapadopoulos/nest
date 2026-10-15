@@ -12,10 +12,12 @@ from nestd.clock import Clock
 from nestd.config.models import PermissionMode, RepoConfig
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.events.models import Event
 from nestd.providers.base import (
     AgentProvider,
     AgentRun,
     ApprovalHandler,
+    ResultInfo,
     RewindResult,
     SessionSpec,
 )
@@ -27,8 +29,9 @@ from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.models import USER, Sender, Session, SessionState
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
-from nestd.sessions.sink import SessionSink
+from nestd.sessions.sink import SessionSink, TurnEnd
 from nestd.sessions.states import StateWriter
+from nestd.sessions.steering import Steering
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource
 from nestd.sessions.workspace import prepare_worktree
@@ -64,6 +67,10 @@ GUARDED_PROMPT = (
     "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
     f"your work. {_CONNECTORS_NOTE}"
 )
+
+# How Claude Code ends a turn when a message written into it arrived as the turn ended: it
+# had the message but never answered it (B59).
+HANDOFF_ERROR = "[ede_diagnostic] result_type=user"
 
 # The state a background task ends in, and the error that caused it, if any.
 type Outcome = tuple[SessionState, str | None]
@@ -109,6 +116,7 @@ class TurnRunner:
         self._provider = provider
         self._handler_for = handler_for
         self._idle_close = idle_close
+        self.steering = Steering(store, queue, attachments, self._run_fits)
 
     async def guard(self, live: LiveSession, work: Coroutine[Any, Any, Outcome | None]) -> None:
         """Run `work` as the session's task. An outcome ends the turn; None means the
@@ -128,6 +136,10 @@ class TurnRunner:
             if outcome is not None:
                 await self._conclude(live, *outcome)
             else:
+                # Messages sent while its message was being given go into the turn (B59).
+                await isolated(
+                    "steering waiting messages", live.session_id, self.steering.flush(live)
+                )
                 # The turn may have ended while its message was still being sent, and a
                 # message sent since then waited only for this task (BUG-60).
                 live.schedule_idle_close(self._idle_close)
@@ -140,7 +152,12 @@ class TurnRunner:
         repo: RepoConfig | None,
         attachments: list[Attachment],
         sender: Sender = USER,
+        text: str | None = None,
     ) -> Outcome | None:
+        """Prepare the worktree a worktree chat does not have yet, then give the agent
+        `text`, else the chat's first prompt.
+        """
+        prompt = session.prompt if text is None else text
         if session.mode == "worktree":
             assert repo is not None  # noqa: S101 (a worktree session always has a project)
             live.preparing = True
@@ -149,13 +166,30 @@ class TurnRunner:
                     session, repo, self._worktrees, self._store, self._bus
                 )
             except asyncio.CancelledError:
-                _keep_unsent(live, Unsent(session.prompt, attachments, False, sender))
+                _keep_unsent(live, Unsent(prompt, attachments, False, sender))
                 raise
             finally:
                 live.preparing = False
             if not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
-        return await self.submit(live, session.prompt, attachments, sender=sender)
+        return await self.submit(live, prompt, attachments, sender=sender)
+
+    async def start_later(
+        self,
+        live: LiveSession,
+        session: Session,
+        repo: RepoConfig,
+        attachments: list[Attachment],
+        sender: Sender,
+        text: str,
+    ) -> Outcome | None:
+        """A forked worktree chat's first message: its worktree is made first (B59)."""
+        await self._states.set(live.session_id, SessionState.STARTING)
+        return await self.start(live, session, repo, attachments, sender, text)
+
+    async def deliver_next(self, live: LiveSession) -> Outcome | None:
+        """Start the queue's first message now: Send now on an idle session (B59)."""
+        return await self._deliver(live, None, None)
 
     async def submit(
         self,
@@ -181,9 +215,15 @@ class TurnRunner:
     async def _announce(
         self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
     ) -> None:
+        live.user_event = (await self._show(live, text, attachments, sender)).id
+
+    async def _show(
+        self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
+    ) -> Event:
+        """The user message in the transcript."""
         session_id = live.session_id
         await self._attachments.assign([a.id for a in attachments], session_id)
-        event = await self._bus.publish(
+        return await self._bus.publish(
             types.SESSION_USER_MESSAGE,
             {
                 "text": text,
@@ -192,7 +232,6 @@ class TurnRunner:
             },
             session_id,
         )
-        live.user_event = event.id
 
     async def _run_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
         session = await self._start_turn(live)
@@ -222,21 +261,61 @@ class TurnRunner:
             live.session_id, SessionState.RUNNING, turn={"turn_start": True}
         )
 
-    async def turn_finished(self, live: LiveSession, error: str | None) -> None:
+    async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
+        """Why the turn ended when that was no failure (B59): the user stopped it, or it
+        ends only so that the next message starts (a handoff): Send now stopped it, or
+        Claude Code ended it with messages written into it and the last one unanswered.
+        """
+        if live.interrupted:
+            return "handoff" if live.resume_queue else "stopped"
+        if not any(HANDOFF_ERROR in error for error in info.errors):
+            return None
+        return "handoff" if await self._queue.sent_ids(live.session_id) else None
+
+    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
         """Report the turn, then end it or deliver the next queued message. The reports are
         bookkeeping: their failure never keeps the turn open. A turn the engine ended with
-        an error fails; the run stays for the next message.
+        an error fails, unless it ended for the next message (`handoff`); the run stays for
+        the next message.
+
+        Messages written into the turn that the agent did not read are taken back to wait
+        for the next turn. One it read without echoing it yet starts the agent's next turn
+        after a turn that ended normally, so the session goes on running; after a Stop, a
+        failure or a handoff it was lost with the turn and waits for a turn again, which
+        after a handoff starts at once (B59).
         """
         session_id = live.session_id
         run = live.run
         if run is not None:
             await isolated("the context report", session_id, self._report_context(live, run))
         if live.interrupted:
-            await self._conclude(live, SessionState.INTERRUPTED, None)
+            state, error = SessionState.INTERRUPTED, None
+        elif handoff:
+            state, error = SessionState.IDLE, None
         elif error is not None:
-            await self._conclude(live, SessionState.FAILED, error)
+            state = SessionState.FAILED
         else:
-            await self._conclude(live, SessionState.IDLE, None)
+            state = SessionState.IDLE
+        async with live.steering:
+            taken = await self._retract(live)
+            going_on = (
+                bool(taken) and state is SessionState.IDLE and not live.stopped and not handoff
+            )
+            if going_on:
+                live.engine_next = True
+            else:
+                await isolated(
+                    "the messages lost with the turn",
+                    session_id,
+                    self._queue.mark_sent(session_id, taken, False),
+                )
+                # Until the turn has ended, a message sent waits for it, as before.
+                live.concluding = True
+        if not going_on:
+            try:
+                await self._conclude(live, state, error)
+            finally:
+                live.concluding = False
         if run is not None:
             # Nothing waits for it, so it waits beside the reader (I-L).
             live.report(
@@ -245,11 +324,42 @@ class TurnRunner:
                 )
             )
 
+    async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
+        """The agent read a message written into the turn: it shows where it was read. One
+        it starts its next turn with is that turn's message, so the turn starts as one Nest
+        gave it (B56): the work is noted before it (B59).
+        """
+        queued = await self._queue.take(live.session_id, message_id)
+        if queued is None:
+            return  # taken back meanwhile, or from before a restart
+        new_turn = live.engine_next or not live.turn_active
+        if new_turn:
+            live.engine_next = False
+            live.turn_active = True
+            live.cancel_idle_close()
+        ids = [attachment.id for attachment in queued.attachments]
+        attachments = await self._attachments.for_session(ids, live.session_id)
+        event = await self._show(live, queued.text, attachments, queued.sender)
+        assert event.id is not None  # noqa: S101 (a stored event)
+        await self._store.save_checkpoint(live.session_id, event.id, checkpoint_id)
+        if new_turn:
+            session = await self._start_turn(live)
+            await isolated(
+                "the turn start hooks", live.session_id, self._hooks.turn_starting(session)
+            )
+
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         # The run already closed itself; the next message opens a new one and resumes.
         live.run = None
         # Its background tasks ended with it; a stale count would keep later runs open.
         live.background_tasks = 0
+        live.engine_next = False
+        # Messages written into it that it never echoed wait for the next turn (B59).
+        await isolated(
+            "the messages written into the run",
+            live.session_id,
+            self._queue.unsend_all(live.session_id),
+        )
         if live.turn_active:
             await self._end_turn(live, SessionState.FAILED, error)
 
@@ -278,6 +388,19 @@ class TurnRunner:
         finally:
             live.schedule_idle_close(self._idle_close)
             await self.release_held(live)
+
+    async def open_run(self, live: LiveSession) -> AgentRun:
+        """The session's run as its next message would get it: a rewound conversation's
+        is opened cut, so Claude Code loads, or refuses, the cut at once (B59). The
+        caller holds the session (`live.hold`) and then calls `released`.
+        """
+        session = await self._store.get(live.session_id)
+        return await self._ensure_run(live, session, require_cwd(session))
+
+    async def released(self, live: LiveSession) -> None:
+        """After a hold: close the run later when idle, and start what waited for it."""
+        live.schedule_idle_close(self._idle_close)
+        await self.release_held(live)
 
     async def release_held(self, live: LiveSession) -> None:
         """Start the queue on an idle session when a message waited only for publishing or
@@ -314,9 +437,20 @@ class TurnRunner:
             self.guard(live, self._deliver(live, previous, (state, error)))
         )
 
-    async def _has_queued(self, live: LiveSession) -> bool:
+    async def _retract(self, live: LiveSession) -> list[str]:
+        """`Steering.retract`; bookkeeping, so a failure leaves the messages as they are."""
         try:
-            return bool(await self._queue.messages(live.session_id))
+            return await self.steering.retract(live)
+        except Exception as error:
+            logger.warning(
+                "taking back the messages of session %s failed (%s)", live.session_id, error
+            )
+            return []
+
+    async def _has_queued(self, live: LiveSession) -> bool:
+        """Whether messages wait for a turn; ones written into the turn do not (B59)."""
+        try:
+            return bool(await self._queue.waiting(live.session_id))
         except Exception as error:
             # Bookkeeping: the turn still ends (D048).
             logger.warning("reading the queue of session %s failed (%s)", live.session_id, error)
@@ -416,8 +550,11 @@ class TurnRunner:
                 permission_mode=mode,
                 model=session.model,
                 effort=session.effort,
-                # A pixie never resumes: each run starts fresh with its memory (D072).
-                resume_id=None if extras else session.provider_session_id,
+                # A pixie never resumes: each run starts fresh with its memory (D072). A
+                # rewound or forked conversation resumes cut (B59).
+                resume_id=None if extras else (session.fork_from or session.provider_session_id),
+                resume_at=session.fork_at,
+                drops_turn=session.fork_drops,
                 extra_dirs=dirs + (extras.extra_dirs if extras else ()),
                 system_prompt_append=(
                     extras.system_prompt if extras else await self._nest_prompt(session)
@@ -431,7 +568,14 @@ class TurnRunner:
                 guard_git=_guarded(session),
             )
             sink = SessionSink(
-                live, self._bus, self._store, self, self._hooks, session.provider_session_id
+                live,
+                self._bus,
+                self._store,
+                self,
+                self._hooks,
+                session.provider_session_id,
+                forking=session.fork_from,
+                attachments=self._attachments,
             )
             live.run = await self._provider.open(spec, self._handler_for(live), sink)
             live.run_dirs = dirs
@@ -453,6 +597,12 @@ class TurnRunner:
             msg = f"pixie chat {session.id} has no run extras source"
             raise RuntimeError(msg)
         return await self._extras(session)
+
+    async def _run_fits(
+        self, live: LiveSession, session: Session, folders: tuple[Path, ...]
+    ) -> bool:
+        """Whether the live run takes a message with files in `folders` as it is (B59)."""
+        return _fits(live, session, folders, await self._chat_agents(session))
 
     async def _chat_agents(self, session: Session) -> ChatAgents:
         """The pixies the chat may call (B40); a pixie's own chat gets the others (B41)."""
