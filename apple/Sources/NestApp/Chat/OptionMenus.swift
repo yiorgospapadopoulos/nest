@@ -202,26 +202,6 @@ struct PermissionItems: View {
     }
 }
 
-/// New chats only: run in a worktree or in the project folder.
-struct ModeMenu: View {
-    @Bindable var draft: ComposerDraft
-
-    var body: some View {
-        QuietMenu(title: draft.mode == .inPlace ? "In place" : "Worktree", help: "Where it works") {
-            Section("Where it works") {
-                OptionItem(
-                    title: "Worktree", detail: "A separate checkout on its own branch",
-                    checked: draft.mode != .inPlace
-                ) { draft.mode = .worktree }
-                OptionItem(
-                    title: "In place", detail: "The project folder itself",
-                    checked: draft.mode == .inPlace
-                ) { draft.mode = .inPlace }
-            }
-        }
-    }
-}
-
 /// A chip under the empty workspace's composer, the approved design's pill: 26 points tall, 6 point
 /// corners, a 10 percent fill (15 while hovered), 11 point text and a small chevron at 50
 /// percent.

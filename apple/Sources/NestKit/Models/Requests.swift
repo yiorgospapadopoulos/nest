@@ -10,11 +10,15 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
     public var effort: Effort?
     public var permissionMode: PermissionMode?
     public var attachmentIDs: [String]
+    /// Worktree chats only: the local branch the worktree starts from (B55).
+    public var base: String?
+    /// Worktree chats only: the new branch's name; nil lets the daemon name it.
+    public var branch: String?
 
     public init(
         repo: String, prompt: String, title: String? = nil, mode: SessionMode? = nil,
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
-        attachmentIDs: [String] = []
+        attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil
     ) {
         self.repo = repo
         self.prompt = prompt
@@ -24,10 +28,12 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
         self.effort = effort
         self.permissionMode = permissionMode
         self.attachmentIDs = attachmentIDs
+        self.base = base
+        self.branch = branch
     }
 
     enum CodingKeys: String, CodingKey {
-        case repo, prompt, title, mode, model, effort
+        case repo, prompt, title, mode, model, effort, base, branch
         case permissionMode = "permission_mode"
         case attachmentIDs = "attachment_ids"
     }

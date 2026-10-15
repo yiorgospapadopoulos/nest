@@ -157,11 +157,14 @@ private struct WorktreeSection: View {
 
     var body: some View {
         let config = repo.worktree
-        let agentDefault = shell.agents.current.mode == .worktree ? "Worktree" : "In place"
+        let agentDefault =
+            shell.agents.current.mode == .worktree ? "New worktree" : "Current branch"
         SheetSection(title: "New chats") {
             SheetRow(label: "Work in", first: true) {
                 Segmented(
-                    options: [(nil, "Agent default"), (true, "Worktree"), (false, "In place")],
+                    options: [
+                        (nil, "Agent default"), (false, "Current branch"), (true, "New worktree"),
+                    ],
                     selection: config.isDefault
                 ) { value in save { $0.isDefault = value } }
             }

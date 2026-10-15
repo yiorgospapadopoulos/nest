@@ -143,6 +143,10 @@
                 try await renderHabitsAndReports(model, shell, controller, folder)
                 return
             }
+            if only == "b55" {
+                try await renderWorkingCopies(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -269,6 +273,81 @@
             try await renderExchangeBar(model, shell, controller, folder)
             try await renderImprovements(model, shell, controller, folder)
             try await renderReviewFixes(model, shell, controller, folder)
+            try await renderWorkingCopies(model, shell, controller, folder)
+        }
+
+        /// B55: where each chat works. Every sidebar row (Nest's and Claude Code's) and
+        /// header names its branch: the folder's current one in place, the worktree's
+        /// otherwise (the icon only when narrow). New chats, in a pane and in the start
+        /// box, offer "Work on <branch>" or "New worktree" with an optional branch name.
+        private static func renderWorkingCopies(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            for id in ["c1", "c2", "c8"] {
+                try await model.transcripts.transcript(for: id).load()
+            }
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c1")
+            }
+            try await pair(controller, "b55-places", folder)
+
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                if let gutter = state.layout.gutterFrames(in: workspace).first {
+                    state.layout.resize(split: gutter.split, ratio: 0, in: workspace)
+                }
+            }
+            try await snap(controller, "b55-places-narrow-light", .aqua, folder)
+
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+            }
+            // Claude Code chats: no "Claude Code" tag, the same place label as any chat.
+            let hero = try await model.api.claudeChat("cc-hero").paneID
+            let pipeline = try await model.api.claudeChat("cc-pipeline").paneID
+            for pane in [hero, pipeline] {
+                try await model.transcripts.transcript(for: pane).load()
+            }
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat(hero, in: workspace)
+                state.openChat(pipeline, in: workspace)
+            }
+            try await pair(controller, "b55-claude-chats", folder)
+
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+            }
+            let draft = shell.newChat()
+            draft.mode = nil
+            try await pair(controller, "b55-pane-draft-branch", folder)
+            draft.mode = .worktree
+            draft.branchName = "fix/contact-copy"
+            try await pair(controller, "b55-pane-draft-worktree", folder)
+
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.rightCollapsed = false
+            }
+            let start = shell.startDraft()
+            let mode = start.mode
+            start.mode = .inPlace
+            try await snap(controller, "b55-start-branch-light", .aqua, folder)
+            start.mode = .worktree
+            try await snap(controller, "b55-start-worktree-dark", .darkAqua, folder)
+            start.mode = mode
         }
 
         /// B33: Always allow with Claude Code's rule, how a plan goes on, project settings,

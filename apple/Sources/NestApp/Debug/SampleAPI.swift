@@ -73,6 +73,7 @@
                 return try decode([
                     "name": name, "path": "/Users/me/Projects/\(name)",
                     "default_branch": git ? "main" : NSNull(), "git": git,
+                    "current_branch": git ? (name == "todo-ui" ? "redesign" : "main") : NSNull(),
                     "icon": icons[name].map { $0.mascot as Any } ?? NSNull(),
                     "icon_color": icons[name].map { $0.color as Any } ?? NSNull(),
                     "worktree": [
@@ -1267,7 +1268,8 @@
         private mutating func session(
             _ id: String, repo: String, title: String, state: String, minutes: Double,
             model: String = "sonnet", effort: String = "medium",
-            permission: String = "acceptEdits", branch: String, pinned: Bool = false,
+            permission: String = "acceptEdits", branch: String, inPlace: Bool = false,
+            pinned: Bool = false,
             archived: Bool = false, tasks: [[String: Any]] = [], agents: [[String: Any]] = [],
             background: [[String: Any]] = [], context: Double? = nil, queued: [String] = [],
             pr: [String: Any]? = nil, stuck: [String: Any]? = nil, pixie: String? = nil
@@ -1281,6 +1283,12 @@
             ]
             if archived {
                 object["archived_at"] = ago(minutes)
+            }
+            if inPlace {
+                // Works in the project folder: no branch of its own (B55).
+                object["mode"] = "in_place"
+                object["branch"] = NSNull()
+                object["cwd"] = "/Users/me/Projects/\(repo)"
             }
             if let pr {
                 object["pr"] = pr
@@ -1508,7 +1516,7 @@
 
             session(
                 "c2", repo: repo, title: "Update publications from BibTeX", state: "running",
-                minutes: 9, effort: "low", branch: "agent/bibtex",
+                minutes: 9, effort: "low", branch: "agent/bibtex", inPlace: true,
                 tasks: [
                     Self.task("1", "Parse refs.bib into entries", "completed"),
                     Self.task("2", "Map fields to the Publication type", "completed"),
@@ -1708,7 +1716,7 @@
             session(
                 "c8", repo: repo, title: "Plan the search page", state: "waiting", minutes: 3,
                 model: "opus", effort: "high", permission: "plan", branch: "agent/search",
-                context: 23)
+                inPlace: true, context: 23)
             transcript(
                 "c8",
                 [

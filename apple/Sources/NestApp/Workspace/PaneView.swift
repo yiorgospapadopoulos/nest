@@ -158,16 +158,15 @@ private struct PaneHeader: View {
         let tone = session.map(shell.tone(of:)) ?? .done
         let lastActivity = session?.updatedAt ?? claudeChat?.lastActivityAt
         let width = size?.width ?? 600
+        let place =
+            session.flatMap { ChatPlace.of($0, repo: shell.repo) }
+            ?? claudeChat.flatMap { ChatPlace.of($0, repo: shell.repo) }
         HStack(spacing: 8) {
             GripDots()
                 .foregroundStyle(Palette.t3)
                 .frame(width: 14, height: 24)
                 .contentShape(Rectangle())
                 .help("Drag to swap")
-            if shell.isClaudeChatPane(chat) && session == nil {
-                ClaudeCodeMarker()
-                    .allowsHitTesting(false)
-            }
             Text(title)
                 .font(.ui(TypeSize.ui, .medium))
                 .foregroundStyle(Palette.t1)
@@ -180,7 +179,7 @@ private struct PaneHeader: View {
                 let startedBy = PixieLabels.startedBy(
                     session, pixies: shell.pixies.pixies)
             {
-                StartedByLabel(label: startedBy, compact: !fit.showsBranch)
+                StartedByLabel(label: startedBy, compact: !fit.showsPlaceName)
                     .frame(maxWidth: 160, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(0.2)
@@ -196,14 +195,15 @@ private struct PaneHeader: View {
                     StuckBadge(flag: stuck)
                 }
             }
-            if let branch = session?.branch ?? claudeChat?.worktree, fit.showsBranch,
-                shell.repo?.git != false
-            {
-                Chip(icon: Icon.branch, text: branch, mono: true)
-                    .foregroundStyle(Palette.t3)
-                    .frame(maxWidth: width * 0.4, alignment: .trailing)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minWidth: min(110, width * 0.25))
+            if let place {
+                if fit.showsPlaceName {
+                    PlaceLabel(place: place, showsName: true)
+                        .frame(maxWidth: width * 0.4, alignment: .trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minWidth: min(70, width * 0.25))
+                } else {
+                    PlaceLabel(place: place, showsName: false)
+                }
             }
             if let lastActivity, fit.showsElapsed {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -248,7 +248,35 @@ private struct PaneHeader: View {
         }
         .modifier(PaneDragHandle(pane: chat, title: title, tone: tone))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
+        // No visible tag says so any more; VoiceOver still hears whose history this is.
+        .accessibilityLabel(
+            shell.isClaudeChatPane(chat) && session == nil ? "\(title), Claude Code chat" : title)
+    }
+}
+
+/// Where an open chat works, in its header (B55): the branch icon and the worktree's name,
+/// or the project folder's current branch; the icon alone in a narrow pane. The tooltip
+/// names the folder.
+struct PlaceLabel: View {
+    let place: ChatPlace
+    let showsName: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: Icon.branch)
+                .font(.system(size: 10, weight: .medium))
+            if showsName {
+                Text(place.name)
+                    .font(.mono(TypeSize.meta))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .foregroundStyle(Palette.t3)
+        .fixedSize(horizontal: !showsName, vertical: false)
+        .help(place.help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(place.help)
     }
 }
 

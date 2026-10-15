@@ -77,6 +77,12 @@ struct Composer: View {
                     return true
                 }
             } else {
+                if pixie == nil && shell.isDraft(chat) && shell.repo?.git != false {
+                    // The same choice as the empty workspace's box, before the first message;
+                    // once the chat exists its header says where it works (B55).
+                    WorkingCopyRow(draft: draft, repo: shell.repo)
+                        .padding(.horizontal, 4)
+                }
                 field(draft, suggestions: open ? suggestions : nil)
                 ControlRow(chat: chat, live: live, pixie: pixie != nil, draft: draft)
             }
@@ -413,8 +419,8 @@ private struct AttachmentChips: View {
     }
 }
 
-/// Under the field: attach and the mic on the left, then Model, Thinking, Permission and
-/// Worktree for new chats or the context meter for open ones on the right. A pixie's row
+/// Under the field: attach and the mic on the left, then Model, Thinking and Permission,
+/// and the context meter for open chats, on the right. A pixie's row
 /// has the mic and the context meter.
 private struct ControlRow: View {
     /// The draft's key.
@@ -452,9 +458,7 @@ private struct ControlRow: View {
                     chat: chat, model: isDraft ? draft.model : session?.model,
                     mode: isDraft ? draft.permission : session?.permissionMode)
             }
-            if isDraft && shell.repo?.git != false {
-                ModeMenu(draft: draft)
-            } else if let live, let context = session?.context,
+            if !isDraft, let live, let context = session?.context,
                 let label = fit.context.label(context)
             {
                 ContextMeter(chat: live, context: context, label: label)
@@ -535,7 +539,7 @@ private struct StartBox<Field: View>: View {
         let status = shell.dictation.status(for: chat)
         VStack(alignment: .leading, spacing: 0) {
             if shell.repo?.git != false {
-                WorkingCopyRow(draft: draft, branch: shell.repo?.defaultBranch)
+                WorkingCopyRow(draft: draft, repo: shell.repo)
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
             }
@@ -597,73 +601,107 @@ private struct StartBox<Field: View>: View {
     }
 }
 
-/// The working copy over the field: where the chat works (a new worktree or the current
-/// checkout, the approved design's words for Nest's Worktree and In place) and its branch.
-private struct WorkingCopyRow: View {
+/// Where a new chat works, over its field (B55): a capsule selector with the branch icon,
+/// "Work on <branch>" (the project folder's current branch) or "New worktree", which
+/// always starts from that branch; a new worktree also takes an optional branch name.
+struct WorkingCopyRow: View {
     @Bindable var draft: ComposerDraft
-    let branch: String?
+    let repo: Repo?
+    @Environment(Shell.self) private var shell
 
     var body: some View {
-        let worktree = draft.mode != .inPlace
-        HStack(spacing: 10) {
-            Menu {
-                Section("Workspace") {
-                    OptionItem(
-                        title: "Current checkout", detail: "The project folder itself",
-                        checked: !worktree
-                    ) { draft.mode = .inPlace }
-                    OptionItem(
-                        title: "New worktree", detail: "A separate checkout on its own branch",
-                        checked: worktree
-                    ) { draft.mode = .worktree }
-                }
-            } label: {
-                GitTrigger(
-                    icon: worktree ? "folder.badge.plus" : Icon.folder,
-                    label: worktree ? "New worktree" : "Current checkout", interactive: true)
+        // No mode chosen works in place, the default (D038).
+        let worktree = draft.mode == .worktree
+        let inPlace = NewChatPlace.inPlaceTitle(repo)
+        HStack(spacing: 8) {
+            PlaceSelector(title: worktree ? NewChatPlace.worktreeTitle : inPlace) {
+                OptionItem(
+                    title: inPlace, detail: NewChatPlace.inPlaceDetail(repo), checked: !worktree
+                ) { draft.mode = .inPlace }
+                OptionItem(
+                    title: NewChatPlace.worktreeTitle, detail: NewChatPlace.worktreeDetail,
+                    checked: worktree
+                ) { draft.mode = .worktree }
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Workspace: \(worktree ? "New worktree" : "Current checkout")")
-            .accessibilityLabel("Workspace \(worktree ? "New worktree" : "Current checkout")")
-            if let branch {
-                let label = worktree ? "From \(branch)" : branch
-                GitTrigger(icon: Icon.branch, label: label, interactive: false)
-                    .help(worktree ? "Created from \(branch)" : "Branch \(branch)")
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(worktree ? "Created from \(branch)" : "Branch \(branch)")
+            if worktree {
+                BranchNameField(text: $draft.branchName)
             }
             Spacer(minLength: 0)
         }
-        .padding(.leading, -6)
+        .task(id: repo?.name) {
+            // The folder's branch may have changed in a terminal since the list was read.
+            if repo != nil {
+                shell.app.reloadRepos()
+            }
+        }
     }
 }
 
-/// the approved design's git trigger: 24 points tall, 12 point text at 55 percent, a 14 point icon,
-/// an 8 percent fill while hovered.
-private struct GitTrigger: View {
-    let icon: String
-    let label: String
-    let interactive: Bool
+/// The new chat's place selector: a capsule with a 4 percent fill (8 while hovered), a
+/// hairline border, the branch icon, the choice and a small chevron.
+private struct PlaceSelector<Items: View>: View {
+    let title: String
+    @ViewBuilder let items: () -> Items
     @State private var hovering = false
 
     var body: some View {
-        let lit = interactive && hovering
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 11))
-            Text(label).lineLimit(1).truncationMode(.tail)
+        Menu {
+            items()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: Icon.branch).font(.system(size: 10, weight: .medium))
+                Text(title)
+                    .font(.ui(TypeSize.button))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: Icon.chevron)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Ink.content(0.5))
+            }
+            .foregroundStyle(Ink.content(hovering ? 1 : 0.75))
+            .padding(.horizontal, 10)
+            .frame(height: 24)
+            .background(Ink.content(hovering ? 0.08 : 0.04), in: Capsule())
+            .overlay(Capsule().strokeBorder(Ink.content(0.1), lineWidth: 1))
+            .contentShape(Capsule())
         }
-        .font(.ui(12))
-        .foregroundStyle(Ink.content(lit ? 1 : 0.55))
-        .padding(.horizontal, 6)
-        .frame(height: 24)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .menuIndicator(.hidden)
         .fixedSize()
-        .background(lit ? Ink.content(0.08) : .clear, in: .rounded(6))
-        .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .pointerStyle(interactive ? .link : nil)
+        .help("Where the chat works")
+        .accessibilityLabel("Where the chat works: \(title)")
+    }
+}
+
+/// A new worktree's optional branch name: a quiet mono capsule the size of the selector.
+private struct BranchNameField: View {
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.plain)
+            .font(.mono(TypeSize.meta))
+            // AppKit draws a placeholder at full strength here, so this one is drawn.
+            .background(alignment: .leading) {
+                if text.isEmpty {
+                    Text("Branch name (optional)")
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Ink.content(0.4))
+                        .lineLimit(1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .focused($focused)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 90, maxWidth: 200)
+            .frame(height: 24)
+            .background(Ink.content(focused ? 0.08 : 0.04), in: Capsule())
+            .help("A name for the worktree's branch; left empty, Nest names it")
+            .accessibilityLabel("Branch name, optional")
     }
 }
 

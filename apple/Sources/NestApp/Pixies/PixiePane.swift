@@ -75,7 +75,7 @@ private struct PixiePaneHeader: View {
                 .lineLimit(1)
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)
-            if fit.showsBranch {
+            if fit.showsPlaceName {
                 Text("@\(pixie.slug)")
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)

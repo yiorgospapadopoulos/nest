@@ -940,10 +940,11 @@ final class Shell {
         from draftID: String, draft: ComposerDraft, prompt: String, attachments: [String]
     ) async throws -> String {
         guard let repo = project else { return draftID }
-        let mode = app.repo(repo).map { $0.mode(for: draft.mode) } ?? draft.mode
+        let place = NewChatPlace(mode: draft.mode, typed: draft.branchName, repo: app.repo(repo))
         let request = CreateSessionRequest(
-            repo: repo, prompt: prompt, mode: mode, model: draft.model,
-            effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments)
+            repo: repo, prompt: prompt, mode: place.mode, model: draft.model,
+            effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments,
+            base: place.base, branch: place.branch)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1540,6 +1541,8 @@ final class ComposerDraft {
     /// Nil leaves it to Claude Code's own setting.
     var permission: PermissionMode?
     var mode: SessionMode?
+    /// A new worktree's branch name; blank lets the daemon name it.
+    var branchName = ""
     /// The caret and selection in the field.
     var selection: TextSelection?
     /// Focus the field when its pane appears, as for Init's prefilled chat.

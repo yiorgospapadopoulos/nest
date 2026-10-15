@@ -7,7 +7,7 @@ import Testing
     @Test func aWidePaneShowsEverything() {
         let fit = PaneFit(width: 828)
         #expect(fit.showsElapsed)
-        #expect(fit.showsBranch)
+        #expect(fit.showsPlaceName)
         #expect(fit.showsStatusLabel)
         #expect(fit.showsPullRequest)
         #expect(fit.context == .full)
@@ -17,9 +17,9 @@ import Testing
     @Test func theHeaderDropsItsPartsInTheMockupsOrder() {
         #expect(PaneFit(width: 470).showsElapsed)
         #expect(!PaneFit(width: 469).showsElapsed)
-        #expect(PaneFit(width: 469).showsBranch)
-        #expect(PaneFit(width: 420).showsBranch)
-        #expect(!PaneFit(width: 419).showsBranch)
+        #expect(PaneFit(width: 469).showsPlaceName)
+        #expect(PaneFit(width: 420).showsPlaceName)
+        #expect(!PaneFit(width: 419).showsPlaceName)
         #expect(PaneFit(width: 419).showsStatusLabel)
         #expect(PaneFit(width: 380).showsStatusLabel)
         #expect(!PaneFit(width: 379).showsStatusLabel)

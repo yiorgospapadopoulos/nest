@@ -313,7 +313,10 @@ struct AgentDefaultsSection: View {
             }
             SheetRow(label: "New chats work in") {
                 Segmented(
-                    options: [(SessionMode.inPlace, "In place"), (.worktree, "Worktree")],
+                    options: [
+                        (SessionMode.inPlace, "Work on current branch"),
+                        (.worktree, "New worktree"),
+                    ],
                     selection: defaults.mode
                 ) { mode in change { try await agents.setDefaultMode(mode) } }
             }

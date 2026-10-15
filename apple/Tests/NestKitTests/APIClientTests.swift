@@ -76,6 +76,17 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase(
             "POST", "/api/sessions",
+            body:
+                #"{"attachment_ids":[],"base":"dev","branch":"fix/login","mode":"worktree","prompt":"Go","repo":"todo-ui"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(
+                    repo: "todo-ui", prompt: "Go", mode: .worktree, base: "dev",
+                    branch: "fix/login"))
+        },
+        RouteCase(
+            "POST", "/api/sessions",
             body: #"{"attachment_ids":[],"prompt":"Go","repo":"todo-ui"}"#,
             response: sessionJSON
         ) {

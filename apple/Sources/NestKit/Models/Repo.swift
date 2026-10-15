@@ -7,6 +7,9 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     public var path: String
     /// Nil for a plain folder.
     public var defaultBranch: String?
+    /// The branch checked out in the project folder now; nil when HEAD is detached, for a
+    /// plain folder, or from an older daemon (B55).
+    public var currentBranch: String?
     public var worktree: WorktreeConfig
     public var git: Bool
     /// A pixie sprite shown as the project's icon; nil shows its initials (B36).
@@ -19,6 +22,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case name, path, worktree, git, icon
         case defaultBranch = "default_branch"
+        case currentBranch = "current_branch"
         case iconColor = "icon_color"
     }
 
@@ -29,6 +33,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         path = try container.decode(String.self, forKey: .path)
         defaultBranch = try container.decodeIfPresent(String.self, forKey: .defaultBranch)
+        currentBranch = try container.decodeIfPresent(String.self, forKey: .currentBranch)
         worktree = try container.decode(WorktreeConfig.self, forKey: .worktree)
         git = try container.decodeIfPresent(Bool.self, forKey: .git) ?? true
         icon = try container.decodeIfPresent(Mascot.self, forKey: .icon).flatMap {
@@ -40,10 +45,13 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     /// The project's icon as Project settings edits it.
     public var projectIcon: ProjectIcon { ProjectIcon(mascot: icon, color: iconColor) }
 
+    /// The branch in-place chats work on: the one checked out now, else the default one.
+    public var checkoutBranch: String? { currentBranch ?? defaultBranch }
+
     /// What sits next to the project's name in the toolbar.
     public var badge: ProjectBadge? {
         guard git else { return .initGit }
-        return defaultBranch.map(ProjectBadge.branch)
+        return checkoutBranch.map(ProjectBadge.branch)
     }
 
     /// Where a new chat works: as chosen, except that a plain folder has no worktrees.
@@ -68,7 +76,7 @@ public struct ProjectIcon: Sendable, Hashable {
 
 /// The toolbar's chip beside the project name.
 public enum ProjectBadge: Sendable, Hashable {
-    /// A git repository's default branch.
+    /// The branch checked out in a git repository's folder.
     case branch(String)
     /// A plain folder: offers a chat that sets it up with git.
     case initGit

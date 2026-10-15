@@ -1,15 +1,21 @@
 import NestKit
 import SwiftUI
 
-/// A chat in the sidebar: status dot, title and elapsed time; click opens it, drag splits.
+/// A chat in the sidebar: status dot and its whole title over where it works, its elapsed
+/// time and marks, as Claude Code chats' rows; click opens it, drag splits. In a git
+/// project every chat names its branch: the project folder's current one for in-place
+/// chats, its worktree's for worktree chats (B55).
 struct ChatRow: View {
     let session: Session
     /// A row of the Done group: its name is grey, whatever its status.
     var finished = false
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    @Environment(\.revealsHoverControls) private var revealsHoverControls
     @State private var hovering = false
     @FocusState private var renameFocused: Bool
+
+    private var showsMenu: Bool { hovering || revealsHoverControls }
 
     var body: some View {
         if shell.renaming == session.id {
@@ -25,40 +31,50 @@ struct ChatRow: View {
         let isSelected = state.selectedChat == session.id
         let tone = shell.tone(of: session)
         let startedBy = PixieLabels.startedBy(session, pixies: shell.pixies.pixies)
-        return HStack(spacing: 8) {
+        let place = ChatPlace.of(session, repo: shell.repo)
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
             StatusDot(tone: tone, hollow: shell.isHollow(session))
-            Text(session.title)
-                .font(.ui(TypeSize.ui))
-                .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let startedBy {
-                StartedByMark(label: startedBy)
-            }
-            if let stuck = session.stuck {
-                StuckBadge(flag: stuck)
-            }
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                HStack(spacing: 4) {
-                    if session.pinned {
-                        Image(systemName: Icon.pin).font(.system(size: 8))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.title)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
+                    .lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    HStack(spacing: 4) {
+                        if let place {
+                            PlaceMark(place: place)
+                            Text("·")
+                        }
+                        if session.pinned {
+                            Image(systemName: Icon.pin).font(.system(size: 8))
+                        }
+                        Text(Elapsed.short(from: session.updatedAt, to: context.date))
+                            .monospacedDigit()
+                        if let stuck = session.stuck {
+                            Text("·")
+                            StuckBadge(flag: stuck)
+                        }
+                        if let startedBy {
+                            StartedByMark(label: startedBy)
+                        }
                     }
-                    Text(Elapsed.short(from: session.updatedAt, to: context.date))
-                        .monospacedDigit()
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .lineLimit(1)
                 }
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
             }
-            .opacity(hovering ? 0 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Room for the "..." button, so the lines end before it rather than under it.
+            .padding(.trailing, showsMenu ? 20 : 0)
         }
         .padding(.horizontal, 10)
-        .frame(height: Metrics.rowHeight)
+        .padding(.vertical, 5)
         .background(
             isSelected ? accent.selection : (isOpen || hovering) ? Palette.soft : .clear,
             in: .rounded(Radius.row)
         )
         .overlay(alignment: .trailing) {
-            if hovering {
+            if showsMenu {
                 RowActionsMenu(title: session.title) { ChatActions(session: session) }
                     .padding(.trailing, 3)
             }
@@ -77,7 +93,7 @@ struct ChatRow: View {
         .opacity(shell.dragging == .chat(session.id) ? 0.45 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(session.title), \(shell.statusLabel(of: session))\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
+            "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { shell.openChat(session.id) }
@@ -103,6 +119,24 @@ struct ChatRow: View {
                     shell.commitRename(save: true)
                 }
             }
+    }
+}
+
+/// Where a chat works, in its sidebar row's second line: the branch icon and the branch or
+/// worktree name in mono, shortened in the middle.
+struct PlaceMark: View {
+    let place: ChatPlace
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: Icon.branch).font(.system(size: 8))
+            Text(place.name)
+                .font(.mono(TypeSize.meta))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .help(place.help)
+        .accessibilityHidden(true)
     }
 }
 
