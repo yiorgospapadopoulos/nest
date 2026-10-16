@@ -52,6 +52,8 @@ enum Icon {
     static let merge = "arrow.triangle.merge"
     static let server = "server.rack"
     static let diff = "plus.forwardslash.minus"
+    static let team = "person.2.fill"
+    static let sendAway = "rectangle.portrait.and.arrow.right"
 
     static func tool(_ kind: ToolSummary.Kind) -> String {
         switch kind {

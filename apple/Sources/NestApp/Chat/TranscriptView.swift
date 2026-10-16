@@ -203,7 +203,7 @@ struct TranscriptView: View {
     }
 }
 
-private struct TranscriptRow: View {
+struct TranscriptRow: View {
     let item: TranscriptItem
     let chat: String
     /// A choices card with a user message after it.
@@ -222,7 +222,8 @@ private struct TranscriptRow: View {
                 UserBubble(
                     text: text, attachments: attachments,
                     mentions: MentionHighlights.find(
-                        in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams),
+                        in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams,
+                        plain: shell.plainMentions(forChat: chat)),
                     actions: item.eventID.flatMap { event in
                         canRewind || canFork
                             ? MessageActions(
@@ -540,7 +541,7 @@ private struct ThinkingRow: View {
 
 /// Tool calls in a row as one line, "Ran 3 commands, read 2 files", shimmering while
 /// any runs; opens to the calls and the thinking between them.
-private struct ToolGroupRow: View {
+struct ToolGroupRow: View {
     let group: ToolGroup
     let chat: String
     let highlighted: String?

@@ -1,8 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// Busy chats with their main agent, subagents and background commands; each agent opens
-/// to its last steps. An idle chat stays while its background work runs.
+/// Busy chats with their main agent, the tree of their pixies and subagents (B46) and their
+/// background commands; the main agent opens to its last steps, a tree row to its work. An
+/// idle chat stays while its background work runs.
 struct AgentsCard: View {
     @Environment(Shell.self) private var shell
 
@@ -24,7 +25,8 @@ struct AgentsCard: View {
     }
 }
 
-/// One busy chat's agents under its title.
+/// One busy chat's agents under its title: the main agent, then the same tree as under the
+/// chat in the sidebar.
 private struct AgentGroup: View {
     let session: Session
     @Environment(Shell.self) private var shell
@@ -38,9 +40,11 @@ private struct AgentGroup: View {
             .font(.ui(TypeSize.meta))
             .foregroundStyle(Palette.t3)
             .padding(EdgeInsets(top: 6, leading: 14, bottom: 2, trailing: 14))
-            ForEach(shell.activity.agents(session: session.id)) { agent in
+            ForEach(shell.activity.agents(session: session.id).filter(\.isMain)) { agent in
                 AgentRow(session: session.id, agent: agent)
             }
+            ChatTreeView(chat: session.id, inset: 12)
+                .padding(.trailing, 8)
             ForEach(shell.activity.background(session: session.id).runningCommands) { command in
                 CommandRow(chat: session.id, command: command)
             }
@@ -87,6 +91,7 @@ private struct CommandRow: View {
     }
 }
 
+/// The main agent; it stops with the composer's Stop.
 private struct AgentRow: View {
     let session: String
     let agent: TrackedAgent
@@ -95,8 +100,6 @@ private struct AgentRow: View {
     var body: some View {
         let key = "\(session)/\(agent.id)"
         let expanded = shell.projectState.expandedAgents.contains(key)
-        // The main agent stops with the composer's Stop.
-        let stoppable = !agent.isMain && agent.status == .running
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 shell.update {
@@ -109,7 +112,7 @@ private struct AgentRow: View {
                     StatusDot(tone: tone, hollow: agent.status == .unknown)
                         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(agent.isMain ? "main" : agent.name)
+                        Text("main")
                             .font(.ui(TypeSize.ui))
                             .foregroundStyle(Palette.t1)
                             .lineLimit(1)
@@ -125,22 +128,12 @@ private struct AgentRow: View {
                             .monospacedDigit()
                             .foregroundStyle(Palette.t3)
                     }
-                    if stoppable {
-                        // Room for Stop, which sits over the row as a button of its own.
-                        Color.clear.frame(width: 18, height: 1)
-                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowHoverStyle())
-            .overlay(alignment: .trailing) {
-                if stoppable {
-                    StopTaskButton(chat: session, task: agent.id)
-                        .padding(.trailing, 8)
-                }
-            }
             .padding(.horizontal, 6)
             .accessibilityAddTraits(expanded ? .isSelected : [])
             if expanded {

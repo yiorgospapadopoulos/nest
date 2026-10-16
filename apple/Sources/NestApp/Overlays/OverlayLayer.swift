@@ -56,6 +56,8 @@ struct OverlayLayer: View {
             HabitRunSheet(session: session).padding(.top, 60)
         case .image(let id):
             ImageSheet(attachment: id).padding(.vertical, 40).padding(.horizontal, 48)
+        case .work:
+            WorkSheet().padding(.vertical, 40)
         case .usage:
             EmptyView()
         }
