@@ -587,6 +587,24 @@ describe("error turns", () => {
     expect(texts(items)).toEqual(["user", "turn:Worked for 8s", "user", "turn:Worked for 2s"]);
   });
 
+  it("show no error for a turn cut off at a usage limit, which pauses the chat (B78)", () => {
+    const items = buildTranscript(
+      [
+        user(1),
+        event({
+          id: 2,
+          type: "session.result",
+          payload: { is_error: true, duration_ms: 6_000, limit: true, errors: ["limit"] },
+        }),
+        event({ id: 3, type: "session.state", payload: { state: "idle", error: null } }),
+      ],
+      {},
+      null,
+    );
+
+    expect(texts(items)).toEqual(["user", "turn:Worked for 6s"]);
+  });
+
   it("show only the stopped line for a turn the user stopped (B59)", () => {
     const items = buildTranscript(
       [
@@ -1115,6 +1133,24 @@ describe("pixie hand-offs (B41)", () => {
     expect(items).toEqual([
       { kind: "user", key: "1", text: "Status?", attachments: [], from: "p1" },
       { kind: "user", key: "2", text: "Me", attachments: [] },
+    ]);
+  });
+
+  it("shows the message Nest sends after a usage limit as Nest's, not the user's (B78)", () => {
+    const items = buildTranscript(
+      [user(1, { text: "Continue where you left off.", origin: "limit_resume" })],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "report", key: "1", title: "Nest", text: "Continue where you left off." },
+    ]);
+  });
+
+  it("shows a message of an origin it does not know as the user's", () => {
+    expect(buildTranscript([user(1, { text: "Hi", origin: "later" })], {}, null)).toEqual([
+      { kind: "user", key: "1", text: "Hi", attachments: [] },
     ]);
   });
 

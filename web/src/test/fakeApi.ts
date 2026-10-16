@@ -58,6 +58,7 @@ export function fakeApi(): FakeApi {
     stopTask: vi.fn<Api["stopTask"]>().mockResolvedValue(null),
     cancelQueued: vi.fn<Api["cancelQueued"]>().mockResolvedValue(null),
     sendNow: vi.fn<Api["sendNow"]>().mockResolvedValue(null),
+    resumeLimit: vi.fn<Api["resumeLimit"]>().mockResolvedValue(session()),
     sessionCommands: vi.fn<Api["sessionCommands"]>().mockResolvedValue(commandList()),
     repoCommands: vi.fn<Api["repoCommands"]>().mockResolvedValue(commandList({ source: "repo" })),
     files: vi.fn<Api["files"]>().mockResolvedValue({ files: [] }),

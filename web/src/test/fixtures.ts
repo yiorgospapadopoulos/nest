@@ -80,6 +80,7 @@ export function session(overrides: Partial<Session> = {}): Session {
     pixie_id: null,
     started_by_pixie: null,
     habit_run_id: null,
+    limit_pause: null,
     ...overrides,
   };
 }
@@ -516,6 +517,7 @@ export function notificationSettings(
       ready_to_merge: false,
       stuck: false,
       pixie_report: true,
+      usage_limit: true,
     },
     quiet_hours: null,
     ntfy: { enabled: false, server: "https://ntfy.sh", topic: null, click_base_url: null },

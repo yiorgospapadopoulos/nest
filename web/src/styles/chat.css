@@ -1381,6 +1381,41 @@
   flex: none;
 }
 
+/* "Paused at the 5-hour usage limit" just above the composer, with Resume now (B78). */
+.lmw {
+  flex: none;
+  margin: 0 10px 6px;
+}
+.lmbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--r-pane);
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.lmbar .dot {
+  flex: none;
+}
+.lmt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.lmt b {
+  color: var(--t1);
+}
+.lmt span {
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+.lmbar .b {
+  flex: none;
+}
+
 /* Completions for a "/command" or "@path", in the column just above the composer. */
 .sug {
   flex: none;

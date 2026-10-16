@@ -144,6 +144,8 @@ describe("notification rules", () => {
     expect(toggle("Pull requests ready to merge")).not.toBeChecked();
     // So do stuck chats (D036); the inbox shows them regardless.
     expect(toggle("Chats that look stuck")).not.toBeChecked();
+    // A chat paused at a usage limit says so, on by default (B78).
+    expect(toggle("Usage limit pauses")).toBeChecked();
     await user.click(toggle("Finished turns"));
 
     expect(toggle("Finished turns")).toBeChecked();
@@ -159,6 +161,7 @@ describe("notification rules", () => {
           ready_to_merge: false,
           stuck: false,
           pixie_report: true,
+          usage_limit: true,
         },
       }),
     );

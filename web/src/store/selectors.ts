@@ -169,9 +169,11 @@ export function chatStatus(session: Session, pending: Approval[]): ChatStatus {
       return { tone: "done", label: "Done" };
     default:
       if (kinds.has("review")) return { tone: "rev", label: "Ready for review" };
-      return kinds.has("merge")
-        ? { tone: "rev", label: "Ready to merge" }
-        : { tone: "idle", label: "Idle" };
+      if (kinds.has("merge")) return { tone: "rev", label: "Ready to merge" };
+      // Idle until a usage limit resets, then it goes on by itself (B78).
+      return session.limit_pause === null
+        ? { tone: "idle", label: "Idle" }
+        : { tone: "int", label: "Paused" };
   }
 }
 
