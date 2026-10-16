@@ -107,28 +107,32 @@ private struct CardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                shell.update { $0.toggleCard(card) }
-            } label: {
+            HoverReader { hovering in
                 HStack(spacing: 7) {
                     Text(card.title)
                     CountBadge(
                         count: counts.count(card), urgent: card == .needsYou && counts.needs > 0)
-                    Spacer()
+                    Spacer(minLength: 0)
                     Image(systemName: Icon.chevron)
                         .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(hovering ? Palette.t1 : Palette.t3)
                         .rotationEffect(.degrees(open ? 0 : -90))
                 }
                 .font(.ui(TypeSize.meta))
                 .foregroundStyle(Palette.t3)
                 .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
                 .frame(height: Metrics.headerHeight)
+                // The whole bar is one target: the name, the count, the gap and the chevron
+                // all fold the card, wherever the click lands.
                 .contentShape(Rectangle())
+                .onTapGesture { shell.update { $0.toggleCard(card) } }
+                .pointerStyle(.link)
             }
-            .buttonStyle(.plain)
-            .pointerStyle(.link)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(card.title), \(counts.count(card))")
-            .accessibilityAddTraits(open ? .isSelected : [])
+            .accessibilityAddTraits(open ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { shell.update { $0.toggleCard(card) } }
             if open {
                 ScrollView {
                     Group {
