@@ -3,6 +3,7 @@ import type {
   Approval,
   BackgroundSummary,
   Connector,
+  GroupEntry,
   Habit,
   HabitRun,
   NestEvent,
@@ -141,6 +142,10 @@ export function reduce(state: State, action: Action): State {
       return upsertApproval(state, action.approval);
     case "tracking":
       return { ...state, tracking: { ...state.tracking, [action.id]: action.tracking } };
+    case "pixieGroups":
+      return { ...state, pixieGroups: action.groups };
+    case "pixieGroup":
+      return withGroup(state, action.id, action.group);
     case "transcriptOpened":
       return {
         ...state,
@@ -284,6 +289,8 @@ export function applyEvent(state: State, event: NestEvent): State {
     case "approval.created":
     case "approval.resolved":
       return upsertApproval(next, p.approval as unknown as Approval);
+    case "session.pixies":
+      return id === null ? next : withGroup(next, id, list(p.group) as unknown as GroupEntry[]);
     case "session.tasks":
       return patchTracking(next, id, { tasks: list(p.tasks) as unknown as TrackedTask[] });
     case "session.agents":
@@ -352,6 +359,12 @@ export function applyEvent(state: State, event: NestEvent): State {
     default:
       return next;
   }
+}
+
+/** The chat's pixie group; an empty one leaves the record. */
+function withGroup(state: State, id: string, group: GroupEntry[]): State {
+  const others = omit(state.pixieGroups, id);
+  return { ...state, pixieGroups: group.length === 0 ? others : { ...others, [id]: group } };
 }
 
 /** The state without the pixie, its saved draft, habits and reports. */
@@ -514,6 +527,7 @@ function removeSession(state: State, id: string): State {
       Object.entries(state.approvals).filter(([, a]) => a.session_id !== id),
     ),
     tracking: without(state.tracking),
+    pixieGroups: without(state.pixieGroups),
     transcripts: without(state.transcripts),
     history: without(state.history),
     live: without(state.live),

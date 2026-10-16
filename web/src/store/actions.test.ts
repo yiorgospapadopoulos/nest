@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client.ts";
 import { fakeApi } from "../test/fakeApi.ts";
-import { pixie, session, team } from "../test/fixtures.ts";
+import { callWork, detail, groupEntry, pixie, session, team } from "../test/fixtures.ts";
 import { FOLDED_TEAMS_KEY, loadFoldedTeams } from "./devicePrefs.ts";
 import { createActions } from "./actions.ts";
 import type { Action } from "./state.ts";
@@ -151,7 +151,13 @@ describe("pixie actions", () => {
     const { api, dispatched, actions } = setup();
     api.pixies.mockRejectedValueOnce(new Error("no pixies"));
     await actions.load();
-    expect(dispatched.map((a) => a.type)).toEqual(["loaded", "claudeChats", "teams", "reports"]);
+    expect(dispatched.map((a) => a.type)).toEqual([
+      "loaded",
+      "claudeChats",
+      "teams",
+      "reports",
+      "pixieGroups",
+    ]);
   });
 
   it("reads a pixie file, empty when it does not exist", async () => {
@@ -222,6 +228,83 @@ describe("pixie actions", () => {
     api.pixies.mockResolvedValueOnce([pixie()]);
     await actions.load();
     expect(dispatched).toContainEqual({ type: "pixies", pixies: [pixie()] });
+  });
+});
+
+describe("each chat's pixies and subagents (B46)", () => {
+  it("loads every chat's group and the agents of chats at work", async () => {
+    const { api, dispatched, actions } = setup();
+    const running = session({ state: "running" });
+    api.sessions.mockImplementation((archived) =>
+      Promise.resolve(archived ? [] : [running, session({ id: "s2" })]),
+    );
+    api.pixieGroups.mockResolvedValueOnce({ s1: [groupEntry()] });
+    const agent = {
+      id: "a1",
+      name: "Explore",
+      description: null,
+      parent: null,
+      status: "running" as const,
+      activity: null,
+      started_at: null,
+      finished_at: null,
+      steps: [],
+    };
+    api.session.mockResolvedValueOnce(detail({ ...running, agents: [agent] }));
+    await actions.load();
+
+    expect(dispatched).toContainEqual({ type: "pixieGroups", groups: { s1: [groupEntry()] } });
+    expect(dispatched).toContainEqual({
+      type: "tracking",
+      id: "s1",
+      tracking: { tasks: [], agents: [agent], background: detail().background },
+    });
+    expect(api.session.mock.calls).toEqual([["s1"]]);
+
+    // Quietly: the chats still show without them.
+    api.pixieGroups.mockRejectedValueOnce(new Error("down"));
+    api.session.mockRejectedValueOnce(new Error("down"));
+    const before = dispatched.length;
+    await actions.load();
+    expect(dispatched.slice(before).map((a) => a.type)).toEqual([
+      "loaded",
+      "claudeChats",
+      "pixies",
+      "teams",
+      "reports",
+    ]);
+  });
+
+  it("sends a pixie away and takes the group the Mac returns", async () => {
+    const { api, dispatched, actions } = setup();
+    api.sendAway.mockResolvedValueOnce([groupEntry({ pixie_id: "p2" })]);
+    expect(await actions.sendAway("s1", { pixie_id: "p1" })).toBe(true);
+    expect(api.sendAway).toHaveBeenCalledWith("s1", { pixie_id: "p1" });
+    expect(dispatched).toEqual([
+      { type: "pixieGroup", id: "s1", group: [groupEntry({ pixie_id: "p2" })] },
+    ]);
+    api.sendAway.mockRejectedValueOnce(new Error("down"));
+    expect(await actions.sendAway("s1", { team_id: "t1" })).toBe(false);
+    expect(dispatched.at(-1)).toMatchObject({ type: "toast", toast: { text: "down" } });
+  });
+
+  it("reads a pixie's calls and a subagent's transcript, null when they cannot be read", async () => {
+    const { api, actions } = setup();
+    api.pixieCalls.mockResolvedValueOnce([callWork()]);
+    expect(await actions.pixieCalls("s1", "p1")).toEqual([callWork()]);
+    expect(await actions.agentTranscript("s1", "a1")).toMatchObject({ tool_use_id: "a1" });
+    api.pixieCalls.mockRejectedValueOnce(new Error("down"));
+    api.agentTranscript.mockRejectedValueOnce(new ApiError(404, "gone"));
+    expect(await actions.pixieCalls("s1", "p1")).toBeNull();
+    expect(await actions.agentTranscript("s1", "a1")).toBeNull();
+  });
+
+  it("returns why a message calling a team member was refused, without a toast", async () => {
+    const { api, dispatched, actions } = setup();
+    const why = "Bugs is in @qa; call the team or a solo copy";
+    api.sendMessage.mockRejectedValueOnce(new ApiError(422, why, "pixie_in_team"));
+    expect(await actions.send("s1", "@bugs look", [])).toEqual({ refused: why });
+    expect(dispatched).toEqual([]);
   });
 });
 

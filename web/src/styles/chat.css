@@ -1903,3 +1903,68 @@
   max-width: 100%;
   margin: 0 auto;
 }
+
+/* A subagent's or a pixie's work in a chat, read only (B46). */
+.wk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--glass-spacing-transcript-gap);
+}
+.wk-sec {
+  padding: 10px 12px;
+  border-radius: var(--r-item);
+  background: var(--fill);
+}
+.wk-sec h4 {
+  margin: 0 0 4px;
+  font-size: 0.6471rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.wk-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.wk-desc {
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.wk-ro {
+  margin-top: 14px;
+  text-align: center;
+}
+.wkc {
+  padding: 10px 12px 12px;
+  border-radius: var(--r-card);
+  margin-bottom: 12px;
+}
+.wkh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 0.7647rem;
+  color: var(--t2);
+}
+.wkby {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.wkcont {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  font-weight: 600;
+}
+.wkh .ago {
+  color: var(--t3);
+}

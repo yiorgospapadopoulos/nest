@@ -148,6 +148,9 @@ export interface TrackedAgent {
   id: string;
   name: string;
   description: string | null;
+  // The Agent call of the subagent that started it; null when the main agent did (B46).
+  // Daemons before B46 send none.
+  parent?: string | null;
   status: "running" | "done" | "failed";
   activity: string | null;
   started_at: string | null;
@@ -651,6 +654,65 @@ export interface Pixie extends PixieSettings {
   created_at: string;
   updated_at: string;
 }
+
+export type CallState = "running" | "done" | "failed" | "interrupted";
+
+/** A call to a pixie in a chat (B46): its Agent call, or a SendMessage that continued it. */
+export interface CallEntry {
+  id: string;
+  pixie_id: string;
+  tool_use_id: string;
+  agent_id: string | null;
+  state: CallState;
+  // It continued an earlier call's agent with its context.
+  continued: boolean;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface TeamMember {
+  pixie_id: string;
+  leader: boolean;
+  // Its latest call's state with the team; null when it was not called yet.
+  state: CallState | null;
+}
+
+/**
+ * A solo pixie or a team a chat called and did not send away (B46), in the order first
+ * called; `state` is its latest call's, and its calls are newest first.
+ */
+export interface GroupEntry {
+  kind: "pixie" | "team";
+  pixie_id: string | null;
+  team_id: string | null;
+  state: CallState;
+  members: TeamMember[];
+  calls: CallEntry[];
+}
+
+/** A subagent's own message, as stored in its chat. */
+export interface AgentMessage {
+  event_id: number;
+  ts: string;
+  blocks: JsonValue[];
+}
+
+/** A call with what it was asked, the agent's own messages and its report (B46). */
+export interface CallWork extends CallEntry {
+  prompt: string | null;
+  messages: AgentMessage[];
+  report: string | null;
+}
+
+/** A subagent's transcript so far, by its Agent call (B46). */
+export interface AgentWork {
+  tool_use_id: string;
+  prompt: string | null;
+  messages: AgentMessage[];
+  report: string | null;
+}
+
+export type SendAwayBody = { pixie_id: string } | { team_id: string };
 
 /** A team of pixies, called with `@handle`. Its members are the pixies naming it. */
 export interface PixieTeam {

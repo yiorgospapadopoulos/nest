@@ -8,9 +8,11 @@ import {
 } from "../pwa/push.ts";
 import type {
   AgentDefaults,
+  AgentWork,
   Approval,
   ApproveBody,
   Attachment,
+  CallWork,
   ClaudeChat,
   CreatePixieBody,
   CommandList,
@@ -36,6 +38,7 @@ import type {
   RewindPreview,
   RewindReply,
   SearchResults,
+  SendAwayBody,
   Session,
   SessionDiff,
   UpdateHabitBody,
@@ -75,9 +78,15 @@ function currentFile({ text, hash }: Record<string, unknown>): FileState {
 export type Actions = ReturnType<typeof createActions>;
 
 const WORKING = new Set<Session["state"]>(["starting", "running"]);
+// States in which a chat's subagents may be at work.
+const BUSY = new Set<Session["state"]>(["starting", "running", "waiting"]);
 
-// "elsewhere": refused because Claude Code has the chat open right now.
-export type SendResult = "sent" | "failed" | "elsewhere";
+// "elsewhere": refused because Claude Code has the chat open right now; `refused`: why the
+// daemon refused the message, such as one calling a team's pixie on its own (B46).
+export type SendResult = "sent" | "failed" | "elsewhere" | { refused: string };
+
+// The daemon's code for a message that calls a team's pixie on its own (B46).
+const PIXIE_IN_TEAM = "pixie_in_team";
 
 // "taken": Claude already read the message (or the Mac no longer has it), so it stays sent.
 export type RemoveResult = "removed" | "taken" | "failed";
@@ -231,6 +240,25 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     if (reports !== null) dispatch({ type: "reports", reports });
   }
 
+  /** Every chat's pixies, and the agents of the chats at work, for the chat list (B46). */
+  async function loadChatAgents(sessions: Session[]): Promise<void> {
+    const groups = await quietly(() => api.pixieGroups());
+    if (groups !== null) dispatch({ type: "pixieGroups", groups });
+    const working = sessions.filter((s) => BUSY.has(s.state));
+    await Promise.all(
+      working.map(({ id }) =>
+        quietly(() =>
+          snapshot(
+            () => api.session(id),
+            ({ tasks, agents, background }) => {
+              dispatch({ type: "tracking", id, tracking: { tasks, agents, background } });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
@@ -263,6 +291,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   }
 
   async function load(): Promise<void> {
+    let sessions: Session[] = [];
     try {
       await snapshot(
         () =>
@@ -276,11 +305,13 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         ([repos, open, archived, approvals, chats]) => {
           dispatch({ type: "loaded", repos, sessions: [...open, ...archived], approvals });
           dispatch({ type: "claudeChats", chats });
+          sessions = open;
         },
       );
       loaded = true;
       // Apart, so the app still opens when only the pixies cannot load.
       await loadPixies();
+      await loadChatAgents(sessions);
     } catch (error) {
       if (error instanceof ApiError && error.unauthorized) {
         dispatch({ type: "auth", auth: "unpaired" });
@@ -719,6 +750,22 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (fresh !== null) dispatch({ type: "repo", repo: fresh });
     },
 
+    /** The pixie, or the team with its members, leaves the chat's group (B46). */
+    async sendAway(sessionId: string, body: SendAwayBody): Promise<boolean> {
+      const group = await attempt(() => api.sendAway(sessionId, body));
+      if (group === null) return false;
+      dispatch({ type: "pixieGroup", id: sessionId, group });
+      return true;
+    },
+
+    /** Every call to the pixie in the chat, newest first, with its work (B46). */
+    pixieCalls: (sessionId: string, pixieId: string): Promise<CallWork[] | null> =>
+      attempt(() => api.pixieCalls(sessionId, pixieId)),
+
+    /** A subagent's transcript so far (B46). */
+    agentTranscript: (sessionId: string, toolUseId: string): Promise<AgentWork | null> =>
+      attempt(() => api.agentTranscript(sessionId, toolUseId)),
+
     async create(body: CreateSessionBody): Promise<Session | null> {
       const created = await attempt(() => api.createSession(body));
       if (created !== null) dispatch({ type: "session", session: created });
@@ -735,6 +782,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         return "sent";
       } catch (error) {
         if (error instanceof ApiError && error.code === OPEN_ELSEWHERE) return "elsewhere";
+        if (error instanceof ApiError && error.code === PIXIE_IN_TEAM) {
+          return { refused: error.message };
+        }
         report(error);
         return "failed";
       }

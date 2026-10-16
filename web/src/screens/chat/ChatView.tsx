@@ -20,16 +20,22 @@ import { ReviewBar } from "./ReviewBar.tsx";
 import { Transcript } from "./Transcript.tsx";
 import { useStopTask } from "./useStopTask.ts";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
+import type { WorkOf } from "../projects/ChatTree.tsx";
+import { AgentWorkView } from "./AgentWorkView.tsx";
+import { PixieWorkView } from "./PixieWorkView.tsx";
 import { StartedBy } from "../pixies/StartedBy.tsx";
 
 // An open chat (optionally at an event, such as a search hit), a new one in a project that
 // starts with its first message, or a Claude Code chat shown read only until it is
-// continued in Nest, or a pixie's page (D072).
+// continued in Nest, or a pixie's page (D072); or, in a chat, a subagent's transcript or a
+// pixie's or team's work (B46).
 export type ChatTarget =
   | { id: string; event?: number }
   | { draft: string }
   | { claude: string }
-  | { pixie: string; tab?: PixieTab };
+  | { pixie: string; tab?: PixieTab }
+  | { agentOf: string; call: string }
+  | { workOf: string; who: WorkOf };
 
 interface Props {
   target: ChatTarget;
@@ -53,6 +59,12 @@ export function ChatView({ target, onBack, onOpen, onOpenClaudeChat, onOpenPixie
     openClaudeChat: onOpenClaudeChat,
     openPixie: onOpenPixie,
   };
+  if ("agentOf" in target) {
+    return <AgentWorkView sessionId={target.agentOf} call={target.call} onBack={onBack} />;
+  }
+  if ("workOf" in target) {
+    return <PixieWorkView sessionId={target.workOf} who={target.who} onBack={onBack} />;
+  }
   if ("claude" in target) {
     return <ClaudeChatView id={target.claude} onBack={onBack} onOpen={onOpen} />;
   }

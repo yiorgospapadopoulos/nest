@@ -3,7 +3,16 @@ import { readFileSync } from "node:fs";
 import { screen, within } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
-import { detail, pixie, queuedMessage, repo, review, session, team } from "../test/fixtures.ts";
+import {
+  detail,
+  groupEntry,
+  pixie,
+  queuedMessage,
+  repo,
+  review,
+  session,
+  team,
+} from "../test/fixtures.ts";
 import { openPixie } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
 
@@ -173,6 +182,28 @@ describe("tap targets", () => {
     ]) {
       expect(box(control).height).toBeGreaterThanOrEqual(TAP);
     }
+  });
+
+  it("are at least 44 points in a chat's tree (B46)", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieGroups.mockResolvedValue({ s1: [groupEntry()] });
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    const tree = await screen.findByRole("list", { name: "Working in Validate contact form" });
+    for (const control of within(tree).getAllByRole("button")) {
+      const size = box(control);
+      expect(
+        Math.min(size.height, size.width || TAP),
+        control.getAttribute("aria-label") ?? "",
+      ).toBeGreaterThanOrEqual(TAP);
+    }
+    expect(box(within(tree).getByRole("button", { name: /^Actions for/ }))).toEqual({
+      width: TAP,
+      height: TAP,
+    });
   });
 
   it("are at least 44 points on a pixie's details", async () => {

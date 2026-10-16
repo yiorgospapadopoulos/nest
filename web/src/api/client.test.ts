@@ -412,6 +412,28 @@ const calls: Call[] = [
     "/api/pixies/p1/reports/read",
     undefined,
   ],
+  ["pixieGroups", (a) => a.pixieGroups(), "GET", "/api/pixie-groups", undefined],
+  [
+    "sendAway",
+    (a) => a.sendAway("s 1", { team_id: "t1" }),
+    "POST",
+    "/api/sessions/s%201/pixies/send-away",
+    { team_id: "t1" },
+  ],
+  [
+    "pixieCalls",
+    (a) => a.pixieCalls("s 1", "p/1"),
+    "GET",
+    "/api/sessions/s%201/pixies/p%2F1/calls",
+    undefined,
+  ],
+  [
+    "agentTranscript",
+    (a) => a.agentTranscript("s 1", "toolu/1"),
+    "GET",
+    "/api/sessions/s%201/agents/toolu%2F1/transcript",
+    undefined,
+  ],
 ];
 
 describe("HttpApi", () => {
