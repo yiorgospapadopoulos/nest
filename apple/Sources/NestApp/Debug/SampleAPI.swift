@@ -112,6 +112,13 @@
             [".env", "node_modules/"]
         }
 
+        func reorderRepos(_ order: [String]) async throws -> [Repo] {
+            try await repos().sorted {
+                (order.firstIndex(of: $0.name) ?? order.count)
+                    < (order.firstIndex(of: $1.name) ?? order.count)
+            }
+        }
+
         func sessions(repo: String?, archived: Bool) async throws -> [Session] {
             lock.withLock { sessionList }.filter {
                 $0.isArchived == archived && (repo == nil || $0.repo == repo)

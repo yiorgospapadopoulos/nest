@@ -200,10 +200,12 @@ public final class AppStore {
     public var syncError: APIError?
     /// The latest repo reload `reloadRepos` started.
     @ObservationIgnored public private(set) var reloadingRepos: Task<Void, Never>?
+    /// The latest project order save `moveProject` started; saves run one at a time.
+    @ObservationIgnored public private(set) var savingOrder: Task<Void, Never>?
     public private(set) var repos: [Repo] = []
     /// The latest settings save of each project, which the next one waits for.
     private var settingSaves: [String: Task<Repo?, any Error>] = [:]
-    /// Open project tabs in order, by repo name.
+    /// Open project tabs by repo name, in the repos' shared order (D090) once they load.
     public private(set) var openProjects: [String]
     public private(set) var currentProject: String?
     public var projects: [String: ProjectState] = [:]
@@ -252,6 +254,7 @@ public final class AppStore {
         if openProjects.isEmpty, let first = repos.first {
             openProjects = [first.name]
         }
+        sortOpenProjects()
         if currentProject.map({ !openProjects.contains($0) }) ?? true {
             currentProject = openProjects.first
         }
@@ -294,6 +297,7 @@ public final class AppStore {
     public func openProject(_ name: String) {
         if !openProjects.contains(name) {
             openProjects.append(name)
+            sortOpenProjects()
         }
         if projects[name] == nil {
             restoreTools(of: name)
@@ -316,6 +320,47 @@ public final class AppStore {
             currentProject = openProjects[max(0, index - 1)]
         }
         save()
+    }
+
+    /// Moves a tab to `index` among the open tabs and saves the new project order for every
+    /// device (D090): the project goes just before the open tab that now follows it, or
+    /// just after the one before it when it becomes last. Shown at once; when the save
+    /// fails the sync error is set and the repos load again.
+    public func moveProject(_ name: String, to index: Int) {
+        guard let from = openProjects.firstIndex(of: name) else { return }
+        let target = min(max(index, 0), openProjects.count - 1)
+        guard target != from else { return }
+        var tabs = openProjects
+        tabs.remove(at: from)
+        tabs.insert(name, at: target)
+        var order = repos.map(\.name)
+        order.removeAll { $0 == name }
+        let (neighbour, offset) =
+            target + 1 < tabs.count ? (tabs[target + 1], 0) : (tabs[target - 1], 1)
+        // Before the repos load there is no order to place it in.
+        guard let at = order.firstIndex(of: neighbour) else { return }
+        order.insert(name, at: at + offset)
+        repos = order.compactMap(repo)
+        openProjects = tabs
+        save()
+        let previous = savingOrder
+        savingOrder = Task {
+            await previous?.value
+            do {
+                _ = try await api.reorderRepos(order)
+            } catch {
+                syncError = error as? APIError ?? .transport(String(describing: error))
+                reloadRepos()
+            }
+        }
+    }
+
+    /// Sorts the open tabs by the repos' order; tabs of repos not loaded yet keep theirs.
+    private func sortOpenProjects() {
+        let rank = { (name: String) in self.repos.firstIndex { $0.name == name } ?? Int.max }
+        openProjects = openProjects.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
     }
 
     /// The tab at a position (Cmd-1 to Cmd-9); Cmd-9 is always the last tab.

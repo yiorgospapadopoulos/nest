@@ -15,6 +15,8 @@ public protocol NestAPI: Sendable {
     func updateRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo
     /// Gitignored files in the checkout worth linking into worktrees.
     func linkSuggestions(_ name: String) async throws -> [String]
+    /// Saves the project order every device shows (D090); answers the repos in that order.
+    func reorderRepos(_ order: [String]) async throws -> [Repo]
 
     func sessions(repo: String?, archived: Bool) async throws -> [Session]
     func session(_ id: String) async throws -> Session

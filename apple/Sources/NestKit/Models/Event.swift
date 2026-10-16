@@ -79,6 +79,8 @@ public enum EventType {
     /// A repo's registration changed, such as a plain folder that git now tracks.
     public static let repoUpdated = "repo.updated"
     public static let repoRemoved = "repo.removed"
+    /// The projects were reordered on some device (D090).
+    public static let reposReordered = "repos.reordered"
     public static let pixieUpdated = "pixie.updated"
     public static let pixieDeleted = "pixie.deleted"
     public static let pixieTeamUpdated = "pixie_team.updated"
@@ -142,8 +144,8 @@ public enum EventBody: Sendable, Hashable {
     case usageUpdated(UsageLimits)
     /// The Claude Code chats of these repos changed; list them again.
     case claudeChatsUpdated(repos: [String])
-    /// A repo was registered, changed or removed; the list is read again, whatever the
-    /// payload holds.
+    /// A repo was registered, changed or removed, or the repos were reordered; the list is
+    /// read again, whatever the payload holds.
     case reposChanged
     /// A muted line for the transcript.
     case sessionNotice(text: String)
@@ -221,7 +223,8 @@ public enum EventBody: Sendable, Hashable {
         case EventType.usageUpdated: self = .usageUpdated(try payload.decode(UsageLimits.self))
         case EventType.claudeChatsUpdated:
             self = .claudeChatsUpdated(repos: try field("repos", as: [String].self))
-        case EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved:
+        case EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved,
+            EventType.reposReordered:
             self = .reposChanged
         case EventType.sessionNotice:
             self = .sessionNotice(text: try field("text", as: String.self))

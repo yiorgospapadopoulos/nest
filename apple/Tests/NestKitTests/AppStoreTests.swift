@@ -77,8 +77,9 @@ private let workspace = CGSize(width: 1000, height: 600)
 
         try await app.loadRepos()
 
-        #expect(app.openProjects == ["llm-hunter", "cv-page"])
-        #expect(app.currentProject == "llm-hunter")
+        // The tabs follow the daemon's project order (D090) and the first one is current.
+        #expect(app.openProjects == ["cv-page", "llm-hunter"])
+        #expect(app.currentProject == "cv-page")
     }
 
     @Test func keepsAValidCurrentTab() async throws {
