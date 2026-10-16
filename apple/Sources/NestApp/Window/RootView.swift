@@ -45,8 +45,8 @@ struct ShellView: View {
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
             VStack(spacing: 0) {
+                // No line under the tabs: the project bar it divided off is gone (B73).
                 TabStrip(fullScreen: fullScreen)
-                Separator()
                 ProjectBody()
             }
             VStack(spacing: 8) {
