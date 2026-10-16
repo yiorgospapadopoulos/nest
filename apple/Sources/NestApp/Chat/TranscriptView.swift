@@ -861,7 +861,9 @@ private struct HookRow: View {
 
 /// A pixie's call (B40): its mascot and name with what it was asked and how it went,
 /// shimmering while it runs. A click opens its steps and answer in place; the mascot or
-/// name opens the pixie in the Pixies tab.
+/// name opens the pixie in the Pixies tab. In a project chat a team leader's call is the
+/// team's (B70): the team's grid and name, "QA working" while it runs, and the mark or
+/// name opens the team's work as the chat tree does.
 struct PixieCallRow: View {
     let entry: PixieCallEntry
     let chat: String
@@ -870,33 +872,44 @@ struct PixieCallRow: View {
     var body: some View {
         let expanded = shell.expandedItems.contains(entry.id)
         let pixie = shell.pixies.pixies.first { $0.slug == entry.slug }
-        let name = pixie?.name ?? entry.slug
+        let team = PixieCalls.team(
+            of: entry.slug, pixies: shell.pixies.pixies, teams: shell.pixies.teams,
+            pixieChat: shell.sessions.session(chat)?.pixieID != nil)
+        let name = team?.team.name ?? pixie?.name ?? entry.slug
         let task = entry.call.input["description"]?.stringValue ?? ""
         let note = ToolSummary.result(of: entry.call)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 7) {
                 Button {
-                    if let pixie {
+                    if let team {
+                        shell.openWork(
+                            team.work(session: chat, group: shell.chatPixies.group(session: chat)))
+                    } else if let pixie {
                         shell.revealPixie(pixie.id)
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        if let pixie {
-                            SpriteView(
-                                mascot: pixie.mascot, color: pixie.color, size: 13,
-                                working: entry.isRunning, phaseKey: pixie.id)
+                    if let team {
+                        teamMark(team)
+                    } else {
+                        HStack(spacing: 6) {
+                            if let pixie {
+                                SpriteView(
+                                    mascot: pixie.mascot, color: pixie.color, size: 13,
+                                    working: entry.isRunning, phaseKey: pixie.id)
+                            }
+                            Text(name)
+                                .font(.ui(TypeSize.ui, .medium))
+                                .foregroundStyle(Palette.t1)
                         }
-                        Text(name)
-                            .font(.ui(TypeSize.ui, .medium))
-                            .foregroundStyle(Palette.t1)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .pointerStyle(.link)
                 .fixedSize()
-                .help("Open \(name) in Pixies")
-                .accessibilityLabel("Open \(name)")
+                .help(team == nil ? "Open \(name) in Pixies" : "Open \(name)'s work in this chat")
+                .accessibilityLabel(
+                    team.map { "Open \($0.label(running: entry.isRunning))" } ?? "Open \(name)")
                 Group {
                     Text(task)
                         .foregroundStyle(Palette.t2)
@@ -904,10 +917,14 @@ struct PixieCallRow: View {
                         .truncationMode(.tail)
                         .shimmer(entry.isRunning)
                         .layoutPriority(1)
-                    Text(entry.call.isError ? note : "\u{00B7} \(note)")
-                        .foregroundStyle(entry.call.isError ? StatusTone.failed.color : Palette.t3)
-                        .lineLimit(1)
-                        .fixedSize()
+                    // A working team's label already says so.
+                    if team == nil || !entry.isRunning {
+                        let failed = entry.call.isError
+                        Text(failed ? note : "\u{00B7} \(note)")
+                            .foregroundStyle(failed ? StatusTone.failed.color : Palette.t3)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                     Image(systemName: Icon.chevron)
                         .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(Palette.t3)
@@ -935,6 +952,22 @@ struct PixieCallRow: View {
                 LivePreview(text: line)
             }
         }
+    }
+
+    /// The team's grid hopping while it works, and its name in the leader's colour.
+    private func teamMark(_ team: TeamCall) -> some View {
+        HStack(spacing: 6) {
+            TeamIconView(cells: team.icon(working: entry.isRunning))
+            Text(team.team.name)
+                .font(.ui(TypeSize.ui, .medium))
+                .foregroundStyle(Color(hex: team.color))
+            if entry.isRunning {
+                Text("working")
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t2)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }
 

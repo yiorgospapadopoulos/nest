@@ -250,6 +250,50 @@ public enum PixieCalls {
         guard let slug = call.subagentType else { return nil }
         return pixies.first { $0.slug == slug }
     }
+
+    /// The team whose call this is: in a project chat the main agent calls only a team's
+    /// leader, who calls the members inside its own call (B70). Nil for a pixie that leads
+    /// no team, and in a pixie's own chat, whose calls are its own.
+    public static func team(
+        of slug: String, pixies: [Pixie], teams: [PixieTeam], pixieChat: Bool
+    ) -> TeamCall? {
+        guard !pixieChat, let leader = pixies.first(where: { $0.slug == slug }),
+            let team = teams.first(where: { $0.leaderID == leader.id })
+        else { return nil }
+        let others = pixies.filter { $0.teamID == team.id && $0.id != leader.id }
+        return TeamCall(team: team, members: [leader] + others)
+    }
+}
+
+/// A project chat's call of a team, through its leader (B70): its row shows the team.
+public struct TeamCall: Sendable, Hashable {
+    public let team: PixieTeam
+    /// The leader first, then the other members in pixie order.
+    public let members: [Pixie]
+
+    /// The leader's colour, `#RRGGBB`, as team names are drawn.
+    public var color: String { members[0].color }
+
+    /// "QA working" while the call runs, then the team's name.
+    public func label(running: Bool) -> String {
+        running ? "\(team.name) working" : team.name
+    }
+
+    /// The team's grid of four, every sprite hopping while the call runs.
+    public func icon(working: Bool) -> [TeamIconCell] {
+        TeamIcon.fill(members).enumerated().map {
+            TeamIconCell(pixie: $1, working: working, index: $0)
+        }
+    }
+
+    /// What a click on its mark or name opens: the team's work in the chat, as the chat
+    /// tree's team row opens it, with the members of the chat's entry for the team.
+    public func work(session: String, group: [ChatPixieEntry]) -> WorkTarget {
+        let entry = group.first { $0.kind == .team && $0.teamID == team.id }
+        return .team(
+            session: session, teamID: team.id,
+            members: entry?.members.map(\.pixieID) ?? members.map(\.id))
+    }
 }
 
 /// A pixie or team mention in a sent message, drawn in the pixie's colour.
