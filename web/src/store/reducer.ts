@@ -250,6 +250,8 @@ export function applyEvent(state: State, event: NestEvent): State {
       return upsertRepo(next, p.repo as unknown as RepoConfig);
     case "repo.removed":
       return { ...next, repos: next.repos.filter((r) => r.name !== str(p.name)) };
+    case "repos.reordered":
+      return { ...next, repos: inOrder(next.repos, list(p.order).map(String)) };
     case "session.created":
     case "session.updated":
       return upsertSession(next, p.session as unknown as Session);
@@ -472,6 +474,15 @@ function merge(current: NestEvent[], loaded: NestEvent[]): NestEvent[] {
 
 function bashOf(state: State, id: string): BashRun[] {
   return state.bash[id] ?? [];
+}
+
+/** The projects sorted by the shared order (D090); ones it leaves out keep their order after. */
+function inOrder(repos: RepoConfig[], order: string[]): RepoConfig[] {
+  const rank = (name: string) => {
+    const at = order.indexOf(name);
+    return at === -1 ? order.length : at;
+  };
+  return [...repos].sort((a, b) => rank(a.name) - rank(b.name));
 }
 
 function upsertRepo(state: State, repo: RepoConfig): State {

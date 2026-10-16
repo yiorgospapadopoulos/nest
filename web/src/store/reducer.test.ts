@@ -401,6 +401,26 @@ describe("live events", () => {
     expect(state.repos.map((r) => r.name)).toEqual(["notes"]);
   });
 
+  it("sort the projects by a new shared order, keeping unlisted ones after", () => {
+    const state = reduce(loaded(), {
+      type: "loaded",
+      repos: [repo("alpha"), repo("beta"), repo("gamma"), repo("delta")],
+      sessions: [],
+      approvals: [],
+    });
+
+    const reordered = apply(
+      state,
+      event({
+        type: "repos.reordered",
+        session_id: null,
+        payload: { order: ["gamma", "gone", "alpha"] },
+      }),
+    );
+
+    expect(reordered.repos.map((r) => r.name)).toEqual(["gamma", "alpha", "beta", "delta"]);
+  });
+
   it("keep a usage window the event leaves out, as the daemon does", () => {
     const earlier = { utilization: 0.2, resets_at: null, updated_at: "2026-10-06T08:00:00Z" };
     const state = apply(
