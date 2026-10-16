@@ -69,6 +69,19 @@ export interface StuckFlag {
   details: string;
 }
 
+// Which usage limit paused a chat, as Claude Code names it (B78).
+export type PauseWindow =
+  "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage";
+
+/** A chat paused at a usage limit until `resume_at`, when the daemon goes on (B78). */
+export interface LimitPause {
+  // Null when Claude Code did not say; a newer daemon may send names this list lacks.
+  window: PauseWindow | null;
+  resets_at: string | null;
+  resume_at: string;
+  since: string;
+}
+
 export interface Session {
   id: string;
   repo: string;
@@ -107,6 +120,8 @@ export interface Session {
   started_by_pixie: string | null;
   // Set for a habit run's chat (B42): it has the pixie's pixie_id but is not its chat.
   habit_run_id: string | null;
+  // Set while the chat waits for a usage limit to reset (B78); the chat is idle meanwhile.
+  limit_pause: LimitPause | null;
 }
 
 /** A Claude Code chat of a registered repo that Nest does not own (D028). */
@@ -517,7 +532,8 @@ export type NotifyKind =
   | "ci_failed"
   | "ready_to_merge"
   | "stuck"
-  | "pixie_report";
+  | "pixie_report"
+  | "usage_limit";
 
 export type SearchHitKind = "title" | "user" | "assistant" | "tool" | "tool_result" | "claude_chat";
 

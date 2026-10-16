@@ -12,6 +12,7 @@ import type { ChatNav } from "./CommandSheets.tsx";
 import { Composer } from "./Composer.tsx";
 import { Frame } from "./Frame.tsx";
 import { GoalsStrip } from "./GoalsStrip.tsx";
+import { LimitBar } from "./LimitBar.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { sessionPlace } from "./place.ts";
 import { PlaceChip } from "./PlaceMarks.tsx";
@@ -214,6 +215,7 @@ function SessionChat({
       )}
       {session.habit_run_id == null ? (
         <>
+          <LimitBar session={session} />
           <ReviewBar session={session} />
           <Composer session={session} nav={nav} />
         </>

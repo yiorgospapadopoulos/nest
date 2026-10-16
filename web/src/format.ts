@@ -50,6 +50,18 @@ export function resetLabel(iso: string | null, now: Date): string {
   return `Resets ${day} ${time}`;
 }
 
+/** "in 45 s", "in 12 min", "in 1 h 12 min", or "any moment now" once `ms` ran out. */
+export function countdown(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds <= 0) return "any moment now";
+  if (seconds < 60) return `in ${String(seconds)} s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `in ${String(minutes)} min`;
+  const rest = minutes % 60;
+  const hours = `in ${String(Math.floor(minutes / 60))} h`;
+  return rest === 0 ? hours : `${hours} ${String(rest)} min`;
+}
+
 /** "October" for 10. */
 export function monthName(month: number): string {
   return new Date(2000, month - 1, 1).toLocaleDateString("en-GB", { month: "long" });

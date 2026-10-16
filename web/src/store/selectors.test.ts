@@ -59,6 +59,13 @@ function state(sessions: Session[], approvals = [approval()]): State {
 const idOf = (entry: ChatEntry) =>
   entry.session === undefined ? `cc:${entry.chat.id}` : entry.session.id;
 
+const PAUSE = {
+  window: "five_hour" as const,
+  resets_at: "2026-10-06T14:00:00Z",
+  resume_at: "2026-10-06T14:00:30Z",
+  since: NOW,
+};
+
 describe("chatStatus", () => {
   it.each([
     [session(), [question()], "wait", "Question"],
@@ -74,6 +81,10 @@ describe("chatStatus", () => {
     [session(), [mergeApproval()], "rev", "Ready to merge"],
     [session(), [review(), mergeApproval()], "rev", "Ready for review"],
     [session(), [], "idle", "Idle"],
+    // A chat paused at a usage limit goes on by itself (B78); a review still comes first.
+    [session({ limit_pause: PAUSE }), [], "int", "Paused"],
+    [session({ limit_pause: PAUSE }), [review()], "rev", "Ready for review"],
+    [session({ limit_pause: PAUSE }), [question()], "wait", "Question"],
   ])("%#: %s", (s, pending, tone, label) => {
     expect(chatStatus(s, pending)).toEqual({ tone, label });
   });

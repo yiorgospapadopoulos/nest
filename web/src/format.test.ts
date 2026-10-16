@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { activityTime, ago, initials, percent, prLabel, resetLabel, tokens } from "./format.ts";
+import {
+  activityTime,
+  ago,
+  countdown,
+  initials,
+  percent,
+  prLabel,
+  resetLabel,
+  tokens,
+} from "./format.ts";
 
 const now = new Date("2026-10-06T12:00:00Z");
 
@@ -45,6 +54,24 @@ describe("resetLabel", () => {
     expect(resetLabel(today.toISOString(), now)).toBe("Resets 18:30");
     expect(resetLabel(later.toISOString(), now)).toMatch(/^Resets \w{3} 09:00$/);
     expect(resetLabel(null, now)).toBe("Reset time unknown");
+  });
+});
+
+describe("countdown", () => {
+  it.each([
+    [-5_000, "any moment now"],
+    [0, "any moment now"],
+    [400, "in 1 s"],
+    [45_000, "in 45 s"],
+    [59_400, "in 1 min"],
+    [60_000, "in 1 min"],
+    [61_000, "in 2 min"],
+    [45 * 60_000, "in 45 min"],
+    [60 * 60_000, "in 1 h"],
+    [72 * 60_000, "in 1 h 12 min"],
+    [(26 * 60 + 5) * 60_000, "in 26 h 5 min"],
+  ])("%d ms reads %s", (ms, expected) => {
+    expect(countdown(ms)).toBe(expected);
   });
 });
 

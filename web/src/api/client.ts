@@ -113,6 +113,8 @@ export interface Api {
   cancelQueued(id: string, queuedId: string): Promise<null>;
   // Stops the turn if one runs and starts this pending message next.
   sendNow(id: string, queuedId: string): Promise<null>;
+  // Ends a usage limit pause now (B78): the queued messages, else a continue message, go.
+  resumeLimit(id: string): Promise<Session>;
   sessionCommands(id: string): Promise<CommandList>;
   repoCommands(name: string): Promise<CommandList>;
   files(id: string, query: string): Promise<{ files: string[] }>;
@@ -279,6 +281,10 @@ export class HttpApi implements Api {
 
   sendNow(id: string, queuedId: string) {
     return this.json<null>("POST", `${session(id)}/queue/${encodeURIComponent(queuedId)}/send-now`);
+  }
+
+  resumeLimit(id: string) {
+    return this.json<Session>("POST", `${session(id)}/limit/resume`);
   }
 
   sessionCommands(id: string) {

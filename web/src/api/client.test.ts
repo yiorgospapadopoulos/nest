@@ -76,6 +76,13 @@ const calls: Call[] = [
     undefined,
   ],
   [
+    "resume after the usage limit",
+    (a) => a.resumeLimit("s/1"),
+    "POST",
+    "/api/sessions/s%2F1/limit/resume",
+    undefined,
+  ],
+  [
     "session commands",
     (a) => a.sessionCommands("s/1"),
     "GET",

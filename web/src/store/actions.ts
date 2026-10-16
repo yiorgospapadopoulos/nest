@@ -93,6 +93,8 @@ export type RemoveResult = "removed" | "taken" | "failed";
 
 // The daemon's code for a pending message Claude already read (B59).
 const MESSAGE_TAKEN = "message_taken";
+// The daemon's code for Resume now on a chat whose pause already ended (B78).
+const NOT_PAUSED = "not_paused";
 
 const RESTORED: Record<Restore, string> = {
   code: "Files restored",
@@ -855,6 +857,24 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         return true;
       });
       return done !== null;
+    },
+
+    /**
+     * Ends a chat's usage limit pause now (B78). One that already ended, as when the reset
+     * came meanwhile, is fetched again instead of shown as an error.
+     */
+    async resumeLimit(id: string): Promise<boolean> {
+      try {
+        dispatch({ type: "session", session: await api.resumeLimit(id) });
+        return true;
+      } catch (error) {
+        if (!(error instanceof ApiError && error.code === NOT_PAUSED)) {
+          report(error);
+          return false;
+        }
+      }
+      await fetchChat(id);
+      return true;
     },
 
     /**

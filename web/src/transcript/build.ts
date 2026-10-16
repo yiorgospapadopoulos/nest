@@ -237,9 +237,9 @@ export function buildTranscript(
       case "session.result": {
         // Daemons before B31 end an error turn idle, with this note as its only trace. A
         // turn that made way for the next message (Send now) or that the user stopped
-        // ended without failing (B59).
+        // ended without failing (B59), as did one a usage limit paused (B78).
         const error: TranscriptItem | null =
-          p.is_error === true && p.handoff !== true && p.stopped !== true
+          p.is_error === true && p.handoff !== true && p.stopped !== true && p.limit !== true
             ? { kind: "system", key, text: "The turn ended with an error" }
             : null;
         result = { ms: num(p.duration_ms), key, error };
@@ -361,6 +361,8 @@ function scheduleOf(s: JsonObject): HabitSchedule | null {
 function userItems(key: string, p: JsonObject): TranscriptItem[] {
   const text = str(p.text) ?? "";
   if (p.origin === "report_back") return [{ kind: "report", key, text: reportLines(text) }];
+  // What Nest sends to go on after a usage limit reset (B78).
+  if (p.origin === "limit_resume") return [{ kind: "report", key, title: "Nest", text }];
   // Its first line names the habit and the report; the report card shows the details.
   if (p.origin === "report") {
     return [{ kind: "report", key, title: "Habit report", text: text.replace(/\n[\s\S]*$/, "") }];
