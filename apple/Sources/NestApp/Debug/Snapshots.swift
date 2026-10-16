@@ -156,6 +156,10 @@
                 try await renderBackground(model, shell, controller, folder)
                 return
             }
+            if only == "b73" {
+                try await renderWindowLayout(model, shell, controller, folder)
+                return
+            }
             if only == "b71" {
                 try await renderQuieterChats(model, shell, controller, folder)
                 return
@@ -2460,6 +2464,39 @@
             await controller.service.start()
             try await pair(controller, "service-install", folder)
             model.app.connection = .connected
+        }
+
+        /// B73: no bar over the project; its menu and branch at the top of the sidebar,
+        /// the view switch in the middle of the status bar and the activity panel's toggle
+        /// at its right end.
+        private static func renderWindowLayout(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c1")
+            }
+            try await pair(controller, "layout-workspace", folder)
+            model.app.update("cv-page") { $0.layout.toggleMaximize("c1") }
+            try await pair(controller, "layout-maximized", folder)
+            model.app.update("cv-page") { state in
+                state.layout.restore()
+                state.rightCollapsed = true
+            }
+            try await pair(controller, "layout-panel-hidden", folder)
+            model.app.update("cv-page") { state in
+                state.rightCollapsed = false
+                state.view = .board
+            }
+            try await pair(controller, "layout-board", folder)
+            model.app.update("cv-page") { $0.view = .workspace }
         }
 
         /// B21: Claude Code chats in the sidebar, a read-only history with Continue in
