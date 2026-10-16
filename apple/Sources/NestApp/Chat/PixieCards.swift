@@ -162,8 +162,7 @@ private struct SessionCard: View {
                     .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
                     StatusLabel(
-                        tone: tone, label: shell.sessions.cardState(of: session),
-                        hollow: shell.isHollow(session))
+                        tone: tone, label: shell.sessions.cardState(of: session))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

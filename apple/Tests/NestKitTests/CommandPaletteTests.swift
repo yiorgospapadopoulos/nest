@@ -56,8 +56,8 @@ import Testing
             palette.items.prefix(3).map(\.subtitle) == [
                 "cv-page · Running", "cv-page · Idle", "llm-hunter · Question",
             ])
-        #expect(palette.items[1].glyph == .status(.done, hollow: true))
-        #expect(palette.items[0].glyph == .status(.running, hollow: false))
+        #expect(palette.items[1].glyph == .status(.done))
+        #expect(palette.items[0].glyph == .status(.running))
         #expect(palette.items[2].action == .openChat(project: "llm-hunter", chat: "h1"))
         #expect(palette.items.last?.subtitle == "1 need you")
         #expect(palette.items.last?.action == .goToProject("llm-hunter"))

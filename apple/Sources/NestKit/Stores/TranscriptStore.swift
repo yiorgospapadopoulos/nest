@@ -178,23 +178,10 @@ public final class TranscriptStore {
     public private(set) var focus: TranscriptFocus?
     /// When the open turn started; nil between turns.
     public private(set) var turnStartedAt: Date?
-    /// When the user's latest message was sent: the current exchange, whose background
-    /// tasks the bar counts, began then. Turns the agent starts by itself stay in it. Kept
-    /// apart from the loaded page, so a search hit's page does not move it back.
-    public private(set) var exchangeStartedAt: Date?
-    /// The latest user message's event id. Event ids order the exchange where they can,
-    /// so a step of the clock does not move tasks in or out of it (I-H).
-    public private(set) var exchangeStartEvent: Int?
-    /// The event that started or finished each background task, by tool use id.
-    private var taskStarts: [String: Int] = [:]
-    private var taskEnds: [String: Int] = [:]
     /// `visibleItems` and `entries(live:background:)` as last computed for these items.
     @ObservationIgnored private var visibleCache: [TranscriptItem]?
     @ObservationIgnored private var entriesCache:
         (live: Bool, background: Set<String>, pixies: Set<String>, entries: [TranscriptEntry])?
-    /// The latest user message is known: a load reached the newest events or looked it up,
-    /// or one arrived live (nothing newer can come any other way).
-    private var knowsExchange = false
     /// A main-agent thinking block runs, as the daemon's `session.thinking` reports.
     private var thinkingLive = false
     /// The daemon sends `session.thinking`; older daemons do not.
@@ -247,10 +234,6 @@ public final class TranscriptStore {
                 // Claude Code may have rewound or compacted it since, so start over.
                 events = try await api.claudeChatEvents(sessionID)
                 reset()
-                exchangeStartedAt = nil
-                exchangeStartEvent = nil
-                taskStarts = [:]
-                taskEnds = [:]
             }
             events.forEach(apply)
             finishLoading()
@@ -352,17 +335,6 @@ public final class TranscriptStore {
         return true
     }
 
-    /// The background bar's tasks (see `BackgroundSummary.exchange(since:)`); until the
-    /// latest user message is known, only those still at work. A task whose start or end
-    /// the transcript holds is placed by event id, others by time.
-    public func exchange(of summary: BackgroundSummary) -> BackgroundSummary {
-        guard knowsExchange else { return summary.exchange(since: .distantFuture) }
-        guard let date = exchangeStartedAt else { return summary }
-        return summary.exchange(
-            since: ExchangeStart(
-                date: date, event: exchangeStartEvent, starts: taskStarts, ends: taskEnds))
-    }
-
     // MARK: Focus and pages
 
     /// Asks the view to show an event; a transcript not loaded yet loads only the page
@@ -427,31 +399,12 @@ public final class TranscriptStore {
             hasOlder = older.count == Self.pageSize
             hasNewer = newer.count == Self.pageSize
             rebuild(older + newer)
-            if hasNewer && !knowsExchange {
-                try await findExchange(after: lastEventID)
-            }
             finishLoading()
-        }
-    }
-
-    /// Reads back from the newest events, a page at a time, to the latest user message
-    /// after `event`; without one there, the page's own latest message starts the exchange.
-    private func findExchange(after event: Int) async throws {
-        var before: Int? = .max
-        while let end = before {
-            let events = try await api.sessionEvents(
-                sessionID, after: event, before: end, limit: Self.pageSize)
-            if let message = events.last(where: \.isUserMessage) {
-                noteUserMessage(message)
-                return
-            }
-            before = events.count == Self.pageSize ? events.first?.id : nil
         }
     }
 
     private func finishLoading() {
         isLoaded = true
-        knowsExchange = true
         behind = false
         catchUpFailure = nil
     }
@@ -506,10 +459,6 @@ public final class TranscriptStore {
             }
             return
         }
-        if event.isUserMessage {
-            noteUserMessage(event)
-            knowsExchange = true
-        }
         if !isLoaded || loads > 0 || behind {
             if event.id != nil {
                 held.append(event)
@@ -549,7 +498,6 @@ public final class TranscriptStore {
         switch event.body {
         case .userMessage(let message):
             startTurn(at: event.ts)
-            noteUserMessage(event)
             if message.origin == .reportBack {
                 append(key, .reportBack(message.text), eventID)
             } else if message.origin == .report {
@@ -566,7 +514,6 @@ public final class TranscriptStore {
                 }
             }
         case .message(let message) where message.parentToolUseID == nil:
-            noteTaskStarts(message, eventID)
             endStreaming()
             for (index, block) in message.blocks.enumerated() {
                 add(block, id: "\(key)-\(index)", eventID: eventID)
@@ -608,13 +555,8 @@ public final class TranscriptStore {
             }
             append(key, .notice(error.map { "Failed: \($0)" } ?? "Failed"), eventID)
         case .message(let message):
-            noteTaskStarts(message, eventID)
             if let parent = message.parentToolUseID {
                 addSteps(message.blocks, to: parent, key: key)
-            }
-        case .agentTask(let task):
-            if task.phase == .finished, let tool = task.toolUseID, let eventID {
-                taskEnds[tool] = eventID
             }
         case .gitFailed(let step, let stderr):
             append(key, .notice("git \(step) failed: \(stderr)"), eventID)
@@ -632,17 +574,11 @@ public final class TranscriptStore {
     }
 
     /// The daemon deleted the rewound events: the items are built again without them, so
-    /// approvals, turn lines and the exchange follow (B59).
+    /// approvals and turn lines follow (B59).
     private func drop(_ rewind: SessionRewind) {
         // Stored events, the only ones kept here, all have ids.
         let kept = history.filter { event in event.id.map(rewind.contains) != true }
         guard kept.count != history.count else { return }
-        if let start = exchangeStartEvent, rewind.contains(start) {
-            exchangeStartEvent = nil
-            exchangeStartedAt = nil
-        }
-        taskStarts = taskStarts.filter { !rewind.contains($0.value) }
-        taskEnds = taskEnds.filter { !rewind.contains($0.value) }
         rebuild(kept)
     }
 
@@ -753,26 +689,6 @@ public final class TranscriptStore {
             items[items.count - 1].content = .assistant(sofar + text, streaming: true)
         } else {
             append(Self.streamingID, .assistant(text, streaming: true), nil)
-        }
-    }
-
-    /// User messages come in order, so the latest one seen anywhere starts the exchange:
-    /// the one with the highest event id, or the latest time for one without an id.
-    private func noteUserMessage(_ event: Event) {
-        guard let id = event.id else {
-            exchangeStartedAt = max(exchangeStartedAt ?? event.ts, event.ts)
-            return
-        }
-        guard id >= exchangeStartEvent ?? id else { return }
-        exchangeStartEvent = id
-        exchangeStartedAt = event.ts
-    }
-
-    /// Remembers which event made each tool call, as background tasks go by their call.
-    private func noteTaskStarts(_ message: AgentMessage, _ eventID: Int?) {
-        guard let eventID else { return }
-        for case .toolUse(let id, _, _) in message.blocks where taskStarts[id] == nil {
-            taskStarts[id] = eventID
         }
     }
 

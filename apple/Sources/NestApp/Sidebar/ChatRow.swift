@@ -1,8 +1,8 @@
 import NestKit
 import SwiftUI
 
-/// A chat in the sidebar: status dot and its whole title over where it works, its elapsed
-/// time and marks, as Claude Code chats' rows; click opens it, drag splits. In a git
+/// A chat in the sidebar: status dot and its whole title over where it works and its
+/// marks, as Claude Code chats' rows; click opens it, drag splits. In a git
 /// project every chat names its branch: the project folder's current one for in-place
 /// chats, its worktree's for worktree chats (B55).
 struct ChatRow: View {
@@ -33,25 +33,24 @@ struct ChatRow: View {
         let startedBy = PixieLabels.startedBy(session, pixies: shell.pixies.pixies)
         let place = ChatPlace.of(session, repo: shell.repo)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            StatusDot(tone: tone, hollow: shell.isHollow(session))
+            StatusDot(tone: tone)
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.title)
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
                     .lineLimit(1)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
+                if place != nil || session.pinned || session.stuck != nil || startedBy != nil {
                     HStack(spacing: 4) {
                         if let place {
                             PlaceMark(place: place)
-                            Text("·")
                         }
                         if session.pinned {
                             Image(systemName: Icon.pin).font(.system(size: 8))
                         }
-                        Text(Elapsed.short(from: session.updatedAt, to: context.date))
-                            .monospacedDigit()
                         if let stuck = session.stuck {
-                            Text("·")
+                            if place != nil || session.pinned {
+                                Text("·")
+                            }
                             StuckBadge(flag: stuck)
                         }
                         if let startedBy {

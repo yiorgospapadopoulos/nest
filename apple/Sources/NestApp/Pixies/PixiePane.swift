@@ -81,7 +81,7 @@ private struct PixiePaneHeader: View {
                 .lineLimit(1)
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)
-            if fit.showsPlaceName {
+            if fit.showsHeaderDetails {
                 Text("@\(pixie.slug)")
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t3)
@@ -91,7 +91,7 @@ private struct PixiePaneHeader: View {
             if let session {
                 StatusLabel(
                     tone: tone, label: shell.statusLabel(of: session),
-                    hollow: shell.isHollow(session), showsLabel: fit.showsStatusLabel
+                    showsLabel: fit.showsStatusLabel
                 )
                 .allowsHitTesting(false)
             }
@@ -99,13 +99,13 @@ private struct PixiePaneHeader: View {
             Button {
                 shell.togglePixieDetails(pixie.id)
             } label: {
-                if fit.showsElapsed {
+                if fit.showsDetailsLabel {
                     Label("Details", systemImage: Icon.rightPanel)
                 } else {
                     Image(systemName: Icon.rightPanel)
                 }
             }
-            .buttonStyle(.nest(showing ? .soft : .plain, iconOnly: !fit.showsElapsed))
+            .buttonStyle(.nest(showing ? .soft : .plain, iconOnly: !fit.showsDetailsLabel))
             .help(showing ? "Hide details" : "Show details")
             .accessibilityLabel("Details")
             .accessibilityAddTraits(showing ? .isSelected : [])

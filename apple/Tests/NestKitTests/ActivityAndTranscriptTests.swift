@@ -553,8 +553,6 @@ import Testing
             api.calls == [
                 "sessionEvents p after=0 before=121 limit=100",
                 "sessionEvents p after=120 limit=100",
-                // The latest user message, for the background bar.
-                "sessionEvents p after=220 before=\(Int.max) limit=100",
             ])
         #expect(transcript.isLoaded)
         #expect(transcript.hasOlder)
@@ -565,7 +563,7 @@ import Testing
         #expect(try await transcript.resolveFocus() == "e120")
         #expect(transcript.focus == nil)
         #expect(try await transcript.resolveFocus() == nil)
-        #expect(api.calls.count == 3)
+        #expect(api.calls.count == 2)
     }
 
     @Test func earlierAndNewerPagesLoadOnRequest() async throws {
@@ -579,7 +577,7 @@ import Testing
         #expect(ids(transcript).first == "e1")
         #expect(transcript.items.count == 220)
         try await transcript.loadOlder()
-        #expect(api.calls.count == 4)
+        #expect(api.calls.count == 3)
 
         try await transcript.loadNewer()
         #expect(api.calls.last == "sessionEvents p after=220 limit=100")
@@ -587,7 +585,7 @@ import Testing
         #expect(ids(transcript).last == "e250")
         #expect(transcript.lastEventID == 250)
         try await transcript.loadNewer()
-        #expect(api.calls.count == 5)
+        #expect(api.calls.count == 4)
     }
 
     @Test func liveEventsWaitWhileNewerOnesAreNotLoaded() async throws {
@@ -635,7 +633,7 @@ import Testing
         api.set { $0.gates["sessionEvents"] = gate }
 
         let paging = Task { try await transcript.loadNewer() }
-        try await waitFor { api.calls.count == 4 }
+        try await waitFor { api.calls.count == 3 }
         // Published after the daemon read the page: only the live copies bring them.
         transcript.receive(Self.message(251))
         transcript.receive(Self.message(252))
@@ -658,7 +656,7 @@ import Testing
         // The page around 240 reaches the newest event, so live ones apply after it.
         transcript.requestFocus(event: 240)
         let jumping = Task { try await transcript.resolveFocus() }
-        try await waitFor { api.calls.count == 4 }
+        try await waitFor { api.calls.count == 3 }
         transcript.receive(Self.message(251))
         open.finish()
         #expect(try await jumping.value == "e240")
@@ -720,7 +718,7 @@ import Testing
 
         transcript.requestFocus(event: 200)
         #expect(try await transcript.resolveFocus() == "e200")
-        #expect(api.calls.count == 7)
+        #expect(api.calls.count == 6)
     }
 }
 
