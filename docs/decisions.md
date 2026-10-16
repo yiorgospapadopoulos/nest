@@ -839,3 +839,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Right panel (Mac):** only the Needs you and Goals cards remain, open by default, sharing the panel's height; the folded rail has their two buttons. The card's main agent rows with their last steps and its running background command rows go with it; subagents and pixies stay in the sidebar tree. With the background bar gone too (D095), running background commands are not listed on the Mac for now; the iPhone's background bar still lists them. The open cards are not saved anywhere, so nothing stored needs migrating.
 - **Usage:** the chip in the tab strip opens the usage popover; Refresh lives only there. The automatic refresh (D031) is unchanged.
 - **Refines:** D095 (which pointed background commands to the Agents card), D091 (the tree no longer also shows in an Agents card) and D093 (the Agents card is gone from where sprites move).
+
+## D097 (2026-10-17): The Mac's bar of running tasks above the composer (B76)
+
+- **Why:** with the background bar (D095) and the Agents card (D096) gone, the Mac showed running background commands nowhere, so they could not be seen or stopped.
+- **Bar:** above the composer of a project chat (not a Claude Code chat's pane), above the pending review bar, shown only while at least one of the chat's subagents or background commands runs and hidden otherwise. Collapsed it is a running dot, "1 running task" or "3 running tasks" (glowing; a static highlight with reduced motion) and a chevron. A click opens it upwards to the running items, each with its kind icon, name, description, how long it has run and Stop (which stops that task, not the turn). Whether it is open is remembered per chat while the app runs and forgotten when the chat is deleted.
+- **Not brought back:** no completed count, no Completed list and no counting from the user's latest message (the exchange start); a running task is always relevant. The iPhone's bar is unchanged.
+- **Refines:** D095 (the Mac again has a bar above the composer, for running tasks only) and D096 (running background commands are listed on the Mac again, in this bar).
