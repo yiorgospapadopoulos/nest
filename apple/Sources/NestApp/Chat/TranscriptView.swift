@@ -274,6 +274,8 @@ struct TranscriptRow: View {
             PixieCardView(card: card, chat: chat, answered: answered)
         case .habitReport(let text):
             HabitReportRow(text: text)
+        case .limitResume(let text):
+            LimitResumeRow(text: text)
         case .hook(let run):
             HookRow(id: item.id, run: run)
         case .bash(let block):

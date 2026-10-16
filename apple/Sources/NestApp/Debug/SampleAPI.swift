@@ -30,7 +30,8 @@
         private var teamList: [PixieTeam] = []
         /// Pixie files by "<pixie id>/<name>", such as "reviewer/soul".
         private var pixieFiles: [String: String] = [:]
-        /// Messages sent to a pixie's chat while it works, by chat id.
+        /// Messages waiting in a chat's queue, by chat id: a pixie's chat's sent while it
+        /// works, or a snapshot's.
         private var pixieQueues: [String: [QueuedMessage]] = [:]
         /// Reviewer's habits and their runs by habit id, and every pixie's reports (B42).
         private var habitList: [PixieHabit] = []
@@ -291,6 +292,16 @@
         }
 
         func interrupt(_ id: String) async throws {}
+
+        func resumeLimit(_ id: String) async throws -> Session {
+            try lock.withLock {
+                guard let index = sessionList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound(id)
+                }
+                sessionList[index].limitPause = nil
+                return sessionList[index]
+            }
+        }
         func stopTask(_ id: String, task: String) async throws {}
 
         func rewindPreview(_ id: String, message: Int, restore: RewindRestore) async throws
@@ -331,6 +342,11 @@
                 }
             }
             return try SampleData.diff()
+        }
+
+        /// The chat's queued messages from now on, as a paused chat holds them (B78).
+        func setQueue(_ queued: [QueuedMessage], of chat: String) {
+            lock.withLock { pixieQueues[chat] = queued }
         }
 
         /// Approving answers this refusal from now on, as when origin's address changed.

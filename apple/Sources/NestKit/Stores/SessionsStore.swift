@@ -36,6 +36,8 @@ public final class SessionsStore {
     public private(set) var sessions: [String: Session] = [:]
     /// Sessions whose pull request is being read from GitHub now.
     public private(set) var refreshingPR: Set<String> = []
+    /// Paused sessions whose Resume now is on its way to the daemon (B78).
+    public private(set) var resumingLimit: Set<String> = []
 
     let api: any NestAPI
     let approvals: ApprovalsStore
@@ -103,7 +105,8 @@ public final class SessionsStore {
     }
 
     /// The status color of a session's dot and pill: a prompt, question or plan waits
-    /// first; work to review or a pull request to merge shows as review while idle.
+    /// first; work to review or a pull request to merge shows as review while idle; a
+    /// chat paused at the usage limit takes the interrupted grey, as on the iPhone (B78).
     public func tone(of session: Session) -> StatusTone {
         let kinds = pendingKinds(of: session)
         if session.state == .waiting || !kinds.isDisjoint(with: Self.promptKinds) {
@@ -111,6 +114,9 @@ public final class SessionsStore {
         }
         let idle = session.state == .idle || session.state == .unknown
         let ready = idle && (kinds.contains(.review) || kinds.contains(.merge))
+        if idle && session.isLimitPaused && !ready {
+            return .interrupted
+        }
         return StatusTone.of(session.state, hasReview: ready)
     }
 
@@ -137,7 +143,10 @@ public final class SessionsStore {
             if kinds.contains(.review) {
                 return "Ready for review"
             }
-            return kinds.contains(.merge) ? "Ready to merge" : "Idle"
+            if kinds.contains(.merge) {
+                return "Ready to merge"
+            }
+            return session.isLimitPaused ? "Paused" : "Idle"
         }
     }
 
@@ -267,6 +276,14 @@ public final class SessionsStore {
         refreshingPR.insert(id)
         defer { refreshingPR.remove(id) }
         try await fetch { try await self.api.refreshPR(id) }
+    }
+
+    /// Resume now on a chat paused at the usage limit: it goes on at once, with its queued
+    /// messages or else Nest's continue message (B78).
+    public func resumeAfterLimit(_ id: String) async throws {
+        resumingLimit.insert(id)
+        defer { resumingLimit.remove(id) }
+        try await fetch { try await self.api.resumeLimit(id) }
     }
 
     /// Send a nudge: stops the stuck turn and sends a message asking for another

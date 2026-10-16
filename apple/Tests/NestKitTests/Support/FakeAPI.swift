@@ -312,6 +312,15 @@ final class FakeAPI: NestAPI {
         try call("interrupt", id) { _ in }
     }
 
+    /// Ends the pause, after the gate named "resumeLimit" opens when one is set.
+    func resumeLimit(_ id: String) async throws -> Session {
+        let answer = try call("resumeLimit", id) { state in
+            session(id, in: &state) { $0.limitPause = nil }
+        }
+        await pass("resumeLimit")
+        return answer
+    }
+
     func stopTask(_ id: String, task: String) async throws {
         try call("stopTask", "\(id) \(task)") { _ in }
     }

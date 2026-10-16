@@ -160,6 +160,10 @@
                 try await renderChatList(model, shell, controller, folder)
                 return
             }
+            if only == "b78" {
+                try await renderLimitPause(model, shell, controller, folder)
+                return
+            }
             if only == "b73" {
                 try await renderWindowLayout(model, shell, controller, folder)
                 return
@@ -2497,6 +2501,72 @@
                 pinned.pinned = true
                 model.sessions.insert(pinned)
             }
+        }
+
+        /// B78: a chat paused at the usage limit, with the notice above the composer (its
+        /// countdown and Resume now) and the sidebar's paused dot: one that continues where
+        /// it left off, one that sends its queued message, then Nest's continue message once
+        /// it went on.
+        private static func renderLimitPause(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            guard let original = model.sessions.session("c6") else { return }
+            let workspace = CGSize(width: 828, height: 790)
+            let transcript = model.transcripts.transcript(for: "c6")
+            try await transcript.load()
+            try await model.activity.load(session: "c6")
+            let now = Date()
+            var paused = original
+            paused.limitPause = LimitPause(
+                window: .fiveHour, resetsAt: now.addingTimeInterval(72 * 60),
+                resumeAt: now.addingTimeInterval(72 * 60 + 30),
+                since: now.addingTimeInterval(-3 * 3600))
+            model.sessions.insert(paused)
+            func event(_ id: Int, _ type: String, _ payload: [String: Any]) throws -> Event {
+                try SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(now), "session_id": "c6",
+                    "payload": payload,
+                ])
+            }
+            // The cut-off turn's error result is no failure: no line for it.
+            transcript.receive(
+                try event(
+                    9_001, EventType.sessionResult,
+                    [
+                        "is_error": true, "subtype": "error_during_execution",
+                        "duration_ms": 72_000, "num_turns": 4, "errors": ["usage limit"],
+                        "limit": true,
+                    ]))
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c6", in: workspace)
+                state.focusPane("c6")
+            }
+            try await pair(controller, "limit-pause-continue", folder)
+            // The panes read the chat again as they show, so the sample daemon holds it too.
+            let sample = model.api as? SampleAPI
+            let queued = QueuedMessage(
+                id: "q-limit", text: "Also link the feed from the footer.", createdAt: now)
+            sample?.setQueue([queued], of: "c6")
+            model.activity.enqueue(queued, session: "c6")
+            try await pair(controller, "limit-pause-queued", folder)
+
+            sample?.setQueue([], of: "c6")
+            model.activity.apply(try event(9_002, EventType.sessionQueued, ["queued": []]))
+            model.sessions.insert(original)
+            transcript.receive(
+                try event(
+                    9_003, EventType.sessionUserMessage,
+                    [
+                        "text": "Continue where you left off.", "attachments": [],
+                        "origin": "limit_resume",
+                    ]))
+            try await pair(controller, "limit-resumed", folder)
         }
 
         /// B73: no bar over the project; its menu and branch at the top of the sidebar,

@@ -120,6 +120,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         /// "Report from habit <name>: <title>", the message that starts a pixie's turn
         /// after a habit run reported (B42).
         case habitReport(String)
+        /// Nest's message that lets Claude continue after the usage limit reset (B78).
+        case limitResume(String)
         /// A hook's message, output or failure, as a muted line (B59).
         case hook(HookRun)
     }
@@ -502,6 +504,8 @@ public final class TranscriptStore {
                 append(key, .reportBack(message.text), eventID)
             } else if message.origin == .report {
                 append(key, .habitReport(message.text), eventID)
+            } else if message.origin == .limitResume {
+                append(key, .limitResume(message.text), eventID)
             } else {
                 let split = BashBlocks.split(message.text)
                 for (index, block) in split.blocks.enumerated() {

@@ -109,8 +109,12 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var background: BackgroundSummary?
     /// Messages waiting for the running turn to end, oldest first.
     public var queued: [QueuedMessage]?
+    /// Set while the chat is paused at the usage limit, the only sign that it is (B78).
+    public var limitPause: LimitPause?
 
     public var isArchived: Bool { archivedAt != nil }
+
+    public var isLimitPaused: Bool { limitPause != nil }
 
     /// The folder the agent works in: its worktree, else the folder it runs in.
     public var folder: String? { worktreePath ?? cwd }
@@ -132,6 +136,42 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case prURL = "pr_url"
         case allowedTools = "allowed_tools"
         case archivedAt = "archived_at"
+        case limitPause = "limit_pause"
+    }
+}
+
+/// The usage limit a paused chat reached, as Claude Code names it.
+public enum LimitPauseWindow: String, UnknownSafeEnum {
+    case fiveHour = "five_hour"
+    case sevenDay = "seven_day"
+    case sevenDayOpus = "seven_day_opus"
+    case sevenDaySonnet = "seven_day_sonnet"
+    case overage
+    case unknown
+}
+
+/// A chat paused at the usage limit (B78): messages wait in its queue, and the daemon goes
+/// on by itself at `resumeAt`.
+public struct LimitPause: Codable, Sendable, Hashable {
+    /// Nil when Claude Code did not say which limit it was.
+    public var window: LimitPauseWindow?
+    /// Nil when Claude Code did not say when the limit resets.
+    public var resetsAt: Date?
+    /// Just after the reset, or a retry half an hour on when the reset time is unknown.
+    public var resumeAt: Date
+    public var since: Date
+
+    public init(window: LimitPauseWindow?, resetsAt: Date?, resumeAt: Date, since: Date) {
+        self.window = window
+        self.resetsAt = resetsAt
+        self.resumeAt = resumeAt
+        self.since = since
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case window, since
+        case resetsAt = "resets_at"
+        case resumeAt = "resume_at"
     }
 }
 

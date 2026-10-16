@@ -196,7 +196,7 @@ public enum TranscriptGrouping {
         // A turn's end line, or a user message or report starting the next turn.
         let lastEnd = items.lastIndex {
             switch $0.content {
-            case .turnEnd, .user, .reportBack, .habitReport: true
+            case .turnEnd, .user, .reportBack, .habitReport, .limitResume: true
             default: false
             }
         }
@@ -280,7 +280,7 @@ public enum TranscriptGrouping {
                 continue
             }
             switch item.content {
-            case .user, .reportBack, .habitReport:
+            case .user, .reportBack, .habitReport, .limitResume:
                 reply = []
             case .turnEnd:
                 for id in reply + [item.id] {

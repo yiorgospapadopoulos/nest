@@ -178,6 +178,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/sessions/s1/interrupt", response: "") {
             try await $0.interrupt("s1")
         },
+        RouteCase("POST", "/api/sessions/s1/limit/resume", response: sessionJSON) {
+            _ = try await $0.resumeLimit("s1")
+        },
         RouteCase("POST", "/api/sessions/s1/tasks/toolu_01/stop", response: "") {
             try await $0.stopTask("s1", task: "toolu_01")
         },
