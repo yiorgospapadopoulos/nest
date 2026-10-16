@@ -27,41 +27,33 @@ import Testing
         #expect(store.session("missing") == nil)
     }
 
-    @Test func groupsFollowTheSidebarOrder() async throws {
+    @Test func eachChatHasItsChatListGroup() async throws {
         try await seed([
-            Fixture.session("done", state: .closed, updatedAt: .init(timeIntervalSince1970: 1)),
-            Fixture.session("idle", state: .idle, updatedAt: .init(timeIntervalSince1970: 2)),
-            Fixture.session("broken", state: .failed, updatedAt: .init(timeIntervalSince1970: 3)),
-            Fixture.session("run", state: .running, updatedAt: .init(timeIntervalSince1970: 4)),
-            Fixture.session("setup", state: .starting, updatedAt: .init(timeIntervalSince1970: 5)),
-            Fixture.session("wait", state: .waiting, updatedAt: .init(timeIntervalSince1970: 6)),
+            Fixture.session("done", state: .closed),
+            Fixture.session("idle", state: .idle),
+            Fixture.session("broken", state: .failed),
+            Fixture.session("run", state: .running),
+            Fixture.session("setup", state: .starting),
+            Fixture.session("wait", state: .waiting),
             Fixture.session("pinned", state: .waiting, pinned: true),
             Fixture.session("old", state: .closed, pinned: true, archived: true),
-            Fixture.session("other-repo", repo: "llm-hunter"),
         ])
 
-        let groups = store.groups(in: "cv-page")
-
-        #expect(groups.map(\.kind) == [.pinned, .needsYou, .running, .idle, .done, .archived])
+        let groups = ["done", "idle", "broken", "run", "setup", "wait", "pinned", "old"].map {
+            store.group(of: store.session($0)!)
+        }
         #expect(
-            groups.map { $0.sessions.map(\.id) } == [
-                ["pinned"], ["wait"], ["setup", "run"], ["broken", "idle"], ["done"], ["old"],
-            ])
-        #expect(groups.map(\.id) == groups.map(\.kind))
-        #expect(
-            SessionGroupKind.allCases.map(\.title) == [
-                "Pinned", "Needs you", "Running", "Idle", "Done", "Archived",
-            ])
+            groups == [.done, .idle, .idle, .running, .running, .needsYou, .pinned, .archived])
     }
 
     @Test func aPendingReviewPutsAnIdleSessionUnderNeedsYou() async throws {
         let reviewed = Fixture.approval("ap-review")
         try await seed([Fixture.session(reviewed.sessionID, state: .idle)])
-        #expect(store.groups(in: "cv-page").map(\.kind) == [.idle])
+        #expect(store.group(of: store.session(reviewed.sessionID)!) == .idle)
 
         approvals.apply(.approvalCreated(reviewed))
 
-        #expect(store.groups(in: "cv-page").map(\.kind) == [.needsYou])
+        #expect(store.group(of: store.session(reviewed.sessionID)!) == .needsYou)
         #expect(store.board(in: "cv-page")[.review]?.map(\.id) == [reviewed.sessionID])
     }
 
@@ -75,7 +67,7 @@ import Testing
 
         approvals.apply(.approvalCreated(merge))
 
-        #expect(store.groups(in: "cv-page").map(\.kind) == [.needsYou])
+        #expect(store.group(of: store.session(merge.sessionID)!) == .needsYou)
         #expect(store.attention(of: "cv-page") == 1)
     }
 
@@ -333,7 +325,6 @@ import Testing
         #expect(store.session("pc")?.pixieID == "p1")
         #expect(store.sessions(in: "pixie:p1").isEmpty)
         #expect(store.sessions(in: "cv-page").map(\.id) == ["normal"])
-        #expect(store.groups(in: "cv-page").map { $0.sessions.map(\.id) } == [["normal"]])
         #expect(store.board(in: "cv-page").values.flatMap { $0 }.map(\.id) == ["normal"])
         #expect(store.stuck(in: nil).isEmpty)
         // The pixie's approval reaches the Dock badge, but no project's count.

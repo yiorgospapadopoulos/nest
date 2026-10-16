@@ -155,10 +155,10 @@ struct UIRules: Decodable {
         }
     }
 
+    /// The Mac shows no group titles since B77; it keeps the shared order.
     @Test func groupsAreListedInTheSameOrder() {
         let listed = SessionGroupKind.allCases.filter { $0 != .archived }
         #expect(listed.map { Self.groupIDs[$0] } == rules.groups.map(\.id))
-        #expect(listed.map(\.title) == rules.groups.map(\.label))
     }
 
     @Test func notificationKindsMatchTheSettingsToggles() {

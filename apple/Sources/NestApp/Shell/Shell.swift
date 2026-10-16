@@ -137,6 +137,9 @@ final class Shell {
     var deleting: String?
     /// Projects whose Archived group is unfolded.
     var archivedOpen: Set<String> = []
+    /// Right panel rows opened or closed by the user, by row key; the rest keep their
+    /// default (B77).
+    var foldedRows: [String: Bool] = [:]
     /// The Connectors sheet's unfolded groups; all are folded at first.
     var connectorGroupsOpen: Set<ConnectorSectionKind> = []
     /// Expanded tool calls and thinking blocks, by transcript item id.
@@ -646,9 +649,11 @@ final class Shell {
     /// Claude Code chats being continued in Nest, by chat id.
     var adopting: Set<String> = []
 
-    /// The sidebar's groups: the project's sessions with its Claude Code chats in Idle.
+    /// The sidebar's groups: pinned chats, then the project's sessions and Claude Code
+    /// chats by latest activity, then Archived (B77).
     func sidebarGroups(in project: String) -> [SidebarGroup] {
-        SidebarGroup.merge(sessions.groups(in: project), chats: claudeChats.chats(in: project))
+        SidebarGroup.list(
+            sessions: sessions.sessions(in: project), chats: claudeChats.chats(in: project))
     }
 
     /// The Claude Code chat a pane shows, if it is one.

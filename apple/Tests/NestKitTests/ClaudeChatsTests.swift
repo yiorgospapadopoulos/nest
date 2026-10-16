@@ -263,71 +263,69 @@ import Testing
 }
 
 @Suite struct SidebarGroupTests {
-    func groups(_ kinds: [(SessionGroupKind, [Session])]) -> [SessionGroup] {
-        kinds.map { SessionGroup(kind: $0.0, sessions: $0.1) }
+    func at(_ seconds: Double) -> Date { Date(timeIntervalSince1970: seconds) }
+
+    /// B77: one list by latest activity whatever each chat's state, Claude Code chats
+    /// mixed in; no Pinned group and no titles while nothing is pinned.
+    @Test func everyChatIsInOneListNewestFirst() {
+        let list = SidebarGroup.list(
+            sessions: [
+                Fixture.session("waits", state: .waiting, updatedAt: at(300)),
+                Fixture.session("runs", state: .running, updatedAt: at(700)),
+                Fixture.session("closed", state: .closed, updatedAt: at(900)),
+                Fixture.session("idle", state: .idle, updatedAt: at(100)),
+            ],
+            chats: [Fixture.claudeChat("cc", lastActivity: 500)])
+
+        #expect(list.map(\.kind) == [.chats])
+        #expect(list[0].entries.map(\.id) == ["closed", "runs", "claude-code:cc", "waits", "idle"])
+        #expect(!list[0].showsTitle)
     }
 
-    @Test func claudeChatsJoinIdleSortedByLastActivity() {
-        let idle = Fixture.session("idle", updatedAt: Date(timeIntervalSince1970: 500))
-        let merged = SidebarGroup.merge(
-            groups([(.running, [Fixture.session("run")]), (.idle, [idle])]),
+    @Test func pinnedChatsComeFirstAndBothGroupsShowTheirTitles() {
+        let list = SidebarGroup.list(
+            sessions: [
+                Fixture.session("new", updatedAt: at(900)),
+                Fixture.session("pin-old", pinned: true, updatedAt: at(100)),
+                Fixture.session("pin-new", state: .running, pinned: true, updatedAt: at(200)),
+            ],
+            chats: [Fixture.claudeChat("cc", lastActivity: 50)])
+
+        #expect(list.map(\.kind) == [.pinned, .chats])
+        #expect(list.map(\.id) == [.pinned, .chats])
+        #expect(list[0].entries.map(\.id) == ["pin-new", "pin-old"])
+        #expect(list[1].entries.map(\.id) == ["new", "claude-code:cc"])
+        #expect(list.allSatisfy { $0.showsTitle })
+    }
+
+    @Test func archivedChatsStayApartAtTheEnd() {
+        let list = SidebarGroup.list(
+            sessions: [
+                Fixture.session("old", pinned: true, archived: true, updatedAt: at(500)),
+                Fixture.session("live", updatedAt: at(100)),
+            ],
             chats: [
-                Fixture.claudeChat("newer", lastActivity: 900),
-                Fixture.claudeChat("older", lastActivity: 100),
-            ])
-
-        #expect(merged.map(\.kind) == [.running, .idle])
-        #expect(merged.map(\.id) == [.running, .idle])
-        #expect(merged[1].entries.map(\.id) == ["claude-code:newer", "idle", "claude-code:older"])
-        #expect(merged[0].entries == [.session(Fixture.session("run"))])
-    }
-
-    @Test func anIdleGroupIsAddedInItsPlace() {
-        let merged = SidebarGroup.merge(
-            groups([(.pinned, []), (.running, []), (.done, []), (.archived, [])]),
-            chats: [Fixture.claudeChat("c")])
-        #expect(merged.map(\.kind) == [.pinned, .running, .idle, .done, .archived])
-
-        let last = SidebarGroup.merge(
-            groups([(.needsYou, [])]), chats: [Fixture.claudeChat("c")])
-        #expect(last.map(\.kind) == [.needsYou, .idle])
-
-        let only = SidebarGroup.merge([], chats: [Fixture.claudeChat("c")])
-        #expect(only.map(\.kind) == [.idle])
-    }
-
-    @Test func archivedChatsJoinArchivedAndLeaveIdle() {
-        let archivedSession = Fixture.session("old", updatedAt: Date(timeIntervalSince1970: 500))
-        let merged = SidebarGroup.merge(
-            groups([(.idle, [Fixture.session("idle")]), (.archived, [archivedSession])]),
-            chats: [
-                Fixture.claudeChat("live", lastActivity: 300),
                 Fixture.claudeChat("gone", lastActivity: 900, archived: true),
                 Fixture.claudeChat("older", lastActivity: 100, archived: true),
             ])
 
-        #expect(merged.map(\.kind) == [.idle, .archived])
-        #expect(merged[0].entries.map(\.id) == ["idle", "claude-code:live"])
-        #expect(merged[1].entries.map(\.id) == ["claude-code:gone", "old", "claude-code:older"])
+        #expect(list.map(\.kind) == [.chats, .archived])
+        #expect(list[0].entries.map(\.id) == ["live"])
+        #expect(list[1].entries.map(\.id) == ["claude-code:gone", "old", "claude-code:older"])
+        #expect(list[1].showsTitle)
     }
 
-    @Test func anArchivedGroupIsAddedForArchivedChatsAlone() {
-        let merged = SidebarGroup.merge(
-            groups([(.running, [Fixture.session("run")])]),
-            chats: [Fixture.claudeChat("gone", archived: true)])
-        #expect(merged.map(\.kind) == [.running, .archived])
-        #expect(merged[1].entries.map(\.id) == ["claude-code:gone"])
+    @Test func onlyPinnedOrOnlyArchivedChatsLeaveTheOtherGroupsOut() {
+        let pinned = SidebarGroup.list(
+            sessions: [Fixture.session("p", pinned: true)], chats: [])
+        #expect(pinned.map(\.kind) == [.pinned])
 
-        let between = SidebarGroup.merge(
-            groups([(.pinned, []), (.done, [])]),
-            chats: [Fixture.claudeChat("a", archived: true), Fixture.claudeChat("i")])
-        #expect(between.map(\.kind) == [.pinned, .idle, .done, .archived])
-    }
+        let archived = SidebarGroup.list(
+            sessions: [], chats: [Fixture.claudeChat("a", archived: true)])
+        #expect(archived.map(\.kind) == [.archived])
 
-    @Test func withoutChatsTheGroupsStayAsTheyAre() {
-        let merged = SidebarGroup.merge(groups([(.done, [Fixture.session("d")])]), chats: [])
-        #expect(merged.map(\.kind) == [.done])
-        #expect(merged[0].entries.map(\.id) == ["d"])
+        #expect(SidebarGroup.list(sessions: [], chats: []).isEmpty)
+        #expect(SidebarSection.allCases.map(\.title) == ["Pinned", "Chats", "Archived"])
     }
 
     @Test func entriesReadTheirSessionOrChat() {
@@ -427,7 +425,7 @@ import Testing
         let api = FakeAPI()
         let sessions = SessionsStore(api: api, approvals: ApprovalsStore(api: api))
         sessions.insert(Fixture.session("adopted", state: .idle))
-        #expect(sessions.groups(in: "cv-page").map(\.kind) == [.idle])
+        #expect(sessions.sessions(in: "cv-page").map(\.id) == ["adopted"])
         #expect(sessions.session("adopted") != nil)
         #expect(api.calls.isEmpty)
     }
