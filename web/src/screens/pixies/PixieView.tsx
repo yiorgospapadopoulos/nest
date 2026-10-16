@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Pixie } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { pixieWorking } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
 import { Composer } from "../chat/Composer.tsx";
 import { Frame } from "../chat/Frame.tsx";
 import { Transcript } from "../chat/Transcript.tsx";
 import { PixieDetails } from "./PixieDetails.tsx";
-import { Sprite } from "./Sprite.tsx";
+import { Sprite, WorkingDot } from "./Sprite.tsx";
 
 export type PixieTab = "chat" | "details";
 
@@ -63,10 +64,22 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
     );
   }
 
+  const working = pixieWorking(state, pixie);
   return (
     <Frame
       title={pixie.name}
-      icon={<Sprite mascot={pixie.mascot} color={pixie.color} size={24} />}
+      icon={
+        <>
+          <Sprite
+            mascot={pixie.mascot}
+            color={pixie.color}
+            size={24}
+            working={working}
+            phaseKey={pixie.id}
+          />
+          <WorkingDot working={working} />
+        </>
+      }
       back="Projects"
       onBack={onBack}
       details={
@@ -94,12 +107,13 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
         <PixieChat
           key={pixie.chat_session_id ?? "none"}
           pixie={pixie}
+          working={working}
           onOpenPixie={onOpenPixie}
           onOpenChat={onOpenChat}
         />
       ) : (
         <div className="pxd" id="pixie-panel" role="tabpanel" aria-labelledby="pixie-tab-details">
-          <PixieDetails pixie={pixie} onOpenChat={onOpenChat} />
+          <PixieDetails pixie={pixie} working={working} onOpenChat={onOpenChat} />
         </div>
       )}
     </Frame>
@@ -108,11 +122,12 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
 
 interface ChatProps {
   pixie: Pixie;
+  working: boolean;
   onOpenPixie: (id: string) => void;
   onOpenChat: (sessionId: string) => void;
 }
 
-function PixieChat({ pixie, onOpenPixie, onOpenChat }: ChatProps) {
+function PixieChat({ pixie, working, onOpenPixie, onOpenChat }: ChatProps) {
   const { state, actions } = useStore();
   const chatId = pixie.chat_session_id;
   const session = chatId === null ? undefined : state.sessions[chatId];
@@ -131,7 +146,13 @@ function PixieChat({ pixie, onOpenPixie, onOpenChat }: ChatProps) {
         <div className="ch-tx">
           {chatId === null && (
             <div className="tx-empty pxhi">
-              <Sprite mascot={pixie.mascot} color={pixie.color} size={96} />
+              <Sprite
+                mascot={pixie.mascot}
+                color={pixie.color}
+                size={96}
+                working={working}
+                phaseKey={pixie.id}
+              />
               <b>Say hi to {pixie.name}</b>
               <span>It remembers what matters across chats.</span>
             </div>

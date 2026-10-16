@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { Mascot, Pixie, PixieTeam } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { pixieList, teamList, unreadActions } from "../../store/selectors.ts";
+import { pixieList, pixieWorking, teamList, unreadActions } from "../../store/selectors.ts";
 import { leaderColor } from "../../transcript/mentions.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { useRowGestures } from "../projects/rowGestures.ts";
@@ -108,9 +108,7 @@ export function PixieSection({ onOpen }: Props) {
           key={p.id}
           pixie={p}
           leader={group.team?.leader_id === p.id}
-          running={
-            p.chat_session_id !== null && state.sessions[p.chat_session_id]?.state === "running"
-          }
+          running={pixieWorking(state, p)}
           alerts={unreadActions(state, p.id)}
           onOpen={onOpen}
           onActions={() => {
@@ -338,6 +336,7 @@ function TeamSection({
 interface RowProps {
   pixie: Pixie;
   leader: boolean;
+  // At work in its own chat or on a call in any chat (B48).
   running: boolean;
   // Its unread action reports.
   alerts: number;
@@ -358,7 +357,7 @@ function PixieRow({ pixie: p, leader, running, alerts, onOpen, onActions }: RowP
         data-chat={`pixie:${p.id}`}
         {...gestures}
       >
-        <Sprite mascot={p.mascot} color={p.color} size={28} />
+        <Sprite mascot={p.mascot} color={p.color} size={28} working={running} phaseKey={p.id} />
         <span className="rt">{p.name}</span>
         {(leader || running || alerts > 0) && (
           <span className="rm">

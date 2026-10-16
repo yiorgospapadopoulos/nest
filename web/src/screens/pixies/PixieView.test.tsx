@@ -1,8 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fakeApi } from "../../test/fakeApi.ts";
-import { detail, event, pixie, session } from "../../test/fixtures.ts";
+import { detail, event, groupEntry, pixie, session } from "../../test/fixtures.ts";
+import { reduceMotion } from "../../test/motion.ts";
 import { openPixie } from "../../test/pixies.ts";
 
 const chat = session({ id: "c1", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
@@ -119,5 +120,61 @@ describe("Pixie page", () => {
       expect(screen.queryByRole("tab", { name: "Chat" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("heading", { name: /Pixies/ })).toBeInTheDocument();
+  });
+});
+
+describe("the pixie page at work (B48)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const header = () => document.querySelector(".ch-t");
+  const running = { ...chat, state: "running" as const };
+
+  async function openRunning() {
+    const api = fakeApi();
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [running]));
+    api.session.mockResolvedValue(detail(running));
+    return openPixie(api, pixie({ chat_session_id: "c1" }));
+  }
+
+  it("hops the header's sprite while its chat runs, and rests once the turn ends", async () => {
+    const { push, user } = await openRunning();
+    await waitFor(() => {
+      expect(header()?.querySelector("svg")).toHaveClass("pxwork");
+    });
+    expect(header()?.querySelector(".prun")).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "Details" }));
+    expect(document.querySelector(".pxhead > svg")).toHaveClass("pxwork");
+
+    push({ type: "session.state", session_id: "c1", payload: { state: "idle" } });
+    await waitFor(() => {
+      expect(header()?.querySelector("svg")).not.toHaveClass("pxwork");
+    });
+    expect(document.querySelector(".pxhead > svg")).not.toHaveClass("pxwork");
+  });
+
+  it("hops while another chat's call of it runs, before it has a chat of its own", async () => {
+    const api = fakeApi();
+    api.pixieGroups.mockResolvedValue({ s1: [groupEntry({ pixie_id: "p1", state: "running" })] });
+    await openPixie(api);
+    await waitFor(() => {
+      expect(header()?.querySelector("svg")).toHaveClass("pxwork");
+    });
+    expect(document.querySelector(".pxhi svg")).toHaveClass("pxwork");
+  });
+
+  it("shows a plain working dot in the header under Reduce Motion", async () => {
+    reduceMotion(true);
+    const { push } = await openRunning();
+    await waitFor(() => {
+      expect(header()?.querySelector(".prun")).not.toBeNull();
+    });
+    expect(document.querySelectorAll("svg.pxwork")).toHaveLength(0);
+
+    push({ type: "session.state", session_id: "c1", payload: { state: "idle" } });
+    await waitFor(() => {
+      expect(header()?.querySelector(".prun")).toBeNull();
+    });
   });
 });

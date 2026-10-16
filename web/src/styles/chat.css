@@ -63,7 +63,9 @@
   min-width: 0;
 }
 .ch-t h2 {
-  margin: 0;
+  /* Room above the line for a working sprite's hop (B48), without moving the header. */
+  margin: -3px 0;
+  padding: 3px 0;
   min-width: 0;
   font-size: 1.0588rem;
   font-weight: 700;

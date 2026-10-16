@@ -6,6 +6,7 @@ import { leaderColor } from "../../transcript/mentions.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
+import { TeamFace } from "../pixies/TeamFace.tsx";
 
 /** Whose work a tree row opens: a pixie (or a team's member), or a whole team. */
 export type WorkOf = { pixie: string } | { team: string };
@@ -130,7 +131,7 @@ function EntryRow({ entry, chat, onOpen, onActions }: EntryProps) {
           }}
           more={more}
         >
-          <PixieFace pixie={pixie} />
+          <PixieFace pixie={pixie} working={entry.state === "running"} />
           <span className="ctn">{name}</span>
           <CallMark state={entry.state} />
         </Row>
@@ -152,9 +153,18 @@ function EntryRow({ entry, chat, onOpen, onActions }: EntryProps) {
         }}
         more={more}
       >
-        <span className={`ctic${tinted}`} style={tint} aria-hidden="true">
-          <Icon name="user" />
-        </span>
+        {entry.members.length > 0 ? (
+          <TeamFace
+            members={entry.members}
+            pixies={state.pixies}
+            className="ctic ctteam"
+            size={10}
+          />
+        ) : (
+          <span className={`ctic${tinted}`} style={tint} aria-hidden="true">
+            <Icon name="user" />
+          </span>
+        )}
         <span className={`ctn${tinted}`} style={tint}>
           {name}
         </span>
@@ -183,7 +193,7 @@ function MemberRow({ member, onOpen }: { member: TeamMember; onOpen: (who: WorkO
           onOpen({ pixie: member.pixie_id });
         }}
       >
-        <PixieFace pixie={pixie} />
+        <PixieFace pixie={pixie} working={member.state === "running"} />
         <span className="ctn">{name}</span>
         {member.leader && <span className="pxlead">Leader</span>}
         {member.state === null ? (
@@ -214,10 +224,19 @@ function Row({ label, onOpen, more, children }: RowProps) {
   );
 }
 
-function PixieFace({ pixie }: { pixie: Pixie | undefined }) {
+/** A pixie's sprite, hopping while its call runs; the row's working dot says so too. */
+function PixieFace({ pixie, working }: { pixie: Pixie | undefined; working: boolean }) {
   return (
     <span className="ctic" aria-hidden="true">
-      {pixie !== undefined && <Sprite mascot={pixie.mascot} color={pixie.color} size={18} />}
+      {pixie !== undefined && (
+        <Sprite
+          mascot={pixie.mascot}
+          color={pixie.color}
+          size={18}
+          working={working}
+          phaseKey={pixie.id}
+        />
+      )}
     </span>
   );
 }
