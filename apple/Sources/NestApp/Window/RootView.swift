@@ -45,8 +45,12 @@ struct ShellView: View {
         ZStack(alignment: .top) {
             WindowBackground(backdrop: backdrop, image: shell.chatBackground?.image)
             VStack(spacing: 0) {
+                // No line under the tabs: the project bar it divided off is gone (B73).
                 TabStrip(fullScreen: fullScreen)
-                Separator()
+                    // A line in the chat background's colours where the top bar ends.
+                    .overlay(alignment: .bottom) {
+                        PhotoLineView(image: shell.chatBackground?.image)
+                    }
                 ProjectBody()
             }
             VStack(spacing: 8) {
@@ -59,13 +63,15 @@ struct ShellView: View {
             .padding(.top, Metrics.stripHeight + 12)
             OverlayLayer()
         }
-        .ignoresSafeArea()
+        // Measured and named inside the safe area's edge, so the window space starts at the
+        // window's top, under the title bar, and the chat background lines up there too.
         .onGeometryChange(for: CGSize.self) {
             $0.size
         } action: {
             windowSize = $0
         }
         .windowSpace(size: windowSize)
+        .ignoresSafeArea()
         .environment(\.accentColors, AccentColors(accent: settings.accent))
         // Continuous animations stop while nobody can see the window (IMP-11).
         .environment(
