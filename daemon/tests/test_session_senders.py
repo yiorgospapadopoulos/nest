@@ -115,6 +115,7 @@ async def test_a_chat_a_pixie_starts_records_it_on_the_session_and_first_message
     assert run.spec.guard_git is True
     assert run.spec.system_prompt_append == GUARDED_PROMPT
     assert "Do not run git commit, git push, gh pr create or gh pr merge" in GUARDED_PROMPT
+    assert "your first action is to create every step with TaskCreate" in GUARDED_PROMPT
     assert await senders(env, created.id) == [("List the files", "p1", None)]
 
 

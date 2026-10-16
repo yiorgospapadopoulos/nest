@@ -171,6 +171,8 @@ async def test_open_connects_with_the_full_option_set(tmp_path: Path) -> None:
         "MCP_CONNECTION_NONBLOCKING": "true",
         "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
         "DISABLE_MICROCOMPACT": "1",
+        # Headless runs otherwise leave out the task list tools (B47).
+        "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
     }
 
 
@@ -193,6 +195,7 @@ async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) 
         "MCP_CONNECTION_NONBLOCKING": "true",
         "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
         "DISABLE_MICROCOMPACT": "1",
+        "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
     }
 
 
