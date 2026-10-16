@@ -17,8 +17,10 @@ import {
   repo,
   review,
   session,
+  task,
   team,
   NOW,
+  NO_BACKGROUND,
 } from "../test/fixtures.ts";
 import {
   type ChatEntry,
@@ -35,6 +37,7 @@ import {
   availablePixies,
   availableTeams,
   chatTree,
+  goalEntries,
   memberCall,
   soloPixies,
   pixieList,
@@ -132,6 +135,72 @@ describe("chatLists", () => {
 
     expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([["idle", ["cc:live"]]]);
     expect(lists.archived.map(idOf)).toEqual(["cc:done", "s1"]);
+  });
+});
+
+describe("goalEntries (B47)", () => {
+  const tracked = (s: State, tasks: Record<string, ReturnType<typeof task>[]>): State => ({
+    ...s,
+    tracking: Object.fromEntries(
+      Object.entries(tasks).map(([id, list]) => [
+        id,
+        { tasks: list, agents: [], background: NO_BACKGROUND },
+      ]),
+    ),
+  });
+
+  it("lists working chats first, then chats with tasks, each newest first", () => {
+    const s = tracked(
+      state(
+        [
+          session({ id: "old", updated_at: "2026-10-01T00:00:00Z" }),
+          session({ id: "new", state: "closed", updated_at: "2026-10-05T00:00:00Z" }),
+          session({ id: "run", state: "running", updated_at: "2026-10-02T00:00:00Z" }),
+          session({ id: "wait", state: "waiting", updated_at: "2026-10-03T00:00:00Z" }),
+          session({ id: "start", state: "starting", updated_at: "2026-10-04T00:00:00Z" }),
+        ],
+        [],
+      ),
+      { old: [task()], new: [task({ status: "completed" })] },
+    );
+
+    expect(goalEntries(s, "cv-page").map((g) => g.session.id)).toEqual([
+      "start",
+      "wait",
+      "run",
+      "new",
+      "old",
+    ]);
+    const run = goalEntries(s, "cv-page")[2];
+    expect(run?.tasks).toEqual([]);
+    expect(run?.status).toEqual({ tone: "run", label: "Running" });
+  });
+
+  it("leaves out idle chats without tasks, deleted tasks, archived, pixie and other chats", () => {
+    const s = tracked(
+      state(
+        [
+          session({ id: "quiet" }),
+          session({ id: "gone" }),
+          session({ id: "kept" }),
+          session({ id: "shelved", state: "running", archived_at: "2026-10-01T00:00:00Z" }),
+          session({ id: "pix", state: "running", pixie_id: "p1" }),
+          session({ id: "else", state: "running", repo: "narrative" }),
+        ],
+        [],
+      ),
+      {
+        gone: [task({ status: "deleted" })],
+        kept: [task({ id: "1", status: "deleted" }), task({ id: "2" })],
+        shelved: [task()],
+      },
+    );
+
+    const entries = goalEntries(s, "cv-page");
+
+    expect(entries.map((g) => g.session.id)).toEqual(["kept"]);
+    expect(entries[0]?.tasks.map((t) => t.id)).toEqual(["2"]);
+    expect(goalEntries(state([]), "cv-page")).toEqual([]);
   });
 });
 

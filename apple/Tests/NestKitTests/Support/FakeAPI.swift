@@ -73,6 +73,8 @@ final class FakeAPI: NestAPI {
         var transcripts: [String: AgentWork] = [:]
         /// A pixie's calls in a chat by "<session>/<pixie id>".
         var pixieCallWork: [String: [PixieCallWork]] = [:]
+        /// What each project's chats are working towards, by repo name (B47).
+        var goals: [String: [SessionGoals]] = [:]
     }
 
     let state = Mutex(State())
@@ -187,6 +189,13 @@ final class FakeAPI: NestAPI {
             state.details[id] ?? state.sessions.first { $0.id == id }!
         }
         await pass("session")
+        return answer
+    }
+
+    /// Answers what the daemon read before the gate opens, as a slow read does.
+    func goals(repo: String) async throws -> [SessionGoals] {
+        let answer = try call("goals", repo) { $0.goals[repo] ?? [] }
+        await pass("goals")
         return answer
     }
 

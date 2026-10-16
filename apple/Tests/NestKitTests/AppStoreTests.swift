@@ -184,7 +184,7 @@ private let workspace = CGSize(width: 1000, height: 600)
         app.update("cv-page") { state in
             state.openChat("c1", in: workspace)
             state.openChat("c2", in: workspace)
-            state.expandedGoals = ["c2"]
+            state.toggleBackground("c2")
         }
         app.update("llm-hunter") { $0.openChat("c2", in: workspace) }
 
@@ -192,7 +192,7 @@ private let workspace = CGSize(width: 1000, height: 600)
 
         #expect(app.state(of: "cv-page").layout.leaves == ["c1"])
         #expect(app.state(of: "cv-page").selectedChat == "c1")
-        #expect(app.state(of: "cv-page").expandedGoals.isEmpty)
+        #expect(app.state(of: "cv-page").expandedBackground.isEmpty)
         #expect(app.state(of: "llm-hunter").layout.leaves.isEmpty)
         #expect(app.state(of: "llm-hunter").selectedChat == nil)
     }

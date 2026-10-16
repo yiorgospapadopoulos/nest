@@ -397,9 +397,11 @@ describe("chat view", () => {
     const strip = screen.getByRole("button", { name: /Now: Install zod/ });
     expect(strip).toHaveTextContent("1 of 3");
     await user.click(strip);
-    expect(screen.getByText("Installing zod")).toBeInTheDocument();
-    expect(screen.getByText("done:")).toBeInTheDocument();
-    expect(screen.getByText("pending:")).toBeInTheDocument();
+    // The project's Goals behind the chat show the same steps (B47).
+    const list = within(defined(document.getElementById("goals-list")));
+    expect(list.getByText("Installing zod")).toBeInTheDocument();
+    expect(list.getByText("done:")).toBeInTheDocument();
+    expect(list.getByText("pending:")).toBeInTheDocument();
 
     push({
       id: 3,
@@ -414,7 +416,9 @@ describe("chat view", () => {
       type: "session.tasks",
       payload: { tasks: [task("1", "Plan", "in_progress")] },
     });
-    expect(screen.getByText("Plan", { selector: ".x" })).toBeInTheDocument();
+    expect(
+      within(defined(document.getElementById("goals-list"))).getByText("Plan", { selector: ".x" }),
+    ).toBeInTheDocument();
     push({
       id: 5,
       session_id: "s1",

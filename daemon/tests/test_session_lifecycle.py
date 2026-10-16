@@ -72,6 +72,11 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     # read like the Claude app's, which does not list them unprompted.
     assert "MCP servers" in NEST_PROMPT
     assert "only when the user asks" in NEST_PROMPT
+    # B47: like the Claude app's agent, a chat plans almost every task with the task list.
+    assert "your first action is to create every step with TaskCreate" in NEST_PROMPT
+    assert "keep the list current with TaskUpdate" in NEST_PROMPT
+    # The task tools are deferred in SDK runs, and loading them is not planning.
+    assert "load TaskCreate and TaskUpdate with ToolSearch first" in NEST_PROMPT
     assert run.inputs == [UserInput(text="Fix the bug\nDetails here")]
     assert await env.event_types(created.id) == [
         types.SESSION_CREATED,

@@ -20,6 +20,9 @@ public protocol NestAPI: Sendable {
 
     func sessions(repo: String?, archived: Bool) async throws -> [Session]
     func session(_ id: String) async throws -> Session
+    /// The repo's chats that are working or have tasks left in their visible list, working
+    /// ones first, then the most recently updated (D092).
+    func goals(repo: String) async throws -> [SessionGoals]
     func createSession(_ request: CreateSessionRequest) async throws -> Session
     func updateSession(_ id: String, _ request: UpdateSessionRequest) async throws -> Session
     func deleteSession(_ id: String) async throws

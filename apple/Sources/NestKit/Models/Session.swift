@@ -157,6 +157,22 @@ public struct TrackedTask: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// A chat's visible task list, as the project's Goals answer it (D092).
+public struct SessionGoals: Decodable, Sendable, Hashable {
+    public var sessionID: String
+    public var tasks: [TrackedTask]
+
+    public init(sessionID: String, tasks: [TrackedTask]) {
+        self.sessionID = sessionID
+        self.tasks = tasks
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case tasks
+        case sessionID = "session_id"
+    }
+}
+
 public enum AgentStatus: String, UnknownSafeEnum {
     case running, done, failed
     case unknown
