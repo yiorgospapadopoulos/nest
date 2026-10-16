@@ -43,9 +43,17 @@ interface Props {
   onOpen: (sessionId: string, event?: number) => void;
   onOpenClaudeChat: (chatId: string) => void;
   onOpenPixie: (id: string) => void;
+  onOpenWork: (sessionId: string, who: WorkOf) => void;
 }
 
-export function ChatView({ target, onBack, onOpen, onOpenClaudeChat, onOpenPixie }: Props) {
+export function ChatView({
+  target,
+  onBack,
+  onOpen,
+  onOpenClaudeChat,
+  onOpenPixie,
+  onOpenWork,
+}: Props) {
   const { state } = useStore();
   // A pixie's chat shows on its page, also when opened by its address or an inbox card.
   // A habit run's chat has the pixie too, but shows on its own, read only (B42).
@@ -94,6 +102,7 @@ export function ChatView({ target, onBack, onOpen, onOpenClaudeChat, onOpenPixie
       focus={target.event ?? null}
       onBack={onBack}
       onOpenPixie={onOpenPixie}
+      onOpenWork={onOpenWork}
       onOpenChat={onOpen}
       nav={nav}
     />
@@ -105,6 +114,7 @@ function SessionChat({
   focus,
   onBack,
   onOpenPixie,
+  onOpenWork,
   onOpenChat,
   nav,
 }: {
@@ -112,6 +122,7 @@ function SessionChat({
   focus: number | null;
   onBack: () => void;
   onOpenPixie: (id: string) => void;
+  onOpenWork: (sessionId: string, who: WorkOf) => void;
   onOpenChat: (sessionId: string) => void;
   nav: ChatNav;
 }) {
@@ -184,6 +195,14 @@ function SessionChat({
         history={history ?? "loading"}
         onRetry={() => void actions.reloadChat(id)}
         onOpenPixie={onOpenPixie}
+        // A team's call shows as the team's only in a project chat, not a pixie's (B70).
+        onOpenWork={
+          session.pixie_id == null
+            ? (who) => {
+                onOpenWork(id, who);
+              }
+            : undefined
+        }
         onOpenChat={onOpenChat}
       />
       {/* Until the history is in, the latest exchange and so its tasks are unknown. */}

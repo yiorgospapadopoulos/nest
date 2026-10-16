@@ -177,8 +177,9 @@ describe("tap targets", () => {
 
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     for (const control of [
-      await screen.findByRole("button", { name: "Open Tester" }),
-      screen.getByRole("button", { name: /running/ }),
+      // Tester leads the team, so its call is the team's (B70).
+      await screen.findByRole("button", { name: "Open team QA" }),
+      screen.getByRole("button", { name: /working/ }),
     ]) {
       expect(box(control).height).toBeGreaterThanOrEqual(TAP);
     }

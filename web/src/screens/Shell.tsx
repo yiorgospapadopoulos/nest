@@ -7,6 +7,7 @@ import { Account } from "./account/Account.tsx";
 import { ChatView, type ChatTarget } from "./chat/ChatView.tsx";
 import type { PixieTab } from "./pixies/PixieView.tsx";
 import { Inbox } from "./inbox/Inbox.tsx";
+import type { WorkOf } from "./projects/ChatTree.tsx";
 import { Projects } from "./projects/Projects.tsx";
 import { TabBar } from "./TabBar.tsx";
 
@@ -84,6 +85,10 @@ export function Shell() {
     show({ claude: id });
   };
 
+  const openWork = (workOf: string, who: WorkOf) => {
+    show({ workOf, who });
+  };
+
   // A pixie's page opens over the projects tab, where its row is.
   const openPixie = (id: string, pixieTab: PixieTab = "chat") => {
     setTab("projects");
@@ -113,9 +118,7 @@ export function Shell() {
             onOpenAgent={(agentOf, call) => {
               show({ agentOf, call });
             }}
-            onOpenWork={(workOf, who) => {
-              show({ workOf, who });
-            }}
+            onOpenWork={openWork}
           />
         )}
         {tab === "account" && <Account />}
@@ -134,6 +137,7 @@ export function Shell() {
           onOpen={openChat}
           onOpenClaudeChat={openClaudeChat}
           onOpenPixie={openPixie}
+          onOpenWork={openWork}
         />
       )}
     </>

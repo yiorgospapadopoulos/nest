@@ -1970,3 +1970,9 @@
 .wkh .ago {
   color: var(--t3);
 }
+/* A team's call (B70): its grid of four sprites before its name. */
+.pxteam {
+  display: grid;
+  grid-template-columns: repeat(2, 9px);
+  gap: 2px;
+}

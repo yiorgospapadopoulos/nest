@@ -10,10 +10,14 @@ import {
 } from "react";
 import type {
   BackgroundSummary,
+  GroupEntry,
+  Pixie,
+  PixieTeam,
   Restore,
   RewindPreview,
   Session,
   ShellResult,
+  TeamMember,
 } from "../../api/types.ts";
 import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
@@ -37,6 +41,8 @@ import { toolIcon } from "../../ui/toolIcon.ts";
 import { usePageVisible } from "../../ui/visible.ts";
 import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
+import { TeamFace } from "../pixies/TeamFace.tsx";
+import type { WorkOf } from "../projects/ChatTree.tsx";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
 import { ResultImages } from "./ResultImages.tsx";
@@ -73,6 +79,9 @@ interface Props {
   onRetry: () => void;
   // A pixie's page, from a call to it.
   onOpenPixie: (id: string) => void;
+  // A team's work in this chat, from a call to its leader; given only in a project chat,
+  // where a call of a team's leader is the team's call (B70).
+  onOpenWork?: ((who: WorkOf) => void) | undefined;
   // A chat, from a card a pixie posted (B41).
   onOpenChat: (sessionId: string) => void;
 }
@@ -84,6 +93,7 @@ export function Transcript({
   history,
   onRetry,
   onOpenPixie,
+  onOpenWork,
   onOpenChat,
 }: Props) {
   const loaded = history === "loaded";
@@ -232,6 +242,7 @@ export function Transcript({
                 running={running}
                 onActions={onActions}
                 onOpenPixie={onOpenPixie}
+                onOpenWork={onOpenWork}
                 onOpenChat={onOpenChat}
               />
             ))}
@@ -398,16 +409,34 @@ interface ItemProps {
   running: ReadonlySet<string>;
   onActions: ((eventId: number) => void) | undefined;
   onOpenPixie: (id: string) => void;
+  onOpenWork: ((who: WorkOf) => void) | undefined;
   onOpenChat: (sessionId: string) => void;
 }
 
-function Item({ item, session, running, onActions, onOpenPixie, onOpenChat }: ItemProps) {
+function Item({
+  item,
+  session,
+  running,
+  onActions,
+  onOpenPixie,
+  onOpenWork,
+  onOpenChat,
+}: ItemProps) {
   const ev = item.key.replace(/\..*$/, "");
   switch (item.kind) {
     case "approval":
       return <InlineApproval approval={item.approval} session={session} />;
     case "pixie":
-      return <PixieCall item={item} ev={ev} running={running} onOpenPixie={onOpenPixie} />;
+      return (
+        <PixieCall
+          item={item}
+          ev={ev}
+          sessionId={session.id}
+          running={running}
+          onOpenPixie={onOpenPixie}
+          onOpenWork={onOpenWork}
+        />
+      );
     case "card":
       // Only a pixie's chat holds cards.
       return session.pixie_id == null ? null : (
@@ -556,40 +585,60 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
 interface PixieCallProps {
   item: PixieCallItem;
   ev: string;
+  sessionId: string;
   running: ReadonlySet<string>;
   onOpenPixie: (id: string) => void;
+  onOpenWork: ((who: WorkOf) => void) | undefined;
 }
 
 /**
  * A call to a pixie (B40): its mascot and name go to its page; the rest of the row opens
- * in place to the call's own messages, then its answer.
+ * in place to the call's own messages, then its answer. A call to a team's leader is the
+ * team's (B70): its grid of four and name in the leader's colour go to the team's work.
  */
-function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
+function PixieCall({ item, ev, sessionId, running, onOpenPixie, onOpenWork }: PixieCallProps) {
   const [open, setOpen] = useState(false);
+  const { state } = useStore();
   const { agentLive, stopper } = useContext(CallContext);
   const { pixie, call, steps } = item;
   const busy = call.result === null || running.has(call.id);
+  const team = teamCall(state.teams, pixie.id, onOpenWork);
+  const name = team?.team.name ?? pixie.name;
   return (
     <div className="tool pxcall" data-ev={ev}>
       <div className="pxch">
-        <button
-          className="pxcn"
-          aria-label={`Open ${pixie.name}`}
-          onClick={() => {
-            onOpenPixie(pixie.id);
-          }}
-        >
-          <span aria-hidden="true">
-            <Sprite
-              mascot={pixie.mascot}
-              color={pixie.color}
-              size={18}
-              working={busy}
-              phaseKey={pixie.id}
+        {team === null ? (
+          <button
+            className="pxcn"
+            aria-label={`Open ${pixie.name}`}
+            onClick={() => {
+              onOpenPixie(pixie.id);
+            }}
+          >
+            <span aria-hidden="true">
+              <Sprite
+                mascot={pixie.mascot}
+                color={pixie.color}
+                size={18}
+                working={busy}
+                phaseKey={pixie.id}
+              />
+            </span>
+            <span className="tn">{pixie.name}</span>
+          </button>
+        ) : (
+          <button className="pxcn" aria-label={`Open team ${name}`} onClick={team.open}>
+            <TeamFace
+              members={teamFaces(team.team, state.pixies, state.pixieGroups[sessionId], busy)}
+              pixies={state.pixies}
+              className="pxteam"
+              size={9}
             />
-          </span>
-          <span className="tn">{pixie.name}</span>
-        </button>
+            <span className="tn pxtname" style={{ "--px": pixie.color } as CSSProperties}>
+              {name}
+            </span>
+          </button>
+        )}
         <button
           className="pxct"
           aria-expanded={open}
@@ -597,16 +646,19 @@ function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
             setOpen(!open);
           }}
         >
+          {team !== null && busy && <span className="tr glow">working</span>}
           <span className="ta">{call.arg}</span>
-          <span className={busy ? "tr glow" : call.failed ? "tr bad" : "tr"}>
-            {busy ? "running" : call.result}
-          </span>
+          {!(team !== null && busy) && (
+            <span className={busy ? "tr glow" : call.failed ? "tr bad" : "tr"}>
+              {busy ? "running" : call.result}
+            </span>
+          )}
           <Icon name="chev" className="cv" />
         </button>
-        {busy && <StopTask id={call.id} name={pixie.name} stopper={stopper} />}
+        {busy && <StopTask id={call.id} name={name} stopper={stopper} />}
       </div>
       {open && (
-        <div className="tgl pxsteps" role="group" aria-label={`${pixie.name}'s steps`}>
+        <div className="tgl pxsteps" role="group" aria-label={`${name}'s steps`}>
           <SubSteps steps={steps} live={agentLive[call.id] ?? ""} />
           {busy || call.detail === null ? (
             <div className="pxans">{busy ? "running" : call.result}</div>
@@ -617,6 +669,44 @@ function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
       )}
     </div>
   );
+}
+
+/** The team a call goes to when it calls the team's leader, where teams' calls show. */
+function teamCall(
+  teams: Record<string, PixieTeam>,
+  pixieId: string,
+  onOpenWork: ((who: WorkOf) => void) | undefined,
+): { team: PixieTeam; open: () => void } | null {
+  if (onOpenWork === undefined) return null;
+  const team = Object.values(teams).find((t) => t.leader_id === pixieId);
+  return team === undefined
+    ? null
+    : {
+        team,
+        open: () => {
+          onOpenWork({ team: team.id });
+        },
+      };
+}
+
+/**
+ * A team's members for its grid: while the call runs its leader hops, and each member the
+ * chat's group says is at work; at rest once it answered.
+ */
+function teamFaces(
+  team: PixieTeam,
+  pixies: Record<string, Pixie>,
+  group: GroupEntry[] | undefined,
+  busy: boolean,
+): TeamMember[] {
+  const entry = group?.find((e) => e.team_id === team.id);
+  return Object.values(pixies)
+    .filter((p) => p.team_id === team.id)
+    .map((p) => {
+      const leader = p.id === team.leader_id;
+      const working = entry?.members.some((m) => m.pixie_id === p.id && m.state === "running");
+      return { pixie_id: p.id, leader, state: busy && (leader || working) ? "running" : null };
+    });
 }
 
 /** "from Tester" with its mascot, above a message a pixie sent into this chat (B41). */
