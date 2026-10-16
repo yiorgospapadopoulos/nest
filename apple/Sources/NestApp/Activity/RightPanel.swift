@@ -29,7 +29,8 @@ struct RightPanel: View {
                 .frame(width: Self.width)
             }
         }
-        .frame(maxHeight: .infinity)
+        // Folded cards stack at the top rather than meeting in the middle.
+        .frame(maxHeight: .infinity, alignment: .top)
         .sideSurface()
         .task(id: inFlightKey) { await loadActivity() }
     }
