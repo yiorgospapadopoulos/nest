@@ -49,26 +49,7 @@ private struct SidebarFull: View {
         let project = shell.project ?? ""
         let groups = shell.sidebarGroups(in: project)
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                ProjectIcon(project: project, repo: shell.app.repo(project), size: 15)
-                Text(project)
-                    .font(.ui(TypeSize.reading, .semibold))
-                    .foregroundStyle(Palette.t1)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    shell.update { $0.leftCollapsed = true }
-                } label: {
-                    Image(systemName: Icon.leftPanel).font(.system(size: 13))
-                        .foregroundStyle(Palette.t3)
-                }
-                .buttonStyle(.nest(.plain, iconOnly: true))
-                .help("Collapse sidebar")
-                .accessibilityLabel("Collapse sidebar")
-            }
-            .padding(.leading, 8)
-            .padding(.trailing, 2)
-            .frame(height: 30)
+            ProjectHeader()
 
             Button {
                 shell.newChat()
