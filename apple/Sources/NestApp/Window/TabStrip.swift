@@ -27,12 +27,15 @@ struct TabStrip: View {
     @State private var tabStep = 0.0
 
     var body: some View {
-        HStack(spacing: Self.spacing) {
+        // The tabs sit on the strip's bottom edge, joined to the project under them; the
+        // meter and search stay centred.
+        HStack(alignment: .bottom, spacing: Self.spacing) {
             PixiesTab()
             Rectangle()
                 .fill(Palette.divider)
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
+                .padding(.bottom, 4)
                 .accessibilityHidden(true)
             let tabs = shell.app.openProjects
             ForEach(Array(tabs.enumerated()), id: \.element) { index, name in
@@ -56,12 +59,15 @@ struct TabStrip: View {
             addButton
             Spacer(minLength: 12)
             // The meter and search keep their size; the project tabs shrink first.
-            UsageButton().fixedSize().padding(.trailing, 6)
-            SearchButton().fixedSize()
+            Group {
+                UsageButton().fixedSize().padding(.trailing, 6)
+                SearchButton().fixedSize()
+            }
+            .padding(.bottom, (Metrics.stripHeight - Self.tabHeight) / 2)
         }
         .padding(.leading, fullScreen ? Self.fullScreenInset : Self.leadingInset)
         .padding(.trailing, 10)
-        .frame(height: Metrics.stripHeight)
+        .frame(height: Metrics.stripHeight, alignment: .bottom)
         .background(WindowDragArea())
     }
 
@@ -135,7 +141,8 @@ private struct TabDrag: Equatable {
     let translation: Double
 }
 
-/// A flat tab: a soft fill when current, a fainter one while hovered.
+/// A flat tab on the strip's bottom edge, rounded at the top only so it joins the project
+/// under it: a soft fill when current, a fainter one while hovered.
 private struct TabBackground: ViewModifier {
     let isCurrent: Bool
     let hovering: Bool
@@ -146,7 +153,8 @@ private struct TabBackground: ViewModifier {
     @Environment(\.accentColors) private var accent
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle.rounded(Radius.row)
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: Radius.row, topTrailingRadius: Radius.row, style: .continuous)
         content
             .padding(.horizontal, padding)
             .frame(height: TabStrip.tabHeight)
