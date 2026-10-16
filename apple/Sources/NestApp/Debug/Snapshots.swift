@@ -152,6 +152,10 @@
                 try await renderMemberCalls(model, shell, controller, folder)
                 return
             }
+            if only == "b71" {
+                try await renderQuieterChats(model, shell, controller, folder)
+                return
+            }
             if only == "b41" {
                 try await renderPixieTools(model, shell, controller, folder)
                 return
@@ -294,7 +298,6 @@
             try await renderLook(model, shell, controller, folder)
             try await renderArchiveConnectorsAndPlainFolders(model, shell, controller, folder)
             try await renderTurnActivity(model, shell, controller, folder)
-            try await renderExchangeBar(model, shell, controller, folder)
             try await renderImprovements(model, shell, controller, folder)
             try await renderReviewFixes(model, shell, controller, folder)
             try await renderWorkingCopies(model, shell, controller, folder)
@@ -1182,6 +1185,82 @@
             shell.expandedItems.subtract(opened)
         }
 
+        /// B71: an idle chat with its filled dot, a quiet "Thought for" line, no elapsed
+        /// times, its branch beside the mic and no agents bar; its reply's "Worked for"
+        /// hidden, then shown as when the pointer is over the reply; then two and three
+        /// panes, where the branch shows by name, then as its icon.
+        private static func renderQuieterChats(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            let start = Date().addingTimeInterval(-60)
+            var id = 33_000
+            func receive(_ type: String, _ payload: [String: Any], at: Date) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
+                    "payload": payload,
+                ])
+                model.transcripts.receive(event)
+            }
+            func blocks(_ list: [[String: Any]]) -> [String: Any] {
+                ["blocks": list, "parent_tool_use_id": NSNull()]
+            }
+            receive(
+                "session.user_message",
+                ["text": "Is the dark theme toggle remembered?", "attachments": []], at: start)
+            receive(
+                "session.message",
+                blocks([
+                    [
+                        "type": "thinking", "duration_ms": 6_200,
+                        "text": "Check where the toggle stores its choice before answering.",
+                    ]
+                ]), at: start + 7)
+            receive(
+                "session.message",
+                blocks([
+                    [
+                        "type": "text",
+                        "text":
+                            "Yes: the toggle saves its choice in local storage and reads it back on load.",
+                    ]
+                ]), at: start + 9)
+            receive(
+                "session.result",
+                [
+                    "is_error": false, "subtype": "success", "duration_ms": 32_000,
+                    "num_turns": 1, "cost_usd": NSNull(), "errors": [],
+                ], at: start + 32)
+            model.app.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            try await pair(controller, "b71-quiet-chat", folder)
+            let end = model.transcripts.existing("c3")?.visibleItems.last { item in
+                if case .turnEnd = item.content { true } else { false }
+            }
+            shell.hoveredEntry = end?.id
+            try await pair(controller, "b71-quiet-chat-hover", folder)
+            shell.hoveredEntry = nil
+            model.app.update("cv-page") { state in
+                state.openChat("c1", in: workspace)
+                state.focusPane("c3")
+            }
+            try await pair(controller, "b71-two-panes", folder)
+            model.app.update("cv-page") { state in
+                state.dropChat("c2", onto: "c1", side: .right)
+                state.focusPane("c3")
+            }
+            try await pair(controller, "b71-narrow-panes", folder)
+        }
+
         /// B41: a pixie's details with its autonomy note, limits and Activity page; a chat
         /// it started ("Started by" in the sidebar and the pane header) with a message it
         /// sent; and its own chat with a session card, a pull request card and the report
@@ -1468,7 +1547,6 @@
                 state.layout = WorkspaceLayout()
                 state.leftCollapsed = false
                 state.rightCollapsed = true
-                state.expandedBackground = []
                 state.openChat("c2", in: workspace)
                 state.openChat("c3", in: workspace)
                 state.focusPane("c2")
@@ -1478,110 +1556,6 @@
             shell.expandedItems.formUnion(["e20003-0", "tools-b1", "tools-ag0"])
             try await pair(controller, "b29-turn-activity-open", folder)
             shell.expandedItems.subtract(["e20003-0", "tools-b1", "tools-ag0"])
-        }
-
-        /// B29: the background bar counts the current exchange only. c3's earlier turn
-        /// finished four tasks; the user's next message started three agents and one is
-        /// done, so the bar reads "2 running · 1 completed".
-        private static func renderExchangeBar(
-            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
-        ) async throws {
-            shell.close()
-            let workspace = CGSize(width: 828, height: 790)
-            let now = Date()
-            var id = 21_000
-            func event(_ type: String, _ payload: [String: Any], at: Date) -> Event {
-                id += 1
-                return try! SampleData.decode([
-                    "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
-                    "payload": payload,
-                ])
-            }
-            func item(
-                _ tool: String, _ kind: String, _ name: String, _ description: String,
-                started: Double, finished: Double? = nil
-            ) -> [String: Any] {
-                [
-                    "id": tool, "kind": kind, "name": name, "description": description,
-                    "status": finished == nil ? "running" : "done",
-                    "started_at": SampleData.iso(now.addingTimeInterval(-started)),
-                    "finished_at": finished.map { SampleData.iso(now.addingTimeInterval(-$0)) }
-                        ?? NSNull(),
-                ]
-            }
-            let years = ["2026", "2025", "2024"]
-            let calls: [[String: Any]] = years.enumerated().map { index, year in
-                [
-                    "type": "tool_use", "id": "cx\(index)", "name": "Agent",
-                    "input": [
-                        "subagent_type": "Explore", "description": "Contrast on \(year) pages",
-                    ],
-                ]
-            }
-            let background: [[String: Any]] = [
-                item(
-                    "toolu_find", "agent", "Explore", "Find theme toggles", started: 560,
-                    finished: 540),
-                item(
-                    "toolu_css", "agent", "general-purpose", "Audit CSS variables", started: 550,
-                    finished: 500),
-                item(
-                    "toolu_lint", "bash", "npm run lint", "Lint the styles", started: 480,
-                    finished: 470),
-                item(
-                    "toolu_tests", "bash", "npm test -- theme", "Theme tests", started: 460,
-                    finished: 430),
-                item(
-                    "cx0", "agent", "Explore", "Contrast on 2026 pages", started: 80, finished: 30),
-                item("cx1", "agent", "Explore", "Contrast on 2025 pages", started: 80),
-                item("cx2", "agent", "Explore", "Contrast on 2024 pages", started: 80),
-            ]
-            let events = [
-                event(
-                    "session.user_message",
-                    ["text": "Now check the contrast on every page", "attachments": []],
-                    at: now - 90),
-                event(
-                    "session.state", ["state": "running", "error": NSNull(), "turn_start": true],
-                    at: now - 89),
-                event(
-                    "session.message", ["blocks": calls, "parent_tool_use_id": NSNull()],
-                    at: now - 80),
-                event(
-                    "session.message",
-                    [
-                        "blocks": [
-                            ["type": "tool_result", "tool_use_id": "cx0", "content": "All pass"]
-                        ],
-                        "parent_tool_use_id": NSNull(),
-                    ], at: now - 30),
-            ]
-            events.forEach(model.transcripts.receive)
-            let agents = event(
-                "session.agents",
-                [
-                    "agents": [],
-                    "background": ["running": 2, "completed": 5, "items": background],
-                ], at: now - 30)
-            // Opening the pane loads the sample detail again; the live snapshot follows it.
-            let follow: (NSView) async -> Void = { _ in
-                model.activity.apply(agents)
-                try? await Task.sleep(for: .milliseconds(200))
-            }
-
-            model.app.selectProject("cv-page")
-            model.app.update("cv-page") { state in
-                state.layout = WorkspaceLayout()
-                state.leftCollapsed = false
-                state.rightCollapsed = true
-                state.expandedBackground = []
-                state.openChat("c3", in: workspace)
-                state.focusPane("c3")
-            }
-            try await pair(controller, "b29-exchange-bar", folder, prepare: follow)
-            model.app.update("cv-page") { $0.expandedBackground = ["c3"] }
-            try await pair(controller, "b29-exchange-bar-expanded", folder, prepare: follow)
-            model.app.update("cv-page") { $0.expandedBackground = [] }
         }
 
         /// B28: an archived Claude Code chat in the open Archived group, the Claude Code
@@ -2389,7 +2363,6 @@
                 state.leftCollapsed = false
                 state.rightCollapsed = false
                 state.openCards = [.needsYou]
-                state.expandedBackground = []
                 state.openChat("c1", in: workspace)
                 state.openChat("c2", in: workspace)
                 state.focusPane("c1")
@@ -2450,9 +2423,8 @@
             shell.close()
         }
 
-        /// B22 and I-003: the background bar above the composer, collapsed and open, an
-        /// idle chat with a running command in the Agents card, and the banner offering to
-        /// start the daemon's service, then showing how to install it.
+        /// B22 and I-003: an idle chat with a running command in the Agents card, and the
+        /// banner offering to start the daemon's service, then showing how to install it.
         private static func renderBackground(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -2468,10 +2440,7 @@
                 state.openChat("c3", in: workspace)
                 state.focusPane("c2")
             }
-            try await pair(controller, "background-bar", folder)
-            model.app.update("cv-page") { $0.expandedBackground = ["c2", "c3"] }
-            try await pair(controller, "background-bar-expanded", folder)
-            model.app.update("cv-page") { $0.expandedBackground = [] }
+            try await pair(controller, "background-agents", folder)
 
             model.app.connection = .reconnecting(attempt: 3, delay: 8)
             try await pair(controller, "service-offer", folder)

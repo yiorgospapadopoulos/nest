@@ -26,11 +26,6 @@ public struct Event: Decodable, Sendable, Hashable {
         payload = try container.decode(JSONValue.self, forKey: .payload)
         body = (try? EventBody(type: type, payload: payload)) ?? .other
     }
-
-    /// A message the user sent.
-    var isUserMessage: Bool {
-        if case .userMessage = body { true } else { false }
-    }
 }
 
 /// Event type names; a wire contract with the daemon.

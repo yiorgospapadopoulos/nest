@@ -141,6 +141,8 @@ final class Shell {
     var connectorGroupsOpen: Set<ConnectorSectionKind> = []
     /// Expanded tool calls and thinking blocks, by transcript item id.
     var expandedItems: Set<String> = []
+    /// The transcript row under the pointer: its reply's "Worked for" line shows (B71).
+    var hoveredEntry: String?
     var toast: Toast?
     var dragging: DragItem?
     var dropHighlight: DropHighlight?
@@ -624,11 +626,6 @@ final class Shell {
 
     func tone(of session: Session) -> StatusTone {
         sessions.tone(of: session)
-    }
-
-    /// Idle chats show a hollow dot.
-    func isHollow(_ session: Session) -> Bool {
-        sessions.isHollow(session)
     }
 
     func statusLabel(of session: Session) -> String {

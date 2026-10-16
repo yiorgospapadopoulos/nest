@@ -267,6 +267,33 @@ public enum TranscriptGrouping {
             isRunning: working || open && call.result == nil)
     }
 
+    /// The turn end of each row of a finished reply, by row id: the rows after the user
+    /// message or report that started the turn, up to and including its end line, whose
+    /// "Worked for" shows while any of them is hovered (B71). The open turn's rows have
+    /// none.
+    public static func turnEnds(_ entries: [TranscriptEntry]) -> [String: String] {
+        var ends: [String: String] = [:]
+        var reply: [String] = []
+        for entry in entries {
+            guard case .item(let item) = entry else {
+                reply.append(entry.id)
+                continue
+            }
+            switch item.content {
+            case .user, .reportBack, .habitReport:
+                reply = []
+            case .turnEnd:
+                for id in reply + [item.id] {
+                    ends[id] = item.id
+                }
+                reply = []
+            default:
+                reply.append(item.id)
+            }
+        }
+        return ends
+    }
+
     /// The group an item was folded into, if any.
     public static func group(containing itemID: String, in entries: [TranscriptEntry]) -> String? {
         for case .tools(let group) in entries where group.items.contains(where: { $0.id == itemID })

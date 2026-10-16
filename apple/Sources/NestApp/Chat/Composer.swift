@@ -552,9 +552,9 @@ private struct ImageChip: View {
     }
 }
 
-/// Under the field: attach and the mic on the left, then Model, Thinking and Permission,
-/// and the context meter for open chats, on the right. A pixie's row
-/// has the mic and the context meter.
+/// Under the field: attach, the mic and where an open chat works (B71) on the left, then
+/// Model, Thinking and Permission, and the context meter for open chats, on the right. A
+/// pixie's row has the mic and the context meter.
 private struct ControlRow: View {
     /// The draft's key.
     let chat: String
@@ -581,6 +581,13 @@ private struct ControlRow: View {
                 .accessibilityLabel("Attach")
             }
             MicButton(listening: listening) { toggleDictation() }
+            if !pixie && !isDraft,
+                let place = session.flatMap({ ChatPlace.of($0, repo: shell.repo) })
+            {
+                PlaceLabel(place: place, showsName: fit.showsPlaceName)
+                    .frame(maxWidth: 140, alignment: .leading)
+                    .padding(.leading, 4)
+            }
             Spacer(minLength: 4)
             if !pixie {
                 ModelMenu(chat: chat, model: isDraft ? draft.model : session?.model)
@@ -611,6 +618,32 @@ private struct ControlRow: View {
 
     private func toggleDictation() {
         actions.toggleDictation()
+    }
+}
+
+/// Where an open chat works, beside the composer's mic (B71, in the header since B55): the
+/// branch icon and the worktree's name, or the project folder's current branch, shortened
+/// in the middle; the icon alone in a narrower pane. The tooltip names the folder.
+private struct PlaceLabel: View {
+    let place: ChatPlace
+    let showsName: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: Icon.branch)
+                .font(.system(size: 10, weight: .medium))
+            if showsName {
+                Text(place.name)
+                    .font(.mono(TypeSize.meta))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .foregroundStyle(Palette.t3)
+        .fixedSize(horizontal: !showsName, vertical: false)
+        .help(place.help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(place.help)
     }
 }
 

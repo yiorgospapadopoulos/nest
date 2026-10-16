@@ -20,10 +20,7 @@ struct PaneView: View {
                 TranscriptView(chat: chat)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if !shell.isClaudeChatPane(chat) {
-                            VStack(spacing: 0) {
-                                BackgroundBar(chat: chat)
-                                PendingReviewBar(chat: chat)
-                            }
+                            PendingReviewBar(chat: chat)
                         }
                     }
             }
@@ -146,13 +143,13 @@ enum PaneColors {
 }
 
 /// On the left the grip, the chat's name, its status dot and who started it; on the
-/// right, at the trailing edge whatever the pane's width, where it works, the elapsed time,
-/// the pull request chip, Stuck, maximize and close (B60). Drag it to swap panes.
+/// right, at the trailing edge whatever the pane's width, the pull request chip, Stuck,
+/// maximize and close (B60). Where it works shows in the composer (B71). Drag it to swap
+/// panes.
 private struct PaneHeader: View {
     let chat: String
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
-    @Environment(\.paneSize) private var size
 
     var body: some View {
         let session = shell.sessions.session(chat)
@@ -161,11 +158,6 @@ private struct PaneHeader: View {
             session?.title ?? claudeChat?.title
             ?? (shell.isClaudeChatPane(chat) ? "Claude Code chat" : "New chat")
         let tone = session.map(shell.tone(of:)) ?? .done
-        let lastActivity = session?.updatedAt ?? claudeChat?.lastActivityAt
-        let width = size?.width ?? 600
-        let place =
-            session.flatMap { ChatPlace.of($0, repo: shell.repo) }
-            ?? claudeChat.flatMap { ChatPlace.of($0, repo: shell.repo) }
         HStack(spacing: 8) {
             GripDots()
                 .foregroundStyle(Palette.t3)
@@ -183,40 +175,19 @@ private struct PaneHeader: View {
             if let session {
                 // The word is gone; its tooltip and VoiceOver still say it.
                 let status = shell.statusLabel(of: session)
-                StatusLabel(
-                    tone: tone, label: status, hollow: shell.isHollow(session), showsLabel: false
-                )
-                .help(status)
+                StatusLabel(tone: tone, label: status, showsLabel: false)
+                    .help(status)
             }
             if let session,
                 let startedBy = PixieLabels.startedBy(
                     session, pixies: shell.pixies.pixies)
             {
-                StartedByLabel(label: startedBy, compact: !fit.showsPlaceName)
+                StartedByLabel(label: startedBy, compact: !fit.showsHeaderDetails)
                     .frame(maxWidth: 160, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(0.2)
             }
             Spacer(minLength: 0)
-            if let place {
-                if fit.showsPlaceName {
-                    PlaceLabel(place: place, showsName: true)
-                        .frame(maxWidth: width * 0.3, alignment: .trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minWidth: min(60, width * 0.15), alignment: .trailing)
-                } else {
-                    PlaceLabel(place: place, showsName: false)
-                }
-            }
-            if let lastActivity, fit.showsElapsed {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(Elapsed.short(from: lastActivity, to: context.date))
-                        .font(.ui(TypeSize.meta))
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.t3)
-                }
-                .fixedSize()
-            }
             if let pr = session?.pr, fit.showsPullRequest {
                 PRChip(session: chat, pr: pr)
             }
@@ -240,32 +211,6 @@ private struct PaneHeader: View {
         // No visible tag says so any more; VoiceOver still hears whose history this is.
         .accessibilityLabel(
             shell.isClaudeChatPane(chat) && session == nil ? "\(title), Claude Code chat" : title)
-    }
-}
-
-/// Where an open chat works, in its header (B55): the branch icon and the worktree's name,
-/// or the project folder's current branch; the icon alone in a narrow pane. The tooltip
-/// names the folder.
-struct PlaceLabel: View {
-    let place: ChatPlace
-    let showsName: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: Icon.branch)
-                .font(.system(size: 10, weight: .medium))
-            if showsName {
-                Text(place.name)
-                    .font(.mono(TypeSize.meta))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
-        .foregroundStyle(Palette.t3)
-        .fixedSize(horizontal: !showsName, vertical: false)
-        .help(place.help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(place.help)
     }
 }
 

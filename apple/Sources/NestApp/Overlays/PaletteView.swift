@@ -154,8 +154,8 @@ private struct PaletteRow: View {
 
     @ViewBuilder private var glyph: some View {
         switch item.glyph {
-        case .status(let tone, let hollow):
-            StatusDot(tone: tone, hollow: hollow)
+        case .status(let tone):
+            StatusDot(tone: tone)
         default:
             Image(systemName: symbol).font(.system(size: 11))
         }
