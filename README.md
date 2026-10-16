@@ -66,6 +66,8 @@ On the Mac, Settings > Appearance picks light, dark or auto and the accent, whic
 
 The Mac window is one frosted slab over your desktop: the system's behind-window blur with a dark or light tint, and inside it the tabs, sidebar, right panel and status bar meet edge to edge, split by thin dividers, while each chat, terminal and browser pane is its own rounded panel with faint scanlines. There is no bar over the project: the project's name at the top of the sidebar opens its menu (new terminal or browser, open in VS Code, Finder or Terminal, copy path, project settings), with its current branch beside it; the status bar holds Settings on the left, the Workspace / Board switch (and Restore while a pane is maximized) in the middle, and Terminal and the right panel's toggle on the right. With Reduce Transparency on, the window is opaque. Drag the sidebar's right edge to widen or narrow it (double-click resets it); the chats sidebar and the Pixies list share one width on this Mac. See D038, D073 and D098.
 
+The Mac's chat sidebar is one list, newest activity first, whatever each chat's state; its status dot still shows it. Pinned chats sit above it under a Pinned label (the rest then under Chats); with nothing pinned there are no labels. Archived stays folded at the bottom. In the right panel, Needs you and Goals list one row per item: a status dot, the chat's name (click it to open the chat) over a grey line (what it asks and a short detail, or a goal's "2 of 4" with a thin progress bar), and a chevron on the right that opens the full item in place (Approve, the review, the answer, the checklist). Needs you rows start closed and Goals rows start open. The iPhone keeps its grouped chat list for now. See D099.
+
 For visual review, a debug build renders the window offscreen without showing it: `cd apple && swift build && "$(swift build --show-bin-path)/NestApp" --render-snapshots <folder>` (sample data) or `--render-live <folder>` (the local daemon, read-only).
 
 ## Running the daemon
@@ -219,7 +221,7 @@ Archive a Claude Code chat you are done with from its actions (the dots button, 
 
 ## Claude Code chats in the Mac app
 
-Chats you started in Claude Code (Terminal or the Claude desktop app) for a registered project appear in the sidebar's Idle group with a "Claude Code" label. Opening one shows its history read-only; **Continue in Nest** takes it over. Automated SDK runs are hidden unless **Settings > Claude Code chats > Show automated chats** is on. Sending is refused while the chat is open in Claude Code.
+Chats you started in Claude Code (Terminal or the Claude desktop app) for a registered project appear in the sidebar (among the chats on the Mac, in the Idle group on the iPhone) with a "Claude Code" label. Opening one shows its history read-only; **Continue in Nest** takes it over. Automated SDK runs are hidden unless **Settings > Claude Code chats > Show automated chats** is on. Sending is refused while the chat is open in Claude Code.
 
 Dictation uses Apple's on-device `SpeechAnalyzer` (macOS 26 and later), downloading the language model on first use, with project names and coding terms as hints; it falls back to the older speech recognizer when needed.
 
