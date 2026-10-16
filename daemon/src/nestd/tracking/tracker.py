@@ -37,6 +37,8 @@ class SessionTracker:
                 self.agents.started(event.ts)
             case types.SESSION_WORKSPACE:
                 self.agents.root = str(payload["path"])
+            case types.SESSION_USER_MESSAGE:
+                return self.tasks.clear(), Change.NONE
             case types.SESSION_AGENT_TASK:
                 return False, self.agents.task(AgentTask.model_validate(payload), event.ts)
             case types.SESSION_STATE:

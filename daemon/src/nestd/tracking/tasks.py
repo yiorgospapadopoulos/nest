@@ -2,6 +2,10 @@
 
 A TaskCreate result reads `Task #<id> created successfully: <subject>`; that is where the
 id comes from. Updates apply once their result shows they succeeded.
+
+The visible list is the one the chat shows (D092): the user's next message clears it, since
+Claude Code deletes a finished list and numbers the next one from #1 again. A task created
+or updated after that shows again; a created id replaces the old task with that id.
 """
 
 import re
@@ -19,12 +23,20 @@ _CREATED = re.compile(r"Task #(\w+) created successfully(?::\s*(.*))?")
 class TaskList:
     def __init__(self) -> None:
         self._tasks: dict[str, TrackedTask] = {}
+        self._visible: set[str] = set()
         # Calls waiting for their result, by tool use id.
         self._calls: dict[str, ToolUseBlock] = {}
 
     def snapshot(self) -> list[TrackedTask]:
-        """In id order, so parallel creations list as the agent numbered them."""
-        return sorted(self._tasks.values(), key=lambda t: (len(t.id), t.id))
+        """The visible list in id order, so parallel creations list as the agent numbered them."""
+        visible = (self._tasks[task_id] for task_id in self._visible)
+        return sorted(visible, key=lambda t: (len(t.id), t.id))
+
+    def clear(self) -> bool:
+        """Hide every task, at the user's next message; whether the visible list changed."""
+        changed = bool(self._visible)
+        self._visible.clear()
+        return changed
 
     def tool_use(self, block: ToolUseBlock) -> None:
         if block.name in (TASK_CREATE, TASK_UPDATE):
@@ -43,6 +55,7 @@ class TaskList:
         match = _CREATED.search(result)
         if match is None:
             return False
+        self._visible.add(match.group(1))
         self._tasks[match.group(1)] = TrackedTask(
             id=match.group(1),
             subject=_text(tool_input.get("subject")) or (match.group(2) or "").strip(),
@@ -70,7 +83,9 @@ class TaskList:
                 changes[field] = value
         updated = task.model_copy(update=changes)
         self._tasks[task.id] = updated
-        return updated != task
+        hidden = task.id not in self._visible
+        self._visible.add(task.id)
+        return hidden or updated != task
 
 
 def _text(value: JsonValue) -> str | None:
