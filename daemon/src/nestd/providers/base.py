@@ -258,6 +258,31 @@ class Subagent:
     disallowed_tools: tuple[str, ...] = ()
 
 
+# The tools that call a subagent; "Task" is the name in older Claude Code versions.
+AGENT_TOOLS = frozenset({"Agent", "Task"})
+
+
+@dataclass(frozen=True)
+class CallRules:
+    """Which agents of a run may call which pixies as subagents (B70). Ordinary subagents
+    are never limited.
+    """
+
+    # The subagent names that are pixies.
+    pixies: frozenset[str] = frozenset()
+    # The pixies the run's main agent may call.
+    main: frozenset[str] = frozenset()
+    # By pixie, the pixies it may call: only a team's leader has any, its own members.
+    leaders: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+
+    def may_call(self, caller: str | None, target: str) -> bool:
+        """`caller` is None for the main agent, else the calling subagent's name."""
+        if target not in self.pixies:
+            return True
+        allowed = self.main if caller is None else self.leaders.get(caller, frozenset())
+        return target in allowed
+
+
 @dataclass(frozen=True)
 class SessionSpec:
     cwd: Path
@@ -280,6 +305,8 @@ class SessionSpec:
     disallowed_tools: tuple[str, ...] = ()
     # Subagents by the name the agent calls them with; fixed for the run's life (B40).
     subagents: Mapping[str, Subagent] = field(default_factory=dict[str, Subagent])
+    # Which agents may call which pixies among the subagents; None guards no calls (B70).
+    call_rules: CallRules | None = None
     # Commits, pushes and pull request writes blocked, and git and gh without credentials
     # (D013): pixie chats, habit runs and chats a pixie started (D072). A normal chat uses
     # git and gh as in the terminal, with the user's own login (B58).

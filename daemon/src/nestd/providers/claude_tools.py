@@ -1,18 +1,28 @@
-"""Nest tools as an in-process MCP server, and the write guard for pixie runs (D072)."""
+"""Nest tools as an in-process MCP server, the write guard for pixie runs (D072), and the
+guard of who calls which pixie (B70).
+"""
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from claude_agent_sdk import McpServerConfig, SdkMcpTool, create_sdk_mcp_server
 from claude_agent_sdk.types import HookCallback, HookContext, HookInput, HookJSONOutput
 
-from nestd.providers.base import AgentTool, ToolRefusedError
+from nestd.providers.base import AgentTool, CallRules, ToolRefusedError
 
 TOOL_SERVER = "pixie"
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 WRITE_DENIED = "A pixie may only write files in its own workdir; use its memory tools instead."
 SUBAGENT_DENIED = "A pixie's own tools are only for the pixie, not for agents it calls."
+MEMBER_CALL_DENIED = (
+    "{slug} is in a team and is called only by its leader. Hand the request to the team's"
+    " leader instead; it calls its members."
+)
+PIXIE_CALL_DENIED = (
+    "Only a team's leader calls pixies, and only its own team's members. Use Claude Code's"
+    " ordinary subagents (such as Explore or general-purpose) instead."
+)
 
 
 def own_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
@@ -60,6 +70,40 @@ def subagent_guard(own_tools: frozenset[str]) -> HookCallback:
         if data.get("tool_name") in own_tools and data.get("agent_id"):
             return _deny(SUBAGENT_DENIED)
         return {}
+
+    return guard
+
+
+def call_guard(rules: CallRules) -> HookCallback:
+    """PreToolUse hook for the Agent tools: a pixie is called only as `rules` allow, and a
+    leader waits for each member it calls. Calls of ordinary subagents are never touched.
+    """
+
+    async def guard(
+        input_data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        data: dict[str, Any] = dict(input_data)
+        raw = data.get("tool_input")
+        tool_input = cast("dict[str, Any]", raw) if isinstance(raw, dict) else {}
+        target = tool_input.get("subagent_type")
+        if not isinstance(target, str) or target not in rules.pixies:
+            return {}
+        # The main agent has no agent id; a subagent's type is the name it was called by.
+        caller = str(data.get("agent_type") or "") if data.get("agent_id") else None
+        if not rules.may_call(caller, target):
+            return _deny(
+                PIXIE_CALL_DENIED if caller is not None else MEMBER_CALL_DENIED.format(slug=target)
+            )
+        if caller is None or tool_input.get("run_in_background") is False:
+            return {}
+        # Inside a subagent an Agent call runs in the background unless told not to. With
+        # no permission decision the changed call still goes through the usual checks.
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "updatedInput": {**tool_input, "run_in_background": False},
+            }
+        }
 
     return guard
 
