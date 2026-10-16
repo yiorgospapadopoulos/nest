@@ -821,3 +821,14 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Clients:** in a project chat a call of a team's leader is the team's row: the grid of four (D093), the team's name in the leader's colour, "<team> working" while it runs, then the leader's report; the mark or name opens the team's calls in that chat. Inside the opened row, member calls show as steps on the iPhone; on the Mac (B75) each is the member's own pixie row (sprite, task, report, working while it runs) that opens in place to its steps.
 - **Refines:** D077 (the main chat no longer calls members), D091 (continuing a team continues its leader).
 
+## D095 (2026-10-17): Quieter chats on the Mac (B71)
+
+- **Why:** the user wants the Mac's chats calmer: fewer marks that change or repeat what is already clear.
+- **Idle dot:** an idle chat's status dot is filled, as every other state's, wherever a chat's dot shows (sidebar rows and compact entries, pane and pixie headers, cards, the command palette). Hollow dots stay for missing or skipped results (a pull request without checks, a skipped check, a habit that never ran, an agent of unknown status).
+- **Thinking:** "Thought for 6s" is a quiet line of text and a chevron, without the brain icon; its opened text, and the live thinking's preview, start under the words.
+- **No elapsed time:** sidebar rows (Nest and Claude Code chats) and the pane header no longer show the time since the last message; the rest of the row's second line stays.
+- **Where it works:** the chat's branch or worktree moved from the pane header to the composer's controls, beside the mic, for open chats: named (shortened in the middle) from 560 pt, so the model, thinking, permission and full context never get squeezed, and as its icon with the folder on hover below that. New chats keep the selector above the field. A Claude Code chat's pane, which has Continue in Nest instead of a composer, no longer shows it; its sidebar row still does.
+- **No agents bar:** the "N running · M completed" bar above the composer is gone, with the exchange start it was counted from; running subagents and background commands still show in the tree under each chat and in the Agents card, each with Stop.
+- **Worked for:** a turn's "Worked for 32s" line shows only while the pointer is over that reply (the rows from the message or report that started the turn to its end); hidden, it keeps its height, so nothing moves, and VoiceOver still reads it.
+- **iPhone:** unchanged for now; it follows in the iPhone catch-up block.
+- **Refines:** D033, D045 and D052 (the background bar, now iPhone only), D039 and D089 (the narrow-pane rules), D083 (where a chat works, shown on the Mac in the composer rather than the header).
