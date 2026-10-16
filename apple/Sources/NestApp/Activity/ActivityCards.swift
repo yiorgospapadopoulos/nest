@@ -1,8 +1,8 @@
 import NestKit
 import SwiftUI
 
-/// Pending approvals, failed checks and stuck chats of the project, each with its actions;
-/// resolved ones slide out.
+/// Pending approvals, failed checks and stuck chats of the project, one short row each
+/// that opens to its actions (B77); resolved ones slide out.
 struct NeedsCard: View {
     @Environment(Shell.self) private var shell
     @Environment(\.reducedMotion) private var reduceMotion
@@ -11,10 +11,10 @@ struct NeedsCard: View {
         let pending = shell.approvals.pending(repo: shell.project ?? "")
         let failed = shell.sessions.checksFailed(in: shell.project ?? "")
         let stuck = shell.sessions.stuck(in: shell.project ?? "")
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             if pending.isEmpty && failed.isEmpty && stuck.isEmpty {
                 EmptyCard(icon: Icon.check, text: "Nothing needs you.", tone: .review)
-                    .padding(.horizontal, -10)
+                    .padding(.horizontal, -8)
                     .transition(.opacity)
             }
             // As on the iPhone: approvals, failed checks, then stuck chats.
@@ -22,18 +22,26 @@ struct NeedsCard: View {
                 switch section {
                 case .approvals:
                     ForEach(pending) { approval in
-                        ApprovalCard(approval: approval, style: .panel)
-                            .transition(slideOut)
+                        ApprovalRow(approval: approval).transition(slideOut)
                     }
                 case .checksFailed:
                     ForEach(failed) { session in
-                        ChecksFailedCard(session: session)
-                            .transition(slideOut)
+                        NeedsRow(
+                            tone: .failed, session: session,
+                            line: NeedsYouLine.checksFailed(session)
+                        ) {
+                            ChecksFailedCard(session: session)
+                        }
+                        .transition(slideOut)
                     }
                 case .stuck:
                     ForEach(stuck) { session in
-                        StuckCard(session: session)
-                            .transition(slideOut)
+                        NeedsRow(
+                            tone: .waiting, session: session, line: NeedsYouLine.stuck(session)
+                        ) {
+                            StuckCard(session: session)
+                        }
+                        .transition(slideOut)
                     }
                 }
             }
@@ -49,7 +57,53 @@ struct NeedsCard: View {
     }
 }
 
-/// A chat that looks stuck: the reason and since when, with Send a nudge and Interrupt.
+/// A pending approval's row: the chat (or pixie) and what it asks, opening to the card.
+private struct ApprovalRow: View {
+    let approval: Approval
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let green = approval.kind == .review || approval.kind == .merge
+        FoldRow(key: "approval-\(approval.id)", tone: green ? .review : .waiting) {
+            if let pixieID = Pixie.id(ofRepo: approval.repo) {
+                // A pixie's chat belongs to no project: name the pixie and open its page.
+                PixieLink(id: pixieID)
+            } else {
+                ChatLink(chat: approval.sessionID, title: approval.title)
+            }
+        } line: {
+            HStack(spacing: 6) {
+                NeedsLineText(line: NeedsYouLine.of(approval))
+                if shell.approvals.busy.contains(approval.id) {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+        } detail: {
+            ApprovalCard(approval: approval, style: .panel)
+        }
+    }
+}
+
+/// A chat's row with failed checks or looking stuck, opening to its card.
+private struct NeedsRow<Card: View>: View {
+    let tone: StatusTone
+    let session: Session
+    let line: NeedsYouLine
+    @ViewBuilder let card: Card
+
+    var body: some View {
+        FoldRow(key: "\(line.kind)-\(session.id)", tone: tone) {
+            ChatLink(chat: session.id, title: session.title)
+        } line: {
+            NeedsLineText(line: line)
+        } detail: {
+            card
+        }
+    }
+}
+
+/// A chat that looks stuck: the reason and since when, with Send a nudge and Interrupt,
+/// under its Needs you row, which names the chat.
 private struct StuckCard: View {
     let session: Session
     @Environment(Shell.self) private var shell
@@ -57,16 +111,6 @@ private struct StuckCard: View {
     var body: some View {
         if let flag = session.stuck {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    StatusDot(tone: .waiting)
-                    Text("Stuck")
-                    Spacer(minLength: 8)
-                    ChatLink(chat: session.id, title: session.title)
-                        .foregroundStyle(Palette.t3)
-                        .frame(maxWidth: 170, alignment: .trailing)
-                }
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(StatusTone.waiting.color)
                 HStack(alignment: .firstTextBaseline) {
                     Text(flag.reason.label)
                         .font(.ui(TypeSize.ui, .medium))
@@ -78,7 +122,6 @@ private struct StuckCard: View {
                             .foregroundStyle(Palette.t3)
                     }
                 }
-                .padding(.top, 5)
                 Text(flag.details)
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t2)
@@ -108,7 +151,7 @@ private struct StuckCard: View {
 }
 
 /// What each chat of the project is planning and doing (D092): every chat working or with
-/// tasks in its list, under its title, its checklist always open.
+/// tasks in its list, as a row with its progress that opens to its checklist (B77).
 struct GoalsCard: View {
     @Environment(Shell.self) private var shell
 
@@ -117,38 +160,55 @@ struct GoalsCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if entries.isEmpty {
                 EmptyCard(icon: Icon.goals, text: "No chats working", tone: nil)
+                    .padding(.horizontal, -8)
             }
             ForEach(entries) { entry in
-                GoalGroup(entry: entry)
+                GoalRow(entry: entry)
             }
         }
     }
 }
 
-/// One chat's title, which opens it, over its checklist.
-private struct GoalGroup: View {
+/// One chat's title, which opens it, over its progress; open unless the user closed it.
+private struct GoalRow: View {
     let entry: GoalEntry
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let goals = entry.goals
+        FoldRow(
+            key: "goal-\(entry.session.id)", tone: shell.tone(of: entry.session),
+            openByDefault: true
+        ) {
+            ChatLink(chat: entry.session.id, title: entry.session.title)
+        } line: {
             HStack(spacing: 8) {
-                StatusDot(tone: shell.tone(of: entry.session))
-                ChatLink(chat: entry.session.id, title: entry.session.title)
-                    .font(.ui(TypeSize.ui, .medium))
-                    .foregroundStyle(Palette.t1)
+                Text(goals.progressLabel).monospacedDigit()
+                if !goals.tasks.isEmpty {
+                    ProgressTrack(value: goals.progress)
+                }
             }
-            .padding(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
-            if entry.goals.tasks.isEmpty {
-                Text("No plan yet")
-                    .font(.ui(TypeSize.meta))
-                    .foregroundStyle(Palette.t3)
-                    .padding(EdgeInsets(top: 0, leading: 28, bottom: 6, trailing: 14))
-            } else {
-                Checklist(goals: entry.goals)
+        } detail: {
+            if !goals.tasks.isEmpty {
+                Checklist(goals: goals)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A thin bar of the share of tasks done.
+private struct ProgressTrack: View {
+    let value: Double
+    @Environment(\.accentColors) private var accent
+
+    var body: some View {
+        Capsule()
+            .fill(Palette.soft)
+            .frame(width: 54, height: 3)
+            .overlay(alignment: .leading) {
+                Capsule().fill(accent.accent).frame(width: 54 * value, height: 3)
+            }
+            .accessibilityHidden(true)
     }
 }
 
@@ -180,7 +240,7 @@ private struct Checklist: View {
                 .padding(.vertical, 3)
             }
         }
-        .padding(EdgeInsets(top: 0, leading: 28, bottom: 8, trailing: 14))
+        .padding(.trailing, 6)
     }
 
     @ViewBuilder private func mark(_ status: TaskStatus) -> some View {

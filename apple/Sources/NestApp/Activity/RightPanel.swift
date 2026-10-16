@@ -132,10 +132,12 @@ private struct CardView: View {
                 ScrollView {
                     Group {
                         switch card {
-                        case .needsYou: NeedsCard().padding(.horizontal, 10)
+                        case .needsYou: NeedsCard()
                         case .goals: GoalsCard()
                         }
                     }
+                    // Rows' chevrons line up under the header's (B77).
+                    .padding(.horizontal, 8)
                     .padding(.bottom, 10)
                 }
                 .scrollIndicators(.never)
