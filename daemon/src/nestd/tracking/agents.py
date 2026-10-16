@@ -59,6 +59,8 @@ class _Agent:
     kind: Literal["agent", "bash"] = "agent"
     # Its tool call returns at once; its task's end is reported separately.
     background: bool = False
+    # The subagent that started it; None for the main agent's own.
+    parent: str | None = None
 
     def finish(self, status: AgentStatus, at: datetime) -> None:
         self.status = status
@@ -87,6 +89,7 @@ class AgentBoard:
                 id=a.id,
                 name=a.name,
                 description=a.description,
+                parent=a.parent,
                 status=a.status,
                 activity=a.activity,
                 started_at=a.started_at,
@@ -198,6 +201,7 @@ class AgentBoard:
             description=description,
             started_at=at,
             background=background,
+            parent=None if agent.id == MAIN else agent.id,
         )
         return Change.LIFECYCLE
 

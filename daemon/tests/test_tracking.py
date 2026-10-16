@@ -86,6 +86,7 @@ def test_a_real_transcript_yields_tasks_agents_and_a_summary() -> None:
         "id": "main",
         "name": "main",
         "description": None,
+        "parent": None,
         "status": "done",
         "activity": None,
         "started_at": at(1),
@@ -124,6 +125,7 @@ def test_a_real_transcript_yields_tasks_agents_and_a_summary() -> None:
         "id": AGENT_ID,
         "name": "Explore",
         "description": "Read CLAUDE.md file",
+        "parent": None,
         "status": "done",
         "activity": None,
         "started_at": at(13),
@@ -252,6 +254,8 @@ def test_subagents_nest_fail_and_keep_their_last_steps() -> None:
     assert (inner["status"], inner["finished_at"], inner["activity"]) == ("failed", at(6), None)
     assert inner["steps"] == [{"id": "g1", "tool": "Grep", "arg": "TODO", "result": None}]
     assert (plain["name"], plain["description"]) == ("agent", None)
+    # A subagent another subagent started names it as its parent.
+    assert (outer["parent"], inner["parent"], plain["parent"]) == (None, "outer", None)
 
 
 @pytest.mark.parametrize(
