@@ -37,4 +37,27 @@ import Testing
         // A buffer shorter than its size says reads nothing.
         #expect(PhotoLine.colors(rgba: [1, 2, 3], width: 2, height: 2, bands: 2).isEmpty)
     }
+
+    /// One colour for the whole line: the photo's most colourful band, made bright.
+    @Test func theLineTakesThePhotosMostColourfulToneBrightened() {
+        let pink = PhotoLine.lineColor([
+            PhotoLine.Color(red: 140, green: 140, blue: 140),
+            PhotoLine.Color(red: 160, green: 60, blue: 100),
+            PhotoLine.Color(red: 120, green: 90, blue: 100),
+        ])
+        #expect(pink == PhotoLine.Color(red: 240, green: 90, blue: 150))
+    }
+
+    /// A black and white photo, or one with only faint colour, gives a white line; so does
+    /// a photo that could not be read.
+    @Test func aPhotoWithoutColourGivesWhite() {
+        let white = PhotoLine.Color(red: 255, green: 255, blue: 255)
+        #expect(
+            PhotoLine.lineColor([
+                PhotoLine.Color(red: 220, green: 220, blue: 220),
+                PhotoLine.Color(red: 10, green: 10, blue: 12),
+                PhotoLine.Color(red: 0, green: 0, blue: 0),
+            ]) == white)
+        #expect(PhotoLine.lineColor([]) == white)
+    }
 }

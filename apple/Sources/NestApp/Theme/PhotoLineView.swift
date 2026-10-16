@@ -3,8 +3,9 @@ import ImageIO
 import NestKit
 import SwiftUI
 
-/// The 1 point line along the bottom of the tab strip (B73): the chat background's colours
-/// left to right, or the accent colour without one, fading out towards both ends.
+/// The 1 point line along the bottom of the tab strip (B73): one colour, the chat
+/// background's brightest tone (white for a black and white photo) or the accent colour
+/// without one, fading out towards both ends.
 struct PhotoLineView: View {
     /// The chat background's image file, if one is chosen.
     let image: String?
@@ -41,7 +42,7 @@ struct PhotoLineView: View {
     }
 }
 
-/// Reads a small copy of the image off the main thread and samples its colours.
+/// Reads a small copy of the image off the main thread and picks the line's colour.
 enum PhotoLineSampler {
     /// The small copy's longest side, in pixels; enough for a few bands of colour.
     static let side = 96
@@ -82,7 +83,10 @@ enum PhotoLineSampler {
         }
         guard drawn else { return [] }
         Dither.unpremultiply(&pixels)
-        return PhotoLine.colors(
-            rgba: pixels, width: width, height: height, bands: PhotoLine.bands)
+        return [
+            PhotoLine.lineColor(
+                PhotoLine.colors(
+                    rgba: pixels, width: width, height: height, bands: PhotoLine.bands))
+        ]
     }
 }
