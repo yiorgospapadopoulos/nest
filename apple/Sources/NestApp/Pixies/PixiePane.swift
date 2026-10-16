@@ -70,8 +70,11 @@ private struct PixiePaneHeader: View {
                 .frame(width: 14, height: 24)
                 .contentShape(Rectangle())
                 .help("Drag to move")
-            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 16)
-                .allowsHitTesting(false)
+            SpriteView(
+                mascot: pixie.mascot, color: pixie.color, size: 16,
+                working: session?.state.isWorking ?? false, phaseKey: pixie.id
+            )
+            .allowsHitTesting(false)
             Text(pixie.name)
                 .font(.ui(TypeSize.ui, .medium))
                 .foregroundStyle(Palette.t1)

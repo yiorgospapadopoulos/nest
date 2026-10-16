@@ -34,6 +34,8 @@ private struct ChatTreeLine: View {
     @Environment(Shell.self) private var shell
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
+    /// The width of a row's sprite, spinner or team icon, so names line up.
+    private static let icon = 16.0
 
     var body: some View {
         let group = if case .group = row.kind { true } else { false }
@@ -96,18 +98,26 @@ private struct ChatTreeLine: View {
                 .foregroundStyle(Palette.t3)
         case .pixie(let pixie, let entry):
             HStack(spacing: 6) {
-                SpriteView(mascot: pixie.mascot, color: pixie.color, size: 12)
-                    .frame(width: 13)
+                SpriteView(
+                    mascot: pixie.mascot, color: pixie.color, size: 12,
+                    working: entry.state.isRunning, phaseKey: pixie.id
+                )
+                .frame(width: Self.icon)
                 Text(pixie.name).foregroundStyle(Color(hex: pixie.color))
                 Spacer(minLength: 4)
                 StateMark(state: entry.state)
             }
         case .team(let team, let color, let entry):
             HStack(spacing: 6) {
-                Image(systemName: Icon.team)
-                    .font(.system(size: 9, weight: .semibold))
-                    .frame(width: 13)
-                    .foregroundStyle(color.map { Color(hex: $0) } ?? Palette.t2)
+                let icon = TeamIcon.cells(of: entry, pixies: shell.pixies.pixies)
+                if icon.isEmpty {
+                    Image(systemName: Icon.team)
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: Self.icon)
+                        .foregroundStyle(color.map { Color(hex: $0) } ?? Palette.t2)
+                } else {
+                    TeamIconView(cells: icon)
+                }
                 Text(team.name)
                     .fontWeight(.medium)
                     .foregroundStyle(color.map { Color(hex: $0) } ?? Palette.t2)
@@ -119,8 +129,11 @@ private struct ChatTreeLine: View {
             }
         case .member(let pixie, let leader, let state, _):
             HStack(spacing: 6) {
-                SpriteView(mascot: pixie.mascot, color: pixie.color, size: 11)
-                    .frame(width: 13)
+                SpriteView(
+                    mascot: pixie.mascot, color: pixie.color, size: 11,
+                    working: state?.isRunning ?? false, phaseKey: pixie.id
+                )
+                .frame(width: Self.icon)
                 Text(pixie.name).foregroundStyle(Palette.t1)
                 if leader {
                     Text("Leader")
@@ -136,7 +149,7 @@ private struct ChatTreeLine: View {
         case .subagent(let agent):
             HStack(spacing: 6) {
                 Spinner(size: 9, lineWidth: 1.5)
-                    .frame(width: 13)
+                    .frame(width: Self.icon)
                 Text(agent.name).foregroundStyle(Palette.t1)
                 if let detail = agent.activity ?? agent.description {
                     Text(detail)

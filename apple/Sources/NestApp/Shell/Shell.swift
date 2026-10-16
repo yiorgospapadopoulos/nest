@@ -296,6 +296,11 @@ final class Shell {
         pixies.pixies.first { $0.id == id }
     }
 
+    /// The pixie's own chat is starting or running a turn: its sprite hops (B48).
+    func isWorking(_ pixie: Pixie) -> Bool {
+        pixie.chatSessionID.flatMap(sessions.session)?.state.isWorking ?? false
+    }
+
     /// A pixie clicked in the list: opens its pane in the Pixies tab, or focuses it.
     func openPixie(_ id: String) {
         pixiesOpen = true

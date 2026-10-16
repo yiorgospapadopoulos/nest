@@ -238,8 +238,15 @@ private struct PixieIdentity: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 72)
-                .padding(.bottom, 10)
+            let working = shell.isWorking(pixie)
+            SpriteView(
+                mascot: pixie.mascot, color: pixie.color, size: 72, working: working,
+                phaseKey: pixie.id
+            )
+            .overlay(alignment: .topTrailing) {
+                StillWorkingDot(working: working).offset(x: 8, y: -4)
+            }
+            .padding(.bottom, 10)
             if editing == .name {
                 InlineField(label: "Name", initial: pixie.name, font: .ui(TypeSize.body, .semibold))
                 {
