@@ -15,7 +15,7 @@ public enum ConnectionState: Sendable, Equatable {
 
 /// The right panel's cards.
 public enum RightCard: String, Sendable, CaseIterable {
-    case agents, needsYou, goals
+    case needsYou, goals
 }
 
 public enum ProjectView: String, Sendable {
@@ -32,8 +32,6 @@ public struct ProjectState: Sendable, Hashable {
     public var view = ProjectView.workspace
     /// The chat highlighted in the sidebar.
     public var selectedChat: String?
-    /// Agents whose recent steps are shown, by agent id.
-    public var expandedAgents: Set<String> = []
     /// Chats whose background bar is open to its lists.
     public var expandedBackground: Set<String> = []
     /// The terminal and browser panes in the workspace, by pane id.

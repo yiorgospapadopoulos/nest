@@ -1,14 +1,12 @@
 import NestKit
 import SwiftUI
 
-/// The tree under a chat (B46), in the sidebar and the Agents card: "Pixies" with the
-/// pixies and teams the chat called (they stay after they finish), then "Subagents" with
-/// those still working, joined by tree lines. A row opens its work read-only; on hover a
-/// pixie's or team's "..." has Send away, and a subagent has Stop.
+/// The tree under a chat in the sidebar (B46): "Pixies" with the pixies and teams the chat
+/// called (they stay after they finish), then "Subagents" with those still working, joined
+/// by tree lines. A row opens its work read-only; on hover a pixie's or team's "..." has
+/// Send away, and a subagent has Stop.
 struct ChatTreeView: View {
     let chat: String
-    /// Where the tree's line starts, under the chat's status dot.
-    var inset: Double = 8.5
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -22,7 +20,8 @@ struct ChatTreeView: View {
                     ChatTreeLine(chat: chat, row: row)
                 }
             }
-            .padding(.leading, inset)
+            // The tree's line starts under the chat's status dot.
+            .padding(.leading, 8.5)
             .padding(.bottom, 2)
         }
     }

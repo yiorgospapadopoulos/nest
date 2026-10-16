@@ -177,7 +177,6 @@
                 state.openChat("c1", in: workspace)
                 state.dropChat("c2", onto: "c1", side: .right)
                 state.focusPane("c1")
-                state.expandedAgents = ["c2/toolu_explore"]
             }
             try await snap(controller, "workspace-light", .aqua, folder)
             try await snap(controller, "workspace-dark", .darkAqua, folder)
@@ -229,7 +228,7 @@
                 state.rightCollapsed = false
                 state.dropChat("c3", onto: "c1", side: .bottom)
                 state.dropChat("c4", onto: "c2", side: .bottom)
-                state.openCards = [.agents, .goals]
+                state.openCards = [.goals]
             }
             try await snap(controller, "four-panes-light", .aqua, folder)
             try await snap(controller, "four-panes-dark", .darkAqua, folder)
@@ -877,8 +876,8 @@
             try await pair(controller, "b40-call-opens-pixie", folder)
         }
 
-        /// B46: each chat's pixies and subagents as a tree under its row and in the Agents
-        /// card; a pixie's, a subagent's and a team's work, read-only; Send away; and the
+        /// B46: each chat's pixies and subagents as a tree under its row in the sidebar; a
+        /// pixie's, a subagent's and a team's work, read-only; Send away; and the
         /// composer refusing a team member called on its own.
         private static func renderPixieTree(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
@@ -914,7 +913,7 @@
                 state.layout = WorkspaceLayout()
                 state.leftCollapsed = false
                 state.rightCollapsed = false
-                state.openCards = [.agents]
+                state.openCards = [.goals]
                 state.openChat("c2", in: workspace)
                 state.focusPane("c2")
             }
@@ -1000,7 +999,7 @@
                 state.layout = WorkspaceLayout()
                 state.leftCollapsed = false
                 state.rightCollapsed = false
-                state.openCards = [.agents]
+                state.openCards = [.goals]
                 state.openChat("c2", in: CGSize(width: 828, height: 790))
                 state.focusPane("c2")
             }
@@ -2450,9 +2449,8 @@
             shell.close()
         }
 
-        /// B22 and I-003: the background bar above the composer, collapsed and open, an
-        /// idle chat with a running command in the Agents card, and the banner offering to
-        /// start the daemon's service, then showing how to install it.
+        /// B22 and I-003: the background bar above the composer, collapsed and open, and
+        /// the banner offering to start the daemon's service, then showing how to install it.
         private static func renderBackground(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -2462,8 +2460,7 @@
                 state.layout = WorkspaceLayout()
                 state.leftCollapsed = false
                 state.rightCollapsed = false
-                state.openCards = [.agents, .goals]
-                state.expandedAgents = []
+                state.openCards = [.goals]
                 state.openChat("c2", in: workspace)
                 state.openChat("c3", in: workspace)
                 state.focusPane("c2")

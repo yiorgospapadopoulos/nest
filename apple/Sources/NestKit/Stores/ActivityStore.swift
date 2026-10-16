@@ -28,7 +28,6 @@ public struct GoalEntry: Sendable, Hashable, Identifiable {
 /// the pending messages Claude has not read yet.
 @MainActor @Observable
 public final class ActivityStore {
-    public static let recentStepLimit = 5
     /// Idle chats updated this recently are loaded too: their background work may still run.
     public static let idleWatchWindow: TimeInterval = 12 * 3600
 
@@ -139,15 +138,6 @@ public final class ActivityStore {
             || background(session: id).running > 0
     }
 
-    /// Running agents and background commands across the given sessions, for the Agents
-    /// card header.
-    public func runningAgents(in sessions: [String]) -> Int {
-        sessions.reduce(0) { total, id in
-            total + (agents[id] ?? []).count { $0.status == .running }
-                + background(session: id).runningCommands.count
-        }
-    }
-
     /// Pending messages Claude has not read yet, oldest first (B59).
     public func queued(session id: String) -> [QueuedMessage] {
         queued[id] ?? []
@@ -237,11 +227,6 @@ public final class ActivityStore {
             stopping[id]?.remove(task)
             throw error
         }
-    }
-
-    /// An agent's last steps, oldest first.
-    public func recentSteps(of agent: TrackedAgent) -> [AgentStep] {
-        Array(agent.steps.suffix(Self.recentStepLimit))
     }
 
     public func apply(_ event: Event) {

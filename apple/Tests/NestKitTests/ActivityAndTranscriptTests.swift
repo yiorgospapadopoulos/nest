@@ -41,13 +41,9 @@ import Testing
         #expect(store.agents(session: "plain").isEmpty)
     }
 
-    @Test func listsTheMainAgentFirstWithItsRecentSteps() async throws {
+    @Test func listsTheMainAgentFirst() async throws {
         let main = Fixture.sessionDetail.agents![0]
-        var sub = Fixture.sessionDetail.agents![1]
-        sub.status = .running
-        sub.steps = (1...7).map {
-            AgentStep(id: "t\($0)", tool: "Read", arg: "f\($0)", result: nil)
-        }
+        let sub = Fixture.sessionDetail.agents![1]
         store.apply(
             Fixture.event(
                 EventType.sessionAgents,
@@ -57,9 +53,6 @@ import Testing
         let agents = store.agents(session: sessionID)
 
         #expect(agents.map(\.id) == ["main", "toolu_09"])
-        #expect(store.recentSteps(of: agents[1]).map(\.id) == ["t3", "t4", "t5", "t6", "t7"])
-        #expect(store.recentSteps(of: agents[0]).count == 2)
-        #expect(store.runningAgents(in: [sessionID, "other"]) == 2)
     }
 
     @Test func followsLiveTaskSnapshotsAndDeletion() async throws {
