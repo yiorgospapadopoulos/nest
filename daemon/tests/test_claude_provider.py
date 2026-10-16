@@ -624,9 +624,21 @@ async def test_task_lifecycles_are_reported(tmp_path: Path) -> None:
         AgentTask(task_id="t3", phase="backgrounded"),
         AgentTask(task_id="t3", phase="finished", status="failed"),
         AgentTask(task_id="t2", phase="finished", status="stopped"),
-        AgentTask(task_id="t1", phase="finished", tool_use_id="toolu_1", status="completed"),
-        AgentTask(task_id="t9", phase="finished", status="stopped"),
+        # A notification carries the report (B46).
+        AgentTask(
+            task_id="t1",
+            phase="finished",
+            tool_use_id="toolu_1",
+            status="completed",
+            summary="done",
+        ),
+        AgentTask(task_id="t9", phase="finished", status="stopped", summary="done"),
     ]
+    finished = tasks_reported(opened.sink)[7]
+    assert isinstance(finished, AgentTask)
+    assert finished.model_dump(mode="json")["summary"] == "done"
+    # Left out of the event when there is none.
+    assert "summary" not in AgentTask(task_id="t2", phase="backgrounded").model_dump(mode="json")
 
 
 async def test_one_running_task_can_be_stopped(tmp_path: Path) -> None:
@@ -894,7 +906,7 @@ async def test_a_message_that_fails_to_translate_does_not_end_the_run(tmp_path: 
     await until(lambda: len(tasks_reported(opened.sink)) >= 2)
 
     assert tasks_reported(opened.sink) == [
-        AgentTask(task_id="t1", phase="finished", status="stopped"),
+        AgentTask(task_id="t1", phase="finished", status="stopped", summary="done"),
         AgentTask(task_id="t2", phase="started", description="sleep 40"),
     ]
     assert not any(name == "stopped" for name, _ in opened.sink.calls)

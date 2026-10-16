@@ -23,7 +23,7 @@ from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import CreateSession, Session, SessionState
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import ChatAgentsSource
+from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
 from nestd.storage.db import Database
 from nestd.worktrees.manager import WorktreeManager
 from tests.async_support import until
@@ -71,6 +71,7 @@ class Env:
         idle_close: timedelta,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
+        calls: PixieCalls | None = None,
     ) -> SessionManager:
         return SessionManager(
             store=self.store,
@@ -89,6 +90,7 @@ class Env:
             models=self.find_model,
             extras=extras,
             agents=agents,
+            calls=calls,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

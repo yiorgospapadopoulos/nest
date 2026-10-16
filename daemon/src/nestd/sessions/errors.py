@@ -1,6 +1,6 @@
 from pydantic import JsonValue
 
-from nestd.errors import ConflictError, NotFoundError
+from nestd.errors import ConflictError, InvalidInputError, NotFoundError
 
 
 class SessionNotFoundError(NotFoundError):
@@ -29,6 +29,10 @@ class NoAgentRunError(ConflictError):
 
 class TaskNotFoundError(NotFoundError):
     """The session's agent runs no task by that id (B59)."""
+
+
+class AgentCallNotFoundError(NotFoundError):
+    """The chat has no Agent call by that tool use id (B46)."""
 
 
 class CannotRewindError(ConflictError):
@@ -62,6 +66,15 @@ class MessageTakenError(ConflictError):
     """The agent already read the queued message, so it can no longer be removed (B59)."""
 
     code = "message_taken"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
+class PixieInTeamError(InvalidInputError):
+    """A message calls a pixie of a team on its own; it is called only with its team (B46)."""
+
+    code = "pixie_in_team"
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code}

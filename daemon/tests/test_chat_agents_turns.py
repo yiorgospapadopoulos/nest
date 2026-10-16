@@ -10,7 +10,7 @@ import pytest
 from nestd.events import types
 from nestd.providers.base import Subagent
 from nestd.sessions.extras import RunExtras
-from nestd.sessions.models import Session, SessionState
+from nestd.sessions.models import NewSession, Session, SessionState
 from nestd.sessions.subagents import ChatAgents, TeamCall
 from nestd.storage.db import Database
 from tests.async_support import until
@@ -29,8 +29,8 @@ class Source:
         self.agents = ChatAgents({"tester": TESTER}, (QA,))
         self.asked: list[str] = []
 
-    async def __call__(self, session: Session) -> ChatAgents:
-        self.asked.append(session.id)
+    async def __call__(self, session: NewSession) -> ChatAgents:
+        self.asked.append(session.repo)
         return self.agents
 
 
@@ -173,5 +173,5 @@ async def test_a_pixie_chat_runs_with_the_subagents_its_source_gives(
     await results(env, session.id, 1)
 
     # Which pixies a pixie chat gets is the source's choice (B41).
-    assert source.asked == [session.id]
+    assert source.asked == [session.repo]
     assert dict(env.provider.runs[0].spec.subagents) == {"tester": TESTER}

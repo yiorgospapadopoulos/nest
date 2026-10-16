@@ -8,11 +8,19 @@ import pytest
 from nestd.context import AppContext
 from nestd.pixies.agents import EDIT_TOOLS, PixieAgents
 from nestd.pixies.files import PixieFiles
-from nestd.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
+from nestd.pixies.models import (
+    CreatePixie,
+    CreateTeam,
+    Pixie,
+    UpdatePixie,
+    UpdateTeam,
+    WriteFile,
+)
 from nestd.pixies.prompt import CALL_PREAMBLE
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.sessions.models import Session, SessionState
+from nestd.sessions.subagents import OfferedPixie
 from tests.api_support import build_context
 from tests.fakes import FakeClock, FakeSecretStore
 
@@ -242,3 +250,48 @@ async def test_a_pixie_chat_gets_every_other_available_pixie_and_no_teams(
     assert offered.teams == ()
     # A leader's team section belongs to project chats, where its team can be called.
     assert "## Your team" not in offered.subagents["api"].prompt
+
+
+async def test_a_project_chat_knows_its_pixies_and_their_teams(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lonely = await ctx.teams.create(CreateTeam(name="Lonely", handle="lonely"))
+    lead, bugs, solo, left = [
+        await ctx.pixies.create(CreatePixie(name=n, soul=f"You do {n}."))
+        for n in ("Lead", "Bugs", "Solo", "Left")
+    ]
+    for pixie in (lead, bugs):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+    await ctx.pixies.update(left.id, UpdatePixie(team_id=lonely.id))
+    # Its team's leader works elsewhere, so the team is not offered and it is called alone.
+    leader = await ctx.pixies.create(CreatePixie(name="Boss", projects=["api"]))
+    await ctx.pixies.update(leader.id, UpdatePixie(team_id=lonely.id))
+    await ctx.teams.update(lonely.id, UpdateTeam(leader_id=leader.id))
+
+    offered = await agents.for_session(chat())
+
+    assert dict(offered.pixies) == {
+        "lead": OfferedPixie(lead.id, "lead", "Lead", team.id, "qa"),
+        "bugs": OfferedPixie(bugs.id, "bugs", "Bugs", team.id, "qa"),
+        "solo": OfferedPixie(solo.id, "solo", "Solo"),
+        "left": OfferedPixie(left.id, "left", "Left"),
+    }
+    # A member says it is called only with its team, so the chat does not pick it alone.
+    assert offered.subagents["bugs"].description == (
+        "Bugs: You do Bugs. It is called only as part of a team call to @qa."
+    )
+    assert offered.subagents["solo"].description == "Solo: You do Solo."
+    assert offered.subagents["left"].description == "Left: You do Left."
+    assert "- bugs: Bugs: You do Bugs.\n" in offered.subagents["lead"].prompt
+
+
+async def test_a_pixie_chat_records_no_pixies(ctx: AppContext, agents: PixieAgents) -> None:
+    boss = await ctx.pixies.create(CreatePixie(name="Boss"))
+    await ctx.pixies.create(CreatePixie(name="Other"))
+    own = chat(f"pixie:{boss.id}").model_copy(update={"pixie_id": boss.id})
+
+    offered = await agents.for_session(own)
+
+    assert list(offered.subagents) == ["other"]
+    assert offered.pixies == {}

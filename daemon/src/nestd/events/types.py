@@ -116,3 +116,8 @@ PIXIE_REPORT_READ: Final = "pixie.report_read"
 HABIT_UPDATED: Final = "habit.updated"
 HABIT_DELETED: Final = "habit.deleted"
 HABIT_RUN_UPDATED: Final = "habit.run_updated"
+
+# The pixies a project chat called, as its group (B46): `{group}`, its solo pixies and
+# teams as `GET /api/sessions/{id}/pixies` lists them; after a call starts, changes state
+# or continues, and after Send away. Stored.
+SESSION_PIXIES: Final = "session.pixies"

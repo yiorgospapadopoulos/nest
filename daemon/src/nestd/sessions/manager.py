@@ -31,6 +31,7 @@ from nestd.sessions.errors import (
     NoTurnInProgressError,
     NoWorkspaceError,
     PixieChatError,
+    PixieInTeamError,
     SessionBusyError,
     TaskNotFoundError,
 )
@@ -66,7 +67,7 @@ from nestd.sessions.rules import (
 )
 from nestd.sessions.states import StateWriter
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import ChatAgentsSource
+from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
 from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
@@ -103,9 +104,11 @@ class SessionManager:
         models: ModelLookup | None = None,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
+        calls: PixieCalls | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
-        checks a new session's effort against its model (D038).
+        checks a new session's effort against its model (D038). `calls` follows the pixies
+        a project chat calls (B46).
         """
         self._models = models
         self._queue = queue
@@ -138,6 +141,7 @@ class SessionManager:
             clock=clock,
             extras=extras,
             agents=agents,
+            calls=calls,
         )
         self._rewinds = Rewinds(
             store=store,
@@ -208,25 +212,24 @@ class SessionManager:
             (request.mode or _repo_mode(repo) or defaults.default_mode) if repo.git else "in_place"
         )
         base_ref = await self._worktree_start(repo, mode, request)
-        attachments = await self._attachments.for_session(request.attachment_ids, None)
-        session = await self._store.create(
-            NewSession(
-                repo=repo.name,
-                title=request.title or short_title(request.prompt),
-                prompt=request.prompt,
-                mode=mode,
-                cwd=repo.path if mode == "in_place" else None,
-                model=model,
-                effort=effort,
-                permission_mode=permission_mode or DEFAULT_MODE,
-                follows_claude_code_mode=permission_mode is None,
-                provider=self._provider.name,
-                base_ref=base_ref,
-                started_by_pixie=started_by_pixie,
-                pixie_batch=pixie_batch,
-            ),
-            branch=request.branch,
+        new = NewSession(
+            repo=repo.name,
+            title=request.title or short_title(request.prompt),
+            prompt=request.prompt,
+            mode=mode,
+            cwd=repo.path if mode == "in_place" else None,
+            model=model,
+            effort=effort,
+            permission_mode=permission_mode or DEFAULT_MODE,
+            follows_claude_code_mode=permission_mode is None,
+            provider=self._provider.name,
+            base_ref=base_ref,
+            started_by_pixie=started_by_pixie,
+            pixie_batch=pixie_batch,
         )
+        await self._refuse_member_calls(new, request.prompt)
+        attachments = await self._attachments.for_session(request.attachment_ids, None)
+        session = await self._store.create(new, branch=request.branch)
         sender = Sender(from_pixie=started_by_pixie)
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
@@ -396,6 +399,7 @@ class SessionManager:
         """
         session = await self._store.get(session_id)
         require_open(session)
+        await self._refuse_member_calls(session, text)
         await self._require_not_open_elsewhere(session)
         live = self._live.setdefault(session_id, LiveSession(session_id))
         attachments = await self._attachments.for_session(attachment_ids, session_id)
@@ -727,6 +731,14 @@ class SessionManager:
         for live, result in zip(lives, results, strict=True):
             if isinstance(result, Exception):
                 logger.error("stopping session %s failed", live.session_id, exc_info=result)
+
+    async def _refuse_member_calls(self, session: NewSession, text: str) -> None:
+        """422 for a message that calls a pixie of a team on its own: a team's pixies are
+        called only with their team (B46). A pixie's chat offers no teams.
+        """
+        problem = (await self._turns.chat_agents(session)).member_call(text)
+        if problem is not None:
+            raise PixieInTeamError(problem)
 
     async def _require_not_open_elsewhere(self, session: Session) -> None:
         if session.provider_session_id is None:

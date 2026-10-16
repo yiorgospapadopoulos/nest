@@ -11,8 +11,8 @@ from nestd.pixies.prompt import call_prompt
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.providers.base import Subagent
-from nestd.sessions.models import Session
-from nestd.sessions.subagents import ChatAgents, TeamCall
+from nestd.sessions.models import NewSession
+from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
 
 # The engine's model list names Claude Code's default model this way.
 DEFAULT_MODEL = "default"
@@ -25,6 +25,8 @@ TEAM_CALL = (
     " member does which part. Then call each member as the plan says. Then sum up the"
     " results.)"
 )
+# A member is called only through its team (B46), so the chat should not pick it alone.
+MEMBER_NOTE = " It is called only as part of a team call to @{handle}."
 TEAM_SECTION = """## Your team
 You lead the team {name} (@{handle}). Its members in this chat:
 {members}
@@ -51,7 +53,7 @@ class PixieAgents:
         self._files = files
         self._teams = teams
 
-    async def for_session(self, session: Session) -> ChatAgents:
+    async def for_session(self, session: NewSession) -> ChatAgents:
         """Every pixie that may work on the chat's project: not hidden, with project
         access, and assigned to it or to every project. A team is offered when its leader
         is, with its offered members. A pixie's own chat gets every other pixie that is
@@ -67,16 +69,27 @@ class PixieAgents:
         by_id = {item.pixie.id: item for item in available}
         teams = [team for team in await self._teams.list_teams() if team.leader_id in by_id]
         led = {team.leader_id: team for team in teams}
+        handles = {team.id: team.handle for team in teams}
+        offered = {
+            item.pixie.slug: OfferedPixie(
+                item.pixie.id, item.pixie.slug, item.pixie.name, *_offered_team(item.pixie, handles)
+            )
+            for item in available
+        }
         subagents = {
-            item.pixie.slug: _subagent(item, _team_section(led.get(item.pixie.id), available))
+            item.pixie.slug: _subagent(
+                item,
+                _team_section(led.get(item.pixie.id), available),
+                offered[item.pixie.slug].team_handle,
+            )
             for item in available
         }
         calls = tuple(_team_call(team, available) for team in teams)
-        return ChatAgents(subagents, calls)
+        return ChatAgents(subagents, calls, offered)
 
     async def _for_pixie_chat(self, pixie_id: str) -> ChatAgents:
         subagents = {
-            item.pixie.slug: _subagent(item, None)
+            item.pixie.slug: _subagent(item, None, None)
             for pixie in await self._pixies.list_pixies()
             if pixie.id != pixie_id
             and not pixie.hidden
@@ -100,6 +113,12 @@ def _may_work_on(pixie: Pixie, repo: str) -> bool:
         and pixie.project_access != "none"
         and (pixie.projects is None or repo in pixie.projects)
     )
+
+
+def _offered_team(pixie: Pixie, handles: dict[str, str]) -> tuple[str | None, str | None]:
+    """The pixie's team id and handle when the chat can call that team."""
+    handle = None if pixie.team_id is None else handles.get(pixie.team_id)
+    return (pixie.team_id, handle) if handle is not None else (None, None)
 
 
 def _team_call(team: PixieTeam, available: list[_Available]) -> TeamCall:
@@ -131,13 +150,15 @@ def _model(model: str | None) -> str | None:
     return None if model is None or model.lower() == DEFAULT_MODEL else model
 
 
-def _subagent(item: _Available, team: str | None) -> Subagent:
+def _subagent(item: _Available, team: str | None, member_of: str | None) -> Subagent:
+    """`team` is a leader's team section; `member_of` the handle of the team it is in."""
     pixie = item.pixie
     denied = tuple(pixie.disallowed_tools)
     if pixie.project_access == "read":
         denied += EDIT_TOOLS
     return Subagent(
-        description=item.description,
+        description=item.description
+        + ("" if member_of is None else MEMBER_NOTE.format(handle=member_of)),
         prompt=call_prompt(pixie, item.soul, item.memory, team),
         permission_mode=pixie.permission_mode,
         model=_model(pixie.model),

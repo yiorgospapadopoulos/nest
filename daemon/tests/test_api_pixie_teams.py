@@ -105,7 +105,10 @@ async def test_a_project_chat_calls_pixies_and_teams(api: Api, tmp_path: Path) -
     run = api.provider.runs[0]
 
     assert list(run.spec.subagents) == ["lead"]
-    assert run.spec.subagents["lead"].description == "Lead: You plan."
+    # A member, the leader too, is called only with its team (B46).
+    assert run.spec.subagents["lead"].description == (
+        "Lead: You plan. It is called only as part of a team call to @qa."
+    )
     assert run.inputs[0].text.startswith(
         "@qa check it\n\n(The user called the team @qa, a team of pixies set up in Nest."
         " Its members are these subagents: lead (leader). First use the subagent lead "

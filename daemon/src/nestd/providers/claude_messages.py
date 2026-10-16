@@ -233,6 +233,7 @@ def task_updates(
                 tool_use_id=message.tool_use_id,
                 # A status the SDK adds later still ends the task.
                 status=_FINISHED.get(message.status, "stopped"),
+                summary=message.summary or None,
             )
         ]
     updates: list[base.AgentTask] = []

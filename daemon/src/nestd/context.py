@@ -38,6 +38,8 @@ from nestd.notifications.vapid import VapidKeys
 from nestd.paths import AppPaths
 from nestd.pixies.activity import ActivityStore
 from nestd.pixies.agents import PixieAgents
+from nestd.pixies.call_store import CallStore
+from nestd.pixies.calls import PixieCallLog
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.habit_events import HabitEvents
 from nestd.pixies.habit_store import HabitStore
@@ -106,6 +108,7 @@ class AppContext:
     stuck: StuckWatcher
     engine: EngineInfo
     pixies: PixieService
+    pixie_calls: PixieCallLog
     teams: TeamService
     report_back: ReportBack
     habits: HabitService
@@ -182,8 +185,9 @@ class AppContext:
             deliver=report,
             busy=lambda session_id: sessions.busy(session_id),
         )
+        pixie_calls = PixieCallLog(CallStore(db, clock), pixie_store, team_store, bus)
         # The habit scheduler joins once it exists: it needs the sessions (B42).
-        followers: list[StateFollower] = [report_back]
+        followers: list[StateFollower] = [report_back, pixie_calls]
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -217,6 +221,7 @@ class AppContext:
             models=engine.find,
             extras=lambda session: pixie_runtime.extras(session),
             agents=PixieAgents(pixie_store, pixie_files, team_store).for_session,
+            calls=pixie_calls,
         )
         pixie_nest = PixieNest(
             pixies=pixie_store,
@@ -370,6 +375,7 @@ class AppContext:
             ),
             engine=engine,
             pixies=pixies,
+            pixie_calls=pixie_calls,
             teams=teams,
             report_back=report_back,
             habits=habits,

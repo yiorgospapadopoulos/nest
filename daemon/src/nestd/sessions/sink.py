@@ -27,6 +27,7 @@ from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import LiveSession
 from nestd.sessions.result_images import keep_images
 from nestd.sessions.store import SessionStore
+from nestd.sessions.subagents import PixieCalls
 
 # A turn that ended without failing, whatever its result says: it made way for the next
 # message (Send now, or Claude Code ending it holding that message), or the user stopped
@@ -77,11 +78,14 @@ class SessionSink:
         provider_session_id: str | None,
         forking: str | None = None,
         attachments: AttachmentStore | None = None,
+        calls: PixieCalls | None = None,
     ) -> None:
         """`forking` is the engine session the run cuts into a new one (B59): the cut is
         done once the run reports another session id. `attachments` keeps the images of
-        tool results (B59); without it they are left out.
+        tool results (B59); without it they are left out. `calls` records the pixies the
+        main agent calls (B46).
         """
+        self._calls = calls
         self._forking = forking
         self._attachments = attachments
         self._live = live
@@ -112,6 +116,11 @@ class SessionSink:
                 self._session_id,
             ),
         )
+        if self._calls is not None and parent_tool_use_id is None:
+            await self._isolated(
+                "the pixie calls",
+                self._calls.message(self._session_id, self._live.run_agents, blocks),
+            )
         await self._isolated("the message hooks", self._hooks.message(self._session_id))
 
     async def text_delta(self, text: str) -> None:
@@ -248,6 +257,10 @@ class SessionSink:
                 types.SESSION_AGENT_TASK, update.model_dump(mode="json"), self._session_id
             ),
         )
+        if self._calls is not None:
+            await self._isolated(
+                "the pixie calls", self._calls.task(self._session_id, self._live.run_agents, update)
+            )
         await self._isolated("the message hooks", self._hooks.message(self._session_id))
 
     async def stopped(self, error: str) -> None:
