@@ -561,7 +561,17 @@ async def test_a_waiting_message_that_cannot_go_into_the_first_turn_waits_for_it
     release.set()
     await env.reach(created.id, SessionState.RUNNING)
     await until(lambda: env.manager._live[created.id].task is None)  # pyright: ignore[reportPrivateUsage]
-    pending = await env.manager.queued(created.id)
+    # Writing it into the turn is tried after the turn's task ends: wait for the failure
+    # to be handled, so the message is back to waiting for the turn's end.
+    failures = 0 if problem == "new file" else 1
+    await until(lambda: env.provider.steer_failures == failures)
+    pending: list[QueuedMessage] = []
+
+    async def settled() -> bool:
+        pending[:] = await env.manager.queued(created.id)
+        return not any(m.sent for m in pending)
+
+    await until(settled)
     env.provider.steer_error = None
     gate.set()
     await idle_after(env, created.id, 2)
