@@ -17,6 +17,7 @@ import {
   repo,
   review,
   session,
+  task,
   team,
 } from "../test/fixtures.ts";
 import { reduce } from "./reducer.ts";
@@ -322,6 +323,37 @@ describe("live events", () => {
     expect(state.tracking.s1?.background).toEqual(background);
     expect(state.tracking.s1?.agents).toEqual([]);
     expect(apply(state, event({ type: "session.tasks", session_id: null }))).toBe(state);
+  });
+
+  it("seeds a project's goals and clears the lists of its other chats (B47)", () => {
+    const base: State = {
+      ...loaded(),
+      sessions: {
+        ...loaded().sessions,
+        s3: session({ id: "s3", archived_at: "2026-10-01T00:00:00Z" }),
+        s4: session({ id: "s4", repo: "narrative" }),
+        s5: session({ id: "s5", pixie_id: "p1" }),
+      },
+    };
+    const old = { tasks: [task()], agents: [], background: NO_BACKGROUND };
+    const tracked = { ...base, tracking: { s2: old, s3: old, s4: old, s5: old } };
+
+    const state = reduce(tracked, {
+      type: "goals",
+      repo: "cv-page",
+      goals: [{ session_id: "s1", tasks: [task({ id: "9" })] }],
+    });
+
+    expect(state.tracking.s1).toEqual({
+      tasks: [task({ id: "9" })],
+      agents: [],
+      background: NO_BACKGROUND,
+    });
+    // The list the daemon left out has no tasks showing; others keep theirs.
+    expect(state.tracking.s2?.tasks).toEqual([]);
+    expect(state.tracking.s3).toBe(old);
+    expect(state.tracking.s4).toBe(old);
+    expect(state.tracking.s5).toBe(old);
   });
 
   it("marks when the agent started thinking until the thinking or the turn ends", () => {

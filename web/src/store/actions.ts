@@ -152,6 +152,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   const onScreen = new Set<string>();
   // The chats on screen whose last load failed, tried again after a reconnect.
   const failed = new Set<string>();
+  // The project whose goals the chat list shows, loaded again after a reconnect.
+  let goalsOf: string | null = null;
   // The stored events that arrived during each snapshot request in flight.
   const arriving = new Set<NestEvent[]>();
   // The last save of each pixie, and of the pixie order: the next one waits for it, so a
@@ -259,6 +261,19 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     );
   }
 
+  /** A project's goals (B47); a failure keeps what the live events showed. */
+  async function loadGoals(repo: string): Promise<void> {
+    goalsOf = repo;
+    await quietly(() =>
+      snapshot(
+        () => api.goals(repo),
+        (goals) => {
+          dispatch({ type: "goals", repo, goals });
+        },
+      ),
+    );
+  }
+
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
@@ -331,6 +346,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     load,
 
     loadPixies,
+    loadGoals,
     async createPixie(body: CreatePixieBody): Promise<Pixie | null> {
       const created = await attempt(() => api.createPixie(body));
       if (created !== null) dispatch({ type: "pixie", pixie: created });
@@ -564,7 +580,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
      * reload the snapshots and the chats on screen. Stored events merge without duplicates.
      */
     async resync(): Promise<void> {
-      await Promise.all([load(), ...[...onScreen].map((id) => fetchChat(id, true))]);
+      const goals = goalsOf === null ? [] : [loadGoals(goalsOf)];
+      await Promise.all([load(), ...goals, ...[...onScreen].map((id) => fetchChat(id, true))]);
     },
 
     async resolve(approval: Approval, body: ResolveBody, done: string): Promise<boolean> {

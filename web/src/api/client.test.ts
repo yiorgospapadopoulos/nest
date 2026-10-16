@@ -413,6 +413,7 @@ const calls: Call[] = [
     undefined,
   ],
   ["pixieGroups", (a) => a.pixieGroups(), "GET", "/api/pixie-groups", undefined],
+  ["goals", (a) => a.goals("cv page"), "GET", "/api/goals?repo=cv%20page", undefined],
   [
     "sendAway",
     (a) => a.sendAway("s 1", { team_id: "t1" }),

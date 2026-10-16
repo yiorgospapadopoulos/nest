@@ -157,6 +157,7 @@ export function fakeApi(): FakeApi {
     readReport: vi.fn<Api["readReport"]>().mockResolvedValue(null),
     readPixieReports: vi.fn<Api["readPixieReports"]>().mockResolvedValue(null),
     pixieGroups: vi.fn<Api["pixieGroups"]>().mockResolvedValue({}),
+    goals: vi.fn<Api["goals"]>().mockResolvedValue([]),
     sendAway: vi.fn<Api["sendAway"]>().mockResolvedValue([]),
     pixieCalls: vi.fn<Api["pixieCalls"]>().mockResolvedValue([]),
     agentTranscript: vi
