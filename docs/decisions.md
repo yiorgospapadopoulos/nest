@@ -821,3 +821,9 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Clients:** in a project chat a call of a team's leader is the team's row: the grid of four (D093), the team's name in the leader's colour, "<team> working" while it runs, then the leader's report; the mark or name opens the team's calls in that chat. Inside the opened row, member calls show as steps on the iPhone; on the Mac (B75) each is the member's own pixie row (sprite, task, report, working while it runs) that opens in place to its steps.
 - **Refines:** D077 (the main chat no longer calls members), D091 (continuing a team continues its leader).
 
+## D095 (2026-10-17): The right panel drops its Agents card; usage refreshes only from the popover (B72)
+
+- **Why:** the user found the Agents card repeated what the tree under each chat in the left sidebar already shows (D091), and the refresh arrow next to the usage chip cluttered the tab strip.
+- **Right panel (Mac):** only the Needs you and Goals cards remain, open by default, sharing the panel's height; the folded rail has their two buttons. The card's main agent rows with their last steps and its running background command rows go with it; subagents and pixies stay in the sidebar tree, background commands in the chat's background bar. The open cards are not saved anywhere, so nothing stored needs migrating.
+- **Usage:** the chip in the tab strip opens the usage popover; Refresh lives only there. The automatic refresh (D031) is unchanged.
+- **Refines:** D091 (the tree no longer also shows in an Agents card) and D093 (the Agents card is gone from where sprites move).
