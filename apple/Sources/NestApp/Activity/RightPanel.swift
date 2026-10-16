@@ -1,8 +1,8 @@
 import NestKit
 import SwiftUI
 
-/// The activity panel: Agents, Needs you and Goals cards that share its height; folds
-/// into a rail with counts.
+/// The activity panel: Needs you and Goals cards that share its height; folds into a rail
+/// with counts. Agents show in the sidebar tree (B72).
 struct RightPanel: View {
     static let width = 320.0
     static let railWidth = 56.0
@@ -65,21 +65,17 @@ struct RightPanel: View {
 /// The numbers on the card headers and rail buttons.
 @MainActor
 struct PanelCounts {
-    let agents: Int
     let needs: Int
     let goals: Int
 
     init(shell: Shell) {
         let project = shell.project ?? ""
-        let ids = shell.sessions.sessions(in: project).map(\.id)
-        agents = shell.activity.runningAgents(in: ids)
         needs = shell.sessions.attention(of: project)
         goals = shell.activity.goalEntries(shell.sessions.sessions(in: project)).count
     }
 
     func count(_ card: RightCard) -> Int {
         switch card {
-        case .agents: agents
         case .needsYou: needs
         case .goals: goals
         }
@@ -89,7 +85,6 @@ struct PanelCounts {
 extension RightCard {
     var title: String {
         switch self {
-        case .agents: "Agents"
         case .needsYou: "Needs you"
         case .goals: "Goals"
         }
@@ -97,7 +92,6 @@ extension RightCard {
 
     var icon: String {
         switch self {
-        case .agents: Icon.agent
         case .needsYou: Icon.bell
         case .goals: Icon.goals
         }
@@ -138,7 +132,6 @@ private struct CardView: View {
                 ScrollView {
                     Group {
                         switch card {
-                        case .agents: AgentsCard()
                         case .needsYou: NeedsCard().padding(.horizontal, 10)
                         case .goals: GoalsCard()
                         }

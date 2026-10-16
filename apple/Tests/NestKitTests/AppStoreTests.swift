@@ -210,7 +210,9 @@ private let workspace = CGSize(width: 1000, height: 600)
 @Suite struct ProjectStateTests {
     @Test func startsWithAllCardsOpenOnTheWorkspace() {
         let state = ProjectState()
-        #expect(state.openCards == [.agents, .needsYou, .goals])
+        // The sidebar tree shows the agents, so the panel has no Agents card (B72).
+        #expect(RightCard.allCases == [.needsYou, .goals])
+        #expect(state.openCards == [.needsYou, .goals])
         #expect(state.view == .workspace)
         #expect(!state.leftCollapsed && !state.rightCollapsed)
         #expect(state.layout.leaves.isEmpty)
@@ -250,10 +252,10 @@ private let workspace = CGSize(width: 1000, height: 600)
 
     @Test func cardsOpenAndCloseIndependently() {
         var state = ProjectState()
-        state.toggleCard(.agents)
+        state.toggleCard(.needsYou)
+        #expect(state.openCards == [.goals])
+        state.toggleCard(.needsYou)
         #expect(state.openCards == [.needsYou, .goals])
-        state.toggleCard(.agents)
-        #expect(state.openCards == [.agents, .needsYou, .goals])
 
         state.rightCollapsed = true
         state.toggleCard(.goals)

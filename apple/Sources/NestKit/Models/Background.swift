@@ -58,10 +58,6 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
 
     public var runningItems: [BackgroundItem] { items.filter(\.isRunning) }
     public var finishedItems: [BackgroundItem] { items.filter { !$0.isRunning } }
-    /// Background commands still running; subagents are listed with the agents.
-    public var runningCommands: [BackgroundItem] {
-        runningItems.filter { $0.kind == .bash }
-    }
 
     /// The bar's tasks: those of the exchange the user's latest message (at `start`)
     /// opened, and any earlier one still at work or finished since, which counts as

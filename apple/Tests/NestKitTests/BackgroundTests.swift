@@ -82,7 +82,6 @@ import Testing
         #expect(BackgroundSummary(running: 2, completed: 0, items: []).label == "2 running tasks")
         #expect(summary.runningItems.map(\.id) == ["toolu_10"])
         #expect(summary.finishedItems.map(\.id) == ["toolu_09", "toolu_11"])
-        #expect(summary.runningCommands.map(\.name) == ["npm run dev"])
     }
 
     @Test func showsHowLongEachItemRan() {
@@ -198,8 +197,6 @@ import Testing
 
         #expect(store.background(session: sessionID).label == "1 running · 2 completed")
         #expect(store.hasRunningWork(session: sessionID))
-        // The main agent and the dev server; the done Explore agent is not counted.
-        #expect(store.runningAgents(in: [sessionID]) == 2)
     }
 
     @Test func aDetailWithoutBackgroundLoadsEmpty() async throws {
@@ -213,7 +210,6 @@ import Testing
         var summary = try #require(Fixture.sessionDetail.background)
         store.apply(agentsEvent("[]", background: summary))
         #expect(store.hasRunningWork(session: sessionID))
-        #expect(store.runningAgents(in: [sessionID, "other"]) == 1)
 
         summary.finish(toolUseID: "toolu_10", as: .done, at: .distantPast)
         store.apply(agentsEvent("[]", background: summary))
