@@ -46,6 +46,8 @@ public protocol NestAPI: Sendable {
     /// An attachment's bytes, such as a tool result's image.
     func attachmentData(_ id: String) async throws -> Data
     func interrupt(_ id: String) async throws
+    /// Ends a usage limit pause now; the chat goes on at once (B78).
+    func resumeLimit(_ id: String) async throws -> Session
     /// Stops one background task or subagent by its task id or the id of the tool call
     /// that started it; the turn goes on (B59).
     func stopTask(_ id: String, task: String) async throws

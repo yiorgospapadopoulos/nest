@@ -23,6 +23,7 @@ struct PaneView: View {
                             VStack(spacing: 0) {
                                 BackgroundBar(chat: chat)
                                 PendingReviewBar(chat: chat)
+                                LimitPauseBar(chat: chat)
                             }
                         }
                     }

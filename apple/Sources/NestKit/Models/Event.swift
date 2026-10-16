@@ -292,6 +292,8 @@ public enum MessageOrigin: String, UnknownSafeEnum {
     case reportBack = "report_back"
     /// A habit run's report, starting a pixie turn so the user can reply in context (B42).
     case report
+    /// Nest's message that lets Claude continue after the usage limit reset (B78).
+    case limitResume = "limit_resume"
     case unknown
 }
 
@@ -372,9 +374,11 @@ public struct TurnResult: Decodable, Sendable, Hashable {
     public var handoff: Bool
     /// The user stopped the turn: its error is no failure, the stopped line says it (B59).
     public var stopped: Bool
+    /// The usage limit cut the turn off: its error is no failure, the chat is paused (B78).
+    public var limit: Bool
 
     enum CodingKeys: String, CodingKey {
-        case subtype, errors, handoff, stopped
+        case subtype, errors, handoff, stopped, limit
         case isError = "is_error"
         case durationMS = "duration_ms"
         case numTurns = "num_turns"
@@ -389,10 +393,12 @@ public struct TurnResult: Decodable, Sendable, Hashable {
         errors = try container.decode([String].self, forKey: .errors)
         handoff = try container.decodeIfPresent(Bool.self, forKey: .handoff) ?? false
         stopped = try container.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
+        limit = try container.decodeIfPresent(Bool.self, forKey: .limit) ?? false
     }
 
-    /// Whether the turn failed: an error result that neither handed off nor was stopped.
-    public var failed: Bool { isError && !handoff && !stopped }
+    /// Whether the turn failed: an error result that neither handed off, was stopped nor
+    /// met the usage limit.
+    public var failed: Bool { isError && !handoff && !stopped && !limit }
 
     /// The line for a turn that ended in an error: its first error, else its subtype, as
     /// the daemon words the failed state (D045).
@@ -474,6 +480,8 @@ public enum NoticeKind: String, UnknownSafeEnum {
     case stuck
     /// A pixie's report (B42); the Mac posts these from `pixie.report` events.
     case pixieReport = "pixie_report"
+    /// A chat paused at the usage limit, in place of `finished` for that turn (B78).
+    case usageLimit = "usage_limit"
     case unknown
 }
 

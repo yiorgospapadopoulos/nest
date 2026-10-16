@@ -58,14 +58,14 @@ public enum ReportBack {
 
 extension SessionsStore {
     /// The live state on a pixie's card for a chat: running, needs you, ready for review,
-    /// failed, interrupted, idle or closed.
+    /// failed, interrupted, paused at the usage limit, idle or closed.
     public func cardState(of session: Session) -> String {
         switch tone(of: session) {
         case .running: "Running"
         case .waiting: "Needs you"
         case .review: "Ready for review"
         case .failed: "Failed"
-        case .interrupted: "Interrupted"
+        case .interrupted: session.isLimitPaused ? "Paused" : "Interrupted"
         case .done: session.state == .closed ? "Closed" : "Idle"
         }
     }

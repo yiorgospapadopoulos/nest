@@ -1080,6 +1080,11 @@ final class Shell {
         run("Could not interrupt") { try await self.sessions.interrupt(chat) }
     }
 
+    /// Resume now on a chat paused at the usage limit (B78).
+    func resumeAfterLimit(_ chat: String) {
+        run("Could not resume the chat") { try await self.sessions.resumeAfterLimit(chat) }
+    }
+
     /// Stops one background task or subagent of the chat; its turn goes on (B59).
     func stopTask(_ task: String, in chat: String) {
         run("Could not stop it") { try await self.activity.stop(task: task, session: chat) }

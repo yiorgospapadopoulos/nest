@@ -140,6 +140,10 @@ public struct APIClient: NestAPI {
         try await perform("POST", ["sessions", id, "interrupt"])
     }
 
+    public func resumeLimit(_ id: String) async throws -> Session {
+        try await call("POST", ["sessions", id, "limit", "resume"])
+    }
+
     public func stopTask(_ id: String, task: String) async throws {
         try await perform("POST", ["sessions", id, "tasks", task, "stop"])
     }

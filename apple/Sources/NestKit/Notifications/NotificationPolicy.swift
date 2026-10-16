@@ -16,6 +16,8 @@ public struct NotificationPreferences: Sendable, Hashable {
     public var stuck = true
     /// What pixies report, from the least severe their `report_push` names (B42).
     public var pixieReports = true
+    /// Chats paused at the usage limit (B78).
+    public var usageLimit = true
     public var sound = false
 
     public init() {}
@@ -26,7 +28,8 @@ public struct NotificationPreferences: Sendable, Hashable {
             ("approvals", \.approvals), ("questions", \.questions), ("reviews", \.reviews),
             ("errors", \.errors), ("finished", \.finished), ("ci_failed", \.ciFailed),
             ("ready_to_merge", \.readyToMerge), ("stuck", \.stuck),
-            ("pixie_reports", \.pixieReports), ("sound", \.sound),
+            ("pixie_reports", \.pixieReports), ("usage_limit", \.usageLimit),
+            ("sound", \.sound),
         ]
     }
 
@@ -39,7 +42,8 @@ public struct NotificationPreferences: Sendable, Hashable {
             ("Work ready for review", \.reviews), ("Agent errors", \.errors),
             ("Finished turns", \.finished), ("Pull request checks failed", \.ciFailed),
             ("Pull requests ready to merge", \.readyToMerge), ("Chats that look stuck", \.stuck),
-            ("Pixie reports", \.pixieReports), ("Sound", \.sound),
+            ("Pixie reports", \.pixieReports), ("Usage limit pauses", \.usageLimit),
+            ("Sound", \.sound),
         ]
     }
 
@@ -55,6 +59,7 @@ public struct NotificationPreferences: Sendable, Hashable {
         case .readyToMerge: readyToMerge
         case .stuck: stuck
         case .pixieReport: pixieReports
+        case .usageLimit: usageLimit
         case .unknown: false
         }
     }
