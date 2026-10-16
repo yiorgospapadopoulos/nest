@@ -7,7 +7,13 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import JsonValue, ValidationError
 
-from nestd.config.loader import delete_repo, load_repos, save_repo
+from nestd.config.loader import (
+    delete_repo,
+    load_project_order,
+    load_repos,
+    save_project_order,
+    save_repo,
+)
 from nestd.config.models import RepoConfig, WorktreeConfig
 from nestd.errors import ConflictError, InvalidInputError, NotFoundError
 from nestd.events import types
@@ -89,10 +95,22 @@ class RepoService:
         self._bus = bus
 
     def list_repos(self) -> list[RepoConfig]:
-        return load_repos(self._paths)
+        """In the saved project order (D090); repos it does not name follow in file order."""
+        return _in_order(load_repos(self._paths), load_project_order(self._paths))
+
+    async def reorder(self, names: list[str]) -> list[RepoConfig]:
+        """Save `names` as the project order: known repos, first mention wins, then the
+        repos left out in their current order. Announced to other devices.
+        """
+        repos = _in_order(self.list_repos(), names)
+        order = [repo.name for repo in repos]
+        save_project_order(self._paths, order)
+        if self._bus is not None:
+            await self._bus.publish(types.REPOS_REORDERED, {"order": list[JsonValue](order)})
+        return repos
 
     def get(self, name: str) -> RepoConfig:
-        for repo in self.list_repos():
+        for repo in load_repos(self._paths):
             if repo.name == name:
                 return repo
         msg = f"unknown repo {name!r}"
@@ -148,7 +166,7 @@ class RepoService:
         except ValidationError as error:
             msg = f"invalid repo name {name!r}"
             raise InvalidRepoError(msg) from error
-        for existing in self.list_repos():
+        for existing in load_repos(self._paths):
             if existing.name == repo.name:
                 msg = f"repo {repo.name!r} already exists"
                 raise RepoExistsError(msg)
@@ -293,6 +311,14 @@ async def _default_branch(root: Path) -> str:
             continue
         return ref.removeprefix("origin/")
     return FALLBACK_BRANCH
+
+
+def _in_order(repos: list[RepoConfig], names: list[str]) -> list[RepoConfig]:
+    """`repos` sorted by where `names` first names them; the rest keep their order after."""
+    rank: dict[str, int] = {}
+    for name in names:
+        rank.setdefault(name, len(rank))
+    return sorted(repos, key=lambda repo: rank.get(repo.name, len(rank)))
 
 
 def _problems(error: ValidationError) -> str:

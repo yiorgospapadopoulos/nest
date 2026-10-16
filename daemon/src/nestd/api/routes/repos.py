@@ -47,6 +47,13 @@ class UpdateRepo(BaseModel):
 _CLEARABLE = frozenset({"default", "icon", "icon_color"})
 
 
+class RepoOrder(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Project names in the new order; unknown names are ignored, left out ones follow.
+    order: list[str]
+
+
 @router.get("")
 async def list_repos(ctx: Context) -> list[RepoView]:
     """Plain folders that became git repositories are updated on the way (D041)."""
@@ -56,6 +63,12 @@ async def list_repos(ctx: Context) -> list[RepoView]:
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def register_repo(body: RegisterRepo, ctx: Context) -> RepoView:
     return await ctx.repos.view(await ctx.repos.register(body.path, body.name))
+
+
+@router.put("/order")
+async def reorder_repos(body: RepoOrder, ctx: Context) -> list[RepoView]:
+    """Save the project order clients show (D090); announced as `repos.reordered`."""
+    return [await ctx.repos.view(repo) for repo in await ctx.repos.reorder(body.order)]
 
 
 @router.get("/{name}")

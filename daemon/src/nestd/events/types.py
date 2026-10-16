@@ -11,6 +11,9 @@ REPO_REMOVED: Final = "repo.removed"
 # A repo's config changed on its own, such as a plain folder that became a git repository
 # (D041); global, `{name, repo}` with the whole repo. Clients replace their copy.
 REPO_UPDATED: Final = "repo.updated"
+# The user reordered the projects (D090); global, `{order}` with every repo's name in the
+# new order. Clients sort their list by it.
+REPOS_REORDERED: Final = "repos.reordered"
 
 # Agent sessions; all carry the session id. SESSION_DELTA is ephemeral (never stored).
 SESSION_CREATED: Final = "session.created"
