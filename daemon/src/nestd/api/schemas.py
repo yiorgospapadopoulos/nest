@@ -45,6 +45,13 @@ class SessionDetail(Session):
     queued: list[QueuedMessage]
 
 
+class Goal(BaseModel):
+    """A chat's visible task list, for a project's goals (D092)."""
+
+    session_id: str
+    tasks: list[TrackedTask]
+
+
 class FileList(BaseModel):
     """Paths relative to the session's working directory, best match first."""
 

@@ -161,3 +161,46 @@ async def test_a_forgotten_session_is_read_again_from_its_events(
 
     assert (await tracking.snapshot("s1")).tasks == []
     tracking.forget("never-seen")
+
+
+async def test_the_next_user_message_publishes_the_cleared_list_once(
+    db: Database, clock: FakeClock
+) -> None:
+    bus = EventBus(db, clock)
+    tracking = Tracking(bus)
+    await publish_all(bus, [(types.SESSION_MESSAGE, part) for part in create_task(1, "One", "x")])
+    await tracking.sync("s1")
+    collector = Collector(bus)
+    await until(lambda: bus.subscriber_count == 1)
+
+    for _ in range(2):
+        await publish_all(bus, [(types.SESSION_USER_MESSAGE, {"text": "Next", "attachments": []})])
+        await tracking.sync("s1")
+    published = [e for e in await collector.until_marker() if e.type == types.SESSION_TASKS]
+    collector.task.cancel()
+
+    assert [(e.payload, e.id is not None) for e in published] == [({"tasks": []}, True)]
+    assert (await tracking.snapshot("s1")).tasks == []
+
+
+async def test_a_restarted_daemon_rebuilds_the_same_visible_list(
+    db: Database, clock: FakeClock
+) -> None:
+    bus = EventBus(db, clock)
+    before = Tracking(bus)
+    old = [part for n in (1, 2) for part in create_task(n, f"Old {n}", "x")]
+    await publish_all(bus, [(types.SESSION_MESSAGE, part) for part in old])
+    await before.sync("s1")
+    await publish_all(
+        bus,
+        [
+            (types.SESSION_USER_MESSAGE, {"text": "Next", "attachments": []}),
+            *((types.SESSION_MESSAGE, part) for part in create_task(1, "New 1", "y")),
+        ],
+    )
+    live = (await before.snapshot("s1")).tasks
+
+    rebuilt = (await Tracking(bus).snapshot("s1")).tasks
+
+    assert [(t.id, t.subject) for t in live] == [("1", "New 1")]
+    assert rebuilt == live

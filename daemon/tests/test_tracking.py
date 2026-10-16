@@ -229,6 +229,74 @@ def test_only_the_main_agent_task_list_counts() -> None:
     assert feed.agent("a1")["activity"] == "TaskCreate Sub task"
 
 
+def user_message(feed: Feed) -> tuple[bool, Change]:
+    return feed.apply("session.user_message", {"text": "Next", "attachments": []})
+
+
+def finished_list(feed: Feed) -> None:
+    """Tasks #1 to #3, all completed, as a finished turn leaves them."""
+    for n in (1, 2, 3):
+        feed.messages(*create_task(n, f"Old {n}", f"Doing old {n}"))
+        feed.messages(*update_task(f"done{n}", str(n), "completed"))
+
+
+def test_the_next_user_message_clears_the_visible_list() -> None:
+    feed = Feed()
+    finished_list(feed)
+
+    assert user_message(feed) == (True, Change.NONE)
+    assert feed.tasks() == []
+    assert user_message(feed) == (False, Change.NONE)
+
+
+def test_a_new_list_numbered_from_one_replaces_the_old_tasks() -> None:
+    feed = Feed()
+    finished_list(feed)
+    user_message(feed)
+
+    feed.messages(*create_task(1, "New 1", "Doing new 1"))
+
+    assert feed.tasks() == [
+        {
+            "id": "1",
+            "subject": "New 1",
+            "description": "About New 1",
+            "active_form": "Doing new 1",
+            "status": "pending",
+        }
+    ]
+
+
+def test_updating_a_task_from_before_the_message_shows_it_again() -> None:
+    feed = Feed()
+    finished_list(feed)
+    user_message(feed)
+
+    feed.messages(*update_task("again", "2", "in_progress"))
+    feed.messages(*create_task(4, "More", "Doing more"))
+
+    assert [(t["id"], t["subject"], t["status"]) for t in feed.tasks()] == [
+        ("2", "Old 2", "in_progress"),
+        ("4", "More", "pending"),
+    ]
+
+
+def test_an_unchanged_update_still_shows_a_hidden_task() -> None:
+    feed = Feed()
+    finished_list(feed)
+    user_message(feed)
+
+    results = [
+        feed.apply("session.message", part)[0]
+        for call in ("same", "twice")
+        for part in update_task(call, "3", "completed")
+    ]
+
+    # The first result shows the task although its status was completed already.
+    assert results == [False, True, False, False]
+    assert [t["id"] for t in feed.tasks()] == ["3"]
+
+
 def test_subagents_nest_fail_and_keep_their_last_steps() -> None:
     feed = Feed()
     feed.state("running")
