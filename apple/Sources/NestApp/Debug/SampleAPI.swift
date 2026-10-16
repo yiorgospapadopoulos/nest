@@ -137,6 +137,18 @@
             return detail
         }
 
+        func goals(repo: String) async throws -> [SessionGoals] {
+            lock.withLock { sessionList }
+                .filter { $0.repo == repo && !$0.isArchived }
+                .sorted { ($0.state.isInFlight ? 1 : 0) > ($1.state.isInFlight ? 1 : 0) }
+                .compactMap { session in
+                    let tasks = details[session.id]?.tasks ?? []
+                    let left = tasks.contains { $0.status != .deleted }
+                    return session.state.isInFlight || left
+                        ? SessionGoals(sessionID: session.id, tasks: tasks) : nil
+                }
+        }
+
         func createSession(_ request: CreateSessionRequest) async throws -> Session {
             throw APIError.invalidInput("Sample data is read-only")
         }

@@ -27,6 +27,7 @@ import type {
   SessionDetail,
   SessionDiff,
   TrackedAgent,
+  TrackedTask,
   UsageLimits,
 } from "../api/types.ts";
 
@@ -79,6 +80,17 @@ export function session(overrides: Partial<Session> = {}): Session {
     pixie_id: null,
     started_by_pixie: null,
     habit_run_id: null,
+    ...overrides,
+  };
+}
+
+export function task(overrides: Partial<TrackedTask> = {}): TrackedTask {
+  return {
+    id: "1",
+    subject: "Read the form",
+    description: null,
+    active_form: null,
+    status: "pending",
     ...overrides,
   };
 }

@@ -82,6 +82,7 @@ describe("Projects", () => {
 
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "Pixies0",
+      "Goals",
       "Pinned1",
       "Running1",
       "Done1",

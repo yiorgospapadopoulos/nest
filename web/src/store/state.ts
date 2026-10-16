@@ -6,6 +6,7 @@ import type {
   BackgroundSummary,
   ClaudeChat,
   Connector,
+  Goal,
   GroupEntry,
   Habit,
   HabitRun,
@@ -188,6 +189,8 @@ export type Action =
   | { type: "showAutomated"; on: boolean }
   | { type: "approval"; approval: Approval }
   | { type: "tracking"; id: string; tracking: Tracking }
+  // A project's goals (B47): the steps of its chats that have any, all the others none.
+  | { type: "goals"; repo: string; goals: Goal[] }
   | { type: "pixieGroups"; groups: Record<string, GroupEntry[]> }
   | { type: "pixieGroup"; id: string; group: GroupEntry[] }
   | { type: "transcriptOpened"; id: string }

@@ -11,6 +11,7 @@ import type {
   Session,
   StuckFlag,
   TrackedAgent,
+  TrackedTask,
 } from "../api/types.ts";
 import { list, obj, str } from "../api/payloads.ts";
 import type { State } from "./state.ts";
@@ -238,6 +239,35 @@ export function chatLists(state: State, repo: string): ChatLists {
     })).filter((g) => g.chats.length > 0),
     archived: entries.filter(archived),
   };
+}
+
+/** A chat in a project's Goals section (B47) with the steps it shows. */
+export interface GoalEntry {
+  session: Session;
+  status: ChatStatus;
+  tasks: TrackedTask[];
+}
+
+const IN_FLIGHT = new Set<Session["state"]>(["starting", "running", "waiting"]);
+
+/**
+ * What the project's chats are working towards, as the daemon lists goals (D092): chats
+ * at work, with or without steps, then chats with steps left showing; newest first in each.
+ */
+export function goalEntries(state: State, repo: string): GoalEntry[] {
+  return projectChats(state)
+    .filter((s) => s.repo === repo && s.archived_at === null)
+    .map((session) => ({
+      session,
+      status: chatStatus(session, pendingFor(state, session.id)),
+      tasks: (state.tracking[session.id]?.tasks ?? []).filter((t) => t.status !== "deleted"),
+    }))
+    .filter(({ session, tasks }) => IN_FLIGHT.has(session.state) || tasks.length > 0)
+    .sort(
+      (a, b) =>
+        Number(IN_FLIGHT.has(b.session.state)) - Number(IN_FLIGHT.has(a.session.state)) ||
+        b.session.updated_at.localeCompare(a.session.updated_at),
+    );
 }
 
 export interface InboxGroup {

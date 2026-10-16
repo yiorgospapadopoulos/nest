@@ -142,6 +142,8 @@ CLAUDE_APP_ENV = {
     "MCP_CONNECTION_NONBLOCKING": "true",
     "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
     "DISABLE_MICROCOMPACT": "1",
+    # Headless runs otherwise leave out the task list tools Claude Code chats plan with (B47).
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
 }
 
 

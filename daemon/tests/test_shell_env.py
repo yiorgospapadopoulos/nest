@@ -143,6 +143,7 @@ async def test_the_runs_environment_starts_from_the_login_shell(tmp_path: Path) 
             "PATH": "/Users/me/.nvm/bin:/usr/bin",
             "GH_TOKEN": "secret",
             "MCP_CONNECTION_NONBLOCKING": "false",
+            "CLAUDE_CODE_ENABLE_TODO_TOOLS": "0",
         }
 
     opened.provider = ClaudeProvider(tmp_path / "agent-gh", opened.factory, shell_env)
@@ -154,10 +155,12 @@ async def test_the_runs_environment_starts_from_the_login_shell(tmp_path: Path) 
     assert guarded.options.env["PATH"] == "/Users/me/.nvm/bin:/usr/bin"
     assert guarded.options.env["GH_TOKEN"] == ""
     assert guarded.options.env["MCP_CONNECTION_NONBLOCKING"] == "true"
+    assert guarded.options.env["CLAUDE_CODE_ENABLE_TODO_TOOLS"] == "1"
     assert normal.options.env == {
         "PATH": "/Users/me/.nvm/bin:/usr/bin",
         "GH_TOKEN": "secret",
         "MCP_CONNECTION_NONBLOCKING": "true",
         "MCP_SERVER_CONNECTION_BATCH_SIZE": "8",
         "DISABLE_MICROCOMPACT": "1",
+        "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
     }

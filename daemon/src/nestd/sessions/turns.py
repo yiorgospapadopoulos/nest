@@ -52,21 +52,33 @@ _CONNECTORS_NOTE = (
     "Mention MCP servers that need authorization or failed to connect only when the user "
     "asks about them or the task needs one of them."
 )
+# Like the Claude app's agent, plan almost every task: Claude Code's default plans only
+# bigger jobs (B47).
+_PLAN_NOTE = (
+    "Plan with the task list: for any request that edits files or takes more than one step, "
+    "your first action is to create every step with TaskCreate (load TaskCreate and "
+    "TaskUpdate with ToolSearch first if they are deferred), before any other tool call. "
+    "Then keep the list current with TaskUpdate: mark a step in_progress when you start it "
+    "and completed as soon as it is done. Skip the list only for a quick question or a "
+    "single command."
+)
 # A chat uses git as in the terminal (B58).
 NEST_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
-    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE}"
+    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
+    f"{_PLAN_NOTE}"
 )
 # A plain folder's work is never reviewed, committed or pushed by Nest (D041).
 PLAIN_FOLDER_PROMPT = (
-    f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE}"
+    f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
+    f"{_PLAN_NOTE}"
 )
 # A chat a pixie started, whose git writes stay blocked (D072, B58); a pixie's own runs
 # have their own prompt.
 GUARDED_PROMPT = (
     "You are running inside Nest. Do not run git commit, git push, gh pr create or "
     "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE}"
+    f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE}"
 )
 
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it

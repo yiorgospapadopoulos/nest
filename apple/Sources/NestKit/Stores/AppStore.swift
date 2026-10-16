@@ -32,8 +32,6 @@ public struct ProjectState: Sendable, Hashable {
     public var view = ProjectView.workspace
     /// The chat highlighted in the sidebar.
     public var selectedChat: String?
-    /// Chats whose Goals entry is expanded.
-    public var expandedGoals: Set<String> = []
     /// Agents whose recent steps are shown, by agent id.
     public var expandedAgents: Set<String> = []
     /// Chats whose background bar is open to its lists.
@@ -173,7 +171,6 @@ public struct ProjectState: Sendable, Hashable {
     /// Forgets a chat that was deleted.
     public mutating func forget(_ id: String) {
         closePane(id)
-        expandedGoals.remove(id)
         expandedBackground.remove(id)
     }
 }

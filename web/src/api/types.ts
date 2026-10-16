@@ -137,6 +137,12 @@ export interface TrackedTask {
   status: "pending" | "in_progress" | "completed" | "deleted";
 }
 
+/** A chat of a project that is working or has a task list showing, with that list (D092). */
+export interface Goal {
+  session_id: string;
+  tasks: TrackedTask[];
+}
+
 export interface AgentStep {
   id: string;
   tool: string;

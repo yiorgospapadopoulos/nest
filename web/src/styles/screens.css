@@ -2297,3 +2297,21 @@ div.pxr:active {
   width: 44px;
   height: 44px;
 }
+
+/* A project's goals (B47): each chat's title, then its steps always open beneath. */
+.goals h3 {
+  margin: 0;
+  font: inherit;
+}
+.goal + .goal {
+  border-top: 1px solid var(--hair);
+}
+.goals .gs-b {
+  max-height: none;
+}
+.goal-none {
+  margin: -4px 0 0;
+  padding: 0 14px 12px 38px;
+  font-size: 0.7647rem;
+  color: var(--t3);
+}
