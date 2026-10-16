@@ -224,7 +224,8 @@ struct MergeBody: View {
     }
 }
 
-/// A chat whose pull request has failed checks: their names and Send to agent.
+/// A chat whose pull request has failed checks: their names and Send to agent, under its
+/// Needs you row, which names the chat (B77).
 struct ChecksFailedCard: View {
     let session: Session
     @Environment(Shell.self) private var shell
@@ -232,21 +233,10 @@ struct ChecksFailedCard: View {
     var body: some View {
         let failing = session.pr?.failingChecks ?? []
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                StatusDot(tone: .failed)
-                Text("Checks failed")
-                Spacer(minLength: 8)
-                ChatLink(chat: session.id, title: session.title)
-                    .foregroundStyle(Palette.t3)
-                    .frame(maxWidth: 150, alignment: .trailing)
-            }
-            .font(.ui(TypeSize.meta))
-            .foregroundStyle(StatusTone.failed.color)
             if let pr = session.pr {
                 Text("#\(String(pr.number)) \(pr.title)")
                     .font(.ui(TypeSize.ui, .medium))
                     .lineLimit(1)
-                    .padding(.top, 7)
             }
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(failing, id: \.self) { name in

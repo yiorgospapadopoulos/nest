@@ -3,8 +3,8 @@ import NestKit
 import SwiftUI
 
 /// A pending approval with its actions: a permission prompt, Claude's questions or work
-/// to review, on a soft fill under a quiet coloured label. The Needs you card adds the
-/// chat's name; the transcript shows a compact version.
+/// to review, on a soft fill. The transcript's compact version has a quiet coloured label;
+/// the Needs you card shows it without one, under its row that names the chat (B77).
 struct ApprovalCard: View {
     enum Style {
         case panel, inline
@@ -19,7 +19,9 @@ struct ApprovalCard: View {
         let tone: StatusTone = green ? .review : .waiting
         let busy = shell.approvals.busy.contains(approval.id)
         VStack(alignment: .leading, spacing: 0) {
-            header(tone)
+            if style == .inline {
+                label(tone)
+            }
             Group {
                 switch approval.kind {
                 case .question: QuestionBody(approval: approval, style: style)
@@ -38,27 +40,12 @@ struct ApprovalCard: View {
         .softFill()
     }
 
-    private func header(_ tone: StatusTone) -> some View {
+    private func label(_ tone: StatusTone) -> some View {
         HStack(spacing: 6) {
             StatusDot(tone: tone)
             Text(title)
             if shell.approvals.busy.contains(approval.id) {
                 ProgressView().controlSize(.mini)
-            }
-            if style == .panel {
-                Spacer(minLength: 8)
-                Group {
-                    if let pixieID = Pixie.id(ofRepo: approval.repo) {
-                        // A pixie's chat belongs to no project: name the pixie, never
-                        // "pixie:<id>", and open its page (D072).
-                        PixieLink(id: pixieID)
-                    } else {
-                        ChatLink(chat: approval.sessionID, title: approval.title)
-                    }
-                }
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .frame(maxWidth: 150, alignment: .trailing)
             }
         }
         .font(.ui(TypeSize.meta))
@@ -66,15 +53,12 @@ struct ApprovalCard: View {
     }
 
     private var title: String {
-        switch (approval.kind, style) {
-        case (.question, .panel): "Question"
-        case (.question, .inline): "Question from Claude"
-        case (.review, _): "Ready for review"
-        case (.plan, .panel): "Plan"
-        case (.plan, .inline): "Plan ready for review"
-        case (.merge, _): "Ready to merge"
-        case (_, .panel): "Permission"
-        case (_, .inline): "Permission needed"
+        switch approval.kind {
+        case .question: "Question from Claude"
+        case .review: "Ready for review"
+        case .plan: "Plan ready for review"
+        case .merge: "Ready to merge"
+        case .permission, .unknown: "Permission needed"
         }
     }
 }
