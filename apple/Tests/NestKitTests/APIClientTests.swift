@@ -64,6 +64,11 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.session("s1")
         },
         RouteCase(
+            "GET", "/api/goals?repo=cv-page",
+            response:
+                #"[{"session_id": "s1", "tasks": [{"id": "1", "subject": "A", "description": null, "active_form": null, "status": "pending"}]}]"#
+        ) { _ = try await $0.goals(repo: "cv-page") },
+        RouteCase(
             "POST", "/api/sessions",
             body:
                 #"{"attachment_ids":["a1"],"effort":"high","mode":"in_place","model":"opus","permission_mode":"plan","prompt":"Fix it","repo":"cv-page","title":"Fix"}"#,

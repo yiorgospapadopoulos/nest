@@ -15,6 +15,14 @@ public struct Goals: Sendable, Hashable {
     public var progress: Double { tasks.isEmpty ? 0 : Double(completed) / Double(tasks.count) }
 }
 
+/// A chat in the Goals card, with its checklist.
+public struct GoalEntry: Sendable, Hashable, Identifiable {
+    public let session: Session
+    public let goals: Goals
+
+    public var id: String { session.id }
+}
+
 /// Per session: the agent's tasks (Goals), its agents (main and subagents), its
 /// background work (subagents and background commands, which can outlive the turn) and
 /// the pending messages Claude has not read yet.
@@ -59,6 +67,39 @@ public final class ActivityStore {
         } replay: {
             apply($0)
         }
+    }
+
+    /// Loads what the project's chats are working towards (D092); events that arrive
+    /// meanwhile apply again on top. Of `sessions`, the project's chats, those the daemon
+    /// leaves out have no tasks left, as when a list was cleared while disconnected.
+    public func loadGoals(repo: String, sessions: [Session]) async throws {
+        _ = try await live.read {
+            try await self.api.goals(repo: repo)
+        } store: { goals in
+            let listed = Set(goals.map(\.sessionID))
+            for session in sessions where !listed.contains(session.id) {
+                tasks[session.id] = []
+            }
+            for goal in goals {
+                tasks[goal.sessionID] = goal.tasks
+            }
+        } replay: {
+            apply($0)
+        }
+    }
+
+    /// The Goals card's chats among the project's `sessions`: each one working or with
+    /// tasks in its list, working ones first, then the most recently updated. Archived
+    /// chats are left out.
+    public func goalEntries(_ sessions: [Session]) -> [GoalEntry] {
+        sessions
+            .filter { !$0.isArchived }
+            .map { GoalEntry(session: $0, goals: goals(session: $0.id)) }
+            .filter { $0.session.state.isInFlight || !$0.goals.tasks.isEmpty }
+            .sorted {
+                ($0.session.state.isInFlight ? 1 : 0, $0.session.updatedAt, $0.id)
+                    > ($1.session.state.isInFlight ? 1 : 0, $1.session.updatedAt, $1.id)
+            }
     }
 
     /// The chats whose activity the panel loads: busy ones, open panes, chats with work
