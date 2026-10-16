@@ -47,6 +47,10 @@ struct ShellView: View {
             VStack(spacing: 0) {
                 // No line under the tabs: the project bar it divided off is gone (B73).
                 TabStrip(fullScreen: fullScreen)
+                    // A line in the chat background's colours where the top bar ends.
+                    .overlay(alignment: .bottom) {
+                        PhotoLineView(image: shell.chatBackground?.image)
+                    }
                 ProjectBody()
             }
             VStack(spacing: 8) {
