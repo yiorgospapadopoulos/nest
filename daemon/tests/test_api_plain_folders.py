@@ -147,4 +147,5 @@ async def test_the_agent_is_promised_no_review_commit_or_pull_request(api: Api) 
     for promise in ("approve", "commits", "pull request"):
         assert promise not in prompt
     assert "only when the user asks" in prompt
+    assert "your first action is to create every step with TaskCreate" in prompt
     assert api.provider.runs[0].spec.guard_git is False
