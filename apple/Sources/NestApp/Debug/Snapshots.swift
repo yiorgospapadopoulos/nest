@@ -143,6 +143,10 @@
                 try await renderPixieMotion(model, shell, controller, folder)
                 return
             }
+            if only == "b70" {
+                try await renderTeamCalls(model, shell, controller, folder)
+                return
+            }
             if only == "b41" {
                 try await renderPixieTools(model, shell, controller, folder)
                 return
@@ -998,6 +1002,126 @@
             try await pair(controller, "b48-tree", folder)
             let members = [bugs, stylist, scout, pixies.pixies.first { $0.id == "reviewer" }!]
             try await pairView(SpriteFramesPreview(members: members), "b48-frames", folder)
+        }
+
+        /// B70: a project chat calling a team through its leader: the team's grid and name,
+        /// "QA working" while it runs, then its leader's report, opened in place with the
+        /// leader's member calls; a call of a pixie that leads no team stays a pixie row.
+        private static func renderTeamCalls(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let pixies = model.pixies
+            let bugs = try await pixies.create(
+                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+            let stylist = try await pixies.create(
+                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+            let scout = try await pixies.create(
+                CreatePixieRequest(name: "Scout", mascot: .owl, color: "#0090FF"))
+            let qa = try await pixies.createTeam(name: "QA", handle: "qa")
+            for member in [bugs, stylist, scout] {
+                try await pixies.setTeam(member.id, to: qa.id)
+            }
+            // The sample daemon sends no events: read the leader it chose (Bug hunter).
+            try await pixies.load()
+
+            shell.selectProject("cv-page")
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.openChat("c2", in: workspace)
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            try await model.transcripts.transcript(for: "c2").load()
+            var id = 31_000
+            func receive(_ session: String, _ type: String, _ payload: [String: Any]) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(Date()), "session_id": session,
+                    "payload": payload,
+                ])
+                model.transcripts.receive(event)
+            }
+            func blocks(_ list: [[String: Any]], parent: String? = nil) -> [String: Any] {
+                ["blocks": list, "parent_tool_use_id": parent ?? NSNull()]
+            }
+            func use(_ tool: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["type": "tool_use", "id": tool, "name": name, "input": input]
+            }
+            func text(_ value: String) -> [String: Any] { ["type": "text", "text": value] }
+            func result(_ tool: String, _ content: String) -> [String: Any] {
+                ["type": "tool_result", "tool_use_id": tool, "content": content]
+            }
+            // c3: QA answered through Bug hunter, who called the other two; Watcher, who
+            // leads no team, answered on its own.
+            receive(
+                "c3", "session.user_message",
+                [
+                    "text": "@qa check the date parser change, and @watcher the build",
+                    "attachments": [],
+                ])
+            receive(
+                "c3", "session.message",
+                blocks([
+                    use(
+                        "tc1", "Agent",
+                        ["subagent_type": bugs.slug, "description": "Check the date parser"])
+                ]))
+            receive(
+                "c3", "session.message",
+                blocks(
+                    [
+                        text("Splitting this between the team."),
+                        use(
+                            "tm1", "Agent",
+                            ["subagent_type": stylist.slug, "description": "Names and layout"]),
+                        use(
+                            "tm2", "Agent",
+                            ["subagent_type": scout.slug, "description": "What changed"]),
+                    ], parent: "tc1"))
+            receive(
+                "c3", "session.message",
+                blocks(
+                    [
+                        result(
+                            "tc1",
+                            "[Subagent hand-back] The text below is the final report of a subagent. The report follows:\n  `parseDate` drops the time zone; Scout traced it to the new branch, which has no test.\n  Stylist found nothing else.\nagentId: b3e1 (use SendMessage to continue this agent)"
+                        )
+                    ]))
+            receive(
+                "c3", "session.message",
+                blocks([
+                    use(
+                        "tc2", "Agent",
+                        ["subagent_type": "watcher", "description": "Watch the build"])
+                ]))
+            receive("c3", "session.message", blocks([result("tc2", "The build is green.")]))
+            receive(
+                "c3", "session.message",
+                blocks([text("QA found the time zone bug; I will fix it and add the test.")]))
+            // c2: QA still works.
+            receive(
+                "c2", "session.message",
+                blocks([
+                    use(
+                        "tc3", "Agent",
+                        ["subagent_type": bugs.slug, "description": "Review the export flow"])
+                ]))
+            receive(
+                "c2", "session.message",
+                blocks(
+                    [
+                        text("Asking Stylist to look at the copy."),
+                        use(
+                            "tm3", "Agent",
+                            ["subagent_type": stylist.slug, "description": "Export copy"]),
+                    ], parent: "tc3"))
+            try await pair(controller, "b70-team-calls", folder)
+            shell.expandedItems.insert("tc1")
+            try await pair(controller, "b70-team-call-open", folder)
+            shell.expandedItems.remove("tc1")
         }
 
         /// B41: a pixie's details with its autonomy note, limits and Activity page; a chat
