@@ -442,6 +442,28 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
     }
 }
 
+@Suite struct TeamLeaderColorTests {
+    @Test func aTeamTakesItsLeadersCurrentColour() {
+        var list = pixies(("reviewer", "t1"), ("qa-bot", "t1"))
+        list[0].color = "#8B7CF6"
+        list[1].color = "#E5484D"
+        var qa = team("t1", 0, leader: "reviewer")
+        #expect(qa.leaderColor(among: list) == "#8B7CF6")
+        // A new leader, or the leader's new colour, shows at once.
+        qa.leaderID = "qa-bot"
+        #expect(qa.leaderColor(among: list) == "#E5484D")
+        list[1].color = "#30A46C"
+        #expect(qa.leaderColor(among: list) == "#30A46C")
+    }
+
+    @Test func noLeaderOrAnUnknownOneHasNoColour() {
+        let list = pixies(("reviewer", "t1"))
+        #expect(team("t1", 0, leader: nil).leaderColor(among: list) == nil)
+        #expect(team("t1", 0, leader: "gone").leaderColor(among: list) == nil)
+        #expect(team("t1", 0, leader: "reviewer").leaderColor(among: []) == nil)
+    }
+}
+
 @MainActor @Suite struct PixieJumpTests {
     /// A pixie call's name opens the pixie's pane as a list click does, focused, even when
     /// the Pixies workspace has not been measured yet; opening it again only focuses it.

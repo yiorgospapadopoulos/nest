@@ -58,9 +58,9 @@ struct PixieList: View {
             }
         }
         .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 6))
-        .frame(width: Sidebar.width)
         .frame(maxHeight: .infinity, alignment: .top)
         .sideSurface()
+        .resizableSidebar()
         .pixiePrompts()
     }
 }
@@ -138,7 +138,7 @@ private struct TeamHeader: View {
                 .frame(width: 18)
             Text(team.name)
                 .font(.ui(TypeSize.ui, .semibold))
-                .foregroundStyle(Palette.t2)
+                .foregroundStyle(nameColor)
                 .layoutPriority(1)
             Text("@\(team.handle)")
                 .font(.ui(TypeSize.ui))
@@ -183,6 +183,11 @@ private struct TeamHeader: View {
     private var draggedPixie: String? {
         guard case .chat(let id) = shell.dragging, shell.pixie(id) != nil else { return nil }
         return id
+    }
+
+    /// The leader's colour, as the team's mentions in chats; grey without a leader.
+    private var nameColor: Color {
+        section.team.leaderColor(among: shell.pixies.pixies).map { Color(hex: $0) } ?? Palette.t2
     }
 }
 

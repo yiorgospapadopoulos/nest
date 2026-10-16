@@ -11,6 +11,15 @@ extension Pixie {
     }
 }
 
+extension PixieTeam {
+    /// Its leader's colour, `#RRGGBB`, from the current pixies: the team's name and
+    /// mentions take it. Nil with no leader, or one not known.
+    public func leaderColor(among pixies: [Pixie]) -> String? {
+        guard let leaderID else { return nil }
+        return pixies.first { $0.id == leaderID }?.color
+    }
+}
+
 /// A team in the Pixies list, with its listed members in pixie order.
 public struct PixieTeamSection: Sendable, Hashable, Identifiable {
     public let team: PixieTeam
@@ -233,8 +242,7 @@ public enum MentionHighlights {
             if let pixie = pixies.first(where: { $0.slug == name }) {
                 return pixie.color
             }
-            let leader = teams.first { $0.handle == name }?.leaderID
-            return pixies.first { $0.id == leader }?.color
+            return teams.first { $0.handle == name }?.leaderColor(among: pixies)
         }
         let whole = NSRange(text.startIndex..., in: text)
         return token.matches(in: text, range: whole).compactMap { match in

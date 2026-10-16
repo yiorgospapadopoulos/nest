@@ -23,6 +23,7 @@ public final class SettingsStore {
         static let backgroundChats = "appearance.background.chats"
         static let backgroundGrain = "appearance.background.grain"
         static let backgroundProjects = "appearance.background.projects"
+        static let sidebarWidth = "sidebar.width"
     }
 
     public var theme: ThemeMode {
@@ -40,6 +41,11 @@ public final class SettingsStore {
     /// The image behind the workspace (B39), on this Mac only.
     public var chatBackground: ChatBackgroundSettings {
         didSet { saveChatBackground() }
+    }
+
+    /// The left sidebar's width, the same in every project (B45).
+    public var sidebarWidth: Double {
+        didSet { save(String(sidebarWidth), Key.sidebarWidth) }
     }
 
     /// Which notices reach macOS notifications.
@@ -62,6 +68,7 @@ public final class SettingsStore {
         accent = store.string(forKey: Key.accent).flatMap(AccentName.init) ?? .graphite
         showAutomatedChats = store.string(forKey: Key.automatedChats) == "on"
         chatBackground = Self.loadChatBackground(from: store)
+        sidebarWidth = SidebarWidth.stored(store.string(forKey: Key.sidebarWidth))
         var notifications = NotificationPreferences()
         for (name, path) in NotificationPreferences.fields {
             if let stored = store.string(forKey: Key.notifications + name) {
