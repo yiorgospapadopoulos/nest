@@ -17,10 +17,15 @@ export function mentionColors(
 ): Map<string, string> {
   const colors = new Map(Object.values(pixies).map((p) => [p.slug, p.color]));
   for (const team of Object.values(teams)) {
-    const leader = pixies[team.leader_id ?? ""];
-    if (leader !== undefined) colors.set(team.handle, leader.color);
+    const color = leaderColor(team, pixies);
+    if (color !== null) colors.set(team.handle, color);
   }
   return colors;
+}
+
+/** The team leader's colour, which the team's name and mentions take; null without one. */
+export function leaderColor(team: PixieTeam, pixies: Record<string, Pixie>): string | null {
+  return pixies[team.leader_id ?? ""]?.color ?? null;
 }
 
 /** The text split into plain runs and the mentions `colors` knows. */

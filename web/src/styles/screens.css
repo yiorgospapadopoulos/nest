@@ -1387,6 +1387,11 @@ div.pxr:active {
   font-weight: 500;
   color: var(--t3);
 }
+/* A team's name in its leader's colour (B45), pulled toward the text colour as chat
+   mentions are, so it reads in light and dark. */
+.pxtname {
+  color: color-mix(in srgb, var(--px) 60%, var(--t1));
+}
 .pxnone {
   margin: 0;
   padding: 16px;
