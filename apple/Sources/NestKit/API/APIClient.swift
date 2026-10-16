@@ -72,6 +72,10 @@ public struct APIClient: NestAPI {
         try await get("sessions", id)
     }
 
+    public func goals(repo: String) async throws -> [SessionGoals] {
+        try await call("GET", ["goals"], query: [URLQueryItem(name: "repo", value: repo)])
+    }
+
     public func createSession(_ request: CreateSessionRequest) async throws -> Session {
         try await call("POST", ["sessions"], body: request)
     }

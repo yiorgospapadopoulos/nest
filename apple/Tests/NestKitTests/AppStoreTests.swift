@@ -184,7 +184,7 @@ private let workspace = CGSize(width: 1000, height: 600)
         app.update("todo-ui") { state in
             state.openChat("c1", in: workspace)
             state.openChat("c2", in: workspace)
-            state.expandedGoals = ["c2"]
+            state.toggleBackground("c2")
         }
         app.update("map-viewer") { $0.openChat("c2", in: workspace) }
 
@@ -192,7 +192,7 @@ private let workspace = CGSize(width: 1000, height: 600)
 
         #expect(app.state(of: "todo-ui").layout.leaves == ["c1"])
         #expect(app.state(of: "todo-ui").selectedChat == "c1")
-        #expect(app.state(of: "todo-ui").expandedGoals.isEmpty)
+        #expect(app.state(of: "todo-ui").expandedBackground.isEmpty)
         #expect(app.state(of: "map-viewer").layout.leaves.isEmpty)
         #expect(app.state(of: "map-viewer").selectedChat == nil)
     }
