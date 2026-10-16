@@ -374,7 +374,6 @@ public enum DesignTokens {
     }
     public enum Spacing {
         public static let macStripHeight: Double = 38
-        public static let macToolbarHeight: Double = 34
         public static let macHeaderHeight: Double = 34
         public static let macRowHeight: Double = 26
         public static let macButtonHeight: Double = 22

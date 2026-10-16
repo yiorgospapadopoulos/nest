@@ -1,44 +1,34 @@
 import NestKit
 import SwiftUI
 
-/// The bar over the project: name menu, branch, view switch and activity panel toggle.
-struct ProjectToolbar: View {
+/// The top of the sidebar: the project's icon and name, opening its local app actions,
+/// with its current branch (or Init for a plain folder) beside it, and the collapse
+/// button (B73: the bar over the project is gone).
+struct ProjectHeader: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let state = shell.projectState
-        HStack(spacing: 10) {
-            ProjectMenu()
+        HStack(spacing: 8) {
+            ProjectMenu().layoutPriority(1)
             switch shell.repo?.badge {
             case .branch(let branch): BranchLabel(branch: branch)
             case .initGit: InitGitButton()
             case nil: EmptyView()
             }
-            ViewSwitch(view: state.view) { view in shell.update { $0.view = view } }
-                .padding(.leading, 6)
-            if state.layout.maximized != nil && state.view == .workspace {
-                Button {
-                    shell.update { $0.layout.restore() }
-                } label: {
-                    Label("Restore", systemImage: Icon.restore)
-                }
-                .buttonStyle(.nest(.plain))
-            }
-            Spacer()
+            Spacer(minLength: 0)
             Button {
-                shell.update { $0.rightCollapsed.toggle() }
+                shell.update { $0.leftCollapsed = true }
             } label: {
-                Image(systemName: Icon.rightPanel).font(.system(size: 13))
-                    .foregroundStyle(state.rightCollapsed ? Palette.t3 : Palette.t2)
+                Image(systemName: Icon.leftPanel).font(.system(size: 13))
+                    .foregroundStyle(Palette.t3)
             }
             .buttonStyle(.nest(.plain, iconOnly: true))
-            .help("Activity panel")
-            .accessibilityLabel("Activity panel")
-            .accessibilityAddTraits(state.rightCollapsed ? [] : .isSelected)
+            .help("Collapse sidebar")
+            .accessibilityLabel("Collapse sidebar")
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 8)
-        .frame(height: Metrics.toolbarHeight)
+        .padding(.leading, 8)
+        .padding(.trailing, 2)
+        .frame(height: 30)
     }
 }
 
@@ -88,7 +78,7 @@ private struct InitGitButton: View {
     }
 }
 
-/// The project name, opening its local app actions.
+/// The project's icon and name, opening its local app actions.
 private struct ProjectMenu: View {
     @Environment(Shell.self) private var shell
     @State private var hovering = false
@@ -137,10 +127,13 @@ private struct ProjectMenu: View {
                 Label("Project settings…", systemImage: Icon.gear)
             }
         } label: {
-            HStack(spacing: 5) {
-                Text(shell.project ?? "")
-                    .font(.ui(TypeSize.ui, .semibold))
+            let project = shell.project ?? ""
+            HStack(spacing: 8) {
+                ProjectIcon(project: project, repo: shell.app.repo(project), size: 15)
+                Text(project)
+                    .font(.ui(TypeSize.reading, .semibold))
                     .foregroundStyle(Palette.t1)
+                    .lineLimit(1)
                 Image(systemName: Icon.chevron)
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(Palette.t3)
@@ -154,46 +147,8 @@ private struct ProjectMenu: View {
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .menuIndicator(.hidden)
-        .fixedSize()
         .onHover { hovering = $0 }
         .padding(.leading, -6)
         .accessibilityLabel("Project \(shell.project ?? "")")
-    }
-}
-
-/// Workspace or Board.
-private struct ViewSwitch: View {
-    let view: ProjectView
-    let select: (ProjectView) -> Void
-    @Environment(\.accentColors) private var accent
-
-    var body: some View {
-        HStack(spacing: 2) {
-            segment(.workspace, "Workspace")
-            segment(.board, "Board")
-        }
-    }
-
-    private func segment(_ value: ProjectView, _ title: String) -> some View {
-        let selected = view == value
-        return Button {
-            select(value)
-        } label: {
-            HoverReader { hovering in
-                Text(title)
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(selected ? Palette.t1 : Palette.t2)
-                    .padding(.horizontal, 9)
-                    .frame(height: Metrics.buttonHeight)
-                    .background(
-                        selected ? accent.selection : hovering ? Palette.soft : .clear,
-                        in: .rounded(Radius.button)
-                    )
-                    .contentShape(Rectangle())
-            }
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

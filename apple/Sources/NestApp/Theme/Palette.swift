@@ -178,8 +178,6 @@ enum Metrics {
     typealias Tokens = DesignTokens.Spacing
     /// The project tab strip.
     static let stripHeight = Tokens.macStripHeight
-    /// The project toolbar.
-    static let toolbarHeight = Tokens.macToolbarHeight
     /// A pane's or column's header.
     static let headerHeight = Tokens.macHeaderHeight
     /// A list row.

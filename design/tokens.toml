@@ -329,7 +329,6 @@ mac_sheet = 12
 
 [spacing]
 mac_strip_height = 38
-mac_toolbar_height = 34
 mac_header_height = 34
 mac_row_height = 26
 mac_button_height = 22

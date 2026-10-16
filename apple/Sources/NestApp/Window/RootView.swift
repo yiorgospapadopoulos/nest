@@ -114,8 +114,8 @@ struct ShellView: View {
     }
 }
 
-/// The Pixies tab, or the current project's toolbar, sidebar, workspace or board and
-/// activity panel; both over the bottom bar.
+/// The Pixies tab, or the current project's sidebar, workspace or board and activity
+/// panel; both over the bottom bar.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
 
@@ -130,8 +130,6 @@ private struct ProjectBody: View {
                 NoProjectView()
             } else {
                 VStack(spacing: 0) {
-                    ProjectToolbar()
-                    Separator()
                     HStack(spacing: 0) {
                         Sidebar()
                         Separator(axis: .vertical)
