@@ -37,6 +37,8 @@ def event(kind: str = "needs_approval", **changes: JsonValue) -> dict[str, JsonV
         ("ready_to_merge", "Ready to merge", "/inbox", False),
         # The inbox card offers Interrupt and Send a nudge.
         ("stuck", "Stuck", "/inbox", False),
+        # The chat shows the pause with Resume now (B78).
+        ("usage_limit", "Usage limit", "/chat/s%2F1", False),
     ],
 )
 def test_each_kind_links_to_where_it_is_handled(

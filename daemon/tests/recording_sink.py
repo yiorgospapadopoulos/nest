@@ -4,6 +4,7 @@ from nestd.providers.base import (
     CommandCatalog,
     EngineDetails,
     HookOutput,
+    LimitHit,
     McpServer,
     MessageBlock,
     NoticeKind,
@@ -39,6 +40,9 @@ class RecordingSink:
 
     async def usage(self, info: UsageInfo) -> None:
         self.calls.append(("usage", info))
+
+    async def limit_hit(self, hit: LimitHit) -> None:
+        self.calls.append(("limit_hit", hit))
 
     async def provider_session_id(self, session_id: str) -> None:
         self.calls.append(("provider_session_id", session_id))

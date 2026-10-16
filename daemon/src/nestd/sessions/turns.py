@@ -26,6 +26,7 @@ from nestd.sessions.bookkeeping import isolated, isolated_or
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.extras import RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
+from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
 from nestd.sessions.queue import MessageQueue
@@ -108,14 +109,16 @@ class TurnRunner:
         idle_close: timedelta,
         queue: MessageQueue,
         clock: Clock,
+        limits: LimitPauses,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
     ) -> None:
-        """`on_mode` records a permission mode the engine switched to itself; `agents`
-        gives a project chat's run its subagents (B40), and `calls` follows the pixies it
-        calls (B46).
+        """`on_mode` records a permission mode the engine switched to itself; `limits`
+        holds the chats paused at the usage limit (B78); `agents` gives a project chat's
+        run its subagents (B40), and `calls` follows the pixies it calls (B46).
         """
+        self._limits = limits
         self._on_mode = on_mode
         self._calls = calls
         self._extras = extras
@@ -293,21 +296,35 @@ class TurnRunner:
         )
 
     async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
-        """Why the turn ended when that was no failure (B59): the user stopped it, or it
-        ends only so that the next message starts (a handoff): Send now stopped it, or
-        Claude Code ended it with messages written into it and the last one unanswered.
+        """Why the turn ended when that was no failure (B59): the user stopped it, the
+        usage limit cut it off (B78), or it ends only so that the next message starts (a
+        handoff): Send now stopped it, or Claude Code ended it with messages written into
+        it and the last one unanswered.
         """
         if live.interrupted:
             return "handoff" if live.resume_queue else "stopped"
+        if await self._limited(live, info):
+            return "limit"
         if not any(HANDOFF_ERROR in error for error in info.errors):
             return None
         return "handoff" if await self._queue.sent_ids(live.session_id) else None
 
-    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
+    async def _limited(self, live: LiveSession, info: ResultInfo) -> bool:
+        """Whether the usage limit cut the turn off: it reported the limit and its message
+        was cut off, or it ended with an error. A habit run is not paused: it fails (B78).
+        """
+        hit = live.limit_hit
+        if hit is None or not (hit.cut_off or info.is_error):
+            return False
+        return (await self._store.get(live.session_id)).habit_run_id is None
+
+    async def turn_finished(
+        self, live: LiveSession, error: str | None, end: TurnEnd | None
+    ) -> None:
         """Report the turn, then end it or deliver the next queued message. The reports are
         bookkeeping: their failure never keeps the turn open. A turn the engine ended with
-        an error fails, unless it ended for the next message (`handoff`); the run stays for
-        the next message.
+        an error fails, unless it ended for the next message (a handoff) or at the usage
+        limit, which pauses the chat (B78); the run stays for the next message.
 
         Messages written into the turn that the agent did not read are taken back to wait
         for the next turn. One it read without echoing it yet starts the agent's next turn
@@ -317,11 +334,14 @@ class TurnRunner:
         """
         session_id = live.session_id
         run = live.run
+        hit, live.limit_hit = live.limit_hit, None
         if run is not None:
             await isolated("the context report", session_id, self._report_context(live, run))
+        handoff = end == "handoff"
+        paused = end == "limit" and hit is not None and not live.interrupted and not live.stopped
         if live.interrupted:
             state, error = SessionState.INTERRUPTED, None
-        elif handoff:
+        elif handoff or paused:
             state, error = SessionState.IDLE, None
         elif error is not None:
             state = SessionState.FAILED
@@ -330,7 +350,11 @@ class TurnRunner:
         async with live.steering:
             taken = await self._retract(live)
             going_on = (
-                bool(taken) and state is SessionState.IDLE and not live.stopped and not handoff
+                bool(taken)
+                and state is SessionState.IDLE
+                and not live.stopped
+                and not handoff
+                and not paused
             )
             if going_on:
                 live.engine_next = True
@@ -342,6 +366,10 @@ class TurnRunner:
                 )
                 # Until the turn has ended, a message sent waits for it, as before.
                 live.concluding = True
+        if paused:
+            assert hit is not None  # noqa: S101 (set whenever the turn pauses)
+            # Before the turn ends, so its end leaves the queue waiting (B78).
+            await isolated("the usage limit pause", session_id, self._limits.pause(session_id, hit))
         if not going_on:
             try:
                 await self._conclude(live, state, error)
@@ -382,6 +410,7 @@ class TurnRunner:
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         # The run already closed itself; the next message opens a new one and resumes.
         live.run = None
+        live.limit_hit = None
         # Its background tasks ended with it; a stale count would keep later runs open.
         live.background_tasks = 0
         live.engine_next = False
@@ -437,7 +466,7 @@ class TurnRunner:
         """Start the queue on an idle session when a message waited only for publishing or
         a finishing send (BUG-60, BUG-61); one held by a Stop or a failure keeps waiting.
         """
-        if not live.held or live.busy or live.publishing or live.stopped:
+        if not live.held or live.busy or live.publishing or live.stopped or self._paused(live):
             return
         # Starting clears `held`; any turn's end clears it too.
         if await self._has_queued(live) and not live.busy and not live.publishing:
@@ -454,6 +483,7 @@ class TurnRunner:
         )
         queued = resume and (live.unsent is not None or await self._has_queued(live))
         queued = queued and not live.stopped  # closing: nothing new starts (BUG-53)
+        queued = queued and not self._paused(live)  # until the usage limit resets (B78)
         if live.interrupted and state is SessionState.IDLE:
             # Stop was pressed while the queue was read: it was accepted, so it holds (BUG-59).
             state, queued = SessionState.INTERRUPTED, queued and live.resume_queue
@@ -467,6 +497,9 @@ class TurnRunner:
         live.task = asyncio.create_task(
             self.guard(live, self._deliver(live, previous, (state, error)))
         )
+
+    def _paused(self, live: LiveSession) -> bool:
+        return self._limits.paused(live.session_id)
 
     async def _retract(self, live: LiveSession) -> list[str]:
         """`Steering.retract`; bookkeeping, so a failure leaves the messages as they are."""

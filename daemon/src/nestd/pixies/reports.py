@@ -30,6 +30,12 @@ FINISHED = frozenset(
     {SessionState.IDLE, SessionState.FAILED, SessionState.INTERRUPTED, SessionState.CLOSED}
 )
 
+
+def _finished(session: Session) -> bool:
+    """A chat paused at the usage limit goes on by itself, so it has not finished (B78)."""
+    return session.state in FINISHED and session.limit_pause is None
+
+
 # Sends the report to the pixie: its id, then the text.
 type Deliver = Callable[[str, str], Awaitable[object]]
 
@@ -96,7 +102,7 @@ class ReportBack:
             done = [
                 session
                 for batch in batches.values()
-                if all(member.state in FINISHED for member in batch)
+                if all(_finished(member) for member in batch)
                 for session in batch
             ]
             if not done or await self._chat_busy(pixie_id):

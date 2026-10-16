@@ -13,6 +13,7 @@ from nestd.providers.base import (
     CommandCatalog,
     EngineDetails,
     HookOutput,
+    LimitHit,
     McpServer,
     ResultInfo,
     TextBlock,
@@ -42,8 +43,10 @@ class RecordingTurns:
     async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
         return self.end
 
-    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
-        self.calls.append(("finished", live.session_id, error, handoff))
+    async def turn_finished(
+        self, live: LiveSession, error: str | None, end: TurnEnd | None
+    ) -> None:
+        self.calls.append(("finished", live.session_id, error, end))
 
     async def run_stopped(self, live: LiveSession, error: str) -> None:
         self.calls.append(("stopped", error))
@@ -102,7 +105,7 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
     assert turns.calls == [
         ("active", session.id),
         ("active", session.id),
-        ("finished", session.id, None, False),
+        ("finished", session.id, None, None),
         ("background", 2),
         ("stopped", "process ended"),
     ]
@@ -336,12 +339,12 @@ async def test_a_cut_conversation_is_done_once_the_run_reports_its_new_session(
     assert turns.calls == [("taken", "m1", "cp-1")]
 
 
-@pytest.mark.parametrize(("end", "handoff"), [("handoff", True), ("stopped", False)])
+@pytest.mark.parametrize("end", ["handoff", "stopped", "limit"])
 async def test_a_result_that_is_no_failure_is_marked(
-    db: Database, clock: FakeClock, bus: EventBus, end: TurnEnd, handoff: bool
+    db: Database, clock: FakeClock, bus: EventBus, end: TurnEnd
 ) -> None:
     """B59: an error result that only makes way for the next message, or of a turn the
-    user stopped, is no failure; only a handoff ends the turn as one.
+    user stopped, is no failure; nor is one the usage limit cut off (B78).
     """
     store = SessionStore(db, clock)
     session = await store.create(new_session())
@@ -356,7 +359,24 @@ async def test_a_result_that_is_no_failure_is_marked(
     (event,) = [e for e in await bus.session_events(session.id) if e.type == "session.result"]
     assert event.payload[end] is True
     assert event.payload["errors"] == ["x"]
-    assert turns.calls == [("finished", session.id, "x", handoff)]
+    assert turns.calls == [("finished", session.id, "x", end)]
+
+
+async def test_limit_reports_of_a_turn_are_kept_together_for_its_end(
+    db: Database, clock: FakeClock, bus: EventBus
+) -> None:
+    """B78: the event naming the window and the cut-off message can come in either order."""
+    store = SessionStore(db, clock)
+    session = await store.create(new_session())
+    live = LiveSession(session.id)
+    sink = SessionSink(live, bus, store, RecordingTurns(), RecordingHooks(), None)
+    resets = datetime(2026, 10, 17, 15, tzinfo=UTC)
+
+    await sink.limit_hit(LimitHit(cut_off=True))
+    await sink.limit_hit(LimitHit(window="five_hour", resets_at=resets))
+    await sink.limit_hit(LimitHit())
+
+    assert live.limit_hit == LimitHit(window="five_hour", resets_at=resets, cut_off=True)
 
 
 async def notices(bus: EventBus, session_id: str) -> list[object]:
@@ -398,7 +418,9 @@ class BrokenTurns:
     async def how_ended(self, live: LiveSession, info: ResultInfo) -> TurnEnd | None:
         raise RuntimeError("how")
 
-    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
+    async def turn_finished(
+        self, live: LiveSession, error: str | None, end: TurnEnd | None
+    ) -> None:
         raise RuntimeError("finished")
 
     async def permission_mode(self, live: LiveSession, mode: PermissionMode) -> None:

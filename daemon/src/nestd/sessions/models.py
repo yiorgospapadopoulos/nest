@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from nestd.config.models import Effort, PermissionMode, SessionMode
-from nestd.providers.base import ContextUsage, RewindResult
+from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
 from nestd.prs.models import PrStatus
 from nestd.stuck.models import StuckFlag
 
@@ -19,9 +19,10 @@ def pixie_repo(pixie_id: str) -> str:
     return f"{PIXIE_REPO_PREFIX}{pixie_id}"
 
 
-# A user message the daemon sends a pixie: the outcome of chats it started (B41), or a
-# report one of its habit runs made (B42).
-type MessageOrigin = Literal["report_back", "report"]
+# A user message the daemon sends: to a pixie, the outcome of chats it started (B41) or a
+# report one of its habit runs made (B42); to a chat going on after the usage limit reset
+# with nothing queued, the message that lets Claude continue (`limit_resume`, B78).
+type MessageOrigin = Literal["report_back", "report", "limit_resume"]
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,20 @@ class Sender:
 
 
 USER = Sender()
+
+
+class LimitPause(BaseModel):
+    """A chat paused at the subscription's usage limit (B78): messages wait in its queue
+    until `resume_at`, when the daemon goes on with them.
+    """
+
+    # The window whose limit was reached; None when the engine did not say.
+    window: LimitWindow | None
+    # When the engine said the limit resets; None when it did not say.
+    resets_at: datetime | None
+    # When the daemon goes on: a margin after the reset, or a fixed delay when unknown.
+    resume_at: datetime
+    since: datetime
 
 
 class SessionState(StrEnum):
@@ -103,6 +118,8 @@ class Session(NewSession):
     pr_summary: str | None = None
     # Why the session looks stuck right now, if it does (D036).
     stuck: StuckFlag | None = None
+    # Set while the chat is paused at the usage limit (B78).
+    limit_pause: LimitPause | None = None
     # A rewound or forked conversation its next run cuts into a new engine session: resume
     # `fork_from` up to the entry `fork_at`, refusing unless only the turn of `fork_drops`
     # goes when that is set (B59). Cleared once the run reports the new session.

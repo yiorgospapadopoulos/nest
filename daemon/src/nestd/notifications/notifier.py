@@ -19,6 +19,7 @@ type NotifyKind = Literal[
     "ready_to_merge",
     "stuck",
     "pixie_report",
+    "usage_limit",
 ]
 
 

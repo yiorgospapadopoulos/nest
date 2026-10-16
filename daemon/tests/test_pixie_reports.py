@@ -9,9 +9,10 @@ from nestd.context import AppContext
 from nestd.events import types
 from nestd.pixies.models import CreatePixie
 from nestd.pixies.reports import REPORT_HEAD, REPORT_TAIL, ReportBack
-from nestd.sessions.models import NewSession, Session, SessionState
+from nestd.sessions.models import LimitPause, NewSession, Session, SessionState
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, FakeRun, edit, engine_error, reply
+from tests.fakes import START
 from tests.pixie_nest_support import ctx, idle, make_boss, provider
 
 __all__ = ["ctx", "provider"]
@@ -146,6 +147,22 @@ async def test_each_outcome_and_only_whole_batches(ctx: AppContext) -> None:
     ]
     store = ctx.sessions._store  # pyright: ignore[reportPrivateUsage]
     assert [s.id for s in await store.batch_members(pixie.id)] == [waiting.id]
+
+
+async def test_a_chat_paused_at_the_usage_limit_has_not_finished(ctx: AppContext) -> None:
+    """B78: it goes on by itself after the reset, so its batch waits for it."""
+    pixie = await ctx.pixies.create(CreatePixie(name="Boss"))
+    paused = await stored(ctx, batch_chat(pixie.id, "b1"), SessionState.IDLE)
+    store = ctx.sessions._store  # pyright: ignore[reportPrivateUsage]
+    pause = LimitPause(window=None, resets_at=None, resume_at=START, since=START)
+    await store.update(paused.id, limit_pause=pause)
+    delivered = Delivered()
+
+    await watcher(ctx, delivered).check(pixie.id)
+    await store.update(paused.id, limit_pause=None)
+    await watcher(ctx, delivered).check(pixie.id)
+
+    assert [to for to, _ in delivered.sent] == [pixie.id]
 
 
 async def test_a_busy_pixie_chat_waits(ctx: AppContext, provider: FakeProvider) -> None:

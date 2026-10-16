@@ -9,6 +9,8 @@ from claude_agent_sdk import (
     Message,
     RateLimitEvent,
     RateLimitInfo,
+    RateLimitStatus,
+    RateLimitType,
     ResultMessage,
     ServerToolResultBlock,
     ServerToolUseBlock,
@@ -616,6 +618,94 @@ async def test_partial_usage_windows() -> None:
 )
 async def test_rate_limits_without_usable_windows_are_skipped(raw: dict[str, Any]) -> None:
     assert await translated(rate_limit(raw)) == []
+
+
+def limit_event(
+    status: RateLimitStatus,
+    resets_at: int | None = None,
+    rate_limit_type: RateLimitType | None = None,
+    overage_status: RateLimitStatus | None = None,
+    raw: dict[str, Any] | None = None,
+) -> RateLimitEvent:
+    info = RateLimitInfo(
+        status=status,
+        resets_at=resets_at,
+        rate_limit_type=rate_limit_type,
+        overage_status=overage_status,
+        raw=raw or {},
+    )
+    return RateLimitEvent(rate_limit_info=info, uuid="u", session_id="sdk-1")
+
+
+async def test_a_rejected_rate_limit_reports_the_limit_with_its_window_and_reset() -> None:
+    """B78: the engine refuses requests until the window resets."""
+    event = limit_event(status="rejected", resets_at=1791300600, rate_limit_type="five_hour")
+
+    assert await translated(event) == [
+        (
+            "limit_hit",
+            base.LimitHit(window="five_hour", resets_at=datetime.fromtimestamp(1791300600, UTC)),
+        )
+    ]
+
+
+async def test_a_rejected_rate_limit_still_reports_its_usage_windows() -> None:
+    raw = {"unifiedWindows": {"seven_day": {"utilization": 1.0, "resetsAt": 1791802800}}}
+    event = limit_event(status="rejected", rate_limit_type="seven_day", raw=raw)
+
+    calls = await translated(event)
+
+    assert [name for name, _ in calls] == ["usage", "limit_hit"]
+    assert calls[1] == ("limit_hit", base.LimitHit(window="seven_day"))
+
+
+async def test_a_rejected_rate_limit_of_an_unknown_window_reports_no_window() -> None:
+    event = limit_event(status="rejected", resets_at=1791300600)
+    event.rate_limit_info.rate_limit_type = "a_new_window"  # type: ignore[assignment]
+
+    (call,) = await translated(event)
+
+    assert call == (
+        "limit_hit",
+        base.LimitHit(window=None, resets_at=datetime.fromtimestamp(1791300600, UTC)),
+    )
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"status": "allowed", "rate_limit_type": "five_hour", "resets_at": 1791300600},
+        {"status": "allowed_warning", "rate_limit_type": "seven_day"},
+        # Over the plan's limit, but extra usage goes on paying for the requests.
+        {"status": "rejected", "rate_limit_type": "five_hour", "overage_status": "allowed"},
+        {"status": "rejected", "overage_status": "allowed_warning"},
+    ],
+)
+async def test_rate_limits_that_still_allow_requests_report_no_limit(info: dict[str, Any]) -> None:
+    assert await translated(limit_event(**info)) == []
+
+
+async def test_a_message_cut_off_by_the_rate_limit_reports_the_limit() -> None:
+    message = AssistantMessage(
+        content=[TextBlock("You've hit your limit")], model="m", error="rate_limit"
+    )
+
+    assert await translated(message) == [
+        ("message", ([base.TextBlock(text="You've hit your limit")], None)),
+        ("limit_hit", base.LimitHit(cut_off=True)),
+    ]
+
+
+async def test_a_message_cut_off_by_the_rate_limit_without_content_still_reports_it() -> None:
+    message = AssistantMessage(content=[], model="m", error="rate_limit")
+
+    assert await translated(message) == [("limit_hit", base.LimitHit(cut_off=True))]
+
+
+async def test_other_message_errors_report_no_limit() -> None:
+    message = AssistantMessage(content=[TextBlock("Server error")], model="m", error="server_error")
+
+    assert [name for name, _ in await translated(message)] == ["message"]
 
 
 async def test_results_report_the_turn_and_the_session_id() -> None:

@@ -18,12 +18,19 @@ from nestd.providers.base import (
 from nestd.repos.service import RepoService
 from nestd.review.watch import ReviewWatcher
 from nestd.sessions.commands import CommandStore
-from nestd.sessions.models import Session, SessionState
+from nestd.sessions.models import LimitPause, Session, SessionState
 from nestd.tracking.service import Tracking
 from nestd.tracking.steps import one_line
 from nestd.usage.store import UsageStore
 
 MAX_NOTICE_LENGTH = 200
+_WINDOW_NAMES = {
+    "five_hour": "5-hour",
+    "seven_day": "weekly",
+    "seven_day_opus": "weekly Opus",
+    "seven_day_sonnet": "weekly Sonnet",
+    "overage": "extra usage",
+}
 
 
 class StateFollower(Protocol):
@@ -65,10 +72,14 @@ class SessionReactions:
         quiet = session.habit_run_id is not None
         if session.state is SessionState.IDLE and not quiet:
             # A review announces itself; otherwise the user hears the turn finished.
-            if (
-                not await self._reviewable(session)
-                or await self._reviews.turn_ended(session) is None
-            ):
+            reviewed = (
+                await self._reviewable(session)
+                and await self._reviews.turn_ended(session) is not None
+            )
+            if session.limit_pause is not None:
+                # The usage limit cut the turn off: the chat goes on by itself (B78).
+                await self._notify(session, "usage_limit", _limit_text(session.limit_pause))
+            elif not reviewed:
                 await self._notify(session, "finished", tracker.summary or "The turn finished.")
         elif session.state is SessionState.FAILED and not quiet:
             await self._notify(session, "failed", session.last_error or "The session failed.")
@@ -132,3 +143,8 @@ class SessionReactions:
         await self._notifier.notify(
             kind, session.id, session.repo, session.title, one_line(text, MAX_NOTICE_LENGTH)
         )
+
+
+def _limit_text(pause: LimitPause) -> str:
+    window = "" if pause.window is None else f"{_WINDOW_NAMES[pause.window]} "
+    return f"Paused at the {window}usage limit. It goes on by itself after the reset."

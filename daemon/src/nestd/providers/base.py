@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, get_args
 
 from pydantic import BaseModel, Field, JsonValue
 
@@ -122,6 +122,34 @@ class UsageInfo(BaseModel):
 
     five_hour: UsageWindow | None
     seven_day: UsageWindow | None
+
+
+# The usage window whose limit was reached (B78), as the engine names it.
+type LimitWindow = Literal[
+    "five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "overage"
+]
+LIMIT_WINDOWS: frozenset[str] = frozenset(get_args(LimitWindow.__value__))
+
+
+class LimitHit(BaseModel):
+    """The subscription's usage limit was reached during the run (B78). The engine says so
+    with an event that may name the window and its reset time, and the message it cuts
+    off carries a rate limit error (`cut_off`); either may come first.
+    """
+
+    window: LimitWindow | None = None
+    resets_at: datetime | None = None
+    cut_off: bool = False
+
+    def merged(self, earlier: "LimitHit | None") -> "LimitHit":
+        """This report with what an earlier one of the same turn knew and this one does not."""
+        if earlier is None:
+            return self
+        return LimitHit(
+            window=self.window or earlier.window,
+            resets_at=self.resets_at or earlier.resets_at,
+            cut_off=self.cut_off or earlier.cut_off,
+        )
 
 
 class AgentTask(BaseModel):
@@ -463,6 +491,10 @@ class ProviderEventSink(Protocol):
     async def result(self, info: ResultInfo) -> None: ...
 
     async def usage(self, info: UsageInfo) -> None: ...
+
+    async def limit_hit(self, hit: LimitHit) -> None:
+        """The usage limit was reached: the engine refuses requests until it resets (B78)."""
+        ...
 
     async def provider_session_id(self, session_id: str) -> None: ...
 

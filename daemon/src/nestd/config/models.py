@@ -98,6 +98,8 @@ class NotificationKinds(_Strict):
     stuck: bool = False
     # A pixie's report at or above the pixie's `report_push` severity (B42).
     pixie_report: bool = True
+    # A chat paused at the usage limit; it goes on by itself after the reset (B78).
+    usage_limit: bool = True
 
 
 class QuietHours(_Strict):

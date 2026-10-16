@@ -113,6 +113,15 @@ async def interrupt(session_id: str, ctx: Context) -> Response:
     return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
+@router.post("/{session_id}/limit/resume", status_code=status.HTTP_202_ACCEPTED)
+async def resume_limit(session_id: str, ctx: Context) -> Session:
+    """Resume now (B78): end the chat's usage limit pause and go on at once, with its queued
+    messages, else a message that lets Claude continue. A limit that still holds pauses it
+    again. 409 `not_paused` when it is not paused.
+    """
+    return await ctx.sessions.resume_limit(session_id)
+
+
 @router.post("/{session_id}/tasks/{task_id}/stop", status_code=status.HTTP_202_ACCEPTED)
 async def stop_task(session_id: str, task_id: str, ctx: Context) -> Response:
     """Stop one background task or subagent of the chat's agent, not the turn (B59);

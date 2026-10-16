@@ -5,6 +5,7 @@ turns answering user messages and turns the agent starts on its own.
 import asyncio
 from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from nestd.config.models import PermissionMode
@@ -15,6 +16,8 @@ from nestd.providers.base import (
     ContextUsage,
     EngineDetails,
     ForkPoint,
+    LimitHit,
+    LimitWindow,
     McpServer,
     MessageBlock,
     PermissionDecision,
@@ -32,6 +35,7 @@ from nestd.providers.base import (
     UsageInfo,
     UserInput,
 )
+from tests.fakes import START
 from tests.git_support import commit_file
 
 type Turn = Callable[["FakeRun"], Awaitable[None]]
@@ -228,6 +232,39 @@ def engine_error(*errors: str, subtype: str = "error_during_execution") -> Turn:
         await run.sink.result(
             RESULT.model_copy(update={"is_error": True, "subtype": subtype, "errors": [*errors]})
         )
+
+    return turn
+
+
+# When the usage limit of the `limited` turns resets (B78).
+RESETS = START + timedelta(hours=2)
+LIMIT_ERROR = RESULT.model_copy(
+    update={"is_error": True, "subtype": "error_during_execution", "errors": ["limit reached"]}
+)
+
+
+def limited(resets_at: datetime | None = RESETS, window: LimitWindow | None = "five_hour") -> Turn:
+    """The engine says the usage limit was reached mid-turn, then ends the turn with an
+    error (B78).
+    """
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.provider_session_id("sdk-1")
+        await run.sink.text_delta("working")
+        await run.sink.limit_hit(LimitHit(window=window, resets_at=resets_at))
+        await run.sink.result(LIMIT_ERROR)
+
+    return turn
+
+
+def cut_off() -> Turn:
+    """The usage limit cuts the agent's message off; the engine names no reset (B78)."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.provider_session_id("sdk-1")
+        await run.sink.message([TextBlock(text="You've hit your limit")], None)
+        await run.sink.limit_hit(LimitHit(cut_off=True))
+        await run.sink.result(RESULT)
 
     return turn
 
