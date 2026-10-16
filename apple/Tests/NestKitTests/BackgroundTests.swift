@@ -78,6 +78,24 @@ import Testing
         #expect(BackgroundSummary.empty.items.isEmpty)
     }
 
+    @Test func labelsTheRunningItemsOnly() {
+        #expect(summary.runningLabel == "1 running task")
+        var more = summary
+        more.items[0].status = .running
+        more.items[2].status = .running
+        #expect(more.runningLabel == "3 running tasks")
+        #expect(BackgroundSummary.empty.runningLabel == "0 running tasks")
+    }
+
+    @Test func showsHowLongEachItemRan() {
+        let start = summary.items[1].startedAt!
+        #expect(summary.items[1].duration(at: start.addingTimeInterval(75)) == "1m 15s")
+        #expect(summary.items[0].duration(at: .distantFuture) == "25s")
+        var unstarted = summary.items[0]
+        unstarted.startedAt = nil
+        #expect(unstarted.duration(at: start) == nil)
+    }
+
     @Test func aFinishedTaskMovesItsRunningItemToCompleted() {
         var copy = summary
         let at = Date(timeIntervalSince1970: 1_791_278_100)
@@ -230,5 +248,20 @@ import Testing
         let watched = store.watchList(sessions, open: ["old", "pane"], now: now)
 
         #expect(watched == ["running", "recent", sessionID, "old", "pane"])
+    }
+}
+
+@Suite struct BackgroundBarStateTests {
+    @Test func togglesAChatsBarAndForgetsItOnDelete() {
+        var state = ProjectState()
+        state.openChat("c1", in: CGSize(width: 1000, height: 600))
+        state.toggleBackground("c1")
+        state.toggleBackground("c2")
+        #expect(state.expandedBackground == ["c1", "c2"])
+        state.toggleBackground("c2")
+        #expect(state.expandedBackground == ["c1"])
+        state.forget("c1")
+        #expect(state.expandedBackground.isEmpty)
+        #expect(state.layout.leaves.isEmpty)
     }
 }

@@ -152,6 +152,10 @@
                 try await renderMemberCalls(model, shell, controller, folder)
                 return
             }
+            if only == "b76" {
+                try await renderBackground(model, shell, controller, folder)
+                return
+            }
             if only == "b71" {
                 try await renderQuieterChats(model, shell, controller, folder)
                 return
@@ -2422,8 +2426,9 @@
             shell.close()
         }
 
-        /// B22 and I-003: an idle chat, and the banner offering to start the daemon's service,
-        /// then showing how to install it.
+        /// B22, B76 and I-003: the bar of running tasks above the composer, collapsed beside
+        /// a chat with nothing running (no bar), then open in two chats; and the banner
+        /// offering to start the daemon's service, then showing how to install it.
         private static func renderBackground(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -2434,11 +2439,21 @@
                 state.leftCollapsed = false
                 state.rightCollapsed = false
                 state.openCards = [.goals]
+                state.expandedBackground = []
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c2")
+            }
+            try await pair(controller, "background-bar", folder)
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
                 state.openChat("c2", in: workspace)
                 state.openChat("c3", in: workspace)
                 state.focusPane("c2")
+                state.expandedBackground = ["c2", "c3"]
             }
-            try await pair(controller, "background-agents", folder)
+            try await pair(controller, "background-bar-expanded", folder)
+            model.app.update("cv-page") { $0.expandedBackground = [] }
 
             model.app.connection = .reconnecting(attempt: 3, delay: 8)
             try await pair(controller, "service-offer", folder)

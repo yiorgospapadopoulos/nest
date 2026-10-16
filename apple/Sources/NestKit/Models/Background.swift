@@ -27,6 +27,11 @@ public struct BackgroundItem: Codable, Sendable, Hashable, Identifiable {
     }
 
     public var isRunning: Bool { status == .running }
+
+    /// How long it ran, or has been running at `now`; nil without a start time.
+    public func duration(at now: Date) -> String? {
+        startedAt.map { Elapsed.duration(from: $0, to: finishedAt ?? now) }
+    }
 }
 
 /// A session's subagents and background commands, oldest first, with their counts.
@@ -39,6 +44,12 @@ public struct BackgroundSummary: Codable, Sendable, Hashable {
     public static let empty = BackgroundSummary(running: 0, completed: 0, items: [])
 
     public var runningItems: [BackgroundItem] { items.filter(\.isRunning) }
+
+    /// The Mac's bar above the composer (B76), such as "1 running task".
+    public var runningLabel: String {
+        let count = runningItems.count
+        return count == 1 ? "1 running task" : "\(count) running tasks"
+    }
 
     /// Applies a task's end ahead of the next snapshot: the item started by that tool call
     /// stops running.
