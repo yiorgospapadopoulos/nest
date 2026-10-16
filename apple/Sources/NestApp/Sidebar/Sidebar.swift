@@ -120,8 +120,12 @@ private struct GroupSection: View {
             .pointerStyle(.link)
             .accessibilityLabel("Archived, \(group.entries.count)")
             ArchivedRows(open: open) { rows }
-        } else {
+        } else if group.showsTitle {
             header { EmptyView() }
+            rows
+        } else {
+            // The only list, untitled while nothing is pinned (B77).
+            Color.clear.frame(height: 6)
             rows
         }
     }
@@ -130,7 +134,7 @@ private struct GroupSection: View {
         ForEach(group.entries) { entry in
             switch entry {
             case .session(let session):
-                ChatRow(session: session, finished: group.kind == .done)
+                ChatRow(session: session, finished: session.state == .closed)
                 // Its pixies and running subagents, joined to it by tree lines (B46).
                 if group.kind != .archived {
                     ChatTreeView(chat: session.id)

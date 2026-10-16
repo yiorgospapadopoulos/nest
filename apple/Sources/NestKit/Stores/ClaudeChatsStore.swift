@@ -29,42 +29,48 @@ public enum SidebarEntry: Sendable, Hashable, Identifiable {
     }
 }
 
+/// The Mac sidebar's groups (B77): pinned chats, every other chat, and Archived.
+public enum SidebarSection: String, Sendable, CaseIterable {
+    case pinned, chats, archived
+
+    public var title: String {
+        switch self {
+        case .pinned: "Pinned"
+        case .chats: "Chats"
+        case .archived: "Archived"
+        }
+    }
+}
+
 /// A sidebar group with its rows.
 public struct SidebarGroup: Sendable, Hashable, Identifiable {
-    public let kind: SessionGroupKind
+    public let kind: SidebarSection
     public let entries: [SidebarEntry]
+    /// Whether the group's title shows: Chats has none unless pinned chats come first.
+    public let showsTitle: Bool
 
-    public var id: SessionGroupKind { kind }
+    public var id: SidebarSection { kind }
 
-    /// The sessions' groups with the repo's Claude Code chats added to Idle, or to
-    /// Archived once archived; those groups' rows are sorted by last activity, newest first.
-    public static func merge(_ groups: [SessionGroup], chats: [ClaudeChat]) -> [SidebarGroup] {
-        var merged = groups.map {
-            SidebarGroup(kind: $0.kind, entries: $0.sessions.map(SidebarEntry.session))
-        }
-        add(chats.filter { !$0.archived }, to: .idle, in: &merged)
-        add(chats.filter(\.archived), to: .archived, in: &merged)
-        return merged
-    }
-
-    private static func add(
-        _ chats: [ClaudeChat], to kind: SessionGroupKind, in merged: inout [SidebarGroup]
-    ) {
-        guard !chats.isEmpty else { return }
-        let order = SessionGroupKind.allCases
-        let index =
-            merged.firstIndex { $0.kind == kind }
-            ?? merged.firstIndex { order.firstIndex(of: $0.kind)! > order.firstIndex(of: kind)! }
-            ?? merged.count
-        let existing = merged.indices.contains(index) && merged[index].kind == kind
-        let entries =
-            ((existing ? merged[index].entries : []) + chats.map(SidebarEntry.claudeChat))
-            .sorted { ($0.lastActivity, $0.id) > ($1.lastActivity, $1.id) }
-        let group = SidebarGroup(kind: kind, entries: entries)
-        if existing {
-            merged[index] = group
-        } else {
-            merged.insert(group, at: index)
+    /// The project's chats in one list, newest activity first whatever their state, with
+    /// pinned ones above it and archived ones apart at the end; empty groups are left
+    /// out. Claude Code chats are never pinned.
+    public static func list(sessions: [Session], chats: [ClaudeChat]) -> [SidebarGroup] {
+        let live = sessions.filter { !$0.isArchived }
+        let pinned = live.filter(\.pinned).map(SidebarEntry.session)
+        let rest =
+            live.filter { !$0.pinned }.map(SidebarEntry.session)
+            + chats.filter { !$0.archived }.map(SidebarEntry.claudeChat)
+        let archived =
+            sessions.filter(\.isArchived).map(SidebarEntry.session)
+            + chats.filter(\.archived).map(SidebarEntry.claudeChat)
+        let groups: [(SidebarSection, [SidebarEntry])] = [
+            (.pinned, pinned), (.chats, rest), (.archived, archived),
+        ]
+        return groups.filter { !$0.1.isEmpty }.map { kind, entries in
+            SidebarGroup(
+                kind: kind,
+                entries: entries.sorted { ($0.lastActivity, $0.id) > ($1.lastActivity, $1.id) },
+                showsTitle: kind != .chats || !pinned.isEmpty)
         }
     }
 }

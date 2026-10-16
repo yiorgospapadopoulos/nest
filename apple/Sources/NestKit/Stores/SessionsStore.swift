@@ -1,27 +1,9 @@
 import Foundation
 import Observation
 
-/// The sidebar's groups, in display order.
+/// The groups of the iPhone's chat list, in display order (`design/ui-rules.json`).
 public enum SessionGroupKind: String, Sendable, CaseIterable {
     case pinned, needsYou, running, idle, done, archived
-
-    public var title: String {
-        switch self {
-        case .pinned: "Pinned"
-        case .needsYou: "Needs you"
-        case .running: "Running"
-        case .idle: "Idle"
-        case .done: "Done"
-        case .archived: "Archived"
-        }
-    }
-}
-
-public struct SessionGroup: Sendable, Hashable, Identifiable {
-    public let kind: SessionGroupKind
-    public let sessions: [Session]
-
-    public var id: SessionGroupKind { kind }
 }
 
 /// The Board view's columns, in display order.
@@ -94,15 +76,8 @@ public final class SessionsStore {
         }
     }
 
-    /// Sidebar groups; empty groups are left out. Archived sessions only appear under
-    /// Archived, and pinned ones only under Pinned.
-    public func groups(in repo: String) -> [SessionGroup] {
-        let grouped = Dictionary(grouping: sessions(in: repo), by: group(of:))
-        return SessionGroupKind.allCases.compactMap { kind in
-            grouped[kind].map { SessionGroup(kind: kind, sessions: $0) }
-        }
-    }
-
+    /// A chat's group in the iPhone's chat list (`design/ui-rules.json`); the Mac lists
+    /// chats by time instead (B77) but shares the rule.
     public func group(of session: Session) -> SessionGroupKind {
         if session.isArchived {
             return .archived
