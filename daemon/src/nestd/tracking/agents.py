@@ -15,7 +15,13 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from nestd.providers.base import AgentTask, MessageBlock, ToolResultBlock, ToolUseBlock
+from nestd.providers.base import (
+    AGENT_TOOLS,
+    AgentTask,
+    MessageBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from nestd.tracking.models import (
     AgentStatus,
     AgentStep,
@@ -26,8 +32,6 @@ from nestd.tracking.models import (
 from nestd.tracking.steps import short_arg, short_result
 
 MAIN = "main"
-# "Task" is the tool's name in older Claude Code versions.
-AGENT_TOOLS = frozenset({"Agent", "Task"})
 BASH_TOOL = "Bash"
 # The engine's task type for a shell command.
 LOCAL_BASH = "local_bash"

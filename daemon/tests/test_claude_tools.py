@@ -3,9 +3,12 @@ from typing import Any, cast
 
 from pydantic import JsonValue
 
-from nestd.providers.base import AgentTool, ToolRefusedError
+from nestd.providers.base import AgentTool, CallRules, ToolRefusedError
 from nestd.providers.claude_tools import (
+    MEMBER_CALL_DENIED,
+    PIXIE_CALL_DENIED,
     TOOL_SERVER,
+    call_guard,
     own_tool_names,
     to_sdk_tool,
     tool_servers,
@@ -72,3 +75,90 @@ async def test_the_write_guard_keeps_edits_inside_the_root(tmp_path: Path) -> No
     assert other_event == {}
     for denied in (relative, empty, through_link, outside, escape, notebook):
         assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+RULES = CallRules(
+    pixies=frozenset({"lead", "bugs", "style", "solo"}),
+    main=frozenset({"lead", "solo"}),
+    leaders={"lead": frozenset({"bugs", "style"})},
+)
+
+
+async def call(
+    tool_input: dict[str, Any], caller: str | None = None, tool: str = "Agent"
+) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": tool,
+        "tool_input": tool_input,
+    }
+    if caller is not None:
+        data |= {"agent_id": "a-1", "agent_type": caller}
+    return cast(dict[str, Any], await call_guard(RULES)(cast(Any, data), None, cast(Any, {})))
+
+
+def denial(output: dict[str, Any]) -> str:
+    specific = output["hookSpecificOutput"]
+    assert specific["permissionDecision"] == "deny"
+    return specific["permissionDecisionReason"]
+
+
+async def test_the_main_agent_calls_solo_pixies_and_leaders_only() -> None:
+    assert await call({"subagent_type": "solo", "prompt": "p"}) == {}
+    assert await call({"subagent_type": "lead"}, tool="Task") == {}
+    assert denial(await call({"subagent_type": "bugs"})) == MEMBER_CALL_DENIED.format(slug="bugs")
+    assert MEMBER_CALL_DENIED.format(slug="bugs") == (
+        "bugs is in a team and is called only by its leader. Hand the request to the team's"
+        " leader instead; it calls its members."
+    )
+
+
+async def test_ordinary_subagents_are_never_touched() -> None:
+    for caller in (None, "lead", "bugs", "Explore"):
+        assert await call({"subagent_type": "Explore", "prompt": "p"}, caller) == {}
+        assert await call({"prompt": "no type"}, caller) == {}
+        assert await call({"subagent_type": 7}, caller) == {}
+    assert await call(cast(Any, "not a dict")) == {}
+
+
+async def test_only_a_leader_calls_pixies_and_only_its_own_members() -> None:
+    for caller, target in (
+        ("bugs", "style"),
+        ("solo", "bugs"),
+        ("Explore", "solo"),
+        ("general-purpose", "lead"),
+        ("lead", "solo"),
+        ("lead", "lead"),
+    ):
+        assert denial(await call({"subagent_type": target}, caller)) == PIXIE_CALL_DENIED
+    assert PIXIE_CALL_DENIED == (
+        "Only a team's leader calls pixies, and only its own team's members. Use Claude"
+        " Code's ordinary subagents (such as Explore or general-purpose) instead."
+    )
+
+
+async def test_a_subagent_without_a_type_calls_no_pixies() -> None:
+    data = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "tool_input": {"subagent_type": "bugs"},
+        "agent_id": "a-1",
+    }
+
+    output = await call_guard(RULES)(cast(Any, data), None, cast(Any, {}))
+
+    assert denial(cast(dict[str, Any], output)) == PIXIE_CALL_DENIED
+
+
+async def test_a_leader_waits_for_each_member_it_calls() -> None:
+    waiting = {"subagent_type": "bugs", "prompt": "p", "run_in_background": False}
+
+    assert await call(waiting, "lead") == {}
+    for asked in ({"subagent_type": "bugs", "prompt": "p"}, {**waiting, "run_in_background": True}):
+        # No permission decision: the call still goes through the usual permission checks.
+        assert await call(asked, "lead") == {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "updatedInput": {**asked, "run_in_background": False},
+            }
+        }

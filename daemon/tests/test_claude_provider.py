@@ -30,6 +30,7 @@ from nestd.providers.base import (
     AccountInfo,
     AgentTask,
     AgentTool,
+    CallRules,
     CommandCatalog,
     ContextUsage,
     EngineDetails,
@@ -1090,3 +1091,30 @@ async def test_no_subagents_passes_none(tmp_path: Path) -> None:
     options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
 
     assert options.agents is None
+
+
+async def test_call_rules_guard_the_agent_tools(tmp_path: Path) -> None:
+    rules = CallRules(pixies=frozenset({"bugs"}), main=frozenset())
+    spec = SessionSpec(cwd=tmp_path, permission_mode="default", call_rules=rules)
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+    assert options.hooks is not None
+    matcher = options.hooks["PreToolUse"][-1]
+    (guard,) = matcher.hooks
+    called = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "tool_input": {"subagent_type": "bugs"},
+    }
+    output = cast(Any, await guard(cast(Any, called), None, cast(Any, {})))
+
+    assert matcher.matcher == "Agent|Task"
+    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+    # Without rules no agent call is guarded.
+    unguarded = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default"),
+        ScriptedHandler(PermissionDecision("allow")),
+        tmp_path,
+    )
+    assert unguarded.hooks is not None
+    assert [m.matcher for m in unguarded.hooks["PreToolUse"]] == ["*", "AskUserQuestion"]

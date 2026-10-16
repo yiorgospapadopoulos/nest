@@ -31,6 +31,7 @@ from nestd.config.models import PermissionMode
 from nestd.gitops.remotes import scrub_credentials
 from nestd.logging_setup import ENGINE_STDERR_LOGGER
 from nestd.providers.base import (
+    AGENT_TOOLS,
     ApprovalHandler,
     ContextUsage,
     ForkPoint,
@@ -64,6 +65,7 @@ from nestd.providers.claude_thinking import ThinkingTimer
 from nestd.providers.claude_tools import (
     SUBAGENT_DENIED,
     WRITE_TOOLS,
+    call_guard,
     own_tool_names,
     subagent_guard,
     tool_servers,
@@ -223,6 +225,10 @@ def build_options(
     if own_tools:
         pre_tool_use.append(
             HookMatcher(matcher="|".join(sorted(own_tools)), hooks=[subagent_guard(own_tools)])
+        )
+    if spec.call_rules is not None:
+        pre_tool_use.append(
+            HookMatcher(matcher="|".join(sorted(AGENT_TOOLS)), hooks=[call_guard(spec.call_rules)])
         )
     if spec.write_root is not None:
         pre_tool_use.append(
