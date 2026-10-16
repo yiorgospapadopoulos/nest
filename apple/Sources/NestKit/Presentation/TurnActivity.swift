@@ -131,6 +131,38 @@ public struct PixieCallEntry: Sendable, Hashable, Identifiable {
     public let slug: String
     /// It has no answer and its turn is open, or its background task runs.
     public let isRunning: Bool
+    /// It was made inside another pixie's call, such as a team leader's call of a member
+    /// (B75): its row is the pixie's own, never a team's.
+    public var isNested = false
+
+    /// What the opened call shows: its steps in order, an agent call of one of the
+    /// `pixies` (by slug) among them as that pixie's own row (B75). Such a call without an
+    /// answer runs while this one does; once this one can no longer run, it is stopped.
+    public func steps(pixies: Set<String>) -> [CallStepRow] {
+        call.steps.map { step in
+            guard case .call(var inner) = step.kind, let slug = inner.subagentType,
+                pixies.contains(slug)
+            else { return .step(step) }
+            inner.stopped = inner.result == nil && !isRunning
+            return .pixieCall(
+                PixieCallEntry(
+                    id: inner.id, call: inner, slug: slug,
+                    isRunning: isRunning && inner.result == nil, isNested: true))
+        }
+    }
+}
+
+/// A line of an opened pixie call: one of its steps, or a pixie's call it made (B75).
+public enum CallStepRow: Sendable, Hashable, Identifiable {
+    case step(CallStep)
+    case pixieCall(PixieCallEntry)
+
+    public var id: String {
+        switch self {
+        case .step(let step): step.id
+        case .pixieCall(let call): call.id
+        }
+    }
 }
 
 /// A transcript row: an item, a group of tool calls, or a pixie's call.
