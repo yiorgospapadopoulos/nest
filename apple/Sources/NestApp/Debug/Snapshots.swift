@@ -156,6 +156,10 @@
                 try await renderBackground(model, shell, controller, folder)
                 return
             }
+            if only == "b77" {
+                try await renderChatList(model, shell, controller, folder)
+                return
+            }
             if only == "b73" {
                 try await renderWindowLayout(model, shell, controller, folder)
                 return
@@ -2464,6 +2468,35 @@
             await controller.service.start()
             try await pair(controller, "service-install", folder)
             model.app.connection = .connected
+        }
+
+        /// B77: one chat list by latest activity, pinned chats on top only when there are
+        /// any; Needs you and Goals as matching rows with a chevron on the right.
+        private static func renderChatList(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = Set(RightCard.allCases)
+                state.openChat("c1", in: workspace)
+                state.focusPane("c1")
+            }
+            try await pair(controller, "chat-list-pinned", folder)
+            shell.foldedRows["approval-q2"] = true
+            try await pair(controller, "chat-list-row-open", folder)
+            shell.foldedRows = [:]
+            if var pinned = model.sessions.session("c6") {
+                pinned.pinned = false
+                model.sessions.insert(pinned)
+                try await pair(controller, "chat-list-no-pins", folder)
+                pinned.pinned = true
+                model.sessions.insert(pinned)
+            }
         }
 
         /// B73: no bar over the project; its menu and branch at the top of the sidebar,
