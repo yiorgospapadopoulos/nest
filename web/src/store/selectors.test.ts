@@ -38,6 +38,7 @@ import {
   memberCall,
   soloPixies,
   pixieList,
+  pixieWorking,
   stuckChats,
   teamList,
 } from "./selectors.ts";
@@ -592,5 +593,48 @@ describe("a chat's tree (B46)", () => {
       ["a8", []],
       ["a9", []],
     ]);
+  });
+});
+
+describe("whether a pixie is at work (B48)", () => {
+  const scribe = pixie({ id: "p1", chat_session_id: "own" });
+  const base = (overrides: Partial<State> = {}): State => ({
+    ...initialState,
+    pixies: { p1: scribe },
+    ...overrides,
+  });
+  const member = (state: TeamMemberState) => ({ pixie_id: "p1", leader: false, state });
+  type TeamMemberState = "running" | "done" | null;
+
+  it("is at work while its own chat starts or runs", () => {
+    for (const [chat, working] of [
+      ["starting", true],
+      ["running", true],
+      ["waiting", false],
+      ["idle", false],
+    ] as const) {
+      const sessions = { own: session({ id: "own", state: chat, pixie_id: "p1" }) };
+      expect(pixieWorking(base({ sessions }), scribe)).toBe(working);
+    }
+    // Its chat not read yet, or none at all.
+    expect(pixieWorking(base(), scribe)).toBe(false);
+    expect(pixieWorking(base(), { ...scribe, chat_session_id: null })).toBe(false);
+  });
+
+  it("is at work while any chat's call of it runs, alone or with its team", () => {
+    const solo = (state: "running" | "done", id = "p1") => groupEntry({ pixie_id: id, state });
+    const crew = (state: TeamMemberState) =>
+      groupEntry({ kind: "team", pixie_id: null, team_id: "t1", members: [member(state)] });
+    expect(pixieWorking(base({ pixieGroups: { s1: [solo("done")] } }), scribe)).toBe(false);
+    expect(pixieWorking(base({ pixieGroups: { s1: [solo("running", "p2")] } }), scribe)).toBe(
+      false,
+    );
+    expect(
+      pixieWorking(base({ pixieGroups: { s1: [solo("done")], s2: [solo("running")] } }), scribe),
+    ).toBe(true);
+    expect(pixieWorking(base({ pixieGroups: { s1: [crew(null), crew("done")] } }), scribe)).toBe(
+      false,
+    );
+    expect(pixieWorking(base({ pixieGroups: { s1: [crew("running")] } }), scribe)).toBe(true);
   });
 });

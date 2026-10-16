@@ -126,6 +126,22 @@ export function chatTree(state: State, sessionId: string): ChatTree {
   return { pixies, subagents: nodes(null) };
 }
 
+/**
+ * Whether a pixie is at work (B48): its own chat starts or runs, or a call of it runs in
+ * any chat, alone or with its team.
+ */
+export function pixieWorking(state: State, pixie: Pixie): boolean {
+  const own = pixie.chat_session_id === null ? undefined : state.sessions[pixie.chat_session_id];
+  if (own?.state === "starting" || own?.state === "running") return true;
+  return Object.values(state.pixieGroups).some((group) =>
+    group.some((entry) =>
+      entry.kind === "team"
+        ? entry.members.some((m) => m.pixie_id === pixie.id && m.state === "running")
+        : entry.pixie_id === pixie.id && entry.state === "running",
+    ),
+  );
+}
+
 export function pendingFor(state: State, sessionId: string): Approval[] {
   return Object.values(state.approvals)
     .filter((a) => a.session_id === sessionId)

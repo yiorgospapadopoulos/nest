@@ -1317,6 +1317,61 @@ a.csign {
 .pxr .pxs {
   flex: none;
 }
+/* A working pixie's sprite (B48), the same clock as the Mac app: hard 170 ms steps, a
+   cell up for the middle two of every four, and a blink on every third hop. Each sprite
+   starts at its own phase (--pxph, a negative delay); a 1px move is one grid cell. */
+.pxwork .pxhop {
+  animation-name: pxhop;
+  animation-duration: 680ms;
+  animation-timing-function: step-end;
+  animation-iteration-count: infinite;
+  animation-delay: var(--pxph);
+}
+.pxlid {
+  opacity: 0;
+}
+.pxwork .pxlid {
+  animation-name: pxblink;
+  animation-duration: 2040ms;
+  animation-timing-function: step-end;
+  animation-iteration-count: infinite;
+  animation-delay: var(--pxph);
+}
+.pxwork .pxeye {
+  animation-name: pxwink;
+  animation-duration: 2040ms;
+  animation-timing-function: step-end;
+  animation-iteration-count: infinite;
+  animation-delay: var(--pxph);
+}
+@keyframes pxhop {
+  0%,
+  75% {
+    transform: none;
+  }
+  25% {
+    transform: translateY(-1px);
+  }
+}
+/* Eye holes fill, and lone eye cells go out, from 1530 ms to 1870 ms of 2040. */
+@keyframes pxblink {
+  0%,
+  91.6666% {
+    opacity: 0;
+  }
+  75% {
+    opacity: 1;
+  }
+}
+@keyframes pxwink {
+  0%,
+  91.6666% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0;
+  }
+}
 /* In a pixie row the name has priority: the @handle starts from no width and only grows
    into the room the name and tags leave, so it truncates first, down to nothing, and only
    then does the name truncate. */
@@ -1464,6 +1519,12 @@ div.pxr:active {
 }
 .ch-t .pxs {
   vertical-align: -3px;
+  margin-right: 8px;
+}
+/* Under Reduce Motion the header's still sprite has a working dot after it (B48). */
+.ch-t .prun {
+  display: inline-block;
+  vertical-align: 1px;
   margin-right: 8px;
 }
 .pxtabs {
@@ -2170,6 +2231,29 @@ div.pxr:active {
 .ctic .ic {
   width: 15px;
   height: 15px;
+}
+/* A team's grid of four sprites (B48): a little wider than a pixie's, it spills into the
+   gap after it so the names stay lined up with the pixie rows'. */
+.ctic.ctteam {
+  width: 22px;
+  margin-right: -4px;
+  grid-template-columns: repeat(2, 10px);
+  gap: 2px;
+}
+.ctteam .pxs {
+  display: block;
+}
+/* The same grid before a team's name in its work page's header. */
+.wkteam {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 11px);
+  gap: 2px;
+  vertical-align: -3px;
+  margin-right: 8px;
+}
+.wkteam .pxs {
+  display: block;
+  margin: 0;
 }
 .ctic.pxtname {
   color: color-mix(in srgb, var(--px) 75%, var(--t1));

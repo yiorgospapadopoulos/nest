@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GroupEntry, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import {
@@ -12,6 +12,9 @@ import {
   team,
   trackedAgent,
 } from "../../test/fixtures.ts";
+import { defined } from "../../test/defined.ts";
+import { reduceMotion } from "../../test/motion.ts";
+import { phaseOffset } from "../pixies/motion.ts";
 import { renderApp } from "../../test/render.tsx";
 
 const SCRIBE = pixie({ id: "scribe", slug: "scribe", name: "Scribe", color: "#E5484D" });
@@ -47,6 +50,10 @@ async function openList(api: FakeApi) {
   await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
   return rendered;
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const tree = (title: string) => screen.getByRole("list", { name: `Working in ${title}` });
 
@@ -97,6 +104,59 @@ describe("each chat's tree (B46)", () => {
     expect(within(subagents).getAllByRole("button")).toHaveLength(2);
     // A chat with nothing working has no tree.
     expect(screen.queryByRole("list", { name: "Working in Quiet chat" })).not.toBeInTheDocument();
+  });
+
+  it("hops the sprites whose calls run, and shows a team as a grid of four (B48)", async () => {
+    const api = withTree([session()], { s1: [SOLO, TEAM] });
+    await openList(api);
+
+    const list = await waitFor(() => tree("Validate contact form"));
+    const face = (name: string) =>
+      defined(within(list).getByRole("button", { name }).querySelector(".ctic"));
+    expect(face("Scribe, working").querySelector("svg")).toHaveClass("pxwork");
+    expect(face("Lead, leader, done").querySelector("svg")).not.toHaveClass("pxwork");
+    expect(face("Bugs, working").querySelector("svg")).toHaveClass("pxwork");
+
+    // The leader first, then the members in order, repeated to fill the four cells;
+    // only the member at work hops.
+    const grid = face("QA crew, @qa, done");
+    expect(grid).toHaveClass("ctteam");
+    const faces = [...grid.querySelectorAll("svg")];
+    expect(faces.map((f) => f.querySelector("rect")?.getAttribute("fill"))).toEqual([
+      LEAD.color,
+      BUGS.color,
+      LEAD.color,
+      BUGS.color,
+    ]);
+    expect(faces.map((f) => f.classList.contains("pxwork"))).toEqual([false, true, false, true]);
+    expect(faces.map((f) => f.getAttribute("width"))).toEqual(["10", "10", "10", "10"]);
+    // Bugs, shown twice, hops apart from itself: each cell has its own phase.
+    const phase = (cell: number) => defined(faces[cell]).style.getPropertyValue("--pxph");
+    expect(phase(1)).toBe(`-${String(phaseOffset("bugs#1"))}ms`);
+    expect(phase(3)).toBe(`-${String(phaseOffset("bugs#3"))}ms`);
+    expect(phase(1)).not.toBe(phase(3));
+  });
+
+  it("keeps every sprite still under Reduce Motion, the working dots saying it (B48)", async () => {
+    reduceMotion(true);
+    const api = withTree([session()], { s1: [SOLO, TEAM] });
+    await openList(api);
+
+    const list = await waitFor(() => tree("Validate contact form"));
+    expect(list.querySelectorAll("svg.pxwork")).toHaveLength(0);
+    for (const name of ["Scribe, working", "Bugs, working"]) {
+      expect(within(list).getByRole("button", { name }).querySelector(".prun")).not.toBeNull();
+    }
+  });
+
+  it("keeps a team's generic mark while it has no members (B48)", async () => {
+    const api = withTree([session()], { s1: [{ ...TEAM, members: [] }] });
+    await openList(api);
+
+    const list = await waitFor(() => tree("Validate contact form"));
+    const crew = within(list).getByRole("button", { name: "QA crew, @qa, done" });
+    expect(crew.querySelector(".ctteam")).toBeNull();
+    expect(crew.querySelector(".ctic .ic")).toBeInTheDocument();
   });
 
   it("follows the groups and subagents live", async () => {

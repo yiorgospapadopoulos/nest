@@ -5,6 +5,7 @@ import { useStore } from "../../store/context.ts";
 import type { ChatStatus } from "../../store/selectors.ts";
 import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
+import { TeamFace } from "../pixies/TeamFace.tsx";
 import type { WorkOf } from "../projects/ChatTree.tsx";
 import { Frame } from "./Frame.tsx";
 import { lastEvent, liveMessages } from "../../transcript/agentWork.ts";
@@ -30,6 +31,14 @@ function entryOf(group: GroupEntry[], who: WorkOf): GroupEntry | undefined {
     group.find((e) => e.pixie_id === who.pixie) ??
     group.find((e) => e.members.some((m) => m.pixie_id === who.pixie))
   );
+}
+
+/** Whether the pixie's latest call in the entry, alone or with its team, runs (B48). */
+function callRunning(entry: GroupEntry | undefined, pixieId: string): boolean {
+  if (entry?.kind === "team") {
+    return entry.members.some((m) => m.pixie_id === pixieId && m.state === "running");
+  }
+  return entry?.state === "running";
 }
 
 /**
@@ -113,10 +122,21 @@ export function PixieWorkView({ sessionId, who, onBack }: Props) {
     <Frame
       title={name}
       icon={
-        pixie !== undefined && (
+        pixie !== undefined ? (
           <span aria-hidden="true">
-            <Sprite mascot={pixie.mascot} color={pixie.color} size={22} />
+            <Sprite
+              mascot={pixie.mascot}
+              color={pixie.color}
+              size={22}
+              working={callRunning(entry, pixie.id)}
+              phaseKey={pixie.id}
+            />
           </span>
+        ) : (
+          entry !== undefined &&
+          entry.members.length > 0 && (
+            <TeamFace members={entry.members} pixies={state.pixies} className="wkteam" size={11} />
+          )
         )
       }
       {...(entry === undefined ? {} : { status: STATUS[entry.state] })}
@@ -140,7 +160,13 @@ export function PixieWorkView({ sessionId, who, onBack }: Props) {
                 {"team" in who && by !== undefined && (
                   <span className="wkby">
                     <span aria-hidden="true">
-                      <Sprite mascot={by.mascot} color={by.color} size={16} />
+                      <Sprite
+                        mascot={by.mascot}
+                        color={by.color}
+                        size={16}
+                        working={call.state === "running"}
+                        phaseKey={by.id}
+                      />
                     </span>
                     {by.name}
                   </span>

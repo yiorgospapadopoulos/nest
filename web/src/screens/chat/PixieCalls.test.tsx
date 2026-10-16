@@ -121,3 +121,16 @@ describe("pixie calls in the chat", () => {
     expect(screen.queryByText("@stranger", { selector: ".m-u span" })).not.toBeInTheDocument();
   });
 });
+
+describe("a pixie call's sprite (B48)", () => {
+  it("hops while the call runs, and rests once it answered", async () => {
+    const { push } = await openChat([message(1, null, callTester("a1"))], "running");
+    const sprite = () =>
+      defined(screen.getByRole("button", { name: "Open Tester" }).querySelector("svg"));
+    expect(sprite()).toHaveClass("pxwork");
+
+    push(message(2, null, { type: "tool_result", tool_use_id: "a1", content: "All good" }));
+    expect(await screen.findByText("All good")).toBeInTheDocument();
+    expect(sprite()).not.toHaveClass("pxwork");
+  });
+});

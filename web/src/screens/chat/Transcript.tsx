@@ -580,7 +580,13 @@ function PixieCall({ item, ev, running, onOpenPixie }: PixieCallProps) {
           }}
         >
           <span aria-hidden="true">
-            <Sprite mascot={pixie.mascot} color={pixie.color} size={18} />
+            <Sprite
+              mascot={pixie.mascot}
+              color={pixie.color}
+              size={18}
+              working={busy}
+              phaseKey={pixie.id}
+            />
           </span>
           <span className="tn">{pixie.name}</span>
         </button>

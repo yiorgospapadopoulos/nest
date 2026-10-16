@@ -25,9 +25,12 @@ const SKILL_LIST = "pixie-skills";
  */
 export function PixieDetails({
   pixie,
+  working,
   onOpenChat,
 }: {
   pixie: Pixie;
+  // At work, so its big sprite hops (B48); the page header shows it under Reduce Motion.
+  working: boolean;
   // A chat named in its activity log.
   onOpenChat: (sessionId: string) => void;
 }) {
@@ -56,7 +59,7 @@ export function PixieDetails({
 
   return (
     <>
-      <PixieHeader pixie={pixie} save={save} />
+      <PixieHeader pixie={pixie} working={working} save={save} />
       <PixieLook pixie={pixie} save={save} />
 
       <PixieSettings pixie={pixie} save={save} />
@@ -241,7 +244,13 @@ export function PixieDetails({
 }
 
 /** The big sprite, then the name and the @slug, each edited in place. */
-function PixieHeader({ pixie, save }: { pixie: Pixie; save: (body: UpdatePixieBody) => void }) {
+interface HeaderProps {
+  pixie: Pixie;
+  working: boolean;
+  save: (body: UpdatePixieBody) => void;
+}
+
+function PixieHeader({ pixie, working, save }: HeaderProps) {
   const { actions } = useStore();
   const [editing, setEditing] = useState<"name" | "slug" | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -250,7 +259,13 @@ function PixieHeader({ pixie, save }: { pixie: Pixie; save: (body: UpdatePixieBo
   };
   return (
     <div className="pxhead">
-      <Sprite mascot={pixie.mascot} color={pixie.color} size={96} />
+      <Sprite
+        mascot={pixie.mascot}
+        color={pixie.color}
+        size={96}
+        working={working}
+        phaseKey={pixie.id}
+      />
       {editing === "name" ? (
         <InlineInput
           label="Name"

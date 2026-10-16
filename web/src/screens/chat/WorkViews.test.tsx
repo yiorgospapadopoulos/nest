@@ -386,3 +386,74 @@ describe("a pixie's work in a chat (B46)", () => {
     expect(screen.queryByText("Late")).not.toBeInTheDocument();
   });
 });
+
+describe("sprites at work in a pixie's or team's work (B48)", () => {
+  const header = (page: HTMLElement) => defined(page.querySelector(".ch-t"));
+
+  it("hops the pixie's header sprite while its call runs, and rests once it is done", async () => {
+    const solo = groupEntry({ pixie_id: "scribe", state: "running" });
+    const api = setup({ s1: [solo] });
+    api.pixieCalls.mockResolvedValue([callWork({ state: "running" })]);
+    const { user, push } = await openList(api);
+
+    await user.click(screen.getByRole("button", { name: "Scribe, working" }));
+    const page = await screen.findByRole("region", { name: "Scribe" });
+    expect(header(page).querySelector("svg")).toHaveClass("pxwork");
+    push({
+      type: "session.pixies",
+      session_id: "s1",
+      payload: { group: [{ ...solo, state: "done" }] as never },
+    });
+    await waitFor(() => {
+      expect(header(page).querySelector("svg")).not.toHaveClass("pxwork");
+    });
+  });
+
+  it("shows a team as its grid of four, and hops each running call's maker", async () => {
+    const qa = groupEntry({
+      kind: "team",
+      pixie_id: null,
+      team_id: "qa",
+      state: "running",
+      members: [
+        { pixie_id: "bugs", leader: false, state: "running" },
+        { pixie_id: "lead", leader: true, state: "done" },
+      ],
+      calls: [
+        callEntry({ id: "b1", pixie_id: "bugs", tool_use_id: "t2", state: "running" }),
+        callEntry({ id: "l1", pixie_id: "lead", tool_use_id: "t1" }),
+      ],
+    });
+    const api = setup({ s1: [qa] });
+    api.pixieCalls.mockImplementation((_session, id) =>
+      Promise.resolve(
+        id === "lead"
+          ? [callWork({ id: "l1", pixie_id: "lead", started_at: "2026-10-06T10:00:00Z" })]
+          : [
+              callWork({
+                id: "b1",
+                pixie_id: "bugs",
+                state: "running",
+                started_at: "2026-10-06T10:01:00Z",
+              }),
+            ],
+      ),
+    );
+    const { user } = await openList(api);
+
+    await user.click(screen.getByRole("button", { name: "QA crew, @qa, working" }));
+    const page = defined(
+      (await screen.findAllByRole("region", { name: "QA crew" })).find((r) =>
+        r.classList.contains("push"),
+      ),
+    );
+    const faces = [...header(page).querySelectorAll(".wkteam svg")];
+    // The leader first, then Bugs, repeated; only Bugs is at work.
+    expect(faces.map((f) => f.classList.contains("pxwork"))).toEqual([false, true, false, true]);
+    const calls = await within(page).findAllByRole("region", { name: /call,/i });
+    expect(calls.map((c) => c.querySelector(".wkby svg")?.classList.contains("pxwork"))).toEqual([
+      true,
+      false,
+    ]);
+  });
+});
