@@ -91,8 +91,9 @@ public enum PixieMention: Sendable, Hashable {
 
 public enum PixieMentions {
     /// What a chat of `repo` may call: the teams whose leader is available there, with
-    /// their available members, then the available pixies, each in its order. A team
-    /// with no members has no leader and is left out.
+    /// their available members, then the available pixies not in one of those teams, each
+    /// in its order: a team's pixie is called only through its team (B46). A team with no
+    /// members has no leader and is left out, and so its pixies are called alone.
     public static func available(
         pixies: [Pixie], teams: [PixieTeam], repo: String, souls: [String: String]
     ) -> [PixieMention] {
@@ -103,7 +104,39 @@ public enum PixieMentions {
                 guard members.contains(where: { $0.id == team.leaderID }) else { return nil }
                 return .team(team, members: members)
             }
-        return teamMentions + callable.map { .pixie($0, soul: souls[$0.id]) }
+        let inTeams = Set(memberPairs(teamMentions).map(\.pixie.id))
+        return teamMentions
+            + callable.filter { !inTeams.contains($0.id) }.map { .pixie($0, soul: souls[$0.id]) }
+    }
+
+    /// The pixies of the offered teams by slug, each with its team's handle.
+    public static func members(_ mentions: [PixieMention]) -> [String: String] {
+        var handles: [String: String] = [:]
+        for pair in memberPairs(mentions) {
+            handles[pair.pixie.slug] = pair.team.handle
+        }
+        return handles
+    }
+
+    /// Why the text cannot be sent: it calls a pixie of an offered team with its own
+    /// `@slug`, in the daemon's words; nil when it does not.
+    public static func memberCall(in text: String, mentions: [PixieMention]) -> String? {
+        let pairs = memberPairs(mentions)
+        for name in MentionHighlights.tokens(in: text).map(\.name) {
+            if let pair = pairs.first(where: { $0.pixie.slug == name }) {
+                return "\(pair.pixie.name) is in @\(pair.team.handle); call the team or a solo copy"
+            }
+        }
+        return nil
+    }
+
+    private static func memberPairs(_ mentions: [PixieMention]) -> [(
+        pixie: Pixie, team: PixieTeam
+    )] {
+        mentions.flatMap { mention -> [(pixie: Pixie, team: PixieTeam)] in
+            guard case .team(let team, let members) = mention else { return [] }
+            return members.map { ($0, team) }
+        }
     }
 
     /// Those whose handle, slug or name contains what was typed after the "@".
@@ -234,20 +267,27 @@ public enum MentionHighlights {
     private static let token = try! NSRegularExpression(pattern: #"(?<!\S)@([\w-]+)"#)
 
     /// The mentions of current pixies (in their colour) and teams (in their leader's;
-    /// a team with no leader stays plain). Unknown names stay plain.
-    public static func find(in text: String, pixies: [Pixie], teams: [PixieTeam])
-        -> [MentionHighlight]
-    {
+    /// a team with no leader stays plain). Unknown names stay plain, and so do the slugs in
+    /// `plain`: pixies called only through their team (B46).
+    public static func find(
+        in text: String, pixies: [Pixie], teams: [PixieTeam], plain: Set<String> = []
+    ) -> [MentionHighlight] {
         func color(of name: String) -> String? {
             if let pixie = pixies.first(where: { $0.slug == name }) {
-                return pixie.color
+                return plain.contains(name) ? nil : pixie.color
             }
             return teams.first { $0.handle == name }?.leaderColor(among: pixies)
         }
+        return tokens(in: text).compactMap { token in
+            color(of: token.name).map { MentionHighlight(range: token.range, color: $0) }
+        }
+    }
+
+    /// Each "@name" token: its whole range and the name.
+    static func tokens(in text: String) -> [(range: NSRange, name: String)] {
         let whole = NSRange(text.startIndex..., in: text)
-        return token.matches(in: text, range: whole).compactMap { match in
-            let name = (text as NSString).substring(with: match.range(at: 1))
-            return color(of: name).map { MentionHighlight(range: match.range, color: $0) }
+        return token.matches(in: text, range: whole).map { match in
+            (match.range, (text as NSString).substring(with: match.range(at: 1)))
         }
     }
 }

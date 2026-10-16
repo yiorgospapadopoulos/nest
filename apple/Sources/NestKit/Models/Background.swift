@@ -156,9 +156,11 @@ public struct AgentTask: Decodable, Sendable, Hashable {
     public var background: Bool
     /// How a finished task ended.
     public var status: AgentTaskEnd?
+    /// A finished subagent's report, when the engine gives one (B46).
+    public var summary: String?
 
     enum CodingKeys: String, CodingKey {
-        case phase, description, background, status
+        case phase, description, background, status, summary
         case taskID = "task_id"
         case toolUseID = "tool_use_id"
         case taskType = "task_type"
@@ -173,6 +175,7 @@ public struct AgentTask: Decodable, Sendable, Hashable {
         description = try container.decodeIfPresent(String.self, forKey: .description)
         background = try container.decodeIfPresent(Bool.self, forKey: .background) ?? false
         status = try container.decodeIfPresent(AgentTaskEnd.self, forKey: .status)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
     }
 
     /// The status a finished task leaves its agent or command in.

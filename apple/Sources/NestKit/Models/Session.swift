@@ -175,6 +175,9 @@ public struct TrackedAgent: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
     public var description: String?
+    /// The Agent tool use id of the subagent that started it; nil when the main agent did
+    /// (B46).
+    public var parent: String?
     public var status: AgentStatus
     /// The latest tool call while running, such as "Edit src/x.ts".
     public var activity: String?
@@ -185,7 +188,7 @@ public struct TrackedAgent: Codable, Sendable, Hashable, Identifiable {
     public var isMain: Bool { id == "main" }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, description, status, activity, steps
+        case id, name, description, parent, status, activity, steps
         case startedAt = "started_at"
         case finishedAt = "finished_at"
     }

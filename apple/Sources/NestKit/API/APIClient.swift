@@ -467,6 +467,30 @@ public struct APIClient: NestAPI {
         try await perform("DELETE", ["pixie-teams", id])
     }
 
+    // MARK: Each chat's pixies and subagents (B46)
+
+    public func pixieGroups() async throws -> [String: [ChatPixieEntry]] {
+        try await get("pixie-groups")
+    }
+
+    public func chatPixies(_ id: String) async throws -> [ChatPixieEntry] {
+        try await get("sessions", id, "pixies")
+    }
+
+    public func sendAway(_ id: String, _ request: SendAwayRequest) async throws
+        -> [ChatPixieEntry]
+    {
+        try await call("POST", ["sessions", id, "pixies", "send-away"], body: request)
+    }
+
+    public func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
+        try await get("sessions", id, "pixies", pixie, "calls")
+    }
+
+    public func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
+        try await get("sessions", id, "agents", toolUseID, "transcript")
+    }
+
     /// A name such as `notes/ideas` is one path segment per slash.
     private static func filePath(_ id: String, _ name: String) -> [String] {
         ["pixies", id, "files"] + name.split(separator: "/").map(String.init)

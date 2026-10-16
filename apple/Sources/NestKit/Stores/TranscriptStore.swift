@@ -127,7 +127,9 @@ public final class TranscriptStore {
     /// Events loaded on each side of a focused event, and per Load earlier or newer.
     public static let pageSize = 100
     /// Task list bookkeeping, which the Goals card shows instead.
-    static let hiddenTools: Set<String> = ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]
+    nonisolated static let hiddenTools: Set<String> = [
+        "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+    ]
 
     /// The session id, or the Claude Code chat id.
     public let sessionID: String

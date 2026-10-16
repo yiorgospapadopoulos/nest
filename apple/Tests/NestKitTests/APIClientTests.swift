@@ -305,6 +305,29 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("DELETE", "/api/pixie-teams/t1", response: "") {
             try await $0.deletePixieTeam("t1")
         },
+        RouteCase(
+            "GET", "/api/pixie-groups",
+            response: "{\"s1\": [\(ChatPixieJSON.pixie("p1"))]}"
+        ) { _ = try await $0.pixieGroups() },
+        RouteCase("GET", "/api/sessions/s1/pixies", response: "[]") {
+            _ = try await $0.chatPixies("s1")
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/pixies/send-away", body: #"{"pixie_id":"p1"}"#,
+            response: "[]"
+        ) { _ = try await $0.sendAway("s1", SendAwayRequest(pixieID: "p1")) },
+        RouteCase(
+            "POST", "/api/sessions/s1/pixies/send-away", body: #"{"team_id":"t1"}"#,
+            response: "[]"
+        ) { _ = try await $0.sendAway("s1", SendAwayRequest(teamID: "t1")) },
+        RouteCase(
+            "GET", "/api/sessions/s1/pixies/p1/calls",
+            response: "[\(ChatPixieJSON.work(ChatPixieJSON.call("k1")))]"
+        ) { _ = try await $0.pixieCallWork("s1", pixie: "p1") },
+        RouteCase(
+            "GET", "/api/sessions/s1/agents/tu1/transcript",
+            response: ChatPixieJSON.transcript("tu1")
+        ) { _ = try await $0.agentTranscript("s1", toolUseID: "tu1") },
         RouteCase("GET", "/api/sessions/s1/diff", response: Fixture.text("diff")) {
             _ = try await $0.diff("s1")
         },
