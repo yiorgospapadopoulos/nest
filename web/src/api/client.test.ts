@@ -413,6 +413,7 @@ const calls: Call[] = [
     undefined,
   ],
   ["pixieGroups", (a) => a.pixieGroups(), "GET", "/api/pixie-groups", undefined],
+  ["goals", (a) => a.goals("todo ui"), "GET", "/api/goals?repo=todo%20ui", undefined],
   [
     "sendAway",
     (a) => a.sendAway("s 1", { team_id: "t1" }),

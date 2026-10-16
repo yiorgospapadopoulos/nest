@@ -15,6 +15,7 @@ import { ChatRow } from "./ChatRow.tsx";
 import { ChatTree, type WorkOf } from "./ChatTree.tsx";
 import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
+import { GoalsSection } from "./GoalsSection.tsx";
 import { ProjectSettings } from "./ProjectSettings.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
 import { PixieSection } from "../pixies/PixieSection.tsx";
@@ -129,6 +130,7 @@ export function Projects({
           );
         })}
       </div>
+      {project !== null && <GoalsSection project={project} onOpenChat={onOpenChat} />}
       {empty && <div className="sempty">No chats yet</div>}
       {lists?.groups.map(({ group, chats }) => (
         <section key={group} aria-labelledby={`group-${group}`}>

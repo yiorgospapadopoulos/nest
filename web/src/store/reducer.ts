@@ -3,6 +3,7 @@ import type {
   Approval,
   BackgroundSummary,
   Connector,
+  Goal,
   GroupEntry,
   Habit,
   HabitRun,
@@ -142,6 +143,8 @@ export function reduce(state: State, action: Action): State {
       return upsertApproval(state, action.approval);
     case "tracking":
       return { ...state, tracking: { ...state.tracking, [action.id]: action.tracking } };
+    case "goals":
+      return withGoals(state, action.repo, action.goals);
     case "pixieGroups":
       return { ...state, pixieGroups: action.groups };
     case "pixieGroup":
@@ -359,6 +362,25 @@ export function applyEvent(state: State, event: NestEvent): State {
     default:
       return next;
   }
+}
+
+/**
+ * The goals list every chat of the project's list with steps showing, so a known list of
+ * one it leaves out (cleared by an event this device missed) shows none now.
+ */
+function withGoals(state: State, repo: string, goals: Goal[]): State {
+  const listed = new Set(goals.map((g) => g.session_id));
+  const cleared = Object.values(state.sessions)
+    .filter(
+      (s) =>
+        s.repo === repo &&
+        s.archived_at === null &&
+        s.pixie_id == null &&
+        !listed.has(s.id) &&
+        s.id in state.tracking,
+    )
+    .reduce((next, s) => patchTracking(next, s.id, { tasks: [] }), state);
+  return goals.reduce((next, g) => patchTracking(next, g.session_id, { tasks: g.tasks }), cleared);
 }
 
 /** The chat's pixie group; an empty one leaves the record. */

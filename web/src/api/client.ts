@@ -3,6 +3,7 @@ import type {
   AgentDefaults,
   AgentWork,
   CallWork,
+  Goal,
   GroupEntry,
   SendAwayBody,
   Approval,
@@ -192,6 +193,8 @@ export interface Api {
   readPixieReports(pixieId: string): Promise<unknown>;
   // Every chat's pixies and teams, by session id, for chats that have any (B46).
   pixieGroups(): Promise<Record<string, GroupEntry[]>>;
+  // The project's chats that are working or have steps showing, with their steps (D092).
+  goals(repo: string): Promise<Goal[]>;
   // The pixie, or the team with its members, leaves the chat's group; returns the group.
   sendAway(sessionId: string, body: SendAwayBody): Promise<GroupEntry[]>;
   // Every call to the pixie in the chat, newest first, with its work.
@@ -583,6 +586,10 @@ export class HttpApi implements Api {
 
   pixieGroups() {
     return this.json<Record<string, GroupEntry[]>>("GET", "/api/pixie-groups");
+  }
+
+  goals(repo: string) {
+    return this.json<Goal[]>("GET", `/api/goals?repo=${encodeURIComponent(repo)}`);
   }
 
   sendAway(sessionId: string, body: SendAwayBody) {
