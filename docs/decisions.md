@@ -855,3 +855,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Tokens:** `mac_toolbar_height` is removed with the bar.
 - **Mac only;** the iPhone has no such bar.
 - **Refines:** D073 (the Monocode layout's project toolbar).
+
+## D099 (2026-10-17): Any scroll up stops a Mac chat from following the bottom (B74)
+
+- **Why:** at the bottom of a chat, a slow scroll up jumped back down. Anything within 40 pt of the end counted as the bottom, so a small move kept the chat following and the next streamed text scrolled it down again; a move made while text streamed was taken for growth and undone the same way.
+- **Rule (Mac, `ScrollFollow`):** any move up the user makes stops following, however small and even while content grows in the same geometry change. Only a move back down into the 40 pt bottom zone, or Jump to latest, resumes it. A move pinned to the very end is not the user's (content shrinking, the bounce past the end, a taller window) and keeps following.
+- **iPhone:** the PWA transcript still uses the 40 px rule on every scroll event (D029) and likely has the same bug; parked for the iPhone catch-up.
+- **Refines:** D029 for the Mac.
