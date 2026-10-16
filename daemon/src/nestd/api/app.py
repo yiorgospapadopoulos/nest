@@ -21,6 +21,7 @@ from nestd.api.routes import (
     local_apps,
     notifications,
     pairing,
+    pixie_groups,
     pixie_reports,
     pixie_teams,
     pixies,
@@ -30,6 +31,7 @@ from nestd.api.routes import (
     review,
     search,
     service,
+    session_pixies,
     sessions,
     stuck,
     usage,
@@ -48,6 +50,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         await ctx.approvals.expire_stale()
         await ctx.sessions.recover()
         await ctx.tracking.stop_stale()
+        await ctx.pixie_calls.stop_stale()
         if ctx.token_socket is not None:
             await ctx.token_socket.start()
         try:
@@ -101,6 +104,8 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         repos,
         attachments,
         sessions,
+        session_pixies,
+        pixie_groups,
         composer,
         pixies,
         pixie_teams,

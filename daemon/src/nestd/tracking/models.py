@@ -32,6 +32,8 @@ class TrackedAgent(BaseModel):
     id: str
     name: str
     description: str | None
+    # The Agent tool use id of the subagent that started it; None when the main agent did.
+    parent: str | None
     status: AgentStatus
     # The latest tool call while running, such as "Edit src/x.ts".
     activity: str | None
