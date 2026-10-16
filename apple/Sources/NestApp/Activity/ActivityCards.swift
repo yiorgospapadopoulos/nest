@@ -340,8 +340,7 @@ private struct GoalGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                StatusDot(
-                    tone: shell.tone(of: entry.session), hollow: shell.isHollow(entry.session))
+                StatusDot(tone: shell.tone(of: entry.session))
                 ChatLink(chat: entry.session.id, title: entry.session.title)
                     .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
@@ -422,5 +421,31 @@ struct EmptyCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+}
+
+/// Stops one running subagent or background command, apart from the composer's Stop,
+/// which interrupts the turn (B59). Disabled until its end arrives; hidden while the
+/// chat's Claude Code run is closed.
+struct StopTaskButton: View {
+    let chat: String
+    /// The task id, or the id of the tool call that started it.
+    let task: String
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if shell.activity.canStop(session: chat) {
+            let stopping = shell.activity.isStopping(task, session: chat)
+            Button {
+                shell.stopTask(task, in: chat)
+            } label: {
+                Image(systemName: Icon.stop).font(.system(size: 7))
+            }
+            .buttonStyle(SmallSquareStyle())
+            .disabled(stopping)
+            .opacity(stopping ? 0.4 : 1)
+            .help(stopping ? "Stopping" : "Stop")
+            .accessibilityLabel(stopping ? "Stopping" : "Stop")
+        }
     }
 }

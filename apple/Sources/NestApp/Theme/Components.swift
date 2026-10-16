@@ -68,7 +68,8 @@ enum Icon {
     }
 }
 
-/// A small status dot in the tone's color; idle is a hollow ring. No glow and no pulse.
+/// A small status dot in the tone's color; hollow marks a missing or skipped result, such as
+/// a pull request without checks. No glow and no pulse.
 struct StatusDot: View {
     let tone: StatusTone
     var hollow = false

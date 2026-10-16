@@ -1,9 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// A Claude Code chat in the sidebar's Idle group: hollow dot and title over where it works
-/// (its worktree, or the project folder's current branch) and its last activity. Click opens its read-only history; drag
-/// splits.
+/// A Claude Code chat in the sidebar's Idle group: status dot and title over where it
+/// works (its worktree, or the project folder's current branch) and whether Claude Code has
+/// it open. Click opens its read-only history; drag splits.
 struct ClaudeChatRow: View {
     let chat: ClaudeChat
     @Environment(Shell.self) private var shell
@@ -20,22 +20,21 @@ struct ClaudeChatRow: View {
         let isSelected = state.selectedChat == pane
         let place = ChatPlace.of(chat, repo: shell.repo)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            StatusDot(tone: .done, hollow: true)
+            StatusDot(tone: .done)
             VStack(alignment: .leading, spacing: 1) {
                 Text(chat.title)
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
+                if place != nil || chat.openInClaudeCode {
                     HStack(spacing: 4) {
                         if let place {
                             PlaceMark(place: place)
-                            Text("·")
                         }
-                        Text(Elapsed.short(from: chat.lastActivityAt, to: context.date))
-                            .monospacedDigit()
                         if chat.openInClaudeCode {
-                            Text("·")
+                            if place != nil {
+                                Text("·")
+                            }
                             Text("open there")
                         }
                     }

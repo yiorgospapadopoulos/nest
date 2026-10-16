@@ -142,7 +142,7 @@ private let workspace = CGSize(width: 1000, height: 600)
         state.replaceChat("draft-1", with: "s1")
         #expect(state.layout.leaves == ["s1", browser.id])
         #expect(state.openTools == [browser])
-        state.forget("s1")
+        state.closePane("s1")
         #expect(state.openTools == [browser])
     }
 

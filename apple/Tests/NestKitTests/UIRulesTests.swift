@@ -105,9 +105,10 @@ struct UIRules: Decodable {
         sessions = SessionsStore(api: api, approvals: approvals)
     }
 
-    /// The table's name for a session's tone; the Mac draws idle as a hollow done dot.
+    /// The table's name for a session's tone; idle is a done tone on an idle chat, which
+    /// the Mac draws as a filled done dot.
     func toneName(_ session: Session) -> String {
-        if sessions.isHollow(session) {
+        if session.state == .idle && sessions.tone(of: session) == .done {
             return "idle"
         }
         switch sessions.tone(of: session) {
