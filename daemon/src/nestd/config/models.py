@@ -165,6 +165,12 @@ class StuckSettings(_Strict):
     turn_minutes: int = Field(default=60, ge=0, le=1440)
 
 
+class ProjectSettings(_Strict):
+    # Project names in the order clients show them, set by reordering the Mac app's tabs
+    # (D090); projects not listed follow in file name order.
+    order: list[str] = Field(default_factory=list[str])
+
+
 class Settings(_Strict):
     server: ServerSettings = Field(default_factory=ServerSettings)
     agents: AgentDefaults = Field(default_factory=AgentDefaults)
@@ -172,6 +178,7 @@ class Settings(_Strict):
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     stuck: StuckSettings = Field(default_factory=StuckSettings)
+    projects: ProjectSettings = Field(default_factory=ProjectSettings)
 
 
 class WorktreeConfig(_Strict):

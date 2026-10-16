@@ -12,6 +12,7 @@ from nestd.config.models import (
     AgentChoices,
     AgentDefaults,
     NotificationSettings,
+    ProjectSettings,
     RepoConfig,
     Settings,
     StuckSettings,
@@ -28,6 +29,14 @@ def load_settings(paths: AppPaths) -> Settings:
         _write_toml(file, _dump(settings))
         return settings
     return _parse(file, Settings)
+
+
+def load_project_order(paths: AppPaths) -> list[str]:
+    """The saved project order; unlike `load_settings`, a missing file is not created."""
+    file = paths.settings_file
+    if not file.exists():
+        return []
+    return _parse(file, Settings).projects.order
 
 
 def load_repos(paths: AppPaths) -> list[RepoConfig]:
@@ -64,6 +73,11 @@ def save_usage(paths: AppPaths, usage: UsageSettings) -> UsageSettings:
 def save_stuck(paths: AppPaths, stuck: StuckSettings) -> StuckSettings:
     """Replace the `[stuck]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "stuck", stuck).stuck
+
+
+def save_project_order(paths: AppPaths, order: list[str]) -> list[str]:
+    """Replace the `[projects]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "projects", ProjectSettings(order=order)).projects.order
 
 
 def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults:

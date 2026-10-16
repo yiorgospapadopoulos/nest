@@ -29,6 +29,7 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("GET", "/api/repos/x/link-suggestions"),
         ("GET", "/api/repos/x/branches"),
         ("PATCH", "/api/repos/x"),
+        ("PUT", "/api/repos/order"),
         ("DELETE", "/api/repos/x"),
         ("POST", "/api/attachments"),
     ],
@@ -120,6 +121,30 @@ async def test_registering_a_repo_announces_it(api: Api, tmp_path: Path) -> None
     assert [(row["session_id"], json.loads(row["payload"])) for row in rows] == [
         (None, {"name": "project", "repo": registered.json()})
     ]
+
+
+async def test_projects_are_reordered_and_announced(api: Api, tmp_path: Path) -> None:
+    """B45: the Mac app's tab order, shared so the iPhone list follows it."""
+    for name in ("alpha", "beta", "gamma"):
+        await api.http.post("/api/repos", json={"path": str(init_repo(tmp_path / name))})
+
+    reordered = await api.http.put("/api/repos/order", json={"order": ["gamma", "nope", "gamma"]})
+    listed = await api.http.get("/api/repos")
+    refused = await api.http.put("/api/repos/order", json={"order": ["alpha"], "extra": 1})
+    missing = await api.http.put("/api/repos/order", json={})
+
+    rows = await api.ctx.db.fetch_all(
+        "SELECT session_id, payload FROM events WHERE type = ?", (types.REPOS_REORDERED,)
+    )
+    assert reordered.status_code == 200
+    assert [repo["name"] for repo in reordered.json()] == ["gamma", "alpha", "beta"]
+    assert reordered.json()[0]["current_branch"] == "main"
+    assert listed.json() == reordered.json()
+    assert [(row["session_id"], json.loads(row["payload"])) for row in rows] == [
+        (None, {"order": ["gamma", "alpha", "beta"]})
+    ]
+    assert refused.status_code == 422
+    assert missing.status_code == 422
 
 
 async def updated_events(api: Api) -> list[object]:
