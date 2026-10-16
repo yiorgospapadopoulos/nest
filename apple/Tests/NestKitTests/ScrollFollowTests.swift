@@ -49,6 +49,44 @@ import Testing
         #expect(follow.showsJump)
     }
 
+    @Test func aSlowScrollUpNearTheBottomStopsFollowing() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        // Still inside the bottom threshold, but the user moved up: nothing pulls it back.
+        #expect(!scroll(&follow, metrics(495, content: 1000)))
+        #expect(!follow.following)
+        #expect(!arrive(&follow))
+        #expect(!scroll(&follow, metrics(490, content: 1000)))
+        #expect(!scroll(&follow, metrics(490, content: 1200)))
+        #expect(!follow.following)
+    }
+
+    @Test func scrollingUpWhileTextStreamsStopsFollowing() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        // The scroll and the growth arrive in one geometry change.
+        #expect(!scroll(&follow, metrics(480, content: 1100)))
+        #expect(!follow.following)
+        // Back at the bottom while it still streams: following again.
+        #expect(!scroll(&follow, metrics(620, content: 1150)))
+        #expect(follow.following)
+    }
+
+    @Test func movesTheUserDidNotMakeKeepFollowing() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        // Content that shrinks pulls the offset up to the new end.
+        #expect(!scroll(&follow, metrics(400, content: 900)))
+        #expect(follow.following)
+        // The bounce past the end settles back on it.
+        _ = follow.update(metrics(420, content: 900))
+        #expect(!scroll(&follow, metrics(400, content: 900)))
+        #expect(follow.following)
+        // A taller window pulls the offset up to the end too.
+        #expect(!scroll(&follow, metrics(300, content: 900, viewport: 600)))
+        #expect(follow.following)
+    }
+
     @Test func noJumpButtonUntilNewContentArrives() {
         var follow = ScrollFollow()
         _ = follow.update(metrics(500, content: 1000))

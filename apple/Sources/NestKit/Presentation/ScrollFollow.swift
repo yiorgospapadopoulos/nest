@@ -16,11 +16,15 @@ public struct ScrollMetrics: Sendable, Equatable {
     }
 
     public var isAtBottom: Bool { offset + viewport >= content - Self.threshold }
+
+    /// Exactly at the end, where shrinking content or a taller window pins the offset.
+    var isAtEnd: Bool { offset + viewport >= content - 1 }
 }
 
 /// Whether the transcript follows new content. Only the user's own scrolling starts or
-/// stops following: content that grows or a resized window never does, so a reader who
-/// scrolled up is never moved, and one at the bottom stays there while text streams in.
+/// stops following: any move up stops it and only a return to the bottom resumes it.
+/// Content that grows or a resized window never does, so a reader who scrolled up is
+/// never moved, and one at the bottom stays there while text streams in.
 public struct ScrollFollow: Sendable, Equatable {
     public private(set) var following = true
     private var unseen = false
@@ -39,16 +43,18 @@ public struct ScrollFollow: Sendable, Equatable {
         if metrics.isAtBottom {
             jumping = false
         }
-        let scrolled =
-            last.map {
-                $0.content == metrics.content && $0.viewport == metrics.viewport
-                    && $0.offset != metrics.offset
-            } ?? false
-        if scrolled && !jumping {
-            following = metrics.isAtBottom
-            if following {
-                unseen = false
-            }
+        guard let last, last.viewport == metrics.viewport, !jumping else {
+            return following && !metrics.isAtBottom
+        }
+        // Any move up the user makes stops following, however small, even while text
+        // streams in; only a move pinned to the end is not theirs.
+        if metrics.offset < last.offset && !metrics.isAtEnd {
+            following = false
+            return false
+        }
+        if metrics.offset > last.offset && metrics.isAtBottom {
+            following = true
+            unseen = false
             return false
         }
         return following && !metrics.isAtBottom
