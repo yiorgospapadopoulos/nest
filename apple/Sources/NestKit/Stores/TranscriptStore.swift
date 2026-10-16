@@ -33,6 +33,9 @@ public struct CallStep: Sendable, Hashable, Identifiable {
         case thinking(String)
         case text(String)
         case tool(name: String, input: JSONValue)
+        /// An agent call the subagent made, such as a team leader's call of a member
+        /// (B75), holding that agent's own steps and, once back, its report.
+        case call(ToolCall)
         /// Images a subagent's tool result carried.
         case images([ToolImage])
     }
@@ -45,11 +48,35 @@ public struct CallStep: Sendable, Hashable, Identifiable {
         switch kind {
         case .thinking(let text), .text(let text): text
         case .tool(let name, let input):
-            [name, ToolSummary.argument(tool: name, input: input)].filter { !$0.isEmpty }
-                .joined(separator: " ")
+            Self.line(tool: name, input: input)
+        case .call(let call):
+            Self.line(tool: call.name, input: call.input)
         case .images(let images):
             images.count == 1 ? "1 image" : "\(images.count) images"
         }
+    }
+
+    private static func line(tool: String, input: JSONValue) -> String {
+        [tool, ToolSummary.argument(tool: tool, input: input)].filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
+extension ToolCall {
+    /// Changes the agent call with this tool use id: this one, or one it or its agents
+    /// made, at any depth. Whether there was one.
+    mutating func change(call id: String, _ change: (inout ToolCall) -> Void) -> Bool {
+        if self.id == id {
+            change(&self)
+            return true
+        }
+        for index in steps.indices {
+            guard case .call(var inner) = steps[index].kind, inner.change(call: id, change)
+            else { continue }
+            steps[index] = CallStep(id: steps[index].id, kind: .call(inner))
+            return true
+        }
+        return false
     }
 }
 
@@ -646,62 +673,75 @@ public final class TranscriptStore {
     }
 
     /// A subagent's thinking, text and tool calls go with its agent call, replacing what
-    /// streamed of them; the results of its own tools are not shown. A call this page does
-    /// not hold drops them.
+    /// streamed of them; the results of its own tools are not shown, except an agent
+    /// call's report, which goes with that call. A call this page does not hold drops them.
     private func addSteps(_ blocks: [MessageBlock], to parent: String, key: String) {
-        guard let index = agentCallIndex(parent), case .tool(var call) = items[index].content
-        else { return }
-        for (offset, block) in blocks.enumerated() {
-            let id = "\(key)-\(offset)"
-            switch block {
-            case .thinking(let text, _):
-                call.liveThinking = ""
-                if !text.isBlank {
-                    call.steps.append(CallStep(id: id, kind: .thinking(text)))
+        changeAgentCall(parent) { call in
+            for (offset, block) in blocks.enumerated() {
+                let id = "\(key)-\(offset)"
+                switch block {
+                case .thinking(let text, _):
+                    call.liveThinking = ""
+                    if !text.isBlank {
+                        call.steps.append(CallStep(id: id, kind: .thinking(text)))
+                    }
+                case .text(let text):
+                    call.liveText = ""
+                    if !text.isBlank {
+                        call.steps.append(CallStep(id: id, kind: .text(text)))
+                    }
+                case .toolUse(let toolID, let name, let input)
+                where ToolSummary.kind(of: name) == .agent:
+                    let inner = ToolCall(
+                        id: toolID, name: name, input: input, result: nil, isError: false)
+                    call.steps.append(CallStep(id: id, kind: .call(inner)))
+                case .toolUse(_, let name, let input):
+                    call.steps.append(CallStep(id: id, kind: .tool(name: name, input: input)))
+                case .toolResult(let toolID, let content, let isError, let images):
+                    let answered = call.change(call: toolID) { inner in
+                        inner.result = content
+                        inner.isError = isError
+                        inner.images = images
+                    }
+                    if !answered && !images.isEmpty {
+                        call.steps.append(CallStep(id: id, kind: .images(images)))
+                    }
+                default:
+                    break
                 }
-            case .text(let text):
-                call.liveText = ""
-                if !text.isBlank {
-                    call.steps.append(CallStep(id: id, kind: .text(text)))
-                }
-            case .toolUse(_, let name, let input):
-                call.steps.append(CallStep(id: id, kind: .tool(name: name, input: input)))
-            case .toolResult(_, _, _, let images) where !images.isEmpty:
-                call.steps.append(CallStep(id: id, kind: .images(images)))
-            default:
-                break
             }
         }
-        items[index].content = .tool(call)
     }
 
-    /// The item of an agent call by its tool use id.
-    private func agentCallIndex(_ id: String) -> Int? {
-        guard let index = items.firstIndex(where: { $0.id == id }),
-            case .tool(let call) = items[index].content, ToolSummary.kind(of: call.name) == .agent
-        else { return nil }
-        return index
+    /// Changes an agent call by its tool use id: one of the transcript's, or one made
+    /// inside it (B75). Whether there was one.
+    @discardableResult
+    private func changeAgentCall(_ id: String, _ change: (inout ToolCall) -> Void) -> Bool {
+        for index in items.indices {
+            guard case .tool(var call) = items[index].content,
+                ToolSummary.kind(of: call.name) == .agent, call.change(call: id, change)
+            else { continue }
+            items[index].content = .tool(call)
+            return true
+        }
+        return false
     }
 
     /// Appends a subagent's streamed text or thinking to its agent call.
     private func streamIntoCall(_ parent: String, _ change: (inout ToolCall) -> Void) {
-        guard let index = agentCallIndex(parent), case .tool(var call) = items[index].content
-        else { return }
-        change(&call)
-        items[index].content = .tool(call)
-        streamingCalls.insert(parent)
+        if changeAgentCall(parent, change) {
+            streamingCalls.insert(parent)
+        }
     }
 
     /// The turn ended: what streamed of thinking and subagents' text is dropped.
     private func endLiveStreams() {
         liveThinking = ""
         for id in streamingCalls {
-            guard let index = items.firstIndex(where: { $0.id == id }),
-                case .tool(var call) = items[index].content
-            else { continue }
-            call.liveText = ""
-            call.liveThinking = ""
-            items[index].content = .tool(call)
+            changeAgentCall(id) { call in
+                call.liveText = ""
+                call.liveThinking = ""
+            }
         }
         streamingCalls = []
     }
