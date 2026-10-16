@@ -22,6 +22,7 @@ import {
   review,
   session,
 } from "../../test/fixtures.ts";
+import { fixedMedia } from "../../test/motion.ts";
 import { renderApp } from "../../test/render.tsx";
 
 interface Setup {
@@ -870,7 +871,7 @@ describe("composer", () => {
 
   it("adds a line with Return on a touch screen, where the Send button sends", async () => {
     // No fine pointer and no hover: a phone without a trackpad or mouse.
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    vi.stubGlobal("matchMedia", () => fixedMedia(false));
     try {
       const { user, api } = await openChat();
       const field = screen.getByLabelText("Message");
@@ -887,7 +888,7 @@ describe("composer", () => {
   });
 
   it("sends with Enter when a mouse or trackpad is around", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("pointer: fine") }));
+    vi.stubGlobal("matchMedia", (query: string) => fixedMedia(query.includes("pointer: fine")));
     try {
       const { user, api } = await openChat();
 

@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { defined } from "./defined.ts";
+import { fixedMedia } from "./motion.ts";
 import type { PushEnv, PushManagerLike, SubscriptionLike } from "../pwa/push.ts";
 
 /** The daemon key the fake API hands out ("BAEC") and the matching bytes. */
@@ -72,9 +73,9 @@ export function installBrowserPush(options: Options = {}) {
   const worker = Object.assign(new EventTarget(), defined(fake.env.serviceWorker));
   vi.stubGlobal("Notification", fake.env.notification);
   vi.stubGlobal("PushManager", options.push === false ? undefined : {});
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: fake.env.standalone && query === "(display-mode: standalone)",
-  }));
+  vi.stubGlobal("matchMedia", (query: string) =>
+    fixedMedia(fake.env.standalone && query === "(display-mode: standalone)"),
+  );
   Object.defineProperty(window.navigator, "serviceWorker", { value: worker, configurable: true });
   return { ...fake, worker };
 }
