@@ -1012,7 +1012,7 @@
             try await pairView(
                 ReportsInbox()
                     .environment(shell)
-                    .frame(width: Sidebar.width - 12)
+                    .frame(width: SidebarWidth.standard - 12)
                     .padding(6), "b42-inbox", folder)
 
             shell.show(.settings)

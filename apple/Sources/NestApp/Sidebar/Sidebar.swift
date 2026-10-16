@@ -4,7 +4,6 @@ import SwiftUI
 /// The project's chats, grouped, with New chat; folds into a rail. Settings opens from the
 /// app menu (Cmd-comma); the account and connectors live in Settings (B39).
 struct Sidebar: View {
-    static let width = 236.0
     static let railWidth = 48.0
 
     @Environment(Shell.self) private var shell
@@ -13,12 +12,11 @@ struct Sidebar: View {
         let collapsed = shell.projectState.leftCollapsed
         Group {
             if collapsed {
-                SidebarRail()
+                SidebarRail().frame(width: Self.railWidth)
             } else {
-                SidebarFull()
+                SidebarFull().resizableSidebar()
             }
         }
-        .frame(width: collapsed ? Self.railWidth : Self.width)
         .frame(maxHeight: .infinity)
         .sideSurface()
         .confirmationDialog(

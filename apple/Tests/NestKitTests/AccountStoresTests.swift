@@ -426,6 +426,17 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             ])
     }
 
+    /// One sidebar width for every project, kept on this Mac (B45).
+    @Test func persistsTheSidebarWidth() {
+        let memory = MemoryStore()
+        let settings = SettingsStore(store: memory)
+        #expect(settings.sidebarWidth == SidebarWidth.standard)
+        settings.sidebarWidth = 310
+        #expect(memory.values["sidebar.width"] == "310.0")
+        #expect(SettingsStore(store: memory).sidebarWidth == 310)
+        #expect(SettingsStore(store: MemoryStore(["sidebar.width": "9000"])).sidebarWidth == 420)
+    }
+
     @Test func invalidStoredValuesFallBack() {
         let settings = SettingsStore(
             store: MemoryStore(["appearance.theme": "sepia", "appearance.accent": "purple"]))
