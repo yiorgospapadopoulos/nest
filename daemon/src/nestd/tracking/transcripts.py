@@ -3,7 +3,8 @@
 The subagent's messages carry `parent_tool_use_id` set to the Agent call that started it.
 A SendMessage that continues it starts a new part of its work, yet its messages keep that
 first call's id, so they are told apart by order: each message belongs to the latest of
-the calls made before it.
+the calls made before it. Its calls are made by the main agent or, inside its own call,
+by another subagent, such as a team's leader calling a member (B70).
 """
 
 from collections.abc import Sequence
@@ -16,6 +17,8 @@ from nestd.events.models import Event
 from nestd.providers.base import AgentTask, MessageBlock, ToolResultBlock, ToolUseBlock
 
 SEND_MESSAGE = "SendMessage"
+# The result of a call that went on in the background.
+ASYNC_LAUNCH = "Async agent launched"
 
 _BLOCKS = TypeAdapter(list[MessageBlock])
 
@@ -39,11 +42,12 @@ class AgentWork(BaseModel):
 
 def agent_work(events: Sequence[Event], parent: str, calls: Sequence[str]) -> list[AgentWork]:
     """The work of the subagent whose messages carry `parent`, for each of `calls` (its
-    first call, then the SendMessage calls that continued it) the main agent made, in the
-    order given.
+    first call, then the SendMessage calls that continued it), in the order given.
     """
     wanted = set(calls)
     made: dict[str, ToolUseBlock] = {}
+    # Calls made inside a subagent, whose input may have been changed before they ran.
+    nested: set[str] = set()
     results: dict[str, ToolResultBlock] = {}
     summaries: dict[str, str] = {}
     messages: dict[str, list[AgentMessage]] = {call: [] for call in calls}
@@ -58,14 +62,16 @@ def agent_work(events: Sequence[Event], parent: str, calls: Sequence[str]) -> li
             continue
         blocks = _BLOCKS.validate_python(event.payload["blocks"])
         owner = event.payload.get("parent_tool_use_id")
-        if owner is None:
+        if owner != parent:
             for block in blocks:
                 if isinstance(block, ToolUseBlock) and block.id in wanted:
                     made[block.id] = block
                     current = block.id
+                    if owner is not None:
+                        nested.add(block.id)
                 elif isinstance(block, ToolResultBlock) and block.tool_use_id in wanted:
                     results[block.tool_use_id] = block
-        elif owner == parent and current is not None:
+        elif current is not None:
             assert event.id is not None  # noqa: S101 (a stored event)
             messages[current].append(AgentMessage(event_id=event.id, ts=event.ts, blocks=blocks))
     return [
@@ -73,7 +79,7 @@ def agent_work(events: Sequence[Event], parent: str, calls: Sequence[str]) -> li
             tool_use_id=call,
             prompt=_prompt(made[call]),
             messages=messages[call],
-            report=summaries.get(call) or _report(made[call], results.get(call)),
+            report=summaries.get(call) or _report(made[call], results.get(call), call in nested),
         )
         for call in calls
         if call in made
@@ -85,11 +91,13 @@ def _prompt(call: ToolUseBlock) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _report(call: ToolUseBlock, result: ToolResultBlock | None) -> str | None:
+def _report(call: ToolUseBlock, result: ToolResultBlock | None, nested: bool) -> str | None:
     """A foreground call's result is the subagent's report; a background call's only says
-    it started, unless it failed to.
+    it started, unless it failed to. Inside a subagent the call guard may have moved a
+    call to the foreground, so only its result tells.
     """
     if result is None:
         return None
-    background = call.name == SEND_MESSAGE or call.input.get("run_in_background") is True
+    asked = call.input.get("run_in_background") is True and not nested
+    background = call.name == SEND_MESSAGE or asked or ASYNC_LAUNCH in result.content
     return result.content if result.is_error or not background else None

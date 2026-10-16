@@ -1,6 +1,7 @@
 """The pixies each project chat calls: recorded calls, continuing them, the group (B46)."""
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from nestd.errors import NotFoundError
 from nestd.events import types
 from nestd.pixies.agents import PixieAgents
 from nestd.pixies.call_models import GroupEntry, SendAway, TeamMember
-from nestd.pixies.calls import CONTINUE_NOTE, PixieCallLog
+from nestd.pixies.calls import CHANGED_MEMBERS_NOTE, CONTINUE_NOTE, PixieCallLog
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
 from nestd.pixies.store import PixieStore
@@ -76,15 +77,16 @@ class Chat:
             {"blocks": [b.model_dump(mode="json") for b in blocks], "parent_tool_use_id": None},
             target.id,
         )
-        await self.log.message(target.id, await self.agents(target), list(blocks))
+        await self.log.message(target.id, await self.agents(target), list(blocks), None)
 
     async def sub(self, parent: str, *blocks: MessageBlock) -> None:
-        """A subagent's own message: stored, never recorded."""
+        """A subagent's own message, under the call that started it, as the sink passes it."""
         await self.ctx.bus.publish(
             types.SESSION_MESSAGE,
             {"blocks": [b.model_dump(mode="json") for b in blocks], "parent_tool_use_id": parent},
             self.session.id,
         )
+        await self.log.message(self.session.id, await self.agents(), list(blocks), parent)
 
     async def task(self, update: AgentTask) -> None:
         await self.ctx.bus.publish(
@@ -325,11 +327,13 @@ async def test_a_refused_send_message_fails(chat: Chat) -> None:
     ]
 
 
-async def test_team_members_are_called_with_their_team(chat: Chat) -> None:
+async def test_team_members_are_called_by_their_leader(chat: Chat) -> None:
     await chat.say(agent("l1", "lead"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.sub("l1", handback("b1", "ag-bugs"))
     await chat.say(handback("l1", "ag-lead"))
     await chat.say(agent("s1", "solo"))
-    await chat.say(agent("b1", "bugs"))
+    await chat.sub("l1", agent("b2", "bugs"))
 
     team, solo = await chat.group()
     assert (team.kind, team.team_id, team.pixie_id, team.state) == (
@@ -343,31 +347,33 @@ async def test_team_members_are_called_with_their_team(chat: Chat) -> None:
         TeamMember(pixie_id=chat.id("Lead"), leader=True, state="done"),
         TeamMember(pixie_id=chat.id("Bugs"), leader=False, state="running"),
     ]
-    assert [c.tool_use_id for c in team.calls] == ["b1", "l1"]
+    assert [c.tool_use_id for c in team.calls] == ["b2", "b1", "l1"]
     assert (solo.kind, solo.pixie_id) == ("pixie", chat.id("Solo"))
 
 
 async def test_a_team_shows_former_members_it_called_and_members_not_called_yet(
     chat: Chat,
 ) -> None:
-    await chat.say(agent("b1", "bugs"))
+    await chat.say(agent("l1", "lead"))
+    await chat.say(handback("l1", "ag-lead"))
+    await chat.sub("l1", agent("b1", "bugs"))
     await chat.ctx.pixies.update(chat.id("Bugs"), UpdatePixie(team_id=None))
 
     (team,) = await chat.group()
 
     assert team.members == [
-        TeamMember(pixie_id=chat.id("Lead"), leader=True, state=None),
+        TeamMember(pixie_id=chat.id("Lead"), leader=True, state="done"),
         TeamMember(pixie_id=chat.id("Bugs"), leader=False, state="running"),
     ]
 
 
 async def test_a_deleted_team_leaves_its_calls_solo(chat: Chat) -> None:
-    await chat.say(agent("b1", "bugs"))
+    await chat.say(agent("l1", "lead"))
     await chat.ctx.teams.delete(chat.team.id)
 
     (entry,) = await chat.group()
 
-    assert (entry.kind, entry.pixie_id) == ("pixie", chat.id("Bugs"))
+    assert (entry.kind, entry.pixie_id) == ("pixie", chat.id("Lead"))
 
 
 async def test_a_pixie_tagged_again_is_told_to_continue(chat: Chat) -> None:
@@ -404,11 +410,135 @@ async def test_a_changed_pixie_starts_fresh(chat: Chat) -> None:
     assert await chat.note("@scribe again") == CONTINUE_NOTE.format(slug="scribe", agent_id="ag2")
 
 
-async def test_a_team_call_continues_its_members(chat: Chat) -> None:
+async def test_a_team_call_continues_its_leader_only(chat: Chat) -> None:
     await chat.say(agent("l1", "lead"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.sub("l1", handback("b1", "ag-bugs"))
     await chat.say(handback("l1", "ag-lead"))
 
     assert await chat.note("@qa again") == CONTINUE_NOTE.format(slug="lead", agent_id="ag-lead")
+
+
+async def test_a_continued_leader_calls_its_changed_members_fresh(chat: Chat) -> None:
+    await chat.say(agent("l1", "lead"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.sub("l1", handback("b1", "ag-bugs"))
+    await chat.say(handback("l1", "ag-lead"))
+    # Its memory is not in the leader's prompt, so the leader is unchanged.
+    memory = await chat.ctx.pixies.read_file(chat.id("Bugs"), "memory")
+    await chat.ctx.pixies.write_file(
+        chat.id("Bugs"), "memory", WriteFile(text="- Knows more now.", hash=memory.hash)
+    )
+
+    assert await chat.note("@qa again") == (
+        CONTINUE_NOTE.format(slug="lead", agent_id="ag-lead")
+        + CHANGED_MEMBERS_NOTE.format(leader="lead", handle="qa", members="bugs")
+    )
+    assert CHANGED_MEMBERS_NOTE.format(leader="lead", handle="qa", members="bugs") == (
+        "\n\n(Since @lead last called them, these members of @qa changed: bugs. Tell @lead to"
+        " call them fresh with the Agent tool instead of continuing them.)"
+    )
+    # A changed leader starts fresh, and so do the members it calls then.
+    soul = await chat.ctx.pixies.read_file(chat.id("Lead"), "soul")
+    await chat.ctx.pixies.write_file(
+        chat.id("Lead"), "soul", WriteFile(text="Lead anew.", hash=soul.hash)
+    )
+    assert await chat.note("@qa again") == ""
+
+
+async def test_the_main_agent_calling_a_member_records_nothing(chat: Chat) -> None:
+    # The call guard refuses it, so it is no call of the team.
+    await chat.say(agent("b1", "bugs"))
+    await chat.say(ToolResultBlock(tool_use_id="b1", content="refused", is_error=True))
+
+    assert await chat.group() == []
+
+
+async def test_a_leaders_member_calls_are_recorded_under_its_team(chat: Chat) -> None:
+    await chat.say(agent("l1", "lead"))
+    # Asked for the background, the call guard runs it in the foreground.
+    await chat.sub(
+        "l1", TextBlock(text="Splitting the work."), agent("b1", "bugs", background=True)
+    )
+    await chat.sub("b1", TextBlock(text="hunting"))
+    await chat.sub("l1", handback("b1", "ag-bugs", "Two bugs."))
+    await chat.sub("l1", send("b2", "ag-bugs", "And a third?"))
+    await chat.sub("l1", ToolResultBlock(tool_use_id="b2", content='{"success":true}'))
+    await chat.task(AgentTask(task_id="ag-bugs", phase="started", tool_use_id="b2"))
+    await chat.sub("b1", TextBlock(text="found it"))
+    await chat.task(
+        AgentTask(
+            task_id="ag-bugs", phase="finished", tool_use_id="b2", status="completed", summary="3"
+        )
+    )
+    await chat.say(handback("l1", "ag-lead", "The team found three."))
+
+    (team,) = await chat.group()
+    assert team.kind == "team"
+    assert [(c.tool_use_id, c.state, c.continued) for c in team.calls] == [
+        ("b2", "done", True),
+        ("b1", "done", False),
+        ("l1", "done", False),
+    ]
+    later, first = await chat.log.calls(chat.session.id, chat.id("Bugs"))
+    assert (first.prompt, first.report) == (
+        "bugs, help",
+        "Two bugs.\n\n[Subagent hand-back]\nagentId: ag-bugs (use SendMessage)",
+    )
+    assert [m.blocks for m in first.messages] == [[TextBlock(text="hunting")]]
+    assert (later.prompt, later.report) == ("And a third?", "3")
+    assert [m.blocks for m in later.messages] == [[TextBlock(text="found it")]]
+    # The leader's own work holds its member calls, not the members' messages.
+    (lead,) = await chat.log.calls(chat.session.id, chat.id("Lead"))
+    assert [b.type for m in lead.messages for b in m.blocks] == [
+        "text",
+        "tool_use",
+        "tool_result",
+        "tool_use",
+        "tool_result",
+    ]
+
+
+async def test_a_team_works_while_any_of_its_calls_runs(chat: Chat) -> None:
+    await chat.say(agent("l1", "lead"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.sub("l1", handback("b1", "ag-bugs", "Two bugs."))
+
+    # The member is done, its leader still puts the results together.
+    (team,) = await chat.group()
+    assert [(c.tool_use_id, c.state) for c in team.calls] == [("b1", "done"), ("l1", "running")]
+    assert team.state == "running"
+
+    await chat.say(handback("l1", "ag-lead", "The team found two."))
+    (team,) = await chat.group()
+    assert team.state == "done"
+
+
+async def test_nested_calls_outside_a_leaders_team_record_nothing(chat: Chat) -> None:
+    await chat.say(agent("l1", "lead"), agent("s1", "solo"), agent("x1", "Explore"))
+    await chat.say(handback("s1", "ag-solo"))
+    # A leader calling a pixie outside its team or an ordinary subagent, a member or a
+    # solo pixie or an ordinary subagent calling a pixie, and calls under no known call.
+    await chat.sub("l1", agent("n1", "scribe"), agent("n2", "Explore"), send("n3", "ag-solo"))
+    await chat.sub("s1", agent("n4", "bugs"))
+    await chat.sub("x1", agent("n5", "bugs"), send("n6", "ag-solo"))
+    await chat.sub("unknown", agent("n7", "bugs"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.sub("b1", agent("n8", "bugs"), agent("n9", "lead"))
+    await chat.sub("l1", send("n10", "nobody"))
+
+    calls = sorted(c.tool_use_id for e in await chat.group() for c in e.calls)
+    assert calls == ["b1", "l1", "s1"]
+
+
+async def test_without_call_rules_only_the_main_agents_calls_are_recorded(chat: Chat) -> None:
+    agents = replace(await chat.agents(), rules=None)
+    await chat.log.message(chat.session.id, agents, [agent("b1", "bugs")], None)
+    await chat.log.message(chat.session.id, agents, [agent("l1", "lead")], None)
+    await chat.log.message(chat.session.id, agents, [agent("b2", "bugs")], "l1")
+
+    (team,) = await chat.group()
+    assert [c.tool_use_id for c in team.calls] == ["l1", "b1"]
 
 
 async def test_send_away_leaves_the_group_and_forgets_the_agent(chat: Chat) -> None:
@@ -471,7 +601,7 @@ async def test_calls_left_running_by_a_previous_process_are_interrupted(chat: Ch
     other = await chat.new_session("web")
     await chat.say(agent("a1", "scribe"))
     await chat.say(agent("a2", "solo"), session=other)
-    await chat.say(agent("a3", "bugs"))
+    await chat.say(agent("a3", "lead"))
     await chat.say(handback("a3", "ag3"))
 
     await chat.log.stop_stale()
@@ -499,7 +629,7 @@ async def test_an_ordinary_subagents_transcript(chat: Chat) -> None:
 
 async def test_a_call_whose_messages_are_gone_keeps_its_state(chat: Chat) -> None:
     # Recorded, but its events were cut away since, as a rewind of the conversation does.
-    await chat.log.message(chat.session.id, await chat.agents(), [agent("a1", "scribe")])
+    await chat.log.message(chat.session.id, await chat.agents(), [agent("a1", "scribe")], None)
     await chat.task(AgentTask(task_id="t1", phase="started"))
 
     (work,) = await chat.log.calls(chat.session.id, chat.id("Scribe"))

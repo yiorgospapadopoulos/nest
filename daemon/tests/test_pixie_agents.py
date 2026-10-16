@@ -16,9 +16,10 @@ from nestd.pixies.models import (
     UpdateTeam,
     WriteFile,
 )
-from nestd.pixies.prompt import CALL_PREAMBLE
+from nestd.pixies.prompt import CALL_PREAMBLE, NO_PIXIE_CALLS
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
+from nestd.providers.base import CallRules
 from nestd.sessions.models import Session, SessionState
 from nestd.sessions.subagents import OfferedPixie
 from tests.api_support import build_context
@@ -110,7 +111,13 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
     plain = offered.subagents["plain"]
 
     assert sub.description == "Tester: You test everything."
-    assert sub.prompt.startswith(CALL_PREAMBLE.format(name="Tester", slug="tester"))
+    assert sub.prompt.startswith(
+        CALL_PREAMBLE.format(name="Tester", slug="tester") + "\n" + NO_PIXIE_CALLS + "\n\n"
+    )
+    assert NO_PIXIE_CALLS == (
+        "- You call no pixies. For help, use Claude Code's ordinary subagents, such as"
+        " Explore or general-purpose."
+    )
     assert "You test everything.  \nSecond line." in sub.prompt
     assert "- likes '''fences'''" in sub.prompt
     assert "## Your team" not in sub.prompt
@@ -126,15 +133,13 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
     )
 
 
-async def test_a_leader_plans_for_its_available_members(
-    ctx: AppContext, agents: PixieAgents
-) -> None:
+async def test_a_leader_leads_its_available_members(ctx: AppContext, agents: PixieAgents) -> None:
     team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
-    lead, bugs, style, away = [
+    lead, bugs, style, away, docs = [
         await ctx.pixies.create(CreatePixie(name=n, soul=f"You do {n}."))
-        for n in ("Lead", "Bugs", "Style", "Away")
+        for n in ("Lead", "Bugs", "Style", "Away", "Docs")
     ]
-    for pixie in (lead, bugs, style, away):
+    for pixie in (lead, bugs, style, away, docs):
         await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
     await ctx.pixies.update(away.id, UpdatePixie(projects=["api"]))
     await ctx.pixies.update(style.id, UpdatePixie(hidden=True))
@@ -142,22 +147,44 @@ async def test_a_leader_plans_for_its_available_members(
     offered = await agents.for_session(chat())
     prompt = offered.subagents["lead"].prompt
 
-    # Away works elsewhere and Style is hidden.
+    # Away works elsewhere and Style is hidden; the leader is not its own member.
     assert prompt.endswith(
         "\n\n## Your team\nYou lead the team QA crew (@qa). Its members in this chat:\n"
-        "- lead: Lead: You do Lead.\n"
         "- bugs: Bugs: You do Bugs.\n"
-        "When you are asked to plan a request for the team, reply only with a short plan"
-        " that names the members by slug (you may name yourself) and says what each one"
-        " does. Do none of the work while planning."
+        "- docs: Docs: You do Docs.\n"
+        "When a request comes for the team, decide which member does which part; you may do"
+        " a part yourself. Call each member with the Agent tool, with `subagent_type` set to"
+        " its slug and `run_in_background` set to false, and wait for its result. To continue"
+        " a member you called earlier in this conversation, use SendMessage to its agent id"
+        " instead of a new call. Then report what each member did and the combined result."
+        " You call only your team's members; for other help, use Claude Code's ordinary"
+        " subagents."
     )
+    assert NO_PIXIE_CALLS not in prompt
     assert "## Your team" not in offered.subagents["bugs"].prompt
     assert [t.handle for t in offered.teams] == ["qa"]
     assert offered.teams[0].instruction == (
-        "\n\n(The user called the team @qa, a team of pixies set up in Nest. Its members"
-        " are these subagents: lead (leader), bugs. First use the subagent lead to plan which"
-        " member does which part. Then call each member as the plan says. Then sum up the"
-        " results.)"
+        "\n\n(The user called the team @qa, a team of pixies set up in Nest. Hand the whole"
+        " request to its leader, the subagent lead, with the Agent tool and wait for its"
+        " report. The leader decides which member does which part, calls them itself and puts"
+        " their results together. Do not call its members (bugs, docs) yourself. When it"
+        " reports, give its report and add a short summary of what happened.)"
+    )
+
+
+async def test_a_leader_alone_in_its_team(ctx: AppContext, agents: PixieAgents) -> None:
+    team = await ctx.teams.create(CreateTeam(name="Solo act", handle="act"))
+    lead = await ctx.pixies.create(CreatePixie(name="Lead"))
+    await ctx.pixies.update(lead.id, UpdatePixie(team_id=team.id))
+
+    offered = await agents.for_session(chat())
+
+    assert "Its members in this chat:\nNo other member is in this chat.\n" in (
+        offered.subagents["lead"].prompt
+    )
+    assert "Do not call its members" not in offered.teams[0].instruction
+    assert offered.rules == CallRules(
+        frozenset({"lead"}), frozenset({"lead"}), {"lead": frozenset()}
     )
 
 
@@ -211,7 +238,7 @@ async def test_the_default_model_inherits_the_chats(
     assert offered.subagents["tester"].model is None
 
 
-async def test_the_team_call_lists_members_in_pixie_order_with_the_leader_marked(
+async def test_the_team_call_names_the_leader_and_its_members_in_pixie_order(
     ctx: AppContext, agents: PixieAgents
 ) -> None:
     team = await ctx.teams.create(CreateTeam(name="QA"))
@@ -221,9 +248,8 @@ async def test_the_team_call_lists_members_in_pixie_order_with_the_leader_marked
 
     offered = await agents.for_session(chat())
 
-    assert "Its members are these subagents: a, b, c (leader). First use the subagent c " in (
-        offered.teams[0].instruction
-    )
+    assert "the subagent c, with the Agent tool" in offered.teams[0].instruction
+    assert "Do not call its members (a, b) yourself." in offered.teams[0].instruction
 
 
 async def test_a_pixie_chat_gets_every_other_available_pixie_and_no_teams(
@@ -250,6 +276,10 @@ async def test_a_pixie_chat_gets_every_other_available_pixie_and_no_teams(
     assert offered.teams == ()
     # A leader's team section belongs to project chats, where its team can be called.
     assert "## Your team" not in offered.subagents["api"].prompt
+    # The pixie calls every other pixie; the ones it calls call none.
+    assert offered.rules == CallRules(frozenset({"api", "reader"}), frozenset({"api", "reader"}))
+    for sub in offered.subagents.values():
+        assert NO_PIXIE_CALLS in sub.prompt
 
 
 async def test_a_project_chat_knows_its_pixies_and_their_teams(
@@ -272,15 +302,26 @@ async def test_a_project_chat_knows_its_pixies_and_their_teams(
     offered = await agents.for_session(chat())
 
     assert dict(offered.pixies) == {
-        "lead": OfferedPixie(lead.id, "lead", "Lead", team.id, "qa"),
+        "lead": OfferedPixie(lead.id, "lead", "Lead", team.id, "qa", leader=True),
         "bugs": OfferedPixie(bugs.id, "bugs", "Bugs", team.id, "qa"),
         "solo": OfferedPixie(solo.id, "solo", "Solo"),
         "left": OfferedPixie(left.id, "left", "Left"),
     }
-    # A member says it is called only with its team, so the chat does not pick it alone.
+    # A member says only its leader calls it, so the chat does not pick it alone.
     assert offered.subagents["bugs"].description == (
-        "Bugs: You do Bugs. It is called only as part of a team call to @qa."
+        "Bugs: You do Bugs. It is called only by its team's leader, as part of a team call to @qa."
     )
+    assert offered.subagents["lead"].description == (
+        "Lead: You do Lead. It leads the team @qa: a call to the team goes to it."
+    )
+    # The chat calls solo pixies and leaders; only a leader calls pixies, its members.
+    assert offered.rules == CallRules(
+        frozenset({"lead", "bugs", "solo", "left"}),
+        frozenset({"lead", "solo", "left"}),
+        {"lead": frozenset({"bugs"})},
+    )
+    for slug in ("bugs", "solo", "left"):
+        assert NO_PIXIE_CALLS in offered.subagents[slug].prompt
     assert offered.subagents["solo"].description == "Solo: You do Solo."
     assert offered.subagents["left"].description == "Left: You do Left."
     assert "- bugs: Bugs: You do Bugs.\n" in offered.subagents["lead"].prompt

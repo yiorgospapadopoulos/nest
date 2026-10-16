@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from nestd.events import types
-from nestd.providers.base import Subagent
+from nestd.providers.base import CallRules, Subagent
 from nestd.sessions.extras import RunExtras
 from nestd.sessions.models import NewSession, Session, SessionState
 from nestd.sessions.subagents import ChatAgents, TeamCall
@@ -20,13 +20,14 @@ from tests.session_support import Env
 
 TESTER = Subagent(description="Tester", prompt="You test.", permission_mode="default")
 QA = TeamCall("qa", "\n\n(call the qa team)")
+RULES = CallRules(frozenset({"tester"}), frozenset({"tester"}))
 
 
 class Source:
     """The pixies as the chat would get them now; tests change them between messages."""
 
     def __init__(self) -> None:
-        self.agents = ChatAgents({"tester": TESTER}, (QA,))
+        self.agents = ChatAgents({"tester": TESTER}, (QA,), rules=RULES)
         self.asked: list[str] = []
 
     async def __call__(self, session: NewSession) -> ChatAgents:
@@ -73,6 +74,8 @@ async def test_a_project_chat_runs_with_the_pixies_as_subagents(env: Env) -> Non
     await results(env, session.id, 1)
 
     assert dict(env.provider.runs[0].spec.subagents) == {"tester": TESTER}
+    # Who may call which pixie goes with them (B70).
+    assert env.provider.runs[0].spec.call_rules is RULES
 
 
 async def test_a_team_mention_reaches_the_agent_but_not_the_transcript(env: Env) -> None:

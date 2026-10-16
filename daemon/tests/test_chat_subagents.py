@@ -1,6 +1,6 @@
 import pytest
 
-from nestd.providers.base import Subagent
+from nestd.providers.base import CallRules, Subagent
 from nestd.sessions.subagents import NO_AGENTS, ChatAgents, OfferedPixie, TeamCall
 
 QA = TeamCall("qa", " [call qa]")
@@ -90,3 +90,45 @@ def test_each_pixie_has_its_own_fingerprint() -> None:
     assert CREW.pixie_fingerprint("tester") == changed.pixie_fingerprint("tester")
     assert CREW.pixie_fingerprint("lead") != changed.pixie_fingerprint("lead")
     assert CREW.pixie_fingerprint("tester") != CREW.pixie_fingerprint("lead")
+
+
+def test_the_fingerprint_follows_the_call_rules() -> None:
+    def rules(main: set[str], leaders: dict[str, frozenset[str]]) -> ChatAgents:
+        return ChatAgents(
+            CREW.subagents,
+            CREW.teams,
+            CREW.pixies,
+            CallRules(frozenset({"tester", "lead"}), frozenset(main), leaders),
+        )
+
+    base = rules({"lead", "tester"}, {"lead": frozenset({"tester"})})
+
+    assert (
+        base.fingerprint == rules({"tester", "lead"}, {"lead": frozenset({"tester"})}).fingerprint
+    )
+    assert base.fingerprint != rules({"lead"}, {"lead": frozenset({"tester"})}).fingerprint
+    assert base.fingerprint != rules({"lead", "tester"}, {}).fingerprint
+    assert base.fingerprint != CREW.fingerprint
+
+
+@pytest.mark.parametrize(
+    ("caller", "target", "allowed"),
+    [
+        (None, "solo", True),
+        (None, "bugs", False),
+        (None, "Explore", True),
+        ("lead", "bugs", True),
+        ("lead", "solo", False),
+        ("bugs", "lead", False),
+        ("Explore", "bugs", False),
+        ("Explore", "general-purpose", True),
+    ],
+)
+def test_who_may_call_a_pixie(caller: str | None, target: str, allowed: bool) -> None:
+    rules = CallRules(
+        frozenset({"solo", "lead", "bugs"}),
+        frozenset({"solo", "lead"}),
+        {"lead": frozenset({"bugs"})},
+    )
+
+    assert rules.may_call(caller, target) is allowed
