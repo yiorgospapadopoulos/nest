@@ -139,6 +139,10 @@
                 try await renderPixieTree(model, shell, controller, folder)
                 return
             }
+            if only == "b48" {
+                try await renderPixieMotion(model, shell, controller, folder)
+                return
+            }
             if only == "b41" {
                 try await renderPixieTools(model, shell, controller, folder)
                 return
@@ -914,6 +918,57 @@
             shell.send("c3")
             try await pair(controller, "b46-member-refused", folder)
             draft.clear()
+        }
+
+        /// B48: the tree under a chat with a working pixie and a team of three, whose icon
+        /// is its members' sprites two by two (A B C A), held still as snapshots are; and
+        /// every mascot at rest, lifted and blinking, with team icons of one, two, three
+        /// and five members.
+        private static func renderPixieMotion(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let pixies = model.pixies
+            let bugs = try await pixies.create(
+                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+            let stylist = try await pixies.create(
+                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+            let scout = try await pixies.create(
+                CreatePixieRequest(name: "Scout", mascot: .owl, color: "#0090FF"))
+            let qa = try await pixies.createTeam(name: "QA", handle: "qa")
+            for member in [bugs, stylist, scout] {
+                try await pixies.setTeam(member.id, to: qa.id)
+            }
+            try await pixies.load()
+            let now = Date()
+            let team: ChatPixieEntry = try SampleData.decode(
+                SampleTree.team(
+                    qa.id, state: "running",
+                    members: [
+                        (bugs.id, true, "running"), (stylist.id, false, "done"),
+                        (scout.id, false, nil),
+                    ],
+                    calls: [
+                        SampleTree.call(
+                            "k4", pixie: bugs.id, tool: "qa1", agent: "c41", state: "running",
+                            started: now - 50)
+                    ]))
+            (model.api as? SampleAPI)?.setGroup("c2", SampleTree.groups(now: now)["c2"]! + [team])
+            await model.chatPixies.load()
+
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.agents]
+                state.openChat("c2", in: CGSize(width: 828, height: 790))
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b48-tree", folder)
+            let members = [bugs, stylist, scout, pixies.pixies.first { $0.id == "reviewer" }!]
+            try await pairView(SpriteFramesPreview(members: members), "b48-frames", folder)
         }
 
         /// B41: a pixie's details with its autonomy note, limits and Activity page; a chat
@@ -2474,6 +2529,45 @@
     /// event monitor reads clicks sent to it.
     private final class SnapshotWindow: NSWindow {
         override var canBecomeMain: Bool { true }
+    }
+
+    /// Each mascot at rest, lifted and lifted blinking (B48), then team icons of one, two,
+    /// three and five members, drawn three times larger.
+    private struct SpriteFramesPreview: View {
+        let members: [Pixie]
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Mascot.choices, id: \.self) { mascot in
+                    HStack(spacing: 18) {
+                        Text(mascot.rawValue)
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                            .frame(width: 64, alignment: .leading)
+                        ForEach(
+                            [
+                                SpriteFrame.rest, .init(lifted: true, blinking: false),
+                                .init(lifted: true, blinking: true),
+                            ], id: \.self
+                        ) { frame in
+                            SpritePixels(
+                                mascot: mascot, color: PixieColor.standard, size: 36, frame: frame)
+                        }
+                    }
+                }
+                HStack(spacing: 30) {
+                    ForEach([1, 2, 3, 5], id: \.self) { count in
+                        let cells = TeamIcon.fill(Array(members.prefix(count)))
+                            .enumerated().map { TeamIconCell(pixie: $1, working: false, index: $0) }
+                        TeamIconView(cells: cells)
+                            .scaleEffect(3)
+                            .frame(width: 48, height: 40)
+                    }
+                }
+                .padding(.top, 8)
+            }
+            .padding(20)
+        }
     }
 
     /// Every base component of the Mac look on the window's surfaces, for snapshots.

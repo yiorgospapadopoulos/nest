@@ -150,7 +150,9 @@ private struct WorkCall: View {
     private var header: some View {
         HStack(spacing: 7) {
             if let id = section.pixieID, let pixie = shell.pixie(id) {
-                SpriteView(mascot: pixie.mascot, color: pixie.color, size: 14)
+                SpriteView(
+                    mascot: pixie.mascot, color: pixie.color, size: 14, working: running,
+                    phaseKey: pixie.id)
                 Text(pixie.name)
                     .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Color(hex: pixie.color))

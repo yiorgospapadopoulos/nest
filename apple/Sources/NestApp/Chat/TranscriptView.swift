@@ -882,7 +882,9 @@ struct PixieCallRow: View {
                 } label: {
                     HStack(spacing: 6) {
                         if let pixie {
-                            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 13)
+                            SpriteView(
+                                mascot: pixie.mascot, color: pixie.color, size: 13,
+                                working: entry.isRunning, phaseKey: pixie.id)
                         }
                         Text(name)
                             .font(.ui(TypeSize.ui, .medium))

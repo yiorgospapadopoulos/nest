@@ -276,7 +276,8 @@ private struct PixiesTab: View {
         HStack(spacing: 7) {
             SpriteView(
                 mascot: mascot?.mascot ?? .invader, color: mascot?.color ?? PixieColor.standard,
-                size: 15)
+                size: 15, working: mascot.map(shell.isWorking) ?? false,
+                phaseKey: mascot?.id ?? "")
             Text("Pixies")
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(isCurrent ? Palette.t1 : Palette.t2)

@@ -72,9 +72,13 @@ struct NoPixiePanes: View {
                         Button {
                             shell.openPixie(pixie.id)
                         } label: {
+                            let working = shell.isWorking(pixie)
                             HStack(spacing: 8) {
-                                SpriteView(mascot: pixie.mascot, color: pixie.color, size: 14)
+                                SpriteView(
+                                    mascot: pixie.mascot, color: pixie.color, size: 14,
+                                    working: working, phaseKey: pixie.id)
                                 Text(pixie.name)
+                                StillWorkingDot(working: working)
                             }
                         }
                         .buttonStyle(.nest(height: 26))

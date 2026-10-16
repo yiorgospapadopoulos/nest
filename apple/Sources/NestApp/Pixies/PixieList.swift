@@ -249,16 +249,18 @@ private struct PixieRow: View {
         let state = shell.app.pixieState
         let selected = state.layout.focused == pixie.id
         let open = state.layout.contains(pixie.id)
-        let chat = pixie.chatSessionID.flatMap(shell.sessions.session)
-        let running = chat.map { $0.state == .running || $0.state == .starting } ?? false
+        let running = shell.isWorking(pixie)
         let waiting =
             shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
             + shell.reports.unreadActions(of: pixie.id)
         let showsMenu = hovering || (reveal && selected)
         HStack(spacing: 8) {
-            SpriteView(mascot: pixie.mascot, color: pixie.color, size: 16)
-                .frame(width: 18)
-                .opacity(pixie.hidden ? 0.5 : 1)
+            SpriteView(
+                mascot: pixie.mascot, color: pixie.color, size: 16, working: running,
+                phaseKey: pixie.id
+            )
+            .frame(width: 18)
+            .opacity(pixie.hidden ? 0.5 : 1)
             // The handle gives way first: shown whole or not at all, and the name is cut
             // only once it is gone.
             ViewThatFits(in: .horizontal) {
