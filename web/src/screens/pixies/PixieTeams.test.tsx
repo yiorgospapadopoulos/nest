@@ -82,6 +82,33 @@ describe("pixie teams in the list", () => {
     expect(tag.closest(".rm")?.textContent).toBe("Leader");
   });
 
+  it("draws a team's name in its leader's colour, following a new leader or colour", async () => {
+    const { push } = await openList();
+    const teamName = (name: string) => defined(document.getElementById(`team-${name}`));
+
+    expect(teamName("qa")).toHaveClass("pxtname");
+    expect(teamName("qa").style.getPropertyValue("--px")).toBe("#8B7CF6");
+    // No leader: the usual grey.
+    expect(teamName("empty")).not.toHaveClass("pxtname");
+    expect(teamName("empty").style.getPropertyValue("--px")).toBe("");
+
+    push({
+      type: "pixie.updated",
+      payload: { pixie: { ...defined(PIXIES[2]), color: "#E5484D" } },
+    });
+    expect(teamName("qa").style.getPropertyValue("--px")).toBe("#E5484D");
+    push({
+      type: "pixie_team.updated",
+      payload: { team: { ...defined(TEAMS[1]), leader_id: "a" } },
+    });
+    expect(teamName("qa").style.getPropertyValue("--px")).toBe("#8B7CF6");
+    push({
+      type: "pixie_team.updated",
+      payload: { team: { ...defined(TEAMS[1]), leader_id: null } },
+    });
+    expect(teamName("qa")).not.toHaveClass("pxtname");
+  });
+
   it("folds a team and remembers it on this device", async () => {
     const storage = memoryStorage();
     const { user, unmount } = await openList(fakeApi(), storage);

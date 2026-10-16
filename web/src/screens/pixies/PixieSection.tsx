@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import type { Mascot, Pixie, PixieTeam } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { pixieList, teamList, unreadActions } from "../../store/selectors.ts";
+import { leaderColor } from "../../transcript/mentions.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { useRowGestures } from "../projects/rowGestures.ts";
 import { NameSheet } from "./NameSheet.tsx";
@@ -192,6 +193,7 @@ export function PixieSection({ onOpen }: Props) {
           <TeamSection
             key={team.id}
             team={team}
+            color={leaderColor(team, state.pixies)}
             count={members.length}
             folded={state.foldedTeams.includes(team.id)}
             onFold={(folded) => {
@@ -278,6 +280,8 @@ function rowOf(groups: Group[], id: string) {
 
 interface TeamSectionProps {
   team: PixieTeam;
+  // Its leader's colour, for its name.
+  color: string | null;
   // Its pixies shown.
   count: number;
   folded: boolean;
@@ -287,7 +291,15 @@ interface TeamSectionProps {
 }
 
 /** A team's header, folding its pixies away, with its menu; then its pixies. */
-function TeamSection({ team, count, folded, onFold, onActions, children }: TeamSectionProps) {
+function TeamSection({
+  team,
+  color,
+  count,
+  folded,
+  onFold,
+  onActions,
+  children,
+}: TeamSectionProps) {
   const id = `team-${team.id}`;
   return (
     <section className="pxteam" aria-labelledby={id}>
@@ -300,7 +312,13 @@ function TeamSection({ team, count, folded, onFold, onActions, children }: TeamS
           }}
         >
           <Icon name="chev" className="cv" />
-          <span id={id}>{team.name}</span>
+          {color === null ? (
+            <span id={id}>{team.name}</span>
+          ) : (
+            <span id={id} className="pxtname" style={{ "--px": color } as CSSProperties}>
+              {team.name}
+            </span>
+          )}
           <span className="pxhandle">@{team.handle}</span>
           <span className="gc">{count}</span>
         </button>

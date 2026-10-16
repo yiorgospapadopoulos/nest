@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pixie, team } from "../test/fixtures.ts";
-import { mentionColors, mentionParts } from "./mentions.ts";
+import { leaderColor, mentionColors, mentionParts } from "./mentions.ts";
 
 describe("mentionParts", () => {
   const colors = new Map([
@@ -41,5 +41,15 @@ describe("mentionColors", () => {
       ["bo", "#00bb00"],
       ["qa", "#00bb00"],
     ]);
+  });
+});
+
+describe("leaderColor", () => {
+  const pixies = { b: pixie({ id: "b", color: "#00bb00" }) };
+
+  it("is the leader's colour, or none without a known leader", () => {
+    expect(leaderColor(team({ leader_id: "b" }), pixies)).toBe("#00bb00");
+    expect(leaderColor(team({ leader_id: null }), pixies)).toBeNull();
+    expect(leaderColor(team({ leader_id: "missing" }), pixies)).toBeNull();
   });
 });
