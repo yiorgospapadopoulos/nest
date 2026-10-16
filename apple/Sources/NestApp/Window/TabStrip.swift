@@ -13,22 +13,45 @@ struct TabStrip: View {
     let fullScreen: Bool
     /// A tab's height inside the strip.
     static let tabHeight = 24.0
+    /// The space between tabs.
+    static let spacing = 2.0
 
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
     @State private var addingProject = false
     /// Add folder was picked: the panel opens once the popover has gone.
     @State private var choosingFolder = false
+    /// The project tab being dragged to a new place, if any.
+    @State private var drag: TabDrag?
+    /// One project tab's width plus the spacing; every project tab has the same width.
+    @State private var tabStep = 0.0
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Self.spacing) {
             PixiesTab()
             Rectangle()
                 .fill(Palette.divider)
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
                 .accessibilityHidden(true)
-            ForEach(shell.app.openProjects, id: \.self) { name in
-                ProjectTab(name: name)
+            let tabs = shell.app.openProjects
+            ForEach(Array(tabs.enumerated()), id: \.element) { index, name in
+                let dragged = drag?.name == name
+                ProjectTab(name: name) { by in
+                    shell.app.moveProject(name, to: index + by)
+                }
+                .onGeometryChange(for: Double.self) {
+                    $0.size.width
+                } action: {
+                    tabStep = $0 + Self.spacing
+                }
+                .offset(x: offset(of: index, dragged: dragged, count: tabs.count))
+                .zIndex(dragged ? 1 : 0)
+                .animation(
+                    dragged || reduceMotion ? nil : .smooth(duration: 0.18),
+                    value: drag.map { target(of: $0, count: tabs.count) }
+                )
+                .highPriorityGesture(reorder(name, at: index, count: tabs.count))
             }
             addButton
             Spacer(minLength: 12)
@@ -40,6 +63,39 @@ struct TabStrip: View {
         .padding(.trailing, 10)
         .frame(height: Metrics.stripHeight)
         .background(WindowDragArea())
+    }
+
+    /// Where the dragged tab would land now.
+    private func target(of drag: TabDrag, count: Int) -> Int {
+        TabReorder.target(
+            from: drag.start, translation: drag.translation, step: tabStep, count: count)
+    }
+
+    /// The dragged tab follows the pointer; the tabs it passes slide aside.
+    private func offset(of index: Int, dragged: Bool, count: Int) -> Double {
+        guard let drag else { return 0 }
+        if dragged {
+            return drag.translation
+        }
+        return TabReorder.offset(
+            of: index, from: drag.start, to: target(of: drag, count: count), step: tabStep)
+    }
+
+    /// Drags a project tab along the strip, Safari style. It goes first so a moving click
+    /// drags; a click that does not move 4 points still selects the tab or closes it.
+    private func reorder(_ name: String, at index: Int, count: Int) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { value in
+                drag = TabDrag(name: name, start: index, translation: value.translation.width)
+            }
+            .onEnded { value in
+                let landing = TabDrag(
+                    name: name, start: index, translation: value.translation.width)
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
+                    shell.app.moveProject(name, to: target(of: landing, count: count))
+                    drag = nil
+                }
+            }
     }
 
     private var addButton: some View {
@@ -70,6 +126,13 @@ struct TabStrip: View {
             }
         }
     }
+}
+
+/// A project tab on the move: where it started among the open tabs and how far it went.
+private struct TabDrag: Equatable {
+    let name: String
+    let start: Int
+    let translation: Double
 }
 
 /// A flat tab: a soft fill when current, a fainter one while hovered.
@@ -136,6 +199,8 @@ private struct TabCloseButton: View {
 /// over its end while hovered.
 private struct ProjectTab: View {
     let name: String
+    /// Moves the tab by this many places, for the accessibility actions.
+    let move: (Int) -> Void
     @Environment(Shell.self) private var shell
     @State private var hovering = false
 
@@ -178,9 +243,16 @@ private struct ProjectTab: View {
         .onTapGesture { shell.selectProject(name) }
         .onHover { hovering = $0 }
         .help(attention > 0 ? "\(name), \(attention) need you" : name)
-        .accessibilityElement(children: .combine)
+        // Ignored, not combined: a combined tab passed its press on to the close button.
+        .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityLabel(attention > 0 ? "\(name), \(attention) need you" : name)
+        .accessibilityAction { shell.selectProject(name) }
+        .accessibilityAction(named: "Close") {
+            if canClose { shell.app.closeProject(name) }
+        }
+        .accessibilityAction(named: "Move left") { move(-1) }
+        .accessibilityAction(named: "Move right") { move(1) }
     }
 }
 

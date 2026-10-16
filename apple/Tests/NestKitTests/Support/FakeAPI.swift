@@ -153,6 +153,18 @@ final class FakeAPI: NestAPI {
         try call("linkSuggestions", name) { $0.linkSuggestions[name] ?? [] }
     }
 
+    /// Sorts the repos as the daemon does: named ones first, the rest after in order.
+    func reorderRepos(_ order: [String]) async throws -> [Repo] {
+        await pass("reorderRepos")
+        return try call("reorderRepos", order.joined(separator: ",")) { state in
+            let rank = { (repo: Repo) in order.firstIndex(of: repo.name) ?? order.count }
+            state.repos = state.repos.enumerated()
+                .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+                .map(\.element)
+            return state.repos
+        }
+    }
+
     /// Both wait at the "sessions" gate, after reading what they answer.
     func sessions(repo: String?, archived: Bool) async throws -> [Session] {
         let answer = try call("sessions", "archived=\(archived)") { state in

@@ -54,6 +54,10 @@ public struct APIClient: NestAPI {
         try await get("repos", name, "link-suggestions")
     }
 
+    public func reorderRepos(_ order: [String]) async throws -> [Repo] {
+        try await call("PUT", ["repos", "order"], body: RepoOrderRequest(order: order))
+    }
+
     // MARK: Sessions
 
     public func sessions(repo: String?, archived: Bool) async throws -> [Session] {

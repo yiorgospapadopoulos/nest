@@ -77,8 +77,9 @@ private let workspace = CGSize(width: 1000, height: 600)
 
         try await app.loadRepos()
 
-        #expect(app.openProjects == ["map-viewer", "todo-ui"])
-        #expect(app.currentProject == "map-viewer")
+        // The tabs follow the daemon's project order (D090) and the first one is current.
+        #expect(app.openProjects == ["todo-ui", "map-viewer"])
+        #expect(app.currentProject == "todo-ui")
     }
 
     @Test func keepsAValidCurrentTab() async throws {

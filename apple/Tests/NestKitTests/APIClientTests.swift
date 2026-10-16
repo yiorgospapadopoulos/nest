@@ -502,6 +502,10 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.linkSuggestions("todo-ui")
         },
         RouteCase(
+            "PUT", "/api/repos/order", body: #"{"order":["map-viewer","todo-ui"]}"#,
+            response: Fixture.text("repos")
+        ) { _ = try await $0.reorderRepos(["map-viewer", "todo-ui"]) },
+        RouteCase(
             "GET", "/api/sessions/s1/rewind?message=42&restore=code",
             response:
                 #"{"can_rewind": true, "files_changed": ["a"], "insertions": 1, "deletions": 0}"#

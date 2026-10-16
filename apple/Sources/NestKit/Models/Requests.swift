@@ -194,6 +194,10 @@ struct VisibilityRequest: Encodable {
     var client: String
 }
 
+struct RepoOrderRequest: Encodable {
+    var order: [String]
+}
+
 struct OpenRepoRequest: Encodable {
     var app: RepoApp
 }
