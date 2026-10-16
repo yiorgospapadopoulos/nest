@@ -34,8 +34,8 @@ struct RightPanel: View {
         .task(id: inFlightKey) { await loadActivity() }
     }
 
-    /// Reloads agents, tasks and background work when the watched chats change or the
-    /// daemon connects again.
+    /// Reloads the project's goals, and agents, tasks and background work, when the
+    /// project or the watched chats change or the daemon connects again.
     private var inFlightKey: String {
         let connected = shell.app.connection == .connected
         return ([shell.project ?? "", "\(connected)"] + watched).joined(separator: ",")
@@ -52,6 +52,10 @@ struct RightPanel: View {
     }
 
     private func loadActivity() async {
+        if let project = shell.project {
+            try? await shell.activity.loadGoals(
+                repo: project, sessions: shell.sessions.sessions(in: project))
+        }
         for id in watched {
             try? await shell.activity.load(session: id)
         }
@@ -70,8 +74,7 @@ struct PanelCounts {
         let ids = shell.sessions.sessions(in: project).map(\.id)
         agents = shell.activity.runningAgents(in: ids)
         needs = shell.sessions.attention(of: project)
-        let chats = shell.projectState.layout.leaves.filter { PaneKind(paneID: $0) == .chat }
-        goals = chats.filter { !shell.isDraft($0) }.count
+        goals = shell.activity.goalEntries(shell.sessions.sessions(in: project)).count
     }
 
     func count(_ card: RightCard) -> Int {
