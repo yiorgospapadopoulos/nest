@@ -59,13 +59,15 @@ struct ShellView: View {
             .padding(.top, Metrics.stripHeight + 12)
             OverlayLayer()
         }
-        .ignoresSafeArea()
+        // Measured and named inside the safe area's edge, so the window space starts at the
+        // window's top, under the title bar, and the chat background lines up there too.
         .onGeometryChange(for: CGSize.self) {
             $0.size
         } action: {
             windowSize = $0
         }
         .windowSpace(size: windowSize)
+        .ignoresSafeArea()
         .environment(\.accentColors, AccentColors(accent: settings.accent))
         // Continuous animations stop while nobody can see the window (IMP-11).
         .environment(
