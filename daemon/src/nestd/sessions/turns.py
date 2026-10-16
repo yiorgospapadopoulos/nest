@@ -596,6 +596,7 @@ class TurnRunner:
                 allowed_tools=extras.allowed_tools if extras else (),
                 disallowed_tools=extras.disallowed_tools if extras else (),
                 subagents=agents.subagents,
+                call_rules=agents.rules,
                 guard_git=_guarded(session),
             )
             sink = SessionSink(

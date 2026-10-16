@@ -151,3 +151,42 @@ def test_a_call_still_running_or_unknown() -> None:
     assert agent_work(log.events, "a1", ["a1", "s9"]) == [
         AgentWork(tool_use_id="a1", prompt=None, messages=[], report=None)
     ]
+
+
+def test_a_call_made_by_another_subagent() -> None:
+    log = Log()
+    log.message(None, call("l1", "Lead the team"))
+    # The leader calls a member; asked for the background, it ran in the foreground.
+    log.message("l1", TextBlock(text="Splitting."), call("b1", "Find bugs", background=True))
+    own = log.message("b1", read("r1"))
+    # A call id in the agent's own messages is not a call of it.
+    log.message("b1", ToolResultBlock(tool_use_id="b1", content="not its result"))
+    log.message("l1", ToolResultBlock(tool_use_id="b1", content="Two bugs."))
+    log.message("l1", call("x1", "Look around"))
+    log.message("l1", ToolResultBlock(tool_use_id="x1", content="Async agent launched"))
+
+    (work,) = agent_work(log.events, "b1", ["b1"])
+    (ordinary,) = agent_work(log.events, "x1", ["x1"])
+
+    assert work == AgentWork(
+        tool_use_id="b1",
+        prompt="Find bugs",
+        messages=[
+            AgentMessage(event_id=own, ts=TS, blocks=[read("r1")]),
+            AgentMessage(
+                event_id=own + 1,
+                ts=TS,
+                blocks=[ToolResultBlock(tool_use_id="b1", content="not its result")],
+            ),
+        ],
+        report="Two bugs.",
+    )
+    # An ordinary subagent's call inside a subagent runs in the background by default.
+    assert ordinary.report is None
+
+
+def test_an_agents_own_messages_never_start_its_calls() -> None:
+    log = Log()
+    log.message("b1", call("b1", "Find bugs"))
+
+    assert agent_work(log.events, "b1", ["b1"]) == []

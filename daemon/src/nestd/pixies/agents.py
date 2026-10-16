@@ -1,5 +1,8 @@
 """The pixies a project chat can call with `@slug`, as Claude Code subagents, and the
 teams it can call with `@handle` (B40); in a pixie's own chat, every other pixie (B41).
+
+A team is called through its leader, the only pixie that calls pixies: its own members
+(B70). The run's call guard holds every agent to that.
 """
 
 from dataclasses import dataclass
@@ -10,7 +13,7 @@ from nestd.pixies.models import Pixie, PixieTeam
 from nestd.pixies.prompt import call_prompt
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
-from nestd.providers.base import Subagent
+from nestd.providers.base import CallRules, Subagent
 from nestd.sessions.models import NewSession
 from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
 
@@ -18,21 +21,27 @@ from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
 DEFAULT_MODEL = "default"
 # What a pixie with read access never gets in a project.
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-# Names the members too: told only the leader, the chat looked for a team it could not see.
 TEAM_CALL = (
-    "\n\n(The user called the team @{handle}, a team of pixies set up in Nest. Its"
-    " members are these subagents: {members}. First use the subagent {leader} to plan which"
-    " member does which part. Then call each member as the plan says. Then sum up the"
-    " results.)"
+    "\n\n(The user called the team @{handle}, a team of pixies set up in Nest. Hand the"
+    " whole request to its leader, the subagent {leader}, with the Agent tool and wait for"
+    " its report. The leader decides which member does which part, calls them itself and"
+    " puts their results together.{members} When it reports, give its report and add a"
+    " short summary of what happened.)"
 )
-# A member is called only through its team (B46), so the chat should not pick it alone.
-MEMBER_NOTE = " It is called only as part of a team call to @{handle}."
+# Named, so the chat does not call them itself.
+TEAM_CALL_MEMBERS = " Do not call its members ({members}) yourself."
+MEMBER_NOTE = " It is called only by its team's leader, as part of a team call to @{handle}."
+LEADER_NOTE = " It leads the team @{handle}: a call to the team goes to it."
 TEAM_SECTION = """## Your team
 You lead the team {name} (@{handle}). Its members in this chat:
 {members}
-When you are asked to plan a request for the team, reply only with a short plan that \
-names the members by slug (you may name yourself) and says what each one does. Do none \
-of the work while planning."""
+When a request comes for the team, decide which member does which part; you may do a \
+part yourself. Call each member with the Agent tool, with `subagent_type` set to its slug \
+and `run_in_background` set to false, and wait for its result. To continue a member you \
+called earlier in this conversation, use SendMessage to its agent id instead of a new \
+call. Then report what each member did and the combined result. You call only your \
+team's members; for other help, use Claude Code's ordinary subagents."""
+NO_MEMBERS = "No other member is in this chat."
 
 
 @dataclass(frozen=True)
@@ -72,31 +81,50 @@ class PixieAgents:
         handles = {team.id: team.handle for team in teams}
         offered = {
             item.pixie.slug: OfferedPixie(
-                item.pixie.id, item.pixie.slug, item.pixie.name, *_offered_team(item.pixie, handles)
+                item.pixie.id,
+                item.pixie.slug,
+                item.pixie.name,
+                *_offered_team(item.pixie, handles),
+                leader=item.pixie.id in led,
             )
             for item in available
         }
         subagents = {
             item.pixie.slug: _subagent(
                 item,
+                _note(offered[item.pixie.slug]),
                 _team_section(led.get(item.pixie.id), available),
-                offered[item.pixie.slug].team_handle,
             )
             for item in available
         }
         calls = tuple(_team_call(team, available) for team in teams)
-        return ChatAgents(subagents, calls, offered)
+        rules = CallRules(
+            pixies=frozenset(offered),
+            main=frozenset(
+                slug for slug, p in offered.items() if p.team_handle is None or p.leader
+            ),
+            leaders={
+                item.pixie.slug: frozenset(
+                    member.pixie.slug for member in _members(team, available)
+                )
+                for item in available
+                if (team := led.get(item.pixie.id)) is not None
+            },
+        )
+        return ChatAgents(subagents, calls, offered, rules)
 
     async def _for_pixie_chat(self, pixie_id: str) -> ChatAgents:
+        """The pixie calls every other pixie, and those it calls call none."""
         subagents = {
-            item.pixie.slug: _subagent(item, None, None)
+            item.pixie.slug: _subagent(item)
             for pixie in await self._pixies.list_pixies()
             if pixie.id != pixie_id
             and not pixie.hidden
             and pixie.project_access != "none"
             and (item := self._read(pixie)) is not None
         }
-        return ChatAgents(subagents)
+        everyone = frozenset(subagents)
+        return ChatAgents(subagents, rules=CallRules(pixies=everyone, main=everyone))
 
     def _read(self, pixie: Pixie) -> _Available | None:
         try:
@@ -121,28 +149,40 @@ def _offered_team(pixie: Pixie, handles: dict[str, str]) -> tuple[str | None, st
     return (pixie.team_id, handle) if handle is not None else (None, None)
 
 
+def _members(team: PixieTeam, available: list[_Available]) -> list[_Available]:
+    """The team's offered pixies besides its leader, in pixie order."""
+    return [
+        item
+        for item in available
+        if item.pixie.team_id == team.id and item.pixie.id != team.leader_id
+    ]
+
+
 def _team_call(team: PixieTeam, available: list[_Available]) -> TeamCall:
-    """The instruction a message calling the team gets: its offered members in pixie
-    order, the leader marked, and the steps.
-    """
-    members = [item.pixie for item in available if item.pixie.team_id == team.id]
+    """The instruction a message calling the team gets: hand it to the leader."""
     # Offered teams have an offered leader.
     leader = next(item.pixie.slug for item in available if item.pixie.id == team.leader_id)
-    names = ", ".join(
-        f"{pixie.slug} (leader)" if pixie.id == team.leader_id else pixie.slug for pixie in members
+    slugs = ", ".join(item.pixie.slug for item in _members(team, available))
+    members = TEAM_CALL_MEMBERS.format(members=slugs) if slugs else ""
+    return TeamCall(
+        team.handle, TEAM_CALL.format(handle=team.handle, leader=leader, members=members)
     )
-    return TeamCall(team.handle, TEAM_CALL.format(handle=team.handle, members=names, leader=leader))
 
 
 def _team_section(team: PixieTeam | None, available: list[_Available]) -> str | None:
     if team is None:
         return None
     members = "\n".join(
-        f"- {item.pixie.slug}: {item.description}"
-        for item in available
-        if item.pixie.team_id == team.id
+        f"- {item.pixie.slug}: {item.description}" for item in _members(team, available)
     )
-    return TEAM_SECTION.format(name=team.name, handle=team.handle, members=members)
+    return TEAM_SECTION.format(name=team.name, handle=team.handle, members=members or NO_MEMBERS)
+
+
+def _note(pixie: OfferedPixie) -> str:
+    """What its description adds: it leads its team, or only its leader calls it."""
+    if pixie.team_handle is None:
+        return ""
+    return (LEADER_NOTE if pixie.leader else MEMBER_NOTE).format(handle=pixie.team_handle)
 
 
 def _model(model: str | None) -> str | None:
@@ -150,15 +190,14 @@ def _model(model: str | None) -> str | None:
     return None if model is None or model.lower() == DEFAULT_MODEL else model
 
 
-def _subagent(item: _Available, team: str | None, member_of: str | None) -> Subagent:
-    """`team` is a leader's team section; `member_of` the handle of the team it is in."""
+def _subagent(item: _Available, note: str = "", team: str | None = None) -> Subagent:
+    """`note` ends its description; `team` is a leader's team section."""
     pixie = item.pixie
     denied = tuple(pixie.disallowed_tools)
     if pixie.project_access == "read":
         denied += EDIT_TOOLS
     return Subagent(
-        description=item.description
-        + ("" if member_of is None else MEMBER_NOTE.format(handle=member_of)),
+        description=item.description + note,
         prompt=call_prompt(pixie, item.soul, item.memory, team),
         permission_mode=pixie.permission_mode,
         model=_model(pixie.model),

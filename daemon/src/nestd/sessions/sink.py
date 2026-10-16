@@ -83,7 +83,7 @@ class SessionSink:
         """`forking` is the engine session the run cuts into a new one (B59): the cut is
         done once the run reports another session id. `attachments` keeps the images of
         tool results (B59); without it they are left out. `calls` records the pixies the
-        main agent calls (B46).
+        run's agents call (B46, B70).
         """
         self._calls = calls
         self._forking = forking
@@ -116,10 +116,12 @@ class SessionSink:
                 self._session_id,
             ),
         )
-        if self._calls is not None and parent_tool_use_id is None:
+        if self._calls is not None:
             await self._isolated(
                 "the pixie calls",
-                self._calls.message(self._session_id, self._live.run_agents, blocks),
+                self._calls.message(
+                    self._session_id, self._live.run_agents, blocks, parent_tool_use_id
+                ),
             )
         await self._isolated("the message hooks", self._hooks.message(self._session_id))
 

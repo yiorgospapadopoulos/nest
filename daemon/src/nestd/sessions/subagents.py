@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from typing import Protocol
 
-from nestd.providers.base import AgentTask, MessageBlock, Subagent
+from nestd.providers.base import AgentTask, CallRules, MessageBlock, Subagent
 from nestd.sessions.models import NewSession
 
 
@@ -36,7 +36,8 @@ class TeamCall:
 @dataclass(frozen=True)
 class OfferedPixie:
     """A pixie a project chat's run offers as the subagent `slug` (B46); `team_handle` is
-    set when it is in a team the chat can call, which is then the only way to call it.
+    set when it is in a team the chat can call, which is then the only way to call it, and
+    `leader` when it leads that team (B70).
     """
 
     id: str
@@ -44,6 +45,7 @@ class OfferedPixie:
     name: str
     team_id: str | None = None
     team_handle: str | None = None
+    leader: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,8 @@ class ChatAgents:
     teams: tuple[TeamCall, ...] = ()
     # The pixies among the subagents, by slug; only a project chat's (B46).
     pixies: Mapping[str, OfferedPixie] = field(default_factory=dict[str, OfferedPixie])
+    # Which agents may call which of the pixies (B70).
+    rules: CallRules | None = None
 
     @cached_property
     def fingerprint(self) -> str:
@@ -59,6 +63,7 @@ class ChatAgents:
         data = {
             "subagents": {name: asdict(sub) for name, sub in sorted(self.subagents.items())},
             "teams": [asdict(team) for team in self.teams],
+            "rules": None if self.rules is None else _rules(self.rules),
         }
         return _digest(data)
 
@@ -93,6 +98,14 @@ class ChatAgents:
         return [pixie for pixie in self.pixies.values() if pixie.team_handle in called]
 
 
+def _rules(rules: CallRules) -> dict[str, object]:
+    return {
+        "pixies": sorted(rules.pixies),
+        "main": sorted(rules.main),
+        "leaders": {slug: sorted(members) for slug, members in rules.leaders.items()},
+    }
+
+
 def _digest(data: object) -> str:
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
@@ -116,9 +129,15 @@ class PixieCalls(Protocol):
         ...
 
     async def message(
-        self, session_id: str, agents: ChatAgents, blocks: list[MessageBlock]
+        self,
+        session_id: str,
+        agents: ChatAgents,
+        blocks: list[MessageBlock],
+        parent_tool_use_id: str | None,
     ) -> None:
-        """The main agent's message, with its tool calls and results."""
+        """An agent's message, with its tool calls and results: the main agent's, or with
+        `parent_tool_use_id` a subagent's, such as a team's leader calling its members.
+        """
         ...
 
     async def task(self, session_id: str, agents: ChatAgents, update: AgentTask) -> None: ...

@@ -34,7 +34,7 @@ class Calls:
     """Records what the run reports; its note names the text it was asked about."""
 
     def __init__(self) -> None:
-        self.seen: list[tuple[str, object]] = []
+        self.seen: list[tuple[object, ...]] = []
         self.fail = False
 
     async def note(self, session_id: str, agents: ChatAgents, text: str) -> str:
@@ -43,10 +43,14 @@ class Calls:
         return f" [note for {text}]"
 
     async def message(
-        self, session_id: str, agents: ChatAgents, blocks: list[MessageBlock]
+        self,
+        session_id: str,
+        agents: ChatAgents,
+        blocks: list[MessageBlock],
+        parent_tool_use_id: str | None,
     ) -> None:
         assert agents is AGENTS
-        self.seen.append(("message", blocks))
+        self.seen.append(("message", blocks, parent_tool_use_id))
 
     async def task(self, session_id: str, agents: ChatAgents, update: AgentTask) -> None:
         self.seen.append(("task", update.task_id))
@@ -79,7 +83,7 @@ async def idle(env: Env, session_id: str, count: int) -> None:
     await until(done)
 
 
-async def test_the_run_reports_main_messages_and_tasks(env: Env, calls: Calls) -> None:
+async def test_the_run_reports_every_message_and_task(env: Env, calls: Calls) -> None:
     call = ToolUseBlock(id="a1", name="Agent", input={"subagent_type": "scribe"})
     env.provider.script(
         messages(
@@ -92,9 +96,11 @@ async def test_the_run_reports_main_messages_and_tasks(env: Env, calls: Calls) -
     await idle(env, session.id, 1)
 
     assert calls.seen == [
-        ("message", [call]),
+        ("message", [call], None),
+        # A subagent's messages too: a team's leader calls its members (B70).
+        ("message", [TextBlock(text="inside")], "a1"),
         ("task", "ag1"),
-        ("message", [TextBlock(text="done")]),
+        ("message", [TextBlock(text="done")], None),
     ]
     assert [i.text for i in env.provider.runs[0].inputs] == ["@scribe go [note for @scribe go]"]
 

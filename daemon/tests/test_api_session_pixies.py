@@ -203,6 +203,6 @@ async def test_a_team_member_is_called_only_with_its_team(api: Api) -> None:
     assert (created.status_code, created.json()) == (422, refusal)
     assert (sent.status_code, sent.json()["code"]) == (422, "pixie_in_team")
     assert sent.json()["detail"] == "Lead is in @qa; call the team or a solo copy"
-    assert "It is called only as part of a team call to @qa." in (
+    assert "It is called only by its team's leader, as part of a team call to @qa." in (
         api.provider.runs[0].spec.subagents["bugs"].description
     )

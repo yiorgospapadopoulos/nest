@@ -5,6 +5,10 @@ A call is an Agent call whose subagent is a pixie the run offers. Claude Code na
 subagent's agent id in the call's result (or its task's start); a SendMessage to that id
 continues the same agent with its context, as another call of that pixie that ends with
 its task. Pixie chats offer no pixies to record (`ChatAgents.pixies` is empty there).
+
+The main agent calls solo pixies and team leaders; a leader, inside its own call, calls
+and continues its team's members (B70). Those calls are recorded from the leader's
+messages; every other subagent's calls are left alone.
 """
 
 import json
@@ -28,22 +32,29 @@ from nestd.pixies.call_store import CallStore
 from nestd.pixies.models import PixieTeam
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
-from nestd.providers.base import AgentTask, MessageBlock, ToolResultBlock, ToolUseBlock
+from nestd.providers.base import (
+    AGENT_TOOLS,
+    AgentTask,
+    MessageBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from nestd.sessions.errors import AgentCallNotFoundError
 from nestd.sessions.models import Session, SessionState
-from nestd.sessions.subagents import ChatAgents
-from nestd.tracking.agents import AGENT_TOOLS
-from nestd.tracking.transcripts import SEND_MESSAGE, AgentWork, agent_work
+from nestd.sessions.subagents import ChatAgents, OfferedPixie
+from nestd.tracking.transcripts import ASYNC_LAUNCH, SEND_MESSAGE, AgentWork, agent_work
 
 # Checked live (B46): with this note the chat continued the agent instead of a new one.
 CONTINUE_NOTE = (
     "\n\n(@{slug} was called earlier in this chat as agent {agent_id}. Continue that agent"
     " with SendMessage to '{agent_id}' instead of starting a new one.)"
 )
+CHANGED_MEMBERS_NOTE = (
+    "\n\n(Since @{leader} last called them, these members of @{handle} changed: {members}."
+    " Tell @{leader} to call them fresh with the Agent tool instead of continuing them.)"
+)
 # How Claude Code names the subagent in a call's result.
 _AGENT_ID = re.compile(r"agentId:\s*([\w-]+)")
-# The result of a call that went on in the background.
-ASYNC_LAUNCH = "Async agent launched"
 _ENDED: dict[str | None, CallState] = {"completed": "done", "failed": "failed"}
 # States that end a turn's calls; a closed chat ends the background ones too.
 _CUT_OFF = frozenset({SessionState.FAILED, SessionState.INTERRUPTED})
@@ -59,25 +70,47 @@ class PixieCallLog:
         self._bus = bus
 
     async def note(self, session_id: str, agents: ChatAgents, text: str) -> str:
-        """For each pixie `text` calls, alone or with its team, whose agent in this chat
-        can be continued: not sent away, and still defined as when it was first called.
+        """For each solo pixie `text` calls, and the leader of each team it calls, whose
+        agent in this chat can be continued: not sent away, and still defined as when it
+        was first called. A continued leader hears which members it called have changed.
         """
+        members = agents.team_members(text)
         notes: list[str] = []
-        for pixie in agents.mentioned_pixies(text) + agents.team_members(text):
+        for pixie in agents.mentioned_pixies(text) + [p for p in members if p.leader]:
             call = await self._store.latest_agent(session_id, pixie.id)
-            if call is not None and call.fingerprint == agents.pixie_fingerprint(pixie.slug):
-                notes.append(CONTINUE_NOTE.format(slug=pixie.slug, agent_id=call.agent_id))
+            if call is None or call.fingerprint != agents.pixie_fingerprint(pixie.slug):
+                continue
+            notes.append(CONTINUE_NOTE.format(slug=pixie.slug, agent_id=call.agent_id))
+            team = [m for m in members if m.team_id == pixie.team_id and not m.leader]
+            changed = [m.slug for m in team if await self._changed(session_id, agents, m)]
+            if changed:
+                notes.append(
+                    CHANGED_MEMBERS_NOTE.format(
+                        leader=pixie.slug, handle=pixie.team_handle, members=", ".join(changed)
+                    )
+                )
         return "".join(notes)
 
     async def message(
-        self, session_id: str, agents: ChatAgents, blocks: list[MessageBlock]
+        self,
+        session_id: str,
+        agents: ChatAgents,
+        blocks: list[MessageBlock],
+        parent_tool_use_id: str | None,
     ) -> None:
         if not agents.pixies:
             return
+        if parent_tool_use_id is None:
+            allowed = None if agents.rules is None else agents.rules.main
+        else:
+            allowed = await self._leads(session_id, agents, parent_tool_use_id)
+            if allowed is None:
+                return
+        nested = parent_tool_use_id is not None
         changed = False
         for block in blocks:
             if isinstance(block, ToolUseBlock):
-                changed = await self._called(session_id, agents, block) or changed
+                changed = await self._called(session_id, agents, block, allowed, nested) or changed
             elif isinstance(block, ToolResultBlock):
                 changed = await self._returned(session_id, block) or changed
         if changed:
@@ -127,7 +160,7 @@ class PixieCallLog:
                     kind=kind,
                     pixie_id=key_id if kind == "pixie" else None,
                     team_id=key_id if kind == "team" else None,
-                    state=entry_calls[0].state,
+                    state=_state(entry_calls),
                     members=members,
                     calls=[CallEntry.of(call) for call in entry_calls],
                 )
@@ -177,11 +210,39 @@ class PixieCallLog:
             await self._announce(session_id)
         return await self.group(session_id)
 
-    async def _called(self, session_id: str, agents: ChatAgents, block: ToolUseBlock) -> bool:
+    async def _changed(self, session_id: str, agents: ChatAgents, pixie: OfferedPixie) -> bool:
+        call = await self._store.latest_agent(session_id, pixie.id)
+        return call is not None and call.fingerprint != agents.pixie_fingerprint(pixie.slug)
+
+    async def _leads(
+        self, session_id: str, agents: ChatAgents, parent_tool_use_id: str
+    ) -> frozenset[str] | None:
+        """The members the subagent whose message this is may call: its team's when it is
+        a leader called in this chat, else None.
+        """
+        if agents.rules is None:
+            return None
+        call = await self._store.by_tool_use(session_id, parent_tool_use_id)
+        if call is None:
+            return None
+        slug = next((p.slug for p in agents.pixies.values() if p.id == call.pixie_id), None)
+        return None if slug is None else agents.rules.leaders.get(slug)
+
+    async def _called(
+        self,
+        session_id: str,
+        agents: ChatAgents,
+        block: ToolUseBlock,
+        allowed: frozenset[str] | None,
+        nested: bool,
+    ) -> bool:
+        """`allowed` names the pixies the caller may call (None: any); the call guard
+        refuses the others. A leader's calls of its members run in the foreground.
+        """
         if block.name in AGENT_TOOLS:
             slug = block.input.get("subagent_type")
             pixie = agents.pixies.get(slug) if isinstance(slug, str) else None
-            if pixie is None:
+            if pixie is None or (allowed is not None and pixie.slug not in allowed):
                 return False
             await self._store.add(
                 session_id=session_id,
@@ -189,12 +250,12 @@ class PixieCallLog:
                 team_id=pixie.team_id,
                 tool_use_id=block.id,
                 fingerprint=agents.pixie_fingerprint(pixie.slug),
-                background=block.input.get("run_in_background") is True,
+                background=not nested and block.input.get("run_in_background") is True,
             )
             return True
         to = block.input.get("to") if block.name == SEND_MESSAGE else None
         earlier = None if not isinstance(to, str) else await self._store.by_agent(session_id, to)
-        if earlier is None:
+        if earlier is None or (nested and not _among(agents, earlier.pixie_id, allowed)):
             return False
         await self._store.add(
             session_id=session_id,
@@ -279,6 +340,18 @@ class PixieCallLog:
             entry.model_dump(mode="json") for entry in await self.group(session_id)
         ]
         await self._bus.publish(types.SESSION_PIXIES, {"group": group}, session_id)
+
+
+def _among(agents: ChatAgents, pixie_id: str, allowed: frozenset[str] | None) -> bool:
+    """Whether the pixie is offered under one of the `allowed` slugs."""
+    return any(p.id == pixie_id and p.slug in (allowed or ()) for p in agents.pixies.values())
+
+
+def _state(calls: list[PixieCall]) -> CallState:
+    """Working while any call runs: a team's leader outlasts its members' calls (B70);
+    else the newest call's.
+    """
+    return "running" if any(call.state == "running" for call in calls) else calls[0].state
 
 
 def _refused(content: str) -> bool:
