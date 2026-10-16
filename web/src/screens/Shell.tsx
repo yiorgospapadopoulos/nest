@@ -110,6 +110,12 @@ export function Shell() {
               show({ draft: repo });
             }}
             onOpenPixie={openPixie}
+            onOpenAgent={(agentOf, call) => {
+              show({ agentOf, call });
+            }}
+            onOpenWork={(workOf, who) => {
+              show({ workOf, who });
+            }}
           />
         )}
         {tab === "account" && <Account />}
@@ -142,6 +148,9 @@ function routeTarget({ chat, pixie }: Route): ChatTarget | null {
 
 /** The row a target came from (its data-chat); null for a new chat. */
 function chatId(target: ChatTarget): string | null {
+  // A chat's subagent or pixie: back to the chat's row.
+  if ("agentOf" in target) return target.agentOf;
+  if ("workOf" in target) return target.workOf;
   if ("claude" in target) return target.claude;
   if ("pixie" in target) return `pixie:${target.pixie}`;
   return "draft" in target ? null : target.id;
@@ -149,6 +158,8 @@ function chatId(target: ChatTarget): string | null {
 
 /** Which chat a target is, ignoring the event it opens at. */
 function chatKey(target: ChatTarget): string {
+  if ("agentOf" in target) return `agent:${target.agentOf}:${target.call}`;
+  if ("workOf" in target) return `work:${target.workOf}:${JSON.stringify(target.who)}`;
   if ("claude" in target) return `claude:${target.claude}`;
   if ("pixie" in target) return `pixie:${target.pixie}`;
   return "draft" in target ? `new:${target.draft}` : `session:${target.id}`;

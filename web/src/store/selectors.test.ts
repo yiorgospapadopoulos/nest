@@ -5,6 +5,9 @@ import {
   check,
   event,
   claudeChat,
+  callEntry,
+  groupEntry,
+  trackedAgent,
   pixie,
   mergeApproval,
   plan,
@@ -31,6 +34,9 @@ import {
   pendingFor,
   availablePixies,
   availableTeams,
+  chatTree,
+  memberCall,
+  soloPixies,
   pixieList,
   stuckChats,
   teamList,
@@ -503,6 +509,88 @@ describe("teams and who a chat can call", () => {
     expect(offered("cv-page")).toEqual([
       ["qa", ["bugs", "lead"]],
       ["docs", ["cv"]],
+    ]);
+  });
+
+  it("offers alone only the pixies in no team the chat can call (B46)", () => {
+    expect(soloPixies(withTeams(), "narrative").map((p) => p.id)).toEqual(["any"]);
+    // "cv" leads docs, which a chat in cv-page can call.
+    expect(soloPixies(withTeams(), "cv-page").map((p) => p.id)).toEqual(["any"]);
+    // A team whose leader cannot work here leaves its members callable alone.
+    const leaderless: State = {
+      ...withTeams(),
+      teams: { qa: team({ id: "qa", handle: "qa", leader_id: "blind" }) },
+    };
+    expect(soloPixies(leaderless, "narrative").map((p) => p.id)).toEqual(["any", "bugs", "lead"]);
+  });
+
+  it("says why a message calling a team's pixie alone cannot be sent (B46)", () => {
+    const state = withTeams();
+    const said = (text: string, repo = "narrative") => memberCall(state, repo, text);
+    expect(said("@bugs look")).toBe("Tester is in @qa; call the team or a solo copy");
+    expect(said("ask @qa and @lead, please")).toBe(
+      "Tester is in @qa; call the team or a solo copy",
+    );
+    expect(said("@qa look at @any")).toBeNull();
+    // Not a whole token, or a pixie the chat cannot call.
+    expect(said("mail me@bugs or @bugs-x")).toBeNull();
+    expect(said("@cv")).toBeNull();
+    expect(said("@cv", "cv-page")).toBe("Tester is in @docs; call the team or a solo copy");
+  });
+});
+
+describe("a chat's tree (B46)", () => {
+  const state = (overrides: Partial<State> = {}): State => ({
+    ...initialState,
+    pixies: { p1: pixie({ id: "p1", slug: "scribe" }) },
+    ...overrides,
+  });
+
+  it("is empty for a chat with no pixies or running subagents", () => {
+    expect(chatTree(state(), "s1")).toEqual({ pixies: [], subagents: [] });
+  });
+
+  it("holds the chat's pixies and its running subagents, nested under their parents", () => {
+    const old = trackedAgent({ id: "a9", name: "Old" });
+    delete old.parent;
+    const agents = [
+      trackedAgent({ id: "main", name: "main" }),
+      trackedAgent({ id: "a1" }),
+      trackedAgent({ id: "a2", parent: "a1", name: "Plan" }),
+      trackedAgent({ id: "a3", parent: "a2", name: "Deep" }),
+      trackedAgent({ id: "a4", status: "done" }),
+      // A pixie's call shows among the pixies, by its call or its slug.
+      trackedAgent({ id: "a5", name: "anything" }),
+      trackedAgent({ id: "a6", name: "scribe" }),
+      // Started by a subagent no longer listed: shown at the top.
+      trackedAgent({ id: "a7", parent: "a6", name: "Helper" }),
+      trackedAgent({ id: "a8", parent: "a4", name: "Orphan" }),
+      // Daemons before B46 name no parent.
+      old,
+    ];
+    const tree = chatTree(
+      state({
+        pixieGroups: {
+          s1: [
+            groupEntry({
+              calls: [callEntry({ tool_use_id: "x1" }), { ...callEntry(), tool_use_id: "a5" }],
+            }),
+          ],
+        },
+        tracking: {
+          s1: { tasks: [], agents, background: { running: 0, completed: 0, items: [] } },
+        },
+      }),
+      "s1",
+    );
+    expect(tree.pixies).toHaveLength(1);
+    const shape = (nodes: typeof tree.subagents): unknown[] =>
+      nodes.map((n) => [n.agent.id, shape(n.children)]);
+    expect(shape(tree.subagents)).toEqual([
+      ["a1", [["a2", [["a3", []]]]]],
+      ["a7", []],
+      ["a8", []],
+      ["a9", []],
     ]);
   });
 });

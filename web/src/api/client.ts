@@ -1,6 +1,10 @@
 import type {
   AccountInfo,
   AgentDefaults,
+  AgentWork,
+  CallWork,
+  GroupEntry,
+  SendAwayBody,
   Approval,
   ApproveBody,
   Attachment,
@@ -186,6 +190,14 @@ export interface Api {
   readReport(id: string): Promise<unknown>;
   // Marks every report of the pixie read.
   readPixieReports(pixieId: string): Promise<unknown>;
+  // Every chat's pixies and teams, by session id, for chats that have any (B46).
+  pixieGroups(): Promise<Record<string, GroupEntry[]>>;
+  // The pixie, or the team with its members, leaves the chat's group; returns the group.
+  sendAway(sessionId: string, body: SendAwayBody): Promise<GroupEntry[]>;
+  // Every call to the pixie in the chat, newest first, with its work.
+  pixieCalls(sessionId: string, pixieId: string): Promise<CallWork[]>;
+  // A subagent's transcript so far; 404 for a call the chat did not make.
+  agentTranscript(sessionId: string, toolUseId: string): Promise<AgentWork>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -567,6 +579,28 @@ export class HttpApi implements Api {
 
   readPixieReports(pixieId: string) {
     return this.json<unknown>("POST", `${pixiePath(pixieId)}/reports/read`);
+  }
+
+  pixieGroups() {
+    return this.json<Record<string, GroupEntry[]>>("GET", "/api/pixie-groups");
+  }
+
+  sendAway(sessionId: string, body: SendAwayBody) {
+    return this.json<GroupEntry[]>("POST", `${session(sessionId)}/pixies/send-away`, body);
+  }
+
+  pixieCalls(sessionId: string, pixieId: string) {
+    return this.json<CallWork[]>(
+      "GET",
+      `${session(sessionId)}/pixies/${encodeURIComponent(pixieId)}/calls`,
+    );
+  }
+
+  agentTranscript(sessionId: string, toolUseId: string) {
+    return this.json<AgentWork>(
+      "GET",
+      `${session(sessionId)}/agents/${encodeURIComponent(toolUseId)}/transcript`,
+    );
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

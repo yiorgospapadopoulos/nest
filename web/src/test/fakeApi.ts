@@ -156,6 +156,12 @@ export function fakeApi(): FakeApi {
     pixieReports: vi.fn<Api["pixieReports"]>().mockResolvedValue([]),
     readReport: vi.fn<Api["readReport"]>().mockResolvedValue(null),
     readPixieReports: vi.fn<Api["readPixieReports"]>().mockResolvedValue(null),
+    pixieGroups: vi.fn<Api["pixieGroups"]>().mockResolvedValue({}),
+    sendAway: vi.fn<Api["sendAway"]>().mockResolvedValue([]),
+    pixieCalls: vi.fn<Api["pixieCalls"]>().mockResolvedValue([]),
+    agentTranscript: vi
+      .fn<Api["agentTranscript"]>()
+      .mockResolvedValue({ tool_use_id: "a1", prompt: null, messages: [], report: null }),
   };
   return fake;
 }

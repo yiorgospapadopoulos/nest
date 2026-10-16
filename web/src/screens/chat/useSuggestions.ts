@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SlashCommand } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { availablePixies, availableTeams } from "../../store/selectors.ts";
+import { availableTeams, soloPixies } from "../../store/selectors.ts";
 import type { Suggestion } from "./Suggestions.tsx";
 import { withLocalCommands } from "./localCommands.ts";
 import { matchCommands, pixieMentions, replaceTrigger, soulLine, triggerAt } from "./suggest.ts";
@@ -39,7 +39,8 @@ export function useSuggestions({ text, caret, focused, sessionId, repo, filesOnl
   const wantsCommands = trigger?.kind === "command";
   const fileQuery = trigger?.kind === "file" && sessionId !== undefined ? trigger.query : null;
   const mentioning = trigger?.kind === "file" && filesOnly !== true;
-  const callable = mentioning ? availablePixies(state, repo) : [];
+  // A team's pixies are called with their team only (B46).
+  const callable = mentioning ? soloPixies(state, repo) : [];
   const teams = mentioning ? availableTeams(state, repo) : [];
   // The first line of each callable pixie's soul, read once while mentioning.
   const [souls, setSouls] = useState<Record<string, string>>({});

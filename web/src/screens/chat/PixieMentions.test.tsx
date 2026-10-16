@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../../api/client.ts";
 import type { Pixie, PixieTeam } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
@@ -54,7 +55,7 @@ const optionsIn = (group: string) =>
     .map((o) => o.textContent);
 
 describe("pixie mentions", () => {
-  it("lists callable teams, then pixies, before files", async () => {
+  it("lists callable teams, then the pixies in none of them, before files (B46)", async () => {
     const api = withPixies(fakeApi());
     api.files.mockResolvedValue({ files: ["src/app.py"] });
     const { user, field } = await openChat(api);
@@ -63,12 +64,8 @@ describe("pixie mentions", () => {
     const list = await screen.findByRole("listbox", { name: "Pixies and files" });
     await screen.findByRole("option", { name: /src\/app\.py/ });
     await waitFor(() => {
-      expect(optionsIn("Pixies")).toEqual([
-        "QA crew @qa",
-        "Lead @qa-leadSoul of lead",
-        "Bug hunter @bugsSoul of bugs",
-        "Reviewer @reviewerSoul of rev",
-      ]);
+      // A team's pixies are called with their team only.
+      expect(optionsIn("Pixies")).toEqual(["QA crew @qa", "Reviewer @reviewerSoul of rev"]);
     });
     expect(optionsIn("Files")).toEqual(["src/app.py"]);
     // Pixies come first.
@@ -76,6 +73,7 @@ describe("pixie mentions", () => {
     // The team shows its members' mascots.
     const crew = screen.getByRole("option", { name: /QA crew/ });
     expect(crew.querySelectorAll("svg")).toHaveLength(2);
+    expect(api.pixieFile.mock.calls.map(([id]) => id)).toEqual(["rev"]);
     // Each soul is read once.
     await user.type(field, "x{Backspace}");
     expect(api.pixieFile.mock.calls.filter(([id]) => id === "rev")).toHaveLength(1);
@@ -119,10 +117,56 @@ describe("pixie mentions", () => {
     await user.click(screen.getByRole("tab", { name: "Projects" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
-    await user.type(screen.getByLabelText("Message"), "@bug");
+    await user.type(screen.getByLabelText("Message"), "@rev");
     expect(await screen.findByRole("listbox", { name: "Pixies" })).toBeInTheDocument();
-    expect(optionsIn("Pixies")).toEqual(["Bug hunter @bugsSoul of bugs"]);
+    expect(optionsIn("Pixies")).toEqual(["Reviewer @reviewerSoul of rev"]);
     expect(api.files).not.toHaveBeenCalled();
+  });
+
+  it("will not send a team's pixie called alone, and says why (B46)", async () => {
+    const api = withPixies(fakeApi());
+    const { user, field } = await openChat(api);
+
+    await user.type(field, "@bugs look at the form");
+    expect(
+      screen.getByText("Bug hunter is in @qa; call the team or a solo copy"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    await user.keyboard("{Enter}");
+    expect(api.sendMessage).not.toHaveBeenCalled();
+
+    await user.clear(field);
+    await user.type(field, "@qa look at the form");
+    expect(screen.queryByText(/call the team or a solo copy/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(api.sendMessage).toHaveBeenCalledWith("s1", "@qa look at the form", []);
+  });
+
+  it("shows the Mac's refusal of a team's pixie called alone (B46)", async () => {
+    const api = withPixies(fakeApi());
+    const why = "Ghost is in @spooks; call the team or a solo copy";
+    api.sendMessage.mockRejectedValueOnce(new ApiError(422, why, "pixie_in_team"));
+    const { user, field } = await openChat(api);
+
+    await user.type(field, "@ghost boo");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText(why)).toBeInTheDocument();
+    expect(field).toHaveValue("@ghost boo");
+    // Typing on clears it.
+    await user.type(field, "!");
+    expect(screen.queryByText(why)).not.toBeInTheDocument();
+  });
+
+  it("will not start a new chat calling a team's pixie alone (B46)", async () => {
+    const api = withPixies(fakeApi());
+    api.repos.mockResolvedValue([repo("cv-page")]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
+
+    await user.type(screen.getByLabelText("Message"), "@qa-lead go");
+    expect(screen.getByText("Lead is in @qa; call the team or a solo copy")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("is not offered in a pixie's chat", async () => {

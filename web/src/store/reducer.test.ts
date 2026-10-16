@@ -4,6 +4,7 @@ import {
   approval,
   connector,
   event,
+  groupEntry,
   habit,
   habitRun,
   NO_BACKGROUND,
@@ -198,6 +199,36 @@ describe("reduce", () => {
     expect(state.connectors).toHaveLength(1);
     expect(state.limits).toEqual({ five_hour: null, seven_day: null });
     expect(state.toast?.text).toBe("Hi");
+  });
+});
+
+describe("pixie groups (B46)", () => {
+  it("loads every chat's group, then follows each chat's from its events", () => {
+    const scribe = groupEntry({ pixie_id: "scribe" });
+    let state = reduce(loaded(), { type: "pixieGroups", groups: { s1: [groupEntry()] } });
+    expect(state.pixieGroups).toEqual({ s1: [groupEntry()] });
+
+    state = apply(
+      state,
+      event({ type: "session.pixies", session_id: "s2", payload: { group: [scribe] as never } }),
+    );
+    expect(state.pixieGroups).toEqual({ s1: [groupEntry()], s2: [scribe] });
+
+    // An empty group leaves; an event without a chat changes nothing.
+    state = apply(
+      state,
+      event({ type: "session.pixies", session_id: "s1", payload: { group: [] } }),
+    );
+    state = apply(state, event({ type: "session.pixies", session_id: null, payload: {} }));
+    expect(state.pixieGroups).toEqual({ s2: [scribe] });
+
+    state = reduce(state, { type: "pixieGroup", id: "s2", group: [] });
+    expect(state.pixieGroups).toEqual({});
+    state = reduce(state, { type: "pixieGroup", id: "s1", group: [scribe] });
+    expect(state.pixieGroups).toEqual({ s1: [scribe] });
+
+    state = apply(state, event({ type: "session.deleted", payload: { session_id: "s1" } }));
+    expect(state.pixieGroups).toEqual({});
   });
 });
 

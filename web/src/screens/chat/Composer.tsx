@@ -17,6 +17,7 @@ import type {
   UpdateSessionBody,
 } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { memberCall } from "../../store/selectors.ts";
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
@@ -124,7 +125,10 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   // The chat that runs: an open chat, or the pixie's.
   const live = session ?? chat;
   const { text, files } = state.drafts[key] ?? NO_DRAFT;
+  // Why the Mac refused the last message, until the text changes (B46).
+  const [refused, setRefused] = useState<string | null>(null);
   const setText = (next: string) => {
+    setRefused(null);
     actions.setDraftText(key, next);
   };
   const [uploads, setUploads] = useState(0);
@@ -176,7 +180,9 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   // The model the chat runs (or a new chat will run), for its thinking levels.
   const runModel = choices.model ?? (session === undefined ? state.agentDefaults?.model : null);
   const levels = thinkingLevels(models, runModel ?? null);
-  const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed;
+  // A project chat calls a team's pixie only with its team (B46).
+  const member = pixie === undefined ? memberCall(state, project, text) : null;
+  const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed && member === null;
   // A pixie's messages carry text only.
   const takesFiles = pixie === undefined && !closed;
   const context = session?.context ?? null;
@@ -192,6 +198,7 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   const deliver = async (id: string, prompt: string, ids: string[]) => {
     const result = await actions.send(id, prompt, ids);
     setElsewhere(result === "elsewhere");
+    setRefused(typeof result === "object" ? result.refused : null);
     return result === "sent";
   };
 
@@ -435,6 +442,7 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
               This chat is open in Claude Code right now. Close it there first.
             </p>
           )}
+          {(member ?? refused) !== null && <p className="cnote">{member ?? refused}</p>}
         </div>
         {files.length > 0 && (
           <ul className="atts" aria-label="Attachments">

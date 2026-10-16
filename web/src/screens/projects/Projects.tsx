@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import type { ClaudeChat, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
@@ -12,6 +12,7 @@ import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "./ChatActions.tsx";
 import { ChatRow } from "./ChatRow.tsx";
+import { ChatTree, type WorkOf } from "./ChatTree.tsx";
 import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
 import { ProjectSettings } from "./ProjectSettings.tsx";
@@ -27,6 +28,9 @@ interface Props {
   onOpenClaudeChat: (chatId: string) => void;
   onNewChat: (repo: string) => void;
   onOpenPixie: (id: string, tab: PixieTab) => void;
+  // A subagent's transcript, or a pixie's or team's work, in a chat (B46).
+  onOpenAgent: (sessionId: string, toolUseId: string) => void;
+  onOpenWork: (sessionId: string, who: WorkOf) => void;
 }
 
 /**
@@ -40,6 +44,8 @@ export function Projects({
   onOpenClaudeChat,
   onNewChat,
   onOpenPixie,
+  onOpenAgent,
+  onOpenWork,
 }: Props) {
   const { state, actions } = useStore();
   const [showArchived, setShowArchived] = useState(false);
@@ -67,17 +73,27 @@ export function Projects({
         }}
       />
     ) : (
-      <ChatRow
-        key={session.id}
-        session={session}
-        status={status}
-        onOpen={() => {
-          onOpenChat(session.id);
-        }}
-        onActions={() => {
-          setActing(session);
-        }}
-      />
+      <Fragment key={session.id}>
+        <ChatRow
+          session={session}
+          status={status}
+          onOpen={() => {
+            onOpenChat(session.id);
+          }}
+          onActions={() => {
+            setActing(session);
+          }}
+        />
+        <ChatTree
+          session={session}
+          onOpenAgent={(call) => {
+            onOpenAgent(session.id, call);
+          }}
+          onOpenWork={(who) => {
+            onOpenWork(session.id, who);
+          }}
+        />
+      </Fragment>
     );
 
   const listsView = (

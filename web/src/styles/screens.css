@@ -524,7 +524,8 @@ a.b {
   display: flex;
   align-items: center;
 }
-.lrow + .lrow::before {
+.lrow + .lrow::before,
+.ctree + .lrow::before {
   content: "";
   position: absolute;
   top: 0;
@@ -2061,4 +2062,154 @@ div.pxr:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Each chat's tree (B46): its pixies and running subagents under its row, joined to it by
+   lines that start under the row's status dot. */
+.ctree {
+  --ct-line: color-mix(in srgb, var(--t3) 45%, transparent);
+  --ct-mid: 22px;
+  position: relative;
+  list-style: none;
+  margin: -6px 0 0;
+  padding: 0 0 6px 21px;
+}
+.ctree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 10px;
+}
+.ctree li {
+  position: relative;
+  padding-left: 14px;
+}
+.ctree li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--ct-line);
+}
+.ctree li:last-child::before {
+  bottom: auto;
+  height: var(--ct-mid);
+}
+.ctree li::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--ct-mid);
+  width: 10px;
+  border-top: 1.5px solid var(--ct-line);
+}
+/* A group's label is shorter than a row, so its branch meets it higher. */
+.ctree > li {
+  --ct-mid: 13px;
+}
+.ctree li li {
+  --ct-mid: 22px;
+}
+/* The trunk, from under the chat's dot down to the first group. */
+.ctree::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: -14px;
+  height: 14px;
+  border-left: 1.5px solid var(--ct-line);
+}
+.ctg {
+  display: block;
+  line-height: 26px;
+  font-size: 0.6471rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.ctr {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.ctb {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  font-size: 0.8235rem;
+  text-align: left;
+  cursor: pointer;
+}
+.ctb:active {
+  background: var(--fill);
+}
+/* A row without a menu keeps its state in line with those that have one. */
+.ctb:last-child {
+  padding-right: 48px;
+}
+.ctb .spin {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+.ctic {
+  flex: none;
+  width: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--t2);
+}
+.ctic .ic {
+  width: 15px;
+  height: 15px;
+}
+.ctic.pxtname {
+  color: color-mix(in srgb, var(--px) 75%, var(--t1));
+}
+.ctn {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctd {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+.ctw {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+.ctw.bad {
+  color: var(--fail-t);
+}
+.ctb .prun {
+  margin-left: auto;
+  margin-right: 4px;
+}
+.ctb .pxhandle {
+  font-size: 0.7059rem;
+}
+.ctb .pxlead {
+  font-size: 0.6471rem;
+}
+.ctm {
+  width: 44px;
+  height: 44px;
 }

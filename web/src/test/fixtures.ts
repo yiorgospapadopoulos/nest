@@ -2,6 +2,9 @@ import type {
   AccountInfo,
   AgentDefaults,
   Approval,
+  CallEntry,
+  CallWork,
+  GroupEntry,
   ClaudeChat,
   CommandList,
   Connector,
@@ -23,6 +26,7 @@ import type {
   Session,
   SessionDetail,
   SessionDiff,
+  TrackedAgent,
   UsageLimits,
 } from "../api/types.ts";
 
@@ -170,6 +174,52 @@ export function team(overrides: Partial<PixieTeam> = {}): PixieTeam {
     position: 0,
     created_at: "2026-10-14T09:00:00Z",
     updated_at: "2026-10-14T09:00:00Z",
+    ...overrides,
+  };
+}
+
+export function trackedAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+  return {
+    id: "a1",
+    name: "Explore",
+    description: "Look around",
+    parent: null,
+    status: "running",
+    activity: null,
+    started_at: NOW,
+    finished_at: null,
+    steps: [],
+    ...overrides,
+  };
+}
+
+export function callEntry(overrides: Partial<CallEntry> = {}): CallEntry {
+  return {
+    id: "c1",
+    pixie_id: "p1",
+    tool_use_id: "a1",
+    agent_id: "ag1",
+    state: "done",
+    continued: false,
+    started_at: NOW,
+    finished_at: NOW,
+    ...overrides,
+  };
+}
+
+export function callWork(overrides: Partial<CallWork> = {}): CallWork {
+  return { ...callEntry(), prompt: null, messages: [], report: null, ...overrides };
+}
+
+/** A solo pixie in a chat's group (B46), unless `overrides` makes it a team. */
+export function groupEntry(overrides: Partial<GroupEntry> = {}): GroupEntry {
+  return {
+    kind: "pixie",
+    pixie_id: "p1",
+    team_id: null,
+    state: "done",
+    members: [],
+    calls: [callEntry()],
     ...overrides,
   };
 }

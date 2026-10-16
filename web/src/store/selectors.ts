@@ -2,6 +2,7 @@ import type {
   Approval,
   BackgroundSummary,
   ClaudeChat,
+  GroupEntry,
   NestEvent,
   Pixie,
   PixieReport,
@@ -9,6 +10,7 @@ import type {
   PrStatus,
   Session,
   StuckFlag,
+  TrackedAgent,
 } from "../api/types.ts";
 import { list, obj, str } from "../api/payloads.ts";
 import type { State } from "./state.ts";
@@ -64,6 +66,64 @@ export function availableTeams(state: State, repo: string): CallableTeam[] {
       ? [{ team, members: available.filter((p) => p.team_id === team.id) }]
       : [],
   );
+}
+
+/**
+ * The pixies a project chat in `repo` can call on their own (B46): those in no team it can
+ * call, since a team's pixies are called only with their team.
+ */
+export function soloPixies(state: State, repo: string): Pixie[] {
+  const teams = new Set(availableTeams(state, repo).map(({ team }) => team.id));
+  return availablePixies(state, repo).filter((p) => p.team_id === null || !teams.has(p.team_id));
+}
+
+// A whole @ token, as the daemon finds pixie slugs.
+const MENTION = /(?<=^|\s)@[a-z0-9-]+(?![\w-])/g;
+
+/**
+ * Why `text` cannot be sent from a project chat in `repo`: it calls a pixie of a team the
+ * chat can call on its own, as the daemon refuses it (B46); null when it can be sent.
+ */
+export function memberCall(state: State, repo: string, text: string): string | null {
+  const members = new Map(
+    availableTeams(state, repo).flatMap(({ team, members }) =>
+      members.map((p) => [p.slug, `${p.name} is in @${team.handle}; call the team or a solo copy`]),
+    ),
+  );
+  for (const match of text.matchAll(MENTION)) {
+    const why = members.get(match[0].slice(1));
+    if (why !== undefined) return why;
+  }
+  return null;
+}
+
+/** A running subagent with those it started, for a chat's tree (B46). */
+export interface AgentNode {
+  agent: TrackedAgent;
+  children: AgentNode[];
+}
+
+export interface ChatTree {
+  // The pixies and teams the chat called and did not send away.
+  pixies: GroupEntry[];
+  // Its running subagents that are not pixies, each under the subagent that started it.
+  subagents: AgentNode[];
+}
+
+/** What a chat has working, for the tree under its row (B46). */
+export function chatTree(state: State, sessionId: string): ChatTree {
+  const pixies = state.pixieGroups[sessionId] ?? [];
+  const calls = new Set(pixies.flatMap((entry) => entry.calls.map((c) => c.tool_use_id)));
+  const slugs = new Set(Object.values(state.pixies).map((p) => p.slug));
+  const running = (state.tracking[sessionId]?.agents ?? []).filter(
+    (a) => a.id !== "main" && a.status === "running" && !calls.has(a.id) && !slugs.has(a.name),
+  );
+  const shown = new Set(running.map((a) => a.id));
+  const nodes = (parent: string | null): AgentNode[] =>
+    running
+      .filter((a) => (a.parent != null && shown.has(a.parent) ? a.parent : null) === parent)
+      .map((agent) => ({ agent, children: nodes(agent.id) }));
+  return { pixies, subagents: nodes(null) };
 }
 
 export function pendingFor(state: State, sessionId: string): Approval[] {

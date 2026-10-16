@@ -6,6 +6,7 @@ import type {
   BackgroundSummary,
   ClaudeChat,
   Connector,
+  GroupEntry,
   Habit,
   HabitRun,
   NestEvent,
@@ -95,6 +96,8 @@ export interface State {
   // Pending items only.
   approvals: Record<string, Approval>;
   tracking: Record<string, Tracking>;
+  // Each project chat's pixies and teams (B46), by session id; chats without any are left out.
+  pixieGroups: Record<string, GroupEntry[]>;
   // Stored events of the chats that were opened, oldest first.
   transcripts: Record<string, NestEvent[]>;
   history: Record<string, HistoryStatus>;
@@ -137,6 +140,7 @@ export const initialState: State = {
   showAutomated: false,
   approvals: {},
   tracking: {},
+  pixieGroups: {},
   transcripts: {},
   history: {},
   live: {},
@@ -184,6 +188,8 @@ export type Action =
   | { type: "showAutomated"; on: boolean }
   | { type: "approval"; approval: Approval }
   | { type: "tracking"; id: string; tracking: Tracking }
+  | { type: "pixieGroups"; groups: Record<string, GroupEntry[]> }
+  | { type: "pixieGroup"; id: string; group: GroupEntry[] }
   | { type: "transcriptOpened"; id: string }
   | { type: "transcriptLoaded"; id: string; events: NestEvent[] }
   | { type: "transcriptClosed"; id: string }
