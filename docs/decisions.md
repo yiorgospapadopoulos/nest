@@ -852,6 +852,7 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Why:** the user found the bar under the project tabs redundant: it showed the project's name a second time just above the sidebar's own.
 - **Sidebar header:** the project's icon and name are now the menu the bar's name opened (new terminal or browser, open in VS Code, Finder or Terminal, copy path, project settings), with the current branch (or Init for a plain folder) beside it; the collapse button stays at its right. The folded rail has no project menu (expanding the sidebar brings it back); new terminal, new browser and Open in VS Code also stay in the app menu and the command palette.
 - **Status bar:** the Workspace / Board switch sits in the middle, with Restore after it while a workspace pane is maximized; the activity panel's toggle is the last item on the right, after Terminal, under the panel it controls (the coordinator's choice, left to it by the user). Both show only where a project is open, not on the Pixies tab.
+- **No line under the tabs:** the 1 point divider that separated the tab strip from the bar went too (user, 2026-10-17 01:21); the sidebar's own fill marks where it starts.
 - **Tokens:** `mac_toolbar_height` is removed with the bar.
 - **Mac only;** the iPhone has no such bar.
 - **Refines:** D073 (the Monocode layout's project toolbar).
