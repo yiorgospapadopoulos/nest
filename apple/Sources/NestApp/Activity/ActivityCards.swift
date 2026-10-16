@@ -314,87 +314,49 @@ private struct StuckCard: View {
     }
 }
 
-/// The open chats' task lists: progress, the current task and the checklist.
+/// What each chat of the project is planning and doing (D092): every chat working or with
+/// tasks in its list, under its title, its checklist always open.
 struct GoalsCard: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let chats = shell.projectState.layout.leaves.compactMap(shell.sessions.session)
+        let entries = shell.activity.goalEntries(shell.sessions.sessions(in: shell.project ?? ""))
         VStack(alignment: .leading, spacing: 0) {
-            if chats.isEmpty {
-                EmptyCard(icon: Icon.goals, text: "No open chats", tone: nil)
+            if entries.isEmpty {
+                EmptyCard(icon: Icon.goals, text: "No chats working", tone: nil)
             }
-            ForEach(chats) { session in
-                GoalRow(session: session, goals: shell.activity.goals(session: session.id))
+            ForEach(entries) { entry in
+                GoalGroup(entry: entry)
             }
         }
     }
 }
 
-private struct GoalRow: View {
-    let session: Session
-    let goals: Goals
+/// One chat's title, which opens it, over its checklist.
+private struct GoalGroup: View {
+    let entry: GoalEntry
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let expanded = shell.projectState.expandedGoals.contains(session.id)
-        let hasTasks = !goals.tasks.isEmpty
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                guard hasTasks else { return }
-                shell.update {
-                    if $0.expandedGoals.remove(session.id) == nil {
-                        $0.expandedGoals.insert(session.id)
-                    }
-                }
-            } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    StatusDot(tone: shell.tone(of: session), hollow: shell.isHollow(session))
-                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(session.title)
-                            .font(.ui(TypeSize.ui))
-                            .foregroundStyle(Palette.t1)
-                            .lineLimit(1)
-                        Text(
-                            hasTasks
-                                ? "\(nowText) · \(goals.completed) of \(goals.tasks.count)"
-                                : "No tasks yet"
-                        )
-                        .font(.ui(TypeSize.meta))
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.t3)
-                        .lineLimit(1)
-                        if hasTasks {
-                            Meter(value: goals.progress, height: 2).padding(.top, 2)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    if hasTasks {
-                        Image(systemName: Icon.chevron)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Palette.t3)
-                            .rotationEffect(.degrees(expanded ? 0 : -90))
-                            .frame(width: 12)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                StatusDot(
+                    tone: shell.tone(of: entry.session), hollow: shell.isHollow(entry.session))
+                ChatLink(chat: entry.session.id, title: entry.session.title)
+                    .font(.ui(TypeSize.ui, .medium))
+                    .foregroundStyle(Palette.t1)
             }
-            .buttonStyle(RowHoverStyle())
-            .padding(.horizontal, 6)
-            if expanded && hasTasks {
-                Checklist(goals: goals)
+            .padding(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
+            if entry.goals.tasks.isEmpty {
+                Text("No plan yet")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .padding(EdgeInsets(top: 0, leading: 28, bottom: 6, trailing: 14))
+            } else {
+                Checklist(goals: entry.goals)
             }
         }
-    }
-
-    private var nowText: String {
-        if let current = goals.current {
-            return "Now: \(current.activeForm ?? current.subject)"
-        }
-        return goals.completed == goals.tasks.count ? "All done" : "Up next"
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

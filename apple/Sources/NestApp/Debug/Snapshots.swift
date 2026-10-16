@@ -155,12 +155,15 @@
                 try await renderReviewBar(model, shell, controller, folder)
                 return
             }
+            if only == "b47" {
+                try await renderGoals(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
                 state.dropChat("c2", onto: "c1", side: .right)
                 state.focusPane("c1")
-                state.expandedGoals = ["c2"]
                 state.expandedAgents = ["c2/toolu_explore"]
             }
             try await snap(controller, "workspace-light", .aqua, folder)
@@ -287,6 +290,32 @@
 
         /// B56: a pending review is one line above the composer, not a card in the
         /// transcript, and Review opens the changes with Approve as their only action.
+        /// The Goals card: each working or just finished chat of the project under its
+        /// title, with its checklist or "No plan yet" (B47).
+        private static func renderGoals(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            let workspace = CGSize(width: 828, height: 790)
+            try await model.activity.loadGoals(
+                repo: "cv-page", sessions: model.sessions.sessions(in: "cv-page"))
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c2", in: workspace)
+            }
+            try await pair(controller, "b47-goals", folder)
+            model.app.update("cv-page") { $0.openCards = Set(RightCard.allCases) }
+            try await snap(controller, "b47-goals-all-cards-light", .aqua, folder)
+            model.app.update("cv-page") { $0.openCards = [.goals] }
+            model.app.selectProject("llm-hunter")
+            try await model.activity.loadGoals(
+                repo: "llm-hunter", sessions: model.sessions.sessions(in: "llm-hunter"))
+            model.app.update("llm-hunter") { $0.openCards = [.goals] }
+            try await snap(controller, "b47-goals-other-project-light", .aqua, folder)
+        }
+
         private static func renderReviewBar(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
