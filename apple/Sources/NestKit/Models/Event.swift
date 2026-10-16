@@ -54,6 +54,9 @@ public enum EventType {
     public static let sessionTasks = "session.tasks"
     public static let sessionAgents = "session.agents"
     public static let sessionAgentTask = "session.agent_task"
+    /// The chat's group of pixies changed: a call started or ended, or one was sent away
+    /// (B46).
+    public static let sessionPixies = "session.pixies"
     public static let sessionContext = "session.context"
     public static let sessionQueued = "session.queued"
     /// The conversation was rewound: its events in a range were deleted (B59).
@@ -120,6 +123,8 @@ public enum EventBody: Sendable, Hashable {
     case agents([TrackedAgent], background: BackgroundSummary?)
     /// A subagent or background command started, moved to the background or finished.
     case agentTask(AgentTask)
+    /// The chat's whole group of pixies, as `GET /api/sessions/{id}/pixies` lists it.
+    case pixieGroup([ChatPixieEntry])
     /// How full the context window is after a turn.
     case context(SessionContext?)
     /// The whole list of messages waiting for the turn, oldest first.
@@ -198,6 +203,8 @@ public enum EventBody: Sendable, Hashable {
                 try field("agents", as: [TrackedAgent].self),
                 background: try field("background", as: BackgroundSummary?.self))
         case EventType.sessionAgentTask: self = .agentTask(try payload.decode(AgentTask.self))
+        case EventType.sessionPixies:
+            self = .pixieGroup(try field("group", as: [ChatPixieEntry].self))
         case EventType.sessionContext:
             self = .context(try field("context", as: SessionContext?.self))
         case EventType.sessionQueued: self = .queued(try field("queued", as: [QueuedMessage].self))

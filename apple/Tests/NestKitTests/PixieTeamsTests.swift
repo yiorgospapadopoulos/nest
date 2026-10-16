@@ -285,12 +285,13 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
 
     @Test func availableTeamsComeBeforePixies() {
         var list = pixies(
-            ("a", "t1"), ("b", "t1"), ("c", nil), ("d", "t2"), ("e", "t3"), ("f", "t1"))
+            ("a", "t1"), ("b", "t1"), ("c", nil), ("d", "t2"), ("e", "t3"), ("f", "t1"),
+            ("g", "t3"))
         list[1].hidden = true
         list[4].projects = ["other"]
         let teams = [
             team("t1", 0, leader: "a", handle: "qa"),
-            // Its leader may not work here: left out, though a member could.
+            // Its leader may not work here: left out, so its members are called alone.
             team("t3", 1, leader: "e"),
             team("t2", 2, leader: "d"),
             // No members: left out.
@@ -299,8 +300,9 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
             team("t5", 4, leader: "c"),
         ]
         let mentions = PixieMentions.available(
-            pixies: list, teams: teams, repo: "cv-page", souls: ["a": "Reviews."])
-        #expect(mentions.map(\.token) == ["qa", "t2", "a", "c", "d", "f"])
+            pixies: list, teams: teams, repo: "cv-page", souls: ["c": "Reviews."])
+        // A member of an offered team is called only through its team (B46).
+        #expect(mentions.map(\.token) == ["qa", "t2", "c", "g"])
         guard case .team(let qa, let members) = mentions[0] else {
             Issue.record("not a team")
             return
@@ -308,13 +310,10 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
         #expect(qa.id == "t1")
         // Only the members available here.
         #expect(members.map(\.id) == ["a", "f"])
-        #expect(mentions[2] == .pixie(list[0], soul: "Reviews."))
-        #expect(mentions[3] == .pixie(list[2], soul: nil))
-        #expect(
-            mentions.map(\.id) == [
-                "team:t1", "team:t2", "pixie:a", "pixie:c", "pixie:d", "pixie:f",
-            ])
-        #expect(mentions.map(\.name) == ["T1", "T2", "A", "C", "D", "F"])
+        #expect(mentions[2] == .pixie(list[2], soul: "Reviews."))
+        #expect(mentions[3] == .pixie(list[6], soul: nil))
+        #expect(mentions.map(\.id) == ["team:t1", "team:t2", "pixie:c", "pixie:g"])
+        #expect(mentions.map(\.name) == ["T1", "T2", "C", "G"])
     }
 
     @Test func typingFiltersByHandleOrName() {
@@ -323,10 +322,12 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
         let mentions = PixieMentions.available(
             pixies: list, teams: [team("t1", 0, leader: "tester", handle: "qa")],
             repo: "x", souls: [:])
-        #expect(PixieMentions.matching(mentions, query: "").count == 3)
+        #expect(PixieMentions.matching(mentions, query: "").count == 2)
         #expect(PixieMentions.matching(mentions, query: "RE").map(\.token) == ["rev"])
         #expect(PixieMentions.matching(mentions, query: "q").map(\.token) == ["qa"])
-        #expect(PixieMentions.matching(mentions, query: "tes").map(\.token) == ["tester"])
+        // A team's member is not offered on its own (B46).
+        #expect(PixieMentions.matching(mentions, query: "tes").isEmpty)
+        #expect(PixieMentions.matching(mentions, query: "T1").map(\.token) == ["qa"])
         #expect(PixieMentions.matching(mentions, query: "zz").isEmpty)
     }
 

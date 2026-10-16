@@ -65,6 +65,14 @@ final class FakeAPI: NestAPI {
         var rewinds: [String: RewindPreview] = [:]
         /// Gitignored files a repo suggests linking, by repo name.
         var linkSuggestions: [String: [String]] = [:]
+        /// Each chat's pixies, by session id (B46).
+        var pixieGroups: [String: [ChatPixieEntry]] = [:]
+        /// What Send away answers.
+        var sendAwayAnswer: [ChatPixieEntry] = []
+        /// Subagents' transcripts by "<session>/<tool use id>"; others are not found.
+        var transcripts: [String: AgentWork] = [:]
+        /// A pixie's calls in a chat by "<session>/<pixie id>".
+        var pixieCallWork: [String: [PixieCallWork]] = [:]
     }
 
     let state = Mutex(State())
@@ -784,6 +792,34 @@ final class FakeAPI: NestAPI {
                 state.pixies[index].teamID = nil
             }
         }
+    }
+
+    /// Answers what the daemon read before the gate opens, as a slow read does.
+    func pixieGroups() async throws -> [String: [ChatPixieEntry]] {
+        let groups = try call("pixieGroups") { $0.pixieGroups }
+        await pass("pixieGroups")
+        return groups
+    }
+
+    func chatPixies(_ id: String) async throws -> [ChatPixieEntry] {
+        try call("chatPixies", id) { $0.pixieGroups[id] ?? [] }
+    }
+
+    func sendAway(_ id: String, _ request: SendAwayRequest) async throws -> [ChatPixieEntry] {
+        let named = request.teamID.map { "team=\($0)" } ?? "pixie=\(request.pixieID ?? "")"
+        return try call("sendAway", "\(id) \(named)") { $0.sendAwayAnswer }
+    }
+
+    func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
+        try call("pixieCallWork", "\(id) \(pixie)") { $0.pixieCallWork["\(id)/\(pixie)"] ?? [] }
+    }
+
+    func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
+        let work = try call("agentTranscript", "\(id) \(toolUseID)") {
+            $0.transcripts["\(id)/\(toolUseID)"]
+        }
+        guard let work else { throw APIError.notFound("not found") }
+        return work
     }
 
     func createPairingCode() async throws -> PairingCode {

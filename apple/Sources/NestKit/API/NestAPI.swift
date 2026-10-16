@@ -159,6 +159,19 @@ public protocol NestAPI: Sendable {
     /// Its pixies stay, without a team.
     func deletePixieTeam(_ id: String) async throws
 
+    /// Every chat's group of pixies, by session id; chats with none are left out (B46).
+    func pixieGroups() async throws -> [String: [ChatPixieEntry]]
+    /// The pixies and teams the chat called and did not send away, first called first.
+    func chatPixies(_ id: String) async throws -> [ChatPixieEntry]
+    /// The pixie, or the team with its members, leaves the chat's group and its next call
+    /// starts fresh; answers the group.
+    func sendAway(_ id: String, _ request: SendAwayRequest) async throws -> [ChatPixieEntry]
+    /// Every call of the pixie in the chat, newest first, with its work.
+    func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork]
+    /// A subagent's own transcript so far, by its Agent call; `notFound` for a call the
+    /// chat did not make.
+    func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork
+
     func createPairingCode() async throws -> PairingCode
     func devices() async throws -> [Device]
     func revokeDevice(_ id: String) async throws

@@ -13,6 +13,8 @@ public enum APIError: Error, Sendable, Equatable {
     /// A pixie file changed since it was read; carries the current text and hash.
     case staleFile(text: String, hash: String)
     case invalidInput(String)
+    /// The message calls a pixie of a team on its own, which only its team may (B46).
+    case pixieInTeam(String)
     case payloadTooLarge(String)
     case rateLimited(String, retryAfter: Int?)
     /// A local app (VS Code) is not installed.
@@ -35,7 +37,7 @@ public enum APIError: Error, Sendable, Equatable {
             "The file changed since you opened it."
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail),
             .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail),
-            .payloadTooLarge(let detail),
+            .pixieInTeam(let detail), .payloadTooLarge(let detail),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
             .gitFailed(let detail, _, _), .badGateway(let detail), .server(_, let detail),
             .transport(let detail), .decoding(let detail), .approveRefused(let detail, _, _):
@@ -79,6 +81,8 @@ public enum APIError: Error, Sendable, Equatable {
             }
             return .conflict(detail)
         case 413: return .payloadTooLarge(detail)
+        case 422 where body["code"]?.stringValue == "pixie_in_team":
+            return .pixieInTeam(detail)
         case 400, 422: return .invalidInput(detail)
         case 424: return .appNotInstalled(detail)
         case 429:
