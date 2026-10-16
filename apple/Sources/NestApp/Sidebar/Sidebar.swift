@@ -150,6 +150,10 @@ private struct GroupSection: View {
             switch entry {
             case .session(let session):
                 ChatRow(session: session, finished: group.kind == .done)
+                // Its pixies and running subagents, joined to it by tree lines (B46).
+                if group.kind != .archived {
+                    ChatTreeView(chat: session.id)
+                }
             case .claudeChat(let chat): ClaudeChatRow(chat: chat)
             }
         }

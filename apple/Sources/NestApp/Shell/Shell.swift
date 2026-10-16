@@ -94,6 +94,9 @@ enum Overlay: Equatable {
     case habitRun(String)
     /// A tool result's image full size, by attachment id (B59).
     case image(String)
+    /// A subagent's, pixie's or team's work in a chat, read-only (`ChatPixiesStore.work`,
+    /// B46).
+    case work
 }
 
 /// What the Pixies tab's right-hand panel shows for the focused pixie: the details, or a
@@ -182,6 +185,7 @@ final class Shell {
     var pixies: PixiesStore { model.pixies }
     var reports: PixieReportsStore { model.reports }
     var habits: HabitsStore { model.habits }
+    var chatPixies: ChatPixiesStore { model.chatPixies }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
@@ -438,6 +442,29 @@ final class Shell {
         else { return nil }
         return PixieMentions.available(
             pixies: pixies.pixies, teams: pixies.teams, repo: repo, souls: pixies.soulLines)
+    }
+
+    // MARK: Each chat's pixies and subagents (B46)
+
+    /// Opens a subagent's transcript, or a pixie's, team's or member's calls in a chat,
+    /// read-only; follow-ups go in the chat itself.
+    func openWork(_ target: WorkTarget) {
+        show(.work)
+        Task { await chatPixies.open(target) }
+    }
+
+    /// The pixie, or the team with its members, leaves the chat's Pixies group; calling it
+    /// again starts it fresh.
+    func sendAway(_ entry: ChatPixieEntry, from chat: String, name: String) {
+        run("Could not send \(name) away") {
+            try await self.chatPixies.sendAway(entry, session: chat)
+            self.show("Sent \(name) away", kind: .done)
+        }
+    }
+
+    /// The slugs a chat's messages leave plain: pixies called only through their team.
+    func plainMentions(forChat chat: String) -> Set<String> {
+        Set(PixieMentions.members(pixieMentions(forChat: chat) ?? []).keys)
     }
 
     /// Why the slug was refused (taken or not allowed), else nil.
@@ -932,6 +959,13 @@ final class Shell {
             runLocal(command, in: chat)
             return
         }
+        // A pixie of a team is called only through its team (B46); the daemon refuses it too.
+        if let refusal = PixieMentions.memberCall(
+            in: text, mentions: pixieMentions(forChat: chat) ?? [])
+        {
+            withAnimation { draft.blocked = refusal }
+            return
+        }
         let typed = draft.text
         let attachments = draft.uploadedIDs
         draft.sending = true
@@ -957,7 +991,7 @@ final class Shell {
                 }
                 // Text typed and files attached while it was sending stay.
                 draft.clearSent(text: typed, attachments: attachments)
-            } catch APIError.openInClaudeCode(let message) {
+            } catch APIError.openInClaudeCode(let message), APIError.pixieInTeam(let message) {
                 withAnimation { draft.blocked = message }
             } catch {
                 show(error, doing: "Could not send")
@@ -1439,6 +1473,9 @@ final class Shell {
     }
 
     func close() {
+        if overlay == .work {
+            chatPixies.closeWork()
+        }
         withAnimation(.smooth(duration: 0.18)) { overlay = nil }
     }
 

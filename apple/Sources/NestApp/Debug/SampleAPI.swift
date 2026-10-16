@@ -44,6 +44,8 @@
         private var eventsFail = false
         /// A restore preview finds no file changed since the message.
         private var nothingToRestore = false
+        /// Each chat's pixies (B46).
+        private var groupList: [String: [ChatPixieEntry]]
 
         init(now: Date = Date()) {
             self.now = now
@@ -59,6 +61,7 @@
             habitList = Self.sampleHabits(now: now)
             runList = Self.sampleRuns(now: now)
             reportList = Self.sampleReports(now: now)
+            groupList = SampleTree.groups(now: now)
         }
 
         /// Four git repositories and a plain folder, "recipes". cv-page and llm-hunter show
@@ -1044,6 +1047,39 @@
             }
         }
 
+        // MARK: Each chat's pixies (B46)
+
+        func pixieGroups() async throws -> [String: [ChatPixieEntry]] {
+            lock.withLock { groupList }
+        }
+
+        func chatPixies(_ id: String) async throws -> [ChatPixieEntry] {
+            lock.withLock { groupList[id] ?? [] }
+        }
+
+        func sendAway(_ id: String, _ request: SendAwayRequest) async throws -> [ChatPixieEntry] {
+            lock.withLock {
+                groupList[id]?.removeAll { $0.sendAway == request }
+                return groupList[id] ?? []
+            }
+        }
+
+        /// The snapshots put a team they made into a chat's group.
+        func setGroup(_ id: String, _ entries: [ChatPixieEntry]) {
+            lock.withLock { groupList[id] = entries }
+        }
+
+        func pixieCallWork(_ id: String, pixie: String) async throws -> [PixieCallWork] {
+            id == "c2" && pixie == "reviewer" ? SampleTree.reviewerWork(now: now) : []
+        }
+
+        func agentTranscript(_ id: String, toolUseID: String) async throws -> AgentWork {
+            guard id == "c2", toolUseID == "toolu_explore" else {
+                throw APIError.notFound("Not Found")
+            }
+            return SampleTree.exploreWork(now: now)
+        }
+
         func createPairingCode() async throws -> PairingCode {
             try decode(["code": "K7Q4-M2XD", "expires_at": SampleData.iso(Date() + 299)])
         }
@@ -1466,7 +1502,7 @@
 
         private func agent(
             _ id: String, _ name: String, status: String, activity: String?, minutes: Double,
-            steps: [(String, String, String?)]
+            parent: String? = nil, steps: [(String, String, String?)]
         ) -> [String: Any] {
             var agent: [String: Any] = [
                 "id": id, "name": name, "status": status, "started_at": ago(minutes),
@@ -1479,6 +1515,7 @@
                 },
             ]
             agent["activity"] = activity
+            agent["parent"] = parent
             return agent
         }
 
@@ -1576,6 +1613,15 @@
                             ("Glob", "content/**/*.bib", "1 file"),
                             ("Grep", "\"doi\" content/refs.bib", nil),
                         ]),
+                    // Started by Explore, so the tree shows it one level deeper (B46).
+                    agent(
+                        "toolu_doi_check", "general-purpose", status: "running",
+                        activity: "WebFetch doi.org/10.1145", minutes: 0.5, parent: "toolu_explore",
+                        steps: [("WebFetch", "doi.org/10.1145/3544548", nil)]),
+                    // Pixie calls are subagents too; the tree shows them under Pixies.
+                    agent(
+                        "wt1", "watcher", status: "running", activity: "Bash npm run build",
+                        minutes: 1.5, steps: [("Bash", "npm run build", nil)]),
                 ],
                 background: [
                     backgroundItem(

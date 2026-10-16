@@ -135,6 +135,10 @@
                 try await renderTeamsAndCalls(model, shell, controller, folder)
                 return
             }
+            if only == "b46" {
+                try await renderPixieTree(model, shell, controller, folder)
+                return
+            }
             if only == "b41" {
                 try await renderPixieTools(model, shell, controller, folder)
                 return
@@ -829,6 +833,87 @@
             shell.revealPixie("reviewer")
             print("reveal check: \(model.app.pixieState.layout.leaves)")
             try await pair(controller, "b40-call-opens-pixie", folder)
+        }
+
+        /// B46: each chat's pixies and subagents as a tree under its row and in the Agents
+        /// card; a pixie's, a subagent's and a team's work, read-only; Send away; and the
+        /// composer refusing a team member called on its own.
+        private static func renderPixieTree(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let pixies = model.pixies
+            let bugs = try await pixies.create(
+                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+            let stylist = try await pixies.create(
+                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+            let qa = try await pixies.createTeam(name: "QA", handle: "qa")
+            try await pixies.setTeam(bugs.id, to: qa.id)
+            try await pixies.setTeam(stylist.id, to: qa.id)
+            try await pixies.load()
+            let now = Date()
+            let group = SampleTree.groups(now: now)["c2"]!
+            let team: ChatPixieEntry = try SampleData.decode(
+                SampleTree.team(
+                    qa.id, state: "running",
+                    members: [(bugs.id, true, "running"), (stylist.id, false, "done")],
+                    calls: [
+                        SampleTree.call(
+                            "k4", pixie: bugs.id, tool: "qa1", agent: "c41", state: "running",
+                            started: now - 50)
+                    ]))
+            (model.api as? SampleAPI)?.setGroup("c2", group + [team])
+            await model.chatPixies.load()
+
+            shell.selectProject("cv-page")
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.agents]
+                state.openChat("c2", in: workspace)
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b46-tree", folder)
+            try await pair(controller, "b46-tree-hover", folder, revealsHoverControls: true)
+            try await pairView(
+                MenuPreview(title: "Reviewer", rows: [MenuPreview.Row(title: "Send away")])
+                    .frame(width: 220), "b46-pixie-menu", folder)
+
+            for (name, target) in [
+                ("b46-pixie-work", WorkTarget.pixie(session: "c2", pixieID: "reviewer")),
+                ("b46-subagent-work", .subagent(session: "c2", toolUseID: "toolu_explore")),
+                ("b46-team-work", .team(session: "c2", teamID: qa.id, members: [bugs.id])),
+            ] {
+                await model.chatPixies.open(target)
+                shell.show(.work)
+                try await pair(controller, name, folder)
+                shell.close()
+            }
+
+            // Send away: Watcher leaves c2's Pixies group.
+            if let watcher = model.chatPixies.group(session: "c2").first(where: {
+                $0.pixieID == "watcher"
+            }) {
+                try await model.chatPixies.sendAway(watcher, session: "c2")
+            }
+            try await pair(controller, "b46-sent-away", folder)
+
+            // The "@" list offers the team, not its members; a member typed alone is refused.
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            let draft = shell.draft(for: "c3")
+            draft.replaceText("Ask @", caret: 5)
+            try await pair(controller, "b46-at-list", folder, revealsHoverControls: true)
+            draft.replaceText("Ask @\(bugs.slug) to look at the parser", caret: 0)
+            shell.send("c3")
+            try await pair(controller, "b46-member-refused", folder)
+            draft.clear()
         }
 
         /// B41: a pixie's details with its autonomy note, limits and Activity page; a chat
