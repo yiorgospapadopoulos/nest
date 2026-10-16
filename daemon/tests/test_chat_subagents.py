@@ -1,7 +1,7 @@
 import pytest
 
 from nestd.providers.base import Subagent
-from nestd.sessions.subagents import NO_AGENTS, ChatAgents, TeamCall
+from nestd.sessions.subagents import NO_AGENTS, ChatAgents, OfferedPixie, TeamCall
 
 QA = TeamCall("qa", " [call qa]")
 DOCS = TeamCall("docs-team", " [call docs]")
@@ -44,3 +44,49 @@ def test_the_fingerprint_follows_the_definitions() -> None:
     assert same.fingerprint != other_prompt.fingerprint
     assert same.fingerprint != other_team.fingerprint
     assert same.fingerprint != NO_AGENTS.fingerprint
+
+
+TESTER = Subagent(description="T", prompt="You test.", permission_mode="default")
+LEAD = Subagent(description="L", prompt="You lead.", permission_mode="default")
+CREW = ChatAgents(
+    {"tester": TESTER, "lead": LEAD},
+    (QA,),
+    {
+        "tester": OfferedPixie("p-tester", "tester", "Tester"),
+        "lead": OfferedPixie("p-lead", "lead", "Lead", team_id="t-qa", team_handle="qa"),
+    },
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "refusal"),
+    [
+        ("@lead plan this", "Lead is in @qa; call the team or a solo copy"),
+        ("ask @lead.", "Lead is in @qa; call the team or a solo copy"),
+        ("@leader is someone else", None),
+        ("mail me@lead", None),
+        ("@qa and @tester", None),
+        ("no mention", None),
+    ],
+)
+def test_a_team_member_is_called_only_through_its_team(text: str, refusal: str | None) -> None:
+    assert CREW.member_call(text) == refusal
+
+
+def test_mentioned_solo_pixies_and_team_members() -> None:
+    assert CREW.mentioned_pixies("@tester then @tester, and @lead") == [CREW.pixies["tester"]]
+    assert CREW.mentioned_pixies("@qa check") == []
+    assert CREW.team_members("@qa check") == [CREW.pixies["lead"]]
+    assert CREW.team_members("@tester only") == []
+
+
+def test_each_pixie_has_its_own_fingerprint() -> None:
+    changed = ChatAgents(
+        {"tester": TESTER, "lead": Subagent(description="L", prompt="v2", permission_mode="plan")},
+        (QA,),
+        CREW.pixies,
+    )
+
+    assert CREW.pixie_fingerprint("tester") == changed.pixie_fingerprint("tester")
+    assert CREW.pixie_fingerprint("lead") != changed.pixie_fingerprint("lead")
+    assert CREW.pixie_fingerprint("tester") != CREW.pixie_fingerprint("lead")

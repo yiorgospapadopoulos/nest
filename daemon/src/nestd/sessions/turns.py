@@ -22,19 +22,19 @@ from nestd.providers.base import (
     SessionSpec,
 )
 from nestd.repos.service import RepoService
-from nestd.sessions.bookkeeping import isolated
+from nestd.sessions.bookkeeping import isolated, isolated_or
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.extras import RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
-from nestd.sessions.models import USER, Sender, Session, SessionState
+from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
 from nestd.sessions.sink import SessionSink, TurnEnd
 from nestd.sessions.states import StateWriter
 from nestd.sessions.steering import Steering
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource
+from nestd.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource, PixieCalls
 from nestd.sessions.workspace import prepare_worktree
 from nestd.worktrees.manager import WorktreeManager
 
@@ -98,11 +98,14 @@ class TurnRunner:
         clock: Clock,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
+        calls: PixieCalls | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `agents`
-        gives a project chat's run its subagents (B40).
+        gives a project chat's run its subagents (B40), and `calls` follows the pixies it
+        calls (B46).
         """
         self._on_mode = on_mode
+        self._calls = calls
         self._extras = extras
         self._agents = agents
         self._repos = repos
@@ -117,7 +120,7 @@ class TurnRunner:
         self._provider = provider
         self._handler_for = handler_for
         self._idle_close = idle_close
-        self.steering = Steering(store, queue, attachments, self._run_fits)
+        self.steering = Steering(store, queue, attachments, self._run_fits, self.agent_text)
 
     async def guard(self, live: LiveSession, work: Coroutine[Any, Any, Outcome | None]) -> None:
         """Run `work` as the session's task. An outcome ends the turn; None means the
@@ -244,8 +247,19 @@ class TurnRunner:
         await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
-        # Teams the message calls get their instruction; the chat shows what was typed.
-        await run.send(user_input(live.run_agents.message(text), attachments))
+        await run.send(user_input(await self.agent_text(live, text), attachments))
+
+    async def agent_text(self, live: LiveSession, text: str) -> str:
+        """`text` as the agent gets it: teams it calls get their instruction (B40), and
+        pixies it calls again are continued (B46). The chat shows what was typed.
+        """
+        agents = live.run_agents
+        if self._calls is None:
+            return agents.message(text)
+        note = await isolated_or(
+            "the pixie notes", live.session_id, self._calls.note(live.session_id, agents, text), ""
+        )
+        return agents.message(text) + note
 
     async def agent_active(self, live: LiveSession) -> None:
         # A turn the agent starts on its own waits while the daemon publishes its work or
@@ -541,7 +555,7 @@ class TurnRunner:
         while a run opens apply once it is open, so the saved ones always win (D048).
         """
         dirs = await self._attachments.file_dirs(session.id)
-        agents = await self._chat_agents(session)
+        agents = await self.chat_agents(session)
         while (run := live.run) is None or not _fits(live, session, dirs, agents):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
@@ -581,6 +595,7 @@ class TurnRunner:
                 session.provider_session_id,
                 forking=session.fork_from,
                 attachments=self._attachments,
+                calls=self._calls,
             )
             live.run = await self._provider.open(spec, self._handler_for(live), sink)
             live.run_dirs = dirs
@@ -607,9 +622,9 @@ class TurnRunner:
         self, live: LiveSession, session: Session, folders: tuple[Path, ...]
     ) -> bool:
         """Whether the live run takes a message with files in `folders` as it is (B59)."""
-        return _fits(live, session, folders, await self._chat_agents(session))
+        return _fits(live, session, folders, await self.chat_agents(session))
 
-    async def _chat_agents(self, session: Session) -> ChatAgents:
+    async def chat_agents(self, session: NewSession) -> ChatAgents:
         """The pixies the chat may call (B40); a pixie's own chat gets the others (B41)."""
         if self._agents is None:
             return NO_AGENTS

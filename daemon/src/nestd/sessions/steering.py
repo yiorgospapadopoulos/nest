@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Whether the live run can take a message whose files are in these folders as it is.
 type RunFits = Callable[[LiveSession, Session, tuple[Path, ...]], Awaitable[bool]]
+# A message's text as the agent gets it.
+type AgentText = Callable[[LiveSession, str], Awaitable[str]]
 
 
 class Steering:
@@ -34,7 +36,9 @@ class Steering:
         queue: MessageQueue,
         attachments: AttachmentStore,
         fits: RunFits,
+        agent_text: AgentText,
     ) -> None:
+        self._agent_text = agent_text
         self._store = store
         self._queue = queue
         self._attachments = attachments
@@ -114,9 +118,8 @@ class Steering:
         run = live.run
         assert run is not None  # noqa: S101 (checked by `_ready` under the same lock)
         try:
-            await run.steer(
-                user_input(live.run_agents.message(message.text), attachments), message.id
-            )
+            text = await self._agent_text(live, message.text)
+            await run.steer(user_input(text, attachments), message.id)
         except Exception as error:
             # The run is ending; the message waits for the next turn instead.
             logger.warning(

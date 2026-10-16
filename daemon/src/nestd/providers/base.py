@@ -49,6 +49,10 @@ def _no_images(images: list[ResultImage]) -> bool:
     return not images
 
 
+def _none(value: object) -> bool:
+    return value is None
+
+
 class ToolResultBlock(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
@@ -138,6 +142,9 @@ class AgentTask(BaseModel):
     background: bool = False
     # How a finished task ended.
     status: Literal["completed", "failed", "stopped"] | None = None
+    # A finished subagent's report, when the engine's notification has one (B46); left out
+    # of the event otherwise.
+    summary: str | None = Field(default=None, exclude_if=_none)
 
 
 class SlashCommand(BaseModel):
