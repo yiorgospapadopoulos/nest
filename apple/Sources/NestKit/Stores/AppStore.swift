@@ -32,6 +32,8 @@ public struct ProjectState: Sendable, Hashable {
     public var view = ProjectView.workspace
     /// The chat highlighted in the sidebar.
     public var selectedChat: String?
+    /// Chats whose background bar is open to its list of running tasks (B76).
+    public var expandedBackground: Set<String> = []
     /// The terminal and browser panes in the workspace, by pane id.
     public private(set) var tools: [String: ToolPane] = [:]
 
@@ -155,6 +157,19 @@ public struct ProjectState: Sendable, Hashable {
     public mutating func showCard(_ card: RightCard) {
         rightCollapsed = false
         openCards.insert(card)
+    }
+
+    /// Opens or closes a chat's background bar.
+    public mutating func toggleBackground(_ chat: String) {
+        if expandedBackground.remove(chat) == nil {
+            expandedBackground.insert(chat)
+        }
+    }
+
+    /// Forgets a chat that was deleted.
+    public mutating func forget(_ id: String) {
+        closePane(id)
+        expandedBackground.remove(id)
     }
 }
 
@@ -391,7 +406,7 @@ public final class AppStore {
     /// A deleted chat leaves every workspace.
     public func forgetChat(_ id: String) {
         for name in projects.keys {
-            projects[name]?.closePane(id)
+            projects[name]?.forget(id)
         }
     }
 
