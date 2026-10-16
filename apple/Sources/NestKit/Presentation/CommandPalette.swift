@@ -28,7 +28,7 @@ public enum PaletteGroup: String, Sendable, CaseIterable {
 
 /// The glyph of a command entry; chats show their status dot instead.
 public enum PaletteGlyph: Sendable, Hashable {
-    case status(StatusTone, hollow: Bool)
+    case status(StatusTone)
     case newChat, terminal, browser, board, workspace, sidebar, activityPanel, usage, code
     case folder
     case message(SearchHitKind)
@@ -131,12 +131,11 @@ extension CommandPalette {
         var items: [PaletteItem] = []
         for project in app.openProjects {
             for session in sessions.sessions(in: project) where !session.isArchived {
-                let tone = sessions.tone(of: session)
                 items.append(
                     PaletteItem(
                         group: .chats, title: session.title,
                         subtitle: "\(project) · \(sessions.statusLabel(of: session))",
-                        glyph: .status(tone, hollow: session.state == .idle && tone == .done),
+                        glyph: .status(sessions.tone(of: session)),
                         action: .openChat(project: project, chat: session.id)))
             }
         }

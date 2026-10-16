@@ -1,10 +1,11 @@
 import Foundation
 
 /// What a pane's header and composer show at the pane's width. A chat's header keeps its
-/// name first (B60): its right group drops the elapsed time, then the pull request chip,
-/// then shortens where the chat works to its icon (B55). A pixie's header also drops its
-/// status word. The composer shortens, then hides, the context and shortens the model's
-/// name; attach, dictation and send always stay.
+/// name first (B60): it drops the pull request chip, then shortens who started the chat.
+/// A pixie's header shortens its Details button to the icon, then drops its status word
+/// and @slug. The composer shortens where the chat works to its icon (B71), shortens,
+/// then hides, the context and shortens the model's name; attach, dictation and send
+/// always stay.
 public struct PaneFit: Sendable, Equatable {
     public enum ContextStyle: Sendable, Equatable {
         case full, percent, hidden
@@ -18,8 +19,13 @@ public struct PaneFit: Sendable, Equatable {
         }
     }
 
-    public let showsElapsed: Bool
-    /// The branch or worktree name beside its icon; narrower panes show the icon only.
+    /// The word beside the icon of a pixie's Details button.
+    public let showsDetailsLabel: Bool
+    /// Who started a chat in full and a pixie's @slug, in a header.
+    public let showsHeaderDetails: Bool
+    /// The branch or worktree name beside its icon in the composer, where the model,
+    /// thinking, permission and full context still fit beside it; narrower panes show the
+    /// icon only.
     public let showsPlaceName: Bool
     /// The status word beside its dot, in a pixie's header; a chat's header shows the dot.
     public let showsStatusLabel: Bool
@@ -30,9 +36,10 @@ public struct PaneFit: Sendable, Equatable {
     public let compact: Bool
 
     public init(width: Double) {
-        showsElapsed = width >= 480
+        showsDetailsLabel = width >= 480
         showsPullRequest = width >= 420
-        showsPlaceName = width >= 360
+        showsHeaderDetails = width >= 360
+        showsPlaceName = width >= 560
         showsStatusLabel = width >= 380
         context = width >= 460 ? .full : width >= 360 ? .percent : .hidden
         compact = width < 380

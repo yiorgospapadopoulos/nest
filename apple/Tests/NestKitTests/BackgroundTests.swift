@@ -73,24 +73,9 @@ import Testing
 @Suite struct BackgroundSummaryTests {
     let summary = Fixture.sessionDetail.background!
 
-    @Test func labelsCountsAndSplitsTheItems() {
-        #expect(summary.label == "1 running · 2 completed")
-        #expect(!summary.isEmpty)
-        #expect(BackgroundSummary.empty.isEmpty)
-        #expect(BackgroundSummary.empty.label == "0 running · 0 completed")
-        #expect(BackgroundSummary(running: 1, completed: 0, items: []).label == "1 running task")
-        #expect(BackgroundSummary(running: 2, completed: 0, items: []).label == "2 running tasks")
+    @Test func picksTheRunningItems() {
         #expect(summary.runningItems.map(\.id) == ["toolu_10"])
-        #expect(summary.finishedItems.map(\.id) == ["toolu_09", "toolu_11"])
-    }
-
-    @Test func showsHowLongEachItemRan() {
-        let start = summary.items[1].startedAt!
-        #expect(summary.items[1].duration(at: start.addingTimeInterval(75)) == "1m 15s")
-        #expect(summary.items[0].duration(at: .distantFuture) == "25s")
-        var unstarted = summary.items[0]
-        unstarted.startedAt = nil
-        #expect(unstarted.duration(at: start) == nil)
+        #expect(BackgroundSummary.empty.items.isEmpty)
     }
 
     @Test func aFinishedTaskMovesItsRunningItemToCompleted() {
@@ -98,53 +83,14 @@ import Testing
         let at = Date(timeIntervalSince1970: 1_791_278_100)
         copy.finish(toolUseID: "toolu_10", as: .done, at: at)
 
-        #expect(copy.label == "0 running · 3 completed")
+        #expect((copy.running, copy.completed) == (0, 3))
         #expect(copy.items[1].status == .done)
         #expect(copy.items[1].finishedAt == at)
 
         copy.finish(toolUseID: "toolu_10", as: .failed, at: at)
         copy.finish(toolUseID: "toolu_99", as: .failed, at: at)
-        #expect(copy.label == "0 running · 3 completed")
+        #expect((copy.running, copy.completed) == (0, 3))
         #expect(copy.items[1].status == .done)
-    }
-
-    @Test func theExchangeKeepsItsOwnTasksAndAnyStillRunning() {
-        // Started 09:12:40 (done 09:13:05.5), 09:13:00 (running) and 09:13:10 (failed).
-        let current = summary.exchange(since: Fixture.date("2026-10-06T09:13:06Z"))
-        #expect(current.items.map(\.id) == ["toolu_10", "toolu_11"])
-        #expect((current.running, current.completed) == (1, 1))
-        #expect(current.label == "1 running · 1 completed")
-
-        // An earlier task that finishes during the exchange counts as completed in it.
-        let carried = summary.exchange(since: Fixture.date("2026-10-06T09:13:05Z"))
-        #expect(carried.items.map(\.id) == ["toolu_09", "toolu_10", "toolu_11"])
-        #expect(carried.label == "1 running · 2 completed")
-
-        // A task started at the very moment of the message belongs to it.
-        #expect(summary.exchange(since: Fixture.date("2026-10-06T09:12:40Z")) == summary)
-        // Without a message to start from, every task counts.
-        #expect(summary.exchange(since: nil) == summary)
-
-        // An earlier task still at work counts as running, its finished siblings do not.
-        let next = Fixture.date("2026-10-06T10:00:00Z")
-        let later = summary.exchange(since: next)
-        #expect(later.items.map(\.id) == ["toolu_10"])
-        #expect(later.label == "1 running task")
-
-        // When it finishes, it stays as completed instead of vanishing (B-16).
-        var settled = summary
-        settled.finish(toolUseID: "toolu_10", as: .done, at: next)
-        #expect(settled.exchange(since: next).items.map(\.id) == ["toolu_10"])
-        #expect(settled.exchange(since: next).label == "0 running · 1 completed")
-        // One that finished before the exchange began stays out.
-        #expect(settled.exchange(since: next.addingTimeInterval(1)).isEmpty)
-
-        // A finished task of unknown start and end cannot be placed in the exchange.
-        var unknown = summary
-        unknown.items[0].startedAt = nil
-        unknown.items[0].finishedAt = nil
-        #expect(
-            unknown.exchange(since: .distantPast).items.map(\.id) == ["toolu_10", "toolu_11"])
     }
 
     @Test func runningNeverGoesBelowZero() {
@@ -186,6 +132,12 @@ import Testing
             EventType.sessionAgents, "{\"agents\": \(agents)\(tail)}", id: nil, session: sessionID)
     }
 
+    /// The running and completed counts of the session's background work.
+    private func counts() -> [Int] {
+        let background = store.background(session: sessionID)
+        return [background.running, background.completed]
+    }
+
     private func taskEvent(_ payload: String, session: String? = nil) -> Event {
         Fixture.event(EventType.sessionAgentTask, payload, session: session ?? sessionID)
     }
@@ -195,7 +147,7 @@ import Testing
 
         try await store.load(session: sessionID)
 
-        #expect(store.background(session: sessionID).label == "1 running · 2 completed")
+        #expect(counts() == [1, 2])
         #expect(store.hasRunningWork(session: sessionID))
     }
 
@@ -214,7 +166,7 @@ import Testing
         summary.finish(toolUseID: "toolu_10", as: .done, at: .distantPast)
         store.apply(agentsEvent("[]", background: summary))
         #expect(!store.hasRunningWork(session: sessionID))
-        #expect(store.background(session: sessionID).label == "0 running · 3 completed")
+        #expect(counts() == [0, 3])
     }
 
     @Test func anAgentsEventWithoutBackgroundKeepsTheLastSummary() async throws {
@@ -248,7 +200,7 @@ import Testing
             ))
 
         let summary = store.background(session: sessionID)
-        #expect(summary.label == "0 running · 3 completed")
+        #expect((summary.running, summary.completed) == (0, 3))
         #expect(summary.items[1].status == .failed)
         #expect(summary.items[1].finishedAt == Date(timeIntervalSince1970: 1_791_277_200))
     }
@@ -278,18 +230,5 @@ import Testing
         let watched = store.watchList(sessions, open: ["old", "pane"], now: now)
 
         #expect(watched == ["running", "recent", sessionID, "old", "pane"])
-    }
-}
-
-@Suite struct BackgroundBarStateTests {
-    @Test func togglesAChatsBarAndForgetsItOnDelete() {
-        var state = ProjectState()
-        state.toggleBackground("c1")
-        state.toggleBackground("c2")
-        #expect(state.expandedBackground == ["c1", "c2"])
-        state.toggleBackground("c2")
-        #expect(state.expandedBackground == ["c1"])
-        state.forget("c1")
-        #expect(state.expandedBackground.isEmpty)
     }
 }

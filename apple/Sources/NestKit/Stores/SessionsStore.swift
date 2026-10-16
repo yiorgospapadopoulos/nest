@@ -139,11 +139,6 @@ public final class SessionsStore {
         return StatusTone.of(session.state, hasReview: ready)
     }
 
-    /// Idle chats with nothing to review show a hollow dot.
-    public func isHollow(_ session: Session) -> Bool {
-        session.state == .idle && tone(of: session) == .done
-    }
-
     /// The status words of a session's pill, sidebar row and palette entry: a question
     /// first, then a plan, then a permission prompt, as on the iPhone.
     public func statusLabel(of session: Session) -> String {

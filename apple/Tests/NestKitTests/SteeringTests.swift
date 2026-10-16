@@ -239,8 +239,6 @@ import Testing
         #expect(contents.last == .notice("Restored 2 files to before your message"))
         #expect(transcript.turnStartedAt == nil)
         #expect(transcript.lastEventID == 9)
-        // The exchange now starts at the message still there.
-        #expect(transcript.exchangeStartEvent == 1)
         #expect(transcript.lastUserMessage == 1)
         #expect(TranscriptStore(sessionID: "s2", api: api).lastUserMessage == nil)
     }

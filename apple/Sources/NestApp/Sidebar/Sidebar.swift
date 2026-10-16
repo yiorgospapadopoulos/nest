@@ -256,7 +256,7 @@ private struct RailChat: View {
                 isOpen ? accent.selection : hovering ? Palette.soft : .clear, in: shape
             )
             .overlay(alignment: .topTrailing) {
-                StatusDot(tone: tone, hollow: hollow)
+                StatusDot(tone: tone)
                     .offset(x: -3, y: 3)
             }
             .overlay(alignment: .bottomTrailing) {
@@ -287,13 +287,6 @@ private struct RailChat: View {
             return shell.tone(of: session)
         }
         return .done
-    }
-
-    private var hollow: Bool {
-        if case .session(let session) = entry {
-            return shell.isHollow(session)
-        }
-        return true
     }
 
     private var status: String {

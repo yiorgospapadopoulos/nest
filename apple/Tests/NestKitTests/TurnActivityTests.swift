@@ -249,6 +249,36 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(TranscriptGrouping.group(containing: "a", in: entries) == nil)
         #expect(TranscriptGrouping.group(containing: "none", in: entries) == nil)
     }
+
+    func item(_ id: String, _ content: TranscriptItem.Content) -> TranscriptItem {
+        TranscriptItem(id: id, content: content, eventID: 1)
+    }
+
+    /// Each row of a finished reply leads to its "Worked for" line, shown on hover (B71):
+    /// from the message or report that started the turn, exclusive, to the turn's end,
+    /// inclusive. The open turn's rows lead nowhere.
+    @Test func eachRowOfAFinishedReplyLeadsToItsTurnEnd() {
+        let pixie = ToolCall(
+            id: "p1", name: "Agent", input: .object(["subagent_type": .string("rex")]),
+            result: "done", isError: false)
+        let items = [
+            text("early"), end("e0"),
+            item("u1", .user(text: "go", attachments: [])), text("a"), tool("Bash", "t1"),
+            tool("Read", "t2"), item("p1", .tool(pixie)), end("e1"),
+            item("r1", .reportBack("back")), thought("th"), end("e2"),
+            item("h1", .habitReport("ran")), text("b"), end("e3"),
+            item("u2", .user(text: "more", attachments: [])), text("c"), tool("Bash", "t3"),
+        ]
+        let entries = TranscriptGrouping.entries(items, live: true, pixies: ["rex"])
+        #expect(
+            TranscriptGrouping.turnEnds(entries) == [
+                "early": "e0", "e0": "e0",
+                "a": "e1", "tools-t1": "e1", "p1": "e1", "e1": "e1",
+                "th": "e2", "e2": "e2",
+                "b": "e3", "e3": "e3",
+            ])
+        #expect(TranscriptGrouping.turnEnds([]).isEmpty)
+    }
 }
 
 @MainActor
@@ -569,36 +599,6 @@ private func end(_ id: String) -> TranscriptItem {
         #expect(ends(transcript).last == TurnEnd(durationMS: 5_000, stopped: false))
     }
 
-    @Test func theExchangeRunsFromTheUsersLatestMessage() async throws {
-        let transcript = try await loaded()
-        #expect(transcript.exchangeStartedAt == nil)
-        transcript.receive(user(1, at: 0))
-        transcript.receive(marked("running", #""turn_start": true"#, 2, at: 1))
-        #expect(transcript.exchangeStartedAt == Fixture.date("2026-10-06T09:00:00Z"))
-        transcript.receive(result(3, at: 20))
-        transcript.receive(state("idle", 4, at: 21))
-        #expect(transcript.exchangeStartedAt == Fixture.date("2026-10-06T09:00:00Z"))
-
-        // The agent going on by itself, after a background task finished, stays in it.
-        transcript.receive(marked("running", #""turn_start": true"#, 5, at: 30))
-        #expect(transcript.exchangeStartedAt == Fixture.date("2026-10-06T09:00:00Z"))
-
-        // A message sent while that turn runs opens the next exchange.
-        transcript.receive(user(6, at: 35))
-        #expect(transcript.exchangeStartedAt == Fixture.date("2026-10-06T09:00:35Z"))
-    }
-
-    @Test func aReloadedClaudeChatFindsItsExchangeAgain() async throws {
-        let events = [user(1, at: 0), result(2, at: 5), user(3, at: 9)]
-        api.set { $0.claudeChatEvents["c1"] = events }
-        let transcript = TranscriptStore(sessionID: "c1", api: api, source: .claudeChat)
-        try await transcript.load()
-        #expect(transcript.exchangeStartedAt == Fixture.date("2026-10-06T09:00:09Z"))
-        api.set { $0.claudeChatEvents["c1"] = [] }
-        try await transcript.load()
-        #expect(transcript.exchangeStartedAt == nil)
-    }
-
     @Test func anIdleTurnWithoutAResultEndsWithTheDaemonsMeasure() async throws {
         let transcript = try await loaded()
         transcript.receive(marked("running", #""turn_start": true"#, 1, at: 0))
@@ -608,30 +608,12 @@ private func end(_ id: String) -> TranscriptItem {
     }
 }
 
-/// The background bar's exchange starts at the session's latest user message, whatever
-/// page of the transcript is loaded.
 @MainActor
-@Suite struct ExchangeStartTests {
+@Suite struct TranscriptRowsTests {
     let api = FakeAPI()
-
-    /// Event `id` at that many seconds after 09:00: user messages at `users`, agent text
-    /// everywhere else, up to `count` events in session "x".
-    func history(_ count: Int, users: Set<Int>) -> [Event] {
-        (1...count).map { users.contains($0) ? Self.user($0) : Self.reply($0) }
-    }
 
     static func ts(_ second: Int) -> String {
         String(format: "2026-10-06T09:%02d:%02dZ", second / 60, second % 60)
-    }
-
-    static func at(_ second: Int) -> Date {
-        Fixture.date(ts(second))
-    }
-
-    static func user(_ id: Int) -> Event {
-        Fixture.event(
-            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: id,
-            session: "x", ts: ts(id))
     }
 
     static func reply(_ id: Int) -> Event {
@@ -641,183 +623,11 @@ private func end(_ id: String) -> TranscriptItem {
             id: id, session: "x", ts: ts(id))
     }
 
-    func jumped(to event: Int, in events: [Event]) async throws -> TranscriptStore {
-        api.set { $0.events["x"] = events }
-        let transcript = TranscriptStore(sessionID: "x", api: api)
-        transcript.requestFocus(event: event)
-        try await transcript.load()
-        return transcript
-    }
-
-    static let newest = "before=\(Int.max) limit=100"
-
-    @Test func aSearchPageFindsTheLatestUserMessageAfterIt() async throws {
-        let transcript = try await jumped(to: 20, in: history(250, users: [1, 200]))
-        #expect(transcript.hasNewer)
-        #expect(transcript.exchangeStartedAt == Self.at(200))
-        #expect(api.calls.last == "sessionEvents x after=120 \(Self.newest)")
-    }
-
-    @Test func theLookupReadsBackPageByPageUntilAMessage() async throws {
-        let transcript = try await jumped(to: 20, in: history(400, users: [1, 150]))
-        #expect(transcript.exchangeStartedAt == Self.at(150))
-        #expect(
-            api.calls.suffix(3) == [
-                "sessionEvents x after=120 \(Self.newest)",
-                "sessionEvents x after=120 before=301 limit=100",
-                "sessionEvents x after=120 before=201 limit=100",
-            ])
-    }
-
-    @Test func withoutAMessageAfterThePageItsOwnLatestStarts() async throws {
-        let transcript = try await jumped(to: 20, in: history(250, users: [1, 3]))
-        #expect(transcript.exchangeStartedAt == Self.at(3))
-        #expect(api.calls.last == "sessionEvents x after=120 before=151 limit=100")
-    }
-
-    @Test func pagesAndLiveMessagesKeepTheLatestStart() async throws {
-        let transcript = try await jumped(to: 20, in: history(250, users: [1, 200]))
-        transcript.requestFocus(event: 240)
-        _ = try await transcript.resolveFocus()
-        #expect(!transcript.hasNewer)
-
-        // A search hit's page holds only an older message; the start stays, without
-        // looking it up again.
-        transcript.requestFocus(event: 5)
-        _ = try await transcript.resolveFocus()
-        #expect(transcript.hasNewer)
-        #expect(transcript.exchangeStartedAt == Self.at(200))
-        #expect(api.calls.count == 7)
-
-        // A message sent while that page shows opens the next exchange.
-        transcript.receive(Self.user(251))
-        #expect(transcript.exchangeStartedAt == Self.at(251))
-        try await transcript.loadNewer()
-        #expect(transcript.exchangeStartedAt == Self.at(251))
-    }
-
-    @Test func aLiveMessageBeforeTheFirstLoadIsTheLatest() async throws {
-        api.set { $0.events["x"] = history(250, users: [1, 150]) }
-        let transcript = TranscriptStore(sessionID: "x", api: api)
-        transcript.receive(Self.user(251))
-        transcript.requestFocus(event: 20)
-        try await transcript.load()
-        #expect(transcript.exchangeStartedAt == Self.at(251))
-        #expect(api.calls.count == 2)
-    }
-
-    @Test func untilTheStartIsKnownTheBarShowsOnlyTasksAtWork() async throws {
-        let summary = try #require(Fixture.sessionDetail.background)
-        api.set { $0.events["x"] = [] }
-        let transcript = TranscriptStore(sessionID: "x", api: api)
-        #expect(transcript.exchange(of: summary).items.map(\.id) == ["toolu_10"])
-
-        // Loaded without any user message, every task counts.
-        try await transcript.load()
-        #expect(transcript.exchange(of: summary) == summary)
-
-        transcript.receive(
-            Fixture.event(
-                EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: 1,
-                session: "x", ts: "2026-10-06T09:13:06Z"))
-        #expect(transcript.exchange(of: summary).items.map(\.id) == ["toolu_10", "toolu_11"])
-    }
-
     static func toolUse(_ id: Int, tool: String, at second: Int) -> Event {
         Fixture.event(
             EventType.sessionMessage,
             #"{"blocks": [{"type": "tool_use", "id": "\#(tool)", "name": "Bash", "input": {}}], "parent_tool_use_id": null}"#,
             id: id, session: "x", ts: ts(second))
-    }
-
-    static func finished(_ id: Int, tool: String, at second: Int) -> Event {
-        Fixture.event(
-            EventType.sessionAgentTask,
-            #"{"task_id": "t-\#(tool)", "phase": "finished", "tool_use_id": "\#(tool)", "status": "completed", "background": true}"#,
-            id: id, session: "x", ts: ts(second))
-    }
-
-    /// The exchange goes by event ids where the transcript holds the tasks' events, so a
-    /// step of the clock does not move tasks in or out of it (I-H).
-    @Test func eventIDsPlaceTasksDespiteAClockStep() async throws {
-        let message = Fixture.event(
-            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: 3,
-            session: "x", ts: Self.ts(1200))
-        api.set {
-            $0.events["x"] = [
-                Self.toolUse(1, tool: "toolu_09", at: 0),
-                Self.finished(2, tool: "toolu_09", at: 10),
-                message,
-                // The clock stepped back after the message.
-                Self.toolUse(4, tool: "toolu_11", at: 300),
-                Self.finished(5, tool: "toolu_11", at: 360),
-                // A subagent's call is placed by its event too.
-                Fixture.event(
-                    EventType.sessionMessage,
-                    #"{"blocks": [{"type": "tool_use", "id": "toolu_12", "name": "Bash", "input": {}}], "parent_tool_use_id": "toolu_09"}"#,
-                    id: 6, session: "x", ts: Self.ts(301)),
-            ]
-        }
-        let transcript = TranscriptStore(sessionID: "x", api: api)
-        try await transcript.load()
-        #expect(transcript.exchangeStartEvent == 3)
-
-        func item(_ id: String, _ status: AgentStatus, from start: Int, to end: Int?)
-            -> BackgroundItem
-        {
-            BackgroundItem(
-                id: id, kind: .bash, name: id, description: nil, status: status,
-                startedAt: Self.at(start), finishedAt: end.map(Self.at))
-        }
-        let summary = BackgroundSummary(
-            running: 1, completed: 3,
-            items: [
-                // Its times fall after the message, its events before it.
-                item("toolu_09", .done, from: 1800, to: 1860),
-                item("toolu_10", .running, from: 0, to: nil),
-                // Its times fall before the message, its events after it.
-                item("toolu_11", .done, from: 300, to: 360),
-                item("toolu_12", .done, from: 301, to: 302),
-                // Unknown to the transcript: placed by time.
-                item("toolu_13", .done, from: 1300, to: 1310),
-                item("toolu_14", .done, from: 100, to: 110),
-            ])
-
-        let shown = transcript.exchange(of: summary)
-        #expect(shown.items.map(\.id) == ["toolu_10", "toolu_11", "toolu_12", "toolu_13"])
-        #expect(shown.label == "1 running · 3 completed")
-    }
-
-    @Test func aTaskThatFinishedDuringTheExchangeCountsByItsEndEvent() {
-        let item = BackgroundItem(
-            id: "toolu_1", kind: .bash, name: "x", description: nil, status: .done,
-            startedAt: Self.at(0), finishedAt: Self.at(1))
-        let summary = BackgroundSummary(running: 0, completed: 1, items: [item])
-        let late = ExchangeStart(
-            date: Self.at(500), event: 10, starts: ["toolu_1": 2], ends: ["toolu_1": 11])
-        #expect(summary.exchange(since: late).items.map(\.id) == ["toolu_1"])
-        let before = ExchangeStart(
-            date: Self.at(0), event: 10, starts: ["toolu_1": 2], ends: ["toolu_1": 9])
-        #expect(summary.exchange(since: before).isEmpty)
-        // Without the message's event id, times decide.
-        let timed = ExchangeStart(date: Self.at(0), starts: ["toolu_1": 2], ends: ["toolu_1": 9])
-        #expect(summary.exchange(since: timed).items.count == 1)
-    }
-
-    @Test func aLiveMessageWithoutAnIDStillMovesTheStartByTime() async throws {
-        api.set { $0.events["x"] = [] }
-        let transcript = TranscriptStore(sessionID: "x", api: api)
-        try await transcript.load()
-        let first = Fixture.event(
-            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: nil,
-            session: "x", ts: Self.ts(10))
-        let earlier = Fixture.event(
-            EventType.sessionUserMessage, #"{"text": "go", "attachments": []}"#, id: nil,
-            session: "x", ts: Self.ts(5))
-        transcript.receive(first)
-        transcript.receive(earlier)
-        #expect(transcript.exchangeStartedAt == Self.at(10))
-        #expect(transcript.exchangeStartEvent == nil)
     }
 
     /// The rows are kept until the items or the arguments change (IMP-11).

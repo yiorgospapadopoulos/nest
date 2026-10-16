@@ -29,6 +29,8 @@ struct TranscriptView: View {
         let entries =
             store?.entries(live: inFlight, background: background, pixies: pixies) ?? []
         let answered = PixieCards.answered(items)
+        let turnEnds = TranscriptGrouping.turnEnds(entries)
+        let shownEnd = shell.hoveredEntry.flatMap { turnEnds[$0] }
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -38,25 +40,37 @@ struct TranscriptView: View {
                         }
                     }
                     ForEach(entries) { entry in
-                        switch entry {
-                        case .item(let item):
-                            TranscriptRow(
-                                item: item, chat: chat, answered: answered.contains(item.id)
-                            )
-                            .background {
-                                if highlighted == item.id {
-                                    Highlight(accent: accent)
-                                }
-                            }
-                        case .tools(let group):
-                            ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
-                        case .pixieCall(let call):
-                            PixieCallRow(entry: call, chat: chat)
+                        Group {
+                            switch entry {
+                            case .item(let item):
+                                TranscriptRow(
+                                    item: item, chat: chat, answered: answered.contains(item.id),
+                                    showsTurnEnd: shownEnd == item.id
+                                )
                                 .background {
-                                    if highlighted == call.id {
+                                    if highlighted == item.id {
                                         Highlight(accent: accent)
                                     }
                                 }
+                            case .tools(let group):
+                                ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
+                            case .pixieCall(let call):
+                                PixieCallRow(entry: call, chat: chat)
+                                    .background {
+                                        if highlighted == call.id {
+                                            Highlight(accent: accent)
+                                        }
+                                    }
+                            }
+                        }
+                        // Leaving clears only the row it set, so moving from one row to
+                        // the next never blinks the line off in between.
+                        .onHover { inside in
+                            if inside {
+                                shell.hoveredEntry = entry.id
+                            } else if shell.hoveredEntry == entry.id {
+                                shell.hoveredEntry = nil
+                            }
                         }
                     }
                     if hasNewer {
@@ -208,6 +222,8 @@ struct TranscriptRow: View {
     let chat: String
     /// A choices card with a user message after it.
     var answered = false
+    /// A turn end line shows its text; a chat's shows only while its reply is hovered.
+    var showsTurnEnd = true
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -251,7 +267,7 @@ struct TranscriptRow: View {
             SystemLine(text: text)
                 .frame(maxWidth: .infinity)
         case .turnEnd(let end):
-            TurnEndLine(end: end)
+            TurnEndLine(end: end, shown: showsTurnEnd)
         case .reportBack(let text):
             ReportBackRow(text: text)
         case .pixieCard(let card):
@@ -491,8 +507,8 @@ extension View {
     }
 }
 
-/// "Thought for 8s", opening to the thinking text in muted italics; thinking with no
-/// text (redacted) cannot open.
+/// "Thought for 8s" and a chevron, a quiet line opening to the thinking text in muted
+/// italics; thinking with no text (redacted) cannot open.
 private struct ThinkingRow: View {
     static let font = NSFontManager.shared.convert(
         TextStyling.ui(TypeSize.ui), toHaveTrait: .italicFontMask)
@@ -510,8 +526,6 @@ private struct ThinkingRow: View {
                 toggle(id, in: shell)
             } label: {
                 HStack(spacing: 7) {
-                    Image(systemName: "brain").font(.system(size: 10))
-                        .frame(width: 12)
                     Text(TurnText.thought(durationMS: durationMS))
                     if expandable {
                         Image(systemName: Icon.chevron)
@@ -533,7 +547,6 @@ private struct ThinkingRow: View {
                     TextStyling.plain(
                         text, font: Self.font, color: TextStyling.secondary)
                 }
-                .padding(.leading, 19)
             }
         }
     }
@@ -1200,29 +1213,30 @@ private struct WorkingLine: View {
                     TextStyling.plain(
                         thought, font: ThinkingRow.font, color: TextStyling.secondary)
                 }
-                .padding(.leading, 19)
             } else if streams, let line = ThinkingPreview.line(thought) {
                 Text(line)
                     .font(.ui(TypeSize.meta))
                     .italic()
                     .lineLimit(1)
                     .truncationMode(.head)
-                    .padding(.leading, 19)
             }
         }
         .foregroundStyle(Palette.t3)
     }
 }
 
-/// "Worked for 1m 12s" under a finished turn.
+/// "Worked for 1m 12s" under a finished turn. Hidden, it keeps its height, so the
+/// transcript does not jump, and VoiceOver still reads it.
 private struct TurnEndLine: View {
     let end: TurnEnd
+    let shown: Bool
 
     var body: some View {
         Text(TurnText.ended(end))
             .font(.ui(TypeSize.meta))
             .monospacedDigit()
-            .foregroundStyle(Palette.t3)
+            .foregroundStyle(Palette.t3.opacity(shown ? 1 : 0))
+            .animation(.easeOut(duration: 0.2), value: shown)
     }
 }
 
