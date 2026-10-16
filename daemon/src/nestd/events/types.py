@@ -65,6 +65,12 @@ SESSION_PR: Final = "session.pr"
 # longer does, `{reason}` of the flag that cleared (D036).
 SESSION_STUCK: Final = "session.stuck"
 SESSION_UNSTUCK: Final = "session.unstuck"
+# The chat paused at the usage limit, `{limit_pause}` as in the session's `limit_pause`
+# (B78); its messages wait until the daemon goes on at `resume_at`. The pause cleared,
+# `{reason}`: `reset` (the daemon goes on), `resumed` (Resume now or Send now), `stopped`
+# (the user's Stop), `archived` or `closed`. Both follow the `session.updated` of the field.
+SESSION_LIMIT_PAUSED: Final = "session.limit_paused"
+SESSION_LIMIT_CLEARED: Final = "session.limit_cleared"
 
 # The approval queue; each carries the full item and its session id.
 APPROVAL_CREATED: Final = "approval.created"

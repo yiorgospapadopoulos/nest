@@ -23,6 +23,15 @@ class NoWorkspaceError(ConflictError):
     pass
 
 
+class NotPausedError(ConflictError):
+    """The chat is not paused at the usage limit, so there is nothing to resume (B78)."""
+
+    code = "not_paused"
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}
+
+
 class NoAgentRunError(ConflictError):
     """The session has no agent running, so nothing of it can be stopped (B59)."""
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from nestd.clock import Clock
 from nestd.prs.models import PrStatus
 from nestd.sessions.errors import SessionNotFoundError
-from nestd.sessions.models import IN_FLIGHT, NewSession, Session, SessionState
+from nestd.sessions.models import IN_FLIGHT, LimitPause, NewSession, Session, SessionState
 from nestd.storage.db import Database
 from nestd.stuck.models import StuckFlag
 
@@ -122,6 +122,13 @@ class SessionStore:
             "UPDATE sessions SET stuck = NULL WHERE stuck IS NOT NULL RETURNING id"
         )
         return [row["id"] for row in rows]
+
+    async def limit_pauses(self) -> list[tuple[str, LimitPause]]:
+        """The chats paused at the usage limit, with their pauses (B78)."""
+        rows = await self._db.fetch_all(
+            "SELECT id, limit_pause FROM sessions WHERE limit_pause IS NOT NULL ORDER BY rowid"
+        )
+        return [(row["id"], LimitPause.model_validate_json(row["limit_pause"])) for row in rows]
 
     async def with_prs(self, repo: str | None = None) -> list[Session]:
         """Sessions with a pull request, newest first, optionally of one repo."""
@@ -239,6 +246,6 @@ def _column(value: object) -> object:
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
-    for column in ("context", "pr", "stuck"):
+    for column in ("context", "pr", "stuck", "limit_pause"):
         data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)

@@ -2,7 +2,7 @@
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, cast, get_args
 
 from claude_agent_sdk import (
@@ -13,6 +13,7 @@ from claude_agent_sdk import (
     HookEventMessage,
     Message,
     RateLimitEvent,
+    RateLimitInfo,
     ResultMessage,
     ServerToolUseBlock,
     StreamEvent,
@@ -117,6 +118,9 @@ async def translate(
                     ):
                         output.shown = True
                 await sink.message(blocks, message.parent_tool_use_id)
+            if isinstance(message, AssistantMessage) and message.error == "rate_limit":
+                # The usage limit cut the message off (B78).
+                await sink.limit_hit(base.LimitHit(cut_off=True))
         case StreamEvent():
             if message.parent_tool_use_id is None:
                 active = thinking.stream(message.event)
@@ -127,6 +131,9 @@ async def translate(
             usage = usage_info(message.rate_limit_info.raw)
             if usage is not None:
                 await sink.usage(usage)
+            hit = limit_hit(message.rate_limit_info)
+            if hit is not None:
+                await sink.limit_hit(hit)
         case TaskStartedMessage() | TaskUpdatedMessage() | TaskNotificationMessage():
             for update in task_updates(message):
                 await sink.task(update)
@@ -484,3 +491,16 @@ def _window(window: _Window | None) -> base.UsageWindow | None:
     if window is None:
         return None
     return base.UsageWindow(utilization=window.utilization, resets_at=window.resets_at)
+
+
+# Over the plan's limit, extra usage (overage) still pays for requests when it is allowed.
+_STILL_ALLOWED = frozenset({"allowed", "allowed_warning"})
+
+
+def limit_hit(info: RateLimitInfo) -> base.LimitHit | None:
+    """The usage limit when the engine refuses requests until a reset (B78); else None."""
+    if info.status != "rejected" or info.overage_status in _STILL_ALLOWED:
+        return None
+    window = info.rate_limit_type if info.rate_limit_type in base.LIMIT_WINDOWS else None
+    resets_at = None if info.resets_at is None else datetime.fromtimestamp(info.resets_at, UTC)
+    return base.LimitHit(window=window, resets_at=resets_at)

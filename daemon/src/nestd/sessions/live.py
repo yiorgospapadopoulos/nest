@@ -11,7 +11,7 @@ from typing import Any
 
 from nestd.attachments.store import Attachment
 from nestd.config.models import Effort, PermissionMode
-from nestd.providers.base import AgentRun
+from nestd.providers.base import AgentRun, LimitHit
 from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.models import USER, Sender
 from nestd.sessions.subagents import NO_AGENTS, ChatAgents
@@ -93,6 +93,8 @@ class LiveSession:
     engine_next: bool = False
     # The turn's end is being concluded: a message sent meanwhile waits in the queue (B59).
     concluding: bool = False
+    # The usage limit the engine reported in the current turn, until the turn ends (B78).
+    limit_hit: LimitHit | None = None
     idle_task: asyncio.Task[None] | None = None
     # Reports that wait on the run's answer to a control request, off the reader of the
     # agent's messages (I-L); they end with the run.

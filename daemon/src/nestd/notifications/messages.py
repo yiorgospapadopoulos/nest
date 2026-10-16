@@ -19,6 +19,7 @@ _LABELS: dict[str, str] = {
     "ready_to_merge": "Ready to merge",
     "stuck": "Stuck",
     "pixie_report": "Report",
+    "usage_limit": "Usage limit",
 }
 # Items that wait in the inbox open it; the rest open their chat.
 _INBOX_KINDS = frozenset(

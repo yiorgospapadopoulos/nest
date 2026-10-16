@@ -9,7 +9,7 @@ from nestd.events import types
 from nestd.storage.db import Database
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import ask, engine_error, hang, reply, until_interrupted
+from tests.fake_provider import ask, engine_error, hang, limited, reply, until_interrupted
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 
@@ -64,6 +64,7 @@ async def create(api: Api, **fields: object) -> dict[str, object]:
         ("GET", "/api/sessions/x/events"),
         ("POST", "/api/sessions/x/messages"),
         ("POST", "/api/sessions/x/interrupt"),
+        ("POST", "/api/sessions/x/limit/resume"),
         ("POST", "/api/sessions/x/tasks/t1/stop"),
         ("PATCH", "/api/sessions/x"),
         ("DELETE", "/api/sessions/x"),
@@ -131,6 +132,40 @@ async def test_a_turn_ended_by_an_engine_error_fails_and_the_chat_goes_on(api: A
     assert (again.status_code, last.status_code) == (202, 202)
     (run,) = api.provider.runs
     assert not run.closed
+
+
+async def test_a_chat_paused_at_the_usage_limit_and_resumed_now(api: Api) -> None:
+    """B78: the pause is on the session, the user hears of it, and Resume now goes on."""
+    api.provider.script(limited(), reply("Back"))
+    session_id = str((await create(api))["id"])
+    await reach(api, session_id, "idle")
+    await notified(api, session_id, "usage_limit")
+    paused = (await api.http.get(f"/api/sessions/{session_id}")).json()
+
+    resumed = await api.http.post(f"/api/sessions/{session_id}/limit/resume")
+    await reach(api, session_id, "idle", results=2)
+    again = await api.http.post(f"/api/sessions/{session_id}/limit/resume")
+
+    assert paused["limit_pause"] == {
+        "window": "five_hour",
+        "resets_at": "2026-01-01T14:00:00Z",
+        "resume_at": "2026-01-01T14:00:30Z",
+        "since": "2026-01-01T12:00:00Z",
+    }
+    assert (resumed.status_code, resumed.json()["limit_pause"]) == (202, None)
+    assert (again.status_code, again.json()["code"]) == (409, "not_paused")
+    events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
+    notices = [
+        (e["payload"]["kind"], e["payload"]["text"]) for e in events if e["type"] == types.NOTIFY
+    ]
+    assert notices[0] == (
+        "usage_limit",
+        "Paused at the 5-hour usage limit. It goes on by itself after the reset.",
+    )
+    assert [e["payload"]["text"] for e in events if e["type"] == types.SESSION_USER_MESSAGE] == [
+        "Do it",
+        "Continue where you left off.",
+    ]
 
 
 async def test_permission_prompts_are_answered_through_the_approval_queue(api: Api) -> None:

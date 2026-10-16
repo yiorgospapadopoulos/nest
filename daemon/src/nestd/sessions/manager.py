@@ -28,6 +28,7 @@ from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.errors import (
     CannotRewindError,
     NoAgentRunError,
+    NotPausedError,
     NoTurnInProgressError,
     NoWorkspaceError,
     PixieChatError,
@@ -38,6 +39,7 @@ from nestd.sessions.errors import (
 from nestd.sessions.extras import RunExtrasSource
 from nestd.sessions.files import FileIndex
 from nestd.sessions.hooks import SessionHooks
+from nestd.sessions.limits import ClearReason, LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession
 from nestd.sessions.models import (
     USER,
@@ -76,6 +78,12 @@ from nestd.worktrees.manager import WorktreeManager
 # What a session following Claude Code's own mode shows until the engine reports it.
 DEFAULT_MODE: PermissionMode = "default"
 AUTO: PermissionMode = "auto"
+
+# How often the daemon checks for chats whose usage limit pause is over (B78).
+LIMIT_TICK = timedelta(seconds=5)
+# What a chat paused at the usage limit is sent when it goes on with nothing queued (B78).
+CONTINUE_TEXT = "Continue where you left off."
+LIMIT_RESUME = Sender(origin="limit_resume")
 
 # The engine's entry for a model (None is Claude Code's default), or None when unknown.
 type ModelLookup = Callable[[str | None], Awaitable[ModelOption | None]]
@@ -125,6 +133,8 @@ class SessionManager:
         self._defaults = defaults
         self._hooks = hooks
         self._states = StateWriter(store, bus, hooks)
+        self._limits = LimitPauses(store, bus, clock)
+        self._limit_task: asyncio.Task[None] | None = None
         self._turns = TurnRunner(
             store=store,
             bus=bus,
@@ -139,6 +149,7 @@ class SessionManager:
             idle_close=idle_close,
             queue=queue,
             clock=clock,
+            limits=self._limits,
             extras=extras,
             agents=agents,
             calls=calls,
@@ -413,7 +424,8 @@ class SessionManager:
         if self._stopping or live.stopped:
             msg = f"session {session_id!r} was stopped meanwhile; send the message again"
             raise SessionBusyError(msg)
-        if live.busy or live.publishing:
+        if live.busy or live.publishing or self._limits.paused(session_id):
+            # Paused at the usage limit, it waits until the limit resets (B78).
             return await self._enqueue(live, session, text, attachments, interrupt, sender)
         if _forked_worktree(session):
             # A forked worktree chat gets its worktree with its first message (B59); a
@@ -476,6 +488,8 @@ class SessionManager:
         session = await self._store.get(session_id)
         require_open(session)
         await self._queue.make_urgent(session_id, message_id)
+        # The user's choice to send now ends a usage limit pause (B78).
+        await self._limits.clear(session_id, "resumed")
         live = self._live.setdefault(session_id, LiveSession(session_id))
         if live.nudgeable:
             await self._nudge(live, message_id)
@@ -508,6 +522,8 @@ class SessionManager:
     async def interrupt(self, session_id: str) -> None:
         """Stop the turn. Messages written into it that the agent has not read are taken
         back first, so they wait for the next turn instead of running after the Stop (B59).
+        A chat paused at the usage limit stops going on: the pause ends and its messages
+        wait, as after any Stop (B78).
         """
         await self._store.get(session_id)
         await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
@@ -517,6 +533,8 @@ class SessionManager:
             async with live.steering:
                 await self._turns.steering.retract(live)
                 stopped = await live.interrupt()
+        if await self._end_pause(session_id, "stopped", turn_stopped=stopped):
+            return
         if not stopped:
             msg = f"session {session_id!r} has no turn in progress"
             raise NoTurnInProgressError(msg)
@@ -560,6 +578,7 @@ class SessionManager:
             return session
         if changes.get("archived_at") is not None:
             await self._release(session_id, "the session was archived")
+            await self._end_pause(session_id, "archived")
         session = await self._save_changes(session_id, changes)
         live = self._live.get(session_id)
         if live is not None and {"model", "permission_mode"} & changes.keys():
@@ -648,6 +667,7 @@ class SessionManager:
     async def close(self, session_id: str, remove_worktree: bool) -> Session:
         require_open(await self._store.get(session_id))
         async with self._stopped(session_id, "the session was closed") as session:
+            await self._limits.clear(session_id, "closed")
             await self._queue.clear(session_id)
             worktree = worktree_of(session)
             if remove_worktree and worktree is not None:
@@ -673,6 +693,7 @@ class SessionManager:
     async def purge(self, session_id: str) -> None:
         """Delete the session for good: its run, worktree and branch, and all it stored."""
         await self._store.get(session_id)
+        self._limits.forget(session_id)
         async with self._stopped(session_id, "the session was deleted") as session:
             worktree = worktree_of(session)
             if worktree is not None:
@@ -716,10 +737,85 @@ class SessionManager:
             await self._bus.publish(
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
             )
+        await self._limits.load()
+
+    async def start(self, tick: timedelta = LIMIT_TICK) -> None:
+        """Go on with the chats paused at the usage limit when their time comes; those
+        whose time passed while the daemon was down go on at once (B78).
+        """
+        self._limit_task = asyncio.create_task(self._limit_loop(tick))
+
+    async def _limit_loop(self, tick: timedelta) -> None:
+        while True:
+            await self.tick_limits()
+            await asyncio.sleep(tick.total_seconds())
+
+    async def tick_limits(self) -> None:
+        """Go on with every paused chat whose time has come (B78). One that Claude Code has
+        open elsewhere is left to it: its pause ends, and its messages wait.
+        """
+        for session_id in self._limits.take_due(self._clock.now()):
+            try:
+                await self._limits.cleared(session_id, "reset")
+                await self._require_not_open_elsewhere(await self._store.get(session_id))
+                await self._go_on(session_id)
+            except Exception as error:
+                logger.warning(
+                    "going on with session %s after the usage limit failed (%s)", session_id, error
+                )
+
+    async def resume_limit(self, session_id: str) -> Session:
+        """Resume now: end the chat's usage limit pause and go on at once (B78). A limit
+        that still holds pauses it again. 409 when it is not paused.
+        """
+        session = await self._store.get(session_id)
+        require_open(session)
+        await self._require_not_open_elsewhere(session)
+        require_cwd(session)
+        if not await self._limits.clear(session_id, "resumed"):
+            msg = f"session {session_id!r} is not paused at the usage limit"
+            raise NotPausedError(msg)
+        await self._go_on(session_id)
+        return await self._store.get(session_id)
+
+    async def _go_on(self, session_id: str) -> None:
+        """After a usage limit pause: the queued messages in their order, else the message
+        that lets Claude continue, shown as Nest's (B78). A turn in progress starts the
+        queue at its end; one held by publishing, once that is done.
+        """
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        if self._stopping or live.stopped or live.busy:
+            return
+        if not await self._queue.waiting(session_id):
+            await self._queue.add(session_id, CONTINUE_TEXT, [], sender=LIMIT_RESUME)
+        live.held = True
+        await self._turns.release_held(live)
+
+    async def _end_pause(
+        self, session_id: str, reason: ClearReason, turn_stopped: bool = False
+    ) -> bool:
+        """End the chat's usage limit pause without going on: its messages wait, as after
+        a Stop, and the chat shows interrupted unless a turn it stopped ends so (B78).
+        False when it was not paused.
+        """
+        if not await self._limits.clear(session_id, reason):
+            return False
+        live = self._live.get(session_id)
+        if live is not None:
+            live.held = False
+        if not turn_stopped:
+            await self._states.set(session_id, SessionState.INTERRUPTED)
+        return True
 
     async def shutdown(self) -> None:
-        """Stop every agent. A turn cut off here is interrupted, as after a hard kill."""
+        """Stop every agent. A turn cut off here is interrupted, as after a hard kill. Usage
+        limit pauses stay for the next start (B78).
+        """
         self._stopping = True
+        task, self._limit_task = self._limit_task, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         lives = list(self._live.values())
         self._live.clear()
         # One session's failure must not leave the others running or skip the rest of

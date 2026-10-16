@@ -16,6 +16,7 @@ from nestd.providers.base import (
     CommandCatalog,
     EngineDetails,
     HookOutput,
+    LimitHit,
     McpServer,
     MessageBlock,
     NoticeKind,
@@ -30,9 +31,10 @@ from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import PixieCalls
 
 # A turn that ended without failing, whatever its result says: it made way for the next
-# message (Send now, or Claude Code ending it holding that message), or the user stopped
-# it. The result event carries the mark as `true`, and clients show no error for it (B59).
-type TurnEnd = Literal["handoff", "stopped"]
+# message (Send now, or Claude Code ending it holding that message), the user stopped it,
+# or the usage limit cut it off and paused the chat (B78). The result event carries the
+# mark as `true`, and clients show no error for it (B59).
+type TurnEnd = Literal["handoff", "stopped", "limit"]
 
 
 class TurnEvents(Protocol):
@@ -44,9 +46,11 @@ class TurnEvents(Protocol):
         """Why the turn ended when that was no failure, whatever its result says (B59)."""
         ...
 
-    async def turn_finished(self, live: LiveSession, error: str | None, handoff: bool) -> None:
+    async def turn_finished(
+        self, live: LiveSession, error: str | None, end: TurnEnd | None
+    ) -> None:
         """The turn's result arrived; `error` says why the engine ended it with an error,
-        and `handoff` that it ended for the next message, as `how_ended` said.
+        and `end` why it was no failure, as `how_ended` said.
         """
         ...
 
@@ -167,7 +171,7 @@ class SessionSink:
 
     async def result(self, info: ResultInfo) -> None:
         self._retry_noted = False
-        end = await isolated_or(
+        end: TurnEnd | None = await isolated_or(
             "how the turn ended", self._session_id, self._turns.how_ended(self._live, info), None
         )
         payload = info.model_dump(mode="json")
@@ -181,7 +185,7 @@ class SessionSink:
         )
         await self._isolated(
             "ending the turn",
-            self._turns.turn_finished(self._live, _error(info), end == "handoff"),
+            self._turns.turn_finished(self._live, _error(info), end),
         )
 
     async def usage(self, info: UsageInfo) -> None:
@@ -190,6 +194,10 @@ class SessionSink:
             self._bus.publish(types.USAGE_UPDATED, info.model_dump(mode="json")),
         )
         await self._isolated("the usage hooks", self._hooks.usage(info))
+
+    async def limit_hit(self, hit: LimitHit) -> None:
+        # Kept for the turn's end, which pauses the chat (B78).
+        self._live.limit_hit = hit.merged(self._live.limit_hit)
 
     async def connectors(self, servers: list[McpServer]) -> None:
         await self._isolated(

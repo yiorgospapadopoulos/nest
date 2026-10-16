@@ -66,6 +66,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
             await ctx.report_back.start()
             await ctx.habit_scheduler.start()
             await ctx.habit_triggers.start()
+            await ctx.sessions.start()
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.
