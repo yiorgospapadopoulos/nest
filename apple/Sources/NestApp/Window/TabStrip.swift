@@ -305,8 +305,8 @@ extension ProjectIcon {
 
 /// The usage chip, MonoCode's: Claude's mark, a 32 by 4 point bar for the 5-hour window
 /// (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used, then the
-/// time to its reset) and a refresh button. Its tooltip names each window and its reset;
-/// a click opens the usage popover.
+/// time to its reset). Its tooltip names each window and its reset; a click opens the
+/// usage popover, which has the Refresh control (B72).
 private struct UsageButton: View {
     @Environment(Shell.self) private var shell
 
@@ -314,28 +314,24 @@ private struct UsageButton: View {
         let usage = shell.model.usage
         TimelineView(.everyMinute) { context in
             let chip = UsageChip.of(usage.limits, now: context.date)
-            HStack(spacing: 6) {
-                Button {
-                    shell.toggle(.usage)
-                } label: {
-                    HStack(spacing: 6) {
-                        ClaudeMark(size: 12)
-                        if let chip {
-                            UsageBar(chip: chip)
-                            entries(chip)
-                        } else {
-                            Text("···").foregroundStyle(Ink.content(0.35))
-                        }
+            Button {
+                shell.toggle(.usage)
+            } label: {
+                HStack(spacing: 6) {
+                    ClaudeMark(size: 12)
+                    if let chip {
+                        UsageBar(chip: chip)
+                        entries(chip)
+                    } else {
+                        Text("···").foregroundStyle(Ink.content(0.35))
                     }
                 }
-                .buttonStyle(UsageChipStyle())
-                .help(chip?.tooltip ?? "Usage details")
-                .accessibilityLabel(
-                    chip.map { "Claude usage: \($0.tooltip)" } ?? "Claude usage details")
-                UsageRefreshButton(refreshing: usage.isRefreshing) {
-                    Task { await usage.refresh() }
-                }
             }
+            .buttonStyle(UsageChipStyle())
+            .help(chip?.tooltip ?? "Usage details")
+            .accessibilityLabel(
+                chip.map { "Claude usage: \($0.tooltip)" } ?? "Claude usage details"
+            )
             .font(.ui(11))
             .monospacedDigit()
         }
@@ -388,42 +384,6 @@ private struct UsageChipStyle: ButtonStyle {
                 .frame(height: 20)
                 .background(hovering ? Ink.content(0.1) : .clear, in: .rounded(4))
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .contentShape(Rectangle())
-                .pointerStyle(.link)
-        }
-    }
-}
-
-/// An 18 point square with a small refresh arrow at 40 percent, turning while it refreshes.
-private struct UsageRefreshButton: View {
-    let refreshing: Bool
-    let action: () -> Void
-    @Environment(\.reducedMotion) private var reduceMotion
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: Icon.refresh)
-                .font(.system(size: 9, weight: .medium))
-                .symbolEffect(
-                    .rotate, options: .repeat(.continuous), isActive: refreshing && !reduceMotion)
-        }
-        .buttonStyle(UsageRefreshStyle())
-        .disabled(refreshing)
-        .help("Refresh usage")
-        .accessibilityLabel("Refresh usage")
-    }
-}
-
-private struct UsageRefreshStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        HoverReader { hovering in
-            configuration.label
-                .foregroundStyle(Ink.content(hovering ? 1 : 0.4))
-                .frame(width: 18, height: 18)
-                .background(hovering ? Ink.content(0.1) : .clear, in: .rounded(4))
-                .opacity(isEnabled ? 1 : 0.5)
                 .contentShape(Rectangle())
                 .pointerStyle(.link)
         }
