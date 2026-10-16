@@ -2494,6 +2494,9 @@
             shell.foldedRows["approval-q2"] = true
             try await pair(controller, "chat-list-row-open", folder)
             shell.foldedRows = [:]
+            model.app.update("cv-page") { $0.openCards = [] }
+            try await pair(controller, "chat-list-cards-folded", folder)
+            model.app.update("cv-page") { $0.openCards = Set(RightCard.allCases) }
             if var pinned = model.sessions.session("c6") {
                 pinned.pinned = false
                 model.sessions.insert(pinned)

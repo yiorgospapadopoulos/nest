@@ -11,8 +11,13 @@ struct TabStrip: View {
     /// The left edge in full screen, as on the right.
     static let fullScreenInset = 10.0
     let fullScreen: Bool
-    /// A tab's height inside the strip.
-    static let tabHeight = 24.0
+    /// A project or Pixies tab's height: most of the strip, so its name sits about
+    /// halfway between the window's top and the line under the strip.
+    static let tabHeight = 30.0
+    /// The search field's and the strip's icon buttons' height.
+    static let fieldHeight = 24.0
+    /// Lifts what is shorter than a tab so its middle lines up with the tabs' names.
+    static func centred(on height: Double) -> Double { (tabHeight - height) / 2 }
     /// The space between tabs.
     static let spacing = 2.0
 
@@ -27,12 +32,15 @@ struct TabStrip: View {
     @State private var tabStep = 0.0
 
     var body: some View {
-        HStack(spacing: Self.spacing) {
+        // The tabs sit on the strip's bottom edge, joined to the project under them; the
+        // divider, add button, meter and search line up with the tabs' names.
+        HStack(alignment: .bottom, spacing: Self.spacing) {
             PixiesTab()
             Rectangle()
                 .fill(Palette.divider)
                 .frame(width: 1, height: 16)
                 .padding(.horizontal, 6)
+                .padding(.bottom, Self.centred(on: 16))
                 .accessibilityHidden(true)
             let tabs = shell.app.openProjects
             ForEach(Array(tabs.enumerated()), id: \.element) { index, name in
@@ -53,15 +61,18 @@ struct TabStrip: View {
                 )
                 .highPriorityGesture(reorder(name, at: index, count: tabs.count))
             }
-            addButton
+            addButton.padding(.bottom, Self.centred(on: Self.fieldHeight))
             Spacer(minLength: 12)
             // The meter and search keep their size; the project tabs shrink first.
-            UsageButton().fixedSize().padding(.trailing, 6)
-            SearchButton().fixedSize()
+            Group {
+                UsageButton().fixedSize().padding(.trailing, 6)
+                SearchButton().fixedSize()
+            }
+            .padding(.bottom, Self.centred(on: Self.fieldHeight))
         }
         .padding(.leading, fullScreen ? Self.fullScreenInset : Self.leadingInset)
         .padding(.trailing, 10)
-        .frame(height: Metrics.stripHeight)
+        .frame(height: Metrics.stripHeight, alignment: .bottom)
         .background(WindowDragArea())
     }
 
@@ -135,7 +146,8 @@ private struct TabDrag: Equatable {
     let translation: Double
 }
 
-/// A flat tab: a soft fill when current, a fainter one while hovered.
+/// A flat tab on the strip's bottom edge, rounded at the top only so it joins the project
+/// under it: a soft fill when current, a fainter one while hovered.
 private struct TabBackground: ViewModifier {
     let isCurrent: Bool
     let hovering: Bool
@@ -146,7 +158,8 @@ private struct TabBackground: ViewModifier {
     @Environment(\.accentColors) private var accent
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle.rounded(Radius.row)
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: Radius.row, topTrailingRadius: Radius.row, style: .continuous)
         content
             .padding(.horizontal, padding)
             .frame(height: TabStrip.tabHeight)
@@ -513,7 +526,7 @@ struct StripFieldStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .frame(height: TabStrip.tabHeight)
+                .frame(height: TabStrip.fieldHeight)
                 .background(
                     hovering || configuration.isPressed
                         ? Palette.selection : filled ? Palette.soft : .clear,
@@ -532,7 +545,7 @@ struct StripIconStyle: ButtonStyle {
         HoverReader { hovering in
             configuration.label
                 .foregroundStyle(hovering ? Palette.t1 : Palette.t3)
-                .frame(width: TabStrip.tabHeight, height: TabStrip.tabHeight)
+                .frame(width: TabStrip.fieldHeight, height: TabStrip.fieldHeight)
                 .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.row))
                 .contentShape(Rectangle())
                 .pointerStyle(.link)

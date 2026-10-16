@@ -54,10 +54,12 @@ struct Scanlines: View {
 }
 
 extension View {
-    /// Sidebar, right panel and other side areas: a shade lighter than the window, square,
-    /// meeting their neighbours at a `Separator`.
+    /// Sidebar, right panel and other side areas: a shade darker than the window, square,
+    /// meeting their neighbours at a `Separator`. Over a chat background they show the
+    /// window's blurred image as it is, like the tab strip above them, so the two meet with
+    /// no step.
     func sideSurface() -> some View {
-        background(Palette.side)
+        modifier(SideSurface())
     }
 
     /// Chat panes, the board and other reading areas: a shade darker than the window, over
@@ -94,5 +96,13 @@ private struct SheetSurface: ViewModifier {
                 shape.fill(Palette.sheet).shadow(color: .black.opacity(0.16), radius: 16, y: 6)
             }
             .overlay(shape.strokeBorder(Palette.divider, lineWidth: 1).allowsHitTesting(false))
+    }
+}
+
+private struct SideSurface: ViewModifier {
+    @Environment(Shell.self) private var shell
+
+    func body(content: Content) -> some View {
+        content.background(shell.chatBackground == nil ? Palette.side : .clear)
     }
 }
