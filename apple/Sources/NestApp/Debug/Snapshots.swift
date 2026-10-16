@@ -147,6 +147,11 @@
                 try await renderTeamCalls(model, shell, controller, folder)
                 return
             }
+            if only == "b75" {
+                try await renderTeamCalls(model, shell, controller, folder)
+                try await renderMemberCalls(model, shell, controller, folder)
+                return
+            }
             if only == "b41" {
                 try await renderPixieTools(model, shell, controller, folder)
                 return
@@ -1122,6 +1127,59 @@
             shell.expandedItems.insert("tc1")
             try await pair(controller, "b70-team-call-open", folder)
             shell.expandedItems.remove("tc1")
+        }
+
+        /// B75, after B70's chats: QA's opened row in the chat where it still works, its
+        /// leader's calls of members as their own rows, both opened in place: Stylist done
+        /// with its steps and report, Scout still working.
+        private static func renderMemberCalls(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            func slug(_ name: String) -> String {
+                model.pixies.pixies.first { $0.name == name }!.slug
+            }
+            var id = 32_000
+            func receive(_ blocks: [[String: Any]], parent: String) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": "session.message", "ts": SampleData.iso(Date()),
+                    "session_id": "c2",
+                    "payload": ["blocks": blocks, "parent_tool_use_id": parent],
+                ])
+                model.transcripts.receive(event)
+            }
+            func use(_ tool: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["type": "tool_use", "id": tool, "name": name, "input": input]
+            }
+            func text(_ value: String) -> [String: Any] { ["type": "text", "text": value] }
+            receive(
+                [
+                    text("Reading the export dialog."),
+                    use("ts1", "Read", ["file_path": "src/export/Dialog.tsx"]),
+                    use("ts2", "Grep", ["pattern": "Download"]),
+                ], parent: "tm3")
+            receive(
+                [
+                    [
+                        "type": "tool_result", "tool_use_id": "tm3",
+                        "content":
+                            "[Subagent hand-back] The text below is the final report of a subagent. The report follows:\n  The button says **Export** but the dialog's title says **Download**; I would use Export in both.\nagentId: c4f2 (use SendMessage to continue this agent)",
+                    ],
+                    text("Asking Scout what changed in the flow."),
+                    use(
+                        "tm4", "Agent",
+                        ["subagent_type": slug("Scout"), "description": "Export history"]),
+                ], parent: "tc3")
+            receive(
+                [
+                    text("Looking at the last commits to the export flow."),
+                    use("ts3", "Bash", ["command": "git log --oneline -5 -- src/export"]),
+                ], parent: "tm4")
+            model.app.update("cv-page") { $0.focusPane("c2") }
+            let opened: Set<String> = ["tc3", "tm3", "tm4"]
+            shell.expandedItems.formUnion(opened)
+            try await pair(controller, "b75-member-calls", folder)
+            shell.expandedItems.subtract(opened)
         }
 
         /// B41: a pixie's details with its autonomy note, limits and Activity page; a chat

@@ -671,8 +671,10 @@ private struct ToolRow: View {
                 }
             }
             if expanded && isAgent {
-                AgentCallSteps(call: call, answer: false)
-                    .padding(.leading, 6)
+                AgentCallSteps(
+                    call: call, rows: call.steps.map(CallStepRow.step), chat: "", answer: false
+                )
+                .padding(.leading, 6)
             } else if !expanded, let line = ThinkingPreview.line(call.liveText) {
                 LivePreview(text: line)
             }
@@ -863,7 +865,8 @@ private struct HookRow: View {
 /// shimmering while it runs. A click opens its steps and answer in place; the mascot or
 /// name opens the pixie in the Pixies tab. In a project chat a team leader's call is the
 /// team's (B70): the team's grid and name, "QA working" while it runs, and the mark or
-/// name opens the team's work as the chat tree does.
+/// name opens the team's work as the chat tree does. Opened, the pixie calls it made are
+/// rows like this one (B75).
 struct PixieCallRow: View {
     let entry: PixieCallEntry
     let chat: String
@@ -874,7 +877,7 @@ struct PixieCallRow: View {
         let pixie = shell.pixies.pixies.first { $0.slug == entry.slug }
         let team = PixieCalls.team(
             of: entry.slug, pixies: shell.pixies.pixies, teams: shell.pixies.teams,
-            pixieChat: shell.sessions.session(chat)?.pixieID != nil)
+            pixieChat: entry.isNested || shell.sessions.session(chat)?.pixieID != nil)
         let name = team?.team.name ?? pixie?.name ?? entry.slug
         let task = entry.call.input["description"]?.stringValue ?? ""
         let note = ToolSummary.result(of: entry.call)
@@ -935,7 +938,8 @@ struct PixieCallRow: View {
                 .contentShape(Rectangle())
                 .pointerStyle(.link)
                 .onTapGesture { toggle(entry.id, in: shell) }
-                if entry.isRunning {
+                // A member's call ends with its leader's (B75).
+                if entry.isRunning && !entry.isNested {
                     StopTaskButton(chat: chat, task: entry.id)
                 }
             }
@@ -946,8 +950,12 @@ struct PixieCallRow: View {
                 toggle(entry.id, in: shell)
             }
             if expanded {
-                AgentCallSteps(call: entry.call, answer: true)
-                    .padding(.leading, 6)
+                AgentCallSteps(
+                    call: entry.call,
+                    rows: entry.steps(pixies: PixieCalls.slugs(shell.pixies.pixies)), chat: chat,
+                    answer: true
+                )
+                .padding(.leading, 6)
             } else if let line = ThinkingPreview.line(entry.call.liveText) {
                 LivePreview(text: line)
             }
@@ -972,35 +980,21 @@ struct PixieCallRow: View {
 }
 
 /// An opened agent or pixie call: its subagent's thinking, text and tool calls in order,
-/// what it is writing now, then (for a pixie, with `answer`) its answer.
+/// with the pixie calls among them as pixie rows (`rows`), what it is writing now, then
+/// (for a pixie, with `answer`) its answer.
 private struct AgentCallSteps: View {
     let call: ToolCall
+    let rows: [CallStepRow]
+    /// The chat the call is in, for its pixie rows.
+    let chat: String
     let answer: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(call.steps) { step in
-                switch step.kind {
-                case .thinking(let text):
-                    SelectableText(key: text) {
-                        TextStyling.plain(
-                            text, font: ThinkingRow.font, color: TextStyling.secondary)
-                    }
-                case .text(let text):
-                    MarkdownText(text: text, copyable: false)
-                case .tool(let name, _):
-                    HStack(spacing: 7) {
-                        Image(systemName: Icon.tool(ToolSummary.kind(of: name)))
-                            .font(.system(size: 9))
-                            .frame(width: 12)
-                        Text(step.line)
-                            .font(.mono(TypeSize.meta))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .foregroundStyle(Palette.t3)
-                case .images(let images):
-                    ToolImages(images: images, indent: 0)
+            ForEach(rows) { row in
+                switch row {
+                case .step(let step): stepView(step)
+                case .pixieCall(let entry): PixieCallRow(entry: entry, chat: chat)
                 }
             }
             if !call.liveThinking.isEmpty {
@@ -1026,6 +1020,38 @@ private struct AgentCallSteps: View {
                 .fill(Palette.divider)
                 .frame(width: 1)
         }
+    }
+
+    /// A step as a line: an agent call that is no pixie's shows as its tool line.
+    @ViewBuilder private func stepView(_ step: CallStep) -> some View {
+        switch step.kind {
+        case .thinking(let text):
+            SelectableText(key: text) {
+                TextStyling.plain(
+                    text, font: ThinkingRow.font, color: TextStyling.secondary)
+            }
+        case .text(let text):
+            MarkdownText(text: text, copyable: false)
+        case .tool(let name, _):
+            toolLine(name, step.line)
+        case .call(let call):
+            toolLine(call.name, step.line)
+        case .images(let images):
+            ToolImages(images: images, indent: 0)
+        }
+    }
+
+    private func toolLine(_ tool: String, _ line: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: Icon.tool(ToolSummary.kind(of: tool)))
+                .font(.system(size: 9))
+                .frame(width: 12)
+            Text(line)
+                .font(.mono(TypeSize.meta))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .foregroundStyle(Palette.t3)
     }
 }
 
