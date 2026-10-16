@@ -76,6 +76,7 @@ class FakeRun:
 
     async def steer(self, user_input: UserInput, message_id: str) -> None:
         if self.provider.steer_error is not None:
+            self.provider.steer_failures += 1
             raise self.provider.steer_error
         self.calls.append(("steer", message_id))
         self.steered.append((message_id, user_input))
@@ -182,6 +183,7 @@ class FakeProvider:
         # Whether runs take messages written into a running turn, and a failure to write.
         self.steering = False
         self.steer_error: Exception | None = None
+        self.steer_failures = 0
         # Where a conversation is cut to before a message, by (session id, message id).
         self.fork_points: dict[tuple[str, str], ForkPoint] = {}
         self.fork_calls: list[tuple[Path, str, str]] = []
