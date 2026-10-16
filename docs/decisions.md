@@ -846,3 +846,12 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Bar:** above the composer of a project chat (not a Claude Code chat's pane), above the pending review bar, shown only while at least one of the chat's subagents or background commands runs and hidden otherwise. Collapsed it is a running dot, "1 running task" or "3 running tasks" (glowing; a static highlight with reduced motion) and a chevron. A click opens it upwards to the running items, each with its kind icon, name, description, how long it has run and Stop (which stops that task, not the turn). Whether it is open is remembered per chat while the app runs and forgotten when the chat is deleted.
 - **Not brought back:** no completed count, no Completed list and no counting from the user's latest message (the exchange start); a running task is always relevant. The iPhone's bar is unchanged.
 - **Refines:** D095 (the Mac again has a bar above the composer, for running tasks only) and D096 (running background commands are listed on the Mac again, in this bar).
+
+## D098 (2026-10-17): No bar over the project on the Mac; its controls move to the sidebar and status bar (B73)
+
+- **Why:** the user found the bar under the project tabs redundant: it showed the project's name a second time just above the sidebar's own.
+- **Sidebar header:** the project's icon and name are now the menu the bar's name opened (new terminal or browser, open in VS Code, Finder or Terminal, copy path, project settings), with the current branch (or Init for a plain folder) beside it; the collapse button stays at its right. The folded rail has no project menu (expanding the sidebar brings it back); new terminal, new browser and Open in VS Code also stay in the app menu and the command palette.
+- **Status bar:** the Workspace / Board switch sits in the middle, with Restore after it while a workspace pane is maximized; the activity panel's toggle is the last item on the right, after Terminal, under the panel it controls (the coordinator's choice, left to it by the user). Both show only where a project is open, not on the Pixies tab.
+- **Tokens:** `mac_toolbar_height` is removed with the bar.
+- **Mac only;** the iPhone has no such bar.
+- **Refines:** D073 (the Monocode layout's project toolbar).
