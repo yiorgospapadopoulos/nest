@@ -19,6 +19,7 @@ from nestd.artifacts.models import (
     Origin,
     VersionContent,
 )
+from nestd.artifacts.page import artifact_page
 from nestd.clock import Clock
 from nestd.storage.db import Database
 
@@ -150,6 +151,7 @@ class ArtifactStore:
             kind=artifact.kind,
             title=row["title"],
             content=text,
+            page=artifact_page(artifact.kind, row["title"], text),
             size=row["size"],
             created_at=row["created_at"],
         )
