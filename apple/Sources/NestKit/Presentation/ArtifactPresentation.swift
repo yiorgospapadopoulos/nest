@@ -1,10 +1,12 @@
 import Foundation
 
-/// An HTML artifact made safe to render: the content security policy goes in before
-/// anything else, so the page can load nothing and run only its own inline scripts.
+/// An artifact's page made safe to render: the content security policy goes in before
+/// anything else, so the page runs its own inline scripts and pinned libraries from a few
+/// public CDNs (B82), uses Google Fonts, and can reach nothing else.
 public enum ArtifactHTML {
+    /// The same string as the iPhone frame's policy.
     public static let policy =
-        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+        "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net/npm/ https://unpkg.com https://cdn.tailwindcss.com https://code.jquery.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src 'none'"
     public static let meta = #"<meta http-equiv="Content-Security-Policy" content="\#(policy)">"#
 
     /// The document with the policy's meta tag after its leading doctype and comments,
@@ -29,6 +31,27 @@ public enum ArtifactHTML {
         }
         return String(html[..<index]) + meta + String(html[index...])
     }
+}
+
+/// The Mac web view's content rule list, a second wall under the policy: every load is
+/// blocked, then scripts from the policy's CDNs, Google Fonts stylesheets and their font
+/// files are let through. Each url-filter anchors the scheme and the whole host, so a
+/// look-alike host, plain http or a listed host in another URL's path does not match.
+public enum ArtifactRules {
+    /// WebKit caches a compiled list under its name; B79's list had another one.
+    public static let identifier = "nest-artifact-cdn-v1"
+    public static let json = #"""
+        [
+          {"trigger": {"url-filter": ".*"}, "action": {"type": "block"}},
+          {"trigger": {"url-filter": "^https://cdnjs\\.cloudflare\\.com/", "resource-type": ["script"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://cdn\\.jsdelivr\\.net/npm/", "resource-type": ["script"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://unpkg\\.com/", "resource-type": ["script"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://cdn\\.tailwindcss\\.com/", "resource-type": ["script"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://code\\.jquery\\.com/", "resource-type": ["script"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://fonts\\.googleapis\\.com/", "resource-type": ["style-sheet"]}, "action": {"type": "ignore-previous-rules"}},
+          {"trigger": {"url-filter": "^https://fonts\\.gstatic\\.com/", "resource-type": ["font"]}, "action": {"type": "ignore-previous-rules"}}
+        ]
+        """#
 }
 
 /// Save as file: the title as a file name, with the kind's extension.

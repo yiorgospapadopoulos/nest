@@ -103,24 +103,28 @@ public struct ArtifactContent: Decodable, Sendable, Hashable {
     public let kind: ArtifactKind
     public let title: String
     public let content: String
+    /// The whole document the reader shows in its sandbox, built by the daemon: the HTML
+    /// as saved, or a page that renders the Markdown (B82).
+    public let page: String
     public let size: Int
     public let createdAt: Date
 
     public init(
         artifactID: String, version: Int, kind: ArtifactKind, title: String, content: String,
-        createdAt: Date
+        page: String, createdAt: Date
     ) {
         self.artifactID = artifactID
         self.version = version
         self.kind = kind
         self.title = title
         self.content = content
+        self.page = page
         size = content.utf8.count
         self.createdAt = createdAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case version, kind, title, content, size
+        case version, kind, title, content, page, size
         case artifactID = "artifact_id"
         case createdAt = "created_at"
     }

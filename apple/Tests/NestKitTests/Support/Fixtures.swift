@@ -154,6 +154,7 @@ extension Fixture {
     {
         ArtifactContent(
             artifactID: id, version: version, kind: .markdown, title: "Options", content: text,
+            page: "<!doctype html><pre id=\"nest-md\">\(text)</pre>",
             createdAt: date("2026-10-17T09:30:00Z"))
     }
 }

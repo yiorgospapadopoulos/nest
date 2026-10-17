@@ -326,41 +326,31 @@ private struct ArtifactReader: View {
     }
 }
 
-/// A version's document: Markdown with the transcript's renderer, HTML in the sandboxed
-/// web view once its rule list is ready.
+/// A version's document: its page, HTML as saved or the daemon's rendering of the
+/// Markdown, in the sandboxed web view once its rule list is ready.
 private struct ArtifactDocument: View {
     let content: ArtifactContent
     @State private var rules: WKContentRuleList?
     @State private var failure: String?
 
     var body: some View {
-        switch content.kind {
-        case .html:
-            Group {
-                if let rules {
-                    ArtifactWebView(html: content.content, rules: rules)
-                } else if let failure {
-                    Text(failure)
-                        .font(.ui(TypeSize.ui))
-                        .foregroundStyle(StatusTone.failed.color)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Color.clear
-                }
+        Group {
+            if let rules {
+                ArtifactWebView(page: content.page, rules: rules)
+            } else if let failure {
+                Text(failure)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(StatusTone.failed.color)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Color.clear
             }
-            .task {
-                do {
-                    rules = try await ArtifactSandbox.rules()
-                } catch {
-                    failure = "This page cannot be shown safely: \(error.localizedDescription)"
-                }
-            }
-        case .markdown, .unknown:
-            ScrollView {
-                MarkdownText(text: content.content, copyable: false)
-                    .frame(maxWidth: 760, alignment: .leading)
-                    .padding(EdgeInsets(top: 20, leading: 28, bottom: 28, trailing: 28))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task {
+            do {
+                rules = try await ArtifactSandbox.rules()
+            } catch {
+                failure = "This page cannot be shown safely: \(error.localizedDescription)"
             }
         }
     }

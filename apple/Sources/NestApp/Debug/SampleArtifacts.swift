@@ -76,9 +76,41 @@
                 let artifact = artifacts.first { $0.id == id }!
                 contents["\(id)/\(version)"] = ArtifactContent(
                     artifactID: id, version: version, kind: kind, title: title, content: text,
+                    page: kind == .markdown ? page(markdown: text, title: title) : text,
                     createdAt: artifact.updatedAt - Double(artifact.latestVersion - version) * 600)
             }
             return contents
+        }
+
+        /// A Markdown version's page, a short stand-in for the daemon's (B82): the source
+        /// escaped in a `<pre>`, drawn by marked once it loads.
+        private static func page(markdown: String, title: String) -> String {
+            func escaped(_ text: String) -> String {
+                text.replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+            }
+            return """
+                <!doctype html><html><head><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>\(escaped(title))</title><style>
+                :root { --bg: #ffffff; --t1: #1d1d1f; --t2: #5b5b60; --line: #e3e3e6; }
+                @media (prefers-color-scheme: dark) {
+                  :root { --bg: #1c1c1e; --t1: #ececee; --t2: #a1a1a8; --line: #3a3a3e; }
+                }
+                body { background: var(--bg); color: var(--t1); margin: 0;
+                  font: 14px/1.6 -apple-system, system-ui, sans-serif; }
+                main { max-width: 760px; padding: 20px 28px 28px; }
+                pre { white-space: pre-wrap; font: inherit; }
+                code { font: 12.5px ui-monospace, Menlo, monospace; color: var(--t2); }
+                h1 { font-size: 20px; } h2 { font-size: 16px; }
+                </style></head><body><main><pre id="nest-md">\(escaped(markdown))</pre></main>
+                <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+                <script>
+                const source = document.getElementById("nest-md");
+                if (window.marked) source.outerHTML = marked.parse(source.textContent);
+                </script></body></html>
+                """
         }
 
         private static func plan(steps: Int) -> String {
