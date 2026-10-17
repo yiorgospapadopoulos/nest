@@ -9,8 +9,8 @@ import { connector, usagePeriod } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
-// Each section's page; the usage meters are on Agents, the connectors under Extensions.
-const openAgents = (api = fakeApi()) => openSettings("Agents", { api });
+// Each section's page; the usage meters are on Usage, the connectors under Extensions.
+const openUsage = (api = fakeApi()) => openSettings("Usage", { api });
 const openGeneral = (api = fakeApi()) => openSettings("General", { api });
 const openAppearance = (storage = memoryStorage()) =>
   openSettings("Appearance", { api: fakeApi(), storage });
@@ -59,7 +59,7 @@ describe("usage", () => {
       },
       seven_day: null,
     });
-    await openAgents(api);
+    await openUsage(api);
 
     const meter = await screen.findByRole("meter", { name: "5 hour used" });
     expect(meter).toHaveAttribute("aria-valuenow", "30");
@@ -75,7 +75,7 @@ describe("usage", () => {
       five_hour: { utilization: 0.3, resets_at: null, updated_at: minutesAgo(2).toISOString() },
       seven_day: { utilization: 0.1, resets_at: null, updated_at: minutesAgo(11).toISOString() },
     });
-    await openAgents(api);
+    await openUsage(api);
 
     const stale = await screen.findByText(`as of ${clock(minutesAgo(11))}`);
     expect(stale).toHaveClass("stale");
@@ -86,7 +86,7 @@ describe("usage", () => {
   it("leaves the time out until a window is reported", async () => {
     const api = fakeApi();
     api.usageLimits.mockResolvedValue({ five_hour: null, seven_day: null });
-    await openAgents(api);
+    await openUsage(api);
 
     expect(await screen.findAllByText("Not reported yet")).toHaveLength(2);
     expect(screen.queryByText(/^as of/)).not.toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("usage", () => {
         finish = resolve;
       }),
     );
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     await screen.findByRole("meter", { name: "5 hour used" });
 
     await user.click(screen.getByRole("button", { name: "Refresh usage" }));
@@ -126,7 +126,7 @@ describe("usage", () => {
     api.refreshUsage
       .mockRejectedValueOnce(new ApiError(429, "usage was refreshed moments ago"))
       .mockRejectedValueOnce(new ApiError(502, "Claude did not report the usage limits"));
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     const button = await screen.findByRole("button", { name: "Refresh usage" });
 
     await user.click(button);
@@ -145,7 +145,7 @@ describe("usage", () => {
   });
 
   it("updates the limits live", async () => {
-    const { push } = await openAgents();
+    const { push } = await openUsage();
     await screen.findByRole("meter", { name: "5 hour used" });
 
     push({
@@ -177,7 +177,7 @@ describe("usage periods", () => {
 
   it("shows this month's bars and totals, with nothing after today", async () => {
     const api = fakeApi();
-    await openAgents(api);
+    await openUsage(api);
 
     await screen.findByText("Total · 74 chats");
     expect(api.usagePeriod).toHaveBeenCalledWith("month", "2026-10-17");
@@ -204,7 +204,7 @@ describe("usage periods", () => {
   it("shows dashes until the period arrives", async () => {
     const api = fakeApi();
     api.usagePeriod.mockReturnValue(new Promise(() => undefined));
-    await openAgents(api);
+    await openUsage(api);
 
     const card = within(
       await screen.findByRole("group", { name: "Period" }).then(() => usageCard()),
@@ -218,7 +218,7 @@ describe("usage periods", () => {
 
   it("switches between days, weeks, months and years", async () => {
     const api = fakeApi();
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     await screen.findByText("Total · 74 chats");
     const card = within(usageCard());
 
@@ -240,7 +240,7 @@ describe("usage periods", () => {
     api.usagePeriod.mockImplementation((_unit, date) =>
       Promise.resolve(date.startsWith("2026-09") ? september() : usagePeriod()),
     );
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     await screen.findByText("Total · 74 chats");
     const card = within(usageCard());
 
@@ -261,7 +261,7 @@ describe("usage periods", () => {
   it("names a month of another year with its year", async () => {
     const api = fakeApi();
     api.usagePeriod.mockReturnValue(new Promise(() => undefined));
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     const previous = await screen.findByRole("button", { name: "Previous period" });
 
     for (let i = 0; i < 10; i++) await user.click(previous);
@@ -279,7 +279,7 @@ describe("usage periods", () => {
         }),
       )
       .mockResolvedValue(september());
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
 
     await user.click(await screen.findByRole("button", { name: "Previous period" }));
     const card = within(usageCard());
@@ -292,7 +292,7 @@ describe("usage periods", () => {
   });
 
   it("shows a touched bar's numbers in place of the axis", async () => {
-    await openAgents();
+    await openUsage();
     await screen.findByText("Total · 74 chats");
     const card = within(usageCard());
     const chart = card.getByRole("group", { name: "Tokens over the period" });
@@ -323,14 +323,14 @@ describe("usage periods", () => {
   it("ignores touches on a chart with no bars or no width", async () => {
     const api = fakeApi();
     api.usagePeriod.mockReturnValue(new Promise(() => undefined));
-    await openAgents(api);
+    await openUsage(api);
     const chart = await screen.findByRole("group", { name: "Tokens over the period" });
     fireEvent.pointerDown(chart, { clientX: 5 });
     expect(within(usageCard()).getByText("22")).toBeInTheDocument();
   });
 
   it("ignores touches while the chart has no width", async () => {
-    await openAgents();
+    await openUsage();
     await screen.findByText("Total · 74 chats");
     const chart = screen.getByRole("group", { name: "Tokens over the period" });
     fireEvent.pointerDown(chart, { clientX: 5 });
@@ -347,7 +347,7 @@ describe("usage breakdown", () => {
   });
 
   async function openBreakdown(api = fakeApi()) {
-    const rendered = await openAgents(api);
+    const rendered = await openUsage(api);
     await rendered.user.click(await screen.findByRole("button", { name: "Details" }));
     return rendered;
   }
@@ -361,7 +361,7 @@ describe("usage breakdown", () => {
 
     expect(screen.getByRole("heading", { name: "October tokens" })).toBeInTheDocument();
     expect(await screen.findByText("15M", { selector: ".stot" })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/settings/agents/usage");
+    expect(window.location.pathname).toBe("/settings/usage/details");
     expect(rows("By who")).toEqual(["Chats13.4M89%", "Subagents1.6M11%"]);
     expect(rows("By kind")).toEqual([
       "Cache read12.1M81%",
@@ -379,19 +379,30 @@ describe("usage breakdown", () => {
     expect(screen.getByText("12 usage checks, 5k tokens, not counted above")).toHaveClass("note");
   });
 
-  it("goes back to Agents on the same period", async () => {
+  it("goes back to Usage on the same period", async () => {
     const api = fakeApi();
     api.usagePeriod.mockImplementation((_unit, date) =>
       Promise.resolve(date.startsWith("2026-09") ? september() : usagePeriod()),
     );
-    const { user } = await openAgents(api);
+    const { user } = await openUsage(api);
     await user.click(await screen.findByRole("button", { name: "Previous period" }));
     await user.click(screen.getByRole("button", { name: "Details" }));
 
     expect(screen.getByRole("heading", { name: "September tokens" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to Agents" }));
-    expect(screen.getByRole("heading", { name: "Agents" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to Usage" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Usage" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings/usage");
     expect(within(usageCard()).getByText("September")).toBeInTheDocument();
+  });
+
+  it("opens from its old address under Agents, and goes back to Usage", async () => {
+    window.history.replaceState(null, "", "/settings/agents/usage");
+    const { user } = await renderApp();
+
+    expect(await screen.findByRole("heading", { name: "October tokens" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings/usage/details");
+    await user.click(screen.getByRole("button", { name: "Back to Usage" }));
+    expect(window.location.pathname).toBe("/settings/usage");
   });
 
   it("waits for the period, and says when no project used tokens", async () => {
