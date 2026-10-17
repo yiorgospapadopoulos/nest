@@ -1,7 +1,7 @@
 import type { Artifact, ArtifactContent } from "../../api/types.ts";
 import { activityTime } from "../../format.ts";
+import { useScheme } from "../../appearance/scheme.ts";
 import { Icon } from "../../ui/Icon.tsx";
-import { Markdown } from "../../ui/Markdown.tsx";
 import { withCsp } from "./html.ts";
 import { KIND_ICONS, KIND_LABELS, originOf } from "./view.ts";
 
@@ -68,32 +68,32 @@ export function ArtifactReader({ artifact, version, loaded, onStep, onRetry }: P
           </button>
         </div>
       )}
-      {content != null &&
-        (content.kind === "html" ? (
-          <HtmlFrame title={content.title} html={content.content} />
-        ) : (
-          <div className="afdoc">
-            <Markdown text={content.content} />
-          </div>
-        ))}
+      {content != null && <PageFrame title={content.title} page={content.page} />}
     </div>
   );
 }
 
 /**
- * An HTML artifact, which is untrusted agent output (contract section 6): scripts run in a
- * frame of its own opaque origin (no allow-same-origin), so they cannot reach the app, its
- * cookie or storage; the injected policy lets them load nothing. The app never listens to
- * messages from the frame.
+ * A version's page, which is untrusted agent output (B79, B82): the daemon's whole document
+ * for either kind. Scripts run in a frame of its own opaque origin (no allow-same-origin),
+ * so they cannot reach the app, its cookie or storage; the injected policy limits what they
+ * load. The app never listens to messages from the frame.
+ *
+ * The frame's color-scheme is Nest's theme, so the page's prefers-color-scheme follows the
+ * app rather than only the phone. A theme change makes a new frame: WebKit may not
+ * re-evaluate prefers-color-scheme in a document already open.
  */
-export function HtmlFrame({ title, html }: { title: string; html: string }) {
+function PageFrame({ title, page }: { title: string; page: string }) {
+  const scheme = useScheme();
   return (
     <iframe
+      key={scheme}
       className="affr"
       title={title}
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
-      srcDoc={withCsp(html)}
+      style={{ colorScheme: scheme }}
+      srcDoc={withCsp(page)}
     />
   );
 }

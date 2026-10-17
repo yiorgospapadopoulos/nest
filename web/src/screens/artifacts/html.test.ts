@@ -11,7 +11,7 @@ function firstInHead(doc: Document): Element | null {
 describe("the policy injected into an HTML artifact", () => {
   it("is the exact policy of the contract", () => {
     expect(ARTIFACT_CSP).toBe(
-      "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net/npm/ https://unpkg.com https://cdn.tailwindcss.com https://code.jquery.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src 'none'",
     );
   });
 

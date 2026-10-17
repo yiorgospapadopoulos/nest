@@ -1,7 +1,8 @@
-// What an HTML artifact may do in its frame (contract section 6): run its own inline
-// scripts and styles, show data: images, and load nothing else.
+// What an artifact's page may do in its frame (B82): run inline scripts and scripts from the
+// pinned CDN hosts, use inline styles and Google Fonts, show data: and blob: images, and
+// reach nothing else. The Mac uses the same string.
 export const ARTIFACT_CSP =
-  "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
+  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net/npm/ https://unpkg.com https://cdn.tailwindcss.com https://code.jquery.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src 'none'";
 
 const META = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">`;
 const DOCTYPE = /^\s*<!doctype[^>]*>/i;

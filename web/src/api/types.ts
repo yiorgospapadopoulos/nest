@@ -1110,6 +1110,9 @@ export interface ArtifactContent {
   kind: ArtifactKind;
   title: string;
   content: string;
+  // The whole document the sandboxed frame shows: the page itself for HTML, and for
+  // Markdown a page that renders it.
+  page: string;
   size: number;
   created_at: string;
 }
