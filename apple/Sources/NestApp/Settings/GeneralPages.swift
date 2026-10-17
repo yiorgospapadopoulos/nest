@@ -15,7 +15,6 @@ struct GeneralPage: View {
                     .accessibilityLabel("Show automated chats")
             }
         }
-        StorageSection()
         SettingsSection(title: "Nest") {
             SettingsRow(label: "Version") { SettingsValue(text: Self.version) }
             RestartRow()
@@ -31,24 +30,20 @@ struct GeneralPage: View {
     }
 }
 
-private struct StorageSection: View {
+// MARK: Storage
+
+/// Settings > Storage (B86): the space used, archiving, clean up and the search index.
+struct StoragePage: View {
     @Environment(Shell.self) private var shell
     @State private var deleting: LargeAttachment?
 
     var body: some View {
         let storage = shell.model.storage
-        SettingsSection(title: "Storage") {
-            SettingsRow(label: "Space used") {
-                if let usage = storage.usage {
-                    VStack(alignment: .trailing, spacing: 5) {
-                        StorageBar(usage: usage)
-                        Text(StorageText.summary(usage))
-                            .font(.ui(TypeSize.meta))
-                            .foregroundStyle(Palette.t3)
-                    }
-                } else {
-                    SettingsValue(text: "-")
-                }
+        SettingsSection(title: "", bare: true) {
+            if let usage = storage.usage {
+                StorageLedger(usage: usage)
+            } else {
+                SettingsRow(label: "Space used") { SettingsValue(text: "-") }
             }
             SettingsRow(label: "Archive chats idle for") {
                 let days = storage.settings?.archiveAfterDays
@@ -116,27 +111,67 @@ private struct StorageSection: View {
     }
 }
 
-/// Chats, attachments, artifacts and the rest as one bar.
+/// The space used (B86): the total, a bar of the parts, and one line per part with its
+/// size and share.
+private struct StorageLedger: View {
+    let usage: StorageUsage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(StorageText.bytes(usage.totalBytes))
+                    .font(.ui(21, .semibold))
+                    .monospacedDigit()
+                Text("used by Nest")
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+            }
+            .accessibilityElement(children: .combine)
+            StorageBar(usage: usage)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                ForEach(StorageText.ledger(usage), id: \.part) { part, size, share in
+                    GridRow {
+                        Circle().fill(part.color).frame(width: 8, height: 8)
+                        Text(part.name).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(size).gridColumnAlignment(.trailing)
+                        Text(share)
+                            .foregroundStyle(Palette.t3)
+                            .frame(minWidth: 28, alignment: .trailing)
+                            .gridColumnAlignment(.trailing)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .font(.ui(TypeSize.ui))
+            .monospacedDigit()
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Separator() }
+    }
+}
+
+/// The parts side by side across the width, 2 points apart, tiny ones kept visible.
 private struct StorageBar: View {
     let usage: StorageUsage
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(StorageText.shares(usage), id: \.part) { part, share in
-                Rectangle()
-                    .fill(color(part))
-                    .frame(width: 220 * share)
+        GeometryReader { geometry in
+            let segments = StorageText.segments(
+                StorageText.shares(usage), width: geometry.size.width, gap: 2, minimum: 3)
+            HStack(spacing: 2) {
+                ForEach(segments, id: \.part) { part, width in
+                    RoundedRectangle(cornerRadius: 2).fill(part.color).frame(width: width)
+                }
             }
-            Spacer(minLength: 0)
         }
-        .frame(width: 220, height: 6)
-        .background(Palette.soft)
-        .clipShape(.rounded(3))
+        .frame(height: 6)
         .accessibilityHidden(true)
     }
+}
 
-    private func color(_ part: StorageText.Part) -> Color {
-        switch part {
+extension StorageText.Part {
+    fileprivate var color: Color {
+        switch self {
         case .chats: StatusTone.running.color
         case .attachments: StatusTone.waiting.color
         case .artifacts: StatusTone.review.color

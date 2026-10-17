@@ -64,13 +64,16 @@ extension ThemeMode {
 }
 
 extension SettingsPage {
-    /// The sidebar's and header's symbol for a page that is not a project.
+    /// The sidebar's and header's symbol for a page that is not a project; Agents and
+    /// Pixies draw their own glyphs instead.
     var symbol: String {
         switch self {
         case .general: "gearshape"
         case .appearance: "circle.lefthalf.filled"
         case .notifications: "bell"
         case .agents: "cpu"
+        case .usage: "chart.bar"
+        case .storage: "internaldrive"
         case .pixies: "face.smiling"
         case .accounts: "person.crop.circle"
         case .extensions: "puzzlepiece.extension"
@@ -89,9 +92,14 @@ struct SettingsPageIcon: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        if case .project(let name) = page {
+        switch page {
+        case .project(let name):
             ProjectIcon(project: name, repo: shell.app.repo(name), size: size + 2)
-        } else {
+        case .pixies:
+            PixieGlyph(side: size + 2)
+        case .agents:
+            RobotGlyph(side: size + 2)
+        default:
             Image(systemName: page.symbol)
                 .font(.system(size: size - 2))
                 .foregroundStyle(Palette.t2)
@@ -269,6 +277,8 @@ private struct SettingsDetail: View {
         case .appearance: AppearancePage()
         case .notifications: NotificationsPage()
         case .agents: AgentsPage()
+        case .usage: UsagePage()
+        case .storage: StoragePage()
         case .pixies: PixiesPage()
         case .accounts: AccountsPage()
         case .extensions: ExtensionsPage()

@@ -2,7 +2,8 @@ import Foundation
 
 /// A page of the Settings window (B81).
 public enum SettingsPage: Sendable, Hashable {
-    case general, appearance, notifications, agents, pixies, accounts, extensions, devices
+    case general, appearance, notifications, agents, usage, storage, pixies, accounts
+    case extensions, devices
     case shortcuts
     /// A project's page, by repo name.
     case project(String)
@@ -10,8 +11,8 @@ public enum SettingsPage: Sendable, Hashable {
 
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
-        .general, .appearance, .notifications, .agents, .pixies, .accounts, .extensions,
-        .devices, .shortcuts,
+        .general, .appearance, .notifications, .agents, .usage, .storage, .pixies,
+        .accounts, .extensions, .devices, .shortcuts,
     ]
 
     public var title: String {
@@ -20,6 +21,8 @@ public enum SettingsPage: Sendable, Hashable {
         case .appearance: "Appearance"
         case .notifications: "Notifications"
         case .agents: "Agents"
+        case .usage: "Usage"
+        case .storage: "Storage"
         case .pixies: "Pixies"
         case .accounts: "Accounts"
         case .extensions: "Extensions"
@@ -30,14 +33,22 @@ public enum SettingsPage: Sendable, Hashable {
         }
     }
 
+    /// The Pixies page's icon (B86): a winged pixie on the sprites' 12 by 10 grid.
+    public static let pixieGlyph = [
+        "............", "....####....", "#..######..#", "##.#.##.#.##", "############",
+        "##.######.##", "#..######..#", "....#..#....", "............", "............",
+    ]
+
     /// What the page's rows are called, for the search field.
     public var labels: [String] {
         switch self {
         case .general:
+            ["Sidebar", "Show automated chats", "Nest", "Version", "Restart Nest"]
+        case .storage:
             [
-                "Sidebar", "Show automated chats", "Storage", "Space used",
+                "Space used", "Used by Nest", "Attachments", "Artifacts",
                 "Archive chats idle for", "Clean up", "Review large attachments", "Search index",
-                "Rebuild", "Nest", "Version", "Restart Nest",
+                "Rebuild",
             ]
         case .appearance:
             [
@@ -49,10 +60,14 @@ public enum SettingsPage: Sendable, Hashable {
                 + NotificationPreferences.kindToggles.map(\.title)
                 + ["iPhone push"]
         case .agents:
-            [
-                "New chats", "Model", "Thinking", "Permissions", "Work in", "Usage limits",
-                "Check limits", "Warn me at", "Also as a notification", "Stuck chats",
-            ] + StuckThreshold.allCases.map(\.title)
+            ["New chats", "Model", "Thinking", "Permissions", "Work in", "Stuck chats"]
+                + StuckThreshold.allCases.map(\.title)
+        case .usage:
+            ["Limits", "5 hour", "Weekly", "Refresh"] + UsageUnit.allCases.map(\.title)
+                + [
+                    "Subagents", "Details", "Usage limits", "Check limits", "Warn me at",
+                    "Also as a notification",
+                ]
         case .pixies:
             [
                 "Your pixies", "Show hidden pixies", "New pixie", "New pixies start with",
