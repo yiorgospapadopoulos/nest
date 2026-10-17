@@ -1,11 +1,12 @@
 import NestKit
 import SwiftUI
 
-/// The activity panel: Needs you and Goals cards that share its height; folds into a rail
-/// with counts. Agents show in the sidebar tree (B72).
+/// The activity panel: Needs you and Goals cards that share its height; squeezes into an
+/// accent hairline (B83), the two fading over each other and clipped to the panel while
+/// its width animates, as the sidebar does. Agents show in the sidebar tree (B72).
 struct RightPanel: View {
     static let width = 320.0
-    static let railWidth = 56.0
+    static let railWidth = 6.0
 
     @Environment(Shell.self) private var shell
 
@@ -14,9 +15,10 @@ struct RightPanel: View {
         let counts = PanelCounts(shell: shell)
         Group {
             if state.rightCollapsed {
-                ActivityRail(counts: counts)
+                ActivityRail(needs: counts.needs)
                     .frame(width: Self.railWidth)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(maxHeight: .infinity)
+                    .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
                     ForEach(RightCard.allCases, id: \.self) { card in
@@ -27,11 +29,13 @@ struct RightPanel: View {
                     }
                 }
                 .frame(width: Self.width)
+                .transition(.opacity)
             }
         }
         // Folded cards stack at the top rather than meeting in the middle.
         .frame(maxHeight: .infinity, alignment: .top)
         .sideSurface()
+        .clipped()
         .task(id: inFlightKey) { await loadActivity() }
     }
 
@@ -63,7 +67,7 @@ struct RightPanel: View {
     }
 }
 
-/// The numbers on the card headers and rail buttons.
+/// The numbers on the card headers.
 @MainActor
 struct PanelCounts {
     let needs: Int
@@ -88,13 +92,6 @@ extension RightCard {
         switch self {
         case .needsYou: "Needs you"
         case .goals: "Goals"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .needsYou: Icon.bell
-        case .goals: Icon.goals
         }
     }
 }
@@ -153,56 +150,27 @@ private struct CardView: View {
     }
 }
 
+/// The squeezed panel: a 2 point accent line down the middle of its strip, the whole
+/// strip opening the panel.
 private struct ActivityRail: View {
-    let counts: PanelCounts
+    let needs: Int
     @Environment(Shell.self) private var shell
+    @Environment(\.accentColors) private var accent
 
     var body: some View {
-        VStack(spacing: 6) {
-            Button {
-                shell.update { $0.rightCollapsed = false }
-            } label: {
-                Image(systemName: Icon.rightPanel).font(.system(size: 13))
-            }
-            .buttonStyle(RailButtonStyle())
-            .help("Expand panel")
-            .accessibilityLabel("Expand panel")
-            Separator().frame(width: 24).padding(.vertical, 4)
-            ForEach(RightCard.allCases, id: \.self) { card in
-                let count = counts.count(card)
-                Button {
-                    shell.update { $0.showCard(card) }
-                } label: {
-                    Image(systemName: card.icon).font(.system(size: 13))
-                }
-                .buttonStyle(RailButtonStyle())
-                .overlay(alignment: .topTrailing) {
-                    if count > 0 {
-                        CountBadge(count: count, urgent: card == .needsYou)
-                            .offset(x: 6, y: -4)
-                    }
-                }
-                .help(card.title)
-                .accessibilityLabel("\(card.title), \(count)")
-            }
-        }
-        .padding(.vertical, 8)
-    }
-}
-
-struct RailButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HoverReader { hovering in
-            configuration.label
-                .foregroundStyle(hovering ? Palette.t1 : Palette.t3)
-                .frame(width: 30, height: 30)
-                .background(
-                    hovering || configuration.isPressed ? Palette.soft : .clear,
-                    in: .rounded(Radius.row)
-                )
-                .contentShape(Rectangle())
-                .pointerStyle(.link)
-        }
+        Rectangle()
+            .fill(accent.accent)
+            .frame(width: 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .pointerStyle(.link)
+            .onTapGesture { shell.update { $0.rightCollapsed = false } }
+            .help("Open details")
+            .accessibilityElement()
+            .accessibilityLabel("Open details")
+            .accessibilityValue(needs > 0 ? "\(needs) need you" : "")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { shell.update { $0.rightCollapsed = false } }
     }
 }
 
