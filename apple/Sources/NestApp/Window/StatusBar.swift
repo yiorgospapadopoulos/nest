@@ -16,13 +16,15 @@ enum Ink {
 }
 
 /// The bar along the bottom of the window (MonoCode's footer): 28 points, no fill of its
-/// own, a 1 point line on top. On the left, Settings (as Cmd-comma). Where a project is
-/// open, the Workspace / Board / Artifacts switch sits in the middle (B79; the Pixies tab
-/// has Workspace / Artifacts), and on the right the Terminal button opens a terminal where
-/// the focused chat works, else the project's terminal pane, or a new one in the project
-/// folder, followed by the activity panel's toggle, under the panel (B73). MonoCode shows
-/// a running command's chip there instead; the terminal panes do not report their
-/// foreground process, so it is left out. A maximized pane is restored from its header.
+/// own, a 1 point line on top. On the left, Settings (as Cmd-comma), led where a project
+/// is open by the sidebar's squeeze button. There the Workspace / Board / Artifacts switch
+/// sits in the middle (B79; the Pixies tab has Workspace / Artifacts), and on the right the
+/// Terminal button opens a terminal where the focused chat works, else the project's
+/// terminal pane, or a new one in the project folder, followed by the details panel's
+/// squeeze button, under the panel (B73). The squeeze buttons' triangles point where
+/// their bar goes on a click (B83). MonoCode shows a running command's chip there
+/// instead; the terminal panes do not report their foreground process, so it is left
+/// out. A maximized pane is restored from its header.
 struct StatusBar: View {
     static let height = 28.0
 
@@ -33,6 +35,13 @@ struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if inProject {
+                let squeezed = shell.projectState.leftCollapsed
+                SqueezeButton(
+                    icon: squeezed ? Icon.triangleRight : Icon.triangleLeft,
+                    title: squeezed ? "Open sidebar" : "Squeeze sidebar"
+                ) { shell.update { $0.leftCollapsed.toggle() } }
+            }
             Button {
                 shell.openSettings()
             } label: {
@@ -57,16 +66,11 @@ struct StatusBar: View {
                 .buttonStyle(FooterButtonStyle())
                 .help("Open a terminal where the focused chat works")
                 .accessibilityLabel("Terminal")
-                let collapsed = shell.projectState.rightCollapsed
-                Button {
-                    shell.update { $0.rightCollapsed.toggle() }
-                } label: {
-                    Image(systemName: Icon.rightPanel).font(.system(size: 11))
-                }
-                .buttonStyle(FooterButtonStyle(selected: !collapsed))
-                .help("Activity panel")
-                .accessibilityLabel("Activity panel")
-                .accessibilityAddTraits(collapsed ? [] : .isSelected)
+                let squeezed = shell.projectState.rightCollapsed
+                SqueezeButton(
+                    icon: squeezed ? Icon.triangleLeft : Icon.triangleRight,
+                    title: squeezed ? "Open details" : "Squeeze details"
+                ) { shell.update { $0.rightCollapsed.toggle() } }
             }
         }
         .overlay {
@@ -118,6 +122,22 @@ private struct ViewSwitch: View {
                     value == .artifacts && unseen > 0 ? "\(unseen) not opened" : "")
             }
         }
+    }
+}
+
+/// A side bar's squeeze button: a small triangle pointing where the bar goes on a click.
+private struct SqueezeButton: View {
+    let icon: String
+    let title: String
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            Image(systemName: icon).font(.system(size: 8.5))
+        }
+        .buttonStyle(FooterButtonStyle())
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 

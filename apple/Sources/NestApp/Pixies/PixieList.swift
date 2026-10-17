@@ -18,7 +18,6 @@ struct PixieList: View {
                 Text("Pixies")
                     .font(.ui(TypeSize.reading, .semibold))
                     .foregroundStyle(Palette.t1)
-                CountBadge(count: shell.pixies.visible.count)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
@@ -146,11 +145,6 @@ private struct TeamHeader: View {
             Spacer(minLength: 4)
             if hovering || reveal {
                 RowActionsMenu(title: team.name) { TeamActions(section: section) }
-            } else if folded {
-                Text("\(section.members.count)")
-                    .font(.ui(TypeSize.meta))
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.t3)
             }
         }
         .lineLimit(1)

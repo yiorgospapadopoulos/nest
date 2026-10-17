@@ -9,7 +9,7 @@ extension View {
     }
 }
 
-private struct ResizableSidebar: ViewModifier {
+struct ResizableSidebar: ViewModifier {
     /// The handle's hit area, straddling the separator after the sidebar.
     static let handleWidth = 6.0
 

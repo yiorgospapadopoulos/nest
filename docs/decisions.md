@@ -924,7 +924,18 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Merged after B79 and B80:** the project Artifacts tab counts B79's list for the project and its button opens B79's Artifacts view (Mac: the project's tab on that view; iPhone: the Artifacts sheet on This project). The Mac's Artifacts view command (Option Command 3) is one of the changeable keyboard shortcuts. The Settings window's loading marks are B80's fireflies, and Appearance keeps B80's accent behaviour.
 - **Refines:** D031 (the usage settings), D050 (the push URL can now be set from Settings), the habit scheduler's fixed 80 percent (B42).
 
-## D105 (2026-10-17): Subagent tokens counted, and usage by day, week, month or year (B84)
+## D105 (2026-10-17): Lighter side bars on the Mac (B83)
+
+- **Why:** the user wanted quieter side bars; designs picked from a mockup (left L-B, right R-D, icon I-19).
+- **Squeeze buttons:** both live in the status bar, the sidebar's before Settings (only where a project is open) and the right panel's after Terminal. They are small filled triangles (`arrowtriangle.left.fill` / `.right.fill`) pointing where the bar goes on a click, with no selected fill; the triangle carries the state. The sidebar header and both squeezed bars no longer have their own buttons.
+- **Squeezed sidebar:** 20 points, one 7 point status dot per chat (archived left out), open chats on the selection fill. A click anywhere on the strip, a dot included, opens the sidebar (user, 10:52); a dot keeps its title as help, drag and context menu. No New chat button and no Claude Code badge there.
+- **Motion:** squeezing or opening either bar, however it is toggled (footer triangle, strip, shortcut, palette), animates the workspace's edge and cross-fades the bar's two forms (`.smooth`, 0.28 s); the full sidebar keeps its width and is uncovered, not reflowed. None under Reduce Motion.
+- **Squeezed right panel:** 6 points, a 2 point line in the accent colour; the whole strip opens the panel. Counts and card icons are gone from it (the Needs you count stays in its accessibility value).
+- **Quieter lists:** New chat shows no shortcut (its tooltip keeps it); the Pixies list shows no count after its title and no member count on a folded team. Team @handles stay (user, 10:23).
+- **Mac only;** the iPhone's matching bits (shortcut hint, counts) wait for the iPhone catch-up block.
+- **Refines:** D073 and D098 (the status bar), D099 (the right panel rail).
+
+## D106 (2026-10-17): Subagent tokens counted, and usage by day, week, month or year (B84)
 
 - **Why:** only the main chat's tokens were recorded, from each turn's `ResultMessage.usage`; every subagent reply was missed (about 1.6M of 15M in a month). The usage detail now moves between days, weeks, months and years and breaks a period down by who, kind and project.
 - **Counting:** with `forward_subagent_text` on, subagent replies stream as `AssistantMessage`s with `parent_tool_use_id`, `message_id` and `usage`. Each one reports `subagent_usage(message_id, tokens)` to the sink, and the daemon records it in `turn_usage` with `subagent = 1` and the message id (migration 0028). One API reply arrives as several messages with the same id, so a unique index on `(session_id, message_id)` makes it one row: it keeps its first time and the largest count of each component, so a later message can only raise counts. Background subagents that report after the turn are counted the same way. Main-chat rows are unchanged (one per turn, no id). `ResultMessage.model_usage` is not used: it is cumulative per process and carries over on resume.
