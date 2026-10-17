@@ -2,8 +2,8 @@ import NestKit
 import SwiftUI
 
 /// The top of the sidebar: the project's icon and name, opening its local app actions,
-/// with its current branch (or Init for a plain folder) beside it, and the collapse
-/// button (B73: the bar over the project is gone).
+/// with its current branch (or Init for a plain folder) beside it (B73: the bar over the
+/// project is gone; B83: the squeeze button moved to the footer).
 struct ProjectHeader: View {
     @Environment(Shell.self) private var shell
 
@@ -16,15 +16,6 @@ struct ProjectHeader: View {
             case nil: EmptyView()
             }
             Spacer(minLength: 0)
-            Button {
-                shell.update { $0.leftCollapsed = true }
-            } label: {
-                Image(systemName: Icon.leftPanel).font(.system(size: 13))
-                    .foregroundStyle(Palette.t3)
-            }
-            .buttonStyle(.nest(.plain, iconOnly: true))
-            .help("Collapse sidebar")
-            .accessibilityLabel("Collapse sidebar")
         }
         .padding(.leading, 8)
         .padding(.trailing, 2)

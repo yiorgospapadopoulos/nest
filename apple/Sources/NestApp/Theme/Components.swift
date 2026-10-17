@@ -24,6 +24,8 @@ enum Icon {
     static let shield = "checkmark.shield"
     static let rightPanel = "sidebar.right"
     static let leftPanel = "sidebar.left"
+    static let triangleLeft = "arrowtriangle.left.fill"
+    static let triangleRight = "arrowtriangle.right.fill"
     static let maximize = "arrow.up.left.and.arrow.down.right"
     static let restore = "arrow.down.right.and.arrow.up.left"
     static let open = "arrow.up.forward.square"
