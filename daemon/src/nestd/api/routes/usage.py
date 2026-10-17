@@ -1,28 +1,34 @@
+import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from pydantic import Field
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.config.errors import ConfigError
 from nestd.config.loader import save_usage
 from nestd.config.models import UsageSettings
 from nestd.errors import ConflictError
-from nestd.usage.models import MonthUsage, UsageLimits
+from nestd.usage.models import PeriodUnit, PeriodUsage, UsageLimits
 
 router = APIRouter(prefix="/api/usage", dependencies=[RequireDevice])
 
+EARLIEST = datetime.date(2000, 1, 1)
+LATEST = datetime.date(2100, 12, 31)
 
-@router.get("/month")
-async def month_usage(
+
+@router.get("/period")
+async def period_usage(
     ctx: Context,
-    year: Annotated[int, Query(ge=2000, le=2100)],
-    month: Annotated[int, Query(ge=1, le=12)],
-) -> MonthUsage:
-    """Token totals of the month and of each of its days, by the daemon's local calendar.
+    unit: PeriodUnit,
+    date: Annotated[datetime.date, Query(), Field(ge=EARLIEST, le=LATEST)],
+) -> PeriodUsage:
+    """Tokens of chats and subagents in the day, week (from Monday), month or year holding
+    `date`, by the daemon's local calendar, with a bar per hour, day or month.
 
     Usage probes are counted apart, in `probes`, and not in the other totals.
     """
-    return await ctx.usage.month(year, month)
+    return await ctx.usage.period(unit, date)
 
 
 @router.get("/limits")

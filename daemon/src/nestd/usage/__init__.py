@@ -1,1 +1,1 @@
-"""Token usage per turn, monthly totals, and the subscription's usage windows."""
+"""Token usage of chats and subagents by period, and the subscription's usage windows."""

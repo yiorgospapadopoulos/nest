@@ -10,7 +10,15 @@ from nestd.local_apps.apps import LIVE_WARNING
 from nestd.providers.base import McpServer, TokenUsage, UsageInfo, UsageWindow
 from tests.api_client import Api, running_api
 from tests.async_support import until
-from tests.fake_provider import FakeRun, background, hang, limits, loaded, reply
+from tests.fake_provider import (
+    FakeRun,
+    background,
+    hang,
+    limits,
+    loaded,
+    reply,
+    subagent_reply,
+)
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, reach
@@ -27,7 +35,7 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
     ("method", "path"),
     [
         ("GET", "/api/connectors"),
-        ("GET", "/api/usage/month?year=2026&month=1"),
+        ("GET", "/api/usage/period?unit=month&date=2026-01-01"),
         ("GET", "/api/usage/limits"),
         ("POST", "/api/sessions/x/open-in-claude-code"),
         ("POST", "/api/repos/repo/open"),
@@ -64,9 +72,17 @@ async def test_connectors_settle_after_the_first_turn(api: Api) -> None:
     assert connectors[0]["source"] == session_id
 
 
-async def test_token_usage_per_turn_and_month(api: Api, clock: FakeClock) -> None:
+async def test_token_usage_of_chats_and_subagents_by_period(api: Api, clock: FakeClock) -> None:
     api.provider.script(
-        reply("one", tokens=TokenUsage(input_tokens=10, output_tokens=5)),
+        subagent_reply(
+            "msg_1",
+            TokenUsage(input_tokens=2, output_tokens=4),
+            then=subagent_reply(
+                "msg_1",
+                TokenUsage(input_tokens=2, output_tokens=7),
+                then=reply("one", tokens=TokenUsage(input_tokens=10, output_tokens=5)),
+            ),
+        ),
         reply("two", tokens=TokenUsage(cache_read_input_tokens=100)),
     )
     session_id = str((await create(api))["id"])
@@ -74,32 +90,60 @@ async def test_token_usage_per_turn_and_month(api: Api, clock: FakeClock) -> Non
     await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "more"})
     await reach(api, session_id, "idle", results=2)
 
-    month = (await api.http.get("/api/usage/month", params={"year": 2026, "month": 1})).json()
-    empty = (await api.http.get("/api/usage/month", params={"year": 2026, "month": 2})).json()
+    month = (
+        await api.http.get("/api/usage/period", params={"unit": "month", "date": "2026-01-20"})
+    ).json()
+    day = (
+        await api.http.get("/api/usage/period", params={"unit": "day", "date": "2026-01-01"})
+    ).json()
+    empty = (
+        await api.http.get("/api/usage/period", params={"unit": "week", "date": "2026-02-02"})
+    ).json()
 
+    assert (month["unit"], month["start"], month["end"], month["current"]) == (
+        "month",
+        "2026-01-01",
+        "2026-01-31",
+        True,
+    )
     assert month["sessions"] == 1
     assert month["tokens"] == {
-        "input_tokens": 10,
-        "output_tokens": 5,
+        "input_tokens": 12,
+        "output_tokens": 12,
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 100,
-        "total": 115,
+        "total": 124,
     }
-    assert month["days"][0] == {
-        "date": clock.now().date().isoformat(),
-        "tokens": 115,
-        "sessions": 1,
-    }
-    assert len(month["days"]) == 31
-    assert empty["sessions"] == 0
+    assert month["subagents"]["total"] == 9
+    assert month["bars"][0] == {"start": "2026-01-01T00:00:00Z", "tokens": 124, "sessions": 1}
+    assert len(month["bars"]) == 31
+    assert month["projects"] == [{"name": "repo", "tokens": 124, "pixies": False}]
+    assert month["probes"] == {"count": 0, "tokens": 0}
+    assert (len(day["bars"]), day["bars"][12]["tokens"]) == (24, 124)
+    assert (empty["start"], empty["end"], empty["current"]) == ("2026-02-02", "2026-02-08", False)
+    assert (empty["sessions"], empty["tokens"]["total"], empty["projects"]) == (0, 0, [])
 
 
 @pytest.mark.parametrize(
     "params",
-    [{"year": 2026, "month": 13}, {"year": 2026, "month": 0}, {"year": 1999, "month": 1}, {}],
+    [
+        {"unit": "hour", "date": "2026-01-01"},
+        {"unit": "month", "date": "2026-13-01"},
+        {"unit": "month", "date": "yesterday"},
+        {"unit": "month", "date": "1999-12-31"},
+        {"unit": "year", "date": "2101-01-01"},
+        {"unit": "month"},
+        {"date": "2026-01-01"},
+    ],
 )
-async def test_month_needs_a_valid_year_and_month(api: Api, params: dict[str, int]) -> None:
-    assert (await api.http.get("/api/usage/month", params=params)).status_code == 422
+async def test_period_needs_a_known_unit_and_a_valid_date(api: Api, params: dict[str, str]) -> None:
+    assert (await api.http.get("/api/usage/period", params=params)).status_code == 422
+
+
+async def test_the_month_endpoint_is_gone(api: Api) -> None:
+    response = await api.http.get("/api/usage/month", params={"year": 2026, "month": 1})
+
+    assert response.status_code == 404
 
 
 async def test_usage_limits_survive_a_restart(

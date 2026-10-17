@@ -3,6 +3,7 @@ from nestd.providers.base import (
     EngineDetails,
     McpServer,
     ResultInfo,
+    TokenUsage,
     UsageInfo,
 )
 from nestd.sessions.models import Session, SessionState
@@ -14,6 +15,7 @@ class RecordingHooks:
         self.messages: list[str] = []
         self.results: list[tuple[str, ResultInfo]] = []
         self.usages: list[UsageInfo] = []
+        self.subagent_usages: list[tuple[str, str, TokenUsage]] = []
         self.connectors: list[tuple[str, list[McpServer]]] = []
         self.commands: list[tuple[str, CommandCatalog]] = []
         self.engine: list[EngineDetails] = []
@@ -35,6 +37,9 @@ class RecordingHooks:
 
     async def usage(self, info: UsageInfo) -> None:
         self.usages.append(info)
+
+    async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
+        self.subagent_usages.append((session_id, message_id, tokens))
 
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
         self.connectors.append((session_id, servers))

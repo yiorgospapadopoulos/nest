@@ -13,6 +13,7 @@ from nestd.providers.base import (
     EngineDetails,
     McpServer,
     ResultInfo,
+    TokenUsage,
     UsageInfo,
 )
 from nestd.repos.service import RepoService
@@ -107,6 +108,9 @@ class SessionReactions:
 
     async def usage(self, info: UsageInfo) -> None:
         await self._usage.update_limits(info)
+
+    async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
+        await self._usage.record_subagent(session_id, message_id, tokens)
 
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
         await self._connectors.report(session_id, servers)

@@ -9,10 +9,10 @@ from sqlite3 import Row
 from nestd.clock import Clock
 from nestd.providers.base import TokenUsage, UsageInfo
 from nestd.storage.db import Database
-from nestd.usage.models import LimitWindow, MonthUsage, ProbeTotals, Turn, UsageLimits
-from nestd.usage.month import COMPONENTS, summarize, total
+from nestd.usage.models import LimitWindow, PeriodUnit, PeriodUsage, Turn, UsageLimits
+from nestd.usage.period import COMPONENTS, bar_walls, period_of, summarize, total
 
-# Wide enough for any UTC offset, so every turn on a local day of the month is read.
+# Wide enough for any stored time format, so every row in the period is read.
 _MARGIN = timedelta(days=1)
 
 
@@ -35,6 +35,26 @@ class UsageStore:
             ),
         )
 
+    async def record_subagent(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
+        """A subagent's API reply (B84). Its streamed messages repeat the id: the reply
+        keeps its first time and the largest count of each component reported.
+        """
+        columns = ", ".join(COMPONENTS)
+        larger = ", ".join(f"{name} = max({name}, excluded.{name})" for name in COMPONENTS)
+        await self._db.execute(
+            f"INSERT INTO turn_usage (session_id, repo, ts, subagent, message_id, {columns})"  # noqa: S608
+            f" SELECT id, repo, ?, 1, ?, {', '.join('?' for _ in COMPONENTS)}"
+            " FROM sessions WHERE id = ?"
+            " ON CONFLICT (session_id, message_id) WHERE message_id IS NOT NULL"
+            f" DO UPDATE SET {larger}",
+            (
+                self._clock.now().isoformat(),
+                message_id,
+                *(getattr(tokens, name) for name in COMPONENTS),
+                session_id,
+            ),
+        )
+
     async def record_probe(self, tokens: TokenUsage) -> None:
         """Tokens a usage probe used; counted apart from the user's sessions (D031)."""
         columns = ", ".join(COMPONENTS)
@@ -44,20 +64,27 @@ class UsageStore:
             (self._clock.now().isoformat(), *(getattr(tokens, name) for name in COMPONENTS)),
         )
 
-    async def month(self, year: int, month: int) -> MonthUsage:
-        rows = await self._rows_of_month("turn_usage", year, month)
+    async def period(self, unit: PeriodUnit, day: date) -> PeriodUsage:
+        """The day, week, month or year holding `day`, by the local calendar."""
+        period = period_of(unit, day)
+        edges = [self._aware(wall) for wall in bar_walls(period)]
         turns = [
-            Turn(day=self._day(row["ts"]), session_id=row["session_id"], tokens=_tokens(row))
-            for row in rows
+            Turn(
+                at=datetime.fromisoformat(row["ts"]),
+                session_id=row["session_id"],
+                repo=row["repo"],
+                subagent=bool(row["subagent"]),
+                tokens=_tokens(row),
+            )
+            for row in await self._rows("turn_usage", edges[0], edges[-1])
         ]
         probes = [
             total(_tokens(row))
-            for row in await self._rows_of_month("probe_usage", year, month)
-            if (day := self._day(row["ts"])).year == year and day.month == month
+            for row in await self._rows("probe_usage", edges[0], edges[-1])
+            if edges[0] <= datetime.fromisoformat(row["ts"]) < edges[-1]
         ]
-        return summarize(year, month, turns).model_copy(
-            update={"probes": ProbeTotals(count=len(probes), tokens=sum(probes))}
-        )
+        today = self._clock.now().astimezone(self._zone).date()
+        return summarize(period, edges, turns, probes, today)
 
     async def update_limits(self, info: UsageInfo) -> None:
         """Keep the latest report of each window the engine included."""
@@ -91,21 +118,19 @@ class UsageStore:
         windows = {row["name"]: LimitWindow.model_validate(dict(row)) for row in rows}
         return UsageLimits(five_hour=windows.get("five_hour"), seven_day=windows.get("seven_day"))
 
-    async def _rows_of_month(self, table: str, year: int, month: int) -> list[Row]:
-        first = date(year, month, 1)
-        following = (first + timedelta(days=31)).replace(day=1)
+    async def _rows(self, table: str, start: datetime, end: datetime) -> list[Row]:
         return await self._db.fetch_all(
             f"SELECT * FROM {table} WHERE ts >= ? AND ts < ?",  # noqa: S608
-            ((_utc(first) - _MARGIN).isoformat(), (_utc(following) + _MARGIN).isoformat()),
+            (
+                (start - _MARGIN).astimezone(UTC).isoformat(),
+                (end + _MARGIN).astimezone(UTC).isoformat(),
+            ),
         )
 
-    def _day(self, ts: str) -> date:
-        return datetime.fromisoformat(ts).astimezone(self._zone).date()
+    def _aware(self, wall: datetime) -> datetime:
+        # A naive time's astimezone() reads it in the system's zone, clock changes included.
+        return wall.astimezone() if self._zone is None else wall.replace(tzinfo=self._zone)
 
 
 def _tokens(row: Row) -> TokenUsage:
     return TokenUsage(**{name: row[name] for name in COMPONENTS})
-
-
-def _utc(day: date) -> datetime:
-    return datetime(day.year, day.month, day.day, tzinfo=UTC)

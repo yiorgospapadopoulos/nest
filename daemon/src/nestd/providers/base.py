@@ -495,6 +495,13 @@ class ProviderEventSink(Protocol):
 
     async def usage(self, info: UsageInfo) -> None: ...
 
+    async def subagent_usage(self, message_id: str, tokens: TokenUsage) -> None:
+        """The tokens of a subagent's API reply, `message_id`, even after the turn (B84).
+
+        Each message of a reply reports it again; the latest counts replace the earlier.
+        """
+        ...
+
     async def limit_hit(self, hit: LimitHit) -> None:
         """The usage limit was reached: the engine refuses requests until it resets (B78)."""
         ...
