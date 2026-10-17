@@ -204,6 +204,10 @@
                 try await renderUsagePeriods(model, shell, controller, folder)
                 return
             }
+            if only == "b86" {
+                try await renderSettingsIcons(model, shell, controller, folder)
+                return
+            }
             if only == "b47" {
                 try await renderGoals(model, shell, controller, folder)
                 return
@@ -2432,6 +2436,32 @@
             try await pair(controller, "b84-strip", folder)
         }
 
+        /// B86: the Settings sidebar with the winged pixie, robot, Usage and Storage icons;
+        /// General without Storage; the Storage page's ledger; Agents without the usage
+        /// settings; Usage's chart and its details; and the popover, which shares Usage's
+        /// content, unchanged.
+        private static func renderSettingsIcons(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            try await model.usage.load()
+            await model.usage.refresh()
+            try await model.storage.load()
+            let tall = 1_000.0
+            try await pairSettings(controller, .general, "b86-general", folder)
+            try await pairSettings(controller, .storage, "b86-storage", folder)
+            try await pairSettings(controller, .agents, "b86-agents", folder)
+            try await pairSettings(controller, .pixies, "b86-pixies", folder)
+            try await model.usage.choose(.week)
+            try await pairSettings(controller, .usage, "b86-usage", folder, height: tall)
+            model.usage.showDetails()
+            try await pairSettings(controller, .usage, "b86-usage-details", folder, height: tall)
+            model.usage.hideDetails()
+            shell.show(.usage)
+            try await pair(controller, "b86-usage-popover", folder)
+            shell.close()
+        }
+
         /// B23: the usage button and popover with numbers 25 minutes old (dimmed), after a
         /// Refresh (fresh), a second Refresh refused as too soon, and Settings' Usage section.
         private static func renderUsage(
@@ -2449,7 +2479,7 @@
                 try await snap(controller, "usage-retry-\(appearance.0)", appearance.1, folder)
             }
             model.devices.clearPairingCode()
-            try await pairSettings(controller, .agents, "settings-usage", folder)
+            try await pairSettings(controller, .usage, "settings-usage", folder)
             shell.close()
         }
 
@@ -2916,6 +2946,7 @@
             shell.show(.usage)
             try await snap(controller, "live-usage", .darkAqua, folder)
             try await snapSettings(controller, .general, "live-settings", .aqua, folder)
+            try await snapSettings(controller, .storage, "live-storage", .aqua, folder)
             shell.extensionsTab = .connections
             try await snapSettings(controller, .extensions, "live-connectors", .darkAqua, folder)
         }
@@ -2984,7 +3015,7 @@
                 controller, .extensions, "b81-extensions-browse", folder, height: 1_300)
             try await model.storage.loadAttachments()
             try await pairSettings(
-                controller, .general, "b81-general-attachments", folder, height: tall)
+                controller, .storage, "b81-storage-attachments", folder, height: tall)
             model.storage.closeAttachments()
             for tab in ProjectSettingsTab.allCases {
                 shell.projectTab = tab
