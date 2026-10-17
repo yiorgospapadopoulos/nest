@@ -9,6 +9,7 @@ from nestd.api.hosts import HostCheckMiddleware
 from nestd.api.routes import (
     agents,
     approvals,
+    artifacts,
     attachments,
     claude_chats,
     clients,
@@ -113,6 +114,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         pixies,
         pixie_teams,
         pixie_reports,
+        artifacts,
         claude_chats,
         search,
         review,

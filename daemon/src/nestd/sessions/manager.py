@@ -36,7 +36,7 @@ from nestd.sessions.errors import (
     SessionBusyError,
     TaskNotFoundError,
 )
-from nestd.sessions.extras import RunExtrasSource
+from nestd.sessions.extras import NestToolsSource, RunExtrasSource
 from nestd.sessions.files import FileIndex
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.limits import ClearReason, LimitPauses
@@ -113,10 +113,11 @@ class SessionManager:
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
+        nest_tools: NestToolsSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
-        a project chat calls (B46).
+        a project chat calls (B46); `nest_tools` are the tools of every run (B79).
         """
         self._models = models
         self._queue = queue
@@ -153,6 +154,7 @@ class SessionManager:
             extras=extras,
             agents=agents,
             calls=calls,
+            nest_tools=nest_tools,
         )
         self._rewinds = Rewinds(
             store=store,

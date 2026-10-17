@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from nestd.artifacts.tools import ARTIFACT_NOTE
 from nestd.attachments.store import Attachment, AttachmentStore
 from nestd.clock import Clock
 from nestd.config.models import PermissionMode, RepoConfig
@@ -24,7 +25,7 @@ from nestd.providers.base import (
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated, isolated_or
 from nestd.sessions.errors import NoWorkspaceError
-from nestd.sessions.extras import RunExtras, RunExtrasSource
+from nestd.sessions.extras import NestToolsSource, RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
@@ -67,19 +68,19 @@ _PLAN_NOTE = (
 NEST_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE}"
+    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A plain folder's work is never reviewed, committed or pushed by Nest (D041).
 PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{_PLAN_NOTE}"
+    f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 # A chat a pixie started, whose git writes stay blocked (D072, B58); a pixie's own runs
 # have their own prompt.
 GUARDED_PROMPT = (
     "You are running inside Nest. Do not run git commit, git push, gh pr create or "
     "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE}"
+    f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it
@@ -113,11 +114,14 @@ class TurnRunner:
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
+        nest_tools: NestToolsSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
         holds the chats paused at the usage limit (B78); `agents` gives a project chat's
         run its subagents (B40), and `calls` follows the pixies it calls (B46).
+        `nest_tools` gives every run the tools all chats and pixies have (B79).
         """
+        self._nest_tools = nest_tools
         self._limits = limits
         self._on_mode = on_mode
         self._calls = calls
@@ -624,6 +628,7 @@ class TurnRunner:
                     extras.system_prompt if extras else await self._nest_prompt(session)
                 ),
                 tools=extras.tools if extras else (),
+                nest_tools=self._nest_tools(session) if self._nest_tools else (),
                 write_root=extras.write_root if extras else None,
                 skills=extras.skills if extras else (),
                 allowed_tools=extras.allowed_tools if extras else (),

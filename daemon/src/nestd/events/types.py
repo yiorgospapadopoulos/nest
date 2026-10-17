@@ -127,3 +127,13 @@ HABIT_RUN_UPDATED: Final = "habit.run_updated"
 # teams as `GET /api/sessions/{id}/pixies` lists them; after a call starts, changes state
 # or continues, and after Send away. Stored.
 SESSION_PIXIES: Final = "session.pixies"
+
+# Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
+# `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`.
+SESSION_ARTIFACT: Final = "session.artifact"
+# Global, each with `unseen`, the count of artifacts whose latest version is not opened
+# yet. Saved: `{artifact, action, version, unseen}` with the whole artifact. Seen (opened
+# while unseen) or deleted: `{artifact_id, unseen}`.
+ARTIFACT_SAVED: Final = "artifact.saved"
+ARTIFACT_SEEN: Final = "artifact.seen"
+ARTIFACT_DELETED: Final = "artifact.deleted"
