@@ -4,21 +4,18 @@ interface Props {
   label: string;
   initial: string;
   className: string;
-  // A datalist of suggestions.
-  list?: string | undefined;
   // The trimmed text when the edit ends; null when it was cancelled (Escape).
   onDone: (text: string | null) => void;
 }
 
 /** A field that edits in place: Enter or leaving it ends the edit, Escape cancels it. */
-export function InlineInput({ label, initial, className, list, onDone }: Props) {
+export function InlineInput({ label, initial, className, onDone }: Props) {
   const [text, setText] = useState(initial);
   const cancelled = useRef(false);
   return (
     <input
       className={className}
       aria-label={label}
-      list={list}
       value={text}
       autoFocus
       autoCapitalize="off"

@@ -43,14 +43,12 @@ export function teamList(state: State): PixieTeam[] {
   return Object.values(state.teams).sort((a, b) => a.position - b.position);
 }
 
-/** Whether a project chat in `repo` gets the pixie as a subagent (B40). */
-function mayWork(p: Pixie, repo: string): boolean {
-  return !p.hidden && p.project_access !== "none" && (p.projects?.includes(repo) ?? true);
-}
-
-/** The pixies a project chat in `repo` can call, in list order. */
-export function availablePixies(state: State, repo: string): Pixie[] {
-  return pixieList(state).filter((p) => mayWork(p, repo));
+/**
+ * The pixies a project chat can call, in list order: every one not hidden and with access
+ * to project files, in every project (B85).
+ */
+export function availablePixies(state: State): Pixie[] {
+  return pixieList(state).filter((p) => p.project_access !== "none");
 }
 
 export interface CallableTeam {
@@ -59,9 +57,9 @@ export interface CallableTeam {
   members: Pixie[];
 }
 
-/** The teams a project chat in `repo` can call: those whose leader it can call. */
-export function availableTeams(state: State, repo: string): CallableTeam[] {
-  const available = availablePixies(state, repo);
+/** The teams a project chat can call: those whose leader it can call. */
+export function availableTeams(state: State): CallableTeam[] {
+  const available = availablePixies(state);
   return teamList(state).flatMap((team) =>
     available.some((p) => p.id === team.leader_id)
       ? [{ team, members: available.filter((p) => p.team_id === team.id) }]
@@ -70,24 +68,24 @@ export function availableTeams(state: State, repo: string): CallableTeam[] {
 }
 
 /**
- * The pixies a project chat in `repo` can call on their own (B46): those in no team it can
- * call, since a team's pixies are called only with their team.
+ * The pixies a project chat can call on their own (B46): those in no team it can call,
+ * since a team's pixies are called only with their team.
  */
-export function soloPixies(state: State, repo: string): Pixie[] {
-  const teams = new Set(availableTeams(state, repo).map(({ team }) => team.id));
-  return availablePixies(state, repo).filter((p) => p.team_id === null || !teams.has(p.team_id));
+export function soloPixies(state: State): Pixie[] {
+  const teams = new Set(availableTeams(state).map(({ team }) => team.id));
+  return availablePixies(state).filter((p) => p.team_id === null || !teams.has(p.team_id));
 }
 
 // A whole @ token, as the daemon finds pixie slugs.
 const MENTION = /(?<=^|\s)@[a-z0-9-]+(?![\w-])/g;
 
 /**
- * Why `text` cannot be sent from a project chat in `repo`: it calls a pixie of a team the
- * chat can call on its own, as the daemon refuses it (B46); null when it can be sent.
+ * Why `text` cannot be sent from a project chat: it calls a pixie of a team the chat can
+ * call on its own, as the daemon refuses it (B46); null when it can be sent.
  */
-export function memberCall(state: State, repo: string, text: string): string | null {
+export function memberCall(state: State, text: string): string | null {
   const members = new Map(
-    availableTeams(state, repo).flatMap(({ team, members }) =>
+    availableTeams(state).flatMap(({ team, members }) =>
       members.map((p) => [p.slug, `${p.name} is in @${team.handle}; call the team or a solo copy`]),
     ),
   );

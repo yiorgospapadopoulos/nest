@@ -32,13 +32,11 @@ interface Props {
   // Where a page's back button goes: the list, or the Projects tab it was opened from.
   back: string;
   onBack: () => void;
-  // The project open on the Projects tab, for a new pixie's projects (D104).
-  project: string | null;
   onOpenPixie: (id: string, tab: PixieTab) => void;
 }
 
 /** The Settings tab (B81): the categories and the projects, each opening its page. */
-export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: Props) {
+export function Settings({ page, onPage, back, onBack, onOpenPixie }: Props) {
   const { state, actions } = useStore();
 
   useEffect(() => {
@@ -109,7 +107,7 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     appearance: () => <AppearancePage />,
     notifications: () => <NotificationsPage />,
     agents: () => <AgentsPage />,
-    pixies: () => <PixiesPage project={project} onOpenPixie={onOpenPixie} />,
+    pixies: () => <PixiesPage onOpenPixie={onOpenPixie} />,
     accounts: () => <AccountsPage />,
     extensions: () => <ExtensionsPage />,
     devices: () => <DevicesPage />,

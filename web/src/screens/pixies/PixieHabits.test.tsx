@@ -93,12 +93,20 @@ describe("Pixie habits page (B42)", () => {
   it("creates a habit from the editor, with a schedule and a trigger", async () => {
     const api = fakeApi();
     const { user } = await openHabits(api);
-    await user.click(await within(sheet("Habits")).findByRole("button", { name: "New habit" }));
+    const add = await within(sheet("Habits")).findByRole("button", { name: "New habit" });
+    // At the full right of its row, with no heading repeating the sheet's title (B85).
+    expect(add.parentElement).toHaveClass("pxhrow");
+    expect(add.parentElement?.children).toHaveLength(1);
+    expect(within(sheet("Habits")).getAllByRole("heading", { name: "Habits" })).toHaveLength(1);
+    expect(add).toHaveTextContent("New");
+    await user.click(add);
 
     const editor = sheet("New habit");
     const save = within(editor).getByRole("button", { name: "Save" });
-    // Nothing to save without a name, a prompt, and a schedule or a trigger.
+    // Nothing to save without a name, a prompt, and a schedule or a trigger; an empty name
+    // only leaves Save off, with no message.
     expect(save).toBeDisabled();
+    expect(within(editor).queryByText(/name the habit/i)).not.toBeInTheDocument();
     await user.type(within(editor).getByLabelText("Name"), "Hourly sweep");
     await user.type(within(editor).getByLabelText("What to check"), "Look for stuck chats");
     expect(save).toBeDisabled();
@@ -123,6 +131,9 @@ describe("Pixie habits page (B42)", () => {
       );
     }
     await user.click(within(editor).getByRole("checkbox", { name: "When a chat fails" }));
+    // A pixie works in every project, so no note limits its triggers (B85).
+    expect(within(editor).queryByText("Choose a schedule or a trigger.")).not.toBeInTheDocument();
+    expect(within(editor).queryByText(/projects/)).not.toBeInTheDocument();
     const limit = within(editor).getByLabelText("Longest run, in minutes");
     await user.clear(limit);
     await user.type(limit, "30");

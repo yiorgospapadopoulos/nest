@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { Autonomy, PixieDefaults, ProjectAccess, ReportSeverity } from "../../api/types.ts";
+import type { Autonomy, PixieDefaults, ProjectAccess } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { pixieList } from "../../store/selectors.ts";
-import { AUTONOMY, PROJECT_ACCESS, REPORT_PUSH } from "../pixies/options.ts";
+import { AUTONOMY, PROJECT_ACCESS } from "../pixies/options.ts";
 import type { PixieTab } from "../pixies/PixieView.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { CLAUDE_DEFAULT } from "../chat/options.ts";
@@ -20,18 +20,16 @@ const pick = <T extends string>(choices: Record<T, { label: string }>): Choice<T
   }));
 
 interface Props {
-  // The project open, for a new pixie whose defaults say "current".
-  project: string | null;
   onOpenPixie: (id: string, tab: PixieTab) => void;
 }
 
-/** Your pixies, then what new ones start with, the habits and the reports (B81). */
-export function PixiesPage({ project, onOpenPixie }: Props) {
+/** Your pixies, then what new ones start with and the habits (B81). */
+export function PixiesPage({ onOpenPixie }: Props) {
   const { state } = useStore();
   const settings = state.settings.pixies;
   return (
     <>
-      <PixieList project={project} onOpenPixie={onOpenPixie} />
+      <PixieList onOpenPixie={onOpenPixie} />
       {settings === null ? (
         <Loading title="New pixies start with" />
       ) : (
@@ -41,13 +39,13 @@ export function PixiesPage({ project, onOpenPixie }: Props) {
   );
 }
 
-function PixieList({ project, onOpenPixie }: Props) {
+function PixieList({ onOpenPixie }: Props) {
   const { state, actions } = useStore();
   const [showHidden, setShowHidden] = useState(false);
   const pixies = pixieList(state, showHidden);
   const hidden = pixieList(state, true).length - pixieList(state).length;
   const create = async () => {
-    const created = await actions.createPixie({ name: "New pixie" }, project);
+    const created = await actions.createPixie({ name: "New pixie" });
     if (created !== null) onOpenPixie(created.id, "details");
   };
   return (
@@ -135,17 +133,6 @@ function Defaults({ settings }: { settings: PixieDefaults }) {
             save({ project_access });
           }}
         />
-        <SelectRow<PixieDefaults["projects"]>
-          label="Projects"
-          value={settings.projects}
-          choices={[
-            { value: "all", label: "All projects" },
-            { value: "current", label: "Only the current one" },
-          ]}
-          onChange={(projects) => {
-            save({ projects });
-          }}
-        />
         <SelectRow
           label="Chats running at once"
           value={settings.max_running}
@@ -186,16 +173,6 @@ function Defaults({ settings }: { settings: PixieDefaults }) {
           }))}
           onChange={(habit_usage_percent) => {
             save({ habit_usage_percent });
-          }}
-        />
-      </Section>
-      <Section title="Reports">
-        <SelectRow<ReportSeverity>
-          label="Send to the phone from"
-          value={settings.report_push}
-          choices={pick(REPORT_PUSH)}
-          onChange={(report_push) => {
-            save({ report_push });
           }}
         />
       </Section>

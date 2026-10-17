@@ -36,12 +36,14 @@ function expectReadablePrimaries() {
 }
 
 describe("primary buttons of pixie habits and reports (B42)", () => {
-  it("keep the accent pair on the Habits page", async () => {
+  // New habit sits in the Habits heading row as a plain button since B85; the new fact's
+  // Save is the pixie pages' primary button.
+  it("keep the accent pair on the Memory page", async () => {
     const { user } = await openPixie(fakeApi(), pixie(), "Details");
-    await user.click(screen.getByRole("button", { name: /^Habits/ }));
-    await within(screen.getByRole("dialog", { name: "Habits" })).findByRole("button", {
-      name: "New habit",
-    });
+    await user.click(screen.getByRole("button", { name: /^Memory/ }));
+    const page = screen.getByRole("dialog", { name: "Memory" });
+    await user.click(await within(page).findByRole("button", { name: "Add fact" }));
+    expect(within(page).getByRole("button", { name: "Save" })).toHaveClass("b-pri");
     expectReadablePrimaries();
   });
 

@@ -29,6 +29,7 @@ import type {
   Pixie,
   PixieActivity,
   PixieSearchHit,
+  PixieSkill,
   PixieTeam,
   RepoConfig,
   ResolveBody,
@@ -406,19 +407,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
     loadPixies,
     loadGoals,
-    /**
-     * `project`: the project open, which a new pixie gets as its only project when the
-     * defaults say "current" (D104); the daemon fills in the other defaults.
-     */
-    async createPixie(body: CreatePixieBody, project: string | null = null): Promise<Pixie | null> {
-      let sent = body;
-      if (project !== null && body.projects === undefined) {
-        const defaults = await quietly(() => api.pixieDefaults());
-        if (defaults?.projects === "current") sent = { ...body, projects: [project] };
-      }
-      const created = await attempt(() => api.createPixie(sent));
+    /** The daemon fills in the defaults the body leaves out (D104). */
+    async createPixie(body: CreatePixieBody): Promise<Pixie | null> {
+      const created = await attempt(() => api.createPixie(body));
       if (created !== null) dispatch({ type: "pixie", pixie: created });
       return created;
+    },
+    /** Every skill a pixie may be given (B85); null, after a toast, when it cannot load. */
+    pixieSkills(): Promise<PixieSkill[] | null> {
+      return attempt(() => api.pixieSkills());
     },
     async updatePixie(id: string, body: UpdatePixieBody): Promise<boolean> {
       const updated = await inTurn(`pixie:${id}`, () => attempt(() => api.updatePixie(id, body)));

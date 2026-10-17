@@ -1,10 +1,4 @@
-import type {
-  Autonomy,
-  Mascot,
-  PixieBackground,
-  ProjectAccess,
-  ReportSeverity,
-} from "../../api/types.ts";
+import type { Autonomy, Mascot, ProjectAccess } from "../../api/types.ts";
 import type { Option } from "../chat/options.ts";
 
 export const MASCOTS: readonly Mascot[] = [
@@ -20,41 +14,26 @@ export const MASCOTS: readonly Mascot[] = [
   "sprout",
 ];
 
-export const BACKGROUNDS: Record<PixieBackground, string> = {
-  plain: "Plain",
-  meadow: "Meadow",
-  dusk: "Dusk",
-  night: "Night",
-  dawn: "Dawn",
-};
-
 interface Choice {
   label: string;
   hint: string;
 }
 
 export const PROJECT_ACCESS: Record<ProjectAccess, Choice> = {
-  edit: { label: "Edit", hint: "Reads and edits its projects like any chat" },
-  read: { label: "Read only", hint: "Reads its projects, writes only in its own folder" },
+  edit: { label: "Edit", hint: "Reads and edits your projects like any chat" },
+  read: { label: "Read only", hint: "Reads your projects, writes only in its own folder" },
   none: { label: "None", hint: "Works only in its own folder" },
 };
 
 // What each level lets the pixie do with Nest tools in its chat runs (B41).
 export const AUTONOMY: Record<Autonomy, Choice> = {
-  observe: { label: "Observe", hint: "Reads chats in its projects" },
+  observe: { label: "Observe", hint: "Reads chats in your projects" },
   message: { label: "Message", hint: "Also writes to them, nudges or stops them" },
   start: { label: "Start", hint: "Also starts chats in their own worktree" },
   answer: {
     label: "Answer",
     hint: "Also answers approvals, questions and plans in chats it started",
   },
-};
-
-// The least severe report that reaches the phone (B42).
-export const REPORT_PUSH: Record<ReportSeverity, Choice> = {
-  action: { label: "Needs action", hint: "Only reports that need you" },
-  warn: { label: "Warnings and up", hint: "Also warnings" },
-  info: { label: "Everything", hint: "Every report" },
 };
 
 /** "1 report needs action", "3 reports need action". */

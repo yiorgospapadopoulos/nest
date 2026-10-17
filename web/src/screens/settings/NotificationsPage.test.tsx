@@ -177,6 +177,32 @@ describe("notification rules", () => {
     );
   });
 
+  it("sets the one report level for every pixie under Pixie reports (B85)", async () => {
+    installBrowserPush();
+    const api = fakeApi();
+    const { user } = await openAccount(api);
+
+    const level = await screen.findByLabelText<HTMLSelectElement>("Send to the phone from");
+    // Right under the Pixie reports switch.
+    expect(toggle("Pixie reports").closest(".srow")?.nextElementSibling).toContainElement(level);
+    // The Mac's short labels, which fit a phone's width.
+    expect([...level.options].map((o) => [o.value, o.textContent])).toEqual([
+      ["info", "Info"],
+      ["warn", "Warnings"],
+      ["action", "Action"],
+    ]);
+    expect(level).toHaveValue("action");
+    await user.selectOptions(level, "info");
+    expect(api.saveNotificationSettings).toHaveBeenLastCalledWith(
+      notificationSettings({ pixie_report_level: "info" }),
+    );
+    expect(level).toHaveValue("info");
+
+    // Off while pixie reports are off.
+    await user.click(toggle("Pixie reports"));
+    expect(level).toBeDisabled();
+  });
+
   it("puts a refused change back", async () => {
     installBrowserPush();
     const api = fakeApi();
