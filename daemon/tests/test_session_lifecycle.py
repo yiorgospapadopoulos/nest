@@ -206,7 +206,7 @@ async def test_long_prompts_get_a_short_title(env: Env) -> None:
 
     created = await env.create(prompt="  " + "word " * 40)
 
-    assert created.title == "Word" + " word" * 8
+    assert created.title == "Word" + " word" * 5
 
 
 async def test_in_place_session_uses_the_checkout(env: Env) -> None:
