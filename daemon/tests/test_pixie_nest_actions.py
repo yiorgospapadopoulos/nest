@@ -179,12 +179,12 @@ async def test_start_session_starts_a_reviewed_chat_in_its_own_worktree(
 async def test_start_session_checks_project_mode_and_arguments(
     ctx: AppContext, provider: FakeProvider
 ) -> None:
-    boss = await make_boss(ctx, provider, autonomy="start", projects=["web", "notes"])
+    boss = await make_boss(ctx, provider, autonomy="start")
     folder = ctx.paths.data_dir.parent / "notes"
     folder.mkdir()
     await ctx.repos.register(folder)
 
-    outside = await boss.refused("start_session", project="api", prompt="go")
+    unknown = await boss.refused("start_session", project="missing", prompt="go")
     looser = await boss.refused(
         "start_session", project="web", prompt="go", permission_mode="acceptEdits"
     )
@@ -195,7 +195,7 @@ async def test_start_session_checks_project_mode_and_arguments(
     no_prompt = await boss.refused("start_session", project="web", prompt=" ")
     bad_effort = await boss.refused("start_session", project="web", prompt="go", effort="lots")
 
-    assert outside == "api is not one of your projects."
+    assert unknown == "unknown repo 'missing'"
     assert looser == (
         "acceptEdits is looser than your own permission mode (default); a chat you start can"
         " use plan or default."

@@ -30,22 +30,12 @@ async def test_extras_for_a_pixie_chat(tmp_path: Path, db: Database, clock: Fake
     paths.ensure()
     repos = RepoService(paths)
     web = await repos.register(init_repo(tmp_path / "web"))
-    await repos.register(init_repo(tmp_path / "api"))
+    api = await repos.register(init_repo(tmp_path / "api"))
     store = PixieStore(db, clock)
     files = PixieFiles(paths.pixies_dir)
-    reader = await store.create(
-        PixieSettings(name="Reader", project_access="read", projects=["web"]), "reader"
-    )
+    reader = await store.create(PixieSettings(name="Reader", project_access="read"), "reader")
     blind = await store.create(PixieSettings(name="Blind", project_access="none"), "blind")
-    editor = await store.create(
-        PixieSettings(
-            name="Editor",
-            skills=["review"],
-            allowed_tools=["Bash(npm test:*)"],
-            disallowed_tools=["WebFetch"],
-        ),
-        "editor",
-    )
+    editor = await store.create(PixieSettings(name="Editor", skills=["review"]), "editor")
     for pixie in (reader, blind, editor):
         files.create(pixie.id, "You help.")
     sessions = SessionStore(db, clock)
@@ -76,15 +66,14 @@ async def test_extras_for_a_pixie_chat(tmp_path: Path, db: Database, clock: Fake
     blind_extras = await runtime.extras(await sessions.create(chat(blind.id)))
     edit_extras = await runtime.extras(await sessions.create(chat(editor.id)))
 
-    assert read_extras.extra_dirs == (web.path,)
+    # Every pixie works in every project (D109); without project files it gets none.
+    assert read_extras.extra_dirs == (api.path, web.path)
     assert blind_extras.extra_dirs == ()
-    assert len(edit_extras.extra_dirs) == 2
+    assert edit_extras.extra_dirs == (api.path, web.path)
     assert read_extras.write_root == files.workdir(reader.id)
     assert blind_extras.write_root == files.workdir(blind.id)
     assert edit_extras.write_root is None
     assert edit_extras.skills == ("review",)
-    assert edit_extras.allowed_tools == ("Bash(npm test:*)",)
-    assert edit_extras.disallowed_tools == ("WebFetch",)
     assert read_extras.skills == ()
     assert tuple(t.name for t in read_extras.tools) == (*TOOL_NAMES, "list_sessions")
     assert asked[0] == (reader.id, reader_chat.id)

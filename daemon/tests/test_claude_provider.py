@@ -181,14 +181,12 @@ async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) 
     """B58: Claude commits when asked, and pushes or opens a pull request when the user
     says so, with the user's own git and gh login: no git block and no credential changes.
     """
-    spec = SessionSpec(
-        cwd=tmp_path, permission_mode="default", disallowed_tools=("WebFetch",), guard_git=False
-    )
+    spec = SessionSpec(cwd=tmp_path, permission_mode="default", guard_git=False)
 
     _, client = await Opened(tmp_path).open(spec)
 
     options = client.options
-    assert options.disallowed_tools == ["WebFetch"]
+    assert options.disallowed_tools == []
     assert options.hooks is not None
     assert [m.matcher for m in options.hooks["PreToolUse"]] == ["AskUserQuestion"]
     assert all(block_git_writes not in m.hooks for m in options.hooks["PreToolUse"])
@@ -952,8 +950,6 @@ async def test_tools_and_the_write_root_reach_the_options(tmp_path: Path) -> Non
         tools=(tool,),
         write_root=tmp_path / "w",
         skills=("review",),
-        allowed_tools=("Bash(npm test:*)",),
-        disallowed_tools=("WebFetch",),
     )
 
     _, client = await Opened(tmp_path).open(spec)
@@ -971,8 +967,7 @@ async def test_tools_and_the_write_root_reach_the_options(tmp_path: Path) -> Non
         "Edit|Write|MultiEdit|NotebookEdit",
     ]
     assert client.options.skills == ["review"]
-    assert client.options.allowed_tools == ["Bash(npm test:*)"]
-    assert client.options.disallowed_tools == [*GIT_WRITE_RULES, "WebFetch"]
+    assert client.options.disallowed_tools == list(GIT_WRITE_RULES)
 
 
 async def test_no_tools_means_no_tool_server(tmp_path: Path) -> None:

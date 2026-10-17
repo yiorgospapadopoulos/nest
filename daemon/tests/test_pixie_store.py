@@ -1,6 +1,7 @@
 import sqlite3
 
 import pytest
+from pydantic import ValidationError
 
 from nestd.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotFoundError
 from nestd.pixies.models import PixieSettings
@@ -12,7 +13,7 @@ from tests.fakes import FakeClock
 
 async def test_create_list_update_and_delete(db: Database, clock: FakeClock) -> None:
     store = PixieStore(db, clock)
-    first = await store.create(PixieSettings(name="Tester", projects=["repo"]), "tester")
+    first = await store.create(PixieSettings(name="Tester", can_call=["x"]), "tester")
     second = await store.create(PixieSettings(name="Reviewer", skills=["review"]), "reviewer")
 
     renamed = await store.update(first.id, name="QA", hidden=True)
@@ -23,9 +24,8 @@ async def test_create_list_update_and_delete(db: Database, clock: FakeClock) -> 
     assert first.mascot == "invader"
     assert first.autonomy == "observe"
     assert first.project_access == "edit"
-    assert first.allowed_tools == []
-    assert first.projects == ["repo"]
-    assert second.projects is None
+    assert first.can_call == ["x"]
+    assert first.skills == []
     assert second.skills == ["review"]
     assert renamed.name == "QA"
     assert renamed.hidden is True
@@ -154,7 +154,7 @@ async def test_limits_default_and_change(db: Database, clock: FakeClock) -> None
     assert (changed.max_running, changed.max_per_day) == (4, 12)
 
 
-async def test_report_push_and_unread_action_reports(db: Database, clock: FakeClock) -> None:
+async def test_unread_action_reports(db: Database, clock: FakeClock) -> None:
     store = PixieStore(db, clock)
     reports = ReportStore(db, clock)
     pixie = await store.create(PixieSettings(name="Boss"), "boss")
@@ -165,11 +165,27 @@ async def test_report_push_and_unread_action_reports(db: Database, clock: FakeCl
     read = await reports.add(pixie.id, "action", "Seen", "", None)
     await reports.mark_read(read.id)
 
-    changed = await store.update(pixie.id, report_push="warn")
+    changed = await store.update(pixie.id, name="Chief")
     counted = {p.slug: p.unread_action_reports for p in await store.list_pixies()}
 
-    assert pixie.report_push == "action"
     assert pixie.unread_action_reports == 0
-    assert changed.report_push == "warn"
     assert changed.unread_action_reports == 2
     assert counted == {"boss": 2, "other": 1}
+
+
+async def test_the_columns_removed_in_b85_are_gone(db: Database) -> None:
+    """Every pixie works in every project, with no backdrop, report level or tool rules of
+    its own (D109).
+    """
+    rows = await db.fetch_all("SELECT name FROM pragma_table_info('pixies')")
+    columns = {row["name"] for row in rows}
+
+    assert columns.isdisjoint(
+        {"projects", "background", "report_push", "allowed_tools", "disallowed_tools"}
+    )
+    assert {"skills", "can_call", "project_access", "hidden"} <= columns
+
+
+def test_settings_that_are_no_object_are_refused() -> None:
+    with pytest.raises(ValidationError):
+        PixieSettings.model_validate("Tester")

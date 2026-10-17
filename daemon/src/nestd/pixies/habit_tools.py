@@ -44,7 +44,7 @@ SCHEDULE: dict[str, JsonValue] = {
 TRIGGER_LIST: dict[str, JsonValue] = {
     "type": "array",
     "items": {"type": "string", "enum": list(TRIGGERS)},
-    "description": "Events on chats in your projects that run it: a chat looks stuck,"
+    "description": "Events on chats in any project that run it: a chat looks stuck,"
     " failed, is ready for review, or its pull request's checks failed. Events are"
     " batched; it runs at most once in 5 minutes.",
 }
