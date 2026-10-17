@@ -85,10 +85,12 @@ struct NestCommands: Commands {
                 .shortcut(.toggleSidebar, shell)
             Button("Toggle Activity Panel") { shell?.update { $0.rightCollapsed.toggle() } }
                 .shortcut(.toggleActivity, shell)
-            Button("Workspace") { shell?.update { $0.view = .workspace } }
+            Button("Workspace") { shell?.showView(.workspace) }
                 .shortcut(.workspace, shell)
-            Button("Board") { shell?.update { $0.view = .board } }
+            Button("Board") { shell?.showView(.board) }
                 .shortcut(.board, shell)
+            Button("Artifacts") { shell?.showView(.artifacts) }
+                .shortcut(.artifacts, shell)
             Divider()
         }
         CommandMenu("Projects") {

@@ -292,7 +292,8 @@ describe("connectors", () => {
     );
     expect(within(local).getByText("spawn ENOENT")).toBeInTheDocument();
     expect(within(local).getByText("disabled")).toBeInTheDocument();
-    expect(within(local).getByText("Connecting")).toBeInTheDocument();
+    // Connecting is a loading state: fireflies in the pill (B80).
+    expect(within(local).getByText("Connecting").previousElementSibling).toHaveClass("ff");
 
     await user.click(aiToggle);
     expect(aiToggle).toHaveAttribute("aria-expanded", "false");

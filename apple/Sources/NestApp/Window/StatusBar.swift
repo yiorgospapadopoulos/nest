@@ -17,18 +17,19 @@ enum Ink {
 
 /// The bar along the bottom of the window (MonoCode's footer): 28 points, no fill of its
 /// own, a 1 point line on top. On the left, Settings (as Cmd-comma). Where a project is
-/// open, the Workspace / Board switch sits in the middle (with Restore while a pane is
-/// maximized), and on the right the Terminal button opens a terminal where the focused
-/// chat works, else the project's terminal pane, or a new one in the project folder,
-/// followed by the activity panel's toggle, under the panel (B73). MonoCode shows a
-/// running command's chip there instead; the terminal panes do not report their
-/// foreground process, so it is left out.
+/// open, the Workspace / Board / Artifacts switch sits in the middle (B79; the Pixies tab
+/// has Workspace / Artifacts), and on the right the Terminal button opens a terminal where
+/// the focused chat works, else the project's terminal pane, or a new one in the project
+/// folder, followed by the activity panel's toggle, under the panel (B73). MonoCode shows
+/// a running command's chip there instead; the terminal panes do not report their
+/// foreground process, so it is left out. A maximized pane is restored from its header.
 struct StatusBar: View {
     static let height = 28.0
 
     @Environment(Shell.self) private var shell
 
     private var inProject: Bool { shell.project != nil && !shell.pixiesOpen }
+    private var hasViews: Bool { inProject || shell.pixiesOpen && !shell.pixies.pixies.isEmpty }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -69,8 +70,11 @@ struct StatusBar: View {
             }
         }
         .overlay {
-            if inProject {
-                ViewControls()
+            if hasViews {
+                ViewSwitch(
+                    views: ProjectView.choices(pixies: shell.pixiesOpen),
+                    view: shell.workspaceState.view, unseen: shell.artifacts.unseen
+                ) { shell.showView($0) }
             }
         }
         .font(.ui(11))
@@ -84,49 +88,53 @@ struct StatusBar: View {
     }
 }
 
-/// The middle of the footer: Workspace or Board, and Restore while a workspace pane is
-/// maximized.
-private struct ViewControls: View {
-    @Environment(Shell.self) private var shell
+/// The middle of the footer: the views as footer buttons; the selected one stays at full
+/// strength over the accent's selection fill. Artifacts carries the count of artifacts
+/// not opened yet, hidden at 0.
+private struct ViewSwitch: View {
+    let views: [ProjectView]
+    let view: ProjectView
+    let unseen: Int
+    let select: (ProjectView) -> Void
 
     var body: some View {
-        let state = shell.projectState
-        HStack(spacing: 6) {
-            ViewSwitch(view: state.view) { view in shell.update { $0.view = view } }
-            if state.layout.maximized != nil && state.view == .workspace {
+        HStack(spacing: 2) {
+            ForEach(views, id: \.self) { value in
+                let selected = view == value
                 Button {
-                    shell.update { $0.layout.restore() }
+                    select(value)
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: Icon.restore).font(.system(size: 11))
-                        Text("Restore")
+                    HStack(spacing: 5) {
+                        Text(value.title)
+                        if value == .artifacts, let badge = ArtifactText.badge(unseen) {
+                            UnseenBadge(text: badge)
+                        }
                     }
+                    .fixedSize()
                 }
-                .buttonStyle(FooterButtonStyle())
-                .help("Restore the maximized pane")
+                .buttonStyle(FooterButtonStyle(selected: selected, accentFill: true))
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityValue(
+                    value == .artifacts && unseen > 0 ? "\(unseen) not opened" : "")
             }
         }
     }
 }
 
-/// Workspace or Board, as footer buttons; the selected one stays at full strength over
-/// the accent's selection fill.
-private struct ViewSwitch: View {
-    let view: ProjectView
-    let select: (ProjectView) -> Void
+/// A small count in the accent, such as the Artifacts view's unopened ones.
+struct UnseenBadge: View {
+    let text: String
+    @Environment(\.accentColors) private var accent
 
     var body: some View {
-        HStack(spacing: 2) {
-            segment(.workspace, "Workspace")
-            segment(.board, "Board")
-        }
-    }
-
-    private func segment(_ value: ProjectView, _ title: String) -> some View {
-        let selected = view == value
-        return Button(title) { select(value) }
-            .buttonStyle(FooterButtonStyle(selected: selected, accentFill: true))
-            .accessibilityAddTraits(selected ? .isSelected : [])
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .monospacedDigit()
+            .foregroundStyle(accent.onAccent)
+            .padding(.horizontal, 4)
+            .frame(minWidth: 14, minHeight: 14)
+            .background(accent.accent, in: Capsule())
+            .accessibilityHidden(true)
     }
 }
 

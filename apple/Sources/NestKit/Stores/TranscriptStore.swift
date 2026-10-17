@@ -57,7 +57,8 @@ public struct CallStep: Sendable, Hashable, Identifiable {
     }
 
     private static func line(tool: String, input: JSONValue) -> String {
-        [tool, ToolSummary.argument(tool: tool, input: input)].filter { !$0.isEmpty }
+        [ToolSummary.name(of: tool), ToolSummary.argument(tool: tool, input: input)]
+            .filter { !$0.isEmpty }
             .joined(separator: " ")
     }
 }
@@ -124,6 +125,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         case limitResume(String)
         /// A hook's message, output or failure, as a muted line (B59).
         case hook(HookRun)
+        /// An artifact the chat saved, as a card that opens it (B79).
+        case artifact(ArtifactCard)
     }
 
     public let id: String
@@ -303,6 +306,9 @@ public final class TranscriptStore {
             // nothing to read (B56).
             case .approval(_, .review, let status, _, _):
                 status != .pending && status != .superseded
+            // A saved artifact's card says it; a failed save stays as its call (B79).
+            case .tool(let call) where ArtifactTools.contains(call.name):
+                call.result == nil || call.isError
             default: true
             }
         }
@@ -570,6 +576,8 @@ public final class TranscriptStore {
             append(key, .notice(text), eventID)
         case .pixieCard(let card):
             append(key, .pixieCard(card), eventID)
+        case .sessionArtifact(let card):
+            append(key, .artifact(card), eventID)
         case .rewound(let rewind):
             drop(rewind)
         default:

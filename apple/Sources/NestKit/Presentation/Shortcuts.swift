@@ -110,7 +110,7 @@ public enum ShortcutGroup: String, Sendable, CaseIterable {
 
 /// Every command with a keyboard shortcut; the defaults are the app's own (B81).
 public enum ShortcutAction: String, Sendable, CaseIterable {
-    case settings, palette, toggleSidebar, toggleActivity, workspace, board
+    case settings, palette, toggleSidebar, toggleActivity, workspace, board, artifacts
     case newChat, sendMessage, closePane, newTerminal, newBrowser, openInVSCode
     case previousProject, nextProject, project, pixies
 
@@ -122,6 +122,7 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
         case .toggleActivity: "Toggle activity panel"
         case .workspace: "Workspace"
         case .board: "Board"
+        case .artifacts: "Artifacts"
         case .newChat: "New chat"
         case .sendMessage: "Send message"
         case .closePane: "Close pane"
@@ -137,7 +138,9 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
 
     public var group: ShortcutGroup {
         switch self {
-        case .settings, .palette, .toggleSidebar, .toggleActivity, .workspace, .board: .window
+        case .settings, .palette, .toggleSidebar, .toggleActivity, .workspace, .board,
+            .artifacts:
+            .window
         case .newChat, .sendMessage, .closePane, .newTerminal, .newBrowser, .openInVSCode:
             .chats
         case .previousProject, .nextProject, .project, .pixies: .projects
@@ -152,6 +155,7 @@ public enum ShortcutAction: String, Sendable, CaseIterable {
         case .toggleActivity: Shortcut("a", [.command, .control])
         case .workspace: Shortcut("1", [.command, .option])
         case .board: Shortcut("2", [.command, .option])
+        case .artifacts: Shortcut("3", [.command, .option])
         case .newChat: Shortcut("n")
         case .sendMessage: Shortcut("return")
         case .closePane: Shortcut("w")

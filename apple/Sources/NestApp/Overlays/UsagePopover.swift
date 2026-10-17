@@ -79,8 +79,7 @@ private struct RefreshControl: View {
                     Text("Refresh")
                 } icon: {
                     if usage.isRefreshing {
-                        ProgressView().controlSize(.small).scaleEffect(0.6).frame(
-                            width: 12, height: 12)
+                        Fireflies(height: 9)
                     } else {
                         Image(systemName: Icon.refresh)
                     }

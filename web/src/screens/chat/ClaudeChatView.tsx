@@ -15,7 +15,10 @@ interface Props {
 }
 
 const isMessage = (item: TranscriptItem): item is MessageEntry =>
-  item.kind !== "approval" && item.kind !== "pixie" && item.kind !== "card";
+  item.kind !== "approval" &&
+  item.kind !== "pixie" &&
+  item.kind !== "card" &&
+  item.kind !== "artifact";
 
 /** A Claude Code chat's history, read only, until the user continues it in Nest. */
 export function ClaudeChatView({ id, onBack, onOpen }: Props) {
@@ -53,7 +56,7 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
       title={chat.title}
       status={
         open
-          ? { tone: "run", label: "Open in Claude Code" }
+          ? { tone: "run", label: "Open in Claude Code", plain: true }
           : { tone: "idle", label: "Claude Code chat" }
       }
       back={chat.repo}

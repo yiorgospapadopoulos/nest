@@ -95,3 +95,65 @@ enum Fixture {
         String(decoding: try! NestJSON.encoder.encode(value), as: UTF8.self)
     }
 }
+
+// MARK: Artifacts (B79)
+
+extension Fixture {
+    /// An artifact as the daemon lists it.
+    static func artifactJSON(
+        id: String = "a1", title: String = "Options compared", kind: String = "markdown",
+        repo: String = "cv-page", session: String? = "s1", chatTitle: String? = "Pick a queue",
+        chatDeleted: Bool = false, pixie: String? = nil, pixieName: String? = nil,
+        updated: String = "2026-10-17T09:42:10+00:00", latest: Int = 3, seen: Bool = false
+    ) -> String {
+        func text(_ value: String?) -> String { value.map { "\"\($0)\"" } ?? "null" }
+        return """
+            {"id": "\(id)", "title": "\(title)", "kind": "\(kind)", "repo": "\(repo)",
+             "session_id": \(text(session)), "chat_title": \(text(chatTitle)),
+             "chat_deleted": \(chatDeleted), "pixie_id": \(text(pixie)),
+             "pixie_name": \(text(pixieName)), "created_at": "2026-10-17T09:30:00+00:00",
+             "updated_at": "\(updated)", "latest_version": \(latest),
+             "version_count": \(latest), "seen": \(seen)}
+            """
+    }
+
+    static func artifact(
+        id: String = "a1", title: String = "Options compared", kind: String = "markdown",
+        repo: String = "cv-page", session: String? = "s1", chatTitle: String? = "Pick a queue",
+        chatDeleted: Bool = false, pixie: String? = nil, pixieName: String? = nil,
+        updated: String = "2026-10-17T09:42:10+00:00", latest: Int = 3, seen: Bool = false
+    ) -> Artifact {
+        decode(
+            Artifact.self,
+            json: artifactJSON(
+                id: id, title: title, kind: kind, repo: repo, session: session,
+                chatTitle: chatTitle, chatDeleted: chatDeleted, pixie: pixie,
+                pixieName: pixieName, updated: updated, latest: latest, seen: seen))
+    }
+
+    /// The artifact with one version entry per version.
+    static func detail(_ artifact: Artifact) -> ArtifactDetail {
+        let versions = (1...artifact.latestVersion).map { version in
+            """
+            {"version": \(version), "title": "\(artifact.title)", "size": 10,
+             "created_at": "2026-10-17T09:30:00+00:00"}
+            """
+        }
+        let json = artifactJSON(
+            id: artifact.id, title: artifact.title, kind: artifact.kind.rawValue,
+            repo: artifact.repo, session: artifact.sessionID, chatTitle: artifact.chatTitle,
+            chatDeleted: artifact.chatDeleted, pixie: artifact.pixieID,
+            pixieName: artifact.pixieName, latest: artifact.latestVersion, seen: artifact.seen)
+        return decode(
+            ArtifactDetail.self,
+            json: String(json.dropLast())
+                + #", "versions": [\#(versions.joined(separator: ","))]}"#)
+    }
+
+    static func content(_ id: String, _ version: Int, _ text: String = "# Hello") -> ArtifactContent
+    {
+        ArtifactContent(
+            artifactID: id, version: version, kind: .markdown, title: "Options", content: text,
+            createdAt: date("2026-10-17T09:30:00Z"))
+    }
+}

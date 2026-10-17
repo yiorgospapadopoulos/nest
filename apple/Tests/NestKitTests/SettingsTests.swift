@@ -316,6 +316,12 @@ import Testing
         #expect(ShortcutGroup.allCases.flatMap(\.actions).count == ShortcutAction.allCases.count)
         #expect(ShortcutAction.newTerminal.defaultShortcut.display == "⇧⌘T")
     }
+
+    @Test func theArtifactsViewIsAWindowShortcutNextToBoard() {
+        #expect(ShortcutAction.artifacts.title == "Artifacts")
+        #expect(ShortcutAction.artifacts.group == .window)
+        #expect(ShortcutAction.artifacts.defaultShortcut.display == "⌥⌘3")
+    }
 }
 
 @MainActor
@@ -618,11 +624,15 @@ import Testing
         let name = Fixture.repos[0].name
         api.set {
             $0.branches[name] = ["main", "dev"]
-            $0.artifactCounts[name] = 4
+            // B79's list, counted for this project only.
+            $0.artifacts = [
+                Fixture.artifact(id: "a1", repo: name), Fixture.artifact(id: "a2", repo: name),
+                Fixture.artifact(id: "a3", repo: "elsewhere"),
+            ]
         }
         #expect(try await app.branches(of: name) == ["main", "dev"])
-        #expect(await app.artifactCount(of: name) == 4)
-        api.fail("artifactCount", with: APIError.notFound("Not Found"))
+        #expect(await app.artifactCount(of: name) == 2)
+        api.fail("artifacts", with: APIError.notFound("Not Found"))
         #expect(await app.artifactCount(of: name) == nil)
         try await app.changeRepo(name, RepoPatch(defaultBranch: "dev"))
         #expect(app.repo(name)?.defaultBranch == "dev")

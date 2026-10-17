@@ -2,6 +2,9 @@ import type {
   AccountInfo,
   AgentDefaults,
   Approval,
+  Artifact,
+  ArtifactContent,
+  ArtifactDetail,
   CallEntry,
   CallWork,
   GroupEntry,
@@ -655,6 +658,53 @@ export function storedAttachment(overrides: Partial<StoredAttachment> = {}): Sto
     media_type: "image/png",
     session_id: "s1",
     session_title: "Validate contact form",
+    created_at: NOW,
+    ...overrides,
+  };
+}
+
+export function artifact(overrides: Partial<Artifact> = {}): Artifact {
+  return {
+    id: "a1",
+    title: "Options compared",
+    kind: "markdown",
+    repo: "cv-page",
+    session_id: "s1",
+    chat_title: "Validate contact form",
+    chat_deleted: false,
+    pixie_id: null,
+    pixie_name: null,
+    created_at: NOW,
+    updated_at: NOW,
+    latest_version: 1,
+    version_count: 1,
+    seen: false,
+    ...overrides,
+  };
+}
+
+/** The artifact with a version for each of its `latest_version`. */
+export function artifactDetail(overrides: Partial<Artifact> = {}): ArtifactDetail {
+  const found = artifact(overrides);
+  return {
+    ...found,
+    versions: Array.from({ length: found.latest_version }, (_, i) => ({
+      version: i + 1,
+      title: found.title,
+      size: 10,
+      created_at: NOW,
+    })),
+  };
+}
+
+export function artifactContent(overrides: Partial<ArtifactContent> = {}): ArtifactContent {
+  return {
+    artifact_id: "a1",
+    version: 1,
+    kind: "markdown",
+    title: "Options compared",
+    content: "# Options\n\nPick **one**.",
+    size: 24,
     created_at: NOW,
     ...overrides,
   };

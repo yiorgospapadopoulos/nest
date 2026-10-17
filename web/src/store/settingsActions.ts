@@ -173,9 +173,9 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
       return true;
     },
 
-    /** How many artifacts the project has; null when the Mac cannot say (before B79). */
+    /** How many artifacts the project has; null when the Mac cannot say. */
     async artifactCount(repo: string): Promise<number | null> {
-      const found = await quietly(() => api.artifacts(repo));
+      const found = await quietly(() => api.artifacts({ repo }));
       return found?.length ?? null;
     },
 
@@ -222,11 +222,6 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
 
     pluginDetails(id: string): Promise<PluginDetails | null> {
       return attempt(() => api.pluginDetails(id));
-    },
-
-    /** Opens the Artifacts view of the project: does nothing until B79 adds that view. */
-    openArtifacts(repo: string): string {
-      return repo;
     },
   };
 }

@@ -78,7 +78,6 @@ final class FakeAPI: NestAPI {
         // Settings (B81)
         var pushDevices = 1
         var branches: [String: [String]] = [:]
-        var artifactCounts: [String: Int] = [:]
         var storage = StorageUsage(
             totalBytes: 1_400, chatsBytes: 800, attachmentsBytes: 500, artifactsBytes: 40,
             otherBytes: 60)
@@ -102,6 +101,10 @@ final class FakeAPI: NestAPI {
             AvailablePlugin(
                 id: "lint@official", name: "lint", marketplace: "official", source: "x"),
         ]
+        /// Artifacts newest first, and their versions' content by "<id>/<version>" (B79).
+        var artifacts: [Artifact] = []
+        var artifactContents: [String: ArtifactContent] = [:]
+        var unseenArtifacts = 0
     }
 
     let state = Mutex(State())
@@ -876,6 +879,55 @@ final class FakeAPI: NestAPI {
         return work
     }
 
+    func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws
+        -> [Artifact]
+    {
+        let filters = [("repo", repo), ("session", sessionID), ("pixie", pixieID)]
+            .compactMap { name, value in value.map { "\(name)=\($0)" } }
+            .joined(separator: " ")
+        await pass("artifacts")
+        return try call("artifacts", filters) { state in
+            state.artifacts.filter { artifact in
+                (repo.map { $0 == artifact.repo } ?? true)
+                    && (sessionID.map { $0 == artifact.sessionID } ?? true)
+                    && (pixieID.map { $0 == artifact.pixieID } ?? true)
+            }
+        }
+    }
+
+    func unseenArtifacts() async throws -> Int {
+        try call("unseenArtifacts") { $0.unseenArtifacts }
+    }
+
+    func artifact(_ id: String) async throws -> ArtifactDetail {
+        let found = try call("artifact", id) { state in
+            state.artifacts.first { $0.id == id }
+        }
+        await pass("artifact")
+        guard let found else { throw APIError.notFound("artifact not found") }
+        return Fixture.detail(found)
+    }
+
+    func artifactContent(_ id: String, version: Int) async throws -> ArtifactContent {
+        let content = try call("artifactContent", "\(id)/\(version)") {
+            $0.artifactContents["\(id)/\(version)"]
+        }
+        guard let content else { throw APIError.notFound("version not found") }
+        return content
+    }
+
+    func markArtifactSeen(_ id: String) async throws -> Artifact {
+        try call("markArtifactSeen", id) { state in
+            let index = state.artifacts.firstIndex { $0.id == id }!
+            state.artifacts[index].seen = true
+            return state.artifacts[index]
+        }
+    }
+
+    func deleteArtifact(_ id: String) async throws {
+        try call("deleteArtifact", id) { state in state.artifacts.removeAll { $0.id == id } }
+    }
+
     func createPairingCode() async throws -> PairingCode {
         await pass("createPairingCode")
         return try call("createPairingCode") { _ in
@@ -899,10 +951,6 @@ final class FakeAPI: NestAPI {
 
     func repoBranches(_ name: String) async throws -> [String] {
         try call("repoBranches", name) { $0.branches[name] ?? [] }
-    }
-
-    func artifactCount(repo: String) async throws -> Int {
-        try call("artifactCount", repo) { $0.artifactCounts[repo] ?? 0 }
     }
 
     func storage() async throws -> StorageUsage {

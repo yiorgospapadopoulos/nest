@@ -3,9 +3,13 @@ import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts"
 import { agentReport } from "../../transcript/report.ts";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { MessageItem, type MessageEntry } from "./Transcript.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 const isMessage = (item: TranscriptItem): item is MessageEntry =>
-  item.kind !== "approval" && item.kind !== "pixie" && item.kind !== "card";
+  item.kind !== "approval" &&
+  item.kind !== "pixie" &&
+  item.kind !== "card" &&
+  item.kind !== "artifact";
 
 /** The messages as transcript rows: text, thinking, and tool calls with their results. */
 function workItems(messages: AgentMessage[], root: string | null): MessageEntry[] {
@@ -48,7 +52,7 @@ export function WorkBody({ prompt, messages, report, running, root }: Props) {
       )}
       {running ? (
         <p className="wk-run">
-          <span className="spin" aria-hidden="true" />
+          <Fireflies />
           Working
         </p>
       ) : (

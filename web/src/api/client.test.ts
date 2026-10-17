@@ -520,7 +520,6 @@ const calls: Call[] = [
   ["devices", (a) => a.devices(), "GET", "/api/devices", undefined],
   ["revoke device", (a) => a.revokeDevice("d/1"), "DELETE", "/api/devices/d%2F1", undefined],
   ["pairing code", (a) => a.pairingCode(), "POST", "/api/pairing/codes", undefined],
-  ["artifacts", (a) => a.artifacts("cv page"), "GET", "/api/artifacts?repo=cv%20page", undefined],
   ["plugins", (a) => a.plugins(), "GET", "/api/extensions/plugins", undefined],
   ["skills", (a) => a.skills(), "GET", "/api/extensions/skills", undefined],
   ["marketplaces", (a) => a.marketplaces(), "GET", "/api/extensions/marketplaces", undefined],
@@ -567,6 +566,38 @@ const calls: Call[] = [
     "/api/extensions/plugins/pdf%40official/enabled",
     { enabled: false },
   ],
+  ["artifacts", (a) => a.artifacts({}), "GET", "/api/artifacts", undefined],
+  [
+    "artifacts",
+    (a) => a.artifacts({ session_id: "s1", repo: "cv page" }),
+    "GET",
+    "/api/artifacts?session_id=s1&repo=cv+page",
+    undefined,
+  ],
+  [
+    "artifacts",
+    (a) => a.artifacts({ pixie_id: "p1" }),
+    "GET",
+    "/api/artifacts?pixie_id=p1",
+    undefined,
+  ],
+  ["artifactsUnseen", (a) => a.artifactsUnseen(), "GET", "/api/artifacts/unseen", undefined],
+  ["artifact", (a) => a.artifact("a/1"), "GET", "/api/artifacts/a%2F1", undefined],
+  [
+    "artifactVersion",
+    (a) => a.artifactVersion("a1", 2),
+    "GET",
+    "/api/artifacts/a1/versions/2",
+    undefined,
+  ],
+  [
+    "markArtifactSeen",
+    (a) => a.markArtifactSeen("a1"),
+    "POST",
+    "/api/artifacts/a1/seen",
+    undefined,
+  ],
+  ["deleteArtifact", (a) => a.deleteArtifact("a1"), "DELETE", "/api/artifacts/a1", undefined],
 ];
 
 describe("HttpApi", () => {

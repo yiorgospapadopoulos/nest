@@ -22,6 +22,7 @@ public final class LiveSync {
     let extensions: ExtensionsStore
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
+    let artifacts: ArtifactsStore
     /// Called for each `notify` event, for notification delivery.
     public var onNotice: ((Notice) -> Void)?
     /// Called after each connect has reloaded the stores.
@@ -32,7 +33,8 @@ public final class LiveSync {
         activity: ActivityStore, transcripts: Transcripts, usage: UsageStore,
         connectors: ConnectorsStore, claudeChats: ClaudeChatsStore, agents: AgentsStore,
         pixies: PixiesStore, reports: PixieReportsStore, habits: HabitsStore,
-        chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore
+        chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
+        artifacts: ArtifactsStore
     ) {
         self.source = source
         self.app = app
@@ -50,6 +52,7 @@ public final class LiveSync {
         self.chatPixies = chatPixies
         self.accounts = accounts
         self.extensions = extensions
+        self.artifacts = artifacts
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -80,8 +83,8 @@ public final class LiveSync {
     }
 
     /// Reloads repos, sessions, approvals, connectors, usage limits, Claude Code chats, pixies
-    /// and their reports, then the models, agent defaults and account and each chat's
-    /// pixies, which never fail the sync.
+    /// and their reports, and the artifacts, then the models, agent defaults and account and
+    /// each chat's pixies, which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
@@ -92,6 +95,7 @@ public final class LiveSync {
             try await claudeChats.load()
             try await pixies.load()
             try await reports.load()
+            try await artifacts.reload()
             app.syncError = nil
         } catch {
             app.syncError = error as? APIError ?? .transport(String(describing: error))
@@ -114,6 +118,7 @@ public final class LiveSync {
         chatPixies.apply(event)
         accounts.apply(event)
         extensions.apply(event)
+        artifacts.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -171,6 +176,8 @@ public final class AppModel {
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
     public let shortcuts: ShortcutsStore
+    /// Artifacts the chats saved and the Artifacts view (B79).
+    public let artifacts: ArtifactsStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -209,11 +216,13 @@ public final class AppModel {
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
+        artifacts = ArtifactsStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, pixies: pixies, reports: reports,
-            habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions)
+            habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
+            artifacts: artifacts)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }

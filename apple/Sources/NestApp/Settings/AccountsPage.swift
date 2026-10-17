@@ -29,7 +29,7 @@ private struct ClaudeSection: View {
                         label: login.signedIn ? "Signed in" : "Signed out", hollow: !login.signedIn)
                 }
                 if accounts.isSigningIn {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                     Text("Finish in the browser")
                         .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
@@ -82,7 +82,7 @@ private struct GitHubSection: View {
                         hollow: github.state != .signedIn)
                 }
                 if accounts.isCheckingGitHub {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
                 Button("Check again") {
                     shell.settingsChange("Could not check the GitHub login") {

@@ -80,7 +80,7 @@ private struct StorageSection: View {
             }
             SettingsRow(label: "Search index") {
                 if storage.isRebuilding {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
                 Button("Rebuild") {
                     shell.settingsChange("Could not rebuild the search index") {
@@ -188,7 +188,7 @@ private struct RestartRow: View {
     var body: some View {
         SettingsRow(label: "Restart Nest") {
             if restarting {
-                ProgressView().controlSize(.small)
+                Fireflies()
             }
             Button("Restart") { confirming = true }
                 .buttonStyle(.nest(.soft))

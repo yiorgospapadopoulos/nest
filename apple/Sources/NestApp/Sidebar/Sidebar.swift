@@ -242,7 +242,7 @@ private struct RailChat: View {
                 isOpen ? accent.selection : hovering ? Palette.soft : .clear, in: shape
             )
             .overlay(alignment: .topTrailing) {
-                StatusDot(tone: tone)
+                StatusMark(tone: tone, slot: false)
                     .offset(x: -3, y: 3)
             }
             .overlay(alignment: .bottomTrailing) {

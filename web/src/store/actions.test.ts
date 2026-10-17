@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client.ts";
 import { fakeApi } from "../test/fakeApi.ts";
-import { callWork, detail, groupEntry, pixie, session, team } from "../test/fixtures.ts";
+import {
+  artifact,
+  artifactContent,
+  callWork,
+  detail,
+  groupEntry,
+  pixie,
+  session,
+  team,
+} from "../test/fixtures.ts";
 import { FOLDED_TEAMS_KEY, loadFoldedTeams } from "./devicePrefs.ts";
 import { createActions } from "./actions.ts";
 import type { Action } from "./state.ts";
@@ -154,6 +163,7 @@ describe("pixie actions", () => {
     expect(dispatched.map((a) => a.type)).toEqual([
       "loaded",
       "claudeChats",
+      "unseenArtifacts",
       "teams",
       "reports",
       "pixieGroups",
@@ -269,6 +279,7 @@ describe("each chat's pixies and subagents (B46)", () => {
     expect(dispatched.slice(before).map((a) => a.type)).toEqual([
       "loaded",
       "claudeChats",
+      "unseenArtifacts",
       "pixies",
       "teams",
       "reports",
@@ -326,5 +337,51 @@ describe("stopping a background task (B59)", () => {
     api.stopTask.mockRejectedValueOnce(new Error("down"));
     expect(await actions.stopTask("s1", "a1")).toBe("failed");
     expect(dispatched.at(-1)).toMatchObject({ type: "toast", toast: { text: "down" } });
+  });
+});
+
+describe("artifact actions (B79)", () => {
+  it("leaves the badge as it was when the count cannot be read", async () => {
+    const { api, dispatched, actions } = setup();
+    api.artifactsUnseen.mockRejectedValueOnce(new Error("offline"));
+    await actions.reloadArtifacts();
+    expect(dispatched).toEqual([]);
+  });
+
+  it("reads each version once, and again after a failure", async () => {
+    const { api, actions } = setup();
+    api.artifactVersion.mockRejectedValueOnce(new Error("offline"));
+    expect(await actions.artifactVersion("a1", 2)).toBeNull();
+    expect(await actions.artifactVersion("a1", 2)).toEqual(
+      artifactContent({ artifact_id: "a1", version: 2 }),
+    );
+    await actions.artifactVersion("a1", 2);
+    expect(api.artifactVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks one seen quietly, keeping what it was on failure", async () => {
+    const { api, dispatched, actions } = setup();
+    api.markArtifactSeen.mockRejectedValueOnce(new Error("offline"));
+    await actions.markArtifactSeen("a1");
+    expect(dispatched).toEqual([]);
+    await actions.markArtifactSeen("a1");
+    expect(dispatched).toEqual([{ type: "artifact", artifact: artifact({ seen: true }) }]);
+  });
+
+  it("reports a refused delete and keeps the artifact", async () => {
+    const { api, dispatched, actions } = setup();
+    api.deleteArtifact.mockRejectedValueOnce(new ApiError(404, "unknown artifact"));
+    expect(await actions.deleteArtifact("a1")).toBe(false);
+    expect(dispatched).toEqual([
+      { type: "toast", toast: { id: 1, text: "unknown artifact", tone: "error" } },
+    ]);
+  });
+
+  it("looks an artifact up once while a lookup runs", async () => {
+    const { api, actions } = setup();
+    await Promise.all([actions.loadArtifact("a1"), actions.loadArtifact("a1")]);
+    expect(api.artifact).toHaveBeenCalledTimes(1);
+    await actions.loadArtifact("a1");
+    expect(api.artifact).toHaveBeenCalledTimes(2);
   });
 });

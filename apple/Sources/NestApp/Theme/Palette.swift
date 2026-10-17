@@ -98,15 +98,21 @@ struct AccentColors {
     var selection: Color
     /// Focus rings and drop targets.
     var focus: Color
+    /// The accent itself, graphite included: the working animation and the user's bubble.
+    var fill: Color
+    /// Text on `fill`.
+    var onFill: Color
 
     init(accent name: AccentName) {
+        let colors = Theme.accent(name)
+        fill = Color(colors.fill)
+        onFill = Color(colors.on)
         if name == .graphite {
             accent = Color(Palette.Mac.button)
             onAccent = Color(Palette.Mac.buttonText)
             selection = Palette.selection
             focus = Palette.t3
         } else {
-            let colors = Theme.accent(name)
             accent = Color(colors.fill)
             onAccent = Color(colors.on)
             selection = accent.opacity(0.16)
@@ -132,6 +138,9 @@ extension EnvironmentValues {
     /// Reduce Motion, a snapshot that must hold still, or a window nobody can see:
     /// continuous animations stop.
     @Entry var reducedMotion = false
+    /// A moment, in seconds, the working animation and row glow are drawn at whatever the
+    /// motion setting, so snapshots can show them moving; nil follows the clock.
+    @Entry var motionTime: Double?
     /// Snapshots show controls that otherwise appear on hover, such as Copy.
     @Entry var revealsHoverControls = false
 }

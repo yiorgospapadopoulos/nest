@@ -164,6 +164,14 @@
                 try await renderLimitPause(model, shell, controller, folder)
                 return
             }
+            if only == "b79" {
+                try await renderArtifacts(model, shell, controller, folder)
+                return
+            }
+            if only == "b80" {
+                try await renderWorkingAnimation(model, shell, controller, folder)
+                return
+            }
             if only == "b73" {
                 try await renderWindowLayout(model, shell, controller, folder)
                 return
@@ -320,6 +328,7 @@
             try await renderReviewFixes(model, shell, controller, folder)
             try await renderWorkingCopies(model, shell, controller, folder)
             try await renderReviewBar(model, shell, controller, folder)
+            try await renderArtifacts(model, shell, controller, folder)
         }
 
         /// B56: a pending review is one line above the composer, not a card in the
@@ -2480,6 +2489,57 @@
             }
         }
 
+        /// B80: the working animation in the user's accent: a running chat's fireflies and
+        /// glow in the sidebar, the Working line under its turn and the solid accent bubble,
+        /// in three accents at a moment of the motion, then held still as Reduce Motion
+        /// draws it; and the fireflies on their own through their loop.
+        private static func renderWorkingAnimation(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            model.app.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c2", in: CGSize(width: 828, height: 790))
+                state.focusPane("c2")
+            }
+            for accent in [AccentName.graphite, .ocean, .rose] {
+                model.settings.accent = accent
+                try await pair(
+                    controller, "b80-working-\(accent.rawValue)", folder, motionTime: 0.6)
+            }
+            try await pair(controller, "b80-working-still", folder)
+            model.settings.accent = .graphite
+
+            // The fireflies in other running marks, beside plain dots in the same slot: the
+            // right panel's rows, the palette's chats and a pixie's card for a running chat.
+            model.app.update("cv-page") { state in
+                state.rightCollapsed = false
+                state.openCards = Set(RightCard.allCases)
+            }
+            try await pair(controller, "b80-marks", folder, motionTime: 0.6)
+            shell.show(.palette)
+            try await pair(controller, "b80-palette", folder, motionTime: 0.6)
+            shell.close()
+            try await model.transcripts.transcript(for: "p1").load()
+            let card: Event = try SampleData.decode([
+                "id": 80_001, "type": "pixie.card", "ts": SampleData.iso(Date()),
+                "session_id": "p1", "payload": ["kind": "session", "session_id": "c2"],
+            ])
+            model.sessions.apply(card)
+            model.transcripts.receive(card)
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b80-pixie-card", folder, motionTime: 0.6)
+            try await pairView(FirefliesSampler(), "b80-fireflies", folder)
+            try await pairView(
+                FirefliesSampler().environment(\.accentColors, AccentColors(accent: .teal)),
+                "b80-fireflies-teal", folder)
+        }
+
         /// B78: a chat paused at the usage limit, with the notice above the composer (its
         /// countdown and Resume now) and the sidebar's paused dot: one that continues where
         /// it left off, one that sends its queued message, then Nest's continue message once
@@ -2544,6 +2604,169 @@
                         "origin": "limit_resume",
                     ]))
             try await pair(controller, "limit-resumed", folder)
+        }
+
+        /// B79: the Artifacts view with Markdown, versions, HTML and nothing saved, the
+        /// switch's badge, the cards and calls in a transcript, and a pixie's artifacts on
+        /// its page and in the Pixies tab's view.
+        private static func renderArtifacts(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            shell.pixiesOpen = false
+            model.app.selectProject("cv-page")
+            let workspace = CGSize(width: 828, height: 790)
+            let store = model.artifacts
+            try await store.loadUnseen()
+            // The badge on the switch, from the workspace.
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c1", in: workspace)
+                state.focusPane("c1")
+            }
+            let transcript = model.transcripts.transcript(for: "c1")
+            try await transcript.load()
+            let now = Date()
+            func event(_ id: Int, _ type: String, _ payload: [String: Any]) throws -> Event {
+                try SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(now), "session_id": "c1",
+                    "payload": payload,
+                ])
+            }
+            func use(_ id: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["blocks": [["type": "tool_use", "id": id, "name": name, "input": input]]]
+            }
+            func result(_ id: String, _ text: String, error: Bool = false) -> [String: Any] {
+                [
+                    "blocks": [
+                        [
+                            "type": "tool_result", "tool_use_id": id, "content": text,
+                            "is_error": error,
+                        ]
+                    ]
+                ]
+            }
+            let plan = String(repeating: "A long plan. ", count: 400)
+            for item in [
+                try event(
+                    9_101, EventType.sessionUserMessage,
+                    ["text": "Write the plan up as an artifact.", "attachments": []]),
+                try event(
+                    9_102, EventType.sessionMessage,
+                    use(
+                        "t-create", ArtifactTools.create,
+                        [
+                            "title": "Contact form validation plan", "kind": "markdown",
+                            "content": plan,
+                        ])),
+                try event(
+                    9_103, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-plan", "version": 1, "title": "Contact form plan",
+                        "kind": "markdown", "action": "created",
+                    ]),
+                try event(
+                    9_104, EventType.sessionMessage,
+                    result("t-create", "Saved artifact a-plan (version 1): Contact form plan.")),
+                try event(
+                    9_105, EventType.sessionMessage,
+                    use(
+                        "t-update", ArtifactTools.update,
+                        [
+                            "artifact_id": "a-plan", "content": plan,
+                            "title": "Contact form validation plan",
+                        ])),
+                try event(
+                    9_106, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-plan", "version": 3,
+                        "title": "Contact form validation plan", "kind": "markdown",
+                        "action": "updated",
+                    ]),
+                try event(
+                    9_107, EventType.sessionMessage,
+                    result("t-update", "Saved version 3 of artifact a-plan.")),
+                try event(
+                    9_108, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-removed", "version": 1, "title": "Early draft",
+                        "kind": "html", "action": "created",
+                    ]),
+                try event(
+                    9_109, EventType.sessionMessage,
+                    use("t-refused", ArtifactTools.update, ["artifact_id": "x", "content": plan])),
+                try event(
+                    9_110, EventType.sessionMessage,
+                    result(
+                        "t-refused",
+                        "artifact 'x' belongs to another chat; create a new one instead",
+                        error: true)),
+            ] {
+                transcript.receive(item)
+            }
+            try await pair(controller, "artifacts-transcript-card", folder)
+
+            // The view: the focused chat's artifacts, its newest in the reader.
+            shell.showView(.artifacts)
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-markdown", folder)
+            try await store.step(by: -1)
+            try await pair(controller, "artifacts-versions", folder)
+
+            // The whole project, an HTML page in the sandboxed web view.
+            try await store.setWide(true)
+            try await store.select("a-parsers")
+            try await pair(controller, "artifacts-html", folder)
+
+            // A project whose chats saved nothing, and a chat that saved nothing.
+            shell.selectProject("narrative-engine")
+            model.app.update("narrative-engine") { $0.view = .artifacts }
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-empty", folder)
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            shell.showView(.artifacts)
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-chat-empty", folder)
+            model.app.update("cv-page") { $0.view = .workspace }
+
+            // A pixie's artifacts on its page, then in the Pixies tab's view.
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = true
+            shell.pixiePanel = .details
+            try await store.load(.pixie("reviewer"))
+            try await pair(controller, "artifacts-pixie-page", folder) { host in
+                scrollToBottom(in: host)
+            }
+            shell.openArtifact("a-review", version: nil, from: nil)
+            await waitUntil { store.selection?.id == "a-review" && store.selectedContent != nil }
+            try await pair(controller, "artifacts-pixies", folder)
+            shell.pixieDetailsOpen = false
+            model.app.updatePixies { $0.view = .workspace }
+            shell.pixiesOpen = false
+        }
+
+        /// Scrolls every scroll view to its end, such as a pixie's details to its last part.
+        private static func scrollToBottom(in view: NSView) {
+            if let scroll = view as? NSScrollView, let document = scroll.documentView {
+                let bottom = max(0, document.bounds.height - scroll.contentView.bounds.height)
+                scroll.contentView.scroll(to: CGPoint(x: 0, y: document.isFlipped ? bottom : 0))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            for subview in view.subviews {
+                scrollToBottom(in: subview)
+            }
         }
 
         /// B73: no bar over the project; its menu and branch at the top of the sidebar,
@@ -2757,14 +2980,17 @@
         /// The same state in light and dark.
         private static func pair(
             _ controller: AppController, _ name: String, _ folder: URL,
-            revealsHoverControls: Bool = false, prepare: (NSView) async -> Void = { _ in }
+            revealsHoverControls: Bool = false, motionTime: Double? = nil,
+            prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             try await snap(
                 controller, "\(name)-light", .aqua, folder,
-                revealsHoverControls: revealsHoverControls, prepare: prepare)
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                prepare: prepare)
             try await snap(
                 controller, "\(name)-dark", .darkAqua, folder,
-                revealsHoverControls: revealsHoverControls, prepare: prepare)
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                prepare: prepare)
         }
 
         /// A view on its own, such as a popover's content, in light and dark.
@@ -2889,7 +3115,7 @@
 
         private static func snap(
             _ controller: AppController, _ name: String, _ appearance: NSAppearance.Name,
-            _ folder: URL, revealsHoverControls: Bool = false,
+            _ folder: URL, revealsHoverControls: Bool = false, motionTime: Double? = nil,
             prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             // Far off screen and fully transparent: nothing shows up on the user's display.
@@ -2903,7 +3129,8 @@
                 rootView: RootView()
                     .environment(controller)
                     .environment(\.offscreen, true)
-                    .environment(\.revealsHoverControls, revealsHoverControls))
+                    .environment(\.revealsHoverControls, revealsHoverControls)
+                    .environment(\.motionTime, motionTime))
             host.frame = CGRect(origin: .zero, size: size)
             window.contentView = host
             host.layoutSubtreeIfNeeded()
@@ -2926,6 +3153,81 @@
     /// event monitor reads clicks sent to it.
     private final class SnapshotWindow: NSWindow {
         override var canBecomeMain: Bool { true }
+    }
+
+    /// The fireflies (B80) at the sizes the app draws them, through their loop at a few
+    /// moments, held still, drawn large, on an accent button, and a running row's glow
+    /// across its sweep.
+    private struct FirefliesSampler: View {
+        @Environment(\.accentColors) private var accent
+
+        var body: some View {
+            let moments = [0, 0.4, 0.8, 1.2, 1.6, 2.0]
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach([9.0, 10, 12, 14], id: \.self) { height in
+                    HStack(spacing: 18) {
+                        Text("\(Int(height)) pt")
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                            .frame(width: 44, alignment: .leading)
+                        ForEach(moments, id: \.self) { moment in
+                            Fireflies(height: height).environment(\.motionTime, moment)
+                        }
+                        Fireflies(height: height)
+                    }
+                }
+                HStack(spacing: 24) {
+                    ForEach([0, 0.8, 1.6], id: \.self) { moment in
+                        Fireflies(height: 60).environment(\.motionTime, moment)
+                    }
+                    Fireflies(height: 60)
+                }
+                HStack(spacing: 8) {
+                    Fireflies(height: 10, color: accent.onAccent)
+                    Text("Sending")
+                }
+                .font(.ui(TypeSize.ui, .medium))
+                .foregroundStyle(accent.onAccent)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(accent.accent, in: .rounded(Radius.button))
+                // A running mark beside plain dots in the same slot, and in a label.
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        let tones: [StatusTone] = [.running, .waiting, .done, .running, .review]
+                        ForEach(tones.indices, id: \.self) { index in
+                            let tone = tones[index]
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                StatusMark(tone: tone)
+                                Text("Update publications").font(.ui(TypeSize.ui))
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        StatusLabel(tone: .running, label: "Working")
+                        StatusLabel(tone: .waiting, label: "Needs approval")
+                        StatusLabel(tone: .running, label: "Kept", animates: false)
+                    }
+                }
+                .environment(\.motionTime, 0.6)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach([0.3, 0.6, 0.9, 1.2, 1.5], id: \.self) { moment in
+                        HStack(spacing: 8) {
+                            StatusMark(tone: .running)
+                            Text("Update publications from BibTeX").font(.ui(TypeSize.ui))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(width: 248, height: 30)
+                        .rowGlow(true)
+                        .environment(\.motionTime, moment)
+                    }
+                }
+            }
+            .padding(20)
+        }
     }
 
     /// Each mascot at rest, lifted and lifted blinking (B48), then team icons of one, two,

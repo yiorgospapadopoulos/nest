@@ -56,7 +56,7 @@ private struct WorkContent: View {
             .padding(.top, 10)
             if !work.isLoaded {
                 HStack(spacing: 8) {
-                    Spinner(size: 11, lineWidth: 1.5)
+                    Fireflies(height: 11)
                     Text("Loading")
                 }
                 .font(.ui(TypeSize.ui))
@@ -128,7 +128,7 @@ private struct WorkCall: View {
             }
             if running {
                 HStack(spacing: 8) {
-                    Spinner(size: 10, lineWidth: 1.5)
+                    Fireflies(height: 10)
                     Text(entries.isEmpty ? "Starting" : "Working")
                 }
                 .font(.ui(TypeSize.ui))

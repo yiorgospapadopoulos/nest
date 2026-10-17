@@ -262,11 +262,6 @@ struct BranchList: Decodable {
     var branches: [String]
 }
 
-/// An entry of B79's artifact list, read only to count it here.
-struct ArtifactListEntry: Decodable {
-    var id: String
-}
-
 /// `GET /api/claude-code`: the standalone Claude Code found on this Mac, if any, and the
 /// version Nest's agents run (the SDK's own).
 public struct ClaudeCodeStatus: Codable, Sendable, Hashable {

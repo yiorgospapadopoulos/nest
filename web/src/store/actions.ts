@@ -11,6 +11,8 @@ import type {
   AgentWork,
   Approval,
   ApproveBody,
+  ArtifactContent,
+  ArtifactFilter,
   Attachment,
   CallWork,
   ClaudeChat,
@@ -52,6 +54,7 @@ import {
   saveFoldedTeams,
   saveShowAutomated,
 } from "./devicePrefs.ts";
+import { filterKey } from "./artifacts.ts";
 import { nudgeText } from "./selectors.ts";
 import { settingsActions } from "./settingsActions.ts";
 import { draftKey, type Action, type Toast } from "./state.ts";
@@ -169,6 +172,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   // The last save of each pixie, and of the pixie order: the next one waits for it, so a
   // quick second edit reaches the Mac after the first and is the one that stays.
   const saving = new Map<string, Promise<unknown>>();
+  // The artifact lists asked for, loaded again after a reconnect (B79).
+  const artifactLists = new Map<string, ArtifactFilter>();
+  // Artifacts being looked up, so cards naming the same one ask once.
+  const lookups = new Map<string, Promise<void>>();
+  // Versions read so far: a version never changes once saved.
+  const versions = new Map<string, ArtifactContent>();
 
   const toast = (text: string, tone: Toast["tone"] = "ok") => {
     toastId += 1;
@@ -284,6 +293,41 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     );
   }
 
+  async function loadUnseenArtifacts(): Promise<void> {
+    const found = await quietly(() => api.artifactsUnseen());
+    if (found !== null) dispatch({ type: "unseenArtifacts", unseen: found.unseen });
+  }
+
+  /** A list of artifacts, kept live from then on; false when the Mac cannot answer. */
+  async function loadArtifacts(filter: ArtifactFilter): Promise<boolean> {
+    artifactLists.set(filterKey(filter), filter);
+    const done = await quietly(() =>
+      snapshot(
+        () => api.artifacts(filter),
+        (artifacts) => {
+          dispatch({ type: "artifacts", filter, artifacts });
+        },
+      ).then(() => true),
+    );
+    return done !== null;
+  }
+
+  async function reloadArtifacts(): Promise<void> {
+    await Promise.all([loadUnseenArtifacts(), ...[...artifactLists.values()].map(loadArtifacts)]);
+  }
+
+  async function lookUpArtifact(id: string): Promise<void> {
+    try {
+      dispatch({ type: "artifact", artifact: await api.artifact(id) });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        dispatch({ type: "artifactRemoved", id });
+      } else if (error instanceof ApiError && error.unauthorized) {
+        dispatch({ type: "auth", auth: "unpaired" });
+      }
+    }
+  }
+
   async function loadClaudeChats(): Promise<void> {
     const chats = await attempt(() => api.claudeChats(showAutomated));
     if (chats !== null) dispatch({ type: "claudeChats", chats });
@@ -334,6 +378,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         },
       );
       loaded = true;
+      await loadUnseenArtifacts();
       // Apart, so the app still opens when only the pixies cannot load.
       await loadPixies();
       await loadChatAgents(sessions);
@@ -606,7 +651,13 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
      */
     async resync(): Promise<void> {
       const goals = goalsOf === null ? [] : [loadGoals(goalsOf)];
-      await Promise.all([load(), ...goals, ...[...onScreen].map((id) => fetchChat(id, true))]);
+      const lists = [...artifactLists.values()].map(loadArtifacts);
+      await Promise.all([
+        load(),
+        ...goals,
+        ...lists,
+        ...[...onScreen].map((id) => fetchChat(id, true)),
+      ]);
     },
 
     async resolve(approval: Approval, body: ResolveBody, done: string): Promise<boolean> {
@@ -1034,6 +1085,45 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     async loadNotifications(): Promise<void> {
       const settings = await attempt(() => api.notificationSettings());
       if (settings !== null) dispatch({ type: "notifications", notifications: settings });
+    },
+
+    loadArtifacts,
+    /** After a resumed reconnect: the badge and the artifact lists asked for. */
+    reloadArtifacts,
+
+    /** Fetches an artifact not known yet; one the Mac no longer has is marked gone. */
+    loadArtifact(id: string): Promise<void> {
+      const running = lookups.get(id);
+      if (running !== undefined) return running;
+      const lookup = lookUpArtifact(id).finally(() => {
+        lookups.delete(id);
+      });
+      lookups.set(id, lookup);
+      return lookup;
+    },
+
+    /** One version's content; null when it cannot be read now. */
+    async artifactVersion(id: string, version: number): Promise<ArtifactContent | null> {
+      const key = `${id}:${String(version)}`;
+      const known = versions.get(key);
+      if (known !== undefined) return known;
+      const found = await quietly(() => api.artifactVersion(id, version));
+      if (found !== null) versions.set(key, found);
+      return found;
+    },
+
+    /** Its latest version was shown; the badge follows from the event. */
+    async markArtifactSeen(id: string): Promise<void> {
+      const marked = await quietly(() => api.markArtifactSeen(id));
+      if (marked !== null) dispatch({ type: "artifact", artifact: marked });
+    },
+
+    async deleteArtifact(id: string): Promise<boolean> {
+      const done = await attempt(() => api.deleteArtifact(id).then(() => true));
+      if (done === null) return false;
+      dispatch({ type: "artifactRemoved", id });
+      toast("Artifact deleted");
+      return true;
     },
 
     /** Shows the change at once and puts `previous` back if the Mac refuses it. */

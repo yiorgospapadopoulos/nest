@@ -7,6 +7,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { TeamFace } from "../pixies/TeamFace.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 /** Whose work a tree row opens: a pixie (or a team's member), or a whole team. */
 export type WorkOf = { pixie: string } | { team: string };
@@ -44,7 +45,7 @@ export function ChatTree({ session, onOpenAgent, onOpenWork }: Props) {
             onOpenAgent(agent.id);
           }}
         >
-          <span className="spin" aria-hidden="true" />
+          <Fireflies size={9} />
           <span className="ctn">{agent.name}</span>
           {agent.description !== null && <span className="ctd">{agent.description}</span>}
         </Row>
@@ -224,7 +225,7 @@ function Row({ label, onOpen, more, children }: RowProps) {
   );
 }
 
-/** A pixie's sprite, hopping while its call runs; the row's working dot says so too. */
+/** A pixie's sprite, hopping while its call runs; the row's fireflies say so too. */
 function PixieFace({ pixie, working }: { pixie: Pixie | undefined; working: boolean }) {
   return (
     <span className="ctic" aria-hidden="true">
@@ -241,10 +242,10 @@ function PixieFace({ pixie, working }: { pixie: Pixie | undefined; working: bool
   );
 }
 
-/** A call's state: a working dot while it runs, else its word. */
+/** A call's state: fireflies while it runs, else its word. */
 function CallMark({ state }: { state: CallState }) {
   return state === "running" ? (
-    <span className="prun" aria-hidden="true" />
+    <Fireflies size={9} />
   ) : (
     <span className={state === "failed" ? "ctw bad" : "ctw"}>{STATE_WORDS[state]}</span>
   );

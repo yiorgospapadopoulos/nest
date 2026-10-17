@@ -2,6 +2,8 @@ import type {
   AccountInfo,
   AgentDefaults,
   Approval,
+  Artifact,
+  ArtifactFilter,
   Attachment,
   BackgroundSummary,
   ClaudeChat,
@@ -170,6 +172,14 @@ export interface State {
   account: AccountInfo | null;
   agentDefaults: AgentDefaults | null;
   settings: SettingsState;
+  // Artifacts (B79) by id, as the lists and events last gave them.
+  artifacts: Record<string, Artifact>;
+  // The lists loaded, by their filter's key (see filterKey), with the ids they hold.
+  artifactLists: Record<string, { filter: ArtifactFilter; ids: string[] }>;
+  // Artifacts known to be deleted, so the transcript's cards show them so.
+  artifactsGone: Record<string, true>;
+  // Artifacts of every project whose latest version is not opened yet.
+  unseenArtifacts: number;
   toast: Toast | null;
 }
 
@@ -205,6 +215,10 @@ export const initialState: State = {
   account: null,
   agentDefaults: null,
   settings: NO_SETTINGS,
+  artifacts: {},
+  artifactLists: {},
+  artifactsGone: {},
+  unseenArtifacts: 0,
   toast: null,
 };
 
@@ -271,4 +285,8 @@ export type Action =
   | { type: "account"; account: AccountInfo }
   | { type: "agentDefaults"; defaults: AgentDefaults }
   | { type: "settings"; change: Partial<SettingsState> }
+  | { type: "artifacts"; filter: ArtifactFilter; artifacts: Artifact[] }
+  | { type: "artifact"; artifact: Artifact }
+  | { type: "artifactRemoved"; id: string }
+  | { type: "unseenArtifacts"; unseen: number }
   | { type: "toast"; toast: Toast | null };
