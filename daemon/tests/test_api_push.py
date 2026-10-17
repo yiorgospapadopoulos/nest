@@ -61,6 +61,7 @@ async def test_push_routes_need_a_device(api: Api) -> None:
         ("POST", "/api/push/subscribe"),
         ("DELETE", "/api/push/subscribe"),
         ("POST", "/api/push/test"),
+        ("GET", "/api/push/status"),
         ("GET", "/api/notifications/settings"),
         ("PUT", "/api/notifications/settings"),
     ]:
@@ -213,3 +214,21 @@ async def test_a_broken_settings_file_is_reported_not_overwritten(api: Api) -> N
 
     assert response.status_code == 409
     assert "invalid TOML" in response.json()["detail"]
+
+
+async def test_status_counts_the_devices_with_a_subscription(api: Api) -> None:
+    assert (await api.http.get("/api/push/status")).json() == {"devices": 0}
+    phone = await pair_phone(api)
+    tablet = await pair_phone(api)
+    for endpoint in (ENDPOINT, ENDPOINT + "2"):
+        await api.http.post(
+            "/api/push/subscribe", json=subscription(Receiver(), endpoint), headers=phone
+        )
+    await api.http.post(
+        "/api/push/subscribe", json=subscription(Receiver(), ENDPOINT + "3"), headers=tablet
+    )
+
+    assert (await api.http.get("/api/push/status")).json() == {"devices": 2}
+
+    await api.http.delete(f"/api/devices/{tablet['X-Device']}")
+    assert (await api.http.get("/api/push/status")).json() == {"devices": 1}

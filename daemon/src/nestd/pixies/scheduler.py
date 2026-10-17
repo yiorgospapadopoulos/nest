@@ -4,7 +4,8 @@ A loop checks every 15 seconds, like the pull request tracker (D034). Each check
 current run when it went past its habit's minutes or an approval of it waited too long,
 queues the newest scheduled time of each enabled habit that came due, and starts the next
 run that is due. A scheduled run more than 2 hours late, and a scheduled or triggered run
-while the Claude usage is high, is recorded as skipped instead; Run now always runs.
+while the Claude usage is high (`[pixies] habit_usage_percent`) or all habits are paused
+(`[pixies] habits_paused`, D104), is recorded as skipped instead; Run now always runs.
 
 A run is a fresh session of the pixie, never resumed, marked with the run; it ends with its
 first turn. Runs left running by a daemon that stopped count as failed.
@@ -22,7 +23,7 @@ from pydantic import JsonValue
 from nestd.approvals.models import ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
 from nestd.clock import Clock
-from nestd.config.models import AgentDefaults
+from nestd.config.models import AgentDefaults, PixieDefaults
 from nestd.errors import NestError
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.habit_events import HabitEvents
@@ -45,14 +46,13 @@ LATE = timedelta(hours=2)
 STALL = timedelta(minutes=15)
 # A triggered habit runs at most once in this long.
 TRIGGER_SPACING = timedelta(minutes=5)
-# Scheduled and triggered runs are skipped while a usage window is this full.
-USAGE_LIMIT = 0.8
 # Events one triggered run lists at most; the newest are kept.
 MAX_EVENTS = 50
 
 LATE_REASON = "late"
 USAGE_REASON = "usage"
 PAUSED_REASON = "paused"
+HABITS_PAUSED_REASON = "all habits paused"
 RESTARTED_REASON = "daemon restarted"
 INTERRUPTED_REASON = "interrupted"
 GONE_REASON = "its session was deleted"
@@ -86,10 +86,12 @@ class HabitScheduler:
         clock: Clock,
         zone: tzinfo | None,
         defaults: Callable[[], AgentDefaults],
+        pixie_settings: Callable[[], PixieDefaults],
         tick: timedelta = TICK,
     ) -> None:
         """`zone` is the one schedules are read in; None is the system's zone. `defaults`
-        gives the model of a pixie without its own.
+        gives the model of a pixie without its own; `pixie_settings` whether habits are
+        paused and at which usage runs are skipped (D104), read at each check.
         """
         self._store = store
         self._events = events
@@ -101,6 +103,7 @@ class HabitScheduler:
         self._clock = clock
         self._zone = zone
         self._defaults = defaults
+        self._pixie_settings = pixie_settings
         self._tick = tick
         # Checks, starts and ends one at a time.
         self._lock = asyncio.Lock()
@@ -290,6 +293,8 @@ class HabitScheduler:
             return None
         if not habit.enabled:
             return PAUSED_REASON
+        if self._pixie_settings().habits_paused:
+            return HABITS_PAUSED_REASON
         if run.kind == "schedule" and now - due_at > LATE:
             return LATE_REASON
         if await self._usage_high(now):
@@ -301,9 +306,10 @@ class HabitScheduler:
         has reset since does not count.
         """
         limits = await self._usage.limits()
+        level = self._pixie_settings().habit_usage_percent / 100
         return any(
             window is not None
-            and window.utilization >= USAGE_LIMIT
+            and window.utilization >= level
             and (window.resets_at is None or window.resets_at > now)
             for window in (limits.five_hour, limits.seven_day)
         )

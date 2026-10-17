@@ -12,7 +12,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus, SubscriptionOverflowError
 from nestd.events.models import Event
 from nestd.notifications.delivery import NotificationDelivery
-from nestd.notifications.messages import TEST_NOTICE
+from nestd.notifications.messages import TEST_NOTICE, usage_warning_notice
 from nestd.notifications.subscriptions import PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
 from nestd.notifications.webpush import PushReport
@@ -246,3 +246,23 @@ async def test_send_test_without_a_subscription_is_a_conflict(h: Rig) -> None:
 
     with pytest.raises(ConflictError, match="enable notifications"):
         await h.delivery.send_test(device)
+
+
+async def test_a_direct_notice_skips_the_kinds_but_keeps_quiet_hours(h: Rig) -> None:
+    await h.subscribe()
+    notice = usage_warning_notice("seven_day", 0.91)
+    h.rules.current = NotificationSettings(quiet_hours=QuietHours(start="11:30", end="12:30"))
+
+    await h.delivery.push(notice)
+    assert h.servers.requests == []
+
+    h.rules.current = NotificationSettings()
+    await h.delivery.push(notice)
+    assert h.pushed() == [
+        {
+            "title": "Usage warning",
+            "body": "The weekly usage limit is 91% used.",
+            "url": "/settings/agents",
+            "tag": "usage-warning-seven_day",
+        }
+    ]

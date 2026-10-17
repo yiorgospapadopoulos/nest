@@ -52,16 +52,39 @@ class SearchIndex:
         # The Claude Code chats in the index, loaded on first use.
         self._chats: dict[str, _ChatRow] | None = None
         self._task: asyncio.Task[None] | None = None
+        self._rebuilds: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self) -> None:
-        task, self._task = self._task, None
-        if task is not None:
+        tasks = [*self._rebuilds, *([self._task] if self._task is not None else [])]
+        self._task = None
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with suppress(asyncio.CancelledError):
                 await task
+
+    async def rebuild(self) -> None:
+        """Clear the index and index every stored event again, in the background (D104).
+        Claude Code chat titles come back with the next refresh of their list.
+        """
+        async with self._db.transaction() as tx:
+            await tx.execute("DELETE FROM search_index")
+            await tx.execute("UPDATE search_state SET cursor = 0")
+        self._caught_up = False
+        self._chats = None
+        task = asyncio.create_task(self._rebuild())
+        self._rebuilds.add(task)
+        task.add_done_callback(self._rebuilds.discard)
+
+    async def _rebuild(self) -> None:
+        try:
+            await self.catch_up()
+        except Exception as error:
+            # The indexing loop picks it up again.
+            logger.warning("search rebuild failed (%s)", type(error).__name__)
 
     async def catch_up(self) -> None:
         """Index every event stored after the cursor, one batch per transaction."""

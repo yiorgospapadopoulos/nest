@@ -23,6 +23,16 @@ type Mascot = Literal[
     "invader", "ghost", "cat", "owl", "robot", "frog", "mushroom", "bunny", "crab", "sprout"
 ]
 type Color = Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]
+# Which Nest tools a pixie gets (stage 3); every level includes the ones before it.
+type Autonomy = Literal["observe", "message", "start", "answer"]
+# What a pixie may do with its projects' files: edit them like any chat, only read them,
+# or neither (its workdir only).
+type ProjectAccess = Literal["edit", "read", "none"]
+# What a pixie reports, from the least to the most urgent (B42).
+type Severity = Literal["info", "warn", "action"]
+# How many chats a pixie may have started and running at once, and start per local day.
+type MaxRunning = Annotated[int, Field(ge=1, le=20)]
+type MaxPerDay = Annotated[int, Field(ge=1, le=100)]
 
 
 class _Strict(BaseModel):
@@ -152,6 +162,40 @@ class UsageSettings(_Strict):
     # How often a minimal probe refreshes the usage windows while a client is visible (D031);
     # 0 turns the refresh off.
     refresh_minutes: int = Field(default=3, ge=0, le=1440)
+    # Publish `usage.warning` once per window period when a window reaches this percent;
+    # null (0 in the file, since TOML has no null) turns the warning off (D104).
+    warn_percent: int | None = Field(default=80, ge=50, le=99)
+    # The warning also reaches the phone as a notification.
+    warn_notify: bool = True
+
+    @field_validator("warn_percent", mode="before")
+    @classmethod
+    def _zero_is_off(cls, value: object) -> object:
+        return None if value == 0 else value
+
+
+class StorageSettings(_Strict):
+    # Nest chats not updated for this many days are archived; null never (D104).
+    archive_after_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class PixieDefaults(_Strict):
+    """What new pixies start with, and the habit rules of every pixie (D104)."""
+
+    # Null: the agent defaults' model.
+    model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
+    autonomy: Autonomy = "observe"
+    project_access: ProjectAccess = "edit"
+    # "current": clients send the open project as the new pixie's projects; the daemon
+    # treats a pixie created without projects as one with every project.
+    projects: Literal["all", "current"] = "all"
+    max_running: MaxRunning = 2
+    max_per_day: MaxPerDay = 5
+    report_push: Severity = "action"
+    # Scheduled and triggered habit runs are skipped while set; Run now still runs.
+    habits_paused: bool = False
+    # Scheduled and triggered runs are skipped while a usage window is this full.
+    habit_usage_percent: int = Field(default=80, ge=50, le=100)
 
 
 class StuckSettings(_Strict):
@@ -181,6 +225,8 @@ class Settings(_Strict):
     usage: UsageSettings = Field(default_factory=UsageSettings)
     stuck: StuckSettings = Field(default_factory=StuckSettings)
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
+    pixies: PixieDefaults = Field(default_factory=PixieDefaults)
 
 
 class WorktreeConfig(_Strict):

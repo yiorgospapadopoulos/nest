@@ -51,6 +51,19 @@ class Attachment(BaseModel):
         return base64.b64encode(self.path.read_bytes()).decode()
 
 
+class StoredAttachment(BaseModel):
+    """An attachment as Settings lists it, by size (D104)."""
+
+    id: str
+    name: str
+    bytes: int
+    media_type: str
+    session_id: str | None
+    # None while unsent, or when the chat is gone.
+    session_title: str | None
+    created_at: datetime
+
+
 def safe_filename(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(name).name).lstrip(".") or "file"
     if len(cleaned) > MAX_FILENAME_LENGTH:
@@ -139,6 +152,34 @@ class AttachmentStore:
         return tuple(
             Path(row["path"]).parent for row in rows if row["media_type"] not in IMAGE_TYPES
         )
+
+    async def largest(self, limit: int) -> list[StoredAttachment]:
+        """The largest attachments first, with the chat each was sent in."""
+        rows = await self._db.fetch_all(
+            "SELECT a.id, a.filename, a.size, a.media_type, a.session_id, a.created_at,"
+            " s.title AS session_title FROM attachments a LEFT JOIN sessions s"
+            " ON s.id = a.session_id ORDER BY a.size DESC, a.created_at DESC, a.rowid DESC"
+            " LIMIT ?",
+            (limit,),
+        )
+        return [
+            StoredAttachment(
+                id=row["id"],
+                name=row["filename"],
+                bytes=row["size"],
+                media_type=row["media_type"],
+                session_id=row["session_id"],
+                session_title=row["session_title"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    async def delete(self, attachment_id: str) -> None:
+        """Delete one attachment and its file; its chat then shows it as missing."""
+        attachment = await self.get(attachment_id)
+        await self._db.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
+        await asyncio.to_thread(self._delete_dirs, [attachment.path.parent])
 
     async def delete_files(self, session_id: str) -> None:
         """Delete the files of a session's attachments; the rows go with the session."""

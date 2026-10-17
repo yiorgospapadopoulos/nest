@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, status
+from fastapi import APIRouter, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from nestd.api.deps import Context, RequireDevice
@@ -37,3 +37,12 @@ async def download(attachment_id: str, ctx: Context) -> FileResponse:
         content_disposition_type="inline" if inline else "attachment",
         headers=SAFE_HEADERS,
     )
+
+
+@router.delete("/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete(attachment_id: str, ctx: Context) -> Response:
+    """Delete an attachment and its file (Settings, Storage); 404 for an unknown one.
+    Transcripts that showed it get a 404 for its file from then on.
+    """
+    await ctx.attachments.delete(attachment_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

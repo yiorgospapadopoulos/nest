@@ -189,6 +189,8 @@ async def test_redeem_sets_cookie_and_the_cookie_authenticates(
     devices = await client.get("/api/devices")
     assert devices.status_code == 200
     assert [d["name"] for d in devices.json()] == ["This Mac", "iPhone"]
+    # The list marks the device asking for it (B81), here the phone by its new cookie.
+    assert [d["this_device"] for d in devices.json()] == [False, True]
     # IMP-17: no client read `device.paired`, so it is not published.
     assert await event_types(ctx) == []
 

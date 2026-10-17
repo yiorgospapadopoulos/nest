@@ -12,9 +12,11 @@ from nestd.config.models import (
     AgentChoices,
     AgentDefaults,
     NotificationSettings,
+    PixieDefaults,
     ProjectSettings,
     RepoConfig,
     Settings,
+    StorageSettings,
     StuckSettings,
     TaskTemplate,
     UsageSettings,
@@ -62,22 +64,36 @@ def save_notifications(
     paths: AppPaths, notifications: NotificationSettings
 ) -> NotificationSettings:
     """Replace the `[notifications]` section of settings.toml, keeping every other section."""
-    return _save_section(paths, "notifications", notifications).notifications
+    return _save_section(paths, "notifications", _dump(notifications)).notifications
 
 
 def save_usage(paths: AppPaths, usage: UsageSettings) -> UsageSettings:
     """Replace the `[usage]` section of settings.toml, keeping every other section."""
-    return _save_section(paths, "usage", usage).usage
+    data = _dump(usage)
+    if usage.warn_percent is None:
+        data["warn_percent"] = 0  # TOML has no null
+    return _save_section(paths, "usage", data).usage
 
 
 def save_stuck(paths: AppPaths, stuck: StuckSettings) -> StuckSettings:
     """Replace the `[stuck]` section of settings.toml, keeping every other section."""
-    return _save_section(paths, "stuck", stuck).stuck
+    return _save_section(paths, "stuck", _dump(stuck)).stuck
+
+
+def save_storage(paths: AppPaths, storage: StorageSettings) -> StorageSettings:
+    """Replace the `[storage]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "storage", _dump(storage)).storage
+
+
+def save_pixie_defaults(paths: AppPaths, pixies: PixieDefaults) -> PixieDefaults:
+    """Replace the `[pixies]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "pixies", _dump(pixies)).pixies
 
 
 def save_project_order(paths: AppPaths, order: list[str]) -> list[str]:
     """Replace the `[projects]` section of settings.toml, keeping every other section."""
-    return _save_section(paths, "projects", ProjectSettings(order=order)).projects.order
+    section = _dump(ProjectSettings(order=order))
+    return _save_section(paths, "projects", section).projects.order
 
 
 def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults:
@@ -103,13 +119,13 @@ def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults
     return settings.agents
 
 
-def _save_section(paths: AppPaths, name: str, section: BaseModel) -> Settings:
+def _save_section(paths: AppPaths, name: str, section: dict[str, Any]) -> Settings:
     """The file is re-read first so edits made since the daemon started are kept; it is only
     written when the result is valid, and atomically. Comments are not preserved.
     """
     file = paths.settings_file
     data = _read_toml(file) if file.exists() else {}
-    data[name] = _dump(section)
+    data[name] = section
     settings = _validate(file, Settings, data)
     _write_toml(file, data)
     return settings

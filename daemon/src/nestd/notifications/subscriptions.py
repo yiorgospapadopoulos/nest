@@ -71,6 +71,14 @@ class PushSubscriptionStore:
         )
         return [_subscription(row) for row in rows]
 
+    async def device_count(self) -> int:
+        """How many devices that are not revoked have a subscription."""
+        rows = await self._db.fetch_all(
+            "SELECT COUNT(DISTINCT s.device_id) AS devices FROM push_subscriptions s"
+            " JOIN devices d ON d.id = s.device_id WHERE d.revoked_at IS NULL"
+        )
+        return rows[0]["devices"]
+
     async def succeeded(self, subscription_id: str) -> None:
         await self._db.execute(
             "UPDATE push_subscriptions SET last_success_at = ?, failures = 0 WHERE id = ?",

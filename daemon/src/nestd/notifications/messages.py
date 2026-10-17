@@ -54,6 +54,21 @@ TEST_NOTICE = Notice(
 )
 
 
+_WINDOW_NAMES = {"five_hour": "5-hour", "seven_day": "weekly"}
+
+
+def usage_warning_notice(window: str, utilization: float) -> Notice:
+    """A usage window reached the warning level (D104); it opens the Agents settings page."""
+    return Notice(
+        kind="usage_warning",
+        title="Usage warning",
+        body=f"The {_WINDOW_NAMES[window]} usage limit is {round(utilization * 100)}% used.",
+        url="/settings/agents",
+        tag=f"usage-warning-{window}",
+        urgent=False,
+    )
+
+
 def notice_from_event(payload: Mapping[str, JsonValue]) -> Notice | None:
     """The notice for a `notify` event payload, or None if it is not one Nest sends."""
     kind = payload.get("kind")

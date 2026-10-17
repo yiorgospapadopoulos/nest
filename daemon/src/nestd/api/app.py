@@ -7,16 +7,19 @@ from nestd import __version__
 from nestd.api.errors import install_error_handlers
 from nestd.api.hosts import HostCheckMiddleware
 from nestd.api.routes import (
+    accounts,
     agents,
     approvals,
     attachments,
     claude_chats,
+    claude_code,
     clients,
     composer,
     connectors,
     devices,
     engine,
     events,
+    extensions,
     goals,
     health,
     local_apps,
@@ -24,6 +27,7 @@ from nestd.api.routes import (
     pairing,
     pixie_groups,
     pixie_reports,
+    pixie_settings,
     pixie_teams,
     pixies,
     prs,
@@ -34,6 +38,7 @@ from nestd.api.routes import (
     service,
     session_pixies,
     sessions,
+    storage,
     stuck,
     usage,
 )
@@ -67,11 +72,15 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
             await ctx.habit_scheduler.start()
             await ctx.habit_triggers.start()
             await ctx.sessions.start()
+            await ctx.archiver.start()
+            await ctx.usage_warnings.start()
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
+            await ctx.archiver.stop()
+            await ctx.usage_warnings.stop()
             # Before the agents stop: the runs they cut off count as restarted (B42).
             await ctx.habit_triggers.stop()
             await ctx.habit_scheduler.stop()
@@ -110,6 +119,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         session_pixies,
         pixie_groups,
         composer,
+        pixie_settings,
         pixies,
         pixie_teams,
         pixie_reports,
@@ -120,6 +130,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         approvals,
         connectors,
         usage,
+        storage,
         stuck,
         engine,
         agents,
@@ -128,6 +139,9 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         push,
         notifications,
         service,
+        accounts,
+        claude_code,
+        extensions,
     ):
         app.include_router(module.router)
     # Last, so every /api route matches first.
