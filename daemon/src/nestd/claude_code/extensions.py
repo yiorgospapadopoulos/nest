@@ -67,6 +67,17 @@ class Skill(BaseModel):
     path: str
 
 
+class PixieSkill(BaseModel):
+    """A skill a pixie can be given (D109): a standalone one by its name, or a plugin's as
+    `<plugin>:<skill>`, the name Claude Code and the SDK's `skills` option use.
+    """
+
+    name: str
+    description: str | None
+    # The plugin's name; None for a standalone skill.
+    plugin: str | None
+
+
 class Marketplace(BaseModel):
     name: str
     # The CLI's source kind, such as "github", "git", "url" or "directory".
@@ -157,6 +168,36 @@ class Extensions:
         if self._claude_dir is None:
             return []
         return await asyncio.to_thread(_read_skills, self._claude_dir / "skills")
+
+    async def pixie_skills(self) -> list[PixieSkill]:
+        """Standalone skills and the skills of every enabled plugin, by name."""
+        skills = [
+            PixieSkill(name=skill.name, description=skill.description, plugin=None)
+            for skill in await self.skills()
+        ]
+        plugins = await self._json(["plugin", "list", "--json"], list[_Installed])
+        found = await asyncio.gather(
+            *(self._plugin_skills(plugin) for plugin in plugins if plugin.enabled)
+        )
+        skills += [skill for group in found for skill in group]
+        return sorted(skills, key=lambda skill: skill.name)
+
+    async def _plugin_skills(self, plugin: _Installed) -> list[PixieSkill]:
+        """Its skills as `plugin details` lists them (commands included, and only the
+        skills its marketplace entry names); its folder's skills when that fails.
+        """
+        name = plugin.id.split("@", 1)[0]
+        folder = None if plugin.install_path is None else Path(plugin.install_path)
+        descriptions = {} if folder is None else await asyncio.to_thread(_descriptions, folder)
+        try:
+            output = await self._cli.run(["plugin", "details", plugin.id])
+            names = parse_details(output)[1]["skills"].names
+        except ClaudeCliError:
+            names = sorted(descriptions)
+        return [
+            PixieSkill(name=f"{name}:{skill}", description=descriptions.get(skill), plugin=name)
+            for skill in names
+        ]
 
     async def marketplaces(self) -> list[Marketplace]:
         raw = await self._marketplaces()
@@ -346,6 +387,27 @@ def _read_skills(folder: Path) -> list[Skill]:
             )
         )
     return sorted(skills, key=lambda skill: skill.name)
+
+
+def _descriptions(folder: Path) -> dict[str, str | None]:
+    """A plugin folder's skills (`skills/<name>/SKILL.md`) and commands
+    (`commands/<name>.md`) with their descriptions; what cannot be read is left out.
+    """
+    found: dict[str, str | None] = {}
+    try:
+        for skill in _read_skills(folder / "skills"):
+            found[skill.name] = skill.description
+    except OSError:
+        pass
+    try:
+        for file in sorted((folder / "commands").iterdir()):
+            if file.suffix != ".md":
+                continue
+            text = file.read_text(encoding="utf-8", errors="replace")
+            found.setdefault(file.stem, _front_matter(text).get("description"))
+    except OSError:
+        pass
+    return found
 
 
 def _front_matter(text: str) -> dict[str, str]:

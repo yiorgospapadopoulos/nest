@@ -187,8 +187,10 @@ async def test_notification_settings_round_trip_and_apply_live(api: Api) -> None
     current = (await api.http.get("/api/notifications/settings")).json()
     assert current["kinds"]["finished"] is True
     assert "quiet_hours" in current
+    assert current["pixie_report_level"] == "action"
     current["kinds"]["finished"] = False
     current["quiet_hours"] = {"start": "22:00", "end": "07:00"}
+    current["pixie_report_level"] = "warn"
 
     saved = await api.http.put("/api/notifications/settings", json=current)
 
@@ -196,14 +198,17 @@ async def test_notification_settings_round_trip_and_apply_live(api: Api) -> None
     assert saved.json() == current
     assert (await api.http.get("/api/notifications/settings")).json() == current
     assert api.ctx.settings.notifications.kinds.finished is False
+    assert api.ctx.settings.notifications.pixie_report_level == "warn"
     on_disk = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
     assert on_disk["notifications"]["quiet_hours"] == {"start": "22:00", "end": "07:00"}
+    assert on_disk["notifications"]["pixie_report_level"] == "warn"
     assert "server" in on_disk
 
 
-async def test_invalid_notification_settings_are_rejected(api: Api) -> None:
-    bad = {"quiet_hours": {"start": "22:00", "end": "22:00"}}
-
+@pytest.mark.parametrize(
+    "bad", [{"quiet_hours": {"start": "22:00", "end": "22:00"}}, {"pixie_report_level": "loud"}]
+)
+async def test_invalid_notification_settings_are_rejected(api: Api, bad: dict[str, object]) -> None:
     assert (await api.http.put("/api/notifications/settings", json=bad)).status_code == 422
 
 

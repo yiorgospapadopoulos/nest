@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import (
     BaseModel,
@@ -106,7 +106,7 @@ class NotificationKinds(_Strict):
     ready_to_merge: bool = False
     # A session looks stuck; shown in the inbox, pushed only when switched on (D036).
     stuck: bool = False
-    # A pixie's report at or above the pixie's `report_push` severity (B42).
+    # A pixie's report at or above `pixie_report_level` (B42, D109).
     pixie_report: bool = True
     # A chat paused at the usage limit; it goes on by itself after the reset (B78).
     usage_limit: bool = True
@@ -149,6 +149,8 @@ class NtfySettings(_Strict):
 
 class NotificationSettings(_Strict):
     kinds: NotificationKinds = Field(default_factory=NotificationKinds)
+    # The lowest severity of every pixie's reports that reaches the phone (D109).
+    pixie_report_level: Severity = "action"
     quiet_hours: QuietHours | None = None
     ntfy: NtfySettings = Field(default_factory=NtfySettings)
     # The contact push services see in the VAPID token: a mailto: address or an https URL.
@@ -179,6 +181,11 @@ class StorageSettings(_Strict):
     archive_after_days: int | None = Field(default=None, ge=1, le=3650)
 
 
+# `[pixies]` keys before B85: `report_push` moved to `[notifications]
+# pixie_report_level`, `projects` went (every pixie works in every project).
+_REMOVED_PIXIE_KEYS = ("projects", "report_push")
+
+
 class PixieDefaults(_Strict):
     """What new pixies start with, and the habit rules of every pixie (D104)."""
 
@@ -186,16 +193,21 @@ class PixieDefaults(_Strict):
     model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
     autonomy: Autonomy = "observe"
     project_access: ProjectAccess = "edit"
-    # "current": clients send the open project as the new pixie's projects; the daemon
-    # treats a pixie created without projects as one with every project.
-    projects: Literal["all", "current"] = "all"
     max_running: MaxRunning = 2
     max_per_day: MaxPerDay = 5
-    report_push: Severity = "action"
     # Scheduled and triggered habit runs are skipped while set; Run now still runs.
     habits_paused: bool = False
     # Scheduled and triggered runs are skipped while a usage window is this full.
     habit_usage_percent: int = Field(default=80, ge=50, le=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ignore_removed(cls, data: object) -> object:
+        """Keys from before B85 (D109), sent by older clients: ignored, not refused."""
+        if not isinstance(data, dict):
+            return data
+        items = cast("dict[str, object]", data).items()
+        return {key: value for key, value in items if key not in _REMOVED_PIXIE_KEYS}
 
 
 class StuckSettings(_Strict):
@@ -227,6 +239,25 @@ class Settings(_Strict):
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _move_report_push(cls, data: object) -> object:
+        """A settings.toml from before B85 keeps its `[pixies] report_push` as
+        `[notifications] pixie_report_level`, unless that is set already (D109).
+        """
+        if not isinstance(data, dict):
+            return data
+        settings = cast("dict[str, object]", data)
+        pixies = settings.get("pixies")
+        notifications = settings.get("notifications", {})
+        if not isinstance(pixies, dict) or not isinstance(notifications, dict):
+            return settings
+        level = cast("dict[str, object]", pixies).get("report_push")
+        section = cast("dict[str, object]", notifications)
+        if level is None or "pixie_report_level" in section:
+            return settings
+        return settings | {"notifications": section | {"pixie_report_level": level}}
 
 
 class WorktreeConfig(_Strict):

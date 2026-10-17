@@ -15,7 +15,7 @@ from pydantic import (
 from nestd.config.models import Severity
 
 SEVERITIES: tuple[Severity, ...] = ("info", "warn", "action")
-# Events on the chats of a pixie's projects that can start a habit.
+# Events on the chats of any project that can start a habit.
 type Trigger = Literal["stuck", "failed", "review_ready", "ci_failed"]
 TRIGGERS: tuple[Trigger, ...] = get_args(Trigger.__value__)
 type RunOutcome = Literal[

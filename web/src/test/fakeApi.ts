@@ -143,6 +143,7 @@ export function fakeApi(): FakeApi {
     pixieFile: vi.fn<Api["pixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
     savePixieFile: vi.fn<Api["savePixieFile"]>().mockResolvedValue({ text: "", hash: "h" }),
     pixieNotes: vi.fn<Api["pixieNotes"]>().mockResolvedValue([]),
+    pixieSkills: vi.fn<Api["pixieSkills"]>().mockResolvedValue([]),
     pixieActivity: vi.fn<Api["pixieActivity"]>().mockResolvedValue([]),
     searchPixie: vi.fn<Api["searchPixie"]>().mockResolvedValue([]),
     duplicatePixie: vi.fn<Api["duplicatePixie"]>().mockResolvedValue(pixie({ id: "p2" })),

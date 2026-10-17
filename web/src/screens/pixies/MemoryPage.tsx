@@ -4,6 +4,7 @@ import type { FileState } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
+import { AddHeading } from "./AddHeading.tsx";
 import { FilePage } from "./FilePage.tsx";
 import { factParts, isFact, today } from "./memory.ts";
 
@@ -17,7 +18,8 @@ export function MemoryPage({ pixie, onClose }: Props) {
   const { actions } = useStore();
   const { id } = pixie;
   const [file, setFile] = useState<FileState | null>(null);
-  const [fact, setFact] = useState("");
+  // The new fact's field, open from Add until Escape.
+  const [fact, setFact] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -46,12 +48,13 @@ export function MemoryPage({ pixie, onClose }: Props) {
     return true;
   };
 
-  const add = async (event: SyntheticEvent, current: FileState) => {
+  const add = async (event: SyntheticEvent, current: FileState, typed: string) => {
     event.preventDefault();
-    const text = fact.trim();
+    const text = typed.trim();
     if (text === "") return;
     const base =
       current.text === "" || current.text.endsWith("\n") ? current.text : `${current.text}\n`;
+    // Saved: the field stays open for the next one.
     if (await write(current, `${base}- ${today()}: ${text}\n`)) setFact("");
   };
 
@@ -66,7 +69,18 @@ export function MemoryPage({ pixie, onClose }: Props) {
 
   return (
     <Sheet title="Memory" full onClose={onClose}>
-      <h3 className="pxsub">Facts</h3>
+      {file === null ? (
+        <h3 className="pxsub">Facts</h3>
+      ) : (
+        <AddHeading
+          title="Facts"
+          level={3}
+          label="Add fact"
+          onAdd={() => {
+            setFact("");
+          }}
+        />
+      )}
       {file !== null && (
         <>
           <div className="lgrp gl">
@@ -90,20 +104,29 @@ export function MemoryPage({ pixie, onClose }: Props) {
               );
             })}
           </div>
-          <form className="pxform" onSubmit={(event) => void add(event, file)}>
-            <input
-              className="pxin pxin-sm"
-              aria-label="Add fact"
-              placeholder="Add fact"
-              value={fact}
-              onChange={(event) => {
-                setFact(event.target.value);
-              }}
-            />
-            <button className="b b-pri pxgo" type="submit">
-              Add
-            </button>
-          </form>
+          {fact !== null && (
+            <form className="pxform" onSubmit={(event) => void add(event, file, fact)}>
+              <input
+                className="pxin pxin-sm"
+                aria-label="New fact"
+                placeholder="New fact"
+                value={fact}
+                autoFocus
+                onChange={(event) => {
+                  setFact(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  // Not the page's Escape, which closes it.
+                  event.stopPropagation();
+                  setFact(null);
+                }}
+              />
+              <button className="b b-pri pxgo" type="submit">
+                Save
+              </button>
+            </form>
+          )}
         </>
       )}
 

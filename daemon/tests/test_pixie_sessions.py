@@ -23,9 +23,9 @@ def new(repo: str, pixie_id: str | None = None) -> NewSession:
 
 async def test_pixie_chats_are_kept_out_of_session_lists(db: Database, clock: FakeClock) -> None:
     await db.execute(
-        "INSERT INTO pixies (id, slug, name, mascot, color, background, permission_mode,"
+        "INSERT INTO pixies (id, slug, name, mascot, color, permission_mode,"
         " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
-        " VALUES ('p1', 'tester', 'Tester', 'sprout', '#8B7CF6', 'plain', 'default',"
+        " VALUES ('p1', 'tester', 'Tester', 'sprout', '#8B7CF6', 'default',"
         " 'observe', 'none', '[]', '[]', 0, 'x', 'x')"
     )
     store = SessionStore(db, clock)

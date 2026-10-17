@@ -3,6 +3,7 @@ import type { Habit, HabitRun, Pixie } from "../../api/types.ts";
 import { activityTime } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
 import { ActionSheet, Sheet } from "../../ui/Sheet.tsx";
+import { AddHeading } from "./AddHeading.tsx";
 import { Confirm } from "./Confirm.tsx";
 import { HabitEditor } from "./HabitEditor.tsx";
 import { HabitHistory } from "./HabitHistory.tsx";
@@ -55,6 +56,17 @@ export function HabitsPage({ pixie, onClose, onOpenChat }: Props) {
 
   return (
     <Sheet title="Habits" full onClose={onClose}>
+      {habits !== undefined && (
+        <AddHeading
+          level={3}
+          label="New habit"
+          text="New"
+          popup
+          onAdd={() => {
+            setOver({ edit: null });
+          }}
+        />
+      )}
       {habits === undefined && loading && <p className="hint">Loading...</p>}
       {habits === undefined && !loading && <p className="hint">The habits could not be loaded.</p>}
       {habits?.length === 0 && (
@@ -78,16 +90,6 @@ export function HabitsPage({ pixie, onClose, onOpenChat }: Props) {
             />
           ))}
         </ul>
-      )}
-      {habits !== undefined && (
-        <button
-          className="b b-pri pxhabnew"
-          onClick={() => {
-            setOver({ edit: null });
-          }}
-        >
-          New habit
-        </button>
       )}
 
       {menu !== undefined && (

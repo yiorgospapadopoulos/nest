@@ -210,14 +210,12 @@ describe("tap targets", () => {
   it("are at least 44 points on a pixie's details", async () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("web")]);
-    await openPixie(api, pixie({ projects: ["web"], skills: ["review"] }), "Details");
+    await openPixie(api, pixie({ skills: ["review"] }), "Details");
 
     const controls = [
       screen.getByRole("button", { name: "ghost" }),
       screen.getByRole("button", { name: "Colour #E5484D" }),
       screen.getByRole("button", { name: "Custom colour" }),
-      screen.getByRole("button", { name: "Dusk background" }),
-      screen.getByRole("button", { name: "Remove web" }),
       screen.getByRole("button", { name: "Remove review" }),
     ];
     for (const control of controls) {
@@ -227,7 +225,7 @@ describe("tap targets", () => {
         control.getAttribute("aria-label") ?? "",
       ).toBeGreaterThanOrEqual(TAP);
     }
-    for (const name of [/^Edit name/, /^Edit slug/, "Add project", "Add skill", /^Soul/]) {
+    for (const name of [/^Edit name/, /^Edit slug/, "Add skill", /^Soul/]) {
       expect(box(screen.getByRole("button", { name })).height).toBeGreaterThanOrEqual(TAP);
     }
   });

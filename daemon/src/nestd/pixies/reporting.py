@@ -1,8 +1,10 @@
 """Pixies' reports (B42): each is stored, shown as a card in the pixie's chat, announced,
-and pushed to the phone when its severity reaches the pixie's `report_push`. A report from
-a habit run also starts a turn of the pixie's chat, so the user can reply in context.
+and pushed to the phone when its severity reaches `[notifications] pixie_report_level`,
+one level for every pixie (D109). A report from a habit run also starts a turn of the
+pixie's chat, so the user can reply in context.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from nestd.events import types
@@ -45,7 +47,9 @@ class Reports:
         chats: PixieService,
         bus: EventBus,
         notifier: Notifier,
+        push_level: Callable[[], Severity],
     ) -> None:
+        self._push_level = push_level
         self._store = store
         self._habits = habits
         self._pixies = pixies
@@ -82,8 +86,7 @@ class Reports:
         await self._bus.publish(types.PIXIE_REPORT, {"report": report.model_dump(mode="json")})
         if severity == "action":
             await self._announce_pixie(pixie_id)
-        pixie = await self._pixies.get(pixie_id)
-        if severity_at_least(severity, pixie.report_push):
+        if severity_at_least(severity, self._push_level()):
             await self._notifier.notify(
                 "pixie_report",
                 chat_id,

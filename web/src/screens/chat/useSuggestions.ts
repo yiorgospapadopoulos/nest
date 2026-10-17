@@ -40,8 +40,8 @@ export function useSuggestions({ text, caret, focused, sessionId, repo, filesOnl
   const fileQuery = trigger?.kind === "file" && sessionId !== undefined ? trigger.query : null;
   const mentioning = trigger?.kind === "file" && filesOnly !== true;
   // A team's pixies are called with their team only (B46).
-  const callable = mentioning ? soloPixies(state, repo) : [];
-  const teams = mentioning ? availableTeams(state, repo) : [];
+  const callable = mentioning ? soloPixies(state) : [];
+  const teams = mentioning ? availableTeams(state) : [];
   // The first line of each callable pixie's soul, read once while mentioning.
   const [souls, setSouls] = useState<Record<string, string>>({});
   const asked = useRef(new Set<string>());

@@ -609,6 +609,8 @@ export interface QuietHours {
 /** The [notifications] section of the daemon's settings.toml; PUT sends it back whole. */
 export interface NotificationSettings {
   kinds: Record<NotifyKind, boolean>;
+  // The least severe pixie report pushed to the phone, for every pixie (B85).
+  pixie_report_level: ReportSeverity;
   quiet_hours: QuietHours | null;
   ntfy: {
     enabled: boolean;
@@ -672,7 +674,6 @@ export interface AgentDefaults {
 
 export type Mascot =
   "invader" | "ghost" | "cat" | "owl" | "robot" | "frog" | "mushroom" | "bunny" | "crab" | "sprout";
-export type PixieBackground = "plain" | "meadow" | "dusk" | "night" | "dawn";
 export type Autonomy = "observe" | "message" | "start" | "answer";
 export type ProjectAccess = "edit" | "read" | "none";
 
@@ -681,24 +682,17 @@ export interface PixieSettings {
   name: string;
   mascot: Mascot;
   color: string;
-  background: PixieBackground;
   model: string | null;
   effort: Effort | null;
   permission_mode: PermissionMode;
   autonomy: Autonomy;
   project_access: ProjectAccess;
-  // Repo names; null means every project.
-  projects: string[] | null;
   skills: string[];
   can_call: string[];
-  allowed_tools: string[];
-  disallowed_tools: string[];
   hidden: boolean;
   // Chats it started that may run or wait at once (1 to 20), and start per local day (1 to 100).
   max_running: number;
   max_per_day: number;
-  // The least severe report pushed to the phone (B42).
-  report_push: ReportSeverity;
 }
 
 export interface Pixie extends PixieSettings {
@@ -803,11 +797,9 @@ export type CreatePixieBody = Partial<PixieSettings> & {
   slug?: string;
   soul?: string;
 };
-// Fields left out are unchanged; `all_projects` sets `projects` back to every project.
-// `team_id: null` leaves its team.
+// Fields left out are unchanged; `team_id: null` leaves its team.
 export type UpdatePixieBody = Partial<PixieSettings> & {
   slug?: string;
-  all_projects?: boolean;
   team_id?: string | null;
 };
 
@@ -957,11 +949,8 @@ export interface PixieDefaults {
   model: string | null;
   autonomy: Autonomy;
   project_access: ProjectAccess;
-  // "current": the client sends the open project as the new pixie's projects.
-  projects: "all" | "current";
   max_running: number;
   max_per_day: number;
-  report_push: ReportSeverity;
   habits_paused: boolean;
   // Habit runs are skipped above this share of the 5 hour limit (50 to 100).
   habit_usage_percent: number;
@@ -1042,6 +1031,16 @@ export interface InstalledPlugin {
   enabled: boolean;
   scope: "user" | "project" | "local";
   description: string | null;
+}
+
+/**
+ * A skill a pixie may be given (B85): standalone and plugin skills, sorted by name. `name`
+ * is what goes into the pixie's `skills`; a plugin's skill is "plugin:skill".
+ */
+export interface PixieSkill {
+  name: string;
+  description: string | null;
+  plugin: string | null;
 }
 
 /** A standalone skill in ~/.claude/skills, read only. */

@@ -38,9 +38,9 @@ def idle(env: Env, session_id: str, turns: int = 1) -> bool:
 
 async def create(env: Env) -> Session:
     await env.db.execute(
-        "INSERT INTO pixies (id, slug, name, mascot, color, background, permission_mode,"
+        "INSERT INTO pixies (id, slug, name, mascot, color, permission_mode,"
         " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
-        " VALUES ('p1', 't', 'T', 'sprout', '#000000', 'plain', 'default', 'observe', 'none',"
+        " VALUES ('p1', 't', 'T', 'sprout', '#000000', 'default', 'observe', 'none',"
         " '[]', '[]', 0, 'x', 'x')"
     )
     workdir = env.paths.data_dir / "pixies" / "p1" / "workdir"

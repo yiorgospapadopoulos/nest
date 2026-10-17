@@ -303,6 +303,8 @@ class AppContext:
             chats=pixies,
             bus=bus,
             notifier=notifier,
+            # Read for each report, so edits through the API apply at once.
+            push_level=lambda: context.settings.notifications.pixie_report_level,
         )
         habit_tools = PixieHabitTools(
             habits=habits, store=habit_store, reports=reports, activity=activity
@@ -417,7 +419,7 @@ class AppContext:
             habits=habits,
             habit_scheduler=scheduler,
             habit_triggers=HabitTriggers(
-                bus=bus, sessions=store, habits=habit_store, pixies=pixie_store, scheduler=scheduler
+                bus=bus, sessions=store, habits=habit_store, scheduler=scheduler
             ),
             reports=reports,
             composer=ComposerActions(

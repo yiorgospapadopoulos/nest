@@ -4,10 +4,10 @@ import Foundation
 // as the iPhone (B40, D056).
 
 extension Pixie {
-    /// It is passed to chats of this repo as a subagent: not hidden, with project access,
-    /// and assigned to every project or to this one (the daemon's rule).
-    public func isAvailable(inRepo repo: String) -> Bool {
-        !hidden && projectAccess != .noAccess && (projects?.contains(repo) ?? true)
+    /// It is passed to every project's chats as a subagent: not hidden and with project
+    /// access (the daemon's rule; every pixie works in every project since B85).
+    public var isCallable: Bool {
+        !hidden && projectAccess != .noAccess
     }
 }
 
@@ -90,14 +90,14 @@ public enum PixieMention: Sendable, Hashable {
 }
 
 public enum PixieMentions {
-    /// What a chat of `repo` may call: the teams whose leader is available there, with
-    /// their available members, then the available pixies not in one of those teams, each
+    /// What a project's chat may call: the teams whose leader is callable, with their
+    /// callable members, then the callable pixies not in one of those teams, each
     /// in its order: a team's pixie is called only through its team (B46). A team with no
     /// members has no leader and is left out, and so its pixies are called alone.
     public static func available(
-        pixies: [Pixie], teams: [PixieTeam], repo: String, souls: [String: String]
+        pixies: [Pixie], teams: [PixieTeam], souls: [String: String]
     ) -> [PixieMention] {
-        let callable = pixies.filter { $0.isAvailable(inRepo: repo) }
+        let callable = pixies.filter(\.isCallable)
         let teamMentions = teams.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
             .compactMap { team -> PixieMention? in
                 let members = callable.filter { $0.teamID == team.id }

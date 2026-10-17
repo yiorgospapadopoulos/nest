@@ -447,18 +447,14 @@ async def test_a_chats_options_serve_and_allow_the_artifact_tools(
 async def test_a_pixie_runs_options_serve_both_servers(
     ctx: AppContext, provider: FakeProvider, tmp_path: Path
 ) -> None:
-    boss = await make_boss(ctx, provider, allowed_tools=["Bash(ls:*)"])
+    boss = await make_boss(ctx, provider)
     run = run_of(provider, await idle(ctx, boss.chat_id))
     options = await options_of(run, tmp_path)
 
     config, _ = cli_mcp_config(options, tmp_path / "claude")
 
     assert list(config["mcpServers"]) == ["pixie", "nest"]
-    assert options.allowed_tools == [
-        "Bash(ls:*)",
-        "mcp__nest__create_artifact",
-        "mcp__nest__update_artifact",
-    ]
+    assert options.allowed_tools == ["mcp__nest__create_artifact", "mcp__nest__update_artifact"]
     assert options.hooks is not None
     own_guard = next(m for m in options.hooks["PreToolUse"] if "mcp__pixie__" in (m.matcher or ""))
     assert "mcp__nest__" not in (own_guard.matcher or "")

@@ -51,11 +51,8 @@ _RUN_SHAPING = (
     # The run's prompt names it; the tools check it on every call anyway (B41).
     "autonomy",
     "project_access",
-    "projects",
     "skills",
     "can_call",
-    "allowed_tools",
-    "disallowed_tools",
 )
 # Files the run's system prompt is built from.
 _PROMPT_FILES = ("soul", "memory")
@@ -112,15 +109,13 @@ class PixieService:
         return pixie
 
     async def update(self, pixie_id: str, request: UpdatePixie) -> Pixie:
-        changes = request.model_dump(exclude_none=True, exclude={"all_projects", "team_id"})
+        changes = request.model_dump(exclude_none=True, exclude={"team_id"})
         cleared = {
             name
             for name in _CLEARABLE
             if name in request.model_fields_set and getattr(request, name) is None
         }
         changes |= dict.fromkeys(cleared)
-        if request.all_projects:
-            changes["projects"] = None
         if "slug" in changes:
             await self._check_slug(changes["slug"])
         before = await self._store.get(pixie_id)

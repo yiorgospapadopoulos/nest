@@ -116,6 +116,8 @@ public protocol NestAPI: Sendable {
     func updateAgentDefaults(_ defaults: AgentDefaults) async throws -> AgentDefaults
 
     func pixies() async throws -> [Pixie]
+    /// Every skill a pixie may be given, standalone and from plugins, by name (B85).
+    func pixieSkills() async throws -> [PixieSkillChoice]
     func createPixie(_ request: CreatePixieRequest) async throws -> Pixie
     func updatePixie(_ id: String, _ request: UpdatePixieRequest) async throws -> Pixie
     /// Names every pixie once, in the new order; answers them all in that order.
@@ -209,6 +211,10 @@ public protocol NestAPI: Sendable {
     func rebuildSearch() async throws
     func pixieSettings() async throws -> PixieSettings
     func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings
+    /// The daemon's notification rules (B85: the pixie report level).
+    func notificationRules() async throws -> NotificationRules
+    /// Replaces the whole section; answers what was saved.
+    func updateNotificationRules(_ rules: NotificationRules) async throws -> NotificationRules
     func githubAccount() async throws -> GitHubAccount
     /// Asks `gh` again.
     func checkGitHubAccount() async throws -> GitHubAccount

@@ -19,6 +19,15 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         yield running
 
 
+# Pixie keys removed in B85, as an older client still sends them.
+REMOVED_KEYS = {
+    "projects": ["web"],
+    "all_projects": True,
+    "background": "dusk",
+    "report_push": "loud",
+    "allowed_tools": ["Bash(ls:*)"],
+    "disallowed_tools": ["WebFetch"],
+}
 HABIT = {
     "name": "Morning check",
     "prompt": "Check CI on main.",
@@ -151,8 +160,8 @@ async def test_reports_their_reading_and_the_pixies_settings(api: Api) -> None:
     action = await api.ctx.reports.report(
         pid, "action", "Merge waits", "", None, FromRun(run.id, hid, "Morning check")
     )
-    pushed = await api.http.patch(f"/api/pixies/{pid}", json={"report_push": "warn"})
-    bad_push = await api.http.patch(f"/api/pixies/{pid}", json={"report_push": "loud"})
+    # An older client still sends the keys B85 removed (D109): ignored, not refused.
+    pushed = await api.http.patch(f"/api/pixies/{pid}", json=REMOVED_KEYS)
 
     everything = await api.http.get("/api/pixie-reports")
     unread = await api.http.get("/api/pixie-reports", params={"unread": "true"})
@@ -162,11 +171,11 @@ async def test_reports_their_reading_and_the_pixies_settings(api: Api) -> None:
     all_read = await api.http.post(f"/api/pixies/{pid}/reports/read")
     unknown_pixie = await api.http.post("/api/pixies/nope/reports/read")
     after = (await api.http.get(f"/api/pixies/{pid}")).json()
-    kinds = (await api.http.get("/api/notifications/settings")).json()["kinds"]
+    notifications = (await api.http.get("/api/notifications/settings")).json()
 
-    assert pushed.json()["report_push"] == "warn"
+    assert pushed.status_code == 200
     assert pushed.json()["unread_action_reports"] == 1
-    assert bad_push.status_code == 422
+    assert set(pushed.json()).isdisjoint(REMOVED_KEYS)
     assert [r["title"] for r in everything.json()] == ["Merge waits", "Lint is red"]
     assert everything.json()[0]["habit_name"] == "Morning check"
     assert set(everything.json()[0]) == {
@@ -188,5 +197,6 @@ async def test_reports_their_reading_and_the_pixies_settings(api: Api) -> None:
     assert [r["title"] for r in still_unread.json()] == ["Lint is red"]
     assert all_read.json() == {"ids": [still_unread.json()[0]["id"]]}
     assert unknown_pixie.status_code == 404
-    assert (after["report_push"], after["unread_action_reports"]) == ("warn", 0)
-    assert kinds["pixie_report"] is True
+    assert after["unread_action_reports"] == 0
+    assert notifications["kinds"]["pixie_report"] is True
+    assert notifications["pixie_report_level"] == "action"

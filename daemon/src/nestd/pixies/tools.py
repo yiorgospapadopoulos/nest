@@ -102,8 +102,6 @@ def pixie_tools(
 
     async def list_projects(_args: dict[str, JsonValue]) -> str:
         projects = sorted(repos.list_repos(), key=lambda repo: repo.name)
-        if pixie.projects is not None:
-            projects = [repo for repo in projects if repo.name in pixie.projects]
         return "\n".join(f"{repo.name}: {repo.path}" for repo in projects) or "No projects."
 
     specs: list[tuple[str, str, dict[str, JsonValue], Handler]] = [
@@ -148,7 +146,7 @@ def pixie_tools(
         ),
         (
             "list_projects",
-            "List the projects you are assigned to, one per line as name: folder.",
+            "List the user's projects, one per line as name: folder.",
             _schema(),
             list_projects,
         ),

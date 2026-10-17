@@ -63,8 +63,8 @@ class PixieAgents:
         self._teams = teams
 
     async def for_session(self, session: NewSession) -> ChatAgents:
-        """Every pixie that may work on the chat's project: not hidden, with project
-        access, and assigned to it or to every project. A team is offered when its leader
+        """Every pixie that may work on the chat's project: not hidden and with project
+        access (every pixie works in every project, D109). A team is offered when its leader
         is, with its offered members. A pixie's own chat gets every other pixie that is
         not hidden and has project access, and no teams (B41).
         """
@@ -73,7 +73,7 @@ class PixieAgents:
         available = [
             item
             for pixie in await self._pixies.list_pixies()
-            if _may_work_on(pixie, session.repo) and (item := self._read(pixie)) is not None
+            if _may_work_on(pixie) and (item := self._read(pixie)) is not None
         ]
         by_id = {item.pixie.id: item for item in available}
         teams = [team for team in await self._teams.list_teams() if team.leader_id in by_id]
@@ -135,12 +135,9 @@ class PixieAgents:
         return _Available(pixie, soul, memory)
 
 
-def _may_work_on(pixie: Pixie, repo: str) -> bool:
-    return (
-        not pixie.hidden
-        and pixie.project_access != "none"
-        and (pixie.projects is None or repo in pixie.projects)
-    )
+def _may_work_on(pixie: Pixie) -> bool:
+    """Every pixie works in every project (D109), unless hidden or kept out of files."""
+    return not pixie.hidden and pixie.project_access != "none"
 
 
 def _offered_team(pixie: Pixie, handles: dict[str, str]) -> tuple[str | None, str | None]:
@@ -193,9 +190,7 @@ def _model(model: str | None) -> str | None:
 def _subagent(item: _Available, note: str = "", team: str | None = None) -> Subagent:
     """`note` ends its description; `team` is a leader's team section."""
     pixie = item.pixie
-    denied = tuple(pixie.disallowed_tools)
-    if pixie.project_access == "read":
-        denied += EDIT_TOOLS
+    denied = EDIT_TOOLS if pixie.project_access == "read" else ()
     return Subagent(
         description=item.description + note,
         prompt=call_prompt(pixie, item.soul, item.memory, team),

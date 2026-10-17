@@ -10,7 +10,7 @@ from nestd.pixies.errors import DuplicateSlugError, InvalidOrderError, PixieNotF
 from nestd.pixies.models import Pixie, PixieSettings
 from nestd.storage.db import Database, Transaction
 
-_JSON = ("projects", "skills", "can_call", "allowed_tools", "disallowed_tools")
+_JSON = ("skills", "can_call")
 # Every pixie column, and how many of its `action` reports are unread (B42).
 _SELECT = (
     "SELECT pixies.*, (SELECT COUNT(*) FROM pixie_reports AS r WHERE r.pixie_id = pixies.id"
@@ -172,6 +172,6 @@ def _column(name: str, value: object) -> object:
 def _pixie(row: sqlite3.Row) -> Pixie:
     data = dict(row)
     for name in _JSON:
-        data[name] = None if data[name] is None else json.loads(data[name])
+        data[name] = json.loads(data[name])
     data["hidden"] = bool(data["hidden"])
     return Pixie.model_validate(data)

@@ -52,11 +52,17 @@ describe("Pixie memory page", () => {
     expect(await within(page).findByText("No facts yet")).toBeInTheDocument();
   });
 
-  it("adds a dated fact", async () => {
+  it("adds a dated fact from Add at the right of the Facts heading", async () => {
     const api = withMemory("# Memory");
     const { user, page } = await openMemory(api);
 
-    const field = await within(page).findByRole("textbox", { name: "Add fact" });
+    const add = await within(page).findByRole("button", { name: "Add fact" });
+    expect(add.parentElement).toHaveClass("pxhrow");
+    expect(add.previousElementSibling).toHaveTextContent("Facts");
+    expect(within(page).queryByRole("textbox", { name: "New fact" })).not.toBeInTheDocument();
+    await user.click(add);
+    const field = within(page).getByRole("textbox", { name: "New fact" });
+    expect(field).toHaveFocus();
     await user.type(field, "  {Enter}");
     expect(api.savePixieFile).not.toHaveBeenCalled();
     await user.type(field, "Prefers pnpm{Enter}");
@@ -68,16 +74,28 @@ describe("Pixie memory page", () => {
       "m1",
     );
     expect(await within(page).findByText("Prefers pnpm")).toBeInTheDocument();
+    // Saved: the field stays open and empty for the next one.
     expect(field).toHaveValue("");
 
     await user.type(field, "Short PRs");
-    await user.click(within(page).getByRole("button", { name: "Add" }));
+    await user.click(within(page).getByRole("button", { name: "Save" }));
     expect(api.savePixieFile).toHaveBeenLastCalledWith(
       "p1",
       "memory",
       expect.stringMatching(/Prefers pnpm\n- \d{4}-\d{2}-\d{2}: Short PRs\n$/),
       "m2",
     );
+  });
+
+  it("closes the new fact's field on Escape, keeping the page open", async () => {
+    const api = withMemory();
+    const { user, page } = await openMemory(api);
+
+    await user.click(await within(page).findByRole("button", { name: "Add fact" }));
+    await user.type(within(page).getByRole("textbox", { name: "New fact" }), "x{Escape}");
+    expect(within(page).queryByRole("textbox", { name: "New fact" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Memory" })).toBeInTheDocument();
+    expect(api.savePixieFile).not.toHaveBeenCalled();
   });
 
   it("takes the newer memory when it changed meanwhile", async () => {
@@ -96,7 +114,8 @@ describe("Pixie memory page", () => {
     expect(await within(page).findByText("Newer fact")).toBeInTheDocument();
     expect(screen.getByText("Memory changed meanwhile. Try again.")).toBeInTheDocument();
 
-    await user.type(within(page).getByRole("textbox", { name: "Add fact" }), "More{Enter}");
+    await user.click(within(page).getByRole("button", { name: "Add fact" }));
+    await user.type(within(page).getByRole("textbox", { name: "New fact" }), "More{Enter}");
     expect(api.savePixieFile).toHaveBeenLastCalledWith(
       "p1",
       "memory",
@@ -104,7 +123,8 @@ describe("Pixie memory page", () => {
       "m9",
     );
     expect(await screen.findByText("Mac asleep")).toBeInTheDocument();
-    expect(within(page).getByRole("textbox", { name: "Add fact" })).toHaveValue("More");
+    // Not saved: the field keeps the text.
+    expect(within(page).getByRole("textbox", { name: "New fact" })).toHaveValue("More");
   });
 
   it("starts empty without a memory file", async () => {
@@ -113,7 +133,8 @@ describe("Pixie memory page", () => {
     const { user, page } = await openMemory(api);
 
     expect(await within(page).findByText("No facts yet")).toBeInTheDocument();
-    await user.type(within(page).getByRole("textbox", { name: "Add fact" }), "First{Enter}");
+    await user.click(within(page).getByRole("button", { name: "Add fact" }));
+    await user.type(within(page).getByRole("textbox", { name: "New fact" }), "First{Enter}");
     expect(api.savePixieFile).toHaveBeenCalledWith(
       "p1",
       "memory",

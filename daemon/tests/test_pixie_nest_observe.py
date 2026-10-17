@@ -7,6 +7,7 @@ import pytest
 from nestd.context import AppContext
 from nestd.pixies import nest_tools
 from nestd.pixies.habit_tools import REPORT_TOOL_NAMES
+from nestd.pixies.models import CreatePixie
 from nestd.pixies.nest_tools import NEST_TOOL_NAMES
 from nestd.pixies.tools import TOOL_NAMES
 from nestd.providers.base import (
@@ -35,29 +36,26 @@ async def test_every_pixie_chat_run_gets_all_its_tools(
     assert tuple(boss.tools) == TOOL_NAMES + NEST_TOOL_NAMES + REPORT_TOOL_NAMES
 
 
-async def test_list_sessions_shows_its_projects_chats_and_never_pixie_chats(
+async def test_list_sessions_shows_every_projects_chats_and_never_pixie_chats(
     ctx: AppContext, provider: FakeProvider
 ) -> None:
     other = await make_boss(ctx, provider)
-    boss = await make_boss(ctx, provider, projects=["web"])
+    boss = await make_boss(ctx, provider)
     web = await user_chat(ctx, provider, "web")
     await user_chat(ctx, provider, "api")
 
     listed = await boss.call("list_sessions")
     idle_only = await boss.call("list_sessions", project="web", state="idle")
     running = await boss.call("list_sessions", state="running")
-    outside = await boss.refused("list_sessions", project="api")
     bad_state = await boss.refused("list_sessions", state="sleeping")
-    everywhere = await other.call("list_sessions")
 
-    assert listed == f"1 chat:\n{web.id} | Fix the bug | web | idle"
-    assert idle_only == listed
+    # Every pixie works in every project (D109).
+    assert listed.startswith("2 chats:")
+    assert idle_only == f"1 chat:\n{web.id} | Fix the bug | web | idle"
     assert running == "No chats."
-    assert outside == "api is not one of your projects."
     assert bad_state.startswith("state must be one of: starting, running")
-    assert everywhere.startswith("2 chats:")
-    assert other.chat_id not in everywhere
-    assert boss.chat_id not in everywhere
+    assert other.chat_id not in listed
+    assert boss.chat_id not in listed
 
 
 async def test_get_session_describes_a_chat(ctx: AppContext, provider: FakeProvider) -> None:
@@ -72,22 +70,17 @@ async def test_get_session_describes_a_chat(ctx: AppContext, provider: FakeProvi
     assert "Permission mode: " in described
 
 
-async def test_pixie_chats_and_other_projects_are_refused(
-    ctx: AppContext, provider: FakeProvider
-) -> None:
+async def test_pixie_chats_are_refused(ctx: AppContext, provider: FakeProvider) -> None:
     other = await make_boss(ctx, provider)
-    boss = await make_boss(ctx, provider, projects=["web"])
-    api = await user_chat(ctx, provider, "api")
+    boss = await make_boss(ctx, provider)
 
     own = await boss.refused("get_session", id=boss.chat_id)
     others = await boss.refused("read_transcript", id=other.chat_id)
-    outside = await boss.refused("get_session", id=api.id)
     unknown = await boss.refused("pr_status", id="nope")
     missing = await boss.refused("get_session")
 
     assert own == "That is a pixie's chat; pixies never act on pixie chats."
     assert others == own
-    assert outside == "That chat is in api, which is not one of your projects."
     assert unknown == "unknown session 'nope'"
     assert missing == "id is required."
 
@@ -148,10 +141,11 @@ async def test_read_transcript_checks_its_numbers(ctx: AppContext, provider: Fak
     assert "```text\n(nothing)\n```" in nothing_new
 
 
-async def test_list_inbox_shows_pending_prompts_in_its_projects(
+async def test_list_inbox_shows_pending_prompts_in_every_project(
     ctx: AppContext, provider: FakeProvider
 ) -> None:
-    boss = await make_boss(ctx, provider, projects=["web"])
+    boss = await make_boss(ctx, provider)
+    empty = await boss.call("list_inbox")
     asking = QuestionRequest(questions=(_question("Which database?", "Postgres", "SQLite"),))
     provider.script(ask("Bash", reply("done")), question(asking, reply("ok")))
     first = await ctx.sessions.create(CreateSession(repo="web", prompt="Deploy", mode="worktree"))
@@ -159,24 +153,24 @@ async def test_list_inbox_shows_pending_prompts_in_its_projects(
     provider.script(ask("Bash", reply("done")))
     await ctx.sessions.create(CreateSession(repo="api", prompt="Elsewhere", mode="worktree"))
 
-    async def three_pending() -> bool:
-        return len(await ctx.approvals.list_approvals()) == 3
+    async def pending(count: int) -> bool:
+        return len(await ctx.approvals.list_approvals()) == count
 
-    await until(three_pending)
+    await until(lambda: pending(3))
+    # A pixie's own chat waits too, but pixies never act on pixie chats.
+    helper = await ctx.pixies.create(CreatePixie(name="Helper"))
+    provider.script(ask("Bash", reply("done")))
+    await ctx.pixies.send(helper.id, "Clean up", [])
+    await until(lambda: pending(4))
     inbox = await boss.call("list_inbox")
 
-    assert inbox.startswith("2 waiting:\n")
+    assert empty == "Nothing is waiting."
+    assert inbox.startswith("3 waiting:\n")
     assert f'permission in chat {first.id} "Deploy" (web): Bash' in inbox
     assert f'question in chat {second.id} "Pick" (web): Which database? [Postgres / SQLite]' in (
         inbox
     )
-    assert "Elsewhere" not in inbox
-    assert await make_empty_inbox(ctx, provider) == "Nothing is waiting."
-
-
-async def make_empty_inbox(ctx: AppContext, provider: FakeProvider) -> str:
-    lonely = await make_boss(ctx, provider, projects=["missing"])
-    return await lonely.call("list_inbox")
+    assert '"Elsewhere" (api): Bash' in inbox
 
 
 def _question(text: str, *labels: str) -> Question:

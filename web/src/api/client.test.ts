@@ -355,6 +355,7 @@ const calls: Call[] = [
     { text: "x", hash: "h" },
   ],
   ["pixieNotes", (a) => a.pixieNotes("p1"), "GET", "/api/pixies/p1/notes", undefined],
+  ["pixieSkills", (a) => a.pixieSkills(), "GET", "/api/pixies/skills", undefined],
   ["pixieActivity", (a) => a.pixieActivity("p 1"), "GET", "/api/pixies/p%201/activity", undefined],
   [
     "searchPixie",
