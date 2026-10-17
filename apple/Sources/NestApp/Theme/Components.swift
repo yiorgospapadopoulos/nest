@@ -54,6 +54,8 @@ enum Icon {
     static let diff = "plus.forwardslash.minus"
     static let team = "person.2.fill"
     static let sendAway = "rectangle.portrait.and.arrow.right"
+    /// An artifact, and the Markdown kind; an HTML one shows `code`.
+    static let artifact = "doc.richtext"
 
     static func tool(_ kind: ToolSummary.Kind) -> String {
         switch kind {
@@ -63,6 +65,7 @@ enum Icon {
         case .search: "magnifyingglass"
         case .agent: "cpu"
         case .web: "globe"
+        case .artifact: Icon.artifact
         case .other: "wrench.and.screwdriver"
         }
     }

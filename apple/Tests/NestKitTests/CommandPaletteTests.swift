@@ -49,7 +49,8 @@ import Testing
             palette.items.map(\.title) == [
                 "Validate the form", "Dark mode", "Retry", "New chat in cv-page",
                 "New terminal in cv-page", "New browser", "Show the Board view",
-                "Collapse the chat sidebar", "Collapse the activity panel",
+                "Show the Artifacts view", "Collapse the chat sidebar",
+                "Collapse the activity panel",
                 "Show usage", "Open cv-page in VS Code", "Go to llm-hunter",
             ])
         #expect(

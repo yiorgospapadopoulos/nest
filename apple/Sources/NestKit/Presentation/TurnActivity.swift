@@ -36,7 +36,7 @@ public enum ThinkingPreview {
 /// then "Ran 3 commands, read 2 files, edited 1 file".
 public enum ToolActivity {
     private enum Part: Hashable {
-        case commands, reads, edits, searches, fetches, agents
+        case commands, reads, edits, searches, fetches, agents, artifacts
         case other(String)
 
         init(_ tool: String) {
@@ -47,6 +47,7 @@ public enum ToolActivity {
             case .search: self = .searches
             case .web: self = .fetches
             case .agent: self = .agents
+            case .artifact: self = .artifacts
             case .other:
                 // An MCP tool, "mcp__server__tool", goes by its own name.
                 let name = tool.range(of: "__", options: .backwards).map {
@@ -69,6 +70,7 @@ public enum ToolActivity {
             case .agents:
                 let agents = "\(running ? "running" : "ran") \(counted("agent"))"
                 return running && done > 0 ? "\(agents), \(done) done" : agents
+            case .artifacts: return "\(running ? "saving" : "saved") \(counted("artifact"))"
             case .other(let name):
                 let times = count > 1 ? " \(count) times" : ""
                 return "\(running ? "using" : "used") \(name)\(times)"

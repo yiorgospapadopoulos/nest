@@ -47,6 +47,9 @@
         private var nothingToRestore = false
         /// Each chat's pixies (B46).
         private var groupList: [String: [ChatPixieEntry]]
+        /// Saved artifacts newest first, and their versions by "<id>/<version>" (B79).
+        private var artifactList: [Artifact]
+        private let artifactTexts: [String: ArtifactContent]
 
         init(now: Date = Date()) {
             self.now = now
@@ -63,6 +66,8 @@
             runList = Self.sampleRuns(now: now)
             reportList = Self.sampleReports(now: now)
             groupList = SampleTree.groups(now: now)
+            artifactList = SampleArtifacts.list(now: now)
+            artifactTexts = SampleArtifacts.contents(now: now)
         }
 
         /// Four git repositories and a plain folder, "recipes". cv-page and llm-hunter show
@@ -1128,6 +1133,61 @@
         }
 
         func revokeDevice(_ id: String) async throws {}
+
+        // MARK: Artifacts (B79)
+
+        func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws
+            -> [Artifact]
+        {
+            lock.withLock {
+                artifactList.filter { artifact in
+                    (repo.map { $0 == artifact.repo } ?? true)
+                        && (sessionID.map { $0 == artifact.sessionID } ?? true)
+                        && (pixieID.map { $0 == artifact.pixieID } ?? true)
+                }
+            }
+        }
+
+        func unseenArtifacts() async throws -> Int {
+            lock.withLock { artifactList.count { !$0.seen } }
+        }
+
+        func artifact(_ id: String) async throws -> ArtifactDetail {
+            guard let artifact = lock.withLock({ artifactList.first { $0.id == id } }) else {
+                throw APIError.notFound("artifact not found")
+            }
+            let versions = (1...artifact.latestVersion).map { version in
+                [
+                    "version": version, "title": artifact.title, "size": 2048,
+                    "created_at": SampleData.iso(artifact.updatedAt),
+                ] as [String: Any]
+            }
+            return try decode(
+                SampleArtifacts.object(artifact).merging(["versions": versions]) {
+                    $1
+                })
+        }
+
+        func artifactContent(_ id: String, version: Int) async throws -> ArtifactContent {
+            guard let content = artifactTexts["\(id)/\(version)"] else {
+                throw APIError.notFound("version not found")
+            }
+            return content
+        }
+
+        func markArtifactSeen(_ id: String) async throws -> Artifact {
+            try lock.withLock {
+                guard let index = artifactList.firstIndex(where: { $0.id == id }) else {
+                    throw APIError.notFound("artifact not found")
+                }
+                artifactList[index].seen = true
+                return artifactList[index]
+            }
+        }
+
+        func deleteArtifact(_ id: String) async throws {
+            lock.withLock { artifactList.removeAll { $0.id == id } }
+        }
 
         private func decode<T: Decodable>(_ object: Any) throws -> T {
             try SampleData.decode(object)

@@ -164,6 +164,10 @@
                 try await renderLimitPause(model, shell, controller, folder)
                 return
             }
+            if only == "b79" {
+                try await renderArtifacts(model, shell, controller, folder)
+                return
+            }
             if only == "b73" {
                 try await renderWindowLayout(model, shell, controller, folder)
                 return
@@ -317,6 +321,7 @@
             try await renderReviewFixes(model, shell, controller, folder)
             try await renderWorkingCopies(model, shell, controller, folder)
             try await renderReviewBar(model, shell, controller, folder)
+            try await renderArtifacts(model, shell, controller, folder)
         }
 
         /// B56: a pending review is one line above the composer, not a card in the
@@ -2570,6 +2575,169 @@
                         "origin": "limit_resume",
                     ]))
             try await pair(controller, "limit-resumed", folder)
+        }
+
+        /// B79: the Artifacts view with Markdown, versions, HTML and nothing saved, the
+        /// switch's badge, the cards and calls in a transcript, and a pixie's artifacts on
+        /// its page and in the Pixies tab's view.
+        private static func renderArtifacts(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            shell.pixiesOpen = false
+            model.app.selectProject("cv-page")
+            let workspace = CGSize(width: 828, height: 790)
+            let store = model.artifacts
+            try await store.loadUnseen()
+            // The badge on the switch, from the workspace.
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c1", in: workspace)
+                state.focusPane("c1")
+            }
+            let transcript = model.transcripts.transcript(for: "c1")
+            try await transcript.load()
+            let now = Date()
+            func event(_ id: Int, _ type: String, _ payload: [String: Any]) throws -> Event {
+                try SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(now), "session_id": "c1",
+                    "payload": payload,
+                ])
+            }
+            func use(_ id: String, _ name: String, _ input: [String: Any]) -> [String: Any] {
+                ["blocks": [["type": "tool_use", "id": id, "name": name, "input": input]]]
+            }
+            func result(_ id: String, _ text: String, error: Bool = false) -> [String: Any] {
+                [
+                    "blocks": [
+                        [
+                            "type": "tool_result", "tool_use_id": id, "content": text,
+                            "is_error": error,
+                        ]
+                    ]
+                ]
+            }
+            let plan = String(repeating: "A long plan. ", count: 400)
+            for item in [
+                try event(
+                    9_101, EventType.sessionUserMessage,
+                    ["text": "Write the plan up as an artifact.", "attachments": []]),
+                try event(
+                    9_102, EventType.sessionMessage,
+                    use(
+                        "t-create", ArtifactTools.create,
+                        [
+                            "title": "Contact form validation plan", "kind": "markdown",
+                            "content": plan,
+                        ])),
+                try event(
+                    9_103, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-plan", "version": 1, "title": "Contact form plan",
+                        "kind": "markdown", "action": "created",
+                    ]),
+                try event(
+                    9_104, EventType.sessionMessage,
+                    result("t-create", "Saved artifact a-plan (version 1): Contact form plan.")),
+                try event(
+                    9_105, EventType.sessionMessage,
+                    use(
+                        "t-update", ArtifactTools.update,
+                        [
+                            "artifact_id": "a-plan", "content": plan,
+                            "title": "Contact form validation plan",
+                        ])),
+                try event(
+                    9_106, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-plan", "version": 3,
+                        "title": "Contact form validation plan", "kind": "markdown",
+                        "action": "updated",
+                    ]),
+                try event(
+                    9_107, EventType.sessionMessage,
+                    result("t-update", "Saved version 3 of artifact a-plan.")),
+                try event(
+                    9_108, EventType.sessionArtifact,
+                    [
+                        "artifact_id": "a-removed", "version": 1, "title": "Early draft",
+                        "kind": "html", "action": "created",
+                    ]),
+                try event(
+                    9_109, EventType.sessionMessage,
+                    use("t-refused", ArtifactTools.update, ["artifact_id": "x", "content": plan])),
+                try event(
+                    9_110, EventType.sessionMessage,
+                    result(
+                        "t-refused",
+                        "artifact 'x' belongs to another chat; create a new one instead",
+                        error: true)),
+            ] {
+                transcript.receive(item)
+            }
+            try await pair(controller, "artifacts-transcript-card", folder)
+
+            // The view: the focused chat's artifacts, its newest in the reader.
+            shell.showView(.artifacts)
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-markdown", folder)
+            try await store.step(by: -1)
+            try await pair(controller, "artifacts-versions", folder)
+
+            // The whole project, an HTML page in the sandboxed web view.
+            try await store.setWide(true)
+            try await store.select("a-parsers")
+            try await pair(controller, "artifacts-html", folder)
+
+            // A project whose chats saved nothing, and a chat that saved nothing.
+            shell.selectProject("narrative-engine")
+            model.app.update("narrative-engine") { $0.view = .artifacts }
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-empty", folder)
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            shell.showView(.artifacts)
+            store.show(shell.artifactScope!)
+            try await store.open()
+            try await pair(controller, "artifacts-chat-empty", folder)
+            model.app.update("cv-page") { $0.view = .workspace }
+
+            // A pixie's artifacts on its page, then in the Pixies tab's view.
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = true
+            shell.pixiePanel = .details
+            try await store.load(.pixie("reviewer"))
+            try await pair(controller, "artifacts-pixie-page", folder) { host in
+                scrollToBottom(in: host)
+            }
+            shell.openArtifact("a-review", version: nil, from: nil)
+            await waitUntil { store.selection?.id == "a-review" && store.selectedContent != nil }
+            try await pair(controller, "artifacts-pixies", folder)
+            shell.pixieDetailsOpen = false
+            model.app.updatePixies { $0.view = .workspace }
+            shell.pixiesOpen = false
+        }
+
+        /// Scrolls every scroll view to its end, such as a pixie's details to its last part.
+        private static func scrollToBottom(in view: NSView) {
+            if let scroll = view as? NSScrollView, let document = scroll.documentView {
+                let bottom = max(0, document.bounds.height - scroll.contentView.bounds.height)
+                scroll.contentView.scroll(to: CGPoint(x: 0, y: document.isFlipped ? bottom : 0))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            for subview in view.subviews {
+                scrollToBottom(in: subview)
+            }
         }
 
         /// B73: no bar over the project; its menu and branch at the top of the sidebar,

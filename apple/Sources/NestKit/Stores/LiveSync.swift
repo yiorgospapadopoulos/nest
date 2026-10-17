@@ -18,6 +18,7 @@ public final class LiveSync {
     let reports: PixieReportsStore
     let habits: HabitsStore
     let chatPixies: ChatPixiesStore
+    let artifacts: ArtifactsStore
     /// Called for each `notify` event, for notification delivery.
     public var onNotice: ((Notice) -> Void)?
     /// Called after each connect has reloaded the stores.
@@ -28,7 +29,7 @@ public final class LiveSync {
         activity: ActivityStore, transcripts: Transcripts, usage: UsageStore,
         connectors: ConnectorsStore, claudeChats: ClaudeChatsStore, agents: AgentsStore,
         pixies: PixiesStore, reports: PixieReportsStore, habits: HabitsStore,
-        chatPixies: ChatPixiesStore
+        chatPixies: ChatPixiesStore, artifacts: ArtifactsStore
     ) {
         self.source = source
         self.app = app
@@ -44,6 +45,7 @@ public final class LiveSync {
         self.reports = reports
         self.habits = habits
         self.chatPixies = chatPixies
+        self.artifacts = artifacts
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -74,8 +76,8 @@ public final class LiveSync {
     }
 
     /// Reloads repos, sessions, approvals, connectors, usage limits, Claude Code chats, pixies
-    /// and their reports, then the models, agent defaults and account and each chat's
-    /// pixies, which never fail the sync.
+    /// and their reports, and the artifacts, then the models, agent defaults and account and
+    /// each chat's pixies, which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
@@ -86,6 +88,7 @@ public final class LiveSync {
             try await claudeChats.load()
             try await pixies.load()
             try await reports.load()
+            try await artifacts.reload()
             app.syncError = nil
         } catch {
             app.syncError = error as? APIError ?? .transport(String(describing: error))
@@ -106,6 +109,7 @@ public final class LiveSync {
         reports.apply(event)
         habits.apply(event)
         chatPixies.apply(event)
+        artifacts.apply(event)
         switch event.body {
         case .sessionDeleted(let id):
             app.forgetChat(id)
@@ -155,6 +159,8 @@ public final class AppModel {
     public let habits: HabitsStore
     /// Each chat's pixies and the open work page (B46).
     public let chatPixies: ChatPixiesStore
+    /// Artifacts the chats saved and the Artifacts view (B79).
+    public let artifacts: ArtifactsStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -188,11 +194,12 @@ public final class AppModel {
         reports = PixieReportsStore(api: api, now: now)
         habits = HabitsStore(api: api)
         chatPixies = ChatPixiesStore(api: api)
+        artifacts = ArtifactsStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, pixies: pixies, reports: reports,
-            habits: habits, chatPixies: chatPixies)
+            habits: habits, chatPixies: chatPixies, artifacts: artifacts)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }

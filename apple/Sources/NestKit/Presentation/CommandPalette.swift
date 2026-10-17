@@ -29,7 +29,8 @@ public enum PaletteGroup: String, Sendable, CaseIterable {
 /// The glyph of a command entry; chats show their status dot instead.
 public enum PaletteGlyph: Sendable, Hashable {
     case status(StatusTone)
-    case newChat, terminal, browser, board, workspace, sidebar, activityPanel, usage, code
+    case newChat, terminal, browser, board, workspace, artifacts, sidebar, activityPanel, usage
+    case code
     case folder
     case message(SearchHitKind)
 }
@@ -157,6 +158,14 @@ extension CommandPalette {
                     title: offerBoard ? "Show the Board view" : "Show the Workspace view",
                     subtitle: "View", glyph: offerBoard ? .board : .workspace,
                     action: .showView(offerBoard ? .board : .workspace)),
+            ]
+            if state.view != .artifacts {
+                items.append(
+                    PaletteItem(
+                        group: .commands, title: "Show the Artifacts view", subtitle: "View",
+                        glyph: .artifacts, action: .showView(.artifacts)))
+            }
+            items += [
                 PaletteItem(
                     group: .commands,
                     title: "\(state.leftCollapsed ? "Expand" : "Collapse") the chat sidebar",

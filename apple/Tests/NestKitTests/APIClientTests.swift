@@ -588,7 +588,45 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             body: #"{"always":false,"decision":"keep_planning","dismiss":false}"#,
             response: approvalJSON
         ) { _ = try await $0.resolveApproval("ap1", .keepPlanning(note: "  ")) },
+        RouteCase("GET", "/api/artifacts", response: "[\(artifactJSON)]") {
+            _ = try await $0.artifacts(repo: nil, sessionID: nil, pixieID: nil)
+        },
+        RouteCase("GET", "/api/artifacts?repo=cv-page&session_id=s1&pixie_id=p1", response: "[]") {
+            _ = try await $0.artifacts(repo: "cv-page", sessionID: "s1", pixieID: "p1")
+        },
+        RouteCase("GET", "/api/artifacts/unseen", response: #"{"unseen": 3}"#) {
+            let unseen = try await $0.unseenArtifacts()
+            #expect(unseen == 3)
+        },
+        RouteCase("GET", "/api/artifacts/a1", response: detailJSON) {
+            let detail = try await $0.artifact("a1")
+            #expect(detail.versions.map(\.version) == [1, 2])
+        },
+        RouteCase("GET", "/api/artifacts/a1/versions/2", response: contentJSON) {
+            let content = try await $0.artifactContent("a1", version: 2)
+            #expect(content.content == "<p>Hi</p>")
+        },
+        RouteCase("POST", "/api/artifacts/a1/seen", response: artifactJSON) {
+            let seen = try await $0.markArtifactSeen("a1")
+            #expect(seen.id == "a1")
+        },
+        RouteCase("DELETE", "/api/artifacts/a1", response: "") {
+            try await $0.deleteArtifact("a1")
+        },
     ]
+
+    static let artifactJSON = Fixture.artifactJSON()
+    static let detailJSON =
+        String(artifactJSON.dropLast())
+            + """
+            , "versions": [
+              {"version": 1, "title": "Options", "size": 1834, "created_at": "2026-10-17T09:30:00+00:00"},
+              {"version": 2, "title": "Options compared", "size": 2210, "created_at": "2026-10-17T09:41:00+00:00"}]}
+            """
+    static let contentJSON = """
+        {"artifact_id": "a1", "version": 2, "kind": "html", "title": "Options compared",
+         "content": "<p>Hi</p>", "size": 9, "created_at": "2026-10-17T09:41:00+00:00"}
+        """
 
     static let commandsJSON = """
         {"source": "session", "commands": [{"name": "compact", "description": "Compact",

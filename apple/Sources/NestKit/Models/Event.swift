@@ -94,6 +94,12 @@ public enum EventType {
     public static let pixieReport = "pixie.report"
     /// Reports were marked read, here or on another device.
     public static let pixieReportRead = "pixie.report_read"
+    /// The chat saved an artifact or a new version of one: a card in its transcript (B79).
+    public static let sessionArtifact = "session.artifact"
+    /// An artifact was saved in any chat, opened or deleted; each carries the unseen count.
+    public static let artifactSaved = "artifact.saved"
+    public static let artifactSeen = "artifact.seen"
+    public static let artifactDeleted = "artifact.deleted"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -160,6 +166,11 @@ public enum EventBody: Sendable, Hashable {
     case habitRunUpdated(HabitRun)
     case pixieReport(PixieReport)
     case pixieReportRead(ids: [String])
+    /// The chat saved an artifact, shown as a card where it falls (B79).
+    case sessionArtifact(ArtifactCard)
+    case artifactSaved(ArtifactSaved)
+    case artifactSeen(id: String, unseen: Int)
+    case artifactDeleted(id: String, unseen: Int)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -249,6 +260,17 @@ public enum EventBody: Sendable, Hashable {
         case EventType.pixieReport: self = .pixieReport(try field("report", as: PixieReport.self))
         case EventType.pixieReportRead:
             self = .pixieReportRead(ids: try field("ids", as: [String].self))
+        case EventType.sessionArtifact:
+            self = .sessionArtifact(try payload.decode(ArtifactCard.self))
+        case EventType.artifactSaved: self = .artifactSaved(try payload.decode(ArtifactSaved.self))
+        case EventType.artifactSeen:
+            self = .artifactSeen(
+                id: try field("artifact_id", as: String.self),
+                unseen: try field("unseen", as: Int.self))
+        case EventType.artifactDeleted:
+            self = .artifactDeleted(
+                id: try field("artifact_id", as: String.self),
+                unseen: try field("unseen", as: Int.self))
         default: self = .other
         }
     }
