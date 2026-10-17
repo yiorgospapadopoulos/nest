@@ -141,11 +141,9 @@ import Testing
     }
 
     @Test func decodesUsage() {
-        let month = Fixture.usageMonth
-        #expect(month.days.count == 31)
-        #expect(month.days[0].date == CalendarDay(year: 2026, month: 10, day: 1))
-        #expect(month.tokens.total == 496_000)
-        #expect(month.tokens.cacheReadInputTokens == 246_000)
+        let period = Fixture.usagePeriod
+        #expect(period.tokens.cacheReadInputTokens == 12_100_000)
+        #expect(period.tokens.cacheCreationInputTokens == 2_800_000)
 
         let limits = Fixture.usageLimits
         #expect(limits.fiveHour?.utilization == 0.3)

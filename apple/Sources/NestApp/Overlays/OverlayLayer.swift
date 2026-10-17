@@ -152,9 +152,11 @@ struct SheetRow<Control: View>: View {
 }
 
 /// A small segmented control: flat segments, the chosen one on the selection fill.
+/// Filling the width, the segments share it equally.
 struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selection: Value
+    var fillsWidth = false
     let select: (Value) -> Void
     @Environment(\.accentColors) private var accent
 
@@ -169,6 +171,7 @@ struct Segmented<Value: Hashable>: View {
                         .font(.ui(TypeSize.button))
                         .foregroundStyle(on ? Palette.t1 : Palette.t2)
                         .padding(.horizontal, 9)
+                        .frame(maxWidth: fillsWidth ? .infinity : nil)
                         .frame(height: Metrics.buttonHeight)
                         .background(on ? accent.selection : .clear, in: .rounded(Radius.button))
                         .contentShape(Rectangle())

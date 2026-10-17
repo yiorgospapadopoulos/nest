@@ -200,6 +200,10 @@
                 try await renderSettings(model, shell, controller, folder)
                 return
             }
+            if only == "b84" {
+                try await renderUsagePeriods(model, shell, controller, folder)
+                return
+            }
             if only == "b47" {
                 try await renderGoals(model, shell, controller, folder)
                 return
@@ -2400,6 +2404,33 @@
 
         }
 
+        /// B84: the usage popover's chart for each unit, yesterday and last month, its Details,
+        /// and the strip with the usage chip halfway up it.
+        private static func renderUsagePeriods(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            try await model.usage.load()
+            await model.usage.refresh()
+            shell.show(.usage)
+            for unit in UsageUnit.allCases {
+                try await model.usage.choose(unit)
+                try await pair(controller, "b84-usage-\(unit.rawValue)", folder)
+            }
+            // The sample's today may be a quiet weekend day: yesterday too.
+            try await model.usage.choose(.day)
+            try await model.usage.showPrevious()
+            try await pair(controller, "b84-usage-day-previous", folder)
+            try await model.usage.choose(.month)
+            try await model.usage.showPrevious()
+            try await pair(controller, "b84-usage-month-previous", folder)
+            try await model.usage.showNext()
+            model.usage.showDetails()
+            try await pair(controller, "b84-usage-details", folder)
+            shell.close()
+            try await pair(controller, "b84-strip", folder)
+        }
+
         /// B23: the usage button and popover with numbers 25 minutes old (dimmed), after a
         /// Refresh (fresh), a second Refresh refused as too soon, and Settings' Usage section.
         private static func renderUsage(
@@ -2873,7 +2904,7 @@
                 "connectors: \(model.connectors.connectors.count), devices: \(model.devices.devices.map(\.name))"
             )
             print(
-                "limits: \(String(describing: model.usage.limits)), month tokens: \(model.usage.totalTokens)"
+                "limits: \(String(describing: model.usage.limits)), period tokens: \(model.usage.totalText)"
             )
             let shell = Shell(model: model)
             let controller = AppController(shell: shell, service: sampleService())

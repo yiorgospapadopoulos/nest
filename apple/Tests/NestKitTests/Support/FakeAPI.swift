@@ -18,7 +18,6 @@ final class FakeAPI: NestAPI {
         var approvals: [Approval] = []
         var diff = Fixture.diff
         var connectors = Fixture.connectors
-        var months: [String: UsageMonth] = [:]
         var limits = Fixture.usageLimits
         /// What a manual refresh answers.
         var refreshedLimits = Fixture.usageLimits
@@ -531,20 +530,14 @@ final class FakeAPI: NestAPI {
         try call("connectors") { $0.connectors }
     }
 
-    func usageMonth(year: Int, month: Int) async throws -> UsageMonth {
-        try call("usageMonth", "\(year)-\(month)") { state in
-            if let stored = state.months["\(year)-\(month)"] {
-                return stored
-            }
-            var usage = Fixture.usageMonth
-            usage.year = year
-            usage.month = month
-            usage.days = usage.days.map { day in
-                var day = day
-                day.date = CalendarDay(year: year, month: month, day: day.date.day)
-                return day
-            }
-            return usage
+    /// The fixture's numbers for any period, starting on the day asked for.
+    func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod {
+        await pass("usagePeriod")
+        return try call("usagePeriod", "\(unit.rawValue) \(date.description)") { _ in
+            var period = Fixture.usagePeriod
+            period.unit = unit
+            period.start = date
+            return period
         }
     }
 

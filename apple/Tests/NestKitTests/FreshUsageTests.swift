@@ -59,29 +59,9 @@ private func window(updated: Date?) -> LimitWindow {
             ])
     }
 
-    @Test func probesAreCountedApart() throws {
-        let json = """
-            {"year": 2026, "month": 10, "sessions": 1,
-             "tokens": {"input_tokens": 1, "output_tokens": 1, "cache_creation_input_tokens": 0,
-                        "cache_read_input_tokens": 0, "total": 2},
-             "days": [], "probes": {"count": 42, "tokens": 16800}}
-            """
-        let month = Fixture.decode(UsageMonth.self, json: json)
-        #expect(month.probes == ProbeTotals(count: 42, tokens: 16_800))
-        #expect(Fixture.usageMonth.probes == nil)
-        #expect(
-            UsageText.probes(month.probes) == "42 usage checks used 17k tokens, not counted above.")
-        #expect(
-            UsageText.probes(ProbeTotals(count: 1, tokens: 400))
-                == "1 usage check used 400 tokens, not counted above.")
-        #expect(UsageText.probes(ProbeTotals(count: 0, tokens: 0)) == nil)
-        #expect(UsageText.probes(nil) == nil)
-    }
-
     @Test func theStoreFormatsInItsCalendar() async throws {
         let api = FakeAPI()
         let usage = UsageStore(api: api, calendar: utc, now: { two })
-        #expect(usage.probesText == nil)
         try await usage.load()
         #expect(usage.asOfText(usage.limits?.fiveHour) == "as of 14:00")
         #expect(usage.asOfText(usage.limits?.sevenDay) == nil)

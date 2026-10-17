@@ -20,80 +20,6 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         UsageStore(api: api, calendar: utc, now: { now })
     }
 
-    @Test func loadsLimitsAndTheCurrentMonth() async throws {
-        let usage = store()
-        #expect(usage.cells.isEmpty)
-        #expect(usage.totalTokens == 0)
-        #expect(usage.totalSessions == 0)
-        #expect(usage.peakDayTokens == 0)
-
-        try await usage.load()
-
-        #expect(usage.limits?.fiveHour?.utilization == 0.3)
-        #expect((usage.year, usage.monthNumber) == (2026, 10))
-        #expect(usage.totalTokens == 496_000)
-        #expect(usage.totalSessions == 12)
-        #expect(usage.peakDayTokens == 31_000)
-        #expect(api.calls == ["usageLimits", "usageMonth 2026-10"])
-    }
-
-    @Test func calendarCellsStartOnMonday() async throws {
-        let usage = store()
-        try await usage.load()
-
-        let cells = usage.cells
-        // October 2026 starts on a Thursday: three blanks for Monday to Wednesday.
-        #expect(cells.prefix(3).allSatisfy { $0 == nil })
-        let first = try #require(cells[3])
-        #expect(first.day == CalendarDay(year: 2026, month: 10, day: 1))
-        #expect(first.id == first.day)
-        #expect(cells.count == 3 + 31)
-        let today = cells.compactMap { $0 }.filter(\.isToday)
-        #expect(today.map(\.day.day) == [6])
-        #expect(cells.compactMap { $0 }.filter(\.isFuture).count == 25)
-        #expect(cells[3 + 3]?.tokens == 0)
-        #expect(cells[3 + 1]?.sessions == 3)
-    }
-
-    @Test func navigatesMonthsButNotIntoTheFuture() async throws {
-        let usage = store()
-        try await usage.load()
-        #expect(!usage.canShowNextMonth)
-        try await usage.showNextMonth()
-        #expect(usage.monthNumber == 10)
-
-        try await usage.showPreviousMonth()
-        #expect((usage.year, usage.monthNumber) == (2026, 9))
-        #expect(usage.canShowNextMonth)
-        #expect(usage.month?.month == 9)
-        try await usage.showNextMonth()
-        #expect(usage.month?.month == 10)
-        #expect(api.calls.suffix(2) == ["usageMonth 2026-9", "usageMonth 2026-10"])
-    }
-
-    @Test func crossesYearBoundaries() async throws {
-        let january = Date(timeIntervalSince1970: 1_768_478_400)  // 2026-01-15
-        let usage = store(now: january)
-        try await usage.showPreviousMonth()
-        #expect((usage.year, usage.monthNumber) == (2025, 12))
-        try await usage.showNextMonth()
-        #expect((usage.year, usage.monthNumber) == (2026, 1))
-
-        let december = UsageStore(
-            api: api, calendar: utc, now: { Date(timeIntervalSince1970: 1_797_379_200) })
-        try await december.showPreviousMonth()
-        #expect((december.year, december.monthNumber) == (2026, 11))
-    }
-
-    @Test func theLastNavigationWins() async throws {
-        let usage = store()
-        async let first: Void = usage.showPreviousMonth()
-        async let second: Void = usage.showPreviousMonth()
-        _ = try await (first, second)
-        #expect((usage.year, usage.monthNumber) == (2026, 8))
-        #expect(usage.month?.month == 8)
-    }
-
     @Test func liveUsageMergesWindows() async throws {
         let usage = store()
         usage.apply(
@@ -118,8 +44,8 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
 
     @Test func usesTheSystemCalendarByDefault() {
         let usage = UsageStore(api: api)
-        let now = Calendar.current.dateComponents([.year, .month], from: Date())
-        #expect((usage.year, usage.monthNumber) == (now.year!, now.month!))
+        let start = UsageText.periodStart(of: Date(), unit: .month, calendar: .current)
+        #expect(usage.shownStart == start)
     }
 }
 
