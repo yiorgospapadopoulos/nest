@@ -200,6 +200,10 @@
                 try await renderSettings(model, shell, controller, folder)
                 return
             }
+            if only == "b85" {
+                try await renderPixieCleanup(model, shell, controller, folder)
+                return
+            }
             if only == "b47" {
                 try await renderGoals(model, shell, controller, folder)
                 return
@@ -684,8 +688,7 @@
             try await pair(controller, "pixies-two-panes-details", folder)
             // A third pixie dropped below Watcher splits its pane top and bottom.
             let scout = try await model.pixies.create(
-                CreatePixieRequest(
-                    name: "Scout", mascot: .frog, color: "#4CAF50", background: .meadow))
+                CreatePixieRequest(name: "Scout", mascot: .frog, color: "#4CAF50"))
             shell.pixieDetailsOpen = false
             shell.perform(.chat(scout.id), onto: "watcher", zone: .split(.bottom))
             try await pair(controller, "pixies-three-panes", folder)
@@ -1366,7 +1369,7 @@
 
         /// B42: Reviewer's Habits page, the editor and a habit's history; its chat with a
         /// habit's report row and card, reply choices and a suggested habit; Watcher's
-        /// unread reports in the Pixies list; Phone alerts; and the Pixie reports setting.
+        /// unread reports in the Pixies list; and the Pixie reports setting.
         private static func renderHabitsAndReports(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -1377,13 +1380,6 @@
             shell.pixieDetailsOpen = true
             shell.pixiePanel = .details
             try await pair(controller, "b42-details", folder)
-            try await pairView(
-                MenuPreview(
-                    title: ReportSeverity.pushTitle,
-                    rows: ReportSeverity.pushChoices.map {
-                        MenuPreview.Row(title: $0.pushLabel, checked: $0 == .action)
-                    }
-                ).frame(width: 260), "b42-phone-alerts-menu", folder)
             shell.pixiePanel = .habits
             try await pair(controller, "b42-habits", folder)
             shell.pixiePanel = .habit("h-morning")
@@ -1472,6 +1468,64 @@
                     .padding(6), "b42-inbox", folder)
 
             try await pairSettings(controller, .notifications, "b42-settings", folder)
+            shell.close()
+        }
+
+        /// B85: Reviewer's details without backdrop, projects, reports or tools, Add at the
+        /// right of the Skills heading and its menu of installed skills; Habits, New habit
+        /// and Memory with their Add in the same place; Settings > Pixies and Notifications.
+        private static func renderPixieCleanup(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            try await model.habits.load("reviewer")
+            try await model.pixies.loadSkillChoices()
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = true
+            shell.pixiePanel = .details
+            try await pair(controller, "b85-details", folder)
+            let reviewer = model.pixies.pixies.first { $0.id == "reviewer" }!
+            // The menu with its plugin submenus, and one plugin's submenu beside it.
+            let menu = PixieSkillMenu(
+                choices: model.pixies.skillChoices ?? [], chosen: reviewer.skills)
+            let top =
+                menu.standalone.map { MenuPreview.Row(title: $0.shortName) }
+                + menu.groups.map {
+                    MenuPreview.Row(
+                        title: $0.plugin, detail: "\($0.skills.count) skills", submenu: true,
+                        divided: $0.id == menu.groups.first?.id)
+                }
+            let opened = menu.groups.max { $0.skills.count < $1.skills.count }!
+            try await pairView(
+                HStack(alignment: .top, spacing: 8) {
+                    MenuPreview(title: "Add skill", rows: top).frame(width: 240)
+                    MenuPreview(
+                        title: opened.plugin,
+                        rows: opened.skills.map {
+                            MenuPreview.Row(title: $0.shortName, detail: $0.description ?? "")
+                        }
+                    ).frame(width: 300)
+                }, "b85-add-skill-menu", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "Add skill",
+                    rows: [
+                        MenuPreview.Row(
+                            title: PixieSkillMenu(choices: [], chosen: []).emptyText ?? "",
+                            disabled: true)
+                    ]
+                ).frame(width: 220), "b85-add-skill-none", folder)
+            shell.pixiePanel = .habits
+            try await pair(controller, "b85-habits", folder)
+            shell.pixiePanel = .habit(nil)
+            try await pair(controller, "b85-habit-new", folder)
+            shell.pixiePanel = .memory
+            try await pair(controller, "b85-memory", folder)
+            shell.pixiePanel = .details
+            try await model.notificationRules.setPixieReportLevel(.warn)
+            try await pairSettings(controller, .pixies, "b85-settings-pixies", folder)
+            try await pairSettings(
+                controller, .notifications, "b85-settings-notifications", folder, height: 800)
             shell.close()
         }
 
@@ -2270,6 +2324,10 @@
                 var detail = ""
                 var checked = false
                 var disabled = false
+                /// Opens a submenu: a chevron on the right.
+                var submenu = false
+                /// A separator above it.
+                var divided = false
             }
 
             let title: String
@@ -2283,6 +2341,9 @@
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        if row.divided {
+                            Divider().padding(.vertical, 3)
+                        }
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 11, weight: .semibold))
@@ -2296,6 +2357,10 @@
                                 }
                             }
                             Spacer(minLength: 0)
+                            if row.submenu {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
                         }
                         .foregroundStyle(row.disabled ? .tertiary : .primary)
                         .padding(.horizontal, 10)

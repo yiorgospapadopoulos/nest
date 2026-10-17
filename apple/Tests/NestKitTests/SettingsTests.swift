@@ -26,28 +26,40 @@ import Testing
 
     @Test func pixieSettingsRoundTripWithTheDefaultModelAsNull() {
         let json =
-            #"{"autonomy":"observe","habit_usage_percent":80,"habits_paused":false,"max_per_day":5,"max_running":2,"model":null,"project_access":"edit","projects":"all","report_push":"action"}"#
+            #"{"autonomy":"observe","habit_usage_percent":80,"habits_paused":false,"max_per_day":5,"max_running":2,"model":null,"project_access":"edit"}"#
         #expect(Fixture.json(PixieSettings()) == json)
         #expect(Fixture.decode(PixieSettings.self, json: json) == PixieSettings())
         let other = Fixture.decode(
             PixieSettings.self,
             json:
-                #"{"model":"opus","autonomy":"start","project_access":"none","projects":"later","max_running":3,"max_per_day":10,"report_push":"info","habits_paused":true,"habit_usage_percent":90}"#
+                #"{"model":"opus","autonomy":"start","project_access":"none","projects":"all","max_running":3,"max_per_day":10,"report_push":"info","habits_paused":true,"habit_usage_percent":90}"#
         )
         #expect(other.model == "opus")
         #expect(other.projectAccess == .noAccess)
-        #expect(other.projects == .unknown)
         #expect(other.habitsPaused)
+        // B85 moved the report level to the notification rules and dropped projects.
+        #expect(!Fixture.json(other).contains("projects"))
+        #expect(!Fixture.json(other).contains("report_push"))
     }
 
-    @Test func currentProjectIsNamedOnlyWhenTheRequestNamesNone() {
-        let current = PixieSettings(projects: .current)
-        let plain = CreatePixieRequest(name: "P")
-        #expect(current.prepared(plain, openProject: "cv-page").projects == ["cv-page"])
-        #expect(current.prepared(plain, openProject: nil).projects == nil)
-        let named = CreatePixieRequest(name: "P", projects: ["nest"])
-        #expect(current.prepared(named, openProject: "cv-page").projects == ["nest"])
-        #expect(PixieSettings().prepared(plain, openProject: "cv-page").projects == nil)
+    /// The daemon's notification rules (B85): the Mac changes only the pixie report level
+    /// and sends the rest back as it read it, since a save replaces the whole section.
+    @Test func notificationRulesKeepWhatTheMacDoesNotEdit() {
+        let json =
+            #"{"kinds": {"pixie_report": true}, "quiet_hours": null, "ntfy": {"enabled": false}, "vapid_subject": "mailto:a@b.c", "pixie_report_level": "warn"}"#
+        var rules = Fixture.decode(NotificationRules.self, json: json)
+        #expect(rules.pixieReportLevel == .warn)
+        rules.pixieReportLevel = .info
+        #expect(
+            Fixture.json(rules)
+                == #"{"kinds":{"pixie_report":true},"ntfy":{"enabled":false},"pixie_report_level":"info","quiet_hours":null,"vapid_subject":"mailto:a@b.c"}"#
+        )
+        // A daemon from before B85 sends no level: the default, needs action.
+        #expect(Fixture.decode(NotificationRules.self, json: "{}").pixieReportLevel == .action)
+        #expect(NotificationRules().pixieReportLevel == .action)
+        #expect(
+            Fixture.decode(NotificationRules.self, json: #"{"pixie_report_level": "loud"}"#)
+                .pixieReportLevel == .unknown)
     }
 
     @Test func accountsAndEventsDecode() {
@@ -167,8 +179,6 @@ import Testing
         #expect(PixieSettingsText.choices([1, 2, 3], including: 2) == [1, 2, 3])
         #expect(PixieSettingsText.choices([1, 2, 5], including: 4) == [1, 2, 4, 5])
         #expect(PixieSettingsText.choices([1, 2], including: nil) == [1, 2])
-        #expect(PixieSettingsText.projectsLabel(.current) == "Only the current one")
-        #expect(PixieSettingsText.projectsLabel(.all) == "All projects")
         #expect(PixieSettingsText.maxRunningChoices == [1, 2, 3, 5])
         #expect(PixieSettingsText.maxPerDayChoices == [3, 5, 10, 20])
         #expect(PixieSettingsText.habitUsageChoices == [70, 80, 90, 100])
@@ -482,15 +492,25 @@ import Testing
         await #expect(throws: APIError.self) { try await fresh.update { $0.maxRunning = 1 } }
     }
 
-    @Test func newPixiesGetTheOpenProjectWhenAsked() async {
-        api.set { $0.pixieSettings.projects = .current }
-        let store = PixieSettingsStore(api: api)
-        let request = await store.prepare(CreatePixieRequest(name: "P"), openProject: "cv-page")
-        #expect(request.projects == ["cv-page"])
-        api.fail("pixieSettings")
-        let unread = PixieSettingsStore(api: api)
-        let plain = await unread.prepare(CreatePixieRequest(name: "P"), openProject: "cv-page")
-        #expect(plain.projects == nil)
+    @Test func thePixieReportLevelSavesTheWholeRulesAndRestoresARefusal() async throws {
+        api.set {
+            $0.notificationRules = NotificationRules(fields: ["vapid_subject": .string("x")])
+        }
+        let store = NotificationRulesStore(api: api)
+        #expect(store.rules == nil)
+        try await store.setPixieReportLevel(.warn)
+        #expect(api.calls == ["notificationRules", "updateNotificationRules warn"])
+        #expect(store.rules?.pixieReportLevel == .warn)
+        let saved = api.state.withLock { $0.notificationRules }
+        #expect(saved.fields["vapid_subject"] == .string("x"))
+        api.fail("updateNotificationRules")
+        await #expect(throws: APIError.self) { try await store.setPixieReportLevel(.info) }
+        #expect(store.rules?.pixieReportLevel == .warn)
+        api.set { $0.failures = [:] }
+        api.fail("notificationRules")
+        let fresh = NotificationRulesStore(api: api)
+        await #expect(throws: APIError.self) { try await fresh.setPixieReportLevel(.info) }
+        #expect(fresh.rules == nil)
     }
 
     @Test func githubLoginIsCheckedAgain() async throws {

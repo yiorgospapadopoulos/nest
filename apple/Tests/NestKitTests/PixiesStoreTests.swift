@@ -22,11 +22,10 @@ import Testing
             Fixture.event(
                 EventType.pixieUpdated,
                 ##"{"pixie": {"id": "p1", "slug": "tester", "name": "QA", "mascot": "sprout", "##
-                    + ##""color": "#8B7CF6", "background": "plain", "model": null, "effort": null, "##
+                    + ##""color": "#8B7CF6", "model": null, "effort": null, "##
                     + ##""permission_mode": "default", "autonomy": "observe", "project_access": "edit", "##
-                    + ##""projects": null, "skills": [], "can_call": [], "allowed_tools": [], "##
-                    + ##""disallowed_tools": [], "hidden": false, "##
-                    + ##""position": 0, "chat_session_id": null, "max_running": 2, "max_per_day": 5, "report_push": "action", "unread_action_reports": 0, "##
+                    + ##""skills": [], "can_call": [], "hidden": false, "##
+                    + ##""position": 0, "chat_session_id": null, "max_running": 2, "max_per_day": 5, "unread_action_reports": 0, "##
                     + ##""created_at": "2026-10-13T09:00:00Z", "updated_at": "2026-10-13T09:00:00Z"}}"##
             ))
         // An older copy, such as an event that arrives after a later answer, is ignored.
@@ -304,31 +303,25 @@ import Testing
         let pixie = Self.pixies("a")[0]
         let changed = pixie.applying(
             UpdatePixieRequest(
-                name: "N", slug: "n", mascot: .cat, color: "#000000", background: .night,
-                model: "opus", effort: .low, permissionMode: .plan, autonomy: .start,
-                projectAccess: .noAccess, projects: ["cv"], skills: ["s"], allowedTools: ["A"],
-                disallowedTools: ["D"], hidden: true))
+                name: "N", slug: "n", mascot: .cat, color: "#000000", model: "opus",
+                effort: .low, permissionMode: .plan, autonomy: .start, projectAccess: .noAccess,
+                skills: ["s"], hidden: true))
         #expect(changed.name == "N")
         #expect(changed.slug == "n")
         #expect(changed.mascot == .cat)
         #expect(changed.color == "#000000")
-        #expect(changed.background == .night)
         #expect(changed.model == "opus")
         #expect(changed.effort == .low)
         #expect(changed.permissionMode == .plan)
         #expect(changed.autonomy == .start)
         #expect(changed.projectAccess == .noAccess)
-        #expect(changed.projects == ["cv"])
         #expect(changed.skills == ["s"])
-        #expect(changed.allowedTools == ["A"])
-        #expect(changed.disallowedTools == ["D"])
         #expect(changed.hidden)
         #expect(changed.applying(UpdatePixieRequest()) == changed)
         let cleared = changed.applying(
-            UpdatePixieRequest(clearsModel: true, clearsEffort: true, allProjects: true))
+            UpdatePixieRequest(clearsModel: true, clearsEffort: true))
         #expect(cleared.model == nil)
         #expect(cleared.effort == nil)
-        #expect(cleared.projects == nil)
     }
 
     @Test func staleSavesSurfaceTheCurrentText() async throws {
@@ -377,18 +370,14 @@ import Testing
 
     @Test func requestsEncodeTheirFields() {
         let create = CreatePixieRequest(
-            name: "A", slug: "a", mascot: .owl, color: "#E5484D", background: .dusk,
-            model: "opus", effort: .high, permissionMode: .plan, autonomy: .message,
-            projectAccess: .read, projects: ["x"], skills: ["s"], allowedTools: ["Bash(ls:*)"],
-            disallowedTools: ["Edit"], hidden: true, soul: "Hi")
+            name: "A", slug: "a", mascot: .owl, color: "#E5484D", model: "opus", effort: .high,
+            permissionMode: .plan, autonomy: .message, projectAccess: .read, skills: ["s"],
+            hidden: true, soul: "Hi")
         #expect(
             Fixture.json(create)
-                == ##"{"allowed_tools":["Bash(ls:*)"],"autonomy":"message","background":"dusk","color":"#E5484D","disallowed_tools":["Edit"],"effort":"high","hidden":true,"mascot":"owl","model":"opus","name":"A","permission_mode":"plan","project_access":"read","projects":["x"],"skills":["s"],"slug":"a","soul":"Hi"}"##
+                == ##"{"autonomy":"message","color":"#E5484D","effort":"high","hidden":true,"mascot":"owl","model":"opus","name":"A","permission_mode":"plan","project_access":"read","skills":["s"],"slug":"a","soul":"Hi"}"##
         )
         #expect(Fixture.json(CreatePixieRequest(name: "A")) == #"{"name":"A"}"#)
-        #expect(
-            Fixture.json(UpdatePixieRequest(name: "B", allProjects: true))
-                == #"{"all_projects":true,"name":"B"}"#)
         #expect(Fixture.json(UpdatePixieRequest()) == "{}")
         // Default for Model and Thinking is an explicit null; a key left out is unchanged.
         #expect(
@@ -400,11 +389,13 @@ import Testing
                 == #"{"effort":null,"model":"opus"}"#)
         #expect(Fixture.json(ReorderPixiesRequest(ids: ["b", "a"])) == #"{"ids":["b","a"]}"#)
         let full = UpdatePixieRequest(
-            name: "N", slug: "n", mascot: .cat, color: "#000000", background: .night,
-            model: "m", effort: .low, permissionMode: .default, autonomy: .start,
-            projectAccess: .noAccess, projects: [], skills: [], allowedTools: [],
-            disallowedTools: [], hidden: false, allProjects: false)
-        #expect(Fixture.json(full).contains(#""project_access":"none""#))
+            name: "N", slug: "n", mascot: .cat, color: "#000000", model: "m", effort: .low,
+            permissionMode: .default, autonomy: .start, projectAccess: .noAccess, skills: [],
+            hidden: false, teamID: "t1", maxRunning: 1, maxPerDay: 3)
+        #expect(
+            Fixture.json(full)
+                == ##"{"autonomy":"start","color":"#000000","effort":"low","hidden":false,"mascot":"cat","max_per_day":3,"max_running":1,"model":"m","name":"N","permission_mode":"default","project_access":"none","skills":[],"slug":"n","team_id":"t1"}"##
+        )
         #expect(
             Fixture.json(CreatePixieRequest(name: "A", projectAccess: .noAccess))
                 == #"{"name":"A","project_access":"none"}"#)
@@ -418,15 +409,24 @@ import Testing
                 == #"{"hash":"h","text":"x"}"#)
     }
 
+    /// B85 dropped a pixie's projects, backdrop, report level and tool rules; a pixie from a
+    /// daemon that still sends them reads the same.
+    @Test func anOlderPixieWithRemovedFieldsStillReads() {
+        let older = Fixture.text("pixie").replacingOccurrences(
+            of: #""skills": [],"#,
+            with:
+                #""skills": [], "background": "dusk", "projects": ["x"], "report_push": "info", "allowed_tools": ["A"], "disallowed_tools": [],"#
+        )
+        #expect(Fixture.decode(Pixie.self, json: older) == Fixture.decode(Pixie.self, "pixie"))
+    }
+
     @Test func unknownWireValuesReadAsUnknown() throws {
         var json = Fixture.text("pixie")
         json = json.replacingOccurrences(of: "\"sprout\"", with: "\"dragon\"")
-            .replacingOccurrences(of: "\"plain\"", with: "\"aurora\"")
             .replacingOccurrences(of: "\"observe\"", with: "\"roam\"")
             .replacingOccurrences(of: "\"edit\"", with: "\"admin\"")
         let pixie = Fixture.decode(Pixie.self, json: json)
         #expect(pixie.mascot == .unknown)
-        #expect(pixie.background == .unknown)
         #expect(pixie.autonomy == .unknown)
         #expect(pixie.projectAccess == .unknown)
         #expect(Mascot.allCases.count == 11)

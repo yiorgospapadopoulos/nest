@@ -18,6 +18,9 @@ struct NotificationsPage: View {
                     }
                     .accessibilityLabel(toggle.title)
                 }
+                if toggle.path == \.pixieReports {
+                    PixieReportLevelRow()
+                }
             }
         }
         SettingsSection(title: "Delivery") {
@@ -33,6 +36,28 @@ struct NotificationsPage: View {
             }
         }
         .task { try? await devices.loadPushStatus() }
+    }
+}
+
+/// Which pixie reports reach the iPhone, one level for every pixie, kept on the daemon
+/// (B85).
+private struct PixieReportLevelRow: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.notificationRules
+        SettingsRow(label: ReportSeverity.phoneLevelTitle) {
+            Segmented(
+                options: ReportSeverity.phoneLevels.map { ($0, $0.phoneLevelLabel) },
+                selection: store.rules?.pixieReportLevel ?? .action
+            ) { level in
+                shell.settingsChange("Could not change where pixie reports go") {
+                    try await store.setPixieReportLevel(level)
+                }
+            }
+        }
+        .disabled(store.rules == nil)
+        .task { try? await store.load() }
     }
 }
 

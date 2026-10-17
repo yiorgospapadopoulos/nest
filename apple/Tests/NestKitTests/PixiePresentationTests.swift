@@ -32,9 +32,6 @@ import Testing
         #expect(Mascot.choices.first == .invader)
         #expect(Mascot.owl.rows.count == 10)
         #expect(Mascot.unknown.rows.isEmpty)
-        #expect(
-            PixieBackground.choices.map(\.label) == ["Plain", "Meadow", "Dusk", "Night", "Dawn"])
-        #expect(PixieBackground.unknown.label == "Unknown")
         #expect(ProjectAccess.choices.map(\.label) == ["Edit", "Read only", "None"])
         #expect(ProjectAccess.noAccess.rawValue == "none")
         #expect(

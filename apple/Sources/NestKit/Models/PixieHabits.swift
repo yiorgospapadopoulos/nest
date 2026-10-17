@@ -39,7 +39,7 @@ public struct HabitSchedule: Codable, Sendable, Hashable {
     }
 }
 
-/// What in the pixie's projects starts a habit.
+/// What in any project starts a habit.
 public enum HabitTrigger: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
     case stuck, failed
     case reviewReady = "review_ready"

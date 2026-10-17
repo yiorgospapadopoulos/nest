@@ -48,20 +48,17 @@ struct PaneChrome: ViewModifier {
     /// The chat whose state rings the pane: the pane's own, or a pixie's ongoing chat
     /// (none before its first message).
     let chat: String?
-    /// A pixie's backdrop, tinting the panel under its scanlines.
-    let backdrop: PixieBackground?
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
     @Environment(\.paneSize) private var size
 
     init(pane: String) {
-        self.init(pane: pane, chat: pane, backdrop: nil)
+        self.init(pane: pane, chat: pane)
     }
 
-    init(pane: String, chat: String?, backdrop: PixieBackground?) {
+    init(pane: String, chat: String?) {
         self.pane = pane
         self.chat = chat
-        self.backdrop = backdrop
     }
 
     func body(content: Content) -> some View {
@@ -76,9 +73,6 @@ struct PaneChrome: ViewModifier {
             .background {
                 ZStack {
                     PaneColors.fill
-                    if let backdrop {
-                        PixieBackdrop(background: backdrop).opacity(0.5)
-                    }
                     Scanlines()
                 }
             }

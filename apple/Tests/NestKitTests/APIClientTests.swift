@@ -218,15 +218,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.pixies()
         },
         RouteCase(
+            "GET", "/api/pixies/skills",
+            response: #"[{"name": "pdf:fill", "description": "Fills forms", "plugin": "pdf"}]"#
+        ) { _ = try await $0.pixieSkills() },
+        RouteCase(
             "POST", "/api/pixies", body: #"{"mascot":"owl","name":"Reviewer"}"#,
             response: pixieJSON
         ) { _ = try await $0.createPixie(CreatePixieRequest(name: "Reviewer", mascot: .owl)) },
         RouteCase(
-            "PATCH", "/api/pixies/p1", body: #"{"all_projects":true,"hidden":true}"#,
+            "PATCH", "/api/pixies/p1", body: #"{"hidden":true,"skills":["review"]}"#,
             response: pixieJSON
         ) {
             _ = try await $0.updatePixie(
-                "p1", UpdatePixieRequest(hidden: true, allProjects: true))
+                "p1", UpdatePixieRequest(skills: ["review"], hidden: true))
         },
         RouteCase(
             "PATCH", "/api/pixies/p1", body: #"{"effort":null,"model":null}"#,
@@ -314,9 +318,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/pixies/p1/reports/read", response: "") {
             try await $0.markPixieReportsRead("p1")
         },
-        RouteCase(
-            "PATCH", "/api/pixies/p1", body: #"{"report_push":"warn"}"#, response: pixieJSON
-        ) { _ = try await $0.updatePixie("p1", UpdatePixieRequest(reportPush: .warn)) },
         RouteCase("POST", "/api/pixies/p1/duplicate", response: pixieJSON) {
             _ = try await $0.duplicatePixie("p1")
         },
@@ -503,6 +504,17 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "PUT", "/api/pixie-settings", body: Fixture.json(PixieSettings()),
             response: Fixture.json(PixieSettings())
         ) { _ = try await $0.updatePixieSettings(PixieSettings()) },
+        RouteCase(
+            "GET", "/api/notifications/settings", response: #"{"pixie_report_level": "info"}"#
+        ) { _ = try await $0.notificationRules() },
+        RouteCase(
+            "PUT", "/api/notifications/settings", body: #"{"pixie_report_level":"warn"}"#,
+            response: #"{"pixie_report_level": "warn"}"#
+        ) {
+            var rules = NotificationRules()
+            rules.pixieReportLevel = .warn
+            _ = try await $0.updateNotificationRules(rules)
+        },
         RouteCase("GET", "/api/accounts/github", response: githubJSON) {
             _ = try await $0.githubAccount()
         },
