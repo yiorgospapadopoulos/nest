@@ -11,7 +11,7 @@ export function UsageBreakdown({ onBack }: { onBack: () => void }) {
   return (
     <PageFrame
       title={`${periodTitle(unit, date, today)} tokens`}
-      back="Agents"
+      back="Usage"
       onBack={onBack}
       extra={period !== null && <b className="stot">{tokens(period.tokens.total)}</b>}
     >

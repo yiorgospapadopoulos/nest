@@ -46,18 +46,7 @@ struct SpritePixels: View {
         let fill = Color(hex: color)
         let columns = Double(rows.first?.count ?? 12)
         Canvas(rendersAsynchronously: false) { context, canvas in
-            let cell = canvas.width / columns
-            var path = Path()
-            for (y, row) in rows.enumerated() {
-                for (x, character) in row.enumerated() where character == "#" {
-                    // Whole pixels, so neighbouring cells meet without seams.
-                    let left = pixel(Double(x) * cell)
-                    let top = pixel(Double(y) * cell)
-                    let right = pixel(Double(x + 1) * cell)
-                    let bottom = pixel(Double(y + 1) * cell)
-                    path.addRect(CGRect(x: left, y: top, width: right - left, height: bottom - top))
-                }
-            }
+            let path = Self.path(rows, cell: canvas.width / columns, scale: scale)
             context.fill(path, with: .color(fill), style: FillStyle(antialiased: false))
         }
         .frame(width: size, height: size * 10 / 12)
@@ -66,6 +55,28 @@ struct SpritePixels: View {
     }
 
     private func pixel(_ value: Double) -> Double {
+        Self.pixel(value, scale)
+    }
+
+    /// One square per filled cell of `rows`, its edges on whole pixels so neighbouring
+    /// cells meet without seams.
+    static func path(
+        _ rows: [String], cell: Double, scale: Double, origin: CGPoint = .zero
+    ) -> Path {
+        var path = Path()
+        for (y, row) in rows.enumerated() {
+            for (x, character) in row.enumerated() where character == "#" {
+                let left = pixel(origin.x + Double(x) * cell, scale)
+                let top = pixel(origin.y + Double(y) * cell, scale)
+                let right = pixel(origin.x + Double(x + 1) * cell, scale)
+                let bottom = pixel(origin.y + Double(y + 1) * cell, scale)
+                path.addRect(CGRect(x: left, y: top, width: right - left, height: bottom - top))
+            }
+        }
+        return path
+    }
+
+    private static func pixel(_ value: Double, _ scale: Double) -> Double {
         (value * scale).rounded() / scale
     }
 }

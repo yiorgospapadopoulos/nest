@@ -2079,25 +2079,62 @@ div.pxr:active {
   color: var(--t1);
   border-bottom-color: var(--t1);
 }
-/* Space used: a bar of chats, attachments and artifacts, then the total. */
-.sused {
-  display: flex;
-  align-items: center;
+/* The Storage ledger (B86): the total, a bar of the parts, then a line per part. */
+.srow.ledger {
+  display: grid;
   gap: 10px;
-  min-width: 0;
+  justify-content: stretch;
+  padding: 12px 16px;
 }
-.sbar {
+.ltotal {
   display: flex;
-  width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--fill2);
+  align-items: baseline;
+  gap: 6px;
 }
-.sbar i {
+.ltot {
+  font-size: 1.2941rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.lbar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+/* A segment never gets thinner than a sliver, so a tiny part stays visible. */
+.lbar i {
   display: block;
-  height: 100%;
+  flex: 0 1 0;
+  min-width: 3px;
+  border-radius: 2px;
   background: var(--c);
+}
+.llegend {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 0.7647rem;
+}
+.lline {
+  display: contents;
+}
+.ldot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.lline .num {
+  text-align: right;
+}
+.lpct {
+  min-width: 3ch;
+  color: var(--t3);
+}
+.s-oth {
+  --c: var(--fill2);
 }
 .pcode {
   display: grid;

@@ -14,13 +14,17 @@ import { NotificationsPage } from "./NotificationsPage.tsx";
 import { PixiesPage } from "./PixiesPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { LinkRow, PageFrame } from "./rows.tsx";
+import { StoragePage } from "./StoragePage.tsx";
 import { UsageBreakdown } from "./UsageBreakdown.tsx";
+import { UsagePage } from "./UsagePage.tsx";
 
 const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   general: { title: "General", icon: "gear" },
   appearance: { title: "Appearance", icon: "contrast" },
   notifications: { title: "Notifications", icon: "bell" },
   agents: { title: "Agents", icon: "bot" },
+  usage: { title: "Usage", icon: "chart" },
+  storage: { title: "Storage", icon: "drive" },
   pixies: { title: "Pixies", icon: "pixie" },
   accounts: { title: "Accounts", icon: "user" },
   extensions: { title: "Extensions", icon: "star" },
@@ -99,7 +103,7 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     return (
       <UsageBreakdown
         onBack={() => {
-          onPage({ page: "agents" });
+          onPage({ page: "usage" });
         }}
       />
     );
@@ -119,13 +123,15 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     general: () => <GeneralPage />,
     appearance: () => <AppearancePage />,
     notifications: () => <NotificationsPage />,
-    agents: () => (
-      <AgentsPage
-        onUsageDetails={() => {
+    agents: () => <AgentsPage />,
+    usage: () => (
+      <UsagePage
+        onDetails={() => {
           onPage({ detail: "usage" });
         }}
       />
     ),
+    storage: () => <StoragePage />,
     pixies: () => <PixiesPage project={project} onOpenPixie={onOpenPixie} />,
     accounts: () => <AccountsPage />,
     extensions: () => <ExtensionsPage />,

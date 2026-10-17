@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { agentDefaults, stuckSettings, usageSettings } from "../../test/fixtures.ts";
+import { agentDefaults, stuckSettings } from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openAccount = (api = fakeApi()) => openSettings("Agents", { api });
@@ -222,69 +222,14 @@ describe("agent defaults", () => {
   });
 });
 
-describe("usage limit settings", () => {
-  const options = (label: string) =>
-    within(screen.getByLabelText(label))
-      .getAllByRole("option")
-      .map((o) => o.textContent);
+describe("agents page", () => {
+  it("holds new chats and stuck chats, and leaves usage to its own page", async () => {
+    await openAccount();
 
-  it("sets how often limits are checked and when to warn", async () => {
-    const api = fakeApi();
-    const { user } = await openAccount(api);
-    await screen.findByLabelText("Check limits");
-
-    expect(options("Check limits")).toEqual([
-      "Off",
-      "Every minute",
-      "Every 3 minutes",
-      "Every 5 minutes",
-      "Every 10 minutes",
-      "Every 15 minutes",
-    ]);
-    expect(options("Warn me at")).toEqual(["70%", "80%", "90%", "Off"]);
-    await user.selectOptions(screen.getByLabelText("Check limits"), "10");
-    expect(api.saveUsageSettings).toHaveBeenLastCalledWith(usageSettings({ refresh_minutes: 10 }));
-    await user.click(screen.getByRole("switch", { name: "Also as a notification" }));
-    expect(api.saveUsageSettings).toHaveBeenLastCalledWith(
-      usageSettings({ refresh_minutes: 10, warn_notify: false }),
-    );
-    await user.selectOptions(screen.getByLabelText("Warn me at"), "null");
-
-    expect(api.saveUsageSettings).toHaveBeenLastCalledWith(
-      usageSettings({ refresh_minutes: 10, warn_notify: false, warn_percent: null }),
-    );
-    expect(screen.getByRole("switch", { name: "Also as a notification" })).toBeDisabled();
-    expect(options("Warn me at")).toEqual(["70%", "80%", "90%", "Off"]);
-  });
-
-  it("keeps values the lists do not offer", async () => {
-    const api = fakeApi();
-    api.usageSettings.mockResolvedValue(usageSettings({ refresh_minutes: 7, warn_percent: 95 }));
-    await openAccount(api);
-
-    expect(await screen.findByLabelText("Check limits")).toHaveDisplayValue("Every 7 minutes");
-    expect(screen.getByLabelText("Warn me at")).toHaveDisplayValue("95%");
-  });
-
-  it("waits for the settings", async () => {
-    const api = fakeApi();
-    api.usageSettings.mockReturnValue(new Promise(() => undefined));
-    await openAccount(api);
-
-    expect(await screen.findByRole("meter", { name: "5 hour used" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "New chats" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Stuck chats" })).toBeInTheDocument();
+    expect(screen.queryByRole("meter", { name: "5 hour used" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Check limits")).not.toBeInTheDocument();
-  });
-
-  it("shows a usage warning from the Mac as a notice", async () => {
-    const { push } = await openSettings(null);
-
-    push({
-      type: "usage.warning",
-      payload: { window: "five_hour", utilization: 0.823, resets_at: null },
-    });
-    expect(screen.getByText("5 hour limit 82% used")).toBeInTheDocument();
-    push({ type: "usage.warning", payload: { window: "seven_day" } });
-    expect(screen.getByText("Weekly limit 0% used")).toBeInTheDocument();
   });
 });
 

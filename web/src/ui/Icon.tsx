@@ -1,5 +1,26 @@
 import type { ReactNode } from "react";
 
+// The winged pixie, 12 by 10 pixels, "#" filled.
+const PIXIE = [
+  "............",
+  "....####....",
+  "#..######..#",
+  "##.#.##.#.##",
+  "############",
+  "##.######.##",
+  "#..######..#",
+  "....#..#....",
+  "............",
+  "............",
+];
+
+/** Each row's runs of filled pixels, one rect apiece. */
+function pixelRuns(rows: string[]): { x: number; y: number; width: number }[] {
+  return rows.flatMap((row, y) =>
+    [...row.matchAll(/#+/g)].map((run) => ({ x: run.index, y, width: run[0].length })),
+  );
+}
+
 // Stroke icons from the locked design (plans/design/iphone.html), drawn on a 24px grid.
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
@@ -49,12 +70,23 @@ const PATHS = {
     <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" />
   ),
   shield: <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />,
+  // The robot (B86): Agents, and the Task and Agent tools.
   bot: (
     <>
-      <rect x="4" y="8" width="16" height="11" rx="3.5" />
-      <path d="M12 4.5V8M9 13.5h.01M15 13.5h.01" />
+      <rect x="4.5" y="8" width="15" height="11.5" rx="3" />
+      <circle cx="12" cy="3.8" r="1.2" />
+      <path d="M12 8V5M2.5 12.5v3M21.5 12.5v3M10 16h4" />
+      <circle cx="9.3" cy="12.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="14.7" cy="12.5" r="1.1" fill="currentColor" stroke="none" />
     </>
   ),
+  drive: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+      <path d="M3 12.5h18M7 16h6M16.5 16h.01" />
+    </>
+  ),
+  chart: <path d="M4 20h16M7 16.5v-5M12 16.5v-10M17 16.5v-8" />,
   list: (
     <path d="M4 6.5l1.3 1.3 2.5-2.5M4 12.5l1.3 1.3 2.5-2.5M4.8 18h2M11 6.5h9M11 12.5h9M11 18h9" />
   ),
@@ -96,11 +128,20 @@ const PATHS = {
       <path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor" />
     </>
   ),
+  // The winged pixie (B86), in pixels on its own grid, centred in the box.
   pixie: (
-    <>
-      <rect x="4.5" y="4.5" width="15" height="15" rx="1" />
-      <path d="M8.5 10h1.5M14 10h1.5M9 15h6" />
-    </>
+    <svg
+      width="24"
+      height="24"
+      viewBox="-1 -2 14 14"
+      fill="currentColor"
+      stroke="none"
+      shapeRendering="crispEdges"
+    >
+      {pixelRuns(PIXIE).map(({ x, y, width }) => (
+        <rect key={`${String(x)},${String(y)}`} x={x} y={y} width={width} height="1" />
+      ))}
+    </svg>
   ),
   star: <path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L12 16.8 6.4 20l1.4-6.2L3 9.5l6.4-.6z" />,
   devices: (
