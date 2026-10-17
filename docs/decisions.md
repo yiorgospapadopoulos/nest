@@ -153,7 +153,7 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 
 ## D022 (2026-10-06): Chat management, titles, usage and local apps (B20)
 
-- **Titles:** sessions created without a title get a short one from the prompt (first sentence, leading filler words removed, at most 48 characters at a word boundary); branch slugs use it (at most 40 characters plus a short hex suffix).
+- **Titles:** sessions created without a title get a short one from the prompt (first sentence, leading filler words removed, at most 48 characters at a word boundary; since D107 the first clause, at most 6 words and 32 characters); branch slugs use it (at most 40 characters plus a short hex suffix).
 - **Purge:** deleting with purge removes the run, worktree, branch, attachments, approvals, events and the session row. Token usage rows are kept, because those tokens were really spent and monthly totals should not drop.
 - **Usage:** every turn's token counts (input, output, cache creation, cache read) are stored; "total" is the sum of all four. The latest 5 hour and weekly limits are persisted.
 - **Connectors:** reported from Claude Code itself; harness shows status and points to claude.ai or Claude Code for sign-in, since it cannot authenticate connectors on the user's behalf.
@@ -943,3 +943,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **API:** `GET /api/usage/period?unit=day|week|month|year&date=YYYY-MM-DD` replaces `GET /api/usage/month`. `date` is any day of the period by the daemon's local calendar (2000 to 2100); weeks start on Monday. It returns `start`, `end`, `current` (the period holds today), `sessions`, `tokens` (chats and subagents), `subagents`, `bars` (24 hours, 7 days, each day of the month, or 12 months; each with its local start and UTC offset, tokens and distinct chats), `projects` (by repo, most tokens first, repos without tokens left out, every `pixie:*` repo together as one "Pixies" entry with `pixies: true`) and `probes`, the usage checks apart from the rest. An unknown unit or a bad date is 422.
 - **Refines:** D031 (probe tokens are counted per period instead of per month).
 
+## D107 (2026-10-17): Shorter chat titles (B87)
+
+- **Why:** the user wants minimal titles; the D022 ones often ran to a long half-sentence. A tighter fixed rule was chosen over using Claude Code's generated title, so titles stay deterministic, instant and free.
+- **Rule:** `<pasted_content>` tags are removed and markdown markers stripped. On each line a leading @mention, lead-in filler (the D022 words plus "can/could/would/will we|i", "i want", "i'd like to", "uh", "um", "oh", "btw", "also", "make it so (that)", "go ahead and", "help me (to)", "try to", "there is", "this is") and a "use (only) the X tool|subagent to|and" opener are dropped, repeatedly. The text is cut at the first clause boundary (a sentence end, with the D022 abbreviation guard, `, ; : ? ! (`, or the words "and then", "then", "and", "while", "so that", "because", "if", "but", "in order to"), kept to at most 6 words and 32 characters at a word boundary (one over-long word is cut at 32), and dangling function words ("the", "to", "of", "with" and the like) and trailing punctuation are removed. A line left under 3 characters is skipped. When no line is left, the first line is used as written, with the cut and caps but keeping its last words, so a prompt of filler alone keeps its text and "Do it" stays "Do it"; else "Untitled".
+- **Examples:** "can we do b72 in a worktree while b71 is being made currently in the main branch?" becomes "Do b72 in a worktree"; "Use only the Glob tool to list the files at the top level of the repo" becomes "List the files at the top".
+- **Branch slugs** still come from the title (D022), so new worktree branches get shorter too.
+- **Refines:** D022 (titles).
