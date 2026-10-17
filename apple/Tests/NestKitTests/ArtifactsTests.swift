@@ -67,6 +67,7 @@ import Testing
         #expect(decoded.kind == .html)
         #expect(decoded.title == "Options compared")
         #expect(decoded.content == "<p>Hi</p>")
+        #expect(decoded.page == "<!doctype html><p>Hi</p>")
         #expect(decoded.size == 9)
         #expect(decoded.createdAt == Fixture.date("2026-10-17T09:41:00Z"))
         #expect(Fixture.content("a1", 1, "é").size == 2)
@@ -110,7 +111,12 @@ import Testing
         let meta = ArtifactHTML.meta
         #expect(
             meta
-                == #"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">"#
+                == #"<meta http-equiv="Content-Security-Policy" content="\#(ArtifactHTML.policy)">"#
+        )
+        // B82: the same policy as the iPhone's frame, word for word.
+        #expect(
+            ArtifactHTML.policy
+                == "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net/npm/ https://unpkg.com https://cdn.tailwindcss.com https://code.jquery.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src 'none'"
         )
         #expect(
             ArtifactHTML.sandboxed("<html><head><title>T</title></head></html>")
@@ -127,6 +133,98 @@ import Testing
         // An unfinished comment or doctype ends the prelude where it starts.
         #expect(ArtifactHTML.sandboxed("<!-- open <p>") == meta + "<!-- open <p>")
         #expect(ArtifactHTML.sandboxed("  <!doctype html") == "  " + meta + "<!doctype html")
+    }
+
+    /// What WebKit decides for a load under the rule list: the rules apply in order, a
+    /// matching block blocks and a later matching `ignore-previous-rules` lifts it.
+    /// `url-filter` is a regular expression matched without regard to case.
+    static func blocked(_ url: String, _ type: String) throws -> Bool {
+        let data = Data(ArtifactRules.json.utf8)
+        let rules = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        var blocked = false
+        for rule in rules {
+            let trigger = try #require(rule["trigger"] as? [String: Any])
+            let action = try #require(rule["action"] as? [String: Any])
+            let filter = try #require(trigger["url-filter"] as? String)
+            let pattern = try NSRegularExpression(pattern: filter, options: .caseInsensitive)
+            let range = NSRange(url.startIndex..., in: url)
+            guard pattern.firstMatch(in: url, range: range) != nil else { continue }
+            if let types = trigger["resource-type"] as? [String], !types.contains(type) {
+                continue
+            }
+            blocked = try #require(action["type"] as? String) == "block"
+        }
+        return blocked
+    }
+
+    @Test func theRuleListLetsInOnlyTheListedHostsOverHTTPS() throws {
+        let allowed: [(String, String)] = [
+            ("https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js", "script"),
+            ("https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js", "script"),
+            ("https://unpkg.com/react@18.3.1/umd/react.production.min.js", "script"),
+            ("https://cdn.tailwindcss.com/3.4.3", "script"),
+            ("https://code.jquery.com/jquery-3.7.1.min.js", "script"),
+            ("https://fonts.googleapis.com/css2?family=Inter&display=swap", "style-sheet"),
+            ("https://fonts.gstatic.com/s/inter/v13/a.woff2", "font"),
+            ("HTTPS://CDNJS.CLOUDFLARE.COM/x.js", "script"),
+        ]
+        for (url, type) in allowed {
+            #expect(try !Self.blocked(url, type), "\(url) as \(type)")
+        }
+        let refused: [(String, String)] = [
+            // Look-alike hosts, other schemes and a listed host only in the path or query.
+            ("https://cdnjs.cloudflare.com.evil.com/x.js", "script"),
+            ("https://cdnjsxcloudflare.com/x.js", "script"),
+            ("https://evil-cdnjs.cloudflare.com/x.js", "script"),
+            ("http://cdnjs.cloudflare.com/x.js", "script"),
+            ("https://unpkg.com.evil.com/react.js", "script"),
+            ("https://unpkg.com@evil.com/react.js", "script"),
+            ("https://unpkg.company.com/react.js", "script"),
+            ("https://evil.com/?u=https://unpkg.com/react.js", "script"),
+            ("https://evil.com/https://code.jquery.com/x.js", "script"),
+            ("wss://code.jquery.com/x", "websocket"),
+            // jsDelivr outside npm, such as straight from GitHub.
+            ("https://cdn.jsdelivr.net/gh/evil/repo/x.js", "script"),
+            ("https://cdn.jsdelivr.net/npmx/x.js", "script"),
+            // A listed host for anything but its own kind of load.
+            ("https://cdnjs.cloudflare.com/x.css", "style-sheet"),
+            ("https://cdnjs.cloudflare.com/x.png", "image"),
+            ("https://cdnjs.cloudflare.com/data.json", "fetch"),
+            ("https://cdnjs.cloudflare.com/page.html", "document"),
+            ("https://fonts.googleapis.com/x.js", "script"),
+            ("https://fonts.gstatic.com/x.js", "script"),
+            ("https://fonts.gstatic.com.evil.com/a.woff2", "font"),
+            ("https://evil.com/a.woff2", "font"),
+            ("https://example.com/", "document"),
+            ("https://example.com/x.js", "script"),
+        ]
+        for (url, type) in refused {
+            #expect(try Self.blocked(url, type), "\(url) as \(type)")
+        }
+    }
+
+    @Test func theRuleListAnchorsEveryHostAndHasItsOwnName() throws {
+        let data = Data(ArtifactRules.json.utf8)
+        let rules = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let filters = rules.compactMap {
+            ($0["trigger"] as? [String: Any])?["url-filter"] as? String
+        }
+        #expect(filters.first == ".*")
+        #expect(filters.count == rules.count)
+        for filter in filters.dropFirst() {
+            #expect(filter.hasPrefix(#"^https://"#) && filter.hasSuffix("/"), "\(filter)")
+        }
+        // Every script host in the page's policy has its rule.
+        let hosts = ArtifactHTML.policy.split(separator: ";").first { $0.contains("script-src") }!
+            .split(separator: " ").filter { $0.hasPrefix("https://") }
+        #expect(hosts.count == 5)
+        for host in hosts {
+            let url = host.hasSuffix("/") ? "\(host)x.js" : "\(host)/x.js"
+            #expect(try !Self.blocked(url, "script"), "\(host)")
+        }
+        // A list compiled under the B79 name is cached by WebKit; this one needs its own.
+        #expect(ArtifactRules.identifier != "nest-artifact-block-everything")
+        #expect(!ArtifactRules.identifier.isEmpty)
     }
 
     @Test func aTitleBecomesAFileName() {

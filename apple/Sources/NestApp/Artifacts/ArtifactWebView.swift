@@ -3,13 +3,14 @@ import NestKit
 import SwiftUI
 import WebKit
 
-/// An HTML artifact, which is untrusted agent output, in a web view that can load
-/// nothing and go nowhere (B79): no stored data, a rule list that blocks every load, the
-/// content security policy in the page, only the first navigation (the page itself), no
-/// new windows, no script message handlers and no file access. The page is never loaded
-/// before the rule list is installed.
+/// An artifact's page, which is untrusted agent output, in a web view that can go nowhere
+/// (B79) and load only pinned libraries and fonts (B82): no stored data, a rule list that
+/// blocks every other load, the content security policy in the page, only the first
+/// navigation (the page itself), no new windows, no script message handlers and no file
+/// access. The page is never loaded before the rule list is installed. It takes Nest's
+/// light or dark appearance, so `prefers-color-scheme` inside matches the app's theme.
 struct ArtifactWebView: NSViewRepresentable {
-    let html: String
+    let page: String
     /// `ArtifactSandbox.rules()`, read before the view is made.
     let rules: WKContentRuleList
 
@@ -23,12 +24,22 @@ struct ArtifactWebView: NSViewRepresentable {
         let view = NestWebView(frame: .zero, configuration: Self.configuration(rules))
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
+        view.appearance = Self.appearance(context.environment.colorScheme)
         container.show(view)
-        view.loadHTMLString(ArtifactHTML.sandboxed(html), baseURL: nil)
+        context.coordinator.webView = view
+        view.loadHTMLString(ArtifactHTML.sandboxed(page), baseURL: nil)
         return container
     }
 
-    func updateNSView(_ container: PaneContentView, context: Context) {}
+    func updateNSView(_ container: PaneContentView, context: Context) {
+        context.coordinator.webView?.appearance = Self.appearance(context.environment.colorScheme)
+    }
+
+    /// The scheme SwiftUI resolved from Nest's theme, so the page follows Light, Dark or
+    /// Auto as set in Nest and not only the system's.
+    private static func appearance(_ scheme: ColorScheme) -> NSAppearance? {
+        NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+    }
 
     func sizeThatFits(
         _ proposal: ProposedViewSize, nsView: PaneContentView, context: Context
@@ -52,6 +63,7 @@ struct ArtifactWebView: NSViewRepresentable {
 /// never made.
 final class SandboxNavigation: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var loaded = false
+    weak var webView: WKWebView?
 
     func webView(
         _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -73,11 +85,9 @@ final class SandboxNavigation: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 }
 
-/// The rule list that blocks every load, compiled once.
+/// `ArtifactRules`, compiled once.
 @MainActor
 enum ArtifactSandbox {
-    static let blockEverything =
-        #"[{"trigger": {"url-filter": ".*"}, "action": {"type": "block"}}]"#
     private static var compiling: Task<WKContentRuleList, any Error>?
 
     static func rules() async throws -> WKContentRuleList {
@@ -87,8 +97,8 @@ enum ArtifactSandbox {
         let task = Task { @MainActor in
             guard
                 let list = try await WKContentRuleListStore.default().compileContentRuleList(
-                    forIdentifier: "nest-artifact-block-everything",
-                    encodedContentRuleList: blockEverything)
+                    forIdentifier: ArtifactRules.identifier,
+                    encodedContentRuleList: ArtifactRules.json)
             else { throw CocoaError(.featureUnsupported) }
             return list
         }
