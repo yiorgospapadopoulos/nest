@@ -21,6 +21,7 @@ from nestd.providers.base import (
     MessageBlock,
     NoticeKind,
     ResultInfo,
+    TokenUsage,
     UsageInfo,
 )
 from nestd.sessions.bookkeeping import isolated, isolated_or
@@ -194,6 +195,13 @@ class SessionSink:
             self._bus.publish(types.USAGE_UPDATED, info.model_dump(mode="json")),
         )
         await self._isolated("the usage hooks", self._hooks.usage(info))
+
+    async def subagent_usage(self, message_id: str, tokens: TokenUsage) -> None:
+        # Not a turn's start: a background subagent can report after the turn ended.
+        await self._isolated(
+            "the subagent usage hooks",
+            self._hooks.subagent_usage(self._session_id, message_id, tokens),
+        )
 
     async def limit_hit(self, hit: LimitHit) -> None:
         # Kept for the turn's end, which pauses the chat (B78).

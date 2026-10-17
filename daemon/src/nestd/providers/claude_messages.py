@@ -118,6 +118,8 @@ async def translate(
                     ):
                         output.shown = True
                 await sink.message(blocks, message.parent_tool_use_id)
+            if isinstance(message, AssistantMessage):
+                await _report_subagent_usage(message, sink)
             if isinstance(message, AssistantMessage) and message.error == "rate_limit":
                 # The usage limit cut the message off (B78).
                 await sink.limit_hit(base.LimitHit(cut_off=True))
@@ -165,6 +167,15 @@ async def _notice(
 ) -> None:
     output.shown = True
     await sink.notice(kind, text)
+
+
+async def _report_subagent_usage(message: AssistantMessage, sink: base.ProviderEventSink) -> None:
+    """A subagent's tokens, which the turn's result leaves out (B84). One reply can arrive
+    as several messages with the same id, so the id lets it count once.
+    """
+    if message.parent_tool_use_id is None or message.usage is None or not message.message_id:
+        return
+    await sink.subagent_usage(message.message_id, token_usage(message.usage))
 
 
 def _is_replay(message: UserMessage, output: TurnOutput) -> bool:

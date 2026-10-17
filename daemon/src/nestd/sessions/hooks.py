@@ -7,6 +7,7 @@ from nestd.providers.base import (
     EngineDetails,
     McpServer,
     ResultInfo,
+    TokenUsage,
     UsageInfo,
 )
 from nestd.sessions.models import Session
@@ -33,6 +34,10 @@ class SessionHooks(Protocol):
 
     async def usage(self, info: UsageInfo) -> None:
         """The engine reported the subscription's usage windows."""
+        ...
+
+    async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
+        """A subagent's API reply used these tokens; reported again as the reply grows."""
         ...
 
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:

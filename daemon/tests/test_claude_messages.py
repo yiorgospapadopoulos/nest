@@ -891,3 +891,62 @@ async def test_model_turns_errors_and_empty_results_add_no_notice(result: Result
     calls = await translated(result, output=output)
 
     assert [name for name, _ in calls] == ["provider_session_id", "result"]
+
+
+SUBAGENT_USAGE: dict[str, Any] = {
+    "input_tokens": 3,
+    "output_tokens": 40,
+    "cache_creation_input_tokens": 500,
+    "cache_read_input_tokens": 6000,
+    "service_tier": "standard",
+}
+
+
+async def test_a_subagent_reply_reports_its_tokens_by_message_id() -> None:
+    """The turn's result counts only the main chat; a subagent's replies say their own."""
+    message = AssistantMessage(
+        content=[TextBlock("Found it")],
+        model="m",
+        parent_tool_use_id="toolu_1",
+        usage=SUBAGENT_USAGE,
+        message_id="msg_1",
+    )
+
+    assert await translated(message) == [
+        ("message", ([base.TextBlock(text="Found it")], "toolu_1")),
+        (
+            "subagent_usage",
+            (
+                "msg_1",
+                base.TokenUsage(
+                    input_tokens=3,
+                    output_tokens=40,
+                    cache_creation_input_tokens=500,
+                    cache_read_input_tokens=6000,
+                ),
+            ),
+        ),
+    ]
+
+
+async def test_a_subagent_reply_without_content_still_reports_its_tokens() -> None:
+    message = AssistantMessage(
+        content=[], model="m", parent_tool_use_id="toolu_1", usage={}, message_id="msg_2"
+    )
+
+    assert await translated(message) == [("subagent_usage", ("msg_2", base.TokenUsage()))]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # The main chat's replies: its result counts them.
+        AssistantMessage(content=[], model="m", usage=SUBAGENT_USAGE, message_id="msg_1"),
+        AssistantMessage(content=[], model="m", parent_tool_use_id="t", message_id="msg_1"),
+        AssistantMessage(content=[], model="m", parent_tool_use_id="t", usage=SUBAGENT_USAGE),
+    ],
+)
+async def test_tokens_are_reported_only_for_subagent_replies_with_usage_and_an_id(
+    message: AssistantMessage,
+) -> None:
+    assert await translated(message) == []

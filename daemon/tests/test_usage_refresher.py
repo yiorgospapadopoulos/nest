@@ -84,7 +84,7 @@ async def test_a_visible_client_gets_fresh_limits(h: Rig) -> None:
     assert limits.five_hour is not None
     assert (limits.five_hour.utilization, limits.five_hour.updated_at) == (0.42, h.clock.now())
     assert await h.usage_events() == 1
-    month = await h.store.month(h.clock.now().year, h.clock.now().month)
+    month = await h.store.period("month", h.clock.now().date())
     assert (month.sessions, month.tokens.total) == (0, 0)
     assert month.probes.model_dump() == {"count": 1, "tokens": 452}
 
@@ -174,7 +174,7 @@ async def test_a_probe_without_windows_records_its_tokens_only(
     assert (await h.store.limits()).five_hour is None
     assert await h.usage_events() == 0
     assert "reported no usage windows" in caplog.text
-    month = await h.store.month(h.clock.now().year, h.clock.now().month)
+    month = await h.store.period("month", h.clock.now().date())
     assert month.probes.count == 1
 
 

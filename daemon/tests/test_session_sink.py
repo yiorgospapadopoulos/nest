@@ -98,6 +98,8 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
         seven_day=None,
     )
     await sink.usage(usage)
+    # A background subagent can report after the turn ended: no new turn starts for it.
+    await sink.subagent_usage("msg_1", TokenUsage(output_tokens=7))
     await sink.background_tasks(2)
     await sink.connectors([McpServer("claude.ai Gmail", "connected")])
     await sink.stopped("process ended")
@@ -112,6 +114,7 @@ async def test_sink_turns_provider_reports_into_events_and_turn_boundaries(
     assert hooks.messages == [session.id]
     assert hooks.results == [(session.id, result)]
     assert hooks.usages == [usage]
+    assert hooks.subagent_usages == [(session.id, "msg_1", TokenUsage(output_tokens=7))]
     assert hooks.connectors == [(session.id, [McpServer("claude.ai Gmail", "connected")])]
     assert delta.type == types.SESSION_DELTA
     assert delta.id is None
@@ -455,6 +458,9 @@ class BrokenHooks:
     async def usage(self, info: UsageInfo) -> None:
         raise LookupError("usage")
 
+    async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
+        raise LookupError("subagent usage")
+
     async def connectors_reported(self, session_id: str, servers: list[McpServer]) -> None:
         raise LookupError("connectors")
 
@@ -490,6 +496,7 @@ async def test_no_error_reaches_the_agent_run(
         await sink.hook(HOOK)
         await sink.result(result)
         await sink.usage(UsageInfo(five_hour=None, seven_day=None))
+        await sink.subagent_usage("msg_1", TokenUsage())
         await sink.connectors([])
         await sink.commands(CommandCatalog())
         await sink.engine_details(EngineDetails())
@@ -518,6 +525,7 @@ async def test_no_error_reaches_the_agent_run(
         "ending the turn",
         "the usage event",
         "the usage hooks",
+        "the subagent usage hooks",
         "the connector report",
         "the command report",
         "the engine report",

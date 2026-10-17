@@ -297,6 +297,16 @@ def limits(info: UsageInfo, then: Turn) -> Turn:
     return turn
 
 
+def subagent_reply(message_id: str, tokens: TokenUsage, then: Turn) -> Turn:
+    """A subagent's API reply reports its tokens, as each of its streamed messages does."""
+
+    async def turn(run: FakeRun) -> None:
+        await run.sink.subagent_usage(message_id, tokens)
+        await then(run)
+
+    return turn
+
+
 def ask(tool: str, then: Turn) -> Turn:
     async def turn(run: FakeRun) -> None:
         run.decisions.append(await run.handler.decide(PermissionRequest(tool, {"x": 1})))

@@ -46,7 +46,8 @@ async def test_refresh_probes_and_returns_the_new_limits(api: Api, clock: FakeCl
     assert body["seven_day"]["utilization"] == 0.12
     assert body["five_hour"]["updated_at"] == clock.now().isoformat().replace("+00:00", "Z")
     assert (await api.http.get("/api/usage/limits")).json() == body
-    month = (await api.http.get("/api/usage/month", params={"year": 2026, "month": 1})).json()
+    params = {"unit": "month", "date": "2026-01-01"}
+    month = (await api.http.get("/api/usage/period", params=params)).json()
     assert (month["sessions"], month["tokens"]["total"]) == (0, 0)
     assert month["probes"] == {"count": 1, "tokens": 452}
 

@@ -9,6 +9,7 @@ from nestd.providers.base import (
     MessageBlock,
     NoticeKind,
     ResultInfo,
+    TokenUsage,
     UsageInfo,
 )
 
@@ -40,6 +41,9 @@ class RecordingSink:
 
     async def usage(self, info: UsageInfo) -> None:
         self.calls.append(("usage", info))
+
+    async def subagent_usage(self, message_id: str, tokens: TokenUsage) -> None:
+        self.calls.append(("subagent_usage", (message_id, tokens)))
 
     async def limit_hit(self, hit: LimitHit) -> None:
         self.calls.append(("limit_hit", hit))
