@@ -923,3 +923,14 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Other B81 decisions (user, 2026-10-17):** Claude sign in through Claude Code's auth commands, no token seen; Extensions through `claude plugin` with detection and the official install of Claude Code; the Pixies settings page keeps the pixie list (rows with Open, Show hidden pixies, New pixie, then the defaults, habits and reports); project rename is left out (Name is read-only); Appearance is built now with an empty spot for B80's preview; the project Artifacts tab is built against the B79 contract, its button wired at merge.
 - **Merged after B79 and B80:** the project Artifacts tab counts B79's list for the project and its button opens B79's Artifacts view (Mac: the project's tab on that view; iPhone: the Artifacts sheet on This project). The Mac's Artifacts view command (Option Command 3) is one of the changeable keyboard shortcuts. The Settings window's loading marks are B80's fireflies, and Appearance keeps B80's accent behaviour.
 - **Refines:** D031 (the usage settings), D050 (the push URL can now be set from Settings), the habit scheduler's fixed 80 percent (B42).
+
+## D105 (2026-10-17): Lighter side bars on the Mac (B83)
+
+- **Why:** the user wanted quieter side bars; designs picked from a mockup (left L-B, right R-D, icon I-19).
+- **Squeeze buttons:** both live in the status bar, the sidebar's before Settings (only where a project is open) and the right panel's after Terminal. They are small filled triangles (`arrowtriangle.left.fill` / `.right.fill`) pointing where the bar goes on a click, with no selected fill; the triangle carries the state. The sidebar header and both squeezed bars no longer have their own buttons.
+- **Squeezed sidebar:** 20 points, one 7 point status dot per chat (archived left out), open chats on the selection fill. A click anywhere on the strip, a dot included, opens the sidebar (user, 10:52); a dot keeps its title as help, drag and context menu. No New chat button and no Claude Code badge there.
+- **Motion:** squeezing or opening either bar, however it is toggled (footer triangle, strip, shortcut, palette), animates the workspace's edge and cross-fades the bar's two forms (`.smooth`, 0.28 s); the full sidebar keeps its width and is uncovered, not reflowed. None under Reduce Motion.
+- **Squeezed right panel:** 6 points, a 2 point line in the accent colour; the whole strip opens the panel. Counts and card icons are gone from it (the Needs you count stays in its accessibility value).
+- **Quieter lists:** New chat shows no shortcut (its tooltip keeps it); the Pixies list shows no count after its title and no member count on a folded team. Team @handles stay (user, 10:23).
+- **Mac only;** the iPhone's matching bits (shortcut hint, counts) wait for the iPhone catch-up block.
+- **Refines:** D073 and D098 (the status bar), D099 (the right panel rail).
