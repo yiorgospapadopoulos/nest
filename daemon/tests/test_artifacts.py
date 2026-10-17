@@ -96,6 +96,48 @@ def test_every_prompt_tells_the_agent_about_artifacts() -> None:
     assert "long report, summary, comparison or plan" in ARTIFACT_NOTE
     assert "instead of a long chat message or a file in the repository" in ARTIFACT_NOTE
     assert "as an artifact with create_artifact" in PREAMBLE
+    # A pixie reads what a page may do in the tool's description.
+    assert "or an HTML page such as a chart, diagram or small app that follows the rules" in (
+        PREAMBLE
+    )
+
+
+HOSTS = (
+    "cdnjs.cloudflare.com",
+    "cdn.jsdelivr.net/npm/",
+    "unpkg.com",
+    "cdn.tailwindcss.com",
+    "code.jquery.com",
+)
+
+
+async def test_the_agent_learns_what_a_page_may_do(ctx: AppContext, provider: FakeProvider) -> None:
+    _, tools = await chat(ctx, provider)
+    content = cast(dict[str, Any], tools["create_artifact"].schema["properties"])["content"]
+    updated = cast(dict[str, Any], tools["update_artifact"].schema["properties"])["content"]
+    description = str(content["description"])
+
+    assert updated == content
+    for text in (ARTIFACT_NOTE, description):
+        for host in HOSTS:
+            assert host in text
+        for rule in (
+            "stylesheets and fonts only from Google Fonts",
+            "an exact version (react@18.3.1, never react or react@18)",
+            "everything else inline",
+            "images as data: URIs",
+            "no fetch, forms, storage or navigation",
+            "CSS variables with a prefers-color-scheme: dark block",
+            "an explicit body background",
+            "canvas charts (Chart.js) need real colors, read with getComputedStyle",
+            "no sideways scroll",
+            "a short <title>",
+            'Babel standalone from these hosts with <script type="text/babel">',
+            "tables, Mermaid diagrams (```mermaid blocks) and code blocks",
+        ):
+            assert rule in text, rule
+    assert f"at most {CONTENT_MAX} bytes" in description
+    assert "chart" in tools["create_artifact"].description
 
 
 async def test_creating_saves_the_first_version_and_announces_it(
