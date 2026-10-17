@@ -6,9 +6,11 @@ from pydantic import JsonValue
 from nestd.providers.base import AgentTool, CallRules, ToolRefusedError
 from nestd.providers.claude_tools import (
     MEMBER_CALL_DENIED,
+    NEST_SERVER,
     PIXIE_CALL_DENIED,
     TOOL_SERVER,
     call_guard,
+    nest_tool_names,
     own_tool_names,
     to_sdk_tool,
     tool_servers,
@@ -46,6 +48,16 @@ def test_tool_servers_and_own_tools() -> None:
     assert servers[TOOL_SERVER].get("type") == "sdk"
     assert own_tool_names((ECHO,)) == {"mcp__pixie__echo"}
     assert own_tool_names(()) == frozenset()
+
+
+def test_every_runs_tools_get_their_own_server() -> None:
+    only_nest = tool_servers((), (ECHO,))
+    both = tool_servers((ECHO,), (ECHO,))
+
+    assert list(only_nest) == [NEST_SERVER] == ["nest"]
+    assert list(both) == [TOOL_SERVER, NEST_SERVER]
+    assert nest_tool_names((ECHO,)) == {"mcp__nest__echo"}
+    assert nest_tool_names(()) == frozenset()
 
 
 async def guard(root: Path, tool: str, tool_input: dict[str, Any]) -> dict[str, Any]:

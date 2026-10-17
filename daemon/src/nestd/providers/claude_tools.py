@@ -12,6 +12,8 @@ from claude_agent_sdk.types import HookCallback, HookContext, HookInput, HookJSO
 from nestd.providers.base import AgentTool, CallRules, ToolRefusedError
 
 TOOL_SERVER = "pixie"
+# The server of the tools every run gets (B79), so a chat shows `mcp__nest__create_artifact`.
+NEST_SERVER = "nest"
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 WRITE_DENIED = "A pixie may only write files in its own workdir; use its memory tools instead."
 SUBAGENT_DENIED = "A pixie's own tools are only for the pixie, not for agents it calls."
@@ -31,6 +33,11 @@ def own_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
     return frozenset(f"mcp__{TOOL_SERVER}__{tool.name}" for tool in tools)
 
 
+def nest_tool_names(tools: tuple[AgentTool, ...]) -> frozenset[str]:
+    """Claude Code's names for the tools every run gets (B79); they never prompt either."""
+    return frozenset(f"mcp__{NEST_SERVER}__{tool.name}" for tool in tools)
+
+
 def to_sdk_tool(tool: AgentTool) -> SdkMcpTool[Any]:
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -42,10 +49,17 @@ def to_sdk_tool(tool: AgentTool) -> SdkMcpTool[Any]:
     return SdkMcpTool(tool.name, tool.description, tool.schema, handler)
 
 
-def tool_servers(tools: tuple[AgentTool, ...]) -> dict[str, McpServerConfig]:
-    if not tools:
-        return {}
-    return {TOOL_SERVER: create_sdk_mcp_server(TOOL_SERVER, tools=[to_sdk_tool(t) for t in tools])}
+def tool_servers(
+    tools: tuple[AgentTool, ...], nest_tools: tuple[AgentTool, ...] = ()
+) -> dict[str, McpServerConfig]:
+    """The in-process servers of a run's own tools and of every run's tools. Claude Code
+    adds them to the user's own MCP servers (no strict MCP config), which stay as they are.
+    """
+    servers: dict[str, McpServerConfig] = {}
+    for name, served in ((TOOL_SERVER, tools), (NEST_SERVER, nest_tools)):
+        if served:
+            servers[name] = create_sdk_mcp_server(name, tools=[to_sdk_tool(t) for t in served])
+    return servers
 
 
 def _deny(reason: str) -> HookJSONOutput:

@@ -1,4 +1,4 @@
-"""What a pixie session's run gets beyond a normal chat's (D072)."""
+"""What a pixie session's run gets beyond a normal chat's (D072), and what every run gets."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -21,3 +21,5 @@ class RunExtras:
 
 
 type RunExtrasSource = Callable[[Session], Awaitable[RunExtras]]
+# The tools every chat and pixie run gets, such as the artifact tools (B79).
+type NestToolsSource = Callable[[Session], tuple[AgentTool, ...]]
