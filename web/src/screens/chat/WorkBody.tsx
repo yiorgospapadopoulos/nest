@@ -3,6 +3,7 @@ import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts"
 import { agentReport } from "../../transcript/report.ts";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { MessageItem, type MessageEntry } from "./Transcript.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 const isMessage = (item: TranscriptItem): item is MessageEntry =>
   item.kind !== "approval" &&
@@ -51,7 +52,7 @@ export function WorkBody({ prompt, messages, report, running, root }: Props) {
       )}
       {running ? (
         <p className="wk-run">
-          <span className="spin" aria-hidden="true" />
+          <Fireflies />
           Working
         </p>
       ) : (

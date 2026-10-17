@@ -56,7 +56,7 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
       title={chat.title}
       status={
         open
-          ? { tone: "run", label: "Open in Claude Code" }
+          ? { tone: "run", label: "Open in Claude Code", plain: true }
           : { tone: "idle", label: "Claude Code chat" }
       }
       back={chat.repo}

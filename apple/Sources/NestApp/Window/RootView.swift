@@ -197,7 +197,7 @@ private struct ConnectionBanner: View {
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     if starting {
-                        ProgressView().controlSize(.small)
+                        Fireflies()
                     } else {
                         Image(systemName: Icon.warning)
                             .foregroundStyle(StatusTone.waiting.color)
@@ -369,7 +369,7 @@ private struct StartupView: View {
             WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency || offscreen))
             VStack(spacing: 10) {
                 if retry == nil {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
                 Text(title).font(.ui(TypeSize.headline, .semibold))
                 if let message {

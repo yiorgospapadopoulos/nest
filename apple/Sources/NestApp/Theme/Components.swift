@@ -91,6 +91,35 @@ struct StatusDot: View {
     }
 }
 
+/// A status dot, or while running the fireflies in its place (B80). In a list (`slot`),
+/// every mark takes the fireflies' 12 by 9 slot, the dot centred, so running and other
+/// rows keep their text aligned; elsewhere each takes its own size. `animates` false
+/// keeps the plain dot, for places that stay a dot while running.
+struct StatusMark: View {
+    let tone: StatusTone
+    var hollow = false
+    var slot = true
+    var animates = true
+
+    var body: some View {
+        mark
+            .frame(
+                width: slot ? StatusMarkMetrics.slotWidth : nil,
+                height: slot ? StatusMarkMetrics.fireflyHeight : nil
+            )
+            // On a text baseline the mark's centre sits where a lone dot's would, 3 above it.
+            .alignmentGuide(.firstTextBaseline) { $0.height / 2 + StatusMarkMetrics.dotSize / 2 }
+    }
+
+    @ViewBuilder private var mark: some View {
+        if animates && StatusMarkMetrics.animates(tone) {
+            Fireflies(height: StatusMarkMetrics.fireflyHeight)
+        } else {
+            StatusDot(tone: tone, hollow: hollow, size: StatusMarkMetrics.dotSize)
+        }
+    }
+}
+
 /// An expanding ring around a recording button.
 struct PulseRing: View {
     let color: Color
@@ -108,16 +137,18 @@ struct PulseRing: View {
     }
 }
 
-/// Status as a dot and a quiet colored word, such as "Needs approval" in a pane header.
+/// Status as a dot and a quiet colored word, such as "Needs approval" in a pane header;
+/// the fireflies in the dot's place while running, unless `animates` is false.
 struct StatusLabel: View {
     let tone: StatusTone
     let label: String
     var hollow = false
     var showsLabel = true
+    var animates = true
 
     var body: some View {
         HStack(spacing: 5) {
-            StatusDot(tone: tone, hollow: hollow)
+            StatusMark(tone: tone, hollow: hollow, slot: false, animates: animates)
             if showsLabel {
                 Text(label).lineLimit(1)
             }
@@ -211,27 +242,93 @@ struct CountBadge: View {
     }
 }
 
-/// A spinning ring in the running color.
-struct Spinner: View {
-    var size: Double = 14
-    var lineWidth: Double = 2
+/// The working animation (B80), "Bold fireflies": three glowing dots in the accent, each
+/// drifting on its own loop, in a 4:3 box `height` tall; held still under Reduce Motion.
+/// `color` replaces the accent, such as its on colour inside an accent-filled button.
+struct Fireflies: View {
+    var height: Double = 12
+    var color: Color?
+    @Environment(\.accentColors) private var accent
     @Environment(\.reducedMotion) private var reduceMotion
+    @Environment(\.motionTime) private var time
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { context in
-            let angle =
-                context.date.timeIntervalSinceReferenceDate.truncatingRemainder(
-                    dividingBy: 0.9) / 0.9 * 360
-            ZStack {
-                Circle().stroke(StatusTone.running.soft, lineWidth: lineWidth)
-                Circle()
-                    .trim(from: 0, to: reduceMotion ? 0.5 : 0.25)
-                    .stroke(StatusTone.running.color, lineWidth: lineWidth)
-                    .rotationEffect(.degrees(angle))
+        let unit = height / FireflyMotion.height
+        let width = FireflyMotion.width(forHeight: height)
+        // Room around the box so the glow is not cut off at its edges.
+        let margin = 8 * unit
+        let fill = color ?? accent.fill
+        TimelineView(.animation(paused: reduceMotion || time != nil)) { context in
+            let poses =
+                time.map(FireflyMotion.poses)
+                ?? (reduceMotion
+                    ? FireflyMotion.still
+                    : FireflyMotion.poses(at: context.date.timeIntervalSinceReferenceDate))
+            Canvas { canvas, _ in
+                for pose in poses {
+                    let center = CGPoint(x: margin + pose.x * unit, y: margin + pose.y * unit)
+                    let size = pose.scale * unit
+                    // CSS box-shadow 0 0 4px 1.5px: 1.5 wider all round, blurred 2.
+                    var glow = canvas
+                    glow.opacity = pose.opacity
+                    glow.addFilter(.blur(radius: 2 * size))
+                    glow.fill(
+                        Circle().path(in: square(center, (FireflyMotion.diameter + 3) * size)),
+                        with: .color(fill))
+                    var dot = canvas
+                    dot.opacity = pose.opacity
+                    dot.fill(
+                        Circle().path(in: square(center, FireflyMotion.diameter * size)),
+                        with: .color(fill))
+                }
+            }
+            .frame(width: width + 2 * margin, height: height + 2 * margin)
+        }
+        .frame(width: width, height: height)
+        .accessibilityHidden(true)
+    }
+
+    private func square(_ center: CGPoint, _ side: Double) -> CGRect {
+        CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
+    }
+}
+
+/// A band of light in the accent sweeping across a running row, clipped to its rounded
+/// shape; none under Reduce Motion, and it never takes clicks.
+private struct RowGlowEffect: ViewModifier {
+    let active: Bool
+    let radius: Double
+    @Environment(\.accentColors) private var accent
+    @Environment(\.reducedMotion) private var reduceMotion
+    @Environment(\.motionTime) private var time
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if active && (time != nil || !reduceMotion) {
+                TimelineView(.animation(paused: time != nil)) { context in
+                    let now = time ?? context.date.timeIntervalSinceReferenceDate
+                    GeometryReader { geometry in
+                        let size = geometry.size
+                        LinearGradient(
+                            colors: [.clear, accent.fill.opacity(RowGlow.peakOpacity), .clear],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: size.width * RowGlow.bandWidth, height: size.height)
+                        .position(x: RowGlow.center(at: now) * size.width, y: size.height / 2)
+                    }
+                }
+                .clipShape(.rounded(radius))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// The running row's glow while `active`.
+    func rowGlow(_ active: Bool, radius: Double = Radius.row) -> some View {
+        modifier(RowGlowEffect(active: active, radius: radius))
     }
 }
 

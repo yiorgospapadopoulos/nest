@@ -143,7 +143,7 @@ describe("the pixie page at work (B48)", () => {
     await waitFor(() => {
       expect(header()?.querySelector("svg")).toHaveClass("pxwork");
     });
-    expect(header()?.querySelector(".prun")).toBeNull();
+    expect(header()?.querySelector(".ff")).toBeNull();
     await user.click(screen.getByRole("tab", { name: "Details" }));
     expect(document.querySelector(".pxhead > svg")).toHaveClass("pxwork");
 
@@ -164,17 +164,17 @@ describe("the pixie page at work (B48)", () => {
     expect(document.querySelector(".pxhi svg")).toHaveClass("pxwork");
   });
 
-  it("shows a plain working dot in the header under Reduce Motion", async () => {
+  it("shows still fireflies in the header under Reduce Motion", async () => {
     reduceMotion(true);
     const { push } = await openRunning();
     await waitFor(() => {
-      expect(header()?.querySelector(".prun")).not.toBeNull();
+      expect(header()?.querySelector(".ff")).not.toBeNull();
     });
     expect(document.querySelectorAll("svg.pxwork")).toHaveLength(0);
 
     push({ type: "session.state", session_id: "c1", payload: { state: "idle" } });
     await waitFor(() => {
-      expect(header()?.querySelector(".prun")).toBeNull();
+      expect(header()?.querySelector(".ff")).toBeNull();
     });
   });
 });

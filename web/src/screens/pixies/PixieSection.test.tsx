@@ -270,13 +270,13 @@ describe("a pixie at work in the list (B48)", () => {
     expect(row("Idle, @idle").querySelector("svg")).not.toHaveClass("pxwork");
   });
 
-  it("keeps the sprites still under Reduce Motion, the running dot saying it", async () => {
+  it("keeps the sprites still under Reduce Motion, the still fireflies saying it", async () => {
     reduceMotion(true);
     const { row } = await list();
     for (const name of ["Tester, @tester, running", "Helper, @helper, running"]) {
       expect(row(name).querySelector("svg")).not.toHaveClass("pxwork");
-      expect(row(name).querySelector(".prun")).not.toBeNull();
+      expect(row(name).querySelector(".ff")).not.toBeNull();
     }
-    expect(row("Idle, @idle").querySelector(".prun")).toBeNull();
+    expect(row("Idle, @idle").querySelector(".ff")).toBeNull();
   });
 });

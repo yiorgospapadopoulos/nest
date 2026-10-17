@@ -5,6 +5,7 @@ import type { ClaudeChat, NestEvent, JsonObject, Session } from "../../api/types
 import { fakeApi } from "../../test/fakeApi.ts";
 import { claudeChat, detail, event, repo, session } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
+import { defined } from "../../test/defined.ts";
 
 const HISTORY: NestEvent[] = [
   event({
@@ -64,6 +65,11 @@ describe("Claude Code chats", () => {
       "Open one, Claude Code chat, open in Claude Code, on main",
       "Validate contact form, Idle, worktree agent/contact",
     ]);
+    // Open in Claude Code is not work in Nest: a plain dot, no fireflies or glow (B80).
+    const open = defined(rows[1]);
+    expect(open.firstElementChild).toHaveClass("dot s-run");
+    expect(open.querySelector(".ff")).toBeNull();
+    expect(open).not.toHaveClass("rglow");
     // No "Claude Code" marker: a row shows only where the chat works (B55).
     expect(screen.queryByText("Claude Code")).not.toBeInTheDocument();
     expect(screen.queryByText("Elsewhere")).not.toBeInTheDocument();
@@ -113,6 +119,7 @@ describe("Claude Code chats", () => {
     const view = within(await screen.findByRole("region", { name: "Tune the hero section" }));
 
     expect(await view.findByText("No messages yet")).toBeInTheDocument();
+    // Nothing runs in Nest: the run tone stays a plain dot, not the fireflies (B80).
     expect(view.getByRole("img", { name: "Open in Claude Code" })).toHaveClass("dot s-run");
     expect(view.getByText(/Close it there before sending/)).toBeInTheDocument();
     const button = view.getByRole("button", { name: "Continue in Nest" });

@@ -76,7 +76,9 @@ describe("! bash mode (B59)", () => {
     expect(api.sendMessage).not.toHaveBeenCalled();
     expect(field).toHaveValue("");
     expect(screen.queryByText("Bash mode")).not.toBeInTheDocument();
-    expect(within(row("git status --short")).getByRole("status")).toHaveTextContent("Running");
+    const running = within(row("git status --short")).getByRole("status");
+    expect(running).toHaveTextContent("Running");
+    expect(running.querySelector(".ff")).not.toBeNull();
 
     reply.resolve(shell());
     expect(await screen.findByText("M src/app.py", { exact: false })).toBeInTheDocument();

@@ -85,7 +85,9 @@ describe("a subagent's transcript (B46)", () => {
     expect(within(page).getByText("Find the form")).toBeInTheDocument();
     await within(page).findByText("app/form.tsx");
     expect(within(page).getByText("contact form").tagName).toBe("STRONG");
-    expect(within(page).getByText("Working")).toBeInTheDocument();
+    expect(within(page).getByText("Working").querySelector(".ff")).not.toBeNull();
+    // The header's status after the name is the fireflies while it works (B80).
+    expect(within(page).getByRole("img", { name: "Working" })).toHaveClass("ff");
     expect(within(page).getByText("Read only. Ask follow-ups in the chat.")).toBeInTheDocument();
     expect(within(page).queryByLabelText("Message")).not.toBeInTheDocument();
 
@@ -210,6 +212,7 @@ describe("a pixie's work in a chat (B46)", () => {
       "Continued call, Working",
       "Call, Done",
     ]);
+    expect(within(page).getByRole("img", { name: "Working" })).toHaveClass("ff");
     expect(within(defined(calls[0])).getByText("Continued")).toBeInTheDocument();
     expect(within(defined(calls[0])).getByText("Which one?")).toBeInTheDocument();
     expect(within(defined(calls[1])).getByText("ok")).toBeInTheDocument();

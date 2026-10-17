@@ -37,6 +37,7 @@ private struct ColumnView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {
+                // A label for the column, not a live item: a plain dot even for Running.
                 StatusDot(tone: column.tone)
                 Text(column.title)
                 Text("\(sessions.count)").monospacedDigit()
@@ -154,7 +155,7 @@ private struct LiveLine: View {
                     .font(.system(size: 10))
                     .foregroundStyle(Palette.t3)
             } else {
-                Spinner(size: 10, lineWidth: 1.5)
+                Fireflies(height: 10)
             }
             Text(text)
                 .foregroundStyle(icon == nil ? Palette.t3 : Palette.t2)

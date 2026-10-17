@@ -102,6 +102,8 @@ describe("each chat's tree (B46)", () => {
       within(nested as HTMLElement).getByRole("button", { name: "Plan, working" }),
     ).toBeInTheDocument();
     expect(within(subagents).getAllByRole("button")).toHaveLength(2);
+    // A running subagent's row shows the working fireflies (B80).
+    expect(explore.querySelector(".ff")).not.toBeNull();
     // A chat with nothing working has no tree.
     expect(screen.queryByRole("list", { name: "Working in Quiet chat" })).not.toBeInTheDocument();
   });
@@ -116,6 +118,13 @@ describe("each chat's tree (B46)", () => {
     expect(face("Scribe, working").querySelector("svg")).toHaveClass("pxwork");
     expect(face("Lead, leader, done").querySelector("svg")).not.toHaveClass("pxwork");
     expect(face("Bugs, working").querySelector("svg")).toHaveClass("pxwork");
+    // A running call says so with fireflies beside the sprite, a finished one with its word (B80).
+    expect(
+      within(list).getByRole("button", { name: "Scribe, working" }).querySelector(".ff"),
+    ).not.toBeNull();
+    expect(
+      within(list).getByRole("button", { name: "Lead, leader, done" }).querySelector(".ff"),
+    ).toBeNull();
 
     // The leader first, then the members in order, repeated to fill the four cells;
     // only the member at work hops.
@@ -145,7 +154,7 @@ describe("each chat's tree (B46)", () => {
     const list = await waitFor(() => tree("Validate contact form"));
     expect(list.querySelectorAll("svg.pxwork")).toHaveLength(0);
     for (const name of ["Scribe, working", "Bugs, working"]) {
-      expect(within(list).getByRole("button", { name }).querySelector(".prun")).not.toBeNull();
+      expect(within(list).getByRole("button", { name }).querySelector(".ff")).not.toBeNull();
     }
   });
 

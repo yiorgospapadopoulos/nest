@@ -1,14 +1,16 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { useAppearance } from "../../appearance/context.ts";
 import type { ChatStatus } from "../../store/selectors.ts";
+import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 
 interface FrameProps {
   title: string;
   // Shown before the title, such as a pixie's sprite.
   icon?: ReactNode;
-  // A dot in the status color right after the title, named by the status word.
-  status?: ChatStatus;
+  // A dot in the status color right after the title, named by the status word; `plain`
+  // keeps the run tone a dot where nothing works in Nest (B80).
+  status?: ChatStatus & { plain?: boolean };
   back: string;
   onBack: () => void;
   tools?: ReactNode;
@@ -40,12 +42,7 @@ export function Frame({ title, icon, status, back, onBack, tools, details, child
             {title}
           </h2>
           {status !== undefined && (
-            <span
-              className={`dot s-${status.tone}`}
-              role="img"
-              aria-label={status.label}
-              title={status.label}
-            />
+            <Dot tone={status.tone} label={status.label} plain={status.plain === true} />
           )}
         </div>
         {details}

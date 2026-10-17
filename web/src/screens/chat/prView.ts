@@ -3,7 +3,7 @@ import { prLabel } from "../../format.ts";
 import type { Tone } from "../../store/selectors.ts";
 
 const CHECKS: Record<ChecksState, { tone: Tone; text: string }> = {
-  pending: { tone: "wait", text: "checks running" },
+  pending: { tone: "run", text: "checks running" },
   success: { tone: "rev", text: "checks passed" },
   failure: { tone: "fail", text: "checks failed" },
   none: { tone: "idle", text: "no checks" },

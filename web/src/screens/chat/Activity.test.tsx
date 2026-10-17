@@ -80,7 +80,11 @@ describe("a running turn", () => {
   it("ticks a working timer and says when the agent thinks", async () => {
     const { push } = await openChat(session({ state: "running" }), turnStarted, { clock: 12 });
 
-    expect(await screen.findByText("Working... 12s")).toHaveClass("glow");
+    const working = await screen.findByText("Working... 12s");
+    expect(working).toHaveClass("glow");
+    // Fireflies lead the line, and a band of light sweeps across it (B80).
+    const line = defined(working.closest<HTMLElement>(".rglow"));
+    expect(line.firstElementChild).toHaveClass("ff");
     act(() => {
       vi.advanceTimersByTime(60_000);
     });

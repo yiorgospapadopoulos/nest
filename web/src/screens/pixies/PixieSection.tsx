@@ -12,6 +12,7 @@ import { PixieActions } from "./PixieActions.tsx";
 import type { PixieTab } from "./PixieView.tsx";
 import { Sprite } from "./Sprite.tsx";
 import { TeamActions } from "./TeamActions.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 // One-tap starters while the user has no pixies; nothing is created without the tap (D072).
 const TEMPLATES: readonly { name: string; mascot: Mascot; soul: string }[] = [
@@ -362,7 +363,7 @@ function PixieRow({ pixie: p, leader, running, alerts, onOpen, onActions }: RowP
         {(leader || running || alerts > 0) && (
           <span className="rm">
             {leader && <span className="pxlead">Leader</span>}
-            {running && <span className="prun" />}
+            {running && <Fireflies size={9} />}
             {alerts > 0 && (
               <span className="pxalert" aria-hidden="true">
                 {alerts}
