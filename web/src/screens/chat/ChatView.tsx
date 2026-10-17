@@ -23,6 +23,8 @@ import { useStopTask } from "./useStopTask.ts";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
 import type { WorkOf } from "../projects/ChatTree.tsx";
 import { AgentWorkView } from "./AgentWorkView.tsx";
+import { ArtifactsButton } from "../artifacts/ArtifactsButton.tsx";
+import { chatScopes } from "../artifacts/view.ts";
 import { PixieWorkView } from "./PixieWorkView.tsx";
 import { StartedBy } from "../pixies/StartedBy.tsx";
 
@@ -163,6 +165,7 @@ function SessionChat({
       onBack={onBack}
       tools={
         <>
+          <ArtifactsButton scopes={chatScopes(session)} />
           <button
             className="ib"
             aria-haspopup="dialog"
