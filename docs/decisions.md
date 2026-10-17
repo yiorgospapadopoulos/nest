@@ -943,3 +943,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **API:** `GET /api/usage/period?unit=day|week|month|year&date=YYYY-MM-DD` replaces `GET /api/usage/month`. `date` is any day of the period by the daemon's local calendar (2000 to 2100); weeks start on Monday. It returns `start`, `end`, `current` (the period holds today), `sessions`, `tokens` (chats and subagents), `subagents`, `bars` (24 hours, 7 days, each day of the month, or 12 months; each with its local start and UTC offset, tokens and distinct chats), `projects` (by repo, most tokens first, repos without tokens left out, every `pixie:*` repo together as one "Pixies" entry with `pixies: true`) and `probes`, the usage checks apart from the rest. An unknown unit or a bad date is 422.
 - **Refines:** D031 (probe tokens are counted per period instead of per month).
 
+
+## D108 (2026-10-17): Settings icons, the Storage ledger and a Usage page (B86)
+
+- **Icons:** Pixies is a winged pixie drawn in the sprites' pixel style (12 by 10, rows in NestKit and `web/src/ui/Icon.tsx`), Agents a robot head in the line style, Usage a bar chart (`chart.bar` on the Mac), Storage a drive (`internaldrive` on the Mac). The robot is also the iPhone's icon for agent tool calls. Mockup picks P-4, A-5 and S-1 of `plans/b86/settings-mockup.html`.
+- **Storage:** its own Settings page after Usage (moved out of General, user request), showing the total, a full-width bar with gaps and a legend line per part with its size and share ("<1%" under one percent), replacing the short bar and one summary line.
+- **Usage page:** a new Settings page after Agents shows what the usage popover shows (limits, Day/Week/Month/Year, bars, totals, Details). The Mac shares the popover's views; the popover is unchanged. The limit checks (Check limits, Warn me at, Also as a notification) move there from Agents. On the iPhone the breakdown moves to `/settings/usage/details`; `/settings/agents/usage` still opens it.
+- **Refines:** D104 (where the usage settings live), D106 (where the iPhone shows usage).
