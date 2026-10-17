@@ -19,6 +19,8 @@ import type {
   TrackedAgent,
   TrackedTask,
   UsageLimits,
+  ClaudeAccount,
+  ClaudeCodeInfo,
 } from "../api/types.ts";
 import {
   draftKey,
@@ -27,6 +29,8 @@ import {
   NO_DRAFT,
   type Action,
   type Draft,
+  type InstallProgress,
+  type SettingsState,
   type State,
   type Tracking,
 } from "./state.ts";
@@ -236,9 +240,15 @@ export function reduce(state: State, action: Action): State {
       return { ...state, account: action.account };
     case "agentDefaults":
       return { ...state, agentDefaults: action.defaults };
+    case "settings":
+      return { ...state, settings: { ...state.settings, ...action.change } };
     case "toast":
       return { ...state, toast: action.toast };
   }
+}
+
+function withSettings(state: State, change: Partial<SettingsState>): State {
+  return { ...state, settings: { ...state.settings, ...change } };
 }
 
 /** Fold one live event from the socket into the state. */
@@ -359,6 +369,12 @@ export function applyEvent(state: State, event: NestEvent): State {
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
       return { ...next, limits: limitsOf(p, event.ts, next.limits) };
+    case "account.claude":
+      return withSettings(next, { claude: p as unknown as ClaudeAccount });
+    case "claude_code.updated":
+      return withSettings(next, { claudeCode: p as unknown as ClaudeCodeInfo });
+    case "claude_code.install":
+      return withSettings(next, { install: p as unknown as InstallProgress });
     default:
       return next;
   }

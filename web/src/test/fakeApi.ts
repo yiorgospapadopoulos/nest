@@ -3,7 +3,18 @@ import type { Api } from "../api/client.ts";
 import {
   account,
   agentDefaults,
+  claudeAccount,
+  claudeCode,
   commandList,
+  device,
+  github,
+  installedPlugin,
+  marketplace,
+  pluginDetails,
+  pixieDefaults,
+  storageUsage,
+  stuckSettings,
+  usageSettings,
   detail,
   diff,
   habit,
@@ -42,11 +53,7 @@ export function fakeApi(): FakeApi {
       return defined(listed.find((r) => r.name === name));
     }),
     removeRepo: vi.fn<Api["removeRepo"]>().mockResolvedValue(null),
-    updateRepo: vi
-      .fn<Api["updateRepo"]>()
-      .mockImplementation((name, patch) =>
-        Promise.resolve({ ...repo(name), worktree: { ...repo(name).worktree, ...patch } }),
-      ),
+    updateRepo: vi.fn<Api["updateRepo"]>().mockResolvedValue(repo("cv-page")),
     sessions: vi.fn<Api["sessions"]>().mockResolvedValue([]),
     session: vi.fn<Api["session"]>().mockResolvedValue(detail()),
     sessionEvents: vi.fn<Api["sessionEvents"]>().mockResolvedValue([]),
@@ -164,6 +171,59 @@ export function fakeApi(): FakeApi {
     agentTranscript: vi
       .fn<Api["agentTranscript"]>()
       .mockResolvedValue({ tool_use_id: "a1", prompt: null, messages: [], report: null }),
+    branches: vi.fn<Api["branches"]>().mockResolvedValue({ branches: ["develop", "main"] }),
+    storage: vi.fn<Api["storage"]>().mockResolvedValue(storageUsage()),
+    storageSettings: vi
+      .fn<Api["storageSettings"]>()
+      .mockResolvedValue({ archive_after_days: null }),
+    saveStorageSettings: vi
+      .fn<Api["saveStorageSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
+    largeAttachments: vi.fn<Api["largeAttachments"]>().mockResolvedValue([]),
+    deleteAttachment: vi.fn<Api["deleteAttachment"]>().mockResolvedValue(null),
+    rebuildSearch: vi.fn<Api["rebuildSearch"]>().mockResolvedValue(null),
+    usageSettings: vi.fn<Api["usageSettings"]>().mockResolvedValue(usageSettings()),
+    saveUsageSettings: vi
+      .fn<Api["saveUsageSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
+    stuckSettings: vi.fn<Api["stuckSettings"]>().mockResolvedValue(stuckSettings()),
+    saveStuckSettings: vi
+      .fn<Api["saveStuckSettings"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
+    pixieDefaults: vi.fn<Api["pixieDefaults"]>().mockResolvedValue(pixieDefaults()),
+    savePixieDefaults: vi
+      .fn<Api["savePixieDefaults"]>()
+      .mockImplementation((settings) => Promise.resolve(settings)),
+    github: vi.fn<Api["github"]>().mockResolvedValue(github()),
+    checkGithub: vi.fn<Api["checkGithub"]>().mockResolvedValue(github()),
+    claudeAccount: vi.fn<Api["claudeAccount"]>().mockResolvedValue(claudeAccount()),
+    claudeLogin: vi.fn<Api["claudeLogin"]>().mockResolvedValue(null),
+    claudeLogout: vi
+      .fn<Api["claudeLogout"]>()
+      .mockResolvedValue(claudeAccount({ signed_in: false, email: null, plan: null })),
+    claudeCode: vi.fn<Api["claudeCode"]>().mockResolvedValue(claudeCode()),
+    installClaudeCode: vi.fn<Api["installClaudeCode"]>().mockResolvedValue(null),
+    devices: vi
+      .fn<Api["devices"]>()
+      .mockResolvedValue([
+        device({ id: "mac", name: "MacBook Air", is_local: true }),
+        device({ id: "d1", name: "iPhone" }),
+      ]),
+    revokeDevice: vi.fn<Api["revokeDevice"]>().mockResolvedValue(null),
+    pairingCode: vi
+      .fn<Api["pairingCode"]>()
+      .mockResolvedValue({ code: "ABCD2345", expires_at: "2026-10-06T10:10:00Z" }),
+    artifacts: vi.fn<Api["artifacts"]>().mockResolvedValue([]),
+    plugins: vi.fn<Api["plugins"]>().mockResolvedValue([installedPlugin()]),
+    skills: vi.fn<Api["skills"]>().mockResolvedValue([]),
+    marketplaces: vi.fn<Api["marketplaces"]>().mockResolvedValue([marketplace()]),
+    addMarketplace: vi.fn<Api["addMarketplace"]>().mockResolvedValue(null),
+    removeMarketplace: vi.fn<Api["removeMarketplace"]>().mockResolvedValue(null),
+    availablePlugins: vi.fn<Api["availablePlugins"]>().mockResolvedValue([]),
+    pluginDetails: vi.fn<Api["pluginDetails"]>().mockResolvedValue(pluginDetails()),
+    installPlugin: vi.fn<Api["installPlugin"]>().mockResolvedValue(null),
+    uninstallPlugin: vi.fn<Api["uninstallPlugin"]>().mockResolvedValue(null),
+    setPluginEnabled: vi.fn<Api["setPluginEnabled"]>().mockResolvedValue(null),
   };
   return fake;
 }

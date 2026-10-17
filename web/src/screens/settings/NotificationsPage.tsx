@@ -4,18 +4,18 @@ import { browserPushEnv, pushStatus, type PushStatus } from "../../pwa/push.ts";
 import { useStore } from "../../store/context.ts";
 import { Pill } from "../../ui/bits.tsx";
 import { KINDS } from "./notifyKinds.ts";
+import { Loading, Section, SwitchRow } from "./rows.tsx";
 
 const DEFAULT_QUIET: QuietHours = { start: "22:00", end: "07:00" };
 
 const HINTS: Partial<Record<PushStatus, string>> = {
-  install:
-    "Add Nest to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.",
-  unsupported: "This browser cannot show notifications.",
-  denied: "Notifications are blocked. Allow them for Nest in Settings, Notifications.",
+  install: "Add Nest to the Home Screen first",
+  unsupported: "Not available in this browser",
+  denied: "Blocked in iPhone Settings",
 };
 
-/** This device's push subscription, and the daemon's rules shared by every device. */
-export function NotificationsCard() {
+/** The daemon's rules shared by every device, then this device's push subscription. */
+export function NotificationsPage() {
   const { state, actions } = useStore();
   const [env] = useState(() => browserPushEnv(window));
   const [status, setStatus] = useState<PushStatus | null>(null);
@@ -44,15 +44,13 @@ export function NotificationsCard() {
   };
 
   return (
-    <section aria-labelledby="notifications-title">
-      <h2 className="pg-h" id="notifications-title">
-        Notifications
-      </h2>
-      <div className="lgrp gl">
-        <div className={`srow${status !== null && status in HINTS ? " col" : ""}`}>
-          <span>This device</span>
-          {status === null && <span className="hint">Checking...</span>}
-          {status !== null && status in HINTS && <span className="hint">{HINTS[status]}</span>}
+    <>
+      {settings === null ? <Loading title="Notify me about" /> : <Kinds settings={settings} />}
+      <Section title="Delivery">
+        <div className="srow">
+          <span>iPhone push</span>
+          {status === null && <span className="sval">Checking...</span>}
+          {status !== null && status in HINTS && <span className="sval">{HINTS[status]}</span>}
           {status === "off" && (
             <button
               className="b b-pri"
@@ -78,83 +76,58 @@ export function NotificationsCard() {
             </button>
           </div>
         )}
-      </div>
-      {settings === null ? (
-        <div className="lgrp gl pad note">Loading...</div>
-      ) : (
-        <Rules settings={settings} />
-      )}
-    </section>
+        {settings !== null && <Quiet settings={settings} />}
+      </Section>
+    </>
   );
 }
 
-/** Which kinds reach the phone, and quiet hours; saved to the Mac at once. */
-function Rules({ settings }: { settings: NotificationSettings }) {
+/** Which kinds reach the phone; saved to the Mac at once. */
+function Kinds({ settings }: { settings: NotificationSettings }) {
+  const { actions } = useStore();
+  return (
+    <Section title="Notify me about">
+      {KINDS.map(({ kind, label }) => (
+        <SwitchRow
+          key={kind}
+          label={label}
+          on={settings.kinds[kind]}
+          onToggle={() => {
+            void actions.saveNotifications(
+              { ...settings, kinds: { ...settings.kinds, [kind]: !settings.kinds[kind] } },
+              settings,
+            );
+          }}
+        />
+      ))}
+    </Section>
+  );
+}
+
+/** Quiet hours, by the Mac's clock. */
+function Quiet({ settings }: { settings: NotificationSettings }) {
   const { actions } = useStore();
   const save = (change: Partial<NotificationSettings>) => {
     void actions.saveNotifications({ ...settings, ...change }, settings);
   };
   return (
     <>
-      <h3 className="pg-h">Notify me about</h3>
-      <div className="lgrp gl">
-        {KINDS.map(({ kind, label }) => (
-          <Switch
-            key={kind}
-            id={`notify-${kind}`}
-            label={label}
-            on={settings.kinds[kind]}
-            onToggle={() => {
-              save({ kinds: { ...settings.kinds, [kind]: !settings.kinds[kind] } });
-            }}
-          />
-        ))}
-        <Switch
-          id="notify-quiet"
-          label="Quiet hours"
-          on={settings.quiet_hours !== null}
-          onToggle={() => {
-            save({ quiet_hours: settings.quiet_hours === null ? DEFAULT_QUIET : null });
+      <SwitchRow
+        label="Quiet hours"
+        on={settings.quiet_hours !== null}
+        onToggle={() => {
+          save({ quiet_hours: settings.quiet_hours === null ? DEFAULT_QUIET : null });
+        }}
+      />
+      {settings.quiet_hours !== null && (
+        <QuietHoursRow
+          quiet={settings.quiet_hours}
+          onChange={(quiet_hours) => {
+            save({ quiet_hours });
           }}
         />
-        {settings.quiet_hours !== null && (
-          <QuietHoursRow
-            quiet={settings.quiet_hours}
-            onChange={(quiet_hours) => {
-              save({ quiet_hours });
-            }}
-          />
-        )}
-      </div>
-      <div className="note gnote">
-        These rules apply to every paired device. Quiet hours follow your Mac&apos;s clock.
-      </div>
+      )}
     </>
-  );
-}
-
-function Switch({
-  id,
-  label,
-  on,
-  onToggle,
-}: {
-  id: string;
-  label: string;
-  on: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="srow">
-      <span id={id}>{label}</span>
-      <button
-        className="sw"
-        role="switch"
-        aria-checked={on}
-        aria-labelledby={id}
-        onClick={onToggle}
-      />
-    </div>
   );
 }
 

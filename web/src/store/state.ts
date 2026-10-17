@@ -23,6 +23,16 @@ import type {
   TrackedAgent,
   TrackedTask,
   UsageLimits,
+  ClaudeAccount,
+  ClaudeCodeInfo,
+  GithubAccount,
+  InstalledPlugin,
+  Marketplace,
+  PixieDefaults,
+  StandaloneSkill,
+  StorageSettings,
+  StuckSettings,
+  UsageSettings,
 } from "../api/types.ts";
 
 export type AuthState = "loading" | "ready" | "unpaired" | "forbidden" | "offline";
@@ -71,6 +81,42 @@ export interface Toast {
   text: string;
   tone: "ok" | "error" | "info";
 }
+
+/** Claude Code's install on the Mac, while Nest runs the official installer (D104). */
+export interface InstallProgress {
+  state: "running" | "done" | "failed";
+  message: string | null;
+}
+
+/** The daemon's settings sections and accounts the Settings pages show, once asked for. */
+export interface SettingsState {
+  usage: UsageSettings | null;
+  stuck: StuckSettings | null;
+  storage: StorageSettings | null;
+  pixies: PixieDefaults | null;
+  github: GithubAccount | null;
+  claude: ClaudeAccount | null;
+  claudeCode: ClaudeCodeInfo | null;
+  install: InstallProgress | null;
+  // Claude Code's plugins, standalone skills and marketplaces, once Extensions asked.
+  plugins: InstalledPlugin[] | null;
+  skills: StandaloneSkill[] | null;
+  marketplaces: Marketplace[] | null;
+}
+
+export const NO_SETTINGS: SettingsState = {
+  usage: null,
+  stuck: null,
+  storage: null,
+  pixies: null,
+  github: null,
+  claude: null,
+  claudeCode: null,
+  install: null,
+  plugins: null,
+  skills: null,
+  marketplaces: null,
+};
 
 export interface State {
   auth: AuthState;
@@ -123,6 +169,7 @@ export interface State {
   models: ModelOption[] | null;
   account: AccountInfo | null;
   agentDefaults: AgentDefaults | null;
+  settings: SettingsState;
   toast: Toast | null;
 }
 
@@ -157,6 +204,7 @@ export const initialState: State = {
   models: null,
   account: null,
   agentDefaults: null,
+  settings: NO_SETTINGS,
   toast: null,
 };
 
@@ -222,4 +270,5 @@ export type Action =
   | { type: "models"; models: ModelOption[] }
   | { type: "account"; account: AccountInfo }
   | { type: "agentDefaults"; defaults: AgentDefaults }
+  | { type: "settings"; change: Partial<SettingsState> }
   | { type: "toast"; toast: Toast | null };

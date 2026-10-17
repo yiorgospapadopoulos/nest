@@ -1,0 +1,179 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { ApiError } from "../../api/client.ts";
+import { fakeApi } from "../../test/fakeApi.ts";
+import { pixie, pixieDefaults, repo } from "../../test/fixtures.ts";
+import { renderApp } from "../../test/render.tsx";
+import { openSettings } from "../../test/settings.ts";
+
+const openPixies = (api = fakeApi()) => openSettings("Pixies", { api });
+const section = (name: string) => screen.getByRole("region", { name });
+const options = (label: string) =>
+  within(screen.getByLabelText(label))
+    .getAllByRole("option")
+    .map((o) => o.textContent);
+
+describe("pixie list", () => {
+  it("lists the pixies with their autonomy and opens one", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([
+      pixie({ id: "p1", name: "Tester" }),
+      pixie({ id: "p2", name: "Coordinator", autonomy: "start", position: 1 }),
+    ]);
+    const { user } = await openPixies(api);
+
+    const list = await screen.findByRole("region", { name: "Your pixies" });
+    expect(within(list).getByText("Observe")).toBeInTheDocument();
+    expect(within(list).getByText("Start")).toBeInTheDocument();
+    expect(within(list).queryByRole("switch", { name: "Show hidden pixies" })).toBeNull();
+
+    await user.click(within(list).getByRole("button", { name: "Open Coordinator" }));
+    expect(await screen.findByRole("region", { name: "Coordinator" })).toBeInTheDocument();
+  });
+
+  it("shows hidden pixies on request", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie(), pixie({ id: "p2", name: "Ghost", hidden: true })]);
+    const { user } = await openPixies(api);
+
+    expect(await screen.findByText("Tester")).toBeInTheDocument();
+    expect(screen.queryByText("Ghost")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("switch", { name: "Show hidden pixies" }));
+    expect(screen.getByText("Ghost")).toBeInTheDocument();
+  });
+
+  it("creates a pixie and opens its details", async () => {
+    const api = fakeApi();
+    api.createPixie.mockResolvedValue(pixie({ id: "p9", name: "New pixie" }));
+    const { user } = await openPixies(api);
+
+    await user.click(await screen.findByRole("button", { name: "New pixie" }));
+
+    expect(api.createPixie).toHaveBeenCalledWith({ name: "New pixie" });
+    expect(await screen.findByRole("region", { name: "New pixie" })).toBeInTheDocument();
+  });
+
+  it("gives a new pixie the open project when the defaults say so", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("cv-page")]);
+    api.pixieDefaults.mockResolvedValue(pixieDefaults({ projects: "current" }));
+    const { user } = await openPixies(api);
+
+    await user.click(await screen.findByRole("button", { name: "New pixie" }));
+
+    await waitFor(() => {
+      expect(api.createPixie).toHaveBeenCalledWith({ name: "New pixie", projects: ["cv-page"] });
+    });
+  });
+
+  it("stays put when the pixie cannot be created", async () => {
+    const api = fakeApi();
+    api.createPixie.mockRejectedValue(new ApiError(500, "no pixie"));
+    const { user } = await openPixies(api);
+
+    await user.click(await screen.findByRole("button", { name: "New pixie" }));
+
+    expect(await screen.findByText("no pixie")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Pixies" })).toBeInTheDocument();
+  });
+
+  it("gives a pixie made on the Projects tab that project, and leaves set projects alone", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("cv-page")]);
+    api.pixieDefaults.mockResolvedValue(pixieDefaults({ projects: "current" }));
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Projects" }));
+
+    await user.click(await screen.findByRole("button", { name: "New pixie" }));
+    await waitFor(() => {
+      expect(api.createPixie).toHaveBeenLastCalledWith({
+        name: "New pixie",
+        projects: ["cv-page"],
+      });
+    });
+  });
+});
+
+describe("new pixie defaults", () => {
+  it("shows and saves what new pixies start with", async () => {
+    const api = fakeApi();
+    const { user } = await openPixies(api);
+    const start = await screen.findByRole("region", { name: "New pixies start with" });
+
+    await waitFor(() => {
+      expect(options("Model")).toEqual(["Same as Agents", "Opus 5.5", "Haiku 4.5", "Opus 4.6"]);
+    });
+    expect(options("Autonomy")).toEqual(["Observe", "Message", "Start", "Answer"]);
+    expect(options("Chats running at once")).toEqual(["1", "2", "3", "5"]);
+    expect(options("Chats started per day")).toEqual(["3", "5", "10", "20"]);
+    expect(options("Send to the phone from")).toEqual([
+      "Needs action",
+      "Warnings and up",
+      "Everything",
+    ]);
+
+    await user.selectOptions(screen.getByLabelText("Model"), "opus");
+    await user.selectOptions(screen.getByLabelText("Autonomy"), "message");
+    await user.click(within(start).getByRole("button", { name: "Read only" }));
+    await user.selectOptions(screen.getByLabelText("Projects"), "current");
+    await user.selectOptions(screen.getByLabelText("Chats running at once"), "3");
+    await user.selectOptions(screen.getByLabelText("Chats started per day"), "10");
+    await user.click(screen.getByRole("switch", { name: "Pause all habits" }));
+    await user.selectOptions(screen.getByLabelText("Skip habit runs above"), "90");
+    await user.selectOptions(screen.getByLabelText("Send to the phone from"), "info");
+
+    expect(api.savePixieDefaults).toHaveBeenLastCalledWith({
+      model: "opus",
+      autonomy: "message",
+      project_access: "read",
+      projects: "current",
+      max_running: 3,
+      max_per_day: 10,
+      report_push: "info",
+      habits_paused: true,
+      habit_usage_percent: 90,
+    });
+  });
+
+  it("keeps values the lists do not offer", async () => {
+    const api = fakeApi();
+    api.pixieDefaults.mockResolvedValue(
+      pixieDefaults({
+        model: "sonnet-x",
+        max_running: 7,
+        max_per_day: 50,
+        habit_usage_percent: 60,
+      }),
+    );
+    await openPixies(api);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Model")).toHaveDisplayValue("sonnet-x");
+    });
+    expect(screen.getByLabelText("Chats running at once")).toHaveValue("7");
+    expect(screen.getByLabelText("Chats started per day")).toHaveValue("50");
+    expect(screen.getByLabelText("Skip habit runs above")).toHaveDisplayValue("60%");
+  });
+
+  it("works without the model list, and puts back a refused change", async () => {
+    const api = fakeApi();
+    api.models.mockRejectedValue(new ApiError(500, "no models"));
+    api.savePixieDefaults.mockRejectedValueOnce(new ApiError(409, "settings.toml broke"));
+    const { user } = await openPixies(api);
+
+    await screen.findByRole("region", { name: "Habits" });
+    expect(options("Model")).toEqual(["Same as Agents"]);
+    await user.click(screen.getByRole("switch", { name: "Pause all habits" }));
+
+    expect(await screen.findByText("settings.toml broke")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Pause all habits" })).not.toBeChecked();
+  });
+
+  it("waits for the Mac", async () => {
+    const api = fakeApi();
+    api.pixieDefaults.mockReturnValue(new Promise(() => undefined));
+    await openPixies(api);
+
+    expect(section("New pixies start with")).toHaveTextContent("Loading...");
+  });
+});

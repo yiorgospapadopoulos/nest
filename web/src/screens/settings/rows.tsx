@@ -1,0 +1,191 @@
+import { useId, type ReactNode } from "react";
+import { Icon } from "../../ui/Icon.tsx";
+
+// The Settings pages' building blocks (B81): a small grey section title over a rounded
+// group of rows, each row a label on the left and its control on the right, nothing more.
+
+/** A section: its title (if any), extra controls beside it, then its rows in a group. */
+export function Section({
+  title,
+  tools,
+  children,
+}: {
+  title?: string;
+  tools?: ReactNode;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section aria-labelledby={title === undefined ? undefined : id}>
+      {title !== undefined && (
+        <h2 className="pg-h" id={id}>
+          {title}
+          {tools}
+        </h2>
+      )}
+      <div className="lgrp gl">{children}</div>
+    </section>
+  );
+}
+
+/** Rows not loaded yet. */
+export function Loading({ title }: { title?: string }) {
+  return (
+    <Section {...(title === undefined ? {} : { title })}>
+      <div className="srow note">Loading...</div>
+    </Section>
+  );
+}
+
+/** A label and its control; `labelId` names the control by the label. */
+export function Row({
+  label,
+  children,
+  labelId,
+}: {
+  label: ReactNode;
+  children?: ReactNode;
+  labelId?: string;
+}) {
+  return (
+    <div className="srow">
+      <span id={labelId} className="slab">
+        {label}
+      </span>
+      {children !== undefined && <div className="sctl">{children}</div>}
+    </div>
+  );
+}
+
+export function SwitchRow({
+  label,
+  on,
+  onToggle,
+  disabled = false,
+}: {
+  label: string;
+  on: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <Row label={label} labelId={id}>
+      <button
+        className="sw"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby={id}
+        disabled={disabled}
+        onClick={onToggle}
+      />
+    </Row>
+  );
+}
+
+export interface Choice<T> {
+  value: T;
+  label: string;
+}
+
+/** A row with the system's list of choices; values are compared as text. */
+export function SelectRow<T extends string | number | null>({
+  label,
+  value,
+  choices,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: T;
+  choices: readonly Choice<T>[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const key = (v: T) => String(v);
+  return (
+    <div className="srow">
+      <label htmlFor={id} className="slab">
+        {label}
+      </label>
+      <select
+        id={id}
+        className="ssel"
+        value={key(value)}
+        disabled={disabled}
+        onChange={(event) => {
+          const picked = choices.find((c) => key(c.value) === event.target.value);
+          if (picked !== undefined) onChange(picked.value);
+        }}
+      >
+        {choices.map((c) => (
+          <option key={key(c.value)} value={key(c.value)}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/** A row with a segmented control; a long one goes under its label. */
+export function SegRow<T>({
+  label,
+  value,
+  choices,
+  onChange,
+  disabled = false,
+  wide = false,
+}: {
+  label: string;
+  value: T;
+  choices: readonly Choice<T>[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  wide?: boolean;
+}) {
+  const id = useId();
+  return (
+    <div className={wide ? "srow col" : "srow"}>
+      <span id={id} className="slab">
+        {label}
+      </span>
+      <div className="mseg" role="group" aria-labelledby={id}>
+        {choices.map((c) => (
+          <button
+            key={c.label}
+            aria-pressed={c.value === value}
+            disabled={disabled}
+            onClick={() => {
+              onChange(c.value);
+            }}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A tappable row that opens another page, with a chevron. */
+export function LinkRow({
+  icon,
+  label,
+  onOpen,
+}: {
+  icon: ReactNode;
+  label: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button className="srow slink" onClick={onOpen}>
+      <span className="cn">
+        {icon}
+        <span>{label}</span>
+      </span>
+      <Icon name="chevr" className="schev" />
+    </button>
+  );
+}

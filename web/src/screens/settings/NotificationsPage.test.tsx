@@ -5,38 +5,34 @@ import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { fakeSubscription, installBrowserPush, uninstallBrowserPush } from "../../test/fakePush.ts";
 import { notificationSettings } from "../../test/fixtures.ts";
-import { renderApp } from "../../test/render.tsx";
+import { openSettings } from "../../test/settings.ts";
 
 afterEach(() => {
   uninstallBrowserPush();
 });
 
-async function openAccount(api: FakeApi = fakeApi()) {
-  const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Account" }));
-  return rendered;
-}
+const openAccount = (api: FakeApi = fakeApi()) => openSettings("Notifications", { api });
 
-const device = () => defined(screen.getByText("This device").parentElement);
+const device = () => defined(screen.getByText("iPhone push").parentElement);
 
 describe("this device", () => {
   it("asks to add the app to the Home Screen in a browser tab", async () => {
     installBrowserPush({ standalone: false, push: false });
     await openAccount();
 
-    expect(await screen.findByText(/Add Nest to your Home Screen first/)).toBeInTheDocument();
+    expect(await screen.findByText("Add Nest to the Home Screen first")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enable notifications" })).not.toBeInTheDocument();
   });
 
   it("explains when push is missing or blocked", async () => {
     installBrowserPush({ push: false });
     const first = await openAccount();
-    expect(await screen.findByText(/cannot show notifications/)).toBeInTheDocument();
+    expect(await screen.findByText("Not available in this browser")).toBeInTheDocument();
     first.unmount();
 
     installBrowserPush({ permission: "denied" });
     await openAccount();
-    expect(await screen.findByText(/Notifications are blocked/)).toBeInTheDocument();
+    expect(await screen.findByText("Blocked in iPhone Settings")).toBeInTheDocument();
   });
 
   it("enables, tests and turns off notifications", async () => {
@@ -106,7 +102,7 @@ describe("this device", () => {
 
     await user.click(await screen.findByRole("button", { name: "Enable notifications" }));
 
-    expect(await screen.findByText(/Notifications are blocked/)).toBeInTheDocument();
+    expect(await screen.findByText("Blocked in iPhone Settings")).toBeInTheDocument();
   });
 
   it("ignores a status that arrives after leaving the tab", async () => {
@@ -125,7 +121,7 @@ describe("this device", () => {
       await Promise.resolve();
     });
 
-    expect(screen.queryByText("This device")).not.toBeInTheDocument();
+    expect(screen.queryByText("iPhone push")).not.toBeInTheDocument();
   });
 });
 

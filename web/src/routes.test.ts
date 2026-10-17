@@ -6,7 +6,19 @@ describe("routes", () => {
     ["/", { tab: "inbox", chat: null }],
     ["/inbox", { tab: "inbox", chat: null }],
     ["/projects", { tab: "projects", chat: null }],
-    ["/account", { tab: "account", chat: null }],
+    ["/account", { tab: "settings", chat: null }],
+    ["/settings", { tab: "settings", chat: null }],
+    ["/settings/agents", { tab: "settings", chat: null, settings: { page: "agents" } }],
+    ["/settings/elsewhere", { tab: "inbox", chat: null }],
+    ["/settings/agents/x", { tab: "inbox", chat: null }],
+    [
+      "/settings/projects/cv%20page",
+      { tab: "settings", chat: null, settings: { project: "cv page" } },
+    ],
+    ["/settings/projects/", { tab: "inbox", chat: null }],
+    ["/settings/projects", { tab: "inbox", chat: null }],
+    ["/settings/projects/a/b", { tab: "inbox", chat: null }],
+    ["/settings/projects/%E0%A4%A", { tab: "inbox", chat: null }],
     ["/chat/s%2F1", { tab: "projects", chat: "s/1" }],
     ["/chat/", { tab: "inbox", chat: null }],
     ["/chat/a/b", { tab: "inbox", chat: null }],
@@ -23,7 +35,9 @@ describe("routes", () => {
 
   it("writes paths that read back the same", () => {
     for (const route of [
-      { tab: "account", chat: null },
+      { tab: "settings", chat: null },
+      { tab: "settings", chat: null, settings: { page: "devices" } },
+      { tab: "settings", chat: null, settings: { project: "cv page/x" } },
       { tab: "projects", chat: "s/1 x" },
       { tab: "projects", chat: null, pixie: "p/1 x" },
     ] as const) {

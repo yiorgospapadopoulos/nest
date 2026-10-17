@@ -53,6 +53,23 @@ import type {
   UpdateSessionBody,
   UpdateTeamBody,
   UsageLimits,
+  Artifact,
+  AvailablePlugin,
+  InstalledPlugin,
+  Marketplace,
+  PluginDetails,
+  StandaloneSkill,
+  ClaudeAccount,
+  ClaudeCodeInfo,
+  ListedDevice,
+  GithubAccount,
+  PairingCode,
+  PixieDefaults,
+  StorageSettings,
+  StorageUsage,
+  StoredAttachment,
+  StuckSettings,
+  UsageSettings,
 } from "./types.ts";
 
 // The daemon's code for a message refused because Claude Code has the chat open.
@@ -203,6 +220,47 @@ export interface Api {
   pixieCalls(sessionId: string, pixieId: string): Promise<CallWork[]>;
   // A subagent's transcript so far; 404 for a call the chat did not make.
   agentTranscript(sessionId: string, toolUseId: string): Promise<AgentWork>;
+  // Settings (B81, D104).
+  branches(repo: string): Promise<{ branches: string[] }>;
+  storage(): Promise<StorageUsage>;
+  storageSettings(): Promise<StorageSettings>;
+  saveStorageSettings(settings: StorageSettings): Promise<StorageSettings>;
+  // Largest first.
+  largeAttachments(limit: number): Promise<StoredAttachment[]>;
+  deleteAttachment(id: string): Promise<null>;
+  // 202 at once; the index is rebuilt in the background.
+  rebuildSearch(): Promise<unknown>;
+  usageSettings(): Promise<UsageSettings>;
+  saveUsageSettings(settings: UsageSettings): Promise<UsageSettings>;
+  stuckSettings(): Promise<StuckSettings>;
+  saveStuckSettings(settings: StuckSettings): Promise<StuckSettings>;
+  pixieDefaults(): Promise<PixieDefaults>;
+  savePixieDefaults(settings: PixieDefaults): Promise<PixieDefaults>;
+  github(): Promise<GithubAccount>;
+  checkGithub(): Promise<GithubAccount>;
+  claudeAccount(): Promise<ClaudeAccount>;
+  // 202 at once; the Mac opens the browser and `account.claude` follows.
+  claudeLogin(): Promise<unknown>;
+  claudeLogout(): Promise<ClaudeAccount>;
+  claudeCode(): Promise<ClaudeCodeInfo>;
+  // 202 at once; `claude_code.install` events follow.
+  installClaudeCode(): Promise<unknown>;
+  devices(): Promise<ListedDevice[]>;
+  revokeDevice(id: string): Promise<null>;
+  pairingCode(): Promise<PairingCode>;
+  // A project's artifacts, newest first (B79); 404 until B79's daemon is there.
+  artifacts(repo: string): Promise<Artifact[]>;
+  // Claude Code's plugins, skills and marketplaces (D104); writes answer 204.
+  plugins(): Promise<InstalledPlugin[]>;
+  skills(): Promise<StandaloneSkill[]>;
+  marketplaces(): Promise<Marketplace[]>;
+  addMarketplace(source: string): Promise<null>;
+  removeMarketplace(name: string): Promise<null>;
+  availablePlugins(): Promise<AvailablePlugin[]>;
+  pluginDetails(id: string): Promise<PluginDetails>;
+  installPlugin(id: string): Promise<null>;
+  uninstallPlugin(id: string): Promise<null>;
+  setPluginEnabled(id: string, enabled: boolean): Promise<null>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -210,6 +268,8 @@ export const SEARCH_LIMIT = 50;
 
 const session = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 const repo = (name: string) => `/api/repos/${encodeURIComponent(name)}`;
+const EXTENSIONS = "/api/extensions";
+const plugin = (id: string) => `${EXTENSIONS}/plugins/${encodeURIComponent(id)}`;
 const claudeChat = (id: string) => `/api/claude-chats/${encodeURIComponent(id)}`;
 
 /** The daemon's REST API; the device token travels in the same-origin cookie. */
@@ -614,6 +674,142 @@ export class HttpApi implements Api {
       "GET",
       `${session(sessionId)}/agents/${encodeURIComponent(toolUseId)}/transcript`,
     );
+  }
+
+  branches(name: string) {
+    return this.json<{ branches: string[] }>("GET", `${repo(name)}/branches`);
+  }
+
+  storage() {
+    return this.json<StorageUsage>("GET", "/api/storage");
+  }
+
+  storageSettings() {
+    return this.json<StorageSettings>("GET", "/api/storage/settings");
+  }
+
+  saveStorageSettings(settings: StorageSettings) {
+    return this.json<StorageSettings>("PUT", "/api/storage/settings", settings);
+  }
+
+  largeAttachments(limit: number) {
+    return this.json<StoredAttachment[]>("GET", `/api/storage/attachments?limit=${String(limit)}`);
+  }
+
+  deleteAttachment(id: string) {
+    return this.json<null>("DELETE", `/api/attachments/${encodeURIComponent(id)}`);
+  }
+
+  rebuildSearch() {
+    return this.json<unknown>("POST", "/api/search/rebuild");
+  }
+
+  usageSettings() {
+    return this.json<UsageSettings>("GET", "/api/usage/settings");
+  }
+
+  saveUsageSettings(settings: UsageSettings) {
+    return this.json<UsageSettings>("PUT", "/api/usage/settings", settings);
+  }
+
+  stuckSettings() {
+    return this.json<StuckSettings>("GET", "/api/stuck/settings");
+  }
+
+  saveStuckSettings(settings: StuckSettings) {
+    return this.json<StuckSettings>("PUT", "/api/stuck/settings", settings);
+  }
+
+  pixieDefaults() {
+    return this.json<PixieDefaults>("GET", "/api/pixie-settings");
+  }
+
+  savePixieDefaults(settings: PixieDefaults) {
+    return this.json<PixieDefaults>("PUT", "/api/pixie-settings", settings);
+  }
+
+  github() {
+    return this.json<GithubAccount>("GET", "/api/accounts/github");
+  }
+
+  checkGithub() {
+    return this.json<GithubAccount>("POST", "/api/accounts/github/check");
+  }
+
+  claudeAccount() {
+    return this.json<ClaudeAccount>("GET", "/api/accounts/claude");
+  }
+
+  claudeLogin() {
+    return this.json<unknown>("POST", "/api/accounts/claude/login");
+  }
+
+  claudeLogout() {
+    return this.json<ClaudeAccount>("POST", "/api/accounts/claude/logout");
+  }
+
+  claudeCode() {
+    return this.json<ClaudeCodeInfo>("GET", "/api/claude-code");
+  }
+
+  installClaudeCode() {
+    return this.json<unknown>("POST", "/api/claude-code/install");
+  }
+
+  devices() {
+    return this.json<ListedDevice[]>("GET", "/api/devices");
+  }
+
+  revokeDevice(id: string) {
+    return this.json<null>("DELETE", `/api/devices/${encodeURIComponent(id)}`);
+  }
+
+  pairingCode() {
+    return this.json<PairingCode>("POST", "/api/pairing/codes");
+  }
+
+  artifacts(repo: string) {
+    return this.json<Artifact[]>("GET", `/api/artifacts?repo=${encodeURIComponent(repo)}`);
+  }
+
+  plugins() {
+    return this.json<InstalledPlugin[]>("GET", `${EXTENSIONS}/plugins`);
+  }
+
+  skills() {
+    return this.json<StandaloneSkill[]>("GET", `${EXTENSIONS}/skills`);
+  }
+
+  marketplaces() {
+    return this.json<Marketplace[]>("GET", `${EXTENSIONS}/marketplaces`);
+  }
+
+  addMarketplace(source: string) {
+    return this.json<null>("POST", `${EXTENSIONS}/marketplaces`, { source });
+  }
+
+  removeMarketplace(name: string) {
+    return this.json<null>("DELETE", `${EXTENSIONS}/marketplaces/${encodeURIComponent(name)}`);
+  }
+
+  availablePlugins() {
+    return this.json<AvailablePlugin[]>("GET", `${EXTENSIONS}/available`);
+  }
+
+  pluginDetails(id: string) {
+    return this.json<PluginDetails>("GET", `${plugin(id)}/details`);
+  }
+
+  installPlugin(id: string) {
+    return this.json<null>("POST", `${plugin(id)}/install`);
+  }
+
+  uninstallPlugin(id: string) {
+    return this.json<null>("POST", `${plugin(id)}/uninstall`);
+  }
+
+  setPluginEnabled(id: string, enabled: boolean) {
+    return this.json<null>("PUT", `${plugin(id)}/enabled`, { enabled });
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

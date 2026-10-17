@@ -35,6 +35,8 @@ const TEMPLATES: readonly { name: string; mascot: Mascot; soul: string }[] = [
 const DEFAULT_COLOR = "#8B7CF6";
 
 interface Props {
+  // The project open, which new pixies may get as their only project (D104).
+  project: string | null;
   onOpen: (id: string, tab: PixieTab) => void;
 }
 
@@ -53,7 +55,7 @@ type Menu = { pixie: string } | { team: string } | "newTeam";
  * fights the page's scrolling and Safari's text selection on a touch screen, and buttons
  * work with VoiceOver too.
  */
-export function PixieSection({ onOpen }: Props) {
+export function PixieSection({ project, onOpen }: Props) {
   const { state, actions } = useStore();
   const [showHidden, setShowHidden] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -81,7 +83,7 @@ export function PixieSection({ onOpen }: Props) {
   };
 
   const create = async (body: Parameters<typeof actions.createPixie>[0], tab: PixieTab) => {
-    const created = await actions.createPixie(body);
+    const created = await actions.createPixie(body, project);
     if (created !== null) onOpen(created.id, tab);
   };
 

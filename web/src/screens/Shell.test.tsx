@@ -79,7 +79,8 @@ describe("deep links", () => {
     window.history.replaceState(null, "", "/account");
     const { user } = await renderApp();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
     await user.click(screen.getByRole("tab", { name: "Inbox" }));
     expect(window.location.pathname).toBe("/inbox");
   });

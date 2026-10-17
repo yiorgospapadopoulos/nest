@@ -21,6 +21,7 @@ import type {
   HabitBody,
   HabitRun,
   NestEvent,
+  JsonObject,
   MonthUsage,
   NotificationSettings,
   Pixie,
@@ -28,7 +29,6 @@ import type {
   PixieSearchHit,
   PixieTeam,
   RepoConfig,
-  RepoPatch,
   ResolveBody,
   ForkReply,
   MemoryReply,
@@ -53,9 +53,17 @@ import {
   saveShowAutomated,
 } from "./devicePrefs.ts";
 import { nudgeText } from "./selectors.ts";
+import { settingsActions } from "./settingsActions.ts";
 import { draftKey, type Action, type Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
+
+/** The notice for a `usage.warning` event (D104): "5 hour limit 82% used". */
+export function warningText(payload: JsonObject): string {
+  const window = payload.window === "seven_day" ? "Weekly" : "5 hour";
+  const used = typeof payload.utilization === "number" ? payload.utilization : 0;
+  return `${window} limit ${String(Math.round(used * 100))}% used`;
+}
 
 // A pixie file as read: `hash` is null while the file does not exist yet.
 export interface FileState {
@@ -340,7 +348,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     }
   }
 
+  const settings = settingsActions(api, { dispatch, attempt, quietly, toast });
+
   return {
+    ...settings,
+    /** This device's id, when it was paired since B81. */
     toast,
     dismissToast: () => {
       dispatch({ type: "toast", toast: null });
@@ -349,8 +361,17 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
     loadPixies,
     loadGoals,
-    async createPixie(body: CreatePixieBody): Promise<Pixie | null> {
-      const created = await attempt(() => api.createPixie(body));
+    /**
+     * `project`: the project open, which a new pixie gets as its only project when the
+     * defaults say "current" (D104); the daemon fills in the other defaults.
+     */
+    async createPixie(body: CreatePixieBody, project: string | null = null): Promise<Pixie | null> {
+      let sent = body;
+      if (project !== null && body.projects === undefined) {
+        const defaults = await quietly(() => api.pixieDefaults());
+        if (defaults?.projects === "current") sent = { ...body, projects: [project] };
+      }
+      const created = await attempt(() => api.createPixie(sent));
       if (created !== null) dispatch({ type: "pixie", pixie: created });
       return created;
     },
@@ -531,6 +552,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         for (const arrived of arriving) arrived.push(event);
       }
       dispatch({ type: "event", event });
+      if (event.type === "usage.warning") toast(warningText(event.payload), "info");
+      if (event.type === "extensions.updated") void settings.extensionsChanged();
     },
 
     retry: () => {
@@ -640,23 +663,6 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const updated = await attempt(() => api.updateRepo(repo.name, { default: value }));
       if (updated === null) return false;
       dispatch({ type: "repo", repo: updated });
-      return true;
-    },
-
-    /** The files linked into the project's worktrees and the commands run in new ones. */
-    async saveRepoSetup(repo: RepoConfig, link: string[], setup: string[]): Promise<boolean> {
-      // Only what changed, so it never overwrites a change made meanwhile on another device.
-      const same = (a: string[], b: string[]) => a.join("\n") === b.join("\n");
-      const patch: RepoPatch = {
-        ...(same(link, repo.worktree.link) ? {} : { link }),
-        ...(same(setup, repo.worktree.setup) ? {} : { setup }),
-      };
-      if (Object.keys(patch).length > 0) {
-        const updated = await attempt(() => api.updateRepo(repo.name, patch));
-        if (updated === null) return false;
-        dispatch({ type: "repo", repo: updated });
-      }
-      toast(`Saved ${repo.name}`);
       return true;
     },
 

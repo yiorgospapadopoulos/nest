@@ -9,11 +9,18 @@ import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
 import { connector, month } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
+import { openSettings } from "../../test/settings.ts";
 import { UsageCalendar } from "./UsageCalendar.tsx";
 
-async function openAccount(api = fakeApi(), storage = memoryStorage()) {
-  const rendered = await renderApp({ api, storage });
-  await rendered.user.click(screen.getByRole("tab", { name: "Account" }));
+// Each section's page; the usage meters are on Agents, the connectors under Extensions.
+const openAgents = (api = fakeApi()) => openSettings("Agents", { api });
+const openGeneral = (api = fakeApi()) => openSettings("General", { api });
+const openAppearance = (storage = memoryStorage()) =>
+  openSettings("Appearance", { api: fakeApi(), storage });
+
+async function openConnections(api = fakeApi()) {
+  const rendered = await openSettings("Extensions", { api });
+  await rendered.user.click(screen.getByRole("button", { name: "Connections" }));
   return rendered;
 }
 
@@ -26,7 +33,7 @@ describe("usage", () => {
       five_hour: { utilization: 0.3, resets_at: resets.toISOString(), updated_at: "x" },
       seven_day: null,
     });
-    await openAccount(api);
+    await openAgents(api);
 
     const meter = await screen.findByRole("meter", { name: "5 hour window used" });
     expect(meter).toHaveAttribute("aria-valuenow", "30");
@@ -47,7 +54,7 @@ describe("usage", () => {
       five_hour: { utilization: 0.3, resets_at: null, updated_at: fresh.toISOString() },
       seven_day: { utilization: 0.1, resets_at: null, updated_at: old.toISOString() },
     });
-    await openAccount(api);
+    await openAgents(api);
 
     const recent = await screen.findByText(`as of ${clock(fresh)}`);
     const stale = screen.getByText(`as of ${clock(old)}`);
@@ -64,7 +71,7 @@ describe("usage", () => {
         finish = resolve;
       }),
     );
-    const { user } = await openAccount(api);
+    const { user } = await openAgents(api);
     await screen.findByRole("meter", { name: "5 hour window used" });
 
     await user.click(screen.getByRole("button", { name: "Refresh usage" }));
@@ -90,7 +97,7 @@ describe("usage", () => {
     api.refreshUsage
       .mockRejectedValueOnce(new ApiError(429, "usage was refreshed moments ago"))
       .mockRejectedValueOnce(new ApiError(502, "Claude did not report the usage limits"));
-    const { user } = await openAccount(api);
+    const { user } = await openAgents(api);
     const button = await screen.findByRole("button", { name: "Refresh usage" });
 
     await user.click(button);
@@ -102,15 +109,14 @@ describe("usage", () => {
   it("toasts when account data cannot load", async () => {
     const api = fakeApi();
     api.connectors.mockRejectedValue(new ApiError(500, "registry broke"));
-    await openAccount(api);
+    await openConnections(api);
 
     expect(await screen.findByText("registry broke")).toBeInTheDocument();
-    const connectors = screen.getByRole("region", { name: "Connectors" });
-    expect(within(connectors).getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
   it("updates the limits live", async () => {
-    const { push } = await openAccount();
+    const { push } = await openAgents();
     await screen.findByRole("meter", { name: "5 hour window used" });
 
     push({
@@ -252,7 +258,7 @@ describe("connectors", () => {
         manage_hint: "claude_code",
       }),
     ]);
-    const { push, user } = await openAccount(api);
+    const { push, user } = await openConnections(api);
 
     const aiToggle = await screen.findByRole("button", { name: /claude\.ai connectors/ });
     const localToggle = screen.getByRole("button", { name: /Plugins and local servers/ });
@@ -307,7 +313,7 @@ describe("connectors", () => {
         manage_hint: "claude_code",
       }),
     ]);
-    const { user } = await openAccount(api);
+    const { user } = await openConnections(api);
     await user.click(await screen.findByRole("button", { name: /Plugins and local servers/ }));
 
     await user.click(screen.getByRole("button", { name: "Copy" }));
@@ -326,7 +332,7 @@ describe("connectors", () => {
         manage_hint: "claude_code",
       }),
     ]);
-    const { user } = await openAccount(api);
+    const { user } = await openConnections(api);
     await user.click(await screen.findByRole("button", { name: /Plugins and local servers/ }));
     const refuse = vi
       .spyOn(navigator.clipboard, "writeText")
@@ -344,7 +350,7 @@ describe("connectors", () => {
   it("shows no attention hint when every connector in a group is fine", async () => {
     const api = fakeApi();
     api.connectors.mockResolvedValue([connector()]);
-    await openAccount(api);
+    await openConnections(api);
 
     const toggle = await screen.findByRole("button", { name: /claude\.ai connectors/ });
     expect(toggle).toHaveTextContent(/^claude\.ai connectors1$/);
@@ -361,7 +367,7 @@ describe("appearance", () => {
 
   it("applies and remembers theme, accent, bubble and wallpaper", async () => {
     const storage = memoryStorage();
-    const { user } = await openAccount(fakeApi(), storage);
+    const { user } = await openAppearance(storage);
     const root = document.documentElement;
 
     await user.click(screen.getByRole("button", { name: "Dark" }));
@@ -390,9 +396,9 @@ describe("appearance", () => {
     expect(root).not.toHaveAttribute("data-bubble");
   });
 
-  it("switches the glass theme at once, previews every theme and describes the chosen one", async () => {
+  it("switches the glass theme at once and previews every theme", async () => {
     const storage = memoryStorage();
-    const { user } = await openAccount(fakeApi(), storage);
+    const { user } = await openAppearance(storage);
     const root = document.documentElement;
     const group = screen.getByRole("group", { name: "Glass" });
     const choices = within(group).getAllByRole("button");
@@ -408,7 +414,6 @@ describe("appearance", () => {
       choices.map((choice) => choice.querySelector("[data-glass]")?.getAttribute("data-glass")),
     ).toEqual(["clear", "frosted", "smoke", "bluegrey", "deep"]);
     expect(root).not.toHaveAttribute("data-glass");
-    expect(group).toHaveAccessibleDescription(/barely tinted/i);
 
     await user.click(within(group).getByRole("button", { name: "Smoke" }));
 
@@ -421,7 +426,6 @@ describe("appearance", () => {
       "aria-pressed",
       "false",
     );
-    expect(group).toHaveAccessibleDescription(/smoked glass/i);
     expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toMatchObject({ glass: "smoke" });
 
     await user.click(within(group).getByRole("button", { name: "Clear" }));
@@ -446,9 +450,17 @@ describe("restart", () => {
 
   const restartButton = () => screen.getByRole("button", { name: /^Restart/ });
 
+  /** The General page once it showed the version, so later health checks are the restart's. */
+  async function openNest(api: ReturnType<typeof fakeApi>) {
+    const rendered = await openGeneral(api);
+    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
+    api.health.mockClear();
+    return rendered;
+  }
+
   /** Confirms the restart with fake timers, so the waits between checks are in the test's hands. */
-  async function confirmRestart(user: Awaited<ReturnType<typeof openAccount>>["user"]) {
-    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
+  async function confirmRestart(user: Awaited<ReturnType<typeof openGeneral>>["user"]) {
+    await user.click(restartButton());
     const dialog = screen.getByRole("alertdialog", { name: "Restart Nest?" });
     const reload = vi.fn();
     vi.stubGlobal("location", { pathname: window.location.pathname, reload });
@@ -466,13 +478,13 @@ describe("restart", () => {
     });
   };
 
-  it("sits at the very bottom and asks first", async () => {
+  it("shows the version, sits at the very bottom and asks first", async () => {
     const api = fakeApi();
-    const { user } = await openAccount(api);
+    const { user } = await openNest(api);
 
     const sections = screen.getAllByRole("region");
-    expect(sections.at(-1)).toHaveAccessibleName("Restart Nest");
-    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
+    expect(sections.at(-1)).toHaveAccessibleName("Nest");
+    await user.click(restartButton());
     const dialog = screen.getByRole("alertdialog", { name: "Restart Nest?" });
     expect(dialog).toHaveTextContent(/Running turns are interrupted/);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -483,10 +495,10 @@ describe("restart", () => {
 
   it("restarts Nest and reloads the page once it answers again", async () => {
     const api = fakeApi();
+    const { user } = await openNest(api);
     api.health
       .mockRejectedValueOnce(new ApiError(502, "Bad gateway"))
       .mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    const { user } = await openAccount(api);
 
     const reload = await confirmRestart(user);
 
@@ -509,8 +521,8 @@ describe("restart", () => {
 
   it("says so when Nest does not answer again", async () => {
     const api = fakeApi();
+    const { user } = await openNest(api);
     api.health.mockRejectedValue(new TypeError("Failed to fetch"));
-    const { user } = await openAccount(api);
 
     const reload = await confirmRestart(user);
     await wait(RESTART_POLL_MS * RESTART_POLLS);
@@ -520,20 +532,22 @@ describe("restart", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Nest did not come back. Check that the Mac is awake, then reload.",
     );
-    expect(restartButton()).toHaveTextContent("Restart Nest");
+    expect(restartButton()).toHaveTextContent("Restart");
     expect(restartButton()).toBeEnabled();
   });
 
   it("stays as it was when the Mac refuses the restart", async () => {
     const api = fakeApi();
     api.restartService.mockRejectedValue(new ApiError(500, "cannot restart"));
-    const { user } = await openAccount(api);
+    const { user } = await openNest(api);
 
-    await user.click(screen.getByRole("button", { name: "Restart Nest" }));
-    await user.click(screen.getByRole("button", { name: "Restart" }));
+    await user.click(restartButton());
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Restart" }),
+    );
 
     expect(await screen.findByText("cannot restart")).toBeInTheDocument();
-    expect(restartButton()).toHaveTextContent("Restart Nest");
+    expect(restartButton()).toHaveTextContent("Restart");
     expect(restartButton()).toBeEnabled();
     expect(api.health).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

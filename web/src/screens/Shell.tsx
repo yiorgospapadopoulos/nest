@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NAVIGATE, type NavigateMessage } from "../pwa/navigate.ts";
-import { parseRoute, routePath, type Route, type Tab } from "../routes.ts";
+import { parseRoute, routePath, type Route, type SettingsPage, type Tab } from "../routes.ts";
 import { useStore } from "../store/context.ts";
 import { needsCount } from "../store/selectors.ts";
-import { Account } from "./account/Account.tsx";
 import { ChatView, type ChatTarget } from "./chat/ChatView.tsx";
 import type { PixieTab } from "./pixies/PixieView.tsx";
 import { Inbox } from "./inbox/Inbox.tsx";
 import type { WorkOf } from "./projects/ChatTree.tsx";
 import { Projects } from "./projects/Projects.tsx";
+import { Settings } from "./settings/Settings.tsx";
 import { TabBar } from "./TabBar.tsx";
 
 /** The three tabs, with a chat pushed full screen over them; the address follows along. */
@@ -17,6 +17,10 @@ export function Shell() {
   const [initial] = useState(() => parseRoute(window.location.pathname));
   const [tab, setTab] = useState<Tab>(initial.tab);
   const [project, setProject] = useState<string | null>(null);
+  // The Settings page open, and whether it was opened from the Projects tab (its gear),
+  // where its back button returns.
+  const [settings, setSettings] = useState<SettingsPage | null>(initial.settings ?? null);
+  const [fromProjects, setFromProjects] = useState(false);
   const [chat, setChat] = useState<ChatTarget | null>(() => routeTarget(initial));
   // The chosen project while it is still registered, else the first one.
   const current = state.repos.find((r) => r.name === project)?.name ?? state.repos[0]?.name ?? null;
@@ -26,9 +30,20 @@ export function Shell() {
       tab,
       chat: chat !== null && "id" in chat ? chat.id : null,
       ...(chat !== null && "pixie" in chat ? { pixie: chat.pixie } : {}),
+      ...(settings === null ? {} : { settings }),
     });
     if (window.location.pathname !== path) window.history.replaceState(null, "", path);
-  }, [tab, chat]);
+  }, [tab, chat, settings]);
+
+  const openSettings = useCallback((page: SettingsPage | null) => {
+    setFromProjects(false);
+    setSettings(page);
+  }, []);
+  const closeSettings = useCallback(() => {
+    if (fromProjects) setTab("projects");
+    setFromProjects(false);
+    setSettings(null);
+  }, [fromProjects]);
 
   // What had focus when a chat opened over the tabs, to get it back when the chat closes.
   const opener = useRef<Element | null>(null);
@@ -47,6 +62,8 @@ export function Shell() {
     if (worker === undefined) return;
     const go = (route: Route) => {
       setTab(route.tab);
+      setFromProjects(false);
+      setSettings(route.settings ?? null);
       show(routeTarget(route));
     };
     const onMessage = (event: MessageEvent<NavigateMessage | null>) => {
@@ -119,12 +136,35 @@ export function Shell() {
               show({ agentOf, call });
             }}
             onOpenWork={openWork}
+            onOpenSettings={(name) => {
+              setTab("settings");
+              setSettings({ project: name });
+              setFromProjects(true);
+            }}
           />
         )}
-        {tab === "account" && <Account />}
+        {tab === "settings" && (
+          <Settings
+            page={settings}
+            onPage={openSettings}
+            back={fromProjects ? "Projects" : "Settings"}
+            onBack={closeSettings}
+            project={current}
+            onOpenPixie={openPixie}
+          />
+        )}
       </div>
       {chat === null ? (
-        <TabBar tab={tab} onTab={setTab} badge={needsCount(state)} />
+        <TabBar
+          tab={tab}
+          onTab={(next) => {
+            // Settings opens on its list again, as a tab does when tapped.
+            if (next === "settings" && tab === "settings") openSettings(null);
+            if (fromProjects) openSettings(null);
+            setTab(next);
+          }}
+          badge={needsCount(state)}
+        />
       ) : (
         <ChatView
           // A different chat is a fresh view: no state of the last one is carried over.

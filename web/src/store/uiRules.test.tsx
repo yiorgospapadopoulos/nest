@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Approval, ApprovalKind, Session } from "../api/types.ts";
-import { KINDS } from "../screens/account/notifyKinds.ts";
+import { KINDS } from "../screens/settings/notifyKinds.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import { approval, check, prStatus, session } from "../test/fixtures.ts";
 import { renderApp } from "../test/render.tsx";

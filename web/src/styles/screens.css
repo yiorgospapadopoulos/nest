@@ -1952,6 +1952,476 @@ div.pxr:active {
 .pxfile:focus {
   box-shadow: 0 0 0 2px var(--accent);
 }
+/* A form of labelled fields, such as a habit's. */
+.pset {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+.pset label {
+  font-weight: 600;
+}
+.pset textarea {
+  height: auto;
+  margin-top: 0;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: var(--mono);
+}
+/* Settings (B81): a page bar with back and a centred title, rows of a label and a control. */
+.snav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+.snav .back {
+  justify-self: start;
+  padding-left: 0;
+}
+.snt {
+  margin: 0;
+  font-size: 1.0588rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60vw;
+}
+.slab {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  max-width: 60%;
+}
+.slab .hint {
+  font-size: 0.7059rem;
+}
+/* A list item: a long name wraps under itself and its controls stay on one line. */
+.srow.item .slab {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  overflow-wrap: anywhere;
+}
+.srow.item .sctl {
+  flex: none;
+  flex-wrap: nowrap;
+}
+.sctl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.sval {
+  color: var(--t2);
+  font-size: 0.8235rem;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.sval.mono {
+  font-family: var(--mono);
+  font-size: 0.7059rem;
+}
+.slink {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: 0.8824rem;
+  text-align: left;
+  cursor: pointer;
+}
+.slink .schev {
+  width: 16px;
+  height: 16px;
+  color: var(--t3);
+  flex: none;
+}
+.sico {
+  width: 22px;
+  height: 22px;
+  color: var(--t2);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.lgrp > .pad {
+  padding: 14px 16px;
+}
+.lgrp > .srow.note {
+  margin: 0;
+}
+/* A page's own tabs, such as a project's General, Chats, Worktrees, Look and Artifacts. */
+.ptabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin: 4px 0 0;
+  border-bottom: 1px solid var(--hair);
+  scrollbar-width: none;
+}
+.ptabs button {
+  flex: none;
+  min-height: 44px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.8235rem;
+  color: var(--t2);
+  cursor: pointer;
+}
+.ptabs button[aria-pressed="true"] {
+  color: var(--t1);
+  border-bottom-color: var(--t1);
+}
+/* Space used: a bar of chats, attachments and artifacts, then the total. */
+.sused {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sbar {
+  display: flex;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--fill2);
+}
+.sbar i {
+  display: block;
+  height: 100%;
+  background: var(--c);
+}
+.pcode {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 16px;
+}
+.pcode b {
+  font: 600 1.6rem var(--mono);
+  letter-spacing: 0.3em;
+}
+.pxdef::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--t3);
+}
+/* A label with an icon before it, such as a pixie's or a device's, takes the room it needs. */
+.cn > .slab {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+}
+
+.pxerr {
+  margin: 4px 0 0;
+  font-size: 0.7647rem;
+  color: var(--fail-t);
+}
+.pxpick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.pxm {
+  width: 48px;
+  height: 48px;
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-item);
+  background: var(--fill);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxm[aria-pressed="true"],
+.pxbgs[aria-pressed="true"] i,
+.pxdot[aria-pressed="true"]::before {
+  box-shadow:
+    0 0 0 2px var(--g2),
+    0 0 0 3.5px var(--t1);
+}
+.pxm[aria-pressed="true"] {
+  background: var(--g2);
+}
+/* A 24px dot in a 44px tap target. */
+.pxdot {
+  width: 44px;
+  height: 44px;
+  margin: -4px;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxdot::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--px);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.pxcustom::before {
+  background: conic-gradient(
+    hsl(0 85% 60%),
+    hsl(60 85% 55%),
+    hsl(120 70% 50%),
+    hsl(180 75% 50%),
+    hsl(240 80% 62%),
+    hsl(300 75% 60%),
+    hsl(360 85% 60%)
+  );
+}
+.pxbgs {
+  width: 52px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxbgs i {
+  display: block;
+  width: 44px;
+  height: 32px;
+  border-radius: var(--r-item);
+  background-color: var(--g3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.pxgap {
+  margin-top: 20px;
+}
+.pxset,
+.pxadd-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.pxset:active,
+.pxadd-row:active {
+  background: var(--fill);
+}
+.pxset:disabled {
+  cursor: default;
+  background: transparent;
+}
+.pxv {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.pxset:disabled .pxv .chv {
+  visibility: hidden;
+}
+.pxadd-row {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pxx {
+  width: 44px;
+  height: 44px;
+  margin-right: -12px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+}
+.pxchips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pxchip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 36px;
+  padding-left: 12px;
+  border-radius: var(--r-ctl);
+  background: var(--fill);
+  font-size: 0.7647rem;
+}
+.pxchip code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pxchip button {
+  width: 44px;
+  height: 44px;
+  margin: -4px 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pxadd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px dashed var(--hair2);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.8235rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pxsub {
+  margin: 0 0 8px;
+  font-size: 0.7059rem;
+  font-weight: 600;
+  color: var(--t3);
+}
+.pxchips + .pxsub {
+  margin-top: 16px;
+}
+.sh-b > .pxsub {
+  margin: 18px 4px 8px;
+}
+/* A row that opens a page or asks first: title, a line about it, and a chevron. */
+.pxrow-d {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 0.8824rem;
+  text-align: left;
+  cursor: pointer;
+}
+.pxrow-d + .pxrow-d::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hair);
+}
+.pxrow-d:active {
+  background: var(--fill);
+}
+.pxdt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.pxdt b {
+  font-weight: 600;
+}
+.pxdt span,
+.pxdt small {
+  font-size: 0.7647rem;
+  color: var(--t3);
+}
+.pxn {
+  font-size: 0.7647rem;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.pxdanger .pxdt b {
+  color: var(--fail-t);
+}
+.pxfact .pxdt > span {
+  font-size: 0.8824rem;
+  color: var(--t1);
+}
+.pxform {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pxgo {
+  height: 44px;
+  padding: 0 18px;
+  font-size: 0.8235rem;
+  border-radius: var(--r-tab);
+}
+.pxhits {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.pxhits .srow {
+  font-family: var(--mono);
+  font-size: 0.7647rem;
+  overflow-wrap: anywhere;
+}
+.pxstale {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-inner);
+  background: var(--wait-soft);
+  color: var(--wait-t);
+  font-size: 0.7647rem;
+}
+.pxstale .acts {
+  margin-top: 6px;
+}
+.pxfile {
+  display: block;
+  width: 100%;
+  min-height: 60vh;
+  border: 0;
+  padding: 12px;
+  border-radius: var(--r-inner);
+  background: var(--g3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--t1);
+  font: 0.8824rem/1.5 var(--mono);
+  resize: none;
+  outline: none;
+}
+.pxfile:focus {
+  box-shadow: 0 0 0 2px var(--accent);
+}
 /* Project settings: the path, then the worktree choices, links, setup and Remove. */
 .pset-path {
   margin: 0 4px 12px;

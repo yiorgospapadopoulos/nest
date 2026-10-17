@@ -287,6 +287,12 @@ export interface RepoConfig {
   // The branch checked out in the folder when the repo was read; null when HEAD is
   // detached, the branch has no commits yet, or the folder is not git (B55).
   current_branch: string | null;
+  // The only address Nest pushes origin to (D050); null when none is recorded.
+  remote_url: string | null;
+  // A pixie sprite as the project's icon; null shows its initials (B36).
+  icon: Mascot | null;
+  // Null is the default colour.
+  icon_color: string | null;
   worktree: WorktreeConfig;
 }
 
@@ -393,6 +399,11 @@ export interface Device {
   created_at: string;
   last_seen_at: string | null;
   revoked_at: string | null;
+}
+
+/** A device in `GET /api/devices`, which marks the device asking (B81). */
+export interface ListedDevice extends Device {
+  this_device: boolean;
 }
 
 export interface RedeemResponse {
@@ -521,6 +532,12 @@ export interface RepoPatch {
   default?: boolean | null;
   link?: string[];
   setup?: string[];
+  icon?: Mascot | null;
+  icon_color?: string | null;
+  // Git repositories only (D104): an existing local branch, and the push address.
+  default_branch?: string;
+  remote_url?: string | null;
+  setup_timeout_seconds?: number;
 }
 
 export type NotifyKind =
@@ -871,4 +888,180 @@ export type UpdateHabitBody = Partial<HabitBody>;
 export interface Health {
   status: "ok";
   version: string;
+}
+
+/** What the Mac's data folder holds (`GET /api/storage`, D104). */
+export interface StorageUsage {
+  total_bytes: number;
+  chats_bytes: number;
+  attachments_bytes: number;
+  artifacts_bytes: number;
+  other_bytes: number;
+}
+
+/** The [storage] section; null never archives (D104). */
+export interface StorageSettings {
+  archive_after_days: number | null;
+}
+
+/** A stored attachment, largest first (`GET /api/storage/attachments`). */
+export interface StoredAttachment {
+  id: string;
+  name: string;
+  bytes: number;
+  media_type: string;
+  session_id: string | null;
+  session_title: string | null;
+  created_at: string;
+}
+
+/** The [usage] section; PUT sends it back whole. */
+export interface UsageSettings {
+  // 0 turns the refresh off.
+  refresh_minutes: number;
+  // 50 to 99; null turns the warning off (D104).
+  warn_percent: number | null;
+  warn_notify: boolean;
+}
+
+/** The [stuck] thresholds (D036); 0 turns a check off. */
+export interface StuckSettings {
+  waiting_minutes: number;
+  silent_minutes: number;
+  repeated_calls: number;
+  turn_minutes: number;
+}
+
+/** What new pixies start with, and the habit switches (`/api/pixie-settings`, D104). */
+export interface PixieDefaults {
+  model: string | null;
+  autonomy: Autonomy;
+  project_access: ProjectAccess;
+  // "current": the client sends the open project as the new pixie's projects.
+  projects: "all" | "current";
+  max_running: number;
+  max_per_day: number;
+  report_push: ReportSeverity;
+  habits_paused: boolean;
+  // Habit runs are skipped above this share of the 5 hour limit (50 to 100).
+  habit_usage_percent: number;
+}
+
+export type GithubState = "signed_in" | "signed_out" | "unavailable";
+
+/** The user's `gh` login as the Mac sees it; never a token. */
+export interface GithubAccount {
+  state: GithubState;
+  login: string | null;
+  checked_at: string;
+}
+
+/** Claude Code's own login on the Mac (`claude auth status`); never a token. */
+export interface ClaudeAccount {
+  signed_in: boolean;
+  email: string | null;
+  organization: string | null;
+  plan: string | null;
+  method: string | null;
+  checked_at: string;
+  // On an `account.claude` event: why the sign-in failed, else null.
+  error?: string | null;
+}
+
+/** The standalone Claude Code on the Mac, and the one Nest's agents use. */
+export interface ClaudeCodeInfo {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+  bundled_version: string;
+}
+
+export interface PairingCode {
+  code: string;
+  expires_at: string;
+}
+
+/** A usage window that reached the warning level (`usage.warning`, D104). */
+export interface UsageWarning {
+  window: "five_hour" | "seven_day";
+  utilization: number;
+  resets_at: string | null;
+}
+
+/** A saved artifact (B79 contract, D102); the Settings page only counts them for now. */
+export interface Artifact {
+  id: string;
+  title: string;
+  kind: "markdown" | "html";
+  repo: string;
+  session_id: string | null;
+  chat_title: string | null;
+  chat_deleted: boolean;
+  pixie_id: string | null;
+  pixie_name: string | null;
+  created_at: string;
+  updated_at: string;
+  latest_version: number;
+  version_count: number;
+  seen: boolean;
+}
+
+/** An installed Claude Code plugin (`GET /api/extensions/plugins`, D104). */
+export interface InstalledPlugin {
+  // "name@marketplace".
+  id: string;
+  name: string;
+  marketplace: string;
+  version: string | null;
+  enabled: boolean;
+  scope: "user" | "project" | "local";
+  description: string | null;
+}
+
+/** A standalone skill in ~/.claude/skills, read only. */
+export interface StandaloneSkill {
+  name: string;
+  description: string | null;
+  path: string;
+}
+
+export interface Marketplace {
+  name: string;
+  // The CLI's source kind: "github", "git", "url", "directory"...
+  kind: string;
+  source: string | null;
+}
+
+/** A plugin a configured marketplace offers. */
+export interface AvailablePlugin {
+  id: string;
+  name: string;
+  marketplace: string;
+  description: string | null;
+  version: string | null;
+  source: string;
+  install_count: number | null;
+  installed: boolean;
+}
+
+export interface PluginComponent {
+  count: number;
+  names: string[];
+}
+
+/** What a plugin brings; `components` is null when its files are not on the Mac yet. */
+export interface PluginDetails {
+  id: string;
+  name: string;
+  marketplace: string;
+  description: string | null;
+  source: string;
+  installed: boolean;
+  components: {
+    skills: PluginComponent;
+    agents: PluginComponent;
+    hooks: PluginComponent;
+    mcp_servers: PluginComponent;
+    lsp_servers: PluginComponent;
+  } | null;
 }
