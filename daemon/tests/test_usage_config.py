@@ -47,7 +47,7 @@ def test_saving_replaces_only_the_usage_section(paths: AppPaths) -> None:
     data = tomllib.loads(paths.settings_file.read_text(encoding="utf-8"))
     assert data["agents"] == {"model": "opus"}
     assert data["notifications"] == {"kinds": {"finished": False}}
-    assert data["usage"] == {"refresh_minutes": 10}
+    assert data["usage"] == {"refresh_minutes": 10, "warn_percent": 80, "warn_notify": True}
     assert list(paths.config_dir.glob("*.tmp")) == []
 
 

@@ -9,12 +9,14 @@ from datetime import timedelta
 import pytest
 
 from nestd.approvals.models import ApprovalStatus
+from nestd.config.models import PixieDefaults
 from nestd.context import AppContext
 from nestd.events import types
 from nestd.pixies.habit_models import UpdateHabit
 from nestd.pixies.habit_store import KEEP_RUNS, StoredRun
 from nestd.pixies.prompt import HABIT_RUN_NOTE
 from nestd.pixies.scheduler import (
+    HABITS_PAUSED_REASON,
     INTERRUPTED_REASON,
     LATE_REASON,
     PAUSED_REASON,
@@ -488,6 +490,7 @@ async def test_runs_a_stopped_daemon_left_running_failed_and_queued_ones_stay(
         clock=ctx.clock,
         zone=None,
         defaults=lambda: ctx.settings.agents,
+        pixie_settings=lambda: ctx.settings.pixies,
     )
     await restarted.recover()
 
@@ -607,3 +610,41 @@ async def test_a_run_gone_with_its_pixie_ends_without_an_announcement(
     assert ctx.habit_scheduler.current_run is None
     assert len(await published(ctx, types.HABIT_RUN_UPDATED)) == before
     assert provider.runs[0].closed
+
+
+def pixie_defaults(ctx: AppContext, **fields: object) -> None:
+    ctx.settings = ctx.settings.model_copy(update={"pixies": PixieDefaults.model_validate(fields)})
+
+
+async def test_the_usage_level_follows_the_pixie_settings(
+    ctx: AppContext, provider: FakeProvider, clock: FakeClock
+) -> None:
+    pixie = await make_pixie(ctx)
+    habit = await make_habit(ctx, pixie.id, schedule={"kind": "daily", "time": "12:30"})
+    await ctx.usage.update_limits(
+        UsageInfo(five_hour=UsageWindow(utilization=0.9, resets_at=None), seven_day=None)
+    )
+    pixie_defaults(ctx, habit_usage_percent=95)
+    provider.script(reply("ok"))
+    clock.advance(timedelta(minutes=30))
+
+    await ctx.habit_scheduler.tick()
+    await ended(ctx)
+
+    assert [r.outcome for r in await runs(ctx, habit)] == ["quiet"]
+
+
+async def test_pausing_all_habits_skips_scheduled_runs_but_not_run_now(
+    ctx: AppContext, provider: FakeProvider, clock: FakeClock
+) -> None:
+    pixie = await make_pixie(ctx)
+    habit = await make_habit(ctx, pixie.id, schedule={"kind": "daily", "time": "12:30"})
+    pixie_defaults(ctx, habits_paused=True)
+    clock.advance(timedelta(minutes=30))
+
+    await ctx.habit_scheduler.tick()
+
+    [run] = await runs(ctx, habit)
+    assert (run.outcome, run.reason) == ("skipped", HABITS_PAUSED_REASON)
+    provider.script(reply("ok"))
+    assert (await run_now(ctx, habit)).outcome == "quiet"

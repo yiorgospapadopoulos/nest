@@ -28,7 +28,8 @@ async def list_pixies(ctx: Context) -> list[Pixie]:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_pixie(body: CreatePixie, ctx: Context) -> Pixie:
-    return await ctx.pixies.create(body)
+    """Fields left out start as `GET /api/pixie-settings` says (D104)."""
+    return await ctx.pixies.create(body.with_defaults(ctx.settings.pixies))
 
 
 @router.put("/order")

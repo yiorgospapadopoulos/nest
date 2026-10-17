@@ -5,23 +5,25 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from nestd.config.models import Color, Effort, Mascot, PermissionMode
-from nestd.pixies.habit_models import Severity
+from nestd.config.models import (
+    Autonomy,
+    Color,
+    Effort,
+    Mascot,
+    MaxPerDay,
+    MaxRunning,
+    PermissionMode,
+    PixieDefaults,
+    ProjectAccess,
+    Severity,
+)
 
 type Background = Literal["plain", "meadow", "dusk", "night", "dawn"]
-# Which Nest tools a pixie gets (stage 3); every level includes the ones before it.
-type Autonomy = Literal["observe", "message", "start", "answer"]
-# What a pixie may do with its projects' files: edit them like any chat, only read them,
-# or neither (its workdir only).
-type ProjectAccess = Literal["edit", "read", "none"]
 
 NAME_MAX = 40
 type Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX)
 ]
-# How many chats a pixie may have started and running at once, and start per local day.
-type MaxRunning = Annotated[int, Field(ge=1, le=20)]
-type MaxPerDay = Annotated[int, Field(ge=1, le=100)]
 
 
 class PixieSettings(BaseModel):
@@ -59,6 +61,26 @@ class CreatePixie(PixieSettings):
     slug: str | None = None
     # The first SOUL.md; a short default when empty.
     soul: Annotated[str, StringConstraints(max_length=20_000)] = ""
+
+    def with_defaults(self, defaults: PixieDefaults) -> "CreatePixie":
+        """The fields the client left out taken from `[pixies]` (D104)."""
+        wanted = {
+            name: getattr(defaults, name)
+            for name in _FROM_DEFAULTS
+            if name not in self.model_fields_set
+        }
+        return self.model_copy(update=wanted)
+
+
+# The `[pixies]` keys a new pixie starts with; `projects` is applied by the client.
+_FROM_DEFAULTS = (
+    "model",
+    "autonomy",
+    "project_access",
+    "max_running",
+    "max_per_day",
+    "report_push",
+)
 
 
 class UpdatePixie(BaseModel):

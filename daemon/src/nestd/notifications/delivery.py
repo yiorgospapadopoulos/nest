@@ -8,7 +8,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Coroutine, Mapping
 from contextlib import aclosing, suppress
-from datetime import tzinfo
+from datetime import time, tzinfo
 
 import httpx
 from pydantic import JsonValue
@@ -18,9 +18,9 @@ from nestd.config.models import NotificationSettings
 from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.events.bus import EventBus, SubscriptionOverflowError
-from nestd.notifications.messages import TEST_NOTICE, notice_from_event
+from nestd.notifications.messages import TEST_NOTICE, Notice, notice_from_event
 from nestd.notifications.ntfy import NtfyChannel
-from nestd.notifications.rules import should_send
+from nestd.notifications.rules import in_quiet_hours, should_send
 from nestd.notifications.subscriptions import PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
 from nestd.notifications.webpush import PushReport, WebPushChannel
@@ -89,9 +89,23 @@ class NotificationDelivery:
         if notice is None:
             return
         settings = self._settings()
-        local = self._clock.now().astimezone(self._zone).time()
-        if not should_send(settings, notice.kind, local):
+        if not should_send(settings, notice.kind, self._local_time()):
             return
+        await self._send(notice, settings)
+
+    async def push(self, notice: Notice) -> None:
+        """Send a notice that has its own switch, such as a usage warning (D104): the
+        kinds do not apply, quiet hours do.
+        """
+        settings = self._settings()
+        if in_quiet_hours(settings.quiet_hours, self._local_time()):
+            return
+        await self._send(notice, settings)
+
+    def _local_time(self) -> time:
+        return self._clock.now().astimezone(self._zone).time()
+
+    async def _send(self, notice: Notice, settings: NotificationSettings) -> None:
         subscriptions = await self.subscriptions.active()
         await asyncio.gather(
             self._webpush.send(notice, subscriptions, settings.vapid_subject),

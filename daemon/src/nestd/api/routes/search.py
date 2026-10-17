@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response, status
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.search.models import SearchResults
@@ -20,3 +20,10 @@ async def search(
     Best match first, then newest. FTS syntax in `q` is searched as plain text.
     """
     return await ctx.search.search(q, repo, limit)
+
+
+@router.post("/rebuild", status_code=status.HTTP_202_ACCEPTED)
+async def rebuild(ctx: Context) -> Response:
+    """Clear the search index and index everything again in the background."""
+    await ctx.search.rebuild()
+    return Response(status_code=status.HTTP_202_ACCEPTED)

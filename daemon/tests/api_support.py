@@ -11,6 +11,7 @@ from nestd.gitops.runner import CommandRunner, run_command
 from nestd.paths import AppPaths
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
+from tests.fake_claude import FakeClaude, locations
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
 from tests.fake_probe import FakeProbeFactory
@@ -63,6 +64,7 @@ async def build_context(
     probe_factory: FakeProbeFactory | None = None,
     engine_factory: FakeInfoFactory | None = None,
     token_socket: Path | None = None,
+    claude: FakeClaude | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
@@ -82,6 +84,9 @@ async def build_context(
         engine_factory=engine_factory or FakeInfoFactory(),
         # Never the user's real login shell.
         shell_env=no_shell_env,
+        # Never the real `claude` command line, nor the user's installs.
+        claude_runner=claude or FakeClaude(),
+        claude_locations=locations(tmp_path),
     )
 
 

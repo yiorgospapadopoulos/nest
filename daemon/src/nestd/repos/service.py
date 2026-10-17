@@ -26,7 +26,9 @@ from nestd.paths import AppPaths
 FALLBACK_BRANCH = "main"
 BRANCH_REF = "refs/heads/"
 # Project settings outside `[worktree]` that `edit` sets.
-_TOP_LEVEL_KEYS = frozenset({"icon", "icon_color"})
+_TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url"})
+# Settings only a git repository has (D104).
+_GIT_KEYS = frozenset({"default_branch", "remote_url"})
 LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
 
@@ -183,11 +185,20 @@ class RepoService:
         return repo
 
     async def edit(self, name: str, changes: dict[str, object]) -> RepoConfig:
-        """Set some project settings: the `icon` keys and the `[worktree]` keys (`default`,
-        `link`, `setup`), checked as when the config file is loaded, then save and announce
-        the repo to other devices (IMP-09, B36).
+        """Set some project settings: the `icon` keys, the default branch and push URL of a
+        git repo, and the `[worktree]` keys (`default`, `link`, `setup`,
+        `setup_timeout_seconds`), checked as when the config file is loaded, then save and
+        announce the repo to other devices (IMP-09, B36, D104).
         """
         repo = self.get(name)
+        if _GIT_KEYS & changes.keys():
+            if not repo.git:
+                msg = f"{name} is not a git repository"
+                raise InvalidRepoError(msg)
+            branch = changes.get("default_branch")
+            if branch is not None and branch not in await self.branches(name):
+                msg = f"{branch!r} is not a local branch of {name}"
+                raise InvalidRepoError(msg)
         top = {key: value for key, value in changes.items() if key in _TOP_LEVEL_KEYS}
         worktree = {key: value for key, value in changes.items() if key not in _TOP_LEVEL_KEYS}
         try:

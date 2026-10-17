@@ -67,6 +67,11 @@ class UnsubscribeRequest(BaseModel):
     endpoint: Endpoint
 
 
+class PushStatus(BaseModel):
+    # Devices that are not revoked and have a push subscription.
+    devices: int
+
+
 class VapidKey(BaseModel):
     public_key: str
 
@@ -98,3 +103,9 @@ async def unsubscribe(
 @router.post("/test")
 async def send_test(ctx: Context, device: Annotated[Device, RequireDevice]) -> PushReport:
     return await ctx.notifications.send_test(device.id)
+
+
+@router.get("/status", dependencies=[RequireDevice])
+async def push_status(ctx: Context) -> PushStatus:
+    """How many devices receive push notifications."""
+    return PushStatus(devices=await ctx.notifications.subscriptions.device_count())

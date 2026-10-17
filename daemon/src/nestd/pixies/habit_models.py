@@ -12,8 +12,8 @@ from pydantic import (
     model_validator,
 )
 
-# What a pixie reports, from the least to the most urgent.
-type Severity = Literal["info", "warn", "action"]
+from nestd.config.models import Severity
+
 SEVERITIES: tuple[Severity, ...] = ("info", "warn", "action")
 # Events on the chats of a pixie's projects that can start a habit.
 type Trigger = Literal["stuck", "failed", "review_ready", "ci_failed"]

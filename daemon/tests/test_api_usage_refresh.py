@@ -110,16 +110,20 @@ async def test_visibility_reports_are_validated(api: Api, body: dict[str, object
 
 
 async def test_refresh_interval_round_trips_and_applies_live(api: Api) -> None:
-    assert (await api.http.get("/api/usage/settings")).json() == {"refresh_minutes": 3}
+    assert (await api.http.get("/api/usage/settings")).json() == {
+        "refresh_minutes": 3,
+        "warn_percent": 80,
+        "warn_notify": True,
+    }
 
     saved = await api.http.put("/api/usage/settings", json={"refresh_minutes": 0})
 
     assert saved.status_code == 200
-    assert saved.json() == {"refresh_minutes": 0}
+    assert saved.json() == {"refresh_minutes": 0, "warn_percent": 80, "warn_notify": True}
     assert api.ctx.settings.usage.refresh_minutes == 0
     assert api.ctx.usage_interval() is None
     on_disk = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
-    assert on_disk["usage"] == {"refresh_minutes": 0}
+    assert on_disk["usage"] == {"refresh_minutes": 0, "warn_percent": 80, "warn_notify": True}
     await api.http.put("/api/usage/settings", json={"refresh_minutes": 5})
     assert api.ctx.usage_interval() == timedelta(minutes=5)
 
@@ -136,3 +140,27 @@ async def test_a_broken_settings_file_is_reported_not_overwritten(api: Api) -> N
 
     assert response.status_code == 409
     assert api.ctx.paths.settings_file.read_text(encoding="utf-8") == "[usage\n"
+
+
+async def test_usage_warnings_are_set_and_turned_off(api: Api) -> None:
+    body = {"refresh_minutes": 3, "warn_percent": None, "warn_notify": False}
+
+    saved = await api.http.put("/api/usage/settings", json=body)
+
+    assert saved.json() == body
+    assert api.ctx.settings.usage.warn_percent is None
+    assert (await api.http.get("/api/usage/settings")).json() == body
+    bad = await api.http.put("/api/usage/settings", json={**body, "warn_percent": 100})
+    assert bad.status_code == 422
+
+
+async def test_a_probe_past_the_warning_level_publishes_a_warning(api: Api) -> None:
+    api.probes.replies.append(answer(0.85, 0.12))
+
+    assert (await api.http.post("/api/usage/refresh")).status_code == 200
+
+    async def warned() -> bool:
+        rows = await api.ctx.db.fetch_all("SELECT payload FROM events WHERE type = 'usage.warning'")
+        return len(rows) == 1
+
+    await until(warned)

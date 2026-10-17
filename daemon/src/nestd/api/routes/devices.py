@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, Response, status
 
 from nestd.api.deps import Context, RequireDevice
@@ -7,9 +9,17 @@ from nestd.events import types
 router = APIRouter(prefix="/api/devices", dependencies=[RequireDevice])
 
 
+class DeviceView(Device):
+    # The device that asked for the list (B81), so a client can tell itself apart.
+    this_device: bool
+
+
 @router.get("")
-async def list_devices(ctx: Context) -> list[Device]:
-    return await ctx.devices.list_devices()
+async def list_devices(ctx: Context, caller: Annotated[Device, RequireDevice]) -> list[DeviceView]:
+    return [
+        DeviceView(**device.model_dump(), this_device=device.id == caller.id)
+        for device in await ctx.devices.list_devices()
+    ]
 
 
 @router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)

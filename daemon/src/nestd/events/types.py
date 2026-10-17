@@ -97,6 +97,9 @@ CLAUDE_CHATS_UPDATED: Final = "claude_chats.updated"
 
 # Subscription usage windows reported by the agent engine; global, not per session.
 USAGE_UPDATED: Final = "usage.updated"
+# A usage window first reached `[usage] warn_percent` in its period (D104); global,
+# `{window: "five_hour" | "seven_day", utilization (0 to 1), resets_at}`.
+USAGE_WARNING: Final = "usage.warning"
 
 # Pixies (D072); global. A pixie was created or changed, `{pixie}` with the whole pixie,
 # or deleted, `{pixie_id}`. Clients replace or drop their copy.
@@ -127,3 +130,13 @@ HABIT_RUN_UPDATED: Final = "habit.run_updated"
 # teams as `GET /api/sessions/{id}/pixies` lists them; after a call starts, changes state
 # or continues, and after Send away. Stored.
 SESSION_PIXIES: Final = "session.pixies"
+
+# Settings (D104); all global. The Claude account after a sign in, sign out or a failed
+# sign in: `GET /api/accounts/claude`'s body plus `error` (null unless it failed).
+ACCOUNT_CLAUDE: Final = "account.claude"
+# Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
+# `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
+CLAUDE_CODE_INSTALL: Final = "claude_code.install"
+CLAUDE_CODE_UPDATED: Final = "claude_code.updated"
+# Plugins or marketplaces changed through Nest, `{}`; clients list them again.
+EXTENSIONS_UPDATED: Final = "extensions.updated"

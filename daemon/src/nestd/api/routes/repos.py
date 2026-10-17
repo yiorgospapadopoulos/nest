@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Response, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.config.models import Color, Mascot
@@ -18,6 +19,10 @@ class RegisterRepo(BaseModel):
     path: Path
     # Defaults to the folder name.
     name: str | None = None
+
+
+# A URL git accepts: scheme://..., scp-like `[user@]host:path`, or an absolute path.
+_GIT_URL = r"^([A-Za-z][A-Za-z0-9+.-]*://\S+|([^@\s/:]+@)?[^\s/:]+:\S+|/\S+)$"
 
 
 class UpdateRepo(BaseModel):
@@ -38,13 +43,20 @@ class UpdateRepo(BaseModel):
     icon: Mascot | None = None
     # A pixie colour for the icon; null is the default colour.
     icon_color: Color | None = None
+    # Git repos only (422 otherwise): an existing local branch (D104).
+    default_branch: str | None = None
+    # Git repos only: the only URL Nest pushes origin to (D050); null clears it, so the
+    # next push asks the user to confirm origin's URL.
+    remote_url: Annotated[str, StringConstraints(pattern=_GIT_URL)] | None = None
+    # How long each setup command may run in a new worktree.
+    setup_timeout_seconds: Annotated[int, Field(ge=1, le=86400)] | None = None
 
     def changes(self) -> dict[str, object]:
         sent = self.model_dump(exclude_unset=True)
         return {key: value for key, value in sent.items() if value is not None or key in _CLEARABLE}
 
 
-_CLEARABLE = frozenset({"default", "icon", "icon_color"})
+_CLEARABLE = frozenset({"default", "icon", "icon_color", "remote_url"})
 
 
 class RepoOrder(BaseModel):
@@ -110,7 +122,9 @@ async def link_suggestions(name: str, ctx: Context) -> list[str]:
 
 @router.patch("/{name}")
 async def update_repo(name: str, body: UpdateRepo, ctx: Context) -> RepoView:
-    """Edit the worktree default, links and setup (IMP-09, BUG-102) and the icon (B36); 422
-    for a link outside the repository. Announced as `repo.updated`.
+    """Edit the worktree default, links, setup and its time limit (IMP-09, BUG-102), the
+    icon (B36), the default branch and push URL (D104); 422 for a link outside the
+    repository, an unknown branch, or git settings of a plain folder. Announced as
+    `repo.updated`.
     """
     return await ctx.repos.view(await ctx.repos.edit(name, body.changes()))

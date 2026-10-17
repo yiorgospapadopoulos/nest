@@ -4,18 +4,24 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta, tzinfo
+from functools import partial
+from pathlib import Path
 from types import MappingProxyType
 from typing import Self
 
 import httpx
 from claude_agent_sdk import ClaudeSDKClient
 
+from nestd.accounts.github import GithubAccount
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
 from nestd.attachments.store import AttachmentStore
 from nestd.auth.devices import DeviceService
 from nestd.auth.secrets import SecretStore
 from nestd.auth.token_socket import TokenSocket
+from nestd.claude_code.account import ClaudeAccount
+from nestd.claude_code.cli import ClaudeCli, ClaudeLocations
+from nestd.claude_code.extensions import Extensions
 from nestd.claude_sessions.archive import ChatArchive
 from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.claude_sessions.live import LiveChats
@@ -71,6 +77,7 @@ from nestd.sessions.commands import CommandStore
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
+from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
 from nestd.tracking.service import Tracking
@@ -78,7 +85,11 @@ from nestd.usage.probe import ProbeClientFactory, UsageProbe
 from nestd.usage.refresher import UsageRefresher
 from nestd.usage.store import UsageStore
 from nestd.usage.visibility import ClientVisibility
+from nestd.usage.warnings import UsageWarnings
 from nestd.worktrees.manager import WorktreeManager
+
+# How long signing in to Claude or installing Claude Code may take (D104).
+LONG_COMMAND_SECONDS = 900.0
 
 
 @dataclass
@@ -116,6 +127,12 @@ class AppContext:
     habit_triggers: HabitTriggers
     reports: Reports
     composer: ComposerActions
+    archiver: ChatArchiver
+    usage_warnings: UsageWarnings
+    github: GithubAccount
+    claude_code: ClaudeCli
+    claude_account: ClaudeAccount
+    extensions: Extensions
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -134,6 +151,8 @@ class AppContext:
         probe_factory: ProbeClientFactory = ClaudeSDKClient,
         engine_factory: InfoClientFactory = ClaudeSDKClient,
         shell_env: ShellEnvSource | None = None,
+        claude_runner: CommandRunner | None = None,
+        claude_locations: ClaudeLocations | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -144,7 +163,9 @@ class AppContext:
         zone. `push_transport` replaces the network for web push and ntfy in tests, and
         `probe_factory` the Claude client of the usage probe and `engine_factory` the one
         that reads the model list and account. `shell_env` replaces the login shell's
-        environment read for the agent and `!` commands.
+        environment read for the agent and `!` commands. `claude_runner` runs the `claude`
+        command line and Claude Code's installer (D104), and `claude_locations` says where
+        a standalone Claude Code may be.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -258,6 +279,7 @@ class AppContext:
             clock=clock,
             zone=zone,
             defaults=lambda: context.settings.agents,
+            pixie_settings=lambda: context.settings.pixies,
         )
         followers.append(scheduler)
         habits = HabitService(
@@ -318,6 +340,14 @@ class AppContext:
             zone=zone,
         )
         devices = DeviceService(db, clock, secrets)
+        claude_code = ClaudeCli(
+            locations=claude_locations or ClaudeLocations.default(Path.home(), os.environ),
+            run=claude_runner or run_command,
+            # Signing in waits on the user in the browser; installing downloads.
+            run_long=claude_runner or partial(run_command, time_limit=LONG_COMMAND_SECONDS),
+            cwd=paths.data_dir,
+            bus=bus,
+        )
         context = cls(
             paths=paths,
             settings=settings,
@@ -392,6 +422,23 @@ class AppContext:
                 shell=shell,
                 base_env=os.environ,
             ),
+            archiver=ChatArchiver(
+                sessions=sessions,
+                clock=clock,
+                # Read at each check, so a new limit from the API applies at once.
+                settings=lambda: context.settings.storage,
+            ),
+            usage_warnings=UsageWarnings(
+                bus=bus,
+                db=db,
+                # Read at each report, so a new level from the API applies at once.
+                settings=lambda: context.settings.usage,
+                push=notifications.push,
+            ),
+            github=GithubAccount(runner, paths.data_dir, clock),
+            claude_code=claude_code,
+            claude_account=ClaudeAccount(claude_code, bus, clock),
+            extensions=Extensions(claude_code, bus, paths.claude_dir),
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None
@@ -405,6 +452,8 @@ class AppContext:
         return timedelta(minutes=minutes) if minutes else None
 
     async def close(self) -> None:
+        await self.claude_account.stop()
+        await self.claude_code.stop()
         await self.modules.stop_all()
         await self.notifications.close()
         await self.db.close()
