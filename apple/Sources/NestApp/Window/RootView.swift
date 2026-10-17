@@ -127,6 +127,7 @@ struct ShellView: View {
 /// activity panel; both over the bottom bar.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
+    @Environment(\.reducedMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -163,6 +164,14 @@ private struct ProjectBody: View {
                         Separator(axis: .vertical)
                         RightPanel()
                     }
+                    // Squeezing or opening a side bar, however it is toggled, slides the
+                    // workspace's edge and cross-fades the bar's two forms (B83).
+                    .animation(
+                        reduceMotion ? nil : Sidebar.squeeze,
+                        value: [
+                            shell.projectState.leftCollapsed, shell.projectState.rightCollapsed,
+                        ]
+                    )
                     StatusBar()
                 }
             }

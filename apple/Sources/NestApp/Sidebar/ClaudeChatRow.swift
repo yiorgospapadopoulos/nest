@@ -106,15 +106,3 @@ struct ClaudeChatActions: View {
         }
     }
 }
-
-/// The rail's corner mark for a Claude Code chat.
-struct ClaudeCodeBadge: View {
-
-    var body: some View {
-        Image(systemName: Icon.terminal)
-            .font(.system(size: 7, weight: .medium))
-            .foregroundStyle(Palette.t3)
-            .frame(width: 12, height: 12)
-            .accessibilityHidden(true)
-    }
-}
