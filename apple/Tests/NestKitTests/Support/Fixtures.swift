@@ -30,7 +30,7 @@ enum Fixture {
     static var events: [Event] { decode([Event].self, "session_events") }
     static var diff: SessionDiff { decode(SessionDiff.self, "diff") }
     static var connectors: [Connector] { decode([Connector].self, "connectors") }
-    static var usageMonth: UsageMonth { decode(UsageMonth.self, "usage_month") }
+    static var usagePeriod: UsagePeriod { decode(UsagePeriod.self, "usage_period") }
     static var usageLimits: UsageLimits { decode(UsageLimits.self, "usage_limits") }
     static var models: [ModelInfo] { decode(ModelList.self, "models").models }
     static var claudeChats: [ClaudeChat] { decode([ClaudeChat].self, "claude_chats") }

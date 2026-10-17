@@ -291,12 +291,13 @@ public struct APIClient: NestAPI {
         try await get("connectors")
     }
 
-    public func usageMonth(year: Int, month: Int) async throws -> UsageMonth {
+    /// The period of that unit holding `date`.
+    public func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod {
         let query = [
-            URLQueryItem(name: "year", value: "\(year)"),
-            URLQueryItem(name: "month", value: "\(month)"),
+            URLQueryItem(name: "unit", value: unit.rawValue),
+            URLQueryItem(name: "date", value: date.description),
         ]
-        return try await call("GET", ["usage", "month"], query: query)
+        return try await call("GET", ["usage", "period"], query: query)
     }
 
     public func usageLimits() async throws -> UsageLimits {

@@ -455,9 +455,11 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.connectors()
         },
         RouteCase(
-            "GET", "/api/usage/month?year=2026&month=10", response: Fixture.text("usage_month")
+            "GET", "/api/usage/period?unit=week&date=2026-10-05",
+            response: Fixture.text("usage_period")
         ) {
-            _ = try await $0.usageMonth(year: 2026, month: 10)
+            _ = try await $0.usagePeriod(
+                unit: .week, date: CalendarDay(year: 2026, month: 10, day: 5))
         },
         RouteCase("GET", "/api/usage/limits", response: Fixture.text("usage_limits")) {
             _ = try await $0.usageLimits()

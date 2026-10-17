@@ -1588,6 +1588,10 @@ final class Shell {
         if overlay == .work {
             chatPixies.closeWork()
         }
+        // The usage popover opens on its chart again.
+        if overlay == .usage {
+            model.usage.hideDetails()
+        }
         withAnimation(.smooth(duration: 0.18)) { overlay = nil }
     }
 

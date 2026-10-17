@@ -18,6 +18,8 @@ struct TabStrip: View {
     static let fieldHeight = 24.0
     /// Lifts what is shorter than a tab so its middle lines up with the tabs' names.
     static func centred(on height: Double) -> Double { (tabHeight - height) / 2 }
+    /// Lifts something so its middle sits halfway up the strip, as the usage chip (B84).
+    static func centredOnStrip(_ height: Double) -> Double { (Metrics.stripHeight - height) / 2 }
     /// The space between tabs.
     static let spacing = 2.0
 
@@ -33,7 +35,8 @@ struct TabStrip: View {
 
     var body: some View {
         // The tabs sit on the strip's bottom edge, joined to the project under them; the
-        // divider, add button, meter and search line up with the tabs' names.
+        // divider, add button and search line up with the tabs' names, and the usage chip
+        // sits halfway up the strip.
         HStack(alignment: .bottom, spacing: Self.spacing) {
             PixiesTab()
             Rectangle()
@@ -64,11 +67,13 @@ struct TabStrip: View {
             addButton.padding(.bottom, Self.centred(on: Self.fieldHeight))
             Spacer(minLength: 12)
             // The meter and search keep their size; the project tabs shrink first.
-            Group {
-                UsageButton().fixedSize().padding(.trailing, 6)
-                SearchButton().fixedSize()
-            }
-            .padding(.bottom, Self.centred(on: Self.fieldHeight))
+            UsageButton()
+                .fixedSize()
+                .padding(.trailing, 6)
+                .padding(.bottom, Self.centredOnStrip(UsageChipStyle.height))
+            SearchButton()
+                .fixedSize()
+                .padding(.bottom, Self.centred(on: Self.fieldHeight))
         }
         .padding(.leading, fullScreen ? Self.fullScreenInset : Self.leadingInset)
         .padding(.trailing, 10)
@@ -394,12 +399,14 @@ private struct UsageBar: View {
 /// The chip itself: 20 points tall, text at 55 percent, full strength over a 10 percent
 /// fill while hovered.
 private struct UsageChipStyle: ButtonStyle {
+    static let height = 20.0
+
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
                 .foregroundStyle(Ink.content(hovering ? 1 : 0.55))
                 .padding(.horizontal, 4)
-                .frame(height: 20)
+                .frame(height: Self.height)
                 .background(hovering ? Ink.content(0.1) : .clear, in: .rounded(4))
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .contentShape(Rectangle())

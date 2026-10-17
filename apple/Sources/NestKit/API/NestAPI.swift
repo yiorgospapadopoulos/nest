@@ -97,7 +97,7 @@ public protocol NestAPI: Sendable {
         -> Attachment
 
     func connectors() async throws -> [Connector]
-    func usageMonth(year: Int, month: Int) async throws -> UsageMonth
+    func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod
     func usageLimits() async throws -> UsageLimits
     /// Asks Claude for the limits now; rate limited within 20 s of the previous ask.
     func refreshUsage() async throws -> UsageLimits

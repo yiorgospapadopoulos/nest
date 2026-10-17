@@ -1,0 +1,254 @@
+{
+  "unit": "month",
+  "start": "2026-10-01",
+  "end": "2026-10-31",
+  "current": true,
+  "sessions": 74,
+  "tokens": {
+    "input_tokens": 1600,
+    "output_tokens": 105000,
+    "cache_creation_input_tokens": 2800000,
+    "cache_read_input_tokens": 12100000,
+    "total": 15006600
+  },
+  "subagents": {
+    "input_tokens": 200,
+    "output_tokens": 15000,
+    "cache_creation_input_tokens": 300000,
+    "cache_read_input_tokens": 1284800,
+    "total": 1600000
+  },
+  "bars": [
+    {
+      "start": "2026-10-01T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-02T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-03T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-04T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-05T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-06T00:00:00+00:00",
+      "tokens": 1060000,
+      "sessions": 4
+    },
+    {
+      "start": "2026-10-07T00:00:00+00:00",
+      "tokens": 2280000,
+      "sessions": 9
+    },
+    {
+      "start": "2026-10-08T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-09T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-10T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-11T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-12T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-13T00:00:00+00:00",
+      "tokens": 520000,
+      "sessions": 3
+    },
+    {
+      "start": "2026-10-14T00:00:00+00:00",
+      "tokens": 3410000,
+      "sessions": 12
+    },
+    {
+      "start": "2026-10-15T00:00:00+00:00",
+      "tokens": 3650000,
+      "sessions": 14
+    },
+    {
+      "start": "2026-10-16T00:00:00+00:00",
+      "tokens": 2180000,
+      "sessions": 8
+    },
+    {
+      "start": "2026-10-17T00:00:00+00:00",
+      "tokens": 300000,
+      "sessions": 2
+    },
+    {
+      "start": "2026-10-18T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-19T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-20T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-21T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-22T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-23T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-24T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-25T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-26T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-27T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-28T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-29T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-30T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    },
+    {
+      "start": "2026-10-31T00:00:00+00:00",
+      "tokens": 0,
+      "sessions": 0
+    }
+  ],
+  "projects": [
+    {
+      "name": "DEMO",
+      "tokens": 7155867,
+      "pixies": false
+    },
+    {
+      "name": "CV-page",
+      "tokens": 2210000,
+      "pixies": false
+    },
+    {
+      "name": "b59-live",
+      "tokens": 1390000,
+      "pixies": false
+    },
+    {
+      "name": "Pixies",
+      "tokens": 1120000,
+      "pixies": true
+    },
+    {
+      "name": "nest",
+      "tokens": 400000,
+      "pixies": false
+    },
+    {
+      "name": "llm-hunter",
+      "tokens": 250000,
+      "pixies": false
+    },
+    {
+      "name": "cv",
+      "tokens": 200000,
+      "pixies": false
+    },
+    {
+      "name": "demo-2",
+      "tokens": 100000,
+      "pixies": false
+    },
+    {
+      "name": "notes",
+      "tokens": 60000,
+      "pixies": false
+    },
+    {
+      "name": "site",
+      "tokens": 50000,
+      "pixies": false
+    },
+    {
+      "name": "a",
+      "tokens": 30000,
+      "pixies": false
+    },
+    {
+      "name": "b",
+      "tokens": 20000,
+      "pixies": false
+    },
+    {
+      "name": "c",
+      "tokens": 10000,
+      "pixies": false
+    },
+    {
+      "name": "d",
+      "tokens": 5000,
+      "pixies": false
+    }
+  ],
+  "probes": {
+    "count": 12,
+    "tokens": 5000
+  }
+}

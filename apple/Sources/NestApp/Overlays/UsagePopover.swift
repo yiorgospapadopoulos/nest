@@ -1,9 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// The usage popover: Claude's 5 hour and weekly limits with when they were reported and a
-/// Refresh, this month's sessions and tokens, and a daily token calendar with month
-/// navigation and hover detail.
+/// The usage popover: Claude's 5 hour and weekly limits with a Refresh that says when they
+/// were reported, then a day, week, month or year of tokens as bars with hover detail, its
+/// chats and subagents, and Details, which swaps in the period's breakdown (B84).
 struct UsagePopover: View {
     /// From the window's right edge to the usage button's: the search field and gaps.
     static let trailingInset = 190.0
@@ -13,51 +13,67 @@ struct UsagePopover: View {
     var body: some View {
         let usage = shell.model.usage
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Usage")
-                    .font(.ui(TypeSize.ui, .semibold))
-                    .foregroundStyle(Palette.t1)
-                Spacer(minLength: 0)
-                RefreshControl()
+            if usage.showsDetails {
+                UsageBreakdownView()
+            } else {
+                UsageChart()
             }
-            .frame(height: Metrics.buttonHeight)
-            .padding(.bottom, 10)
-            LimitRow(title: "5 hour window", window: usage.limits?.fiveHour)
-            LimitRow(title: "Weekly", window: usage.limits?.sevenDay)
-            Text("This month")
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .padding(.top, 2)
-            HStack(spacing: 6) {
-                Total(value: "\(usage.totalSessions)", label: "Sessions")
-                Total(value: UsageText.tokens(usage.totalTokens), label: "Total tokens")
-            }
-            .padding(.top, 4)
-            .padding(.bottom, 12)
-            UsageCalendar()
-                .padding(.bottom, 10)
-            Text(footnote(probes: usage.probesText))
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .lineSpacing(1.5)
-                .fixedSize(horizontal: false, vertical: true)
         }
+        .font(.ui(TypeSize.ui))
+        .monospacedDigit()
         .foregroundStyle(Palette.t1)
         .padding(14)
         .frame(width: 340)
         .sheetSurface()
-        .task { try? await usage.loadMonth() }
-    }
-
-    private func footnote(probes: String?) -> String {
-        let text =
-            "Claude reports the 5 hour and weekly limits; Nest asks again every few minutes "
-            + "while it is on screen. Monthly and daily figures are counted by Nest."
-        return probes.map { "\(text) \($0)" } ?? text
+        .task { try? await usage.loadPeriod() }
     }
 }
 
-/// Refresh asks Claude at once; too soon after the last ask, it says when to try again.
+/// The limits, the period switch, the bars and the period's totals.
+private struct UsageChart: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let usage = shell.model.usage
+        HStack(spacing: 8) {
+            Text("Usage").font(.ui(TypeSize.ui, .semibold))
+            Spacer(minLength: 0)
+            RefreshControl()
+        }
+        .frame(height: Metrics.buttonHeight)
+        .padding(.bottom, 12)
+        LimitRow(title: "5 hour", window: usage.limits?.fiveHour)
+            .padding(.bottom, 12)
+        LimitRow(title: "Weekly", window: usage.limits?.sevenDay)
+            .padding(.bottom, 14)
+        Separator().padding(.bottom, 12)
+        Segmented(
+            options: UsageUnit.allCases.map { ($0, $0.title) }, selection: usage.unit,
+            fillsWidth: true
+        ) { unit in Task { try? await usage.choose(unit) } }
+        .padding(.bottom, 8)
+        PeriodNavigation()
+            .padding(.bottom, 6)
+        UsageBars()
+        Totals()
+            .padding(.top, 10)
+        Button {
+            usage.showDetails()
+        } label: {
+            HStack(spacing: 4) {
+                Text("Details")
+                Image(systemName: Icon.chevronRight).font(.system(size: 9, weight: .semibold))
+            }
+        }
+        .buttonStyle(.nest(.plain))
+        .padding(.top, 4)
+        .padding(.leading, -8)
+        .accessibilityLabel("Details of \(usage.breakdownTitle)")
+    }
+}
+
+/// Refresh asks Claude at once and says when the limits were last reported; too soon
+/// after the last ask, it says when to try again.
 private struct RefreshControl: View {
     @Environment(Shell.self) private var shell
 
@@ -72,22 +88,29 @@ private struct RefreshControl: View {
             } else {
                 note(usage.refreshNote(at: .now))
             }
-            Button {
-                Task { await usage.refresh() }
-            } label: {
-                Label {
-                    Text("Refresh")
-                } icon: {
-                    if usage.isRefreshing {
-                        Fireflies(height: 9)
-                    } else {
-                        Image(systemName: Icon.refresh)
+            TimelineView(.everyMinute) { context in
+                Button {
+                    Task { await usage.refresh() }
+                } label: {
+                    Label {
+                        Text(usage.refreshTitle)
+                            .opacity(usage.limitsAreStale(at: context.date) ? 0.6 : 1)
+                    } icon: {
+                        if usage.isRefreshing {
+                            Fireflies(height: 9)
+                        } else {
+                            Image(systemName: Icon.refresh)
+                        }
                     }
+                    .labelStyle(TightLabelStyle())
                 }
+                .buttonStyle(.nest(.plain))
+                .disabled(usage.isRefreshing)
+                .help(
+                    usage.limitsAreStale(at: context.date)
+                        ? "More than 10 minutes old. Ask Claude for the limits now"
+                        : "Ask Claude for the limits now")
             }
-            .buttonStyle(.nest(.plain))
-            .disabled(usage.isRefreshing)
-            .help("Ask Claude for the limits now")
         }
     }
 
@@ -95,13 +118,13 @@ private struct RefreshControl: View {
         if let text {
             Text(text)
                 .font(.ui(TypeSize.meta))
-                .monospacedDigit()
                 .foregroundStyle(Palette.t3)
                 .lineLimit(1)
         }
     }
 }
 
+/// A limit's name and percent, a 3 point bar and when it resets.
 private struct LimitRow: View {
     let title: String
     let window: LimitWindow?
@@ -115,116 +138,37 @@ private struct LimitRow: View {
                 HStack {
                     Text(title).foregroundStyle(Palette.t2)
                     Spacer()
-                    Text(UsageText.percent(window))
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                        .opacity(stale ? 0.5 : 1)
+                    Text(UsageText.percent(window)).fontWeight(.medium)
                 }
-                .font(.ui(TypeSize.ui))
-                Meter(value: window?.utilization ?? 0, height: 3)
+                .opacity(stale ? 0.5 : 1)
+                Meter(value: window?.utilization ?? 0, height: 3, color: Palette.t1)
                     .opacity(stale ? 0.5 : 1)
-                HStack {
-                    Text(usage.resetText(window))
-                    Spacer()
-                    if let asOf = usage.asOfText(window) {
-                        Text(asOf)
-                            .monospacedDigit()
-                            .opacity(stale ? 0.6 : 1)
-                            .help(
-                                stale ? "More than 10 minutes old" : "When Claude last reported it")
-                    }
-                }
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
+                Text(usage.resetText(window))
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
             }
-            .padding(.bottom, 12)
             .accessibilityElement(children: .combine)
         }
     }
 }
 
-private struct Total: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.ui(TypeSize.body, .semibold)).monospacedDigit()
-            Text(label).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t3)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .softFill()
-    }
-}
-
-/// Where the hovered day sits, for its tooltip.
-private struct HoveredDayKey: PreferenceKey {
-    static let defaultValue: Anchor<CGRect>? = nil
-
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = value ?? nextValue()
-    }
-}
-
-/// The month's days, Monday first, shaded by tokens; hovering a day shows its detail.
-private struct UsageCalendar: View {
+/// ‹ the period's title ›; the current period has no next.
+private struct PeriodNavigation: View {
     @Environment(Shell.self) private var shell
-    @State private var hovered: CalendarDay?
 
     var body: some View {
         let usage = shell.model.usage
-        let cells = usage.cells
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 7)
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                navigation(Icon.chevronLeft, "Previous month") {
-                    try await usage.showPreviousMonth()
-                }
-                Text(usage.monthTitle)
-                    .font(.ui(TypeSize.ui, .medium))
-                    .frame(maxWidth: .infinity)
-                navigation(Icon.chevronRight, "Next month") { try await usage.showNextMonth() }
-                    .disabled(!usage.canShowNextMonth)
-            }
-            LazyVGrid(columns: columns, spacing: 3) {
-                ForEach(UsageText.weekdayHeads, id: \.self) { head in
-                    Text(head)
-                        .font(.ui(TypeSize.micro))
-                        .foregroundStyle(Palette.t3)
-                        .padding(.bottom, 2)
-                }
-                ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
-                    if let cell {
-                        DayCell(cell: cell, peak: usage.peakDayTokens, hovered: $hovered)
-                    } else {
-                        Color.clear.frame(height: 36)
-                    }
-                }
-            }
-            .frame(minHeight: 36 * 5 + 30, alignment: .top)
-        }
-        .overlayPreferenceValue(HoveredDayKey.self) { anchor in
-            GeometryReader { geometry in
-                if let anchor, let day = hovered,
-                    let cell = cells.compactMap({ $0 }).first(where: { $0.day == day })
-                {
-                    let rect = geometry[anchor]
-                    let below = rect.minY < 90
-                    DayTip(detail: usage.detail(of: cell))
-                        .fixedSize()
-                        .position(
-                            x: min(max(rect.midX, 70), geometry.size.width - 70),
-                            y: below ? rect.maxY + 24 : rect.minY - 24
-                        )
-                        .allowsHitTesting(false)
-                }
-            }
+        HStack(spacing: 6) {
+            step(Icon.chevronLeft, "Previous") { try await usage.showPrevious() }
+            Text(usage.periodTitle)
+                .font(.ui(TypeSize.ui, .semibold))
+                .frame(maxWidth: .infinity)
+            step(Icon.chevronRight, "Next") { try await usage.showNext() }
+                .disabled(!usage.canShowNext)
         }
     }
 
-    private func navigation(
+    private func step(
         _ icon: String, _ label: String, _ action: @escaping @MainActor () async throws -> Void
     ) -> some View {
         Button {
@@ -237,69 +181,216 @@ private struct UsageCalendar: View {
     }
 }
 
-private struct DayCell: View {
-    let cell: UsageDayCell
-    let peak: Int
-    @Binding var hovered: CalendarDay?
-    @Environment(\.accentColors) private var accent
+/// Where the hovered bar sits, for its tooltip.
+private struct HoveredBarKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
 
-    var body: some View {
-        let shade = UsageText.shade(tokens: cell.tokens, peak: peak)
-        let strong = UsageText.isStrong(shade: shade)
-        let shape = RoundedRectangle.rounded(Radius.button)
-        VStack(alignment: .leading, spacing: 0) {
-            Text("\(cell.day.day)")
-                .font(.ui(TypeSize.micro))
-                .foregroundStyle(strong ? accent.onAccent : cell.isFuture ? Palette.t3 : Palette.t2)
-            Spacer(minLength: 0)
-            if cell.tokens > 0 {
-                Text(UsageText.tokens(cell.tokens))
-                    .font(.ui(TypeSize.micro, .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(strong ? accent.onAccent : Palette.t1)
-            }
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .topLeading)
-        .background {
-            if cell.isFuture {
-                shape.strokeBorder(Palette.divider)
-            } else {
-                shape.fill(Palette.soft).overlay(shape.fill(accent.accent.opacity(shade)))
-            }
-        }
-        .overlay {
-            if cell.isToday {
-                shape.strokeBorder(Palette.t2, lineWidth: 1)
-            }
-        }
-        .contentShape(shape)
-        .onHover { inside in
-            if inside && !cell.isFuture {
-                hovered = cell.day
-            } else if hovered == cell.day {
-                hovered = nil
-            }
-        }
-        .anchorPreference(key: HoveredDayKey.self, value: .bounds) { anchor in
-            hovered == cell.day ? anchor : nil
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(cell.day.day): \(UsageText.tokens(cell.tokens)) tokens")
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
     }
 }
 
-private struct DayTip: View {
-    let detail: (title: String, detail: String)
+/// The period's bars on a base line, scaled to the busiest, with their ticks below;
+/// hovering a bar shows its detail.
+private struct UsageBars: View {
+    @Environment(Shell.self) private var shell
+    @State private var hovered: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(detail.title).font(.ui(TypeSize.ui, .medium)).foregroundStyle(Palette.t1)
-            Text(detail.detail).font(.ui(TypeSize.meta)).foregroundStyle(Palette.t2)
+        let usage = shell.model.usage
+        let bars = usage.bars
+        VStack(spacing: 3) {
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(bars) { bar in
+                    BarView(bar: bar, hovered: $hovered)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: UsageStore.barsHeight + 4, alignment: .bottom)
+            .padding(.bottom, 4)
+            .overlay(alignment: .bottom) { Separator() }
+            HStack(spacing: 0) {
+                ForEach(Array(usage.ticks.enumerated()), id: \.offset) { index, tick in
+                    if index > 0 {
+                        Spacer(minLength: 0)
+                    }
+                    Text(tick)
+                }
+            }
+            .font(.ui(TypeSize.micro))
+            .foregroundStyle(Palette.t3)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .sheetSurface(radius: Radius.card)
+        .overlayPreferenceValue(HoveredBarKey.self) { anchor in
+            GeometryReader { geometry in
+                if let anchor, let id = hovered, let tip = bars.first(where: { $0.id == id })?.tip {
+                    let rect = geometry[anchor]
+                    Text(tip)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .sheetSurface(radius: Radius.card)
+                        .fixedSize()
+                        .position(
+                            x: min(max(rect.midX, 100), geometry.size.width - 100),
+                            y: -14
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+}
+
+private struct BarView: View {
+    let bar: UsageBarCell
+    @Binding var hovered: Int?
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 1)
+        shape
+            .fill(fill)
+            .frame(maxWidth: .infinity)
+            .frame(height: bar.height)
+            .opacity(hovered == nil || hovered == bar.id ? 1 : 0.55)
+            // The whole column answers the pointer, not only the bar.
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside && bar.tip != nil {
+                    hovered = bar.id
+                } else if hovered == bar.id {
+                    hovered = nil
+                }
+            }
+            .anchorPreference(key: HoveredBarKey.self, value: .bounds) { anchor in
+                hovered == bar.id ? anchor : nil
+            }
+            .accessibilityElement()
+            .accessibilityLabel(bar.tip ?? "Not yet")
+    }
+
+    private var fill: Color {
+        if bar.isFuture {
+            return .clear
+        }
+        return bar.height > 1 ? Palette.t2 : Palette.divider
+    }
+}
+
+/// Chats, Subagents and the total with its number of chats.
+private struct Totals: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let usage = shell.model.usage
+        VStack(spacing: 0) {
+            line("Chats", usage.chatsText)
+            Separator()
+            line("Subagents", usage.subagentsText)
+            Rectangle().fill(Palette.t3.opacity(0.5)).frame(height: 1)
+            line(usage.totalLabel, usage.totalText, total: true)
+        }
+    }
+
+    private func line(_ label: String, _ value: String, total: Bool = false) -> some View {
+        HStack {
+            Text(label).foregroundStyle(total ? Palette.t1 : Palette.t2)
+            Spacer()
+            Text(value)
+        }
+        .fontWeight(total ? .semibold : .medium)
+        .padding(.vertical, total ? 6 : 5)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The shown period's tokens by who, by kind and by project, with the usage checks
+/// counted apart; ‹ goes back to the chart.
+private struct UsageBreakdownView: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let usage = shell.model.usage
+        let breakdown = usage.breakdown
+        HStack(spacing: 6) {
+            Button {
+                usage.hideDetails()
+            } label: {
+                Image(systemName: Icon.chevronLeft).font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.nest(.plain, iconOnly: true))
+            .accessibilityLabel("Back")
+            Text(usage.breakdownTitle).font(.ui(TypeSize.ui, .semibold))
+            Spacer(minLength: 0)
+            Text(breakdown?.total ?? "-").font(.ui(TypeSize.ui, .semibold))
+        }
+        .frame(height: Metrics.buttonHeight)
+        .padding(.leading, -6)
+        .padding(.bottom, 12)
+        if let breakdown {
+            heading("By who")
+            ShareRows(rows: breakdown.who).padding(.bottom, 14)
+            heading("By kind")
+            ShareRows(rows: breakdown.kinds).padding(.bottom, 14)
+            if !breakdown.projects.isEmpty {
+                heading("By project")
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(breakdown.projects) { project in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(project.name).lineLimit(1).truncationMode(.middle)
+                                Spacer()
+                                Text(project.value)
+                            }
+                            Meter(value: project.fraction, height: 3, color: Palette.t2)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            if let probes = breakdown.probes {
+                Text(probes)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .padding(.top, 14)
+            }
+        } else {
+            Text("Loading").foregroundStyle(Palette.t3)
+        }
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text)
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .padding(.bottom, 4)
+    }
+}
+
+/// Label, tokens and share, one line each.
+private struct ShareRows: View {
+    let rows: [UsageBreakdown.Row]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                HStack(spacing: 10) {
+                    Text(row.label)
+                    Spacer(minLength: 0)
+                    Text(row.value).frame(width: 60, alignment: .trailing)
+                    Text(row.share)
+                        .foregroundStyle(Palette.t3)
+                        .frame(width: 48, alignment: .trailing)
+                }
+                .padding(.vertical, 5)
+                .overlay(alignment: .top) {
+                    if index > 0 {
+                        Separator()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 }

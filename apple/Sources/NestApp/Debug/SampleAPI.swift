@@ -463,17 +463,8 @@
             }
         }
 
-        func usageMonth(year: Int, month: Int) async throws -> UsageMonth {
-            try decode([
-                "year": year, "month": month, "sessions": 41,
-                "tokens": [
-                    "input_tokens": 1_200_000, "output_tokens": 300_000,
-                    "cache_creation_input_tokens": 400_000, "cache_read_input_tokens": 9_000_000,
-                    "total": 10_900_000,
-                ],
-                "days": SampleData.days(year: year, month: month, now: now),
-                "probes": ["count": 96, "tokens": 38_400],
-            ])
+        func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod {
+            try decode(SampleData.period(unit: unit, date: date, now: now))
         }
 
         /// Reported 25 minutes before the sample's now: stale.
@@ -1449,23 +1440,93 @@
         }
 
         /// Every day of a month with made-up but stable token counts up to today.
-        static func days(year: Int, month: Int, now: Date) -> [[String: Any]] {
+        /// A sample day's tokens: quiet on most weekends and on some weekdays, none after
+        /// now.
+        static func dayTokens(_ date: Date, now: Date, calendar: Calendar) -> Int {
+            let parts = calendar.dateComponents([.year, .month, .day], from: date)
+            let weekend = calendar.isDateInWeekend(date)
+            let seed = abs(
+                sin(Double(parts.year! * 373 + parts.month! * 97 + parts.day! * 13)) * 10_000)
+            let x = seed - seed.rounded(.down)
+            let quiet = x < (weekend ? 0.5 : 0.13) || date > now
+            return quiet ? 0 : Int((weekend ? 120_000 : 260_000) + x * x * 2_900_000)
+        }
+
+        /// The `GET /api/usage/period` answer for the sample: bars from the daily sample,
+        /// a day's tokens spread over its working hours, and fixed shares for the rest.
+        static func period(unit: UsageUnit, date: CalendarDay, now: Date) -> [String: Any] {
             let calendar = Calendar.current
-            let first = calendar.date(from: DateComponents(year: year, month: month, day: 1))!
-            let count = calendar.range(of: .day, in: .month, for: first)!.count
-            return (1...count).map { day in
-                let date = calendar.date(byAdding: .day, value: day - 1, to: first)!
-                let weekend = calendar.isDateInWeekend(date)
-                let seed = abs(sin(Double(year * 373 + month * 97 + day * 13)) * 10_000)
-                let x = seed - seed.rounded(.down)
-                let quiet = x < (weekend ? 0.5 : 0.13) || date > now
-                let tokens =
-                    quiet ? 0 : Int((weekend ? 120_000 : 260_000) + x * x * 2_900_000)
+            let day = calendar.date(
+                from: DateComponents(year: date.year, month: date.month, day: date.day))!
+            let start = UsageText.periodStart(of: day, unit: unit, calendar: calendar)
+            let next = UsageText.shift(start, unit: unit, by: 1, calendar: calendar)
+            let days = calendar.dateComponents([.day], from: start, to: next).day!
+            let hours = [0, 0, 0, 0, 0, 0, 0, 0, 2, 5, 9, 7, 3, 6, 10, 12, 11, 8, 5, 4, 6, 4, 2, 1]
+            let bars: [(Date, Int)]
+            switch unit {
+            case .day:
+                let total = dayTokens(start, now: now, calendar: calendar)
+                bars = hours.enumerated().map { hour, weight in
+                    let barStart = calendar.date(byAdding: .hour, value: hour, to: start)!
+                    return (barStart, barStart > now ? 0 : total * weight / 95)
+                }
+            case .week, .month:
+                bars = (0..<days).map { offset in
+                    let barStart = calendar.date(byAdding: .day, value: offset, to: start)!
+                    return (barStart, dayTokens(barStart, now: now, calendar: calendar))
+                }
+            case .year:
+                bars = (0..<12).map { offset in
+                    let month = calendar.date(byAdding: .month, value: offset, to: start)!
+                    let count = calendar.range(of: .day, in: .month, for: month)!.count
+                    let tokens = (0..<count).map {
+                        dayTokens(
+                            calendar.date(byAdding: .day, value: $0, to: month)!, now: now,
+                            calendar: calendar)
+                    }
+                    return (month, tokens.reduce(0, +))
+                }
+            }
+            let total = bars.map(\.1).reduce(0, +)
+            func totals(_ count: Int) -> [String: Int] {
+                let read = count * 81 / 100
+                let write = count * 182 / 1_000
+                let output = count * 7 / 1_000
                 return [
-                    "date": String(format: "%04d-%02d-%02d", year, month, day),
-                    "tokens": tokens, "sessions": tokens == 0 ? 0 : max(1, tokens / 380_000),
+                    "cache_read_input_tokens": read, "cache_creation_input_tokens": write,
+                    "output_tokens": output, "input_tokens": count - read - write - output,
+                    "total": count,
                 ]
             }
+            let shares: [(String, Int, Bool)] = [
+                ("cv-page", 48, false), ("narrative-engine", 15, false), ("llm-hunter", 9, false),
+                ("Pixies", 8, true), ("nest", 6, false), ("dotfiles", 5, false),
+                ("notes", 4, false), ("site", 3, false), ("scratch", 2, false),
+            ]
+            let projects = shares.map { name, percent, pixies in
+                ["name": name, "tokens": total * percent / 100, "pixies": pixies] as [String: Any]
+            }
+            let end = calendar.date(byAdding: .day, value: days - 1, to: start)!
+            func plain(_ date: Date) -> String {
+                let parts = calendar.dateComponents([.year, .month, .day], from: date)
+                return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+            }
+            return [
+                "unit": unit.rawValue, "start": plain(start), "end": plain(end),
+                "current": start <= now && now < next,
+                "sessions": total == 0 ? 0 : max(1, total / 200_000),
+                "tokens": totals(total), "subagents": totals(total * 11 / 100),
+                "bars": bars.map { start, tokens in
+                    [
+                        "start": iso(start), "tokens": tokens,
+                        "sessions": tokens == 0 ? 0 : max(1, tokens / 380_000),
+                    ] as [String: Any]
+                },
+                "projects": total == 0 ? [] : projects,
+                "probes": [
+                    "count": unit == .day ? 8 : 96, "tokens": unit == .day ? 3_200 : 38_400,
+                ],
+            ]
         }
 
         /// The dark mode review's changes, with a binary file and a long one cut short.

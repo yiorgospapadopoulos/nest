@@ -1,25 +1,35 @@
 import Foundation
 import Observation
 
-/// One day of the usage calendar.
-public struct UsageDayCell: Sendable, Hashable, Identifiable {
-    public let day: CalendarDay
-    public let tokens: Int
-    public let sessions: Int
-    public let isToday: Bool
+/// One bar of the usage chart.
+public struct UsageBarCell: Sendable, Hashable, Identifiable {
+    /// Its place in the period.
+    public let id: Int
+    /// In points, of `UsageStore.barsHeight`.
+    public let height: Double
+    /// After now: drawn as an empty slot.
     public let isFuture: Bool
-
-    public var id: CalendarDay { day }
+    /// "Wed 14 Oct: 3.4M tokens, 12 chats"; nil for a future bar.
+    public let tip: String?
 }
 
-/// Subscription limits and the monthly token calendar of the usage popover.
+/// Subscription limits and the token chart of the usage popover: a day, week, month or
+/// year at a time, with its breakdown.
 @MainActor @Observable
 public final class UsageStore {
+    /// The tallest bar, in points.
+    public static let barsHeight = 64.0
+
     public private(set) var limits: UsageLimits?
-    public private(set) var month: UsageMonth?
-    /// The month shown, starting with the current one.
-    public private(set) var year: Int
-    public private(set) var monthNumber: Int
+    /// The shown period's numbers; nil while it loads.
+    public private(set) var period: UsagePeriod?
+    public private(set) var unit = UsageUnit.month
+    /// The local start of the shown period, starting with the current one.
+    public private(set) var shownStart: Date
+    /// Period loads on their way.
+    private var loads = 0
+    /// The popover shows the breakdown instead of the chart.
+    public private(set) var showsDetails = false
     /// A manual refresh is on its way.
     public private(set) var isRefreshing = false
     /// The daemon refuses another refresh until then.
@@ -45,23 +55,124 @@ public final class UsageStore {
         self.api = api
         self.calendar = calendar
         self.now = now
-        let today = calendar.dateComponents([.year, .month], from: now())
-        year = today.year!
-        monthNumber = today.month!
+        shownStart = UsageText.periodStart(of: now(), unit: .month, calendar: calendar)
     }
 
     public func load() async throws {
         limits = try await api.usageLimits()
-        try await loadMonth()
+        try await loadPeriod()
     }
 
-    public func loadMonth() async throws {
-        let shown = (year, monthNumber)
-        let loaded = try await api.usageMonth(year: shown.0, month: shown.1)
+    public var isLoading: Bool { loads > 0 }
+
+    public func loadPeriod() async throws {
+        let shown = (unit, shownStart)
+        let parts = calendar.dateComponents([.year, .month, .day], from: shownStart)
+        let day = CalendarDay(year: parts.year!, month: parts.month!, day: parts.day!)
+        loads += 1
+        defer { loads -= 1 }
+        let loaded = try await api.usagePeriod(unit: unit, date: day)
         // A newer navigation may have moved on while this one loaded.
-        if (year, monthNumber) == shown {
-            month = loaded
+        if (unit, shownStart) == shown {
+            period = loaded
         }
+    }
+
+    /// Switches the chart to another unit, at its current period.
+    public func choose(_ unit: UsageUnit) async throws {
+        self.unit = unit
+        try await show(UsageText.periodStart(of: now(), unit: unit, calendar: calendar))
+    }
+
+    /// Later periods than the current one are not shown.
+    public var canShowNext: Bool {
+        shownStart < UsageText.periodStart(of: now(), unit: unit, calendar: calendar)
+    }
+
+    public func showPrevious() async throws {
+        try await show(UsageText.shift(shownStart, unit: unit, by: -1, calendar: calendar))
+    }
+
+    public func showNext() async throws {
+        guard canShowNext else { return }
+        try await show(UsageText.shift(shownStart, unit: unit, by: 1, calendar: calendar))
+    }
+
+    private func show(_ start: Date) async throws {
+        shownStart = start
+        period = nil
+        try await loadPeriod()
+    }
+
+    /// "October", "12 to 18 Oct", "Today".
+    public var periodTitle: String {
+        UsageText.periodTitle(start: shownStart, unit: unit, now: now(), calendar: calendar)
+    }
+
+    /// "October tokens", over the breakdown.
+    public var breakdownTitle: String { "\(periodTitle) tokens" }
+
+    public var bars: [UsageBarCell] {
+        guard let period else { return [] }
+        let peak = period.bars.reduce(0) { max($0, $1.tokens) }
+        let date = now()
+        return period.bars.enumerated().map { index, bar in
+            let future = bar.start > date
+            return UsageBarCell(
+                id: index,
+                height: UsageText.barHeight(tokens: bar.tokens, peak: peak, full: Self.barsHeight),
+                isFuture: future,
+                tip: future ? nil : UsageText.barTip(bar, unit: unit, calendar: calendar))
+        }
+    }
+
+    public var ticks: [String] {
+        let count =
+            period?.bars.count
+            ?? calendar.range(of: .day, in: .month, for: shownStart)!.count
+        return UsageText.ticks(unit: unit, bars: count)
+    }
+
+    /// The chats' own tokens, without their subagents'; "-" while loading.
+    public var chatsText: String {
+        period.map { UsageText.tokens($0.tokens.total - $0.subagents.total) } ?? "-"
+    }
+
+    public var subagentsText: String {
+        period.map { UsageText.tokens($0.subagents.total) } ?? "-"
+    }
+
+    public var totalText: String { period.map { UsageText.tokens($0.tokens.total) } ?? "-" }
+
+    /// "Total · 74 chats".
+    public var totalLabel: String {
+        period.map { "Total · \(UsageText.chats($0.sessions))" } ?? "Total"
+    }
+
+    public var breakdown: UsageBreakdown? { period.map(UsageBreakdown.init) }
+
+    public func showDetails() {
+        showsDetails = true
+    }
+
+    public func hideDetails() {
+        showsDetails = false
+    }
+
+    /// When Claude last reported either window.
+    private var reportedAt: Date? {
+        [limits?.fiveHour?.updatedAt, limits?.sevenDay?.updatedAt].compactMap { $0 }.max()
+    }
+
+    /// The Refresh button's words: "as of 14:05" once Claude reported the limits.
+    public var refreshTitle: String {
+        UsageText.asOf(LimitWindow(utilization: 0, updatedAt: reportedAt), calendar: calendar)
+            ?? "Refresh"
+    }
+
+    /// The limits were last reported more than 10 minutes before `date`.
+    public func limitsAreStale(at date: Date) -> Bool {
+        UsageText.isStale(LimitWindow(utilization: 0, updatedAt: reportedAt), now: date)
     }
 
     /// Asks Claude for the limits now. Too soon after the last ask, it notes when to try
@@ -150,60 +261,9 @@ public final class UsageStore {
         UsageText.warning(warning, now: now(), calendar: calendar)
     }
 
-    /// Later months are not shown beyond the current one.
-    public var canShowNextMonth: Bool {
-        let today = calendar.dateComponents([.year, .month], from: now())
-        return (year, monthNumber) < (today.year!, today.month!)
-    }
-
-    public func showPreviousMonth() async throws {
-        (year, monthNumber) = monthNumber == 1 ? (year - 1, 12) : (year, monthNumber - 1)
-        month = nil
-        try await loadMonth()
-    }
-
-    public func showNextMonth() async throws {
-        guard canShowNextMonth else { return }
-        (year, monthNumber) = monthNumber == 12 ? (year + 1, 1) : (year, monthNumber + 1)
-        month = nil
-        try await loadMonth()
-    }
-
-    /// Weeks start on Monday; leading nils fill the days before the 1st.
-    public var cells: [UsageDayCell?] {
-        guard let month else { return [] }
-        let first = calendar.date(
-            from: DateComponents(year: month.year, month: month.month, day: 1))!
-        let leading = (calendar.component(.weekday, from: first) + 5) % 7
-        let parts = calendar.dateComponents([.year, .month, .day], from: now())
-        let today = CalendarDay(year: parts.year!, month: parts.month!, day: parts.day!)
-        let days = month.days.map { day in
-            UsageDayCell(
-                day: day.date, tokens: day.tokens, sessions: day.sessions,
-                isToday: day.date == today, isFuture: day.date > today)
-        }
-        return Array(repeating: nil, count: leading) + days
-    }
-
-    public var totalTokens: Int { month?.tokens.total ?? 0 }
-    public var totalSessions: Int { month?.sessions ?? 0 }
-
-    /// The month's usage checks, counted apart.
-    public var probesText: String? { UsageText.probes(month?.probes) }
-
-    /// The busiest day's tokens, to scale the calendar's shading.
-    public var peakDayTokens: Int { month?.days.map(\.tokens).max() ?? 0 }
-
-    public var monthTitle: String { UsageText.monthTitle(year: year, month: monthNumber) }
-
     /// When a limit window resets, in this store's calendar.
     public func resetText(_ window: LimitWindow?) -> String {
         UsageText.reset(window, now: now(), calendar: calendar)
-    }
-
-    /// The hover detail of a calendar day.
-    public func detail(of cell: UsageDayCell) -> (title: String, detail: String) {
-        UsageText.dayDetail(cell, calendar: calendar)
     }
 
     /// Windows from the engine replace the shown ones; it may report only one of them.

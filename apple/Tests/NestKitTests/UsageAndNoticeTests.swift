@@ -47,39 +47,13 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             ])
     }
 
-    @Test func monthsAndDays() {
-        #expect(UsageText.monthTitle(year: 2026, month: 10) == "October 2026")
-        #expect(UsageText.weekdayHeads.first == "Mo")
-        let busy = UsageDayCell(
-            day: CalendarDay(year: 2026, month: 10, day: 6), tokens: 1_234_567, sessions: 3,
-            isToday: true, isFuture: false)
-        let detail = UsageText.dayDetail(busy, calendar: utc)
-        #expect(detail.title == "Tue 6 Oct")
-        #expect(detail.detail == "1,234,567 tokens, 3 sessions")
-        let one = UsageDayCell(
-            day: busy.day, tokens: 5, sessions: 1, isToday: false, isFuture: false)
-        #expect(UsageText.dayDetail(one, calendar: utc).detail == "5 tokens, 1 session")
-        let empty = UsageDayCell(
-            day: busy.day, tokens: 0, sessions: 0, isToday: false, isFuture: false)
-        #expect(UsageText.dayDetail(empty, calendar: utc).detail == "No sessions")
-    }
-
-    @Test func shading() {
-        #expect(UsageText.shade(tokens: 0, peak: 10) == 0)
-        #expect(UsageText.shade(tokens: 5, peak: 0) == 0)
-        #expect(abs(UsageText.shade(tokens: 10, peak: 10) - 0.68) < 1e-9)
-        #expect(UsageText.isStrong(shade: 0.68))
-        #expect(!UsageText.isStrong(shade: 0.3))
-    }
-
     @Test func theStoreUsesItsCalendar() async throws {
         let api = FakeAPI()
         let usage = UsageStore(api: api, calendar: utc, now: { tuesday })
         try await usage.load()
-        #expect(usage.monthTitle == "October 2026")
+        #expect(usage.periodTitle == "October")
         #expect(usage.resetText(nil) == "Not reported yet")
-        let cell = try #require(usage.cells.compactMap { $0 }.first)
-        #expect(usage.detail(of: cell).title == "Thu 1 Oct")
+        #expect(usage.bars.first?.tip == "Thu 1 Oct: 0 tokens, 0 chats")
     }
 }
 

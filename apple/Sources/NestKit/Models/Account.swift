@@ -53,26 +53,52 @@ public struct TokenTotals: Decodable, Sendable, Hashable {
     }
 }
 
-public struct DayUsage: Decodable, Sendable, Hashable {
-    public var date: CalendarDay
+/// A span of the usage chart, as `GET /api/usage/period` takes it.
+public enum UsageUnit: String, Codable, Sendable, CaseIterable {
+    case day, week, month, year
+
+    /// "Day", as the period switch shows it.
+    public var title: String { rawValue.capitalized }
+}
+
+/// One bar of a period: an hour of a day, a day of a week or month, or a month of a year.
+public struct PeriodBar: Decodable, Sendable, Hashable {
+    /// The bar's local start, sent with its UTC offset.
+    public var start: Date
     public var tokens: Int
+    /// Distinct chats in it.
     public var sessions: Int
 }
 
-/// Token totals of a month and of each of its days, by the daemon's local calendar.
-public struct UsageMonth: Decodable, Sendable, Hashable {
-    public var year: Int
-    public var month: Int
-    /// Distinct sessions with a turn this month.
+/// A repo's tokens in a period; every pixie chat counts as one "Pixies" entry.
+public struct ProjectTokens: Decodable, Sendable, Hashable {
+    public var name: String
+    public var tokens: Int
+    public var pixies: Bool
+}
+
+/// `GET /api/usage/period`: the tokens of a day, week (from Monday), month or year, by the
+/// daemon's local calendar.
+public struct UsagePeriod: Decodable, Sendable, Hashable {
+    public var unit: UsageUnit
+    public var start: CalendarDay
+    public var end: CalendarDay
+    /// The period contains today.
+    public var current: Bool
+    /// Distinct chats with tokens in the period.
     public var sessions: Int
+    /// Everything, chats and their subagents.
     public var tokens: TokenTotals
-    /// Every day of the month, in order.
-    public var days: [DayUsage]
-    /// Nest's own usage checks, not part of the totals above; absent from older daemons.
-    public var probes: ProbeTotals?
+    /// The subagents' part of `tokens`.
+    public var subagents: TokenTotals
+    public var bars: [PeriodBar]
+    /// By tokens, most first; repos without tokens are left out.
+    public var projects: [ProjectTokens]
+    /// Nest's own usage checks, not part of the totals above.
+    public var probes: ProbeTotals
 }
 
-/// The month's usage checks: Nest overhead, kept apart from the user's sessions.
+/// The period's usage checks: Nest overhead, kept apart from the user's sessions.
 public struct ProbeTotals: Decodable, Sendable, Hashable {
     public var count: Int
     public var tokens: Int
