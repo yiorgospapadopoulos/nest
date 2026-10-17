@@ -228,6 +228,10 @@ describe("project page", () => {
     await waitFor(() => {
       expect(api.updateRepo).toHaveBeenCalledWith("cv-page", { setup: ["npm ci"] });
     });
+    // One already there is not added again.
+    await user.click(screen.getByRole("button", { name: "Add to Linked files" }));
+    await user.type(screen.getByRole("textbox", { name: "Linked files" }), ".env{Enter}");
+    expect(api.updateRepo).not.toHaveBeenCalledWith("cv-page", { link: [".env", ".env"] });
     await user.click(screen.getByRole("button", { name: "Remove .env" }));
     await waitFor(() => {
       expect(api.updateRepo).toHaveBeenCalledWith("cv-page", { link: [] });

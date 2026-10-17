@@ -227,11 +227,7 @@ export function HabitEditor({ habit, onSave, onClose }: Props) {
           </label>
         ))}
       </div>
-      <p className="hint gnote">
-        {when
-          ? "Triggers count only chats in the pixie's projects."
-          : "Choose a schedule or a trigger."}
-      </p>
+      {!when && <p className="hint gnote">Choose a schedule or a trigger.</p>}
 
       <div className="lgrp gl pxgap">
         <div className="srow qh">

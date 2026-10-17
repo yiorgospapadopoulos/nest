@@ -181,7 +181,7 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   const runModel = choices.model ?? (session === undefined ? state.agentDefaults?.model : null);
   const levels = thinkingLevels(models, runModel ?? null);
   // A project chat calls a team's pixie only with its team (B46).
-  const member = pixie === undefined ? memberCall(state, project, text) : null;
+  const member = pixie === undefined ? memberCall(state, text) : null;
   const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed && member === null;
   // A pixie's messages carry text only.
   const takesFiles = pixie === undefined && !closed;

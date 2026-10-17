@@ -29,7 +29,7 @@ describe("Pixie Nest tools in its details (B41)", () => {
     await user.click(screen.getByRole("button", { name: "Autonomy: Observe" }));
     const levels = sheet("Autonomy");
     for (const [level, note] of [
-      ["Observe", "Reads chats in its projects"],
+      ["Observe", "Reads chats in your projects"],
       ["Message", "Also writes to them, nudges or stops them"],
       ["Start", "Also starts chats in their own worktree"],
       ["Answer", "Also answers approvals, questions and plans in chats it started"],

@@ -549,9 +549,9 @@ describe("teams and who a chat can call", () => {
         pixie({ id: "bugs", slug: "bugs", position: 1, team_id: "qa" }),
         pixie({ id: "shy", slug: "shy", position: 2, team_id: "qa", hidden: true }),
         pixie({ id: "blind", slug: "blind", position: 4, project_access: "none" }),
-        pixie({ id: "cv", slug: "cv", position: 5, projects: ["cv-page"], team_id: "docs" }),
-        pixie({ id: "any", slug: "any", position: 0, projects: null }),
-        pixie({ id: "read", slug: "read", position: 6, project_access: "read", projects: [] }),
+        pixie({ id: "cv", slug: "cv", position: 5, team_id: "docs" }),
+        pixie({ id: "any", slug: "any", position: 0 }),
+        pixie({ id: "read", slug: "read", position: 6, project_access: "read" }),
       ].map((p) => [p.id, p]),
     ),
     teams: {
@@ -566,57 +566,47 @@ describe("teams and who a chat can call", () => {
     expect(teamList(withTeams()).map((t) => t.id)).toEqual(["qa", "docs", "empty", "gone"]);
   });
 
-  it("offers pixies that may work on the project, by position", () => {
-    expect(availablePixies(withTeams(), "narrative").map((p) => p.id)).toEqual([
-      "any",
-      "bugs",
-      "lead",
-    ]);
-    expect(availablePixies(withTeams(), "cv-page").map((p) => p.id)).toEqual([
+  it("offers in every project the pixies not hidden that may touch project files (B85)", () => {
+    expect(availablePixies(withTeams()).map((p) => p.id)).toEqual([
       "any",
       "bugs",
       "lead",
       "cv",
+      "read",
     ]);
   });
 
   it("offers teams whose leader is available, with their available members", () => {
-    const offered = (repo: string) =>
-      availableTeams(withTeams(), repo).map(({ team: t, members }) => [
-        t.id,
-        members.map((m) => m.id),
-      ]);
-    expect(offered("narrative")).toEqual([["qa", ["bugs", "lead"]]]);
-    expect(offered("cv-page")).toEqual([
+    expect(
+      availableTeams(withTeams()).map(({ team: t, members }) => [t.id, members.map((m) => m.id)]),
+    ).toEqual([
       ["qa", ["bugs", "lead"]],
       ["docs", ["cv"]],
     ]);
   });
 
   it("offers alone only the pixies in no team the chat can call (B46)", () => {
-    expect(soloPixies(withTeams(), "narrative").map((p) => p.id)).toEqual(["any"]);
-    // "cv" leads docs, which a chat in cv-page can call.
-    expect(soloPixies(withTeams(), "cv-page").map((p) => p.id)).toEqual(["any"]);
-    // A team whose leader cannot work here leaves its members callable alone.
+    expect(soloPixies(withTeams()).map((p) => p.id)).toEqual(["any", "read"]);
+    // A team whose leader cannot work in projects leaves its members callable alone.
     const leaderless: State = {
       ...withTeams(),
       teams: { qa: team({ id: "qa", handle: "qa", leader_id: "blind" }) },
     };
-    expect(soloPixies(leaderless, "narrative").map((p) => p.id)).toEqual(["any", "bugs", "lead"]);
+    expect(soloPixies(leaderless).map((p) => p.id)).toEqual(["any", "bugs", "lead", "cv", "read"]);
   });
 
   it("says why a message calling a team's pixie alone cannot be sent (B46)", () => {
     const state = withTeams();
-    const said = (text: string, repo = "narrative") => memberCall(state, repo, text);
+    const said = (text: string) => memberCall(state, text);
     expect(said("@bugs look")).toBe("Tester is in @qa; call the team or a solo copy");
     expect(said("ask @qa and @lead, please")).toBe(
       "Tester is in @qa; call the team or a solo copy",
     );
     expect(said("@qa look at @any")).toBeNull();
+    expect(said("@cv")).toBe("Tester is in @docs; call the team or a solo copy");
     // Not a whole token, or a pixie the chat cannot call.
     expect(said("mail me@bugs or @bugs-x")).toBeNull();
-    expect(said("@cv")).toBeNull();
-    expect(said("@cv", "cv-page")).toBe("Tester is in @docs; call the team or a solo copy");
+    expect(said("@blind")).toBeNull();
   });
 });
 

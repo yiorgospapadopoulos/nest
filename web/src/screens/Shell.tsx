@@ -149,7 +149,6 @@ export function Shell() {
             onPage={openSettings}
             back={fromProjects ? "Projects" : "Settings"}
             onBack={closeSettings}
-            project={current}
             onOpenPixie={openPixie}
           />
         )}
