@@ -54,6 +54,7 @@ import { EditSheet, RewindSheet } from "./RewindSheet.tsx";
 import { usePrefill } from "./usePrefill.tsx";
 import { StopTask } from "./StopTask.tsx";
 import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 // Within this many pixels of the bottom, new output is followed. Anywhere else the
 // reading position never moves, not even when the user sends a message.
@@ -375,9 +376,12 @@ function WorkingLine({ thinking, thought, start }: WorkingProps) {
   const visible = usePageVisible();
   const now = useSyncExternalStore(visible ? ticks : noTicks, seconds) * 1000;
   const line = (
-    <span className="glow">
-      {thinking ? "Thinking..." : "Working..."}
-      {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
+    <span className="wline rglow">
+      <Fireflies size={9} />
+      <span className="glow">
+        {thinking ? "Thinking..." : "Working..."}
+        {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
+      </span>
     </span>
   );
   if (!thinking || !thought) return <div className="m-live">{line}</div>;
@@ -956,7 +960,7 @@ function LocalBash({ run }: { run: BashRun }) {
     <Bash command={run.command}>
       {result === null && error === null && (
         <span className="bnote" role="status">
-          <span className="spin" aria-hidden="true" />
+          <Fireflies size={9} />
           Running
         </span>
       )}

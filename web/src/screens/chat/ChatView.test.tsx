@@ -120,9 +120,9 @@ describe("chat view", () => {
 
     const chat = within(screen.getByRole("region", { name: "Validate contact form" }));
     const heading = chat.getByRole("heading", { name: "Validate contact form" });
-    // The status is a dot right after the name, with no pill in the details row.
+    // The status right after the name, fireflies while running, with no pill in the details row.
     const dot = chat.getByRole("img", { name: "Running" });
-    expect(dot).toHaveClass("dot s-run");
+    expect(dot).toHaveClass("ff");
     expect(heading.nextElementSibling).toBe(dot);
     expect(chat.queryByText("Running")).not.toBeInTheDocument();
     expect(chat.getByTitle("Worktree agent/contact in /w/s1")).toBeInTheDocument();
@@ -280,7 +280,7 @@ describe("chat view", () => {
     });
     const bar = screen.getByRole("button", { name: "2 running · 2 completed" });
     expect(bar).toHaveAttribute("aria-expanded", "false");
-    expect(bar.querySelector(".dot.s-run")).not.toBeNull();
+    expect(bar.querySelector(".ff")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Agents, 0 active" })).toBeInTheDocument();
     // Between the transcript and the composer.
     const composer = defined(screen.getByLabelText("Message").closest(".comp"));
@@ -294,6 +294,13 @@ describe("chat view", () => {
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual([expect.stringContaining("ExploreFind DOIs"), "npm run devRunning"]);
+    // Running tasks show fireflies, finished ones their dot (B80).
+    for (const li of within(running).getAllByRole("listitem")) {
+      expect(li.firstElementChild).toHaveClass("ff");
+    }
+    for (const li of within(completed).getAllByRole("listitem")) {
+      expect(li.firstElementChild).toHaveClass("dot");
+    }
     expect(within(completed).getByText("Done")).toBeInTheDocument();
     expect(within(completed).getByText("Failed")).toBeInTheDocument();
     await user.click(bar);
@@ -309,7 +316,8 @@ describe("chat view", () => {
       },
     });
     const idle = screen.getByRole("button", { name: "0 running · 1 completed" });
-    expect(idle.querySelector(".dot.s-run")).toBeNull();
+    expect(idle.querySelector(".ff")).toBeNull();
+    expect(idle.querySelector(".dot.s-done")).not.toBeNull();
     await user.click(idle);
     expect(screen.queryByRole("list", { name: "Running" })).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Completed" })).toBeInTheDocument();
@@ -400,6 +408,11 @@ describe("chat view", () => {
     // The project's Goals behind the chat show the same steps (B47).
     const list = within(defined(document.getElementById("goals-list")));
     expect(list.getByText("Installing zod")).toBeInTheDocument();
+    // The step in progress shows the working fireflies in its box (B80).
+    expect(
+      list.getByText("Installing zod").closest("li")?.querySelector(".cki .ff"),
+    ).not.toBeNull();
+    expect(list.getByText("done:").closest("li")?.querySelector(".ff")).toBeNull();
     expect(list.getByText("done:")).toBeInTheDocument();
     expect(list.getByText("pending:")).toBeInTheDocument();
 
@@ -453,12 +466,17 @@ describe("chat view", () => {
     await user.click(screen.getByRole("button", { name: "Agents, 2 active" }));
     const sheet = screen.getByRole("dialog", { name: "Agents" });
     expect(within(sheet).getByText("Find DOIs")).toBeInTheDocument();
+    // A running agent shows fireflies, any other its dot (B80).
+    expect(within(sheet).getByRole("button", { name: /main/ }).firstElementChild).toHaveClass("ff");
+    expect(within(sheet).getByRole("button", { name: /Broken/ }).firstElementChild).toHaveClass(
+      "dot s-fail",
+    );
     expect(within(sheet).getByText("failed")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: /main/ }));
     const log = within(sheet).getByRole("list", { name: "Last steps" });
     expect(within(log).getAllByRole("listitem")).toHaveLength(5);
     expect(within(log).queryByText("file0")).not.toBeInTheDocument();
-    expect(within(log).getByText("running")).toBeInTheDocument();
+    expect(within(log).getByText("running").closest("li")?.querySelector(".ff")).not.toBeNull();
     await user.click(within(sheet).getByRole("button", { name: /main/ }));
     expect(within(sheet).queryByRole("list")).not.toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: /Fresh/ }));
@@ -730,7 +748,7 @@ describe("pull request", () => {
   const url = "https://github.com/me/cv-page/pull/7";
 
   it.each([
-    [prStatus({ checks: [check("unit", "pending")] }), "s-wait", "#7, checks running"],
+    [prStatus({ checks: [check("unit", "pending")] }), "ff", "#7, checks running"],
     [prStatus(), "s-rev", "#7, checks passed"],
     [prStatus({ checks: [check("unit", "failure")] }), "s-fail", "#7, checks failed"],
     [prStatus({ checks: [] }), "s-idle", "#7, no checks"],
@@ -742,7 +760,8 @@ describe("pull request", () => {
     const chip = screen.getByRole("link", { name: `Pull request ${label}` });
     expect(chip).toHaveAttribute("href", url);
     expect(chip).toHaveAttribute("target", "_blank");
-    expect(chip.querySelector(".dot")).toHaveClass(tone);
+    // Running checks show the fireflies; any other state its dot (B80).
+    expect(chip.firstElementChild).toHaveClass(tone);
   });
 
   it("has no chip without a pull request", async () => {

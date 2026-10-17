@@ -41,7 +41,7 @@ private struct RestartSection: View {
                     .foregroundStyle(Palette.t3)
                 Spacer()
                 if restarting {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
                 Button("Restart Nest") { confirming = true }
                     .buttonStyle(.nest(.soft))

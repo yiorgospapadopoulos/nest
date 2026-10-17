@@ -73,7 +73,7 @@ struct PRDetails: View {
                 } label: {
                     HStack(spacing: 6) {
                         if refreshing {
-                            ProgressView().controlSize(.mini)
+                            Fireflies(height: 9)
                         } else {
                             Image(systemName: Icon.refresh)
                         }
@@ -104,7 +104,7 @@ private struct CheckRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(tone: tone, hollow: check.state == .skipped)
+            StatusMark(tone: tone, hollow: check.state == .skipped)
             Text(check.name)
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t1)
@@ -131,7 +131,8 @@ private struct CheckRow: View {
 
     private var tone: StatusTone {
         switch check.state {
-        case .pending: .waiting
+        // Still running: the fireflies in the dot's place.
+        case .pending: .running
         case .success, .skipped: .review
         case .failure: .failed
         case .unknown: .done

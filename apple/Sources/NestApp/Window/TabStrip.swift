@@ -172,7 +172,7 @@ private struct TabBackground: ViewModifier {
 }
 
 /// What follows a tab's name: in a background tab that needs the user an amber dot and
-/// the count, in the current one the count alone; a running dot otherwise.
+/// the count, in the current one the count alone; the fireflies while one runs.
 private struct TabStatus: View {
     let isCurrent: Bool
     let attention: Int
@@ -185,7 +185,7 @@ private struct TabStatus: View {
             }
             CountBadge(count: attention, urgent: true)
         } else if running {
-            StatusDot(tone: .running)
+            Fireflies(height: 9)
         }
     }
 }
@@ -205,7 +205,8 @@ private struct TabCloseButton: View {
     }
 }
 
-/// One project tab: its icon, name, and how many chats need the user or a running dot.
+/// One project tab: its icon, name, and how many chats need the user, or the fireflies
+/// while one runs.
 /// Every project tab has the same width (`Metrics.projectTabWidth`), a long name ending
 /// in an ellipsis; in a narrow window the tabs shrink together, down to
 /// `Metrics.projectTabMinWidth`. The current tab ends with its close button; a background tab shows it

@@ -1,10 +1,10 @@
 import NestKit
 import SwiftUI
 
-/// A chat in the sidebar: status dot and its whole title over where it works and its
-/// marks, as Claude Code chats' rows; click opens it, drag splits. In a git
-/// project every chat names its branch: the project folder's current one for in-place
-/// chats, its worktree's for worktree chats (B55).
+/// A chat in the sidebar: status dot (the fireflies and a glow while it runs, B80) and its
+/// whole title over where it works and its marks, as Claude Code chats' rows; click opens
+/// it, drag splits. In a git project every chat names its branch: the project folder's
+/// current one for in-place chats, its worktree's for worktree chats (B55).
 struct ChatRow: View {
     let session: Session
     /// A row of the Done group: its name is grey, whatever its status.
@@ -33,7 +33,7 @@ struct ChatRow: View {
         let startedBy = PixieLabels.startedBy(session, pixies: shell.pixies.pixies)
         let place = ChatPlace.of(session, repo: shell.repo)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            StatusDot(tone: tone)
+            StatusMark(tone: tone)
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.title)
                     .font(.ui(TypeSize.ui))
@@ -72,6 +72,7 @@ struct ChatRow: View {
             isSelected ? accent.selection : (isOpen || hovering) ? Palette.soft : .clear,
             in: .rounded(Radius.row)
         )
+        .rowGlow(tone == .running)
         .overlay(alignment: .trailing) {
             if showsMenu {
                 RowActionsMenu(title: session.title) { ChatActions(session: session) }

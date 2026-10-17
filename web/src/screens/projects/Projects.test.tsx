@@ -49,7 +49,7 @@ describe("Projects", () => {
     const narrative = screen.getByRole("tab", { name: /narrative/ });
     expect(cv).toHaveAttribute("aria-selected", "true");
     expect(within(cv).getByLabelText("1 need you")).toBeInTheDocument();
-    expect(within(narrative).getByLabelText("running")).toBeInTheDocument();
+    expect(within(narrative).getByRole("img", { name: "running" })).toHaveClass("ff");
     await user.click(narrative);
     expect(narrative).toHaveAttribute("aria-selected", "true");
     expect(cv).toHaveClass("attn");
@@ -88,6 +88,13 @@ describe("Projects", () => {
       "Done1",
     ]);
     expect(row(/Pinned one, Idle, pinned/)).toBeInTheDocument();
+    // A running chat's row glows, with fireflies for its dot; an idle one keeps its dot (B80).
+    expect(row(/Busy one, Running/)).toHaveClass("rglow");
+    expect(row(/Busy one, Running/).querySelector(".ff")).not.toBeNull();
+    expect(row(/Busy one, Running/).querySelector(".dot")).toBeNull();
+    expect(row(/Pinned one, Idle/)).not.toHaveClass("rglow");
+    expect(row(/Pinned one, Idle/).querySelector(".ff")).toBeNull();
+    expect(row(/Pinned one, Idle/).querySelector(".dot")).not.toBeNull();
     expect(screen.queryByText("Shelved")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Archived/ }));
     expect(screen.getByText("Shelved")).toBeInTheDocument();

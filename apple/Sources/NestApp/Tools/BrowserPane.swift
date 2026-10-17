@@ -305,7 +305,7 @@ struct LocalServerList: View {
                 }
             } else {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                     Text("Looking for servers")
                 }
                 .font(.ui(TypeSize.ui))

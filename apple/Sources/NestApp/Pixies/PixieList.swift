@@ -275,6 +275,7 @@ private struct PixieRow: View {
             } else if waiting > 0 {
                 CountBadge(count: waiting, urgent: true)
             } else if running {
+                // The sprite beside it hops while the pixie works: a plain dot here.
                 StatusDot(tone: .running)
             }
         }

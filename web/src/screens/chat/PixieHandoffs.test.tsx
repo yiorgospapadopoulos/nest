@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { NestEvent, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { detail, event, pixie, prStatus, repo, session } from "../../test/fixtures.ts";
+import { check, detail, event, pixie, prStatus, repo, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
@@ -108,8 +108,10 @@ describe("cards in a pixie's chat (B41)", () => {
     const shown = await screen.findByRole("group", { name: "Chat: Check the form" });
     expect(shown).toHaveTextContent("cv-page");
     expect(shown).toHaveTextContent("Running");
+    expect(shown.querySelector(".sp.s-run > .ff")).not.toBeNull();
     push({ id: 9, session_id: "s1", type: "session.state", payload: { state: "failed" } });
     expect(shown).toHaveTextContent("Failed");
+    expect(shown.querySelector(".sp.s-fail > .dot")).not.toBeNull();
 
     await user.click(within(shown).getByRole("button", { name: "Open" }));
     expect(await screen.findByRole("region", { name: "Check the form" })).toBeInTheDocument();
@@ -139,7 +141,11 @@ describe("cards in a pixie's chat (B41)", () => {
           id: "s2",
           title: "Fix the footer",
           pr_url: "https://github.com/me/cv-page/pull/8",
-          pr: prStatus({ number: 8, review_decision: "COMMENTED" }),
+          pr: prStatus({
+            number: 8,
+            review_decision: "COMMENTED",
+            checks: [check("unit", "pending")],
+          }),
         }),
         session({ id: "s3", title: "Tidy", pr_url: "https://github.com/me/cv-page/pull/9" }),
       ],
@@ -151,9 +157,11 @@ describe("cards in a pixie's chat (B41)", () => {
     expect(first).toHaveTextContent("#7 Validate the form");
     expect(first).toHaveTextContent("checks passed, approved");
     expect(within(first).getByRole("link", { name: "GitHub" })).toHaveAttribute("href", url);
-    expect(screen.getByRole("group", { name: "Pull request: Fix the footer" })).toHaveTextContent(
-      "checks passed, commented",
-    );
+    expect(first.querySelector(".pxcm > .dot.s-rev")).not.toBeNull();
+    // Checks still running show fireflies (B80).
+    const running = screen.getByRole("group", { name: "Pull request: Fix the footer" });
+    expect(running).toHaveTextContent("checks running, commented");
+    expect(running.querySelector(".pxcm > .ff")).not.toBeNull();
     const unread = screen.getByRole("group", { name: "Pull request: Tidy" });
     expect(unread).toHaveTextContent("#9 Tidy");
     expect(unread).toHaveTextContent("status not read yet");

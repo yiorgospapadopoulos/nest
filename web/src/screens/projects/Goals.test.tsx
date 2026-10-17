@@ -75,13 +75,16 @@ describe("the project's goals (B47)", () => {
       goalsRegion().compareDocumentPosition(firstGroup) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
+    // A running chat's goal shows fireflies, any other its dot (B80).
     expect(
-      within(goalsRegion()).getByRole("button", { name: "Fix the header: no plan yet, Running" }),
-    ).toBeInTheDocument();
+      within(goalsRegion()).getByRole("button", { name: "Fix the header: no plan yet, Running" })
+        .firstElementChild,
+    ).toHaveClass("ff");
     expect(within(goalsRegion()).getByText("No plan yet")).toBeInTheDocument();
     expect(
-      within(goalsRegion()).getByRole("button", { name: "Tidy styles: 1 of 3 done, Idle" }),
-    ).toBeInTheDocument();
+      within(goalsRegion()).getByRole("button", { name: "Tidy styles: 1 of 3 done, Idle" })
+        .firstElementChild,
+    ).toHaveClass("dot s-idle");
     const items = within(steps("Tidy styles")).getAllByRole("listitem");
     expect(items.map((li) => li.textContent)).toEqual([
       "done: Read the form",

@@ -219,7 +219,7 @@ private struct ArtifactReader: View {
                         ArtifactDocument(content: content)
                             .id(selection)
                     } else {
-                        ProgressView().controlSize(.small)
+                        Fireflies(height: 14)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }

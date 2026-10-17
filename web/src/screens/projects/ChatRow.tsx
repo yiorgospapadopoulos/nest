@@ -24,6 +24,7 @@ interface Props {
 export function ChatRow({ session, status, onOpen, onActions }: Props) {
   const { state } = useStore();
   const gestures = useRowGestures(onOpen, onActions);
+  const running = status.tone === "run";
   const starter = session.started_by_pixie;
   const startedBy = starter === null ? "" : `, ${startedByText(state.pixies[starter]?.name)}`;
   const place = sessionPlace(
@@ -36,7 +37,12 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
     placeLabel(place);
   return (
     <div className="lrow">
-      <button className="row" aria-label={label} data-chat={session.id} {...gestures}>
+      <button
+        className={running ? "row rglow" : "row"}
+        aria-label={label}
+        data-chat={session.id}
+        {...gestures}
+      >
         <Dot tone={status.tone} />
         <span className="rbody">
           <span className="rt">{session.title}</span>
