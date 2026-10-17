@@ -20,6 +20,8 @@ import type {
   TrackedAgent,
   TrackedTask,
   UsageLimits,
+  UsagePeriod,
+  PeriodUnit,
   ClaudeAccount,
   ClaudeCodeInfo,
 } from "../api/types.ts";
@@ -240,6 +242,17 @@ export function reduce(state: State, action: Action): State {
       return { ...state, connectors: action.connectors };
     case "limits":
       return { ...state, limits: action.limits };
+    case "usageView": {
+      const { period } = state.usage;
+      const kept = period !== null && shows(period, action.unit, action.date) ? period : null;
+      return { ...state, usage: { unit: action.unit, date: action.date, period: kept } };
+    }
+    case "usagePeriod": {
+      const { unit, date } = state.usage;
+      // A period that arrives after moving on is dropped.
+      if (!shows(action.period, unit, date)) return state;
+      return { ...state, usage: { ...state.usage, period: action.period } };
+    }
     case "notifications":
       return { ...state, notifications: action.notifications };
     case "models":
@@ -675,6 +688,12 @@ function omit<T>(record: Record<string, T>, id: string): Record<string, T> {
 }
 
 /** The reported windows; one the event leaves out keeps its last report, as on the daemon. */
+/** Whether `period` is the `unit` holding `date`, or the current one when `date` is null. */
+function shows(period: UsagePeriod, unit: PeriodUnit, date: string | null): boolean {
+  if (period.unit !== unit) return false;
+  return date === null ? period.current : period.start <= date && date <= period.end;
+}
+
 function limitsOf(payload: JsonObject, ts: string, previous: UsageLimits | null): UsageLimits {
   const window = (value: JsonValue | undefined, last: LimitWindow | null): LimitWindow | null => {
     const w = obj(value);

@@ -25,6 +25,8 @@ import type {
   TrackedAgent,
   TrackedTask,
   UsageLimits,
+  UsagePeriod,
+  PeriodUnit,
   ClaudeAccount,
   ClaudeCodeInfo,
   GithubAccount,
@@ -36,6 +38,16 @@ import type {
   StuckSettings,
   UsageSettings,
 } from "../api/types.ts";
+
+/**
+ * The usage period shown in Settings, shared by the Agents page and its breakdown (B84):
+ * the unit, a day in it (null: the current one) and the period once loaded.
+ */
+export interface UsageView {
+  unit: PeriodUnit;
+  date: string | null;
+  period: UsagePeriod | null;
+}
 
 export type AuthState = "loading" | "ready" | "unpaired" | "forbidden" | "offline";
 
@@ -165,6 +177,7 @@ export interface State {
   bash: Record<string, BashRun[]>;
   connectors: Connector[] | null;
   limits: UsageLimits | null;
+  usage: UsageView;
   // The daemon's notification rules, once the Account tab asked for them.
   notifications: NotificationSettings | null;
   // Claude Code's models in its order, once asked for.
@@ -210,6 +223,7 @@ export const initialState: State = {
   bash: {},
   connectors: null,
   limits: null,
+  usage: { unit: "month", date: null, period: null },
   notifications: null,
   models: null,
   account: null,
@@ -280,6 +294,8 @@ export type Action =
   | { type: "bashSent"; id: string; runIds: number[] }
   | { type: "connectors"; connectors: Connector[] }
   | { type: "limits"; limits: UsageLimits }
+  | { type: "usageView"; unit: PeriodUnit; date: string | null }
+  | { type: "usagePeriod"; period: UsagePeriod }
   | { type: "notifications"; notifications: NotificationSettings }
   | { type: "models"; models: ModelOption[] }
   | { type: "account"; account: AccountInfo }

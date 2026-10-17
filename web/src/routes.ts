@@ -1,5 +1,6 @@
 // App paths, so notifications can open an item and a reload lands where the user was:
 // /inbox, /projects, /settings, /settings/<page>, /settings/projects/<project>,
+// /settings/agents/usage (the usage breakdown, B84),
 // /chat/<session id> and /pixie/<pixie id>. /account, the Settings tab's old name, still
 // opens Settings (B81).
 
@@ -19,8 +20,8 @@ export const SETTINGS_PAGES = [
 
 export type SettingsPageId = (typeof SETTINGS_PAGES)[number];
 
-// A Settings page, or a project's page in Settings.
-export type SettingsPage = { page: SettingsPageId } | { project: string };
+// A Settings page, a project's page in Settings, or the usage breakdown under Agents.
+export type SettingsPage = { page: SettingsPageId } | { project: string } | { detail: "usage" };
 
 export interface Route {
   tab: Tab;
@@ -50,6 +51,9 @@ function settingsRoute(rest: string[]): Route {
     const project = decoded(second);
     return project === null ? INBOX : { tab: "settings", chat: null, settings: { project } };
   }
+  if (first === "agents" && second === "usage" && more.length === 0) {
+    return { tab: "settings", chat: null, settings: { detail: "usage" } };
+  }
   const page = SETTINGS_PAGES.find((id) => id === first);
   return page !== undefined && second === undefined
     ? { tab: "settings", chat: null, settings: { page } }
@@ -78,6 +82,7 @@ export function routePath({ tab, chat, pixie, settings }: Route): string {
   if (pixie !== undefined) return `/pixie/${encodeURIComponent(pixie)}`;
   if (chat !== null) return `/chat/${encodeURIComponent(chat)}`;
   if (tab === "settings" && settings !== undefined) {
+    if ("detail" in settings) return "/settings/agents/usage";
     return "page" in settings
       ? `/settings/${settings.page}`
       : `/settings/projects/${encodeURIComponent(settings.project)}`;

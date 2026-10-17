@@ -4,7 +4,7 @@ import { clockTime, percent, resetLabel } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
 import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
-import { UsageCalendar } from "./UsageCalendar.tsx";
+import { UsagePeriodCard } from "./UsagePeriodCard.tsx";
 
 // Numbers older than this are shown dimmed.
 const STALE_MS = 10 * 60_000;
@@ -20,10 +20,10 @@ function refreshLabel(minutes: number): string {
 }
 
 /**
- * The subscription windows Claude reports, the month Nest counted itself, and when the Mac
- * checks them and warns (D104).
+ * The subscription windows Claude reports, the periods Nest counted itself (B84), and when
+ * the Mac checks the windows and warns (D104).
  */
-export function UsageLimits() {
+export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   const { state, actions } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const limits = state.limits;
@@ -36,27 +36,44 @@ export function UsageLimits() {
     setRefreshing(false);
   };
 
+  // One time for both windows: the older report, so a stale one shows.
+  const reported = [limits?.five_hour, limits?.seven_day]
+    .filter((w): w is LimitWindow => w != null)
+    .map((w) => new Date(w.updated_at))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  const stale = reported !== undefined && now.getTime() - reported.getTime() > STALE_MS;
+
   return (
     <>
       <Section
-        title="Usage limits"
+        title="Usage"
         tools={
-          <button
-            className="lnk"
-            aria-label="Refresh usage"
-            disabled={refreshing}
-            onClick={() => void refresh()}
-          >
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
+          <>
+            {reported !== undefined && (
+              <span
+                className={stale ? "uasof asof stale" : "uasof asof"}
+                title={stale ? "More than 10 minutes old" : undefined}
+              >
+                as of {clockTime(reported)}
+              </span>
+            )}
+            <button
+              className="lnk ulnk"
+              aria-label="Refresh usage"
+              disabled={refreshing}
+              onClick={() => void refresh()}
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+          </>
         }
       >
         <div className="pad">
-          <Meter label="5 hour window" window={limits?.five_hour ?? null} now={now} />
+          <Meter label="5 hour" window={limits?.five_hour ?? null} now={now} />
           <Meter label="Weekly" window={limits?.seven_day ?? null} now={now} />
-          <UsageCalendar />
         </div>
       </Section>
+      <UsagePeriodCard onDetails={onDetails} />
       {settings === null ? <Loading /> : <Checks settings={settings} />}
     </>
   );
@@ -68,7 +85,7 @@ function Checks({ settings }: { settings: UsageSettings }) {
     void actions.saveSection("usage", { ...settings, ...change }, settings);
   const warn = settings.warn_percent;
   return (
-    <Section>
+    <Section className="useq">
       <SelectRow
         label="Check limits"
         value={settings.refresh_minutes}
@@ -118,8 +135,6 @@ function Meter({ label, window, now }: { label: string; window: LimitWindow | nu
     );
   }
   const used = percent(window.utilization);
-  const updated = new Date(window.updated_at);
-  const stale = now.getTime() - updated.getTime() > STALE_MS;
   return (
     <div className="urow">
       <div className="u1">
@@ -127,7 +142,7 @@ function Meter({ label, window, now }: { label: string; window: LimitWindow | nu
         <b>{used}%</b>
       </div>
       <div
-        className="meter"
+        className="meter sm ink"
         role="meter"
         aria-label={`${label} used`}
         aria-valuenow={used}
@@ -136,15 +151,7 @@ function Meter({ label, window, now }: { label: string; window: LimitWindow | nu
       >
         <i style={{ width: `${String(used)}%` }} />
       </div>
-      <div className="u2">
-        <span>{resetLabel(window.resets_at, now)}</span>
-        <span
-          className={stale ? "asof stale" : "asof"}
-          title={stale ? "More than 10 minutes old" : undefined}
-        >
-          as of {clockTime(updated)}
-        </span>
-      </div>
+      <div className="u2">{resetLabel(window.resets_at, now)}</div>
     </div>
   );
 }

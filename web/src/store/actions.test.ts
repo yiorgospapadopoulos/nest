@@ -10,6 +10,7 @@ import {
   pixie,
   session,
   team,
+  usagePeriod,
 } from "../test/fixtures.ts";
 import { FOLDED_TEAMS_KEY, loadFoldedTeams } from "./devicePrefs.ts";
 import { createActions } from "./actions.ts";
@@ -383,5 +384,24 @@ describe("artifact actions (B79)", () => {
     expect(api.artifact).toHaveBeenCalledTimes(1);
     await actions.loadArtifact("a1");
     expect(api.artifact).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("usage actions", () => {
+  it("shows a period and loads it, toasting a failure (B84)", async () => {
+    const { api, dispatched, actions } = setup();
+    actions.viewUsage("week", "2026-10-14");
+    await actions.loadUsage("week", "2026-10-14");
+    expect(api.usagePeriod).toHaveBeenCalledWith("week", "2026-10-14");
+    expect(dispatched).toEqual([
+      { type: "usageView", unit: "week", date: "2026-10-14" },
+      { type: "usagePeriod", period: usagePeriod() },
+    ]);
+    api.usagePeriod.mockRejectedValueOnce(new ApiError(422, "bad date"));
+    await actions.loadUsage("week", "x");
+    expect(dispatched.at(-1)).toEqual({
+      type: "toast",
+      toast: { id: 1, text: "bad date", tone: "error" },
+    });
   });
 });

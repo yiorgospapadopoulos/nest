@@ -834,121 +834,122 @@ a.csign {
   cursor: default;
   opacity: 0.6;
 }
-.ulbl {
-  font-size: 0.7647rem;
-  font-weight: 650;
-  margin: 4px 0 0;
-}
-.utot {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin: 6px 0 12px;
-}
-.utot div {
-  border-radius: var(--r-item);
-  background: var(--fill);
-  padding: 8px 10px;
-}
-.utot b {
-  display: block;
-  font-size: 1.1176rem;
-  letter-spacing: -0.01em;
-}
-.utot small {
-  font-size: 0.7059rem;
+/* The usage detail (B84): a period switch, its title between arrows, bars, totals. */
+.pg-h .uasof {
+  margin-left: auto;
+  font-weight: 500;
   color: var(--t3);
 }
-.cal {
-  margin: 2px 0 10px;
+.pg-h .uasof + .lnk {
+  margin-left: 0;
 }
-.cal-h {
+/* A 44 point tap target around the header's Refresh. */
+.ulnk {
+  position: relative;
+  overflow: visible;
+}
+.ulnk::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+.meter.ink i {
+  background: var(--t1);
+}
+.urow:last-child {
+  margin-bottom: 0;
+}
+.useq {
+  margin-top: 12px;
+}
+.useg {
+  display: flex;
+  width: 100%;
+}
+.useg button {
+  flex: 1 1 0;
+  padding: 0 4px;
+}
+.unav {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  justify-content: space-between;
+  margin: 6px -10px 2px;
 }
-.cal-h b {
+.unav b {
   flex: 1;
   text-align: center;
   font-size: 0.8824rem;
 }
-.cal-g {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
+.ubars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 72px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hair2);
+  touch-action: pan-y;
+  cursor: pointer;
 }
-.cal-w {
+.ubar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 1px;
+  background: var(--fill2);
+}
+.ubar.on {
+  background: var(--t1);
+  opacity: 0.85;
+}
+.ubar.fut {
+  background: transparent;
+}
+.ubar.sel {
+  opacity: 1;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.uticks {
+  display: flex;
+  justify-content: space-between;
+  min-height: 18px;
+  margin-top: 4px;
   font-size: 0.6471rem;
   color: var(--t3);
-  text-align: center;
-  font-weight: 600;
-  padding-bottom: 2px;
-}
-.cd {
-  position: relative;
-  height: 44px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: var(--fill);
-  padding: 4px 5px;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  cursor: pointer;
-  color: var(--t1);
-  overflow: hidden;
-}
-.cd::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  opacity: var(--h, 0);
-  border-radius: inherit;
-}
-.cd > span {
-  position: relative;
-}
-.cd .n,
-.cd .v {
-  font-size: 0.6176rem;
-  line-height: 1;
-}
-.cd .n {
-  color: var(--t2);
-}
-.cd .v {
-  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
-.cd.hi .n,
-.cd.hi .v {
-  color: var(--on-accent);
-}
-.cd.fut {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--hair);
-  cursor: default;
-}
-.cd.fut .n {
-  color: var(--t3);
-}
-.cd.today {
-  box-shadow: inset 0 0 0 1.5px var(--t1);
-}
-.cd[aria-pressed="true"] {
-  box-shadow: inset 0 0 0 2px var(--t1);
-}
-.cdet {
-  min-height: 36px;
-  font-size: 0.7647rem;
-  color: var(--t2);
-  margin: 8px 2px 4px;
-}
-.cdet b {
+.uticks .utip {
   color: var(--t1);
+  font-weight: 600;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.sval.utot {
+  color: var(--t1);
+  font-weight: 650;
+}
+.ushr {
+  width: 48px;
+  flex: none;
+  text-align: right;
+  font-size: 0.7647rem;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.snav .stot {
+  justify-self: end;
+  font-size: 0.9412rem;
+  font-variant-numeric: tabular-nums;
+}
+.uproj .u1 {
+  color: var(--t1);
+}
+.uprobe {
+  margin: 10px 16px 0;
 }
 .swl,
 .wpl {

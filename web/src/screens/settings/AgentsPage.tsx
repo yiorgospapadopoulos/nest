@@ -19,14 +19,17 @@ const MODES: Choice<SessionMode>[] = [
   { value: "worktree", label: "New worktree" },
 ];
 
-/** New chats, usage limits and stuck chats (B81); each change is saved to the Mac at once. */
-export function AgentsPage() {
+/**
+ * New chats, usage and stuck chats (B81); each change is saved to the Mac at once. The usage
+ * section's Details opens the breakdown (B84).
+ */
+export function AgentsPage({ onUsageDetails }: { onUsageDetails: () => void }) {
   const { state } = useStore();
   const defaults = state.agentDefaults;
   return (
     <>
       {defaults === null ? <Loading title="New chats" /> : <Choices defaults={defaults} />}
-      <UsageLimits />
+      <UsageLimits onDetails={onUsageDetails} />
       <StuckChats />
     </>
   );

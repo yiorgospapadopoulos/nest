@@ -8,15 +8,17 @@ import { Icon } from "../../ui/Icon.tsx";
 export function Section({
   title,
   tools,
+  className,
   children,
 }: {
   title?: string;
   tools?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   const id = useId();
   return (
-    <section aria-labelledby={title === undefined ? undefined : id}>
+    <section className={className} aria-labelledby={title === undefined ? undefined : id}>
       {title !== undefined && (
         <h2 className="pg-h" id={id}>
           {title}
@@ -187,5 +189,34 @@ export function LinkRow({
       </span>
       <Icon name="chevr" className="schev" />
     </button>
+  );
+}
+
+/** A page's bar: back on the left, the title in the middle, anything else on the right. */
+export function PageFrame({
+  title,
+  back,
+  onBack,
+  extra,
+  children,
+}: {
+  title: string;
+  back: string;
+  onBack: () => void;
+  extra?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="snav">
+        <button className="back" aria-label={`Back to ${back}`} onClick={onBack} autoFocus>
+          <Icon name="chevl" />
+          <span>{back}</span>
+        </button>
+        <h1 className="snt">{title}</h1>
+        {extra}
+      </div>
+      {children}
+    </>
   );
 }

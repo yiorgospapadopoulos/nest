@@ -11,6 +11,9 @@ describe("routes", () => {
     ["/settings/agents", { tab: "settings", chat: null, settings: { page: "agents" } }],
     ["/settings/elsewhere", { tab: "inbox", chat: null }],
     ["/settings/agents/x", { tab: "inbox", chat: null }],
+    ["/settings/agents/usage", { tab: "settings", chat: null, settings: { detail: "usage" } }],
+    ["/settings/agents/usage/x", { tab: "inbox", chat: null }],
+    ["/settings/devices/usage", { tab: "inbox", chat: null }],
     [
       "/settings/projects/cv%20page",
       { tab: "settings", chat: null, settings: { project: "cv page" } },
@@ -38,6 +41,7 @@ describe("routes", () => {
       { tab: "settings", chat: null },
       { tab: "settings", chat: null, settings: { page: "devices" } },
       { tab: "settings", chat: null, settings: { project: "cv page/x" } },
+      { tab: "settings", chat: null, settings: { detail: "usage" } },
       { tab: "projects", chat: "s/1 x" },
       { tab: "projects", chat: null, pixie: "p/1 x" },
     ] as const) {

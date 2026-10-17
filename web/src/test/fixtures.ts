@@ -17,7 +17,7 @@ import type {
   NestEvent,
   ModelList,
   ModelOption,
-  MonthUsage,
+  UsagePeriod,
   NotificationSettings,
   PrCheck,
   PrStatus,
@@ -493,24 +493,39 @@ export function connector(overrides: Partial<Connector> = {}): Connector {
   };
 }
 
-export function month(year: number, monthNumber: number): MonthUsage {
-  const days = new Date(year, monthNumber, 0).getDate();
+const totals = (input: number, output: number, write: number, read: number) => ({
+  input_tokens: input,
+  output_tokens: output,
+  cache_creation_input_tokens: write,
+  cache_read_input_tokens: read,
+  total: input + output + write + read,
+});
+
+/** October 2026, by the Mac's calendar (UTC+3): two busy days, the 15th and the 16th. */
+export function usagePeriod(overrides: Partial<UsagePeriod> = {}): UsagePeriod {
   return {
-    year,
-    month: monthNumber,
-    sessions: 4,
-    tokens: {
-      input_tokens: 1,
-      output_tokens: 1,
-      cache_creation_input_tokens: 1,
-      cache_read_input_tokens: 1,
-      total: 2_400_000,
-    },
-    days: Array.from({ length: days }, (_, i) => ({
-      date: `${String(year)}-${String(monthNumber).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
-      tokens: i === 0 ? 1_200_000 : i === 1 ? 300 : 0,
-      sessions: i === 0 ? 3 : i === 1 ? 1 : 0,
+    unit: "month",
+    start: "2026-10-01",
+    end: "2026-10-31",
+    current: true,
+    sessions: 74,
+    tokens: totals(1_600, 105_000, 2_800_000, 12_093_400),
+    subagents: totals(100, 9_900, 290_000, 1_300_000),
+    bars: Array.from({ length: 31 }, (_, i) => ({
+      start: `2026-10-${String(i + 1).padStart(2, "0")}T00:00:00+03:00`,
+      tokens: i === 14 ? 3_650_000 : i === 15 ? 2_180_000 : 0,
+      sessions: i === 14 ? 12 : i === 15 ? 1 : 0,
     })),
+    projects: [
+      { name: "DEMO", tokens: 7_160_000, pixies: false },
+      { name: "CV-page", tokens: 2_210_000, pixies: false },
+      { name: "b59-live", tokens: 1_390_000, pixies: false },
+      { name: "Pixies", tokens: 1_120_000, pixies: true },
+      { name: "notes", tokens: 1_000_000, pixies: false },
+      { name: "site", tokens: 520_000, pixies: false },
+    ],
+    probes: { count: 12, tokens: 5_000 },
+    ...overrides,
   };
 }
 
