@@ -263,17 +263,24 @@ describe("tap targets", () => {
     await user.click(screen.getByRole("button", { name: "Accounts" }));
     reach(await screen.findByRole("button", { name: "Show email" }), "height");
     await user.click(screen.getByRole("button", { name: "Back to Settings" }));
+    await user.click(screen.getByRole("button", { name: "Storage" }));
+    // The Storage page's buttons (B86).
+    reach(await screen.findByRole("button", { name: "Review large attachments" }), "height");
+    reach(screen.getByRole("button", { name: "Rebuild" }), "height");
+    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
     await user.click(screen.getByRole("button", { name: "Agents" }));
     // A segmented control's segments.
     reach(await screen.findByRole("button", { name: "Current branch" }), "height");
-    // The usage section's controls (B84).
-    reach(screen.getByRole("button", { name: "Refresh usage" }), "height");
+    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
+    await user.click(screen.getByRole("button", { name: "Usage" }));
+    // The usage page's controls (B84, B86).
+    reach(await screen.findByRole("button", { name: "Refresh usage" }), "height");
     reach(screen.getByRole("button", { name: "Week" }), "height");
     reach(screen.getByRole("button", { name: "Previous period" }));
     reach(screen.getByRole("button", { name: "Next period" }));
     reach(screen.getByRole("button", { name: "Details" }), "height");
     await user.click(screen.getByRole("button", { name: "Details" }));
-    reach(screen.getByRole("button", { name: "Back to Agents" }), "height");
+    reach(screen.getByRole("button", { name: "Back to Usage" }), "height");
   });
 
   it("are at least 44 points for a new chat's place selector", async () => {

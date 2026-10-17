@@ -2,7 +2,6 @@ import type { AgentDefaults, Effort, PermissionMode, SessionMode } from "../../a
 import { useStore } from "../../store/context.ts";
 import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
 import { StuckChats } from "./StuckChats.tsx";
-import { UsageLimits } from "./UsageLimits.tsx";
 import {
   CLAUDE_CODE_MODE,
   CLAUDE_DEFAULT,
@@ -19,17 +18,13 @@ const MODES: Choice<SessionMode>[] = [
   { value: "worktree", label: "New worktree" },
 ];
 
-/**
- * New chats, usage and stuck chats (B81); each change is saved to the Mac at once. The usage
- * section's Details opens the breakdown (B84).
- */
-export function AgentsPage({ onUsageDetails }: { onUsageDetails: () => void }) {
+/** New chats and stuck chats (B81); each change is saved to the Mac at once. */
+export function AgentsPage() {
   const { state } = useStore();
   const defaults = state.agentDefaults;
   return (
     <>
       {defaults === null ? <Loading title="New chats" /> : <Choices defaults={defaults} />}
-      <UsageLimits onDetails={onUsageDetails} />
       <StuckChats />
     </>
   );

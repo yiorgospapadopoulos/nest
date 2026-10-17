@@ -13,6 +13,11 @@ describe("routes", () => {
     ["/settings/agents/x", { tab: "inbox", chat: null }],
     ["/settings/agents/usage", { tab: "settings", chat: null, settings: { detail: "usage" } }],
     ["/settings/agents/usage/x", { tab: "inbox", chat: null }],
+    ["/settings/usage", { tab: "settings", chat: null, settings: { page: "usage" } }],
+    ["/settings/storage", { tab: "settings", chat: null, settings: { page: "storage" } }],
+    ["/settings/usage/details", { tab: "settings", chat: null, settings: { detail: "usage" } }],
+    ["/settings/usage/details/x", { tab: "inbox", chat: null }],
+    ["/settings/usage/x", { tab: "inbox", chat: null }],
     ["/settings/devices/usage", { tab: "inbox", chat: null }],
     [
       "/settings/projects/cv%20page",
@@ -48,5 +53,8 @@ describe("routes", () => {
       expect(parseRoute(routePath(route))).toEqual(route);
     }
     expect(routePath({ tab: "inbox", chat: null })).toBe("/inbox");
+    expect(routePath({ tab: "settings", chat: null, settings: { detail: "usage" } })).toBe(
+      "/settings/usage/details",
+    );
   });
 });

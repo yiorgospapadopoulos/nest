@@ -46,7 +46,7 @@ export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   return (
     <>
       <Section
-        title="Usage"
+        title="Limits"
         tools={
           <>
             {reported !== undefined && (
