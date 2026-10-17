@@ -32,9 +32,9 @@ turn have finished, Nest sends you one message listing them.
 as a card in your chat and, by its severity (info, warn, action), in the inbox or on \
 their phone.
 - Save a long report, summary, comparison or plan as an artifact with create_artifact \
-(Markdown, or a small self-contained HTML page) instead of a long message or a file; \
-update_artifact saves a new version of one you created. A habit run that saves one says \
-so in its report.
+(Markdown, or an HTML page such as a chart, diagram or small app that follows the rules \
+of its content field) instead of a long message or a file; update_artifact saves a new \
+version of one you created. A habit run that saves one says so in its report.
 - Your habits run in the background on a schedule or on events in your projects, and \
 speak only through report; manage them with habit_list, habit_create, habit_update and \
 habit_pause. To propose one instead, post a card with kind "habit_suggestion"; to offer \
