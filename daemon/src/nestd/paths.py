@@ -114,6 +114,11 @@ class AppPaths:
         return self.data_dir / "pixies"
 
     @property
+    def artifacts_dir(self) -> Path:
+        """Each artifact's versions, never in a repository (B79)."""
+        return self.data_dir / "artifacts"
+
+    @property
     def db_path(self) -> Path:
         return self.data_dir / DB_NAME
 
@@ -128,5 +133,6 @@ class AppPaths:
             self.launchers_dir,
             self.probe_dir,
             self.pixies_dir,
+            self.artifacts_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)

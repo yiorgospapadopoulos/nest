@@ -4,7 +4,7 @@ import Foundation
 /// note about the result.
 public enum ToolSummary {
     public enum Kind: Sendable, Hashable {
-        case read, edit, terminal, search, agent, web, other
+        case read, edit, terminal, search, agent, web, artifact, other
     }
 
     static let resultLimit = 40
@@ -17,8 +17,14 @@ public enum ToolSummary {
         case "Grep", "Glob": .search
         case "Task", "Agent": .agent
         case "WebFetch", "WebSearch": .web
+        case ArtifactTools.create, ArtifactTools.update: .artifact
         default: .other
         }
+    }
+
+    /// The tool's name as a row shows it: Nest's artifact tools in words.
+    public static func name(of tool: String) -> String {
+        kind(of: tool) == .artifact ? ArtifactText.toolTitle(tool) : tool
     }
 
     public static func argument(of call: ToolCall) -> String {
@@ -35,6 +41,9 @@ public enum ToolSummary {
         case .agent:
             return [text("subagent_type"), text("description")].compactMap { $0 }
                 .joined(separator: ": ")
+        // Never the content, which can be a whole document.
+        case .artifact:
+            return text("title") ?? ""
         default:
             let keys = ["command", "file_path", "notebook_path", "path", "pattern", "url", "query"]
             return keys.lazy.compactMap(text).first ?? ""

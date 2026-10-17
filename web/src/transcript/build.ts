@@ -1,6 +1,7 @@
 import { list, obj, str, toolArg } from "../api/payloads.ts";
 import type {
   Approval,
+  ArtifactKind,
   HabitSchedule,
   HabitTrigger,
   NestEvent,
@@ -102,6 +103,17 @@ export type CardItem = { kind: "card"; key: string } & (
   | { card: "habit_suggestion"; habit: SuggestedHabit }
 );
 
+/** An artifact the chat saved, at the version this save made (B79). */
+export interface ArtifactItem {
+  kind: "artifact";
+  key: string;
+  artifactId: string;
+  version: number;
+  title: string;
+  artifactKind: ArtifactKind;
+  action: "created" | "updated";
+}
+
 export type TranscriptItem =
   // `from`: the pixie that sent it into this chat (B41).
   | { kind: "user"; key: string; text: string; attachments: string[]; from?: string }
@@ -109,6 +121,7 @@ export type TranscriptItem =
   // habit run reported (B42, titled "Habit report").
   | { kind: "report"; key: string; text: string; title?: string }
   | CardItem
+  | ArtifactItem
   | { kind: "assistant"; key: string; text: string }
   | BashItem
   | ToolItem
@@ -141,6 +154,12 @@ const NO_TASKS: ReadonlySet<string> = new Set();
 const NO_PIXIES: ReadonlyMap<string, Pixie> = new Map();
 // The tools that call a subagent, by `input.subagent_type`.
 const AGENT_TOOLS = new Set(["Task", "Agent"]);
+// The tools that save artifacts (B79), with the name their rows show. Their input carries
+// the whole document, which a row never shows; a saved one shows as its card instead.
+const ARTIFACT_TOOLS: ReadonlyMap<string, string> = new Map([
+  ["mcp__nest__create_artifact", "Save artifact"],
+  ["mcp__nest__update_artifact", "Update artifact"],
+]);
 // Reply buttons a choices card shows at most (B42).
 const MAX_CHOICES = 4;
 const TRIGGERS: ReadonlySet<string> = new Set(["stuck", "failed", "review_ready", "ci_failed"]);
@@ -171,6 +190,9 @@ export function buildTranscript(
   const tools = new Map<string, ToolItem>();
   // The pixie calls by tool use id, which their own messages name as their parent.
   const calls = new Map<string, PixieCallItem>();
+  // Artifact saves by tool use id, and those that succeeded, whose cards show instead.
+  const saves = new Set<string>();
+  const saved = new Set<string>();
   // Choices cards the user has not written after yet.
   let open: { answered: boolean }[] = [];
   // The open turn's result: a turn a queued message ends has no other end (D045). An error
@@ -208,7 +230,13 @@ export function buildTranscript(
       }
       case "session.message":
         if (p.parent_tool_use_id === null || p.parent_tool_use_id === undefined) {
-          addBlocks(items, { tools, calls, pixies }, list(p.blocks).map(obj), key, root);
+          addBlocks(
+            items,
+            { tools, calls, pixies, saves, saved },
+            list(p.blocks).map(obj),
+            key,
+            root,
+          );
         } else {
           const parent = str(p.parent_tool_use_id) ?? "";
           const steps = calls.get(parent)?.steps ?? agentSteps(tools.get(parent));
@@ -259,11 +287,32 @@ export function buildTranscript(
         if (hook !== null) items.push(hook);
         break;
       }
+      case "session.artifact": {
+        const artifact = artifactItem(key, p);
+        if (artifact !== null) items.push(artifact);
+        break;
+      }
       default:
         note(items, key, systemText(e));
     }
   }
-  return groupTools(items);
+  return groupTools(items.filter((item) => item.kind !== "tool" || !saved.has(item.id)));
+}
+
+/** A saved artifact's card from its event; null for a malformed one. */
+function artifactItem(key: string, p: JsonObject): ArtifactItem | null {
+  const artifactId = str(p.artifact_id);
+  const version = num(p.version);
+  if (artifactId === null || version === null) return null;
+  return {
+    kind: "artifact",
+    key,
+    artifactId,
+    version,
+    title: str(p.title) ?? "Artifact",
+    artifactKind: p.kind === "html" ? "html" : "markdown",
+    action: p.action === "updated" ? "updated" : "created",
+  };
 }
 
 /** The steps of an Agent call's subagent, started on its first message; null for others. */
@@ -488,6 +537,17 @@ interface Known {
   tools: Map<string, ToolItem>;
   calls: Map<string, PixieCallItem>;
   pixies: ReadonlyMap<string, Pixie>;
+  saves: Set<string>;
+  saved: Set<string>;
+}
+
+/** A call's name and argument for its row: an artifact save by name and title only. */
+function callLabel(block: JsonObject, root: string | null): { name: string; arg: string } {
+  const name = str(block.name) ?? "Tool";
+  const input = obj(block.input);
+  const artifact = ARTIFACT_TOOLS.get(name);
+  if (artifact !== undefined) return { name: artifact, arg: str(input.title) ?? "" };
+  return { name, arg: toolArg(input, root) };
 }
 
 /** The pixie an agent call goes to, if it names one. */
@@ -507,8 +567,7 @@ function addSteps(steps: SubStep[], blocks: JsonObject[], key: string, root: str
       const images = imagesOf(block);
       if (images.length > 0) steps.push({ kind: "images", key: stepKey, images });
     } else if (block.type === "tool_use") {
-      const arg = toolArg(obj(block.input), root);
-      const name = str(block.name) ?? "Tool";
+      const { name, arg } = callLabel(block, root);
       steps.push({ kind: "call", key: stepKey, text: arg ? `${name} ${arg}` : name });
     }
   });
@@ -516,7 +575,7 @@ function addSteps(steps: SubStep[], blocks: JsonObject[], key: string, root: str
 
 function addBlocks(
   items: TranscriptItem[],
-  { tools, calls, pixies }: Known,
+  { tools, calls, pixies, saves, saved }: Known,
   blocks: JsonObject[],
   key: string,
   root: string | null,
@@ -538,8 +597,7 @@ function addBlocks(
         kind: "tool",
         key: blockKey,
         id: str(block.id) ?? blockKey,
-        name: str(block.name) ?? "Tool",
-        arg: toolArg(obj(block.input), root),
+        ...callLabel(block, root),
         result: null,
         detail: null,
         failed: false,
@@ -547,6 +605,7 @@ function addBlocks(
       const diff = editDiff(tool.name, obj(block.input));
       if (diff !== null) tool.diff = diff;
       tools.set(tool.id, tool);
+      if (ARTIFACT_TOOLS.has(str(block.name) ?? "")) saves.add(tool.id);
       const pixie = calledPixie(block, pixies);
       if (pixie !== undefined) {
         const item: PixieCallItem = { kind: "pixie", key: blockKey, pixie, call: tool, steps: [] };
@@ -562,6 +621,7 @@ function addBlocks(
         // An agent's answer comes wrapped by Claude Code; only its report shows.
         const content = AGENT_TOOLS.has(tool.name) ? agentReport(raw) : raw;
         tool.failed = block.is_error === true;
+        if (!tool.failed && saves.has(tool.id)) saved.add(tool.id);
         tool.result = resultSummary(content, tool.failed);
         tool.detail = content.trim() ? content : null;
         const images = imagesOf(block);

@@ -390,18 +390,112 @@ a.chip {
   color: var(--t3);
   line-height: 1.45;
 }
-.spin {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+.ff {
+  --u: calc(var(--ffh) / 12);
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
   flex: none;
-  border: 2px solid var(--run-soft);
-  border-top-color: var(--st-run);
-  animation: spin 0.9s linear infinite;
+  width: calc(16 * var(--u));
+  height: calc(12 * var(--u));
+  color: var(--accent);
 }
-@keyframes spin {
+.ff i {
+  position: absolute;
+  width: calc(3 * var(--u));
+  height: calc(3 * var(--u));
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 calc(4 * var(--u)) calc(1.5 * var(--u)) currentcolor;
+}
+.ff i:nth-child(1) {
+  left: calc(1 * var(--u));
+  top: calc(5 * var(--u));
+  animation: ff1 2.4s ease-in-out infinite;
+}
+.ff i:nth-child(2) {
+  left: calc(7 * var(--u));
+  top: calc(1 * var(--u));
+  animation: ff2 2.9s ease-in-out infinite;
+}
+.ff i:nth-child(3) {
+  left: calc(12 * var(--u));
+  top: calc(8 * var(--u));
+  animation: ff3 2.1s ease-in-out infinite;
+}
+@keyframes ff1 {
+  0%,
+  100% {
+    transform: translate(calc(0 * var(--u)), calc(0 * var(--u))) scale(1);
+    opacity: 1;
+  }
+  30% {
+    transform: translate(calc(4 * var(--u)), calc(-4 * var(--u))) scale(0.75);
+    opacity: 0.55;
+  }
+  60% {
+    transform: translate(calc(6 * var(--u)), calc(1 * var(--u))) scale(1.15);
+    opacity: 1;
+  }
+}
+@keyframes ff2 {
+  0%,
+  100% {
+    transform: translate(calc(0 * var(--u)), calc(0 * var(--u))) scale(0.8);
+    opacity: 0.6;
+  }
+  40% {
+    transform: translate(calc(-4 * var(--u)), calc(5 * var(--u))) scale(1.15);
+    opacity: 1;
+  }
+  70% {
+    transform: translate(calc(3 * var(--u)), calc(6 * var(--u))) scale(0.9);
+    opacity: 0.7;
+  }
+}
+@keyframes ff3 {
+  0%,
+  100% {
+    transform: translate(calc(0 * var(--u)), calc(0 * var(--u))) scale(1.1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-6 * var(--u)), calc(-5 * var(--u))) scale(0.8);
+    opacity: 0.55;
+  }
+}
+/* On an accent fill the accent would vanish; its on colour shows instead. */
+.b-pri .ff {
+  color: var(--on-accent);
+}
+/* A running row: a soft band of the accent sweeps across it. */
+.rglow {
+  position: relative;
+  overflow: hidden;
+}
+.rglow::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 24%, transparent),
+    transparent
+  );
+  border-radius: inherit;
+  pointer-events: none;
+  animation: rowsweep 1.8s ease-in-out infinite;
+}
+@keyframes rowsweep {
+  from {
+    transform: translateX(-100%);
+  }
   to {
-    transform: rotate(360deg);
+    transform: translateX(200%);
   }
 }
 .pico {
@@ -541,8 +635,11 @@ a.chip {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  .spin {
-    border-right-color: var(--st-run);
+  .ff i {
+    animation: none;
+  }
+  .rglow::after {
+    display: none;
   }
 }
 

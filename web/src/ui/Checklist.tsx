@@ -1,5 +1,6 @@
 import type { TrackedTask } from "../api/types.ts";
 import { Icon } from "./Icon.tsx";
+import { Fireflies } from "./Fireflies.tsx";
 
 /** An agent's steps as checkboxes: done, in progress, pending. Deleted ones are left to the caller. */
 export function Checklist({ tasks, label }: { tasks: TrackedTask[]; label?: string }) {
@@ -30,7 +31,7 @@ function TaskItem({ task }: { task: TrackedTask }) {
     return (
       <li className="act">
         <span className="cki" aria-hidden="true">
-          <span className="spin" />
+          <Fireflies />
         </span>
         <span className="x">
           <span className="sr">in progress: </span>

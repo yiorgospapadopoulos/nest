@@ -123,8 +123,8 @@ struct ShellView: View {
     }
 }
 
-/// The Pixies tab, or the current project's sidebar, workspace or board and activity
-/// panel; both over the bottom bar.
+/// The Pixies tab, or the current project's sidebar, workspace, board or artifacts and
+/// activity panel; both over the bottom bar.
 private struct ProjectBody: View {
     @Environment(Shell.self) private var shell
 
@@ -145,11 +145,16 @@ private struct ProjectBody: View {
                         // The board sits on the pane surface; the workspace's panels float
                         // on the bare window, which shows in the gaps between them.
                         Group {
-                            if shell.projectState.view == .board {
+                            switch shell.projectState.view {
+                            case .board:
                                 BoardView()
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .paneSurface()
-                            } else {
+                            case .artifacts:
+                                ArtifactsView()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .paneSurface()
+                            case .workspace:
                                 WorkspaceView()
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .chatBackdrop()
@@ -223,7 +228,7 @@ private struct ConnectionBanner: View {
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     if starting {
-                        ProgressView().controlSize(.small)
+                        Fireflies()
                     } else {
                         Image(systemName: Icon.warning)
                             .foregroundStyle(StatusTone.waiting.color)
@@ -395,7 +400,7 @@ private struct StartupView: View {
             WindowBackground(backdrop: .of(reduceTransparency: reduceTransparency || offscreen))
             VStack(spacing: 10) {
                 if retry == nil {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
                 Text(title).font(.ui(TypeSize.headline, .semibold))
                 if let message {

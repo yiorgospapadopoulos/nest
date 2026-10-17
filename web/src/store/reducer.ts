@@ -1,6 +1,7 @@
 import { contextOf, list, obj, prOf, queuedOf, str, stuckOf } from "../api/payloads.ts";
 import type {
   Approval,
+  Artifact,
   BackgroundSummary,
   Connector,
   Goal,
@@ -22,6 +23,13 @@ import type {
   ClaudeAccount,
   ClaudeCodeInfo,
 } from "../api/types.ts";
+import {
+  withArtifact,
+  withChatsDeleted,
+  withList,
+  withoutArtifact,
+  withSeen,
+} from "./artifacts.ts";
 import {
   draftKey,
   NO_BACKGROUND,
@@ -242,6 +250,14 @@ export function reduce(state: State, action: Action): State {
       return { ...state, agentDefaults: action.defaults };
     case "settings":
       return { ...state, settings: { ...state.settings, ...action.change } };
+    case "artifacts":
+      return withList(state, action.filter, action.artifacts);
+    case "artifact":
+      return withArtifact(state, action.artifact);
+    case "artifactRemoved":
+      return withoutArtifact(state, action.id);
+    case "unseenArtifacts":
+      return { ...state, unseenArtifacts: action.unseen };
     case "toast":
       return { ...state, toast: action.toast };
   }
@@ -295,8 +311,10 @@ export function applyEvent(state: State, event: NestEvent): State {
     case "session.queued":
       // The full list after every change; the last one wins.
       return id === null ? next : { ...next, queued: { ...next.queued, [id]: queuedOf(p.queued) } };
-    case "session.deleted":
-      return removeSession(next, str(p.session_id) ?? "");
+    case "session.deleted": {
+      const deleted = str(p.session_id) ?? "";
+      return withChatsDeleted(removeSession(next, deleted), "session_id", deleted);
+    }
     case "session.rewound":
       return rewound(next, id, p);
     case "approval.created":
@@ -347,8 +365,11 @@ export function applyEvent(state: State, event: NestEvent): State {
       const pixie = p.pixie as unknown as Pixie;
       return { ...next, pixies: { ...next.pixies, [pixie.id]: pixie } };
     }
-    case "pixie.deleted":
-      return withoutPixie(next, str(p.pixie_id) ?? "");
+    case "pixie.deleted": {
+      // Its chats went with it.
+      const deleted = str(p.pixie_id) ?? "";
+      return withChatsDeleted(withoutPixie(next, deleted), "pixie_id", deleted);
+    }
     case "pixie_team.updated": {
       const team = p.team as unknown as PixieTeam;
       return { ...next, teams: { ...next.teams, [team.id]: team } };
@@ -375,9 +396,20 @@ export function applyEvent(state: State, event: NestEvent): State {
       return withSettings(next, { claudeCode: p as unknown as ClaudeCodeInfo });
     case "claude_code.install":
       return withSettings(next, { install: p as unknown as InstallProgress });
+    case "artifact.saved":
+      return withUnseen(withArtifact(next, p.artifact as unknown as Artifact, true), p);
+    case "artifact.seen":
+      return withUnseen(withSeen(next, str(p.artifact_id) ?? ""), p);
+    case "artifact.deleted":
+      return withUnseen(withoutArtifact(next, str(p.artifact_id) ?? ""), p);
     default:
       return next;
   }
+}
+
+/** The badge's count from an artifact event, which carries the new total. */
+function withUnseen(state: State, p: JsonObject): State {
+  return typeof p.unseen === "number" ? { ...state, unseenArtifacts: p.unseen } : state;
 }
 
 /**

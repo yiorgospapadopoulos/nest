@@ -20,6 +20,21 @@ public enum RightCard: String, Sendable, CaseIterable {
 
 public enum ProjectView: String, Sendable {
     case workspace, board
+    /// The artifacts the chats saved, in a reader (B79).
+    case artifacts
+
+    /// The status bar's switch, in order; the Pixies tab has no board.
+    public static func choices(pixies: Bool) -> [ProjectView] {
+        pixies ? [.workspace, .artifacts] : [.workspace, .board, .artifacts]
+    }
+
+    public var title: String {
+        switch self {
+        case .workspace: "Workspace"
+        case .board: "Board"
+        case .artifacts: "Artifacts"
+        }
+    }
 }
 
 /// What a project tab remembers: its workspace and how its panels are arranged.
@@ -518,7 +533,7 @@ public final class AppStore {
     /// How many artifacts the project has; nil while the daemon cannot say, such as one
     /// without artifacts yet (B79).
     public func artifactCount(of name: String) async -> Int? {
-        try? await api.artifactCount(repo: name)
+        try? await api.artifacts(repo: name, sessionID: nil, pixieID: nil).count
     }
 
     private func saveSettings(

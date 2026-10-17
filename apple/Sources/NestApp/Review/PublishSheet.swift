@@ -77,7 +77,7 @@ struct PublishSheet: View {
                     .padding(.top, 8)
             } else if !loaded {
                 HStack(spacing: 8) {
-                    Spinner()
+                    Fireflies()
                     Text("Reading the changes…")
                         .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
@@ -237,7 +237,7 @@ private struct StepList: View {
         case .pending:
             Circle().strokeBorder(Palette.t3, lineWidth: 1).frame(width: 8, height: 8)
         case .running:
-            Spinner(size: 10, lineWidth: 1.5)
+            Fireflies(height: 10)
         case .done:
             Image(systemName: Icon.check)
                 .font(.system(size: 10, weight: .semibold))

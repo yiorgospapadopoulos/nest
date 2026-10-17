@@ -184,10 +184,6 @@
 .cki.pn {
   box-shadow: inset 0 0 0 1.5px var(--t3);
 }
-.cki .spin {
-  width: 16px;
-  height: 16px;
-}
 .ch-tx {
   flex: 1;
   min-height: 0;
@@ -270,6 +266,15 @@
 /* "Working... 12s" at the end of a running turn (D045). */
 .m-live {
   font-size: 0.7059rem;
+}
+/* The working line: fireflies, then the shimmering words, under a sweeping glow (B80). */
+.wline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -6px;
+  padding: 3px 8px 3px 6px;
+  border-radius: var(--r-sm);
 }
 /* "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn. */
 .m-turn {
@@ -1065,7 +1070,7 @@
 }
 .agr {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   gap: 2px 10px;
   align-items: center;
   width: 100%;
@@ -1076,6 +1081,15 @@
   text-align: left;
   cursor: pointer;
   color: var(--t1);
+}
+/* A plain dot sits centred in the column a running agent's, task's or goal's fireflies take. */
+.agr > .dot,
+.agr > .ff,
+.bgg li > .dot,
+.bgg li > .ff,
+.gs-h > .dot,
+.gs-h > .ff {
+  justify-self: center;
 }
 .agr b {
   font-size: 0.8824rem;
@@ -1285,8 +1299,12 @@
   text-align: left;
   cursor: pointer;
 }
-.bgsum span:not(.dot) {
+.bgsum span:not(.dot, .ff) {
   flex: 1;
+}
+/* Centred in the 12 px slot the fireflies take while tasks run (B80). */
+.bgsum .dot {
+  margin: 0 2px;
 }
 .bgsum .cv {
   width: 14px;
@@ -1323,7 +1341,7 @@
 }
 .bgg li {
   display: grid;
-  grid-template-columns: 8px 14px auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 12px 14px auto minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   font-size: 0.7647rem;
@@ -2010,4 +2028,154 @@
   display: grid;
   grid-template-columns: repeat(2, 9px);
   gap: 2px;
+}
+/* Artifacts (B79): the card a save posts in the transcript, the history and the reader. */
+.afi {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+  background: var(--fill);
+}
+.afi .ic {
+  width: 18px;
+  height: 18px;
+}
+.afcard.gone .afi,
+.afcard.gone .pxcb b {
+  color: var(--t3);
+}
+.afsw {
+  display: flex;
+  margin: 2px 0 12px;
+}
+.afsw button {
+  flex: 1;
+}
+.afl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.afr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 10px 10px 12px;
+  border: 0;
+  border-radius: calc(var(--r-inner) + 2px);
+  background: var(--fill);
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.afr:active {
+  background: var(--fill2);
+}
+.afm {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.afm b {
+  font-size: 0.8824rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.afm span {
+  font-size: 0.7059rem;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.afn {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--st-run);
+  flex: none;
+}
+.afr .cv {
+  width: 16px;
+  height: 16px;
+  color: var(--t3);
+  flex: none;
+}
+.afempty {
+  padding: 48px 10px;
+}
+.afback {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 6px;
+}
+.afback .ic {
+  width: 18px;
+  height: 18px;
+}
+.afrd {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+}
+.afmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+.afk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+  color: var(--t2);
+}
+.afk .ic {
+  width: 14px;
+  height: 14px;
+}
+.afo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.afst {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: var(--r-inner);
+  background: var(--fill);
+  font-size: 0.7647rem;
+  font-weight: 600;
+  color: var(--t2);
+}
+.afdoc {
+  padding: 2px 2px 8px;
+}
+/* An HTML artifact is a page of its own; it gets a page's white, as in a browser. */
+.affr {
+  flex: 1;
+  width: 100%;
+  min-height: 60vh;
+  border: 0;
+  border-radius: var(--r-inner);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--hair);
 }

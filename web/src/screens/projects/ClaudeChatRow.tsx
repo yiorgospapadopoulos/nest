@@ -33,7 +33,8 @@ export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
         data-chat={chat.id}
         {...gestures}
       >
-        <Dot tone={chat.open_in_claude_code ? "run" : "idle"} />
+        {/* Open in Claude Code, not working in Nest: a plain dot (B80). */}
+        <Dot tone={chat.open_in_claude_code ? "run" : "idle"} plain />
         <span className="rbody">
           <span className="rt">{chat.title}</span>
           <span className="rsub">

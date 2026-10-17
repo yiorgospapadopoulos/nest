@@ -66,6 +66,7 @@ from nestd.providers.claude_tools import (
     SUBAGENT_DENIED,
     WRITE_TOOLS,
     call_guard,
+    nest_tool_names,
     own_tool_names,
     subagent_guard,
     tool_servers,
@@ -185,10 +186,13 @@ def build_options(
     """`shell_env` is the user's login shell environment (B59); Nest's own entries win."""
     questions = QuestionBridge(handler)
     own_tools = own_tool_names(spec.tools)
+    every_run_tools = nest_tool_names(spec.nest_tools)
 
     async def can_use_tool(
         tool_name: str, tool_input: dict[str, JsonValue], context: ToolPermissionContext
     ) -> PermissionResult:
+        if tool_name in every_run_tools:
+            return PermissionResultAllow()
         if tool_name in own_tools:
             if context.agent_id is not None:
                 return PermissionResultDeny(message=SUBAGENT_DENIED)
@@ -254,8 +258,9 @@ def build_options(
         include_hook_events=True,
         forward_subagent_text=True,
         can_use_tool=can_use_tool,
-        mcp_servers=tool_servers(spec.tools),
-        allowed_tools=list(spec.allowed_tools),
+        mcp_servers=tool_servers(spec.tools, spec.nest_tools),
+        # Also allowed by rule, so they never prompt in any mode or subagent (B79).
+        allowed_tools=[*spec.allowed_tools, *sorted(every_run_tools)],
         disallowed_tools=[*(GIT_WRITE_RULES if spec.guard_git else ()), *spec.disallowed_tools],
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,

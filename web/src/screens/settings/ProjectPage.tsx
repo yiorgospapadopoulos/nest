@@ -3,6 +3,8 @@ import type { RepoConfig, RepoPatch } from "../../api/types.ts";
 import { PIXIE_COLORS } from "../../generated/mascots.ts";
 import { useStore } from "../../store/context.ts";
 import { ActionSheet } from "../../ui/Sheet.tsx";
+import { ArtifactsSheet } from "../artifacts/ArtifactsSheet.tsx";
+import { projectScopes } from "../artifacts/view.ts";
 import { ChipList } from "../pixies/ChipList.tsx";
 import { Confirm } from "../pixies/Confirm.tsx";
 import { NameSheet } from "../pixies/NameSheet.tsx";
@@ -334,6 +336,7 @@ function Look({ repo }: { repo: RepoConfig }) {
 function Artifacts({ repo }: { repo: RepoConfig }) {
   const { actions } = useStore();
   const [count, setCount] = useState<number | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     let live = true;
     void actions.artifactCount(repo.name).then((found) => {
@@ -360,12 +363,20 @@ function Artifacts({ repo }: { repo: RepoConfig }) {
         <button
           className="b"
           onClick={() => {
-            actions.openArtifacts(repo.name);
+            setOpen(true);
           }}
         >
           Open Artifacts view
         </button>
       </Row>
+      {open && (
+        <ArtifactsSheet
+          scopes={projectScopes(repo.name)}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      )}
     </Section>
   );
 }

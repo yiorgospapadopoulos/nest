@@ -15,6 +15,9 @@ from claude_agent_sdk import ClaudeSDKClient
 from nestd.accounts.github import GithubAccount
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
+from nestd.artifacts.service import Artifacts
+from nestd.artifacts.store import ArtifactStore
+from nestd.artifacts.tools import artifact_tools
 from nestd.attachments.store import AttachmentStore
 from nestd.auth.devices import DeviceService
 from nestd.auth.secrets import SecretStore
@@ -133,6 +136,7 @@ class AppContext:
     claude_code: ClaudeCli
     claude_account: ClaudeAccount
     extensions: Extensions
+    artifacts: Artifacts
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -175,6 +179,7 @@ class AppContext:
         notifier = Notifier(bus, pixie_store.name)
         repos = RepoService(paths, bus)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
+        artifacts = Artifacts(ArtifactStore(db, clock, paths.artifacts_dir), bus)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
         tracking = Tracking(bus)
         usage = UsageStore(db, clock, zone)
@@ -243,6 +248,7 @@ class AppContext:
             extras=lambda session: pixie_runtime.extras(session),
             agents=PixieAgents(pixie_store, pixie_files, team_store).for_session,
             calls=pixie_calls,
+            nest_tools=lambda session: artifact_tools(artifacts, session),
         )
         pixie_nest = PixieNest(
             pixies=pixie_store,
@@ -439,6 +445,7 @@ class AppContext:
             claude_code=claude_code,
             claude_account=ClaudeAccount(claude_code, bus, clock),
             extensions=Extensions(claude_code, bus, paths.claude_dir),
+            artifacts=artifacts,
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None

@@ -130,6 +130,9 @@ struct PixieDetails: View {
                     ) { shell.pixiePanel = .activity }
                 }
 
+                DetailHeading(title: "Artifacts")
+                PixieArtifacts(pixie: pixie)
+
                 SectionBreak()
                 DetailGroup {
                     HStack {
@@ -1089,5 +1092,40 @@ struct DetailNote: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8)
             .padding(.top, 2)
+    }
+}
+
+/// The pixie's artifacts on its page, newest first (B79): its reports and pages, each
+/// opening in the Artifacts view, and the whole list there when there are more.
+private struct PixieArtifacts: View {
+    static let shown = 5
+    let pixie: Pixie
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let artifacts = shell.artifacts.list(.pixie(pixie.id))
+        DetailGroup {
+            if let artifacts, artifacts.isEmpty {
+                DetailLine(text: "None yet", dim: true)
+            }
+            ForEach(artifacts?.prefix(Self.shown) ?? []) { artifact in
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    DrillInRow(
+                        title: artifact.title,
+                        about:
+                            "\(ArtifactText.kind(artifact.kind)) · \(ArtifactText.when(artifact.updatedAt, now: context.date))",
+                        value: artifact.seen ? nil : "New"
+                    ) {
+                        shell.openArtifact(artifact.id, version: nil, from: nil)
+                    }
+                }
+            }
+            if let artifacts, artifacts.count > Self.shown {
+                DrillInRow(title: "All artifacts", about: "\(artifacts.count) saved") {
+                    shell.showView(.artifacts)
+                }
+            }
+        }
+        .task(id: pixie.id) { try? await shell.artifacts.load(.pixie(pixie.id)) }
     }
 }

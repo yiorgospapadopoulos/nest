@@ -43,6 +43,8 @@ import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { TeamFace } from "../pixies/TeamFace.tsx";
 import type { WorkOf } from "../projects/ChatTree.tsx";
+import { ArtifactCard } from "../artifacts/ArtifactCard.tsx";
+import { chatScopes } from "../artifacts/view.ts";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
 import { ResultImages } from "./ResultImages.tsx";
@@ -52,6 +54,7 @@ import { EditSheet, RewindSheet } from "./RewindSheet.tsx";
 import { usePrefill } from "./usePrefill.tsx";
 import { StopTask } from "./StopTask.tsx";
 import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 // Within this many pixels of the bottom, new output is followed. Anywhere else the
 // reading position never moves, not even when the user sends a message.
@@ -373,9 +376,12 @@ function WorkingLine({ thinking, thought, start }: WorkingProps) {
   const visible = usePageVisible();
   const now = useSyncExternalStore(visible ? ticks : noTicks, seconds) * 1000;
   const line = (
-    <span className="glow">
-      {thinking ? "Thinking..." : "Working..."}
-      {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
+    <span className="wline rglow">
+      <Fireflies size={9} />
+      <span className="glow">
+        {thinking ? "Thinking..." : "Working..."}
+        {start === null ? "" : ` ${elapsed(now - Date.parse(start))}`}
+      </span>
     </span>
   );
   if (!thinking || !thought) return <div className="m-live">{line}</div>;
@@ -437,6 +443,8 @@ function Item({
           onOpenWork={onOpenWork}
         />
       );
+    case "artifact":
+      return <ArtifactCard item={item} ev={ev} scopes={chatScopes(session)} />;
     case "card":
       // Only a pixie's chat holds cards.
       return session.pixie_id == null ? null : (
@@ -477,8 +485,11 @@ function MessageActions({ onClose, onEdit, onRewind, onFork }: MessageActionsPro
   );
 }
 
-// Pixie calls and cards show only in a Nest chat's transcript.
-export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" | "card" }>;
+// Pixie calls and cards, and artifacts, show only in a Nest chat's transcript.
+export type MessageEntry = Exclude<
+  TranscriptItem,
+  { kind: "approval" | "pixie" | "card" | "artifact" }
+>;
 
 interface EntryProps {
   item: MessageEntry;
@@ -949,7 +960,7 @@ function LocalBash({ run }: { run: BashRun }) {
     <Bash command={run.command}>
       {result === null && error === null && (
         <span className="bnote" role="status">
-          <span className="spin" aria-hidden="true" />
+          <Fireflies size={9} />
           Running
         </span>
       )}

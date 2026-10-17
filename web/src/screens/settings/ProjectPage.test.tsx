@@ -291,10 +291,18 @@ describe("project page", () => {
     await user.click(tab("Artifacts"));
 
     expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
-    expect(api.artifacts).toHaveBeenCalledWith("todo-ui");
-    // Does nothing until B79 adds the view.
+    expect(api.artifacts).toHaveBeenCalledWith({ repo: "todo-ui" });
+    // The Artifacts view opens on this project, with every project one tap away.
     await user.click(screen.getByRole("button", { name: "Open Artifacts view" }));
-    expect(screen.getByRole("heading", { level: 1, name: "todo-ui" })).toBeInTheDocument();
+    const sheet = await screen.findByRole("dialog", { name: "Artifacts" });
+    expect(within(sheet).getByRole("button", { name: "This project" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(sheet).getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(api.artifacts).toHaveBeenLastCalledWith({ repo: "todo-ui" });
+    await user.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).not.toBeInTheDocument();
   });
 
   it.each([

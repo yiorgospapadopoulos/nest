@@ -41,7 +41,7 @@ private struct ClaudeCodeSection: View {
                             SettingsValue(text: path, mono: true)
                         }
                     } else if extensions.isInstalling {
-                        ProgressView().controlSize(.small)
+                        Fireflies()
                         SettingsValue(text: extensions.install?.message ?? "Installing")
                     } else {
                         SettingsValue(text: "Not installed")
@@ -272,7 +272,7 @@ private struct AvailableRow: View {
                             .font(.mono(TypeSize.meta))
                             .textSelection(.enabled)
                     } else {
-                        ProgressView().controlSize(.small)
+                        Fireflies()
                     }
                 }
                 .font(.ui(TypeSize.meta))

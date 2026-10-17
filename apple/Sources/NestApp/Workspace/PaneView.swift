@@ -301,6 +301,7 @@ private struct NewChatPlaceholder: View {
 private struct ContinueBar: View {
     let pane: String
     @Environment(Shell.self) private var shell
+    @Environment(\.accentColors) private var accent
 
     var body: some View {
         let chat = shell.claudeChat(inPane: pane)
@@ -331,7 +332,7 @@ private struct ContinueBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         if adopting {
-                            ProgressView().controlSize(.small)
+                            Fireflies(height: 10, color: accent.onAccent)
                         } else {
                             Image(systemName: Icon.spark)
                         }

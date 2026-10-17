@@ -195,6 +195,7 @@ final class Shell {
     var habits: HabitsStore { model.habits }
     var chatPixies: ChatPixiesStore { model.chatPixies }
     var shortcuts: ShortcutsStore { model.shortcuts }
+    var artifacts: ArtifactsStore { model.artifacts }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
@@ -631,6 +632,70 @@ final class Shell {
 
     func markReportsRead(of pixie: String) {
         run("Could not mark the reports read") { try await self.reports.markPixieRead(pixie) }
+    }
+
+    // MARK: Artifacts (B79)
+
+    /// What the Artifacts view lists: in the Pixies tab the focused pixie's, with a switch
+    /// to every pixie's; in a project the focused chat's, with a switch to the whole
+    /// project, or the whole project while no chat is focused.
+    var artifactScope: ArtifactScope? {
+        if pixiesOpen {
+            return ArtifactScope(narrow: shownPixie.map { .pixie($0.id) }, wide: .pixies)
+        }
+        guard let project else { return nil }
+        let chat = projectState.layout.focused.flatMap(sessions.session)?.id
+        return ArtifactScope(narrow: chat.map(ArtifactQuery.chat), wide: .project(project))
+    }
+
+    /// The status bar's switch, the View menu and the palette: a view of the tab on screen;
+    /// the Board leaves the Pixies tab, which has none.
+    func showView(_ view: ProjectView) {
+        if pixiesOpen && !ProjectView.choices(pixies: true).contains(view) {
+            pixiesOpen = false
+        }
+        updateWorkspace { $0.view = view }
+    }
+
+    /// A transcript card's Open, or a row of a pixie's page: the Artifacts view of the tab
+    /// on screen, with that version, or the latest, in the reader.
+    func openArtifact(_ id: String, version: Int?, from chat: String?) {
+        updateWorkspace { state in
+            if let chat, state.layout.contains(chat) {
+                state.focusPane(chat)
+            }
+            state.view = .artifacts
+        }
+        if let scope = artifactScope {
+            artifacts.show(scope)
+        }
+        run("Could not open the artifact") {
+            try await self.artifacts.select(id, version: version)
+        }
+    }
+
+    /// Writes the version as a file where the user picks; HTML without the injected
+    /// policy, as it was saved.
+    func saveArtifact(_ content: ArtifactContent) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = ArtifactFile.name(title: content.title, kind: content.kind)
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: ArtifactFile.fileExtension(content.kind)) ?? .plainText
+        ]
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try Data(content.content.utf8).write(to: url, options: .atomic)
+                self.show("Saved \(url.lastPathComponent)", kind: .done)
+            } catch {
+                self.show(error, doing: "Could not save the file")
+            }
+        }
+    }
+
+    /// Delete in the reader, after its confirmation.
+    func deleteArtifact(_ id: String) {
+        run("Could not delete the artifact") { try await self.artifacts.delete(id) }
     }
 
     // MARK: Session presentation
@@ -1493,9 +1558,13 @@ final class Shell {
         openWindow?(NestApp.mainWindowID)
     }
 
-    /// The Artifacts view of a project. B79 adds the view; until it merges this does
-    /// nothing (B81 stage, coordinator instruction).
-    func openArtifacts(project: String) {}
+    /// Settings' project page: that project's tab in the main window, on the Artifacts view
+    /// (B79), which lists the focused chat's artifacts with a switch to the whole project.
+    func openArtifacts(project: String) {
+        selectProject(project)
+        showView(.artifacts)
+        showMainWindow()
+    }
 
     // MARK: Sheets
 
@@ -1553,7 +1622,7 @@ final class Shell {
         case .newBrowser:
             newBrowser()
         case .showView(let view):
-            update { $0.view = view }
+            showView(view)
         case .toggleSidebar:
             update { $0.leftCollapsed.toggle() }
         case .toggleActivityPanel:

@@ -49,7 +49,8 @@ import Testing
             palette.items.map(\.title) == [
                 "Validate the form", "Dark mode", "Retry", "New chat in todo-ui",
                 "New terminal in todo-ui", "New browser", "Show the Board view",
-                "Collapse the chat sidebar", "Collapse the activity panel",
+                "Show the Artifacts view", "Collapse the chat sidebar",
+                "Collapse the activity panel",
                 "Show usage", "Open todo-ui in VS Code", "Go to map-viewer",
             ])
         #expect(

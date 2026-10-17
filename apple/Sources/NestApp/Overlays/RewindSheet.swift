@@ -29,7 +29,7 @@ struct RewindSheet: View {
             .padding(.top, 14)
             if flow.isLoading {
                 HStack(spacing: 8) {
-                    Spinner()
+                    Fireflies()
                     Text("Checking what would change…")
                         .font(.ui(TypeSize.ui))
                         .foregroundStyle(Palette.t3)

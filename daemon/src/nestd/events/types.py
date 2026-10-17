@@ -140,3 +140,12 @@ CLAUDE_CODE_INSTALL: Final = "claude_code.install"
 CLAUDE_CODE_UPDATED: Final = "claude_code.updated"
 # Plugins or marketplaces changed through Nest, `{}`; clients list them again.
 EXTENSIONS_UPDATED: Final = "extensions.updated"
+# Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
+# `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`.
+SESSION_ARTIFACT: Final = "session.artifact"
+# Global, each with `unseen`, the count of artifacts whose latest version is not opened
+# yet. Saved: `{artifact, action, version, unseen}` with the whole artifact. Seen (opened
+# while unseen) or deleted: `{artifact_id, unseen}`.
+ARTIFACT_SAVED: Final = "artifact.saved"
+ARTIFACT_SEEN: Final = "artifact.seen"
+ARTIFACT_DELETED: Final = "artifact.deleted"

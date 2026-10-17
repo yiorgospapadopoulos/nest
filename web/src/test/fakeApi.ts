@@ -5,6 +5,9 @@ import {
   agentDefaults,
   claudeAccount,
   claudeCode,
+  artifact,
+  artifactContent,
+  artifactDetail,
   commandList,
   device,
   github,
@@ -213,7 +216,6 @@ export function fakeApi(): FakeApi {
     pairingCode: vi
       .fn<Api["pairingCode"]>()
       .mockResolvedValue({ code: "ABCD2345", expires_at: "2026-10-06T10:10:00Z" }),
-    artifacts: vi.fn<Api["artifacts"]>().mockResolvedValue([]),
     plugins: vi.fn<Api["plugins"]>().mockResolvedValue([installedPlugin()]),
     skills: vi.fn<Api["skills"]>().mockResolvedValue([]),
     marketplaces: vi.fn<Api["marketplaces"]>().mockResolvedValue([marketplace()]),
@@ -224,6 +226,20 @@ export function fakeApi(): FakeApi {
     installPlugin: vi.fn<Api["installPlugin"]>().mockResolvedValue(null),
     uninstallPlugin: vi.fn<Api["uninstallPlugin"]>().mockResolvedValue(null),
     setPluginEnabled: vi.fn<Api["setPluginEnabled"]>().mockResolvedValue(null),
+    artifacts: vi.fn<Api["artifacts"]>().mockResolvedValue([]),
+    artifactsUnseen: vi.fn<Api["artifactsUnseen"]>().mockResolvedValue({ unseen: 0 }),
+    artifact: vi
+      .fn<Api["artifact"]>()
+      .mockImplementation((id) => Promise.resolve(artifactDetail({ id }))),
+    artifactVersion: vi
+      .fn<Api["artifactVersion"]>()
+      .mockImplementation((id, version) =>
+        Promise.resolve(artifactContent({ artifact_id: id, version })),
+      ),
+    markArtifactSeen: vi
+      .fn<Api["markArtifactSeen"]>()
+      .mockImplementation((id) => Promise.resolve(artifact({ id, seen: true }))),
+    deleteArtifact: vi.fn<Api["deleteArtifact"]>().mockResolvedValue(null),
   };
   return fake;
 }

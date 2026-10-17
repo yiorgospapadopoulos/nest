@@ -60,6 +60,7 @@ export function StoreProvider({
         if (resumed) {
           void actions.loadClaudeChats();
           void actions.reloadFailed();
+          void actions.reloadArtifacts();
         } else {
           void actions.resync();
         }

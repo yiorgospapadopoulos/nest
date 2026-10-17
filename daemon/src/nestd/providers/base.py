@@ -324,6 +324,9 @@ class SessionSpec:
     system_prompt_append: str | None = None
     # Nest tools for this run, served in-process (D072).
     tools: tuple[AgentTool, ...] = ()
+    # Nest tools of every chat and pixie run, such as the artifact tools (B79), served
+    # in-process as their own server. Unlike `tools` its subagents may use them too.
+    nest_tools: tuple[AgentTool, ...] = ()
     # When set, file edits outside this folder are denied, in every permission mode.
     write_root: Path | None = None
     # Claude Code skill names for this run; empty leaves Claude Code's default (all).
