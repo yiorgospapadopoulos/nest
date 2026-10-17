@@ -511,14 +511,6 @@ a.b {
   place-items: center;
   flex: none;
 }
-.prun {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--st-run);
-  flex: none;
-  animation: pulse 1.8s ease-out infinite;
-}
 .lrow {
   position: relative;
   display: flex;
@@ -556,9 +548,11 @@ a.b {
 .row:active {
   background: var(--fill);
 }
+/* Centred in the 12 px slot a running row's fireflies take, so the titles line up (B80). */
 .row .dot {
   width: 10px;
   height: 10px;
+  margin: 0 1px;
 }
 .rt {
   flex: 1;
@@ -1521,10 +1515,8 @@ div.pxr:active {
   vertical-align: -3px;
   margin-right: 8px;
 }
-/* Under Reduce Motion the header's still sprite has a working dot after it (B48). */
-.ch-t .prun {
-  display: inline-block;
-  vertical-align: 1px;
+/* Under Reduce Motion the header's still sprite has still fireflies after it (B48, B80). */
+.ch-t h2 .ff {
   margin-right: 8px;
 }
 .pxtabs {
@@ -2216,11 +2208,6 @@ div.pxr:active {
 .ctb:last-child {
   padding-right: 48px;
 }
-.ctb .spin {
-  width: 12px;
-  height: 12px;
-  border-width: 1.5px;
-}
 .ctic {
   flex: none;
   width: 18px;
@@ -2283,7 +2270,8 @@ div.pxr:active {
 .ctw.bad {
   color: var(--fail-t);
 }
-.ctb .prun {
+/* A running call's fireflies, where a finished one shows its word. */
+.ctb > .ff:last-child {
   margin-left: auto;
   margin-right: 4px;
 }

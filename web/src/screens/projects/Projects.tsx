@@ -20,6 +20,7 @@ import { ProjectSettings } from "./ProjectSettings.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
 import { PixieSection } from "../pixies/PixieSection.tsx";
 import type { PixieTab } from "../pixies/PixieView.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 interface Props {
   project: string | null;
@@ -124,7 +125,7 @@ export function Projects({
                   {needs}
                 </span>
               ) : (
-                isRunning(state, repo.name) && <span className="prun" aria-label="running" />
+                isRunning(state, repo.name) && <Fireflies size={9} label="running" />
               )}
             </button>
           );

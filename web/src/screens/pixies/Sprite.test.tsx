@@ -80,19 +80,19 @@ describe("a pixie's sprite at rest and at work (B48)", () => {
   });
 });
 
-describe("the plain working dot (B48)", () => {
+describe("the working mark beside a still sprite (B48, B80)", () => {
   it("shows only for work under Reduce Motion, where the sprite stays still", () => {
     reduceMotion(true);
     const { container, rerender } = render(<WorkingDot working />);
-    expect(container.querySelector(".prun")).toBeInTheDocument();
+    expect(container.querySelector(".ff")).toBeInTheDocument();
     rerender(<WorkingDot working={false} />);
-    expect(container.querySelector(".prun")).toBeNull();
+    expect(container.querySelector(".ff")).toBeNull();
   });
 
   it("stays away while the sprite itself shows the work", () => {
     reduceMotion(false);
     const { container } = render(<WorkingDot working />);
-    expect(container.querySelector(".prun")).toBeNull();
+    expect(container.querySelector(".ff")).toBeNull();
   });
 });
 

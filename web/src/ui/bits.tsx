@@ -1,8 +1,25 @@
 import { initials } from "../format.ts";
 import type { Tone } from "../store/selectors.ts";
+import { Fireflies } from "./Fireflies.tsx";
 
-export function Dot({ tone }: { tone: Tone }) {
-  return <span className={`dot s-${tone}`} aria-hidden="true" />;
+interface DotProps {
+  tone: Tone;
+  // Names the status for assistive technology; otherwise the mark is hidden from it.
+  label?: string;
+  // Keeps a plain dot for the run tone, where it means something other than work (B80).
+  plain?: boolean;
+}
+
+/** A status dot; the run tone draws the working fireflies, 12 by 9, unless kept plain. */
+export function Dot({ tone, label, plain = false }: DotProps) {
+  if (tone === "run" && !plain) {
+    return <Fireflies size={9} {...(label === undefined ? {} : { label })} />;
+  }
+  const named =
+    label === undefined
+      ? { "aria-hidden": true }
+      : { role: "img", "aria-label": label, title: label };
+  return <span className={`dot s-${tone}`} {...named} />;
 }
 
 export function Pill({ tone, label }: { tone: Tone; label: string }) {

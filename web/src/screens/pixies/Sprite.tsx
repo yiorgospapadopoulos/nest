@@ -3,6 +3,7 @@ import type { Mascot } from "../../api/types.ts";
 import { MASCOT_SPRITES } from "../../generated/mascots.ts";
 import { BLINKS, type Cell } from "./blink.ts";
 import { phaseOffset, useReducedMotion } from "./motion.ts";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 interface Props {
   mascot: Mascot;
@@ -59,10 +60,10 @@ export function Sprite({ mascot, color, size, working = false, phaseKey = "" }: 
 }
 
 /**
- * A plain working dot for a sprite that stays still under Reduce Motion (B48); nothing
+ * Still fireflies for a sprite that stays still under Reduce Motion (B48, B80); nothing
  * otherwise, as the sprite's hop shows the work.
  */
 export function WorkingDot({ working }: { working: boolean }) {
   const reduced = useReducedMotion();
-  return working && reduced ? <span className="prun" aria-hidden="true" /> : null;
+  return working && reduced ? <Fireflies size={9} /> : null;
 }
