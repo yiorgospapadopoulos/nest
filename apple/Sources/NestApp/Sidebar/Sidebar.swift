@@ -1,10 +1,14 @@
 import NestKit
 import SwiftUI
 
-/// The project's chats, grouped, with New chat; folds into a rail. Settings opens from the
+/// The project's chats, grouped, with New chat; squeezes into a rail of status dots.
+/// Either form fades over the other while the width animates, clipped to the bar so the
+/// full list keeps its own width and is uncovered rather than reflowed (B83). Settings opens from the
 /// app menu (Cmd-comma); the account and connectors live in Settings (B39).
 struct Sidebar: View {
-    static let railWidth = 48.0
+    static let railWidth = 20.0
+    /// Squeezing or opening a side bar.
+    static let squeeze = Animation.smooth(duration: 0.28)
 
     @Environment(Shell.self) private var shell
 
@@ -12,13 +16,15 @@ struct Sidebar: View {
         let collapsed = shell.projectState.leftCollapsed
         Group {
             if collapsed {
-                SidebarRail().frame(width: Self.railWidth)
+                SidebarRail().frame(width: Self.railWidth).transition(.opacity)
             } else {
-                SidebarFull().resizableSidebar()
+                SidebarFull().resizableSidebar().transition(.opacity)
             }
         }
         .frame(maxHeight: .infinity)
         .sideSurface()
+        // The resize handle's outer half reaches past the bar; the mask keeps it.
+        .mask { Rectangle().padding(.trailing, -ResizableSidebar.handleWidth / 2) }
         .confirmationDialog(
             "Delete this chat?", isPresented: deleteBinding, titleVisibility: .visible
         ) {
@@ -60,8 +66,6 @@ private struct SidebarFull: View {
                         .frame(width: 10)
                     Text("New chat")
                     Spacer(minLength: 0)
-                    Text(shell.shortcuts.shortcut(for: .newChat).display).font(.ui(10.5))
-                        .foregroundStyle(Palette.t3)
                 }
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
@@ -180,7 +184,9 @@ private struct ArchivedRows<Rows: View>: View {
     }
 }
 
-/// The folded sidebar: initials with status dots.
+/// The squeezed sidebar: one status dot per chat (B83). A click anywhere on the strip,
+/// a dot included, opens the sidebar, as does the footer's triangle; a dot still shows
+/// its chat's title on hover, drags, and has the chat's menu.
 private struct SidebarRail: View {
     @Environment(Shell.self) private var shell
 
@@ -190,37 +196,25 @@ private struct SidebarRail: View {
         let entries = shell.sidebarGroups(in: project)
             .filter { $0.kind != .archived }
             .flatMap(\.entries)
-        VStack(spacing: 6) {
-            Button {
-                shell.update { $0.leftCollapsed = false }
-            } label: {
-                Image(systemName: Icon.leftPanel).font(.system(size: 13))
-                    .foregroundStyle(Palette.t3)
-            }
-            .buttonStyle(.nest(.plain, iconOnly: true))
-            .help("Expand sidebar")
-            .accessibilityLabel("Expand sidebar")
-            Button {
-                shell.newChat()
-            } label: {
-                Image(systemName: Icon.plus).font(.system(size: 12))
-            }
-            .buttonStyle(.nest(.soft, iconOnly: true))
-            .help("New chat")
-            .accessibilityLabel("New chat")
-            Separator().frame(width: 24).padding(.vertical, 4)
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(entries) { entry in
-                        RailChat(entry: entry, isOpen: state.layout.contains(entry.id))
-                    }
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(entries) { entry in
+                    RailChat(entry: entry, isOpen: state.layout.contains(entry.id))
                 }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity)
             }
-            .scrollIndicators(.never)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, 10)
+        .scrollIndicators(.never)
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .pointerStyle(.link)
+        .onTapGesture { shell.update { $0.leftCollapsed = false } }
+        .help("Open sidebar")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Open sidebar")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { shell.update { $0.leftCollapsed = false } }
     }
 }
 
@@ -233,28 +227,19 @@ private struct RailChat: View {
 
     var body: some View {
         let tone = tone
-        let shape = RoundedRectangle.rounded(Radius.row)
-        Text(Initials.of(entry.title))
-            .font(.ui(TypeSize.meta, .medium))
-            .foregroundStyle(isOpen ? Palette.t1 : Palette.t2)
-            .frame(width: 30, height: 30)
+        // A plain circle rather than StatusDot, which hides itself from accessibility.
+        Circle().fill(tone.color).frame(width: 7, height: 7)
+            .frame(maxWidth: .infinity)
+            .frame(height: 14)
             .background(
-                isOpen ? accent.selection : hovering ? Palette.soft : .clear, in: shape
+                isOpen ? accent.selection : hovering ? Palette.soft : .clear,
+                in: .rounded(Radius.chip)
             )
-            .overlay(alignment: .topTrailing) {
-                StatusMark(tone: tone, slot: false)
-                    .offset(x: -3, y: 3)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if case .claudeChat = entry {
-                    ClaudeCodeBadge()
-                        .offset(x: 3, y: 3)
-                }
-            }
+            .padding(.horizontal, 3)
             .contentShape(Rectangle())
             .pointerStyle(.link)
             .onHover { hovering = $0 }
-            .onTapGesture { shell.openChat(entry.id) }
+            .onTapGesture { shell.update { $0.leftCollapsed = false } }
             .onDrag {
                 shell.dragging = .chat(entry.id)
                 return .chat(entry.id)
@@ -266,6 +251,7 @@ private struct RailChat: View {
             .accessibilityElement()
             .accessibilityLabel("\(entry.title), \(status)")
             .accessibilityAddTraits(.isButton)
+            .accessibilityAction { shell.update { $0.leftCollapsed = false } }
     }
 
     private var tone: StatusTone {

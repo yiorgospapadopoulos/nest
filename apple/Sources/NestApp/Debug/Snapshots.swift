@@ -222,6 +222,7 @@
                 state.rightCollapsed = true
             }
             try await snap(controller, "rails-light", .aqua, folder)
+            try await snap(controller, "rails-dark", .darkAqua, folder)
 
             // Selectable transcript text: a selection across paragraphs, open tool output
             // and the Copy buttons that otherwise show on hover.
