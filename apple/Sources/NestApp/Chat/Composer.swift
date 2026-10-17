@@ -271,7 +271,7 @@ struct Composer: View {
                 if let line = status ?? draft.hint {
                     HStack(spacing: 6) {
                         if status != nil {
-                            ProgressView().controlSize(.mini)
+                            Fireflies(height: 9)
                         }
                         Text(line)
                     }
@@ -490,7 +490,7 @@ private struct AttachmentChips: View {
     private func chip(_ attachment: PendingAttachment) -> some View {
         HStack(spacing: 5) {
             if attachment.uploaded == nil {
-                ProgressView().controlSize(.mini)
+                Fireflies(height: 9)
             } else {
                 Image(systemName: Icon.attach).font(.system(size: 10))
             }
@@ -533,7 +533,7 @@ private struct ImageChip: View {
             }
             .overlay {
                 if attachment.uploaded == nil {
-                    ProgressView().controlSize(.small)
+                    Fireflies()
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -719,7 +719,7 @@ private struct StartBox<Field: View>: View {
             if let line = status ?? draft.hint {
                 HStack(spacing: 6) {
                     if status != nil {
-                        ProgressView().controlSize(.mini)
+                        Fireflies(height: 9)
                     }
                     Text(line)
                 }
@@ -886,7 +886,7 @@ private struct StartSendButton: View {
         Button(action: send) {
             Group {
                 if draft.sending {
-                    ProgressView().controlSize(.mini).tint(mark)
+                    Fireflies(height: 9, color: mark)
                 } else {
                     Image(systemName: Icon.send).font(.system(size: 12, weight: .bold))
                 }
@@ -1006,7 +1006,7 @@ private struct SendButton: View {
                 let ready = hasText || sending
                 Group {
                     if sending {
-                        ProgressView().controlSize(.small).tint(accent.onAccent)
+                        Fireflies(height: 10, color: accent.onAccent)
                     } else {
                         Image(systemName: Icon.send).font(.system(size: 12, weight: .semibold))
                     }

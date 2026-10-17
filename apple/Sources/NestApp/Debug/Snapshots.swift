@@ -164,6 +164,10 @@
                 try await renderLimitPause(model, shell, controller, folder)
                 return
             }
+            if only == "b80" {
+                try await renderWorkingAnimation(model, shell, controller, folder)
+                return
+            }
             if only == "b73" {
                 try await renderWindowLayout(model, shell, controller, folder)
                 return
@@ -2506,6 +2510,57 @@
             }
         }
 
+        /// B80: the working animation in the user's accent: a running chat's fireflies and
+        /// glow in the sidebar, the Working line under its turn and the solid accent bubble,
+        /// in three accents at a moment of the motion, then held still as Reduce Motion
+        /// draws it; and the fireflies on their own through their loop.
+        private static func renderWorkingAnimation(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            model.app.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c2", in: CGSize(width: 828, height: 790))
+                state.focusPane("c2")
+            }
+            for accent in [AccentName.graphite, .ocean, .rose] {
+                model.settings.accent = accent
+                try await pair(
+                    controller, "b80-working-\(accent.rawValue)", folder, motionTime: 0.6)
+            }
+            try await pair(controller, "b80-working-still", folder)
+            model.settings.accent = .graphite
+
+            // The fireflies in other running marks, beside plain dots in the same slot: the
+            // right panel's rows, the palette's chats and a pixie's card for a running chat.
+            model.app.update("cv-page") { state in
+                state.rightCollapsed = false
+                state.openCards = Set(RightCard.allCases)
+            }
+            try await pair(controller, "b80-marks", folder, motionTime: 0.6)
+            shell.show(.palette)
+            try await pair(controller, "b80-palette", folder, motionTime: 0.6)
+            shell.close()
+            try await model.transcripts.transcript(for: "p1").load()
+            let card: Event = try SampleData.decode([
+                "id": 80_001, "type": "pixie.card", "ts": SampleData.iso(Date()),
+                "session_id": "p1", "payload": ["kind": "session", "session_id": "c2"],
+            ])
+            model.sessions.apply(card)
+            model.transcripts.receive(card)
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b80-pixie-card", folder, motionTime: 0.6)
+            try await pairView(FirefliesSampler(), "b80-fireflies", folder)
+            try await pairView(
+                FirefliesSampler().environment(\.accentColors, AccentColors(accent: .teal)),
+                "b80-fireflies-teal", folder)
+        }
+
         /// B78: a chat paused at the usage limit, with the notice above the composer (its
         /// countdown and Resume now) and the sidebar's paused dot: one that continues where
         /// it left off, one that sends its queued message, then Nest's continue message once
@@ -2696,14 +2751,17 @@
         /// The same state in light and dark.
         private static func pair(
             _ controller: AppController, _ name: String, _ folder: URL,
-            revealsHoverControls: Bool = false, prepare: (NSView) async -> Void = { _ in }
+            revealsHoverControls: Bool = false, motionTime: Double? = nil,
+            prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             try await snap(
                 controller, "\(name)-light", .aqua, folder,
-                revealsHoverControls: revealsHoverControls, prepare: prepare)
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                prepare: prepare)
             try await snap(
                 controller, "\(name)-dark", .darkAqua, folder,
-                revealsHoverControls: revealsHoverControls, prepare: prepare)
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                prepare: prepare)
         }
 
         /// A view on its own, such as a popover's content, in light and dark.
@@ -2828,7 +2886,7 @@
 
         private static func snap(
             _ controller: AppController, _ name: String, _ appearance: NSAppearance.Name,
-            _ folder: URL, revealsHoverControls: Bool = false,
+            _ folder: URL, revealsHoverControls: Bool = false, motionTime: Double? = nil,
             prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             // Far off screen and fully transparent: nothing shows up on the user's display.
@@ -2842,7 +2900,8 @@
                 rootView: RootView()
                     .environment(controller)
                     .environment(\.offscreen, true)
-                    .environment(\.revealsHoverControls, revealsHoverControls))
+                    .environment(\.revealsHoverControls, revealsHoverControls)
+                    .environment(\.motionTime, motionTime))
             host.frame = CGRect(origin: .zero, size: size)
             window.contentView = host
             host.layoutSubtreeIfNeeded()
@@ -2865,6 +2924,81 @@
     /// event monitor reads clicks sent to it.
     private final class SnapshotWindow: NSWindow {
         override var canBecomeMain: Bool { true }
+    }
+
+    /// The fireflies (B80) at the sizes the app draws them, through their loop at a few
+    /// moments, held still, drawn large, on an accent button, and a running row's glow
+    /// across its sweep.
+    private struct FirefliesSampler: View {
+        @Environment(\.accentColors) private var accent
+
+        var body: some View {
+            let moments = [0, 0.4, 0.8, 1.2, 1.6, 2.0]
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach([9.0, 10, 12, 14], id: \.self) { height in
+                    HStack(spacing: 18) {
+                        Text("\(Int(height)) pt")
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                            .frame(width: 44, alignment: .leading)
+                        ForEach(moments, id: \.self) { moment in
+                            Fireflies(height: height).environment(\.motionTime, moment)
+                        }
+                        Fireflies(height: height)
+                    }
+                }
+                HStack(spacing: 24) {
+                    ForEach([0, 0.8, 1.6], id: \.self) { moment in
+                        Fireflies(height: 60).environment(\.motionTime, moment)
+                    }
+                    Fireflies(height: 60)
+                }
+                HStack(spacing: 8) {
+                    Fireflies(height: 10, color: accent.onAccent)
+                    Text("Sending")
+                }
+                .font(.ui(TypeSize.ui, .medium))
+                .foregroundStyle(accent.onAccent)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(accent.accent, in: .rounded(Radius.button))
+                // A running mark beside plain dots in the same slot, and in a label.
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        let tones: [StatusTone] = [.running, .waiting, .done, .running, .review]
+                        ForEach(tones.indices, id: \.self) { index in
+                            let tone = tones[index]
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                StatusMark(tone: tone)
+                                Text("Update publications").font(.ui(TypeSize.ui))
+                            }
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        StatusLabel(tone: .running, label: "Working")
+                        StatusLabel(tone: .waiting, label: "Needs approval")
+                        StatusLabel(tone: .running, label: "Kept", animates: false)
+                    }
+                }
+                .environment(\.motionTime, 0.6)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach([0.3, 0.6, 0.9, 1.2, 1.5], id: \.self) { moment in
+                        HStack(spacing: 8) {
+                            StatusMark(tone: .running)
+                            Text("Update publications from BibTeX").font(.ui(TypeSize.ui))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(width: 248, height: 30)
+                        .rowGlow(true)
+                        .environment(\.motionTime, moment)
+                    }
+                }
+            }
+            .padding(20)
+        }
     }
 
     /// Each mascot at rest, lifted and lifted blinking (B48), then team icons of one, two,

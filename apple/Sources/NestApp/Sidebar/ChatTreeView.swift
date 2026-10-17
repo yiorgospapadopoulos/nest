@@ -20,8 +20,8 @@ struct ChatTreeView: View {
                     ChatTreeLine(chat: chat, row: row)
                 }
             }
-            // The tree's line starts under the chat's status dot.
-            .padding(.leading, 8.5)
+            // The tree's line starts under the centre of the chat's status mark slot.
+            .padding(.leading, 11.5)
             .padding(.bottom, 2)
         }
     }
@@ -147,7 +147,7 @@ private struct ChatTreeLine: View {
             }
         case .subagent(let agent):
             HStack(spacing: 6) {
-                Spinner(size: 9, lineWidth: 1.5)
+                Fireflies(height: 9)
                     .frame(width: Self.icon)
                 Text(agent.name).foregroundStyle(Palette.t1)
                 if let detail = agent.activity ?? agent.description {
@@ -222,7 +222,7 @@ private struct StateMark: View {
 
     var body: some View {
         if state == .running {
-            Spinner(size: 9, lineWidth: 1.5)
+            Fireflies(height: 9)
                 .accessibilityHidden(true)
         } else {
             Text(ChatTree.label(of: state))

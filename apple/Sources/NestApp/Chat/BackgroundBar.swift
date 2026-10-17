@@ -40,7 +40,7 @@ struct BackgroundBar: View {
                     shell.update { $0.toggleBackground(chat) }
                 } label: {
                     HStack(spacing: 8) {
-                        StatusDot(tone: .running)
+                        StatusMark(tone: .running)
                         Text(summary.runningLabel)
                             .font(.ui(TypeSize.ui))
                             .monospacedDigit()
@@ -76,7 +76,7 @@ private struct BackgroundRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StatusDot(tone: .running)
+            StatusMark(tone: .running)
             Image(systemName: item.kind == .bash ? Icon.terminal : Icon.agent)
                 .font(.system(size: 10))
                 .foregroundStyle(Palette.t3)

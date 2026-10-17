@@ -56,7 +56,7 @@ struct DiffSheet: View {
                         .foregroundStyle(StatusTone.failed.color)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Fireflies(height: 14).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

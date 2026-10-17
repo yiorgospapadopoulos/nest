@@ -45,7 +45,7 @@ struct ApprovalCard: View {
             StatusDot(tone: tone)
             Text(title)
             if shell.approvals.busy.contains(approval.id) {
-                ProgressView().controlSize(.mini)
+                Fireflies(height: 9)
             }
         }
         .font(.ui(TypeSize.meta))
