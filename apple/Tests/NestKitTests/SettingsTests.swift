@@ -129,13 +129,10 @@ import Testing
         #expect(StorageText.bytes(1_420_000_000) == "1.4 GB")
     }
 
-    @Test func storageSummaryAndShares() {
+    @Test func storageShares() {
         let usage = StorageUsage(
             totalBytes: 1_000_000_000, chatsBytes: 500_000_000, attachmentsBytes: 250_000_000,
             artifactsBytes: 0, otherBytes: 250_000_000)
-        #expect(
-            StorageText.summary(usage)
-                == "1.0 GB · chats 500 MB · attachments 250 MB · artifacts 0 bytes")
         let shares = StorageText.shares(usage)
         #expect(shares.map(\.part) == StorageText.Part.allCases)
         #expect(shares.map(\.share) == [0.5, 0.25, 0, 0.25])
@@ -145,6 +142,40 @@ import Testing
                     totalBytes: 0, chatsBytes: 0, attachmentsBytes: 0, artifactsBytes: 0,
                     otherBytes: 0)
             ).isEmpty)
+    }
+
+    @Test func ledgerNamesPartsAndSharesInWholePercents() {
+        #expect(
+            StorageText.Part.allCases.map(\.name) == ["Chats", "Attachments", "Artifacts", "Other"])
+        #expect(StorageText.share(0) == "0%")
+        #expect(StorageText.share(0.0004) == "<1%")
+        #expect(StorageText.share(0.0099) == "<1%")
+        #expect(StorageText.share(0.01) == "1%")
+        #expect(StorageText.share(0.746) == "75%")
+        #expect(StorageText.share(1) == "100%")
+        let usage = StorageUsage(
+            totalBytes: 18_900_000, chatsBytes: 14_000_000, attachmentsBytes: 1_500_000,
+            artifactsBytes: 8_000, otherBytes: 3_392_000)
+        let lines = StorageText.ledger(usage)
+        #expect(lines.map(\.part) == StorageText.Part.allCases)
+        #expect(lines.map(\.size) == ["14 MB", "2 MB", "8 KB", "3 MB"])
+        #expect(lines.map(\.share) == ["74%", "8%", "<1%", "18%"])
+        let empty = StorageUsage(
+            totalBytes: 0, chatsBytes: 0, attachmentsBytes: 0, artifactsBytes: 0, otherBytes: 0)
+        #expect(StorageText.ledger(empty).map(\.share) == ["0%", "0%", "0%", "0%"])
+    }
+
+    @Test func ledgerSegmentsKeepTinyPartsVisibleAndFillTheWidth() {
+        // The zero parts are left out, so one 2 point gap leaves 298 of 300.
+        let widths = StorageText.segments(
+            [(.chats, 0.75), (.attachments, 0.25), (.artifacts, 0), (.other, 0)], width: 300,
+            gap: 2, minimum: 3)
+        #expect(widths.map(\.part) == [.chats, .attachments])
+        #expect(widths.map(\.width) == [223.5, 74.5])
+        let tiny = StorageText.segments(
+            [(.chats, 0.999), (.artifacts, 0.001)], width: 102, gap: 2, minimum: 3)
+        #expect(tiny.map(\.width) == [97, 3])
+        #expect(StorageText.segments([], width: 100, gap: 2, minimum: 3).isEmpty)
     }
 
     @Test func archiveAndAttachmentWords() {
@@ -232,13 +263,22 @@ import Testing
     @Test func pagesHaveTitlesAndSearchFindsRows() {
         #expect(
             SettingsPage.fixed.map(\.title) == [
-                "General", "Appearance", "Notifications", "Agents", "Pixies", "Accounts",
-                "Extensions", "Devices", "Keyboard shortcuts",
+                "General", "Appearance", "Notifications", "Agents", "Usage", "Storage",
+                "Pixies", "Accounts", "Extensions", "Devices", "Keyboard shortcuts",
             ])
+        #expect(SettingsPage.storage.matches("archive"))
+        #expect(SettingsPage.storage.matches("search index"))
+        #expect(SettingsPage.storage.matches("used by nest"))
+        #expect(!SettingsPage.general.matches("archive"))
+        #expect(!SettingsPage.general.matches("storage"))
+        #expect(SettingsPage.general.matches("show automated chats"))
+        #expect(SettingsPage.usage.matches("warn me at"))
+        #expect(SettingsPage.usage.matches("weekly"))
+        #expect(!SettingsPage.agents.matches("warn me at"))
+        #expect(SettingsPage.agents.matches("stuck chats"))
         #expect(SettingsPage.project("nest").title == "nest")
         #expect(SettingsPage.addProject.title == "Add project")
         #expect(SettingsPage.general.matches("  "))
-        #expect(SettingsPage.general.matches("archive"))
         #expect(SettingsPage.notifications.matches("pixie reports"))
         #expect(SettingsPage.shortcuts.matches("new terminal"))
         #expect(!SettingsPage.devices.matches("grain"))
@@ -258,6 +298,14 @@ import Testing
         #expect(named.projects == [.project("cv")])
         let branch = SettingsPage.listed(projects: ["nest"], query: "default branch")
         #expect(branch.projects == [.project("nest")])
+    }
+
+    @Test func pixiesIconIsTheWingedPixie() {
+        #expect(
+            SettingsPage.pixieGlyph == [
+                "............", "....####....", "#..######..#", "##.#.##.#.##", "############",
+                "##.######.##", "#..######..#", "....#..#....", "............", "............",
+            ])
     }
 
     @Test func projectTabs() {

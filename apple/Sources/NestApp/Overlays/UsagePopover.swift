@@ -1,13 +1,26 @@
 import NestKit
 import SwiftUI
 
-/// The usage popover: Claude's 5 hour and weekly limits with a Refresh that says when they
-/// were reported, then a day, week, month or year of tokens as bars with hover detail, its
-/// chats and subagents, and Details, which swaps in the period's breakdown (B84).
+/// The usage popover (B84): the usage panel at 340 points on the sheet surface.
 struct UsagePopover: View {
     /// From the window's right edge to the usage button's: the search field and gaps.
     static let trailingInset = 190.0
 
+    var body: some View {
+        UsagePanel(title: "Usage")
+            .padding(14)
+            .frame(width: 340)
+            .sheetSurface()
+    }
+}
+
+/// Claude's 5 hour and weekly limits with a Refresh that says when they were reported,
+/// then a day, week, month or year of tokens as bars with hover detail, its chats and
+/// subagents, and Details, which swaps in the period's breakdown (B84). Shared by the
+/// popover and Settings > Usage (B86), at their widths.
+struct UsagePanel: View {
+    /// The limits' heading.
+    let title: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -16,27 +29,25 @@ struct UsagePopover: View {
             if usage.showsDetails {
                 UsageBreakdownView()
             } else {
-                UsageChart()
+                UsageChart(title: title)
             }
         }
         .font(.ui(TypeSize.ui))
         .monospacedDigit()
         .foregroundStyle(Palette.t1)
-        .padding(14)
-        .frame(width: 340)
-        .sheetSurface()
         .task { try? await usage.loadPeriod() }
     }
 }
 
 /// The limits, the period switch, the bars and the period's totals.
 private struct UsageChart: View {
+    let title: String
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let usage = shell.model.usage
         HStack(spacing: 8) {
-            Text("Usage").font(.ui(TypeSize.ui, .semibold))
+            Text(title).font(.ui(TypeSize.ui, .semibold))
             Spacer(minLength: 0)
             RefreshControl()
         }

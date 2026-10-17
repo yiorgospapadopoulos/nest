@@ -9,6 +9,7 @@ import { socketFactory } from "../test/fakeSocket.ts";
 import { approval } from "../test/fixtures.ts";
 import { Toast, TOAST_MS } from "./Toast.tsx";
 import { DiffStats } from "./bits.tsx";
+import { Icon } from "./Icon.tsx";
 import { toolIcon } from "./toolIcon.ts";
 import { ActionSheet, Sheet } from "./Sheet.tsx";
 
@@ -128,6 +129,62 @@ describe("DiffStats", () => {
     render(<DiffStats additions={0} deletions={0} files={1} />);
 
     expect(screen.getByText("1 file")).toBeInTheDocument();
+  });
+});
+
+describe("Icon", () => {
+  // The winged pixie from the B86 contract, "#" filled.
+  const PIXIE = [
+    "............",
+    "....####....",
+    "#..######..#",
+    "##.#.##.#.##",
+    "############",
+    "##.######.##",
+    "#..######..#",
+    "....#..#....",
+    "............",
+    "............",
+  ];
+
+  it("draws the pixie as filled, crisp pixels centred in the box", () => {
+    const { container } = render(<Icon name="pixie" className="sico" />);
+    const grid = container.querySelector("svg svg");
+
+    expect(grid).toHaveAttribute("viewBox", "-1 -2 14 14");
+    expect(grid).toHaveAttribute("fill", "currentColor");
+    expect(grid).toHaveAttribute("stroke", "none");
+    expect(grid).toHaveAttribute("shape-rendering", "crispEdges");
+    const filled = new Set<string>();
+    for (const rect of container.querySelectorAll("rect")) {
+      const at = (name: string) => Number(rect.getAttribute(name));
+      const [x, y, width] = [at("x"), at("y"), at("width")];
+      expect(rect).toHaveAttribute("height", "1");
+      for (let i = 0; i < width; i += 1) filled.add(`${String(x + i)},${String(y)}`);
+    }
+    const expected = PIXIE.flatMap((row, y) =>
+      row.split("").flatMap((cell, x) => (cell === "#" ? [`${String(x)},${String(y)}`] : [])),
+    );
+    expect([...filled].sort()).toEqual(expected.sort());
+    // One rect per run of pixels, not one per pixel.
+    expect(container.querySelectorAll("rect").length).toBeLessThan(expected.length);
+  });
+
+  it("draws the robot with filled eyes, the storage drive and the usage chart", () => {
+    const robot = render(<Icon name="bot" />).container;
+    const eyes = robot.querySelectorAll("circle[fill='currentColor']");
+    expect(eyes).toHaveLength(2);
+    expect([...eyes].map((e) => e.getAttribute("cx"))).toEqual(["9.3", "14.7"]);
+    expect(robot.querySelector("rect")).toHaveAttribute("rx", "3");
+
+    const drive = render(<Icon name="drive" />).container;
+    expect(drive.querySelector("rect")).toHaveAttribute("rx", "2.5");
+
+    const chart = render(<Icon name="chart" />).container;
+    expect(chart.querySelector("path")).toHaveAttribute(
+      "d",
+      "M4 20h16M7 16.5v-5M12 16.5v-10M17 16.5v-8",
+    );
   });
 });
 

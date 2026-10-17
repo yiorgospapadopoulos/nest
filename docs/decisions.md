@@ -950,3 +950,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Examples:** "can we do b72 in a worktree while b71 is being made currently in the main branch?" becomes "Do b72 in a worktree"; "Use only the Glob tool to list the files at the top level of the repo" becomes "List the files at the top".
 - **Branch slugs** still come from the title (D022), so new worktree branches get shorter too.
 - **Refines:** D022 (titles).
+
+## D108 (2026-10-17): Settings icons, the Storage ledger and a Usage page (B86)
+
+- **Icons:** Pixies is a winged pixie drawn in the sprites' pixel style (12 by 10, rows in NestKit and `web/src/ui/Icon.tsx`), Agents a robot head in the line style, Usage a bar chart (`chart.bar` on the Mac), Storage a drive (`internaldrive` on the Mac). The robot is also the iPhone's icon for agent tool calls. Mockup picks P-4, A-5 and S-1 of `plans/b86/settings-mockup.html`.
+- **Storage:** its own Settings page after Usage (moved out of General, user request), showing the total, a full-width bar with gaps and a legend line per part with its size and share ("<1%" under one percent), replacing the short bar and one summary line.
+- **Usage page:** a new Settings page after Agents shows what the usage popover shows (limits, Day/Week/Month/Year, bars, totals, Details). The Mac shares the popover's views; the popover is unchanged. The limit checks (Check limits, Warn me at, Also as a notification) move there from Agents. On the iPhone the breakdown moves to `/settings/usage/details`; `/settings/agents/usage` still opens it.
+- **Refines:** D104 (where the usage settings live), D106 (where the iPhone shows usage).
