@@ -268,7 +268,7 @@ import Testing
         #expect(draft.time == "09:00")
         #expect(draft.maxMinutes == 20)
         #expect(draft.schedule == .daily("09:00"))
-        #expect(draft.problem == "Name the habit")
+        #expect(!draft.canSave)
         #expect(
             HabitDraft.Repeat.allCases.map(\.label) == [
                 "No schedule", "Every hour", "Every day", "Weekdays", "Weekly",
@@ -299,7 +299,12 @@ import Testing
     @Test func aDraftSaysWhatIsMissing() {
         var draft = HabitDraft()
         draft.name = "  "
-        #expect(draft.problem == "Name the habit")
+        draft.prompt = "Look"
+        // An empty name only keeps Save off; it has no message (B85).
+        #expect(draft.problem == nil)
+        #expect(!draft.canSave)
+        draft.prompt = ""
+        #expect(draft.problem == "Say what it should check")
         draft.name = String(repeating: "a", count: 61)
         #expect(draft.problem == "A name has at most 60 characters")
         draft.name = "Check"
@@ -308,6 +313,7 @@ import Testing
         #expect(draft.problem == "The instructions have at most 4000 characters")
         draft.prompt = "Look"
         #expect(draft.problem == nil)
+        #expect(draft.canSave)
         draft.repeats = .never
         #expect(draft.problem == "Choose a schedule or at least one trigger")
         draft.triggers = [.failed]

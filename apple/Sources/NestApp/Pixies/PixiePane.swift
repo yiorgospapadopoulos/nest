@@ -2,8 +2,8 @@ import NestKit
 import SwiftUI
 
 /// A pixie's pane in the Pixies tab's workspace (B37): its one ongoing chat (D072) in the
-/// same chrome as a chat's pane, tinted by its backdrop. It splits, moves, resizes,
-/// maximizes and closes like a chat's pane.
+/// same chrome as a chat's pane. It splits, moves, resizes, maximizes and closes like a
+/// chat's pane.
 struct PixiePane: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
@@ -27,9 +27,7 @@ struct PixiePane: View {
             }
             Composer(pixie: pixie.id)
         }
-        .modifier(
-            PaneChrome(pane: pixie.id, chat: pixie.chatSessionID, backdrop: pixie.background)
-        )
+        .modifier(PaneChrome(pane: pixie.id, chat: pixie.chatSessionID))
         // Its reports are read once its pane is on screen, as reports arrive too (B42).
         .task(id: ReadKey(unread: shell.reports.unread(of: pixie.id), visible: visible)) {
             if visible && shell.reports.unread(of: pixie.id) > 0 {

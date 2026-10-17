@@ -2,7 +2,7 @@ import NestKit
 import SwiftUI
 
 /// The pixies with Open, Show hidden pixies and New pixie, then what new pixies start
-/// with, the habits' switches and where reports go (B81).
+/// with and the habits' switches (B81). Where reports go is in Notifications (B85).
 struct PixiesPage: View {
     var body: some View {
         PixieListSection()
@@ -94,17 +94,6 @@ private struct PixieDefaultsSections: View {
                         selection: settings.projectAccess
                     ) { access in change { $0.projectAccess = access } }
                 }
-                SettingsRow(label: "Projects") {
-                    DropdownMenu(
-                        title: PixieSettingsText.projectsLabel(settings.projects), width: 150
-                    ) {
-                        ForEach([PixieProjects.all, .current], id: \.self) { projects in
-                            Button(PixieSettingsText.projectsLabel(projects)) {
-                                change { $0.projects = projects }
-                            }
-                        }
-                    }
-                }
                 NumberRow(
                     label: "Chats running at once", value: settings.maxRunning,
                     choices: PixieSettingsText.maxRunningChoices
@@ -131,16 +120,6 @@ private struct PixieDefaultsSections: View {
                             Button("\(percent)%") { change { $0.habitUsagePercent = percent } }
                         }
                     }
-                }
-            }
-            SettingsSection(title: "Reports") {
-                SettingsRow(label: "Send to the phone from") {
-                    Segmented(
-                        options: [
-                            (ReportSeverity.info, "Info"), (.warn, "Warnings"), (.action, "Action"),
-                        ],
-                        selection: settings.reportPush
-                    ) { severity in change { $0.reportPush = severity } }
                 }
             }
         }

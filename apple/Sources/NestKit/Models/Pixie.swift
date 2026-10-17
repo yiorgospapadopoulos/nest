@@ -6,11 +6,6 @@ public enum Mascot: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
     case unknown
 }
 
-public enum PixieBackground: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
-    case plain, meadow, dusk, night, dawn
-    case unknown
-}
-
 /// What a pixie may do in Nest with its tools; each level includes the ones before (B41).
 public enum Autonomy: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
     case observe, message, start, answer
@@ -33,18 +28,13 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var mascot: Mascot
     /// `#RRGGBB`.
     public var color: String
-    public var background: PixieBackground
     public var model: String?
     public var effort: Effort?
     public var permissionMode: PermissionMode
     public var autonomy: Autonomy
     public var projectAccess: ProjectAccess
-    /// Repo names; nil means every project.
-    public var projects: [String]?
     public var skills: [String]
     public var canCall: [String]
-    public var allowedTools: [String]
-    public var disallowedTools: [String]
     public var hidden: Bool
     public var position: Int
     public var chatSessionID: String?
@@ -54,26 +44,21 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var maxRunning: Int
     /// How many chats it may start per local day (`PixieLimits.perDay`).
     public var maxPerDay: Int
-    /// The least severe report that reaches the phone (B42).
-    public var reportPush: ReportSeverity
     /// Its unread reports that need action, as the daemon counts them.
     public var unreadActionReports: Int
     public var createdAt: Date
     public var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, slug, name, mascot, color, background, model, effort, autonomy, projects, skills
+        case id, slug, name, mascot, color, model, effort, autonomy, skills
         case hidden, position
         case permissionMode = "permission_mode"
         case projectAccess = "project_access"
         case canCall = "can_call"
-        case allowedTools = "allowed_tools"
-        case disallowedTools = "disallowed_tools"
         case chatSessionID = "chat_session_id"
         case teamID = "team_id"
         case maxRunning = "max_running"
         case maxPerDay = "max_per_day"
-        case reportPush = "report_push"
         case unreadActionReports = "unread_action_reports"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -111,22 +96,39 @@ extension Pixie {
         pixie.slug = change.slug ?? slug
         pixie.mascot = change.mascot ?? mascot
         pixie.color = change.color ?? color
-        pixie.background = change.background ?? background
         pixie.model = change.model ?? (change.clearsModel ? nil : model)
         pixie.effort = change.effort ?? (change.clearsEffort ? nil : effort)
         pixie.permissionMode = change.permissionMode ?? permissionMode
         pixie.autonomy = change.autonomy ?? autonomy
         pixie.projectAccess = change.projectAccess ?? projectAccess
-        pixie.projects = change.allProjects == true ? nil : change.projects ?? projects
         pixie.skills = change.skills ?? skills
-        pixie.allowedTools = change.allowedTools ?? allowedTools
-        pixie.disallowedTools = change.disallowedTools ?? disallowedTools
         pixie.hidden = change.hidden ?? hidden
         pixie.teamID = change.teamID ?? (change.leavesTeam ? nil : teamID)
         pixie.maxRunning = change.maxRunning ?? maxRunning
         pixie.maxPerDay = change.maxPerDay ?? maxPerDay
-        pixie.reportPush = change.reportPush ?? reportPush
         return pixie
+    }
+}
+
+/// A skill a pixie may be given, from `GET /api/pixies/skills` (B85): standalone or from a
+/// plugin. `name` is what goes into the pixie's `skills`; a plugin's is `plugin:skill`.
+public struct PixieSkillChoice: Codable, Sendable, Hashable, Identifiable {
+    public var name: String
+    public var description: String?
+    public var plugin: String?
+
+    public init(name: String, description: String?, plugin: String?) {
+        self.name = name
+        self.description = description
+        self.plugin = plugin
+    }
+
+    public var id: String { name }
+
+    /// The name inside its plugin's group: without the `plugin:` prefix.
+    public var shortName: String {
+        guard let plugin, name.hasPrefix("\(plugin):") else { return name }
+        return String(name.dropFirst(plugin.count + 1))
     }
 }
 

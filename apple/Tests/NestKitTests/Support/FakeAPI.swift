@@ -84,6 +84,8 @@ final class FakeAPI: NestAPI {
         var storageSettings = StorageSettings()
         var largeAttachments: [LargeAttachment] = []
         var pixieSettings = PixieSettings()
+        var notificationRules = NotificationRules()
+        var pixieSkills: [PixieSkillChoice] = []
         var github = GitHubAccount(
             state: .signedIn, login: "octo", checkedAt: Date(timeIntervalSince1970: 0))
         var claudeLogin = ClaudeLogin(
@@ -614,6 +616,10 @@ final class FakeAPI: NestAPI {
         try call("pixies") { $0.pixies }
     }
 
+    func pixieSkills() async throws -> [PixieSkillChoice] {
+        try call("pixieSkills") { $0.pixieSkills }
+    }
+
     func createPixie(_ request: CreatePixieRequest) async throws -> Pixie {
         try call("createPixie", request.name) { state in
             var pixie = Fixture.decode(Pixie.self, "pixie")
@@ -993,6 +999,17 @@ final class FakeAPI: NestAPI {
         try call("updatePixieSettings") { state in
             state.pixieSettings = settings
             return settings
+        }
+    }
+
+    func notificationRules() async throws -> NotificationRules {
+        try call("notificationRules") { $0.notificationRules }
+    }
+
+    func updateNotificationRules(_ rules: NotificationRules) async throws -> NotificationRules {
+        try call("updateNotificationRules", rules.pixieReportLevel.rawValue) { state in
+            state.notificationRules = rules
+            return rules
         }
     }
 

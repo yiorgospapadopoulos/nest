@@ -404,6 +404,16 @@ public struct APIClient: NestAPI {
         try await call("PUT", ["pixie-settings"], body: settings)
     }
 
+    public func notificationRules() async throws -> NotificationRules {
+        try await get("notifications", "settings")
+    }
+
+    public func updateNotificationRules(_ rules: NotificationRules) async throws
+        -> NotificationRules
+    {
+        try await call("PUT", ["notifications", "settings"], body: rules)
+    }
+
     public func githubAccount() async throws -> GitHubAccount {
         try await get("accounts", "github")
     }
@@ -481,6 +491,10 @@ public struct APIClient: NestAPI {
 
     public func pixies() async throws -> [Pixie] {
         try await get("pixies")
+    }
+
+    public func pixieSkills() async throws -> [PixieSkillChoice] {
+        try await get("pixies", "skills")
     }
 
     public func createPixie(_ request: CreatePixieRequest) async throws -> Pixie {

@@ -232,54 +232,40 @@ public struct CreatePixieRequest: Encodable, Sendable, Hashable {
     public var slug: String?
     public var mascot: Mascot?
     public var color: String?
-    public var background: PixieBackground?
     public var model: String?
     public var effort: Effort?
     public var permissionMode: PermissionMode?
     public var autonomy: Autonomy?
     public var projectAccess: ProjectAccess?
-    /// Repo names; nil means every project.
-    public var projects: [String]?
     public var skills: [String]?
-    public var allowedTools: [String]?
-    public var disallowedTools: [String]?
     public var hidden: Bool?
     /// The first text of the pixie's `SOUL.md`.
     public var soul: String?
 
     public init(
         name: String, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
-        background: PixieBackground? = nil, model: String? = nil, effort: Effort? = nil,
-        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
-        projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
-        allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
-        soul: String? = nil
+        model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
+        autonomy: Autonomy? = nil, projectAccess: ProjectAccess? = nil, skills: [String]? = nil,
+        hidden: Bool? = nil, soul: String? = nil
     ) {
         self.name = name
         self.slug = slug
         self.mascot = mascot
         self.color = color
-        self.background = background
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
         self.autonomy = autonomy
         self.projectAccess = projectAccess
-        self.projects = projects
         self.skills = skills
-        self.allowedTools = allowedTools
-        self.disallowedTools = disallowedTools
         self.hidden = hidden
         self.soul = soul
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, slug, mascot, color, background, model, effort, autonomy, projects, skills
-        case hidden, soul
+        case name, slug, mascot, color, model, effort, autonomy, skills, hidden, soul
         case permissionMode = "permission_mode"
         case projectAccess = "project_access"
-        case allowedTools = "allowed_tools"
-        case disallowedTools = "disallowed_tools"
     }
 }
 
@@ -290,16 +276,12 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var slug: String?
     public var mascot: Mascot?
     public var color: String?
-    public var background: PixieBackground?
     public var model: String?
     public var effort: Effort?
     public var permissionMode: PermissionMode?
     public var autonomy: Autonomy?
     public var projectAccess: ProjectAccess?
-    public var projects: [String]?
     public var skills: [String]?
-    public var allowedTools: [String]?
-    public var disallowedTools: [String]?
     public var hidden: Bool?
     /// True sends `"model": null`: the pixie follows the agent default again. A `model`
     /// set as well wins.
@@ -307,8 +289,6 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     /// True sends `"effort": null`: thinking is left to the model again. An `effort` set as
     /// well wins.
     public var clearsEffort: Bool
-    /// True sets `projects` back to every project.
-    public var allProjects: Bool?
     /// The team to join.
     public var teamID: String?
     /// True sends `"team_id": null`: the pixie leaves its team. A `teamID` set as well wins.
@@ -317,56 +297,41 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var maxRunning: Int?
     /// `PixieLimits.perDay`.
     public var maxPerDay: Int?
-    /// The least severe report that reaches the phone (B42).
-    public var reportPush: ReportSeverity?
 
     public init(
         name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
-        background: PixieBackground? = nil, model: String? = nil, effort: Effort? = nil,
-        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
-        projectAccess: ProjectAccess? = nil, projects: [String]? = nil, skills: [String]? = nil,
-        allowedTools: [String]? = nil, disallowedTools: [String]? = nil, hidden: Bool? = nil,
-        clearsModel: Bool = false, clearsEffort: Bool = false, allProjects: Bool? = nil,
+        model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
+        autonomy: Autonomy? = nil, projectAccess: ProjectAccess? = nil, skills: [String]? = nil,
+        hidden: Bool? = nil, clearsModel: Bool = false, clearsEffort: Bool = false,
         teamID: String? = nil, leavesTeam: Bool = false, maxRunning: Int? = nil,
-        maxPerDay: Int? = nil, reportPush: ReportSeverity? = nil
+        maxPerDay: Int? = nil
     ) {
         self.name = name
         self.slug = slug
         self.mascot = mascot
         self.color = color
-        self.background = background
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
         self.autonomy = autonomy
         self.projectAccess = projectAccess
-        self.projects = projects
         self.skills = skills
-        self.allowedTools = allowedTools
-        self.disallowedTools = disallowedTools
         self.hidden = hidden
         self.clearsModel = clearsModel
         self.clearsEffort = clearsEffort
-        self.allProjects = allProjects
         self.teamID = teamID
         self.leavesTeam = leavesTeam
         self.maxRunning = maxRunning
         self.maxPerDay = maxPerDay
-        self.reportPush = reportPush
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, slug, mascot, color, background, model, effort, autonomy, projects, skills
-        case hidden
+        case name, slug, mascot, color, model, effort, autonomy, skills, hidden
         case permissionMode = "permission_mode"
         case projectAccess = "project_access"
-        case allowedTools = "allowed_tools"
-        case disallowedTools = "disallowed_tools"
-        case allProjects = "all_projects"
         case teamID = "team_id"
         case maxRunning = "max_running"
         case maxPerDay = "max_per_day"
-        case reportPush = "report_push"
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -375,7 +340,6 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(slug, forKey: .slug)
         try container.encodeIfPresent(mascot, forKey: .mascot)
         try container.encodeIfPresent(color, forKey: .color)
-        try container.encodeIfPresent(background, forKey: .background)
         if let model {
             try container.encode(model, forKey: .model)
         } else if clearsModel {
@@ -389,12 +353,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(permissionMode, forKey: .permissionMode)
         try container.encodeIfPresent(autonomy, forKey: .autonomy)
         try container.encodeIfPresent(projectAccess, forKey: .projectAccess)
-        try container.encodeIfPresent(projects, forKey: .projects)
         try container.encodeIfPresent(skills, forKey: .skills)
-        try container.encodeIfPresent(allowedTools, forKey: .allowedTools)
-        try container.encodeIfPresent(disallowedTools, forKey: .disallowedTools)
         try container.encodeIfPresent(hidden, forKey: .hidden)
-        try container.encodeIfPresent(allProjects, forKey: .allProjects)
         if let teamID {
             try container.encode(teamID, forKey: .teamID)
         } else if leavesTeam {
@@ -402,7 +362,6 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         }
         try container.encodeIfPresent(maxRunning, forKey: .maxRunning)
         try container.encodeIfPresent(maxPerDay, forKey: .maxPerDay)
-        try container.encodeIfPresent(reportPush, forKey: .reportPush)
     }
 }
 
