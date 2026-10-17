@@ -1,7 +1,8 @@
 """A pixie's Nest tools (B41): it reads, messages, starts and answers chats as far as its
-autonomy allows. Every call re-reads the pixie and checks its autonomy, its projects, which
-chats it started and its limits here, never trusting the prompt; a refusal is a tool error
-with the reason. Pixie chats are never touched. Every changing call is logged.
+autonomy allows, in every project (D109). Every call re-reads the pixie and checks its
+autonomy, which chats it started and its limits here, never trusting the prompt; a refusal
+is a tool error with the reason. Pixie chats are never touched. Every changing call is
+logged.
 """
 
 import asyncio
@@ -123,7 +124,7 @@ class _Tools:
         specs: list[tuple[str, str, dict[str, JsonValue], Handler]] = [
             (
                 "list_sessions",
-                "List the chats in your projects, newest first: id | title | project | "
+                "List the user's chats, newest first: id | title | project | "
                 "state. Optional filters: project, state.",
                 _schema(
                     optional={"project": "A project's name.", "state": "A chat state."},
@@ -132,7 +133,7 @@ class _Tools:
             ),
             (
                 "get_session",
-                "Describe one chat in your projects: state, project, work, model, mode, "
+                "Describe one chat: state, project, work, model, mode, "
                 "pull request and what it waits on.",
                 _schema(required={"id": "The chat's id."}),
                 h.get_session,
@@ -154,14 +155,14 @@ class _Tools:
             ),
             (
                 "list_inbox",
-                "List what waits on someone in your projects' chats: permissions, "
+                "List what waits on someone in the user's chats: permissions, "
                 "questions, plans, reviews and merges, with their approval ids.",
                 _schema(),
                 h.list_inbox,
             ),
             (
                 "pr_status",
-                "Show the pull request of a chat in your projects: state, checks, review.",
+                "Show the pull request of a chat: state, checks, review.",
                 _schema(required={"id": "The chat's id."}),
                 h.pr_status,
             ),
@@ -194,7 +195,7 @@ class _Tools:
             ),
             (
                 "send_message",
-                "Autonomy Message. Send a message into a chat in your projects as yourself; "
+                "Autonomy Message. Send a message into a chat as yourself; "
                 "it waits for a running turn.",
                 _schema(required={"id": "The chat's id.", "text": "The message."}),
                 h.send_message,
@@ -214,7 +215,7 @@ class _Tools:
             ),
             (
                 "start_session",
-                "Autonomy Start. Start a chat in one of your projects, in its own worktree; "
+                "Autonomy Start. Start a chat in one of the projects, in its own worktree; "
                 "the user reviews and merges its work. permission_mode can be yours or "
                 "stricter. You get one message when the chats you start in a turn finish.",
                 _schema(
@@ -289,13 +290,11 @@ class _Tools:
     async def list_sessions(self, args: Args) -> str:
         pixie = await self._pixie("list_sessions", "observe")
         project = _optional_text(args, "project")
-        if project is not None:
-            _require_project(pixie, project)
         state = _choice(args, "state", STATES)
         sessions = [
             session
             for session in await self._h.sessions.list_sessions(project)
-            if _in_projects(pixie, session.repo) and (state is None or session.state == state)
+            if state is None or session.state == state
         ]
         if not sessions:
             return "No chats."
@@ -338,7 +337,7 @@ class _Tools:
         lines: list[str] = []
         for approval in await self._h.approvals.list_approvals(ApprovalStatus.PENDING):
             session = await self._h.store.get(approval.session_id)
-            if session.pixie_id is None and _in_projects(pixie, session.repo):
+            if session.pixie_id is None:
                 lines.append(digest.approval_line(approval, session, pixie.id))
         if not lines:
             return "Nothing is waiting."
@@ -422,7 +421,6 @@ class _Tools:
     async def start_session(self, args: Args) -> str:
         pixie = await self._pixie("start_session", "start")
         project = _text(args, "project")
-        _require_project(pixie, project)
         prompt = _text(args, "prompt", TEXT_MAX)
         model = _optional_text(args, "model")
         effort = _choice(args, "effort", EFFORTS)
@@ -536,9 +534,6 @@ class _Tools:
         if session.pixie_id is not None:
             msg = "That is a pixie's chat; pixies never act on pixie chats."
             raise ToolRefusedError(msg)
-        if not _in_projects(pixie, session.repo):
-            msg = f"That chat is in {session.repo}, which is not one of your projects."
-            raise ToolRefusedError(msg)
         return session
 
     async def _own_chat(self, pixie: Pixie, session_id: str) -> Session:
@@ -619,16 +614,6 @@ def _schema(
     for name, description in (numbers or {}).items():
         properties[name] = {"type": "integer", "description": description}
     return {"type": "object", "properties": properties, "required": list(required or {})}
-
-
-def _in_projects(pixie: Pixie, repo: str) -> bool:
-    return pixie.projects is None or repo in pixie.projects
-
-
-def _require_project(pixie: Pixie, project: str) -> None:
-    if not _in_projects(pixie, project):
-        msg = f"{project} is not one of your projects."
-        raise ToolRefusedError(msg)
 
 
 def _require_mode(pixie: Pixie, mode: PermissionMode) -> None:

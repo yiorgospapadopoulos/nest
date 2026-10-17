@@ -13,10 +13,8 @@ DEFAULTS = {
     "model": None,
     "autonomy": "observe",
     "project_access": "edit",
-    "projects": "all",
     "max_running": 2,
     "max_per_day": 5,
-    "report_push": "action",
     "habits_paused": False,
     "habit_usage_percent": 80,
 }
@@ -27,7 +25,6 @@ CHOSEN = {
     "project_access": "read",
     "max_running": 4,
     "max_per_day": 12,
-    "report_push": "info",
 }
 
 
@@ -60,12 +57,27 @@ async def test_settings_round_trip_and_apply_at_once(api: Api) -> None:
 
 @pytest.mark.parametrize(
     "change",
-    [{"habit_usage_percent": 40}, {"report_push": "urgent"}, {"max_running": 0}, {"x": 1}],
+    [{"habit_usage_percent": 40}, {"autonomy": "rule"}, {"max_running": 0}, {"x": 1}],
 )
 async def test_invalid_settings_are_refused(api: Api, change: dict[str, object]) -> None:
     response = await api.http.put("/api/pixie-settings", json={**DEFAULTS, **change})
 
     assert response.status_code == 422
+
+
+async def test_keys_removed_in_b85_are_ignored_not_refused(api: Api) -> None:
+    """A client from before B85 still sends `projects` and `report_push` (D109)."""
+    saved = await api.http.put(
+        "/api/pixie-settings", json={**CHOSEN, "projects": "current", "report_push": "info"}
+    )
+    level = (await api.http.get("/api/notifications/settings")).json()["pixie_report_level"]
+
+    assert saved.status_code == 200
+    assert saved.json() == CHOSEN
+    on_disk = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
+    assert set(on_disk["pixies"]).isdisjoint({"projects", "report_push"})
+    # The one level for every pixie is set in Settings > Notifications, not here.
+    assert level == "action"
 
 
 async def test_a_broken_settings_file_is_not_overwritten(api: Api) -> None:
@@ -92,10 +104,8 @@ async def test_new_pixies_start_with_the_settings_for_what_the_client_left_out(a
         "model": "opus",
         "autonomy": "start",
         "project_access": "read",
-        "projects": None,
         "max_running": 4,
         "max_per_day": 12,
-        "report_push": "info",
     }
     assert (chosen["model"], chosen["autonomy"], chosen["max_running"]) == (None, "observe", 1)
     assert (chosen["project_access"], chosen["max_per_day"]) == ("read", 12)

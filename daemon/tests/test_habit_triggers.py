@@ -1,4 +1,4 @@
-"""Habits started by events on the chats of their pixie's projects (B42)."""
+"""Habits started by events on the chats of any project (B42, D109)."""
 
 import asyncio
 import logging
@@ -151,20 +151,20 @@ async def test_a_run_lists_at_most_the_newest_events(ctx: AppContext) -> None:
     assert (events[0]["text"], events[-1]["text"]) == ("e2", f"e{MAX_EVENTS + 1}")
 
 
-@pytest.mark.parametrize("case", ["other project", "own start", "pixie chat", "habit run"])
+@pytest.mark.parametrize("case", ["own start", "pixie chat", "habit run"])
 async def test_events_that_start_nothing(ctx: AppContext, case: str) -> None:
-    pixie = await make_pixie(ctx, projects=["web"])
+    pixie = await make_pixie(ctx)
     habit = await make_habit(ctx, pixie.id, schedule=None, triggers=["failed"])
     other = await make_pixie(ctx, "Other")
     sessions = {
-        "other project": await chat(ctx, repo="api"),
         # Its own pixie started it; another pixie's start does count, below.
         "own start": await chat(ctx, started_by=pixie.id),
         "pixie chat": await chat(ctx, repo=pixie_repo(other.id), pixie_id=other.id),
         "habit run": await chat(ctx, repo=pixie_repo(pixie.id), pixie_id=pixie.id),
     }
 
-    counted = await chat(ctx, started_by=other.id)
+    # Every pixie works in every project (D109), so a chat in api counts too.
+    counted = await chat(ctx, repo="api", started_by=other.id)
 
     await ctx.habit_triggers.observe(notify(sessions[case]))
     await ctx.habit_triggers.observe(notify(counted))
@@ -240,7 +240,6 @@ async def test_failures_and_falling_behind_are_logged_and_survived(
         bus=bus,
         sessions=ctx.sessions._store,  # pyright: ignore[reportPrivateUsage]
         habits=ctx.habit_scheduler._store,  # pyright: ignore[reportPrivateUsage]
-        pixies=ctx.habit_scheduler._pixies,  # pyright: ignore[reportPrivateUsage]
         scheduler=ctx.habit_scheduler,
     )
 

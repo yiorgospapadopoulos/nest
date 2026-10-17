@@ -42,9 +42,8 @@ async def test_a_copy_has_the_settings_and_files_but_not_the_chat(
             model="opus",
             effort="high",
             project_access="read",
-            projects=["web"],
             skills=["review"],
-            disallowed_tools=["Bash(rm:*)"],
+            can_call=["someone"],
         )
     )
     original = await ctx.pixies.update(original.id, UpdatePixie(team_id=team.id))
@@ -65,9 +64,8 @@ async def test_a_copy_has_the_settings_and_files_but_not_the_chat(
     assert copy.chat_session_id is None
     assert copy.team_id == team.id
     assert (await ctx.teams.get(team.id)).leader_id == original.id
-    settings = {"mascot", "model", "effort", "project_access", "projects", "skills"}
+    settings = {"mascot", "model", "effort", "project_access", "skills", "can_call"}
     assert copy.model_dump(include=settings) == original.model_dump(include=settings)
-    assert copy.disallowed_tools == ["Bash(rm:*)"]
     assert (await ctx.pixies.read_file(copy.id, "soul")).text == "You test.\n"
     assert (await ctx.pixies.read_file(copy.id, "memory")).text == "- a fact\n"
     assert (await ctx.pixies.read_file(copy.id, "notes/topic")).text == "a note\n"

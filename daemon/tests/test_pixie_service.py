@@ -92,15 +92,11 @@ async def test_updating_controls_reaches_the_open_chat(
     chat = await ctx.pixies.send(pixie.id, "hello", [])
     await until(lambda: not ctx.sessions.busy(chat.id))
 
-    updated = await ctx.pixies.update(
-        pixie.id,
-        UpdatePixie(model="sonnet", effort="low", permission_mode="acceptEdits", projects=["web"]),
+    await ctx.pixies.update(
+        pixie.id, UpdatePixie(model="sonnet", effort="low", permission_mode="acceptEdits")
     )
-    cleared = await ctx.pixies.update(pixie.id, UpdatePixie(all_projects=True))
     session = await ctx.sessions.get(chat.id)
 
-    assert updated.projects == ["web"]
-    assert cleared.projects is None
     assert session.model == "sonnet"
     assert session.effort == "low"
     assert session.permission_mode == "acceptEdits"

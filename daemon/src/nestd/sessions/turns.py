@@ -631,8 +631,6 @@ class TurnRunner:
                 nest_tools=self._nest_tools(session) if self._nest_tools else (),
                 write_root=extras.write_root if extras else None,
                 skills=extras.skills if extras else (),
-                allowed_tools=extras.allowed_tools if extras else (),
-                disallowed_tools=extras.disallowed_tools if extras else (),
                 subagents=agents.subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),

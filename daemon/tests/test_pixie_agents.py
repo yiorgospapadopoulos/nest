@@ -66,13 +66,11 @@ def chat(repo: str = "web") -> Session:
     )
 
 
-async def test_only_pixies_that_may_work_on_the_project_are_offered(
+async def test_every_pixie_works_on_every_project_unless_hidden_or_without_files(
     ctx: AppContext, agents: PixieAgents
 ) -> None:
     for name, fields in (
         ("Everywhere", {}),
-        ("Web", {"projects": ["web", "api"]}),
-        ("Api", {"projects": ["api"]}),
         ("Hidden", {"hidden": True}),
         ("Nothing", {"project_access": "none"}),
         ("Reader", {"project_access": "read"}),
@@ -81,7 +79,7 @@ async def test_only_pixies_that_may_work_on_the_project_are_offered(
 
     offered = await agents.for_session(chat("web"))
 
-    assert list(offered.subagents) == ["everywhere", "web", "reader"]
+    assert list(offered.subagents) == ["everywhere", "reader"]
     assert offered.teams == ()
 
 
@@ -94,7 +92,6 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
             effort="high",
             permission_mode="acceptEdits",
             skills=["review"],
-            disallowed_tools=["Bash(rm:*)"],
             project_access="read",
         )
     )
@@ -123,7 +120,7 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
     assert "## Your team" not in sub.prompt
     assert (sub.model, sub.effort, sub.permission_mode) == ("opus", "high", "acceptEdits")
     assert sub.skills == ("review",)
-    assert sub.disallowed_tools == ("Bash(rm:*)", *EDIT_TOOLS)
+    assert sub.disallowed_tools == EDIT_TOOLS
     assert plain.description == "Plain"
     assert (plain.model, plain.effort, plain.skills, plain.disallowed_tools) == (
         None,
@@ -141,13 +138,13 @@ async def test_a_leader_leads_its_available_members(ctx: AppContext, agents: Pix
     ]
     for pixie in (lead, bugs, style, away, docs):
         await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
-    await ctx.pixies.update(away.id, UpdatePixie(projects=["api"]))
+    await ctx.pixies.update(away.id, UpdatePixie(project_access="none"))
     await ctx.pixies.update(style.id, UpdatePixie(hidden=True))
 
     offered = await agents.for_session(chat())
     prompt = offered.subagents["lead"].prompt
 
-    # Away works elsewhere and Style is hidden; the leader is not its own member.
+    # Away keeps out of project files and Style is hidden; the leader is not its own member.
     assert prompt.endswith(
         "\n\n## Your team\nYou lead the team QA crew (@qa). Its members in this chat:\n"
         "- bugs: Bugs: You do Bugs.\n"
@@ -257,8 +254,8 @@ async def test_a_pixie_chat_gets_every_other_available_pixie_and_no_teams(
 ) -> None:
     created: dict[str, Pixie] = {}
     for name, fields in (
-        ("Boss", {"projects": ["web"]}),
-        ("Api", {"projects": ["api"]}),
+        ("Boss", {}),
+        ("Api", {}),
         ("Hidden", {"hidden": True}),
         ("Nothing", {"project_access": "none"}),
         ("Reader", {"project_access": "read"}),
@@ -294,8 +291,9 @@ async def test_a_project_chat_knows_its_pixies_and_their_teams(
     for pixie in (lead, bugs):
         await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
     await ctx.pixies.update(left.id, UpdatePixie(team_id=lonely.id))
-    # Its team's leader works elsewhere, so the team is not offered and it is called alone.
-    leader = await ctx.pixies.create(CreatePixie(name="Boss", projects=["api"]))
+    # Its team's leader keeps out of project files, so the team is not offered and it is
+    # called alone.
+    leader = await ctx.pixies.create(CreatePixie(name="Boss", project_access="none"))
     await ctx.pixies.update(leader.id, UpdatePixie(team_id=lonely.id))
     await ctx.teams.update(lonely.id, UpdateTeam(leader_id=leader.id))
 

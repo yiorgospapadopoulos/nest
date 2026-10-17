@@ -18,7 +18,7 @@ P1 = "0" * 31 + "1"
 NOW = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
 
 
-def pixie(projects: list[str] | None = None) -> Pixie:
+def pixie() -> Pixie:
     return Pixie(
         id=P1,
         slug="tester",
@@ -27,7 +27,6 @@ def pixie(projects: list[str] | None = None) -> Pixie:
         chat_session_id=None,
         created_at=NOW,
         updated_at=NOW,
-        projects=projects,
     )
 
 
@@ -88,7 +87,6 @@ async def test_soul_and_projects(tmp_path: Path, setup: tuple[PixieFiles, RepoSe
     await repos.register(init_repo(tmp_path / "web"))
     await repos.register(init_repo(tmp_path / "api"))
     all_tools = by_name(pixie_tools(pixie(), files, repos, FakeClock(NOW)))
-    some_tools = by_name(pixie_tools(pixie(["web"]), files, repos, FakeClock(NOW)))
 
     await call(all_tools, "soul_write", text="You review code.")
     soul = await call(all_tools, "soul_read")
@@ -97,7 +95,6 @@ async def test_soul_and_projects(tmp_path: Path, setup: tuple[PixieFiles, RepoSe
     assert await call(all_tools, "list_projects") == (
         f"api: {tmp_path / 'api'}\nweb: {tmp_path / 'web'}"
     )
-    assert await call(some_tools, "list_projects") == f"web: {tmp_path / 'web'}"
 
 
 async def test_blank_forget_and_search_are_refused(setup: tuple[PixieFiles, RepoService]) -> None:
