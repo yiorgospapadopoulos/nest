@@ -271,7 +271,7 @@ describe("usage limit settings", () => {
     api.usageSettings.mockReturnValue(new Promise(() => undefined));
     await openAccount(api);
 
-    expect(await screen.findByRole("meter", { name: "5 hour window used" })).toBeInTheDocument();
+    expect(await screen.findByRole("meter", { name: "5 hour used" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Check limits")).not.toBeInTheDocument();
   });
 

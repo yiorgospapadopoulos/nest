@@ -13,7 +13,8 @@ import { GeneralPage } from "./GeneralPage.tsx";
 import { NotificationsPage } from "./NotificationsPage.tsx";
 import { PixiesPage } from "./PixiesPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
-import { LinkRow } from "./rows.tsx";
+import { LinkRow, PageFrame } from "./rows.tsx";
+import { UsageBreakdown } from "./UsageBreakdown.tsx";
 
 const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   general: { title: "General", icon: "gear" },
@@ -94,6 +95,16 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     );
   }
 
+  if ("detail" in page) {
+    return (
+      <UsageBreakdown
+        onBack={() => {
+          onPage({ page: "agents" });
+        }}
+      />
+    );
+  }
+
   if ("project" in page) {
     const repo = state.repos.find((r) => r.name === page.project);
     if (repo === undefined) return null;
@@ -108,7 +119,13 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     general: () => <GeneralPage />,
     appearance: () => <AppearancePage />,
     notifications: () => <NotificationsPage />,
-    agents: () => <AgentsPage />,
+    agents: () => (
+      <AgentsPage
+        onUsageDetails={() => {
+          onPage({ detail: "usage" });
+        }}
+      />
+    ),
     pixies: () => <PixiesPage project={project} onOpenPixie={onOpenPixie} />,
     accounts: () => <AccountsPage />,
     extensions: () => <ExtensionsPage />,
@@ -118,31 +135,5 @@ export function Settings({ page, onPage, back, onBack, project, onOpenPixie }: P
     <PageFrame title={PAGES[page.page].title} back={back} onBack={onBack}>
       {body[page.page]()}
     </PageFrame>
-  );
-}
-
-/** A page's bar: back on the left, the title in the middle. */
-function PageFrame({
-  title,
-  back,
-  onBack,
-  children,
-}: {
-  title: string;
-  back: string;
-  onBack: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <>
-      <div className="snav">
-        <button className="back" aria-label={`Back to ${back}`} onClick={onBack} autoFocus>
-          <Icon name="chevl" />
-          <span>{back}</span>
-        </button>
-        <h1 className="snt">{title}</h1>
-      </div>
-      {children}
-    </>
   );
 }

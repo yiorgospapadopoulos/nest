@@ -347,12 +347,6 @@ export interface SessionDiff {
   fingerprint: string;
 }
 
-export interface DayUsage {
-  date: string;
-  tokens: number;
-  sessions: number;
-}
-
 export interface TokenTotals {
   input_tokens: number;
   output_tokens: number;
@@ -361,12 +355,38 @@ export interface TokenTotals {
   total: number;
 }
 
-export interface MonthUsage {
-  year: number;
-  month: number;
+// A calendar period of counted usage, by the Mac's local calendar; weeks start on Monday.
+export type PeriodUnit = "day" | "week" | "month" | "year";
+
+export interface UsageBar {
+  // The bar's local start with its UTC offset: an hour, a day or a month.
+  start: string;
+  tokens: number;
   sessions: number;
+}
+
+export interface ProjectUsage {
+  name: string;
+  tokens: number;
+  // Every pixie chat counted as one "Pixies" entry.
+  pixies: boolean;
+}
+
+export interface UsagePeriod {
+  unit: PeriodUnit;
+  start: string;
+  end: string;
+  // The period holds today.
+  current: boolean;
+  sessions: number;
+  // Everything: the chats and their subagents.
   tokens: TokenTotals;
-  days: DayUsage[];
+  // The subagents' part of `tokens`.
+  subagents: TokenTotals;
+  bars: UsageBar[];
+  projects: ProjectUsage[];
+  // The Mac's own usage checks, not counted in `tokens`.
+  probes: { count: number; tokens: number };
 }
 
 export interface LimitWindow {

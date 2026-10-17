@@ -26,7 +26,6 @@ import type {
   NestEvent,
   MergeBody,
   ModelList,
-  MonthUsage,
   NotificationSettings,
   Pixie,
   PixieActivity,
@@ -57,6 +56,8 @@ import type {
   UpdateSessionBody,
   UpdateTeamBody,
   UsageLimits,
+  UsagePeriod,
+  PeriodUnit,
   AvailablePlugin,
   InstalledPlugin,
   Marketplace,
@@ -167,7 +168,7 @@ export interface Api {
   merge(sessionId: string, body: MergeBody): Promise<Session>;
   uploadAttachment(file: File): Promise<Attachment>;
   connectors(): Promise<Connector[]>;
-  usageMonth(year: number, month: number): Promise<MonthUsage>;
+  usagePeriod(unit: PeriodUnit, date: string): Promise<UsagePeriod>;
   usageLimits(): Promise<UsageLimits>;
   refreshUsage(): Promise<UsageLimits>;
   // 202 at once; the daemon then exits and launchd starts it again.
@@ -478,11 +479,8 @@ export class HttpApi implements Api {
     return this.json<Connector[]>("GET", "/api/connectors");
   }
 
-  usageMonth(year: number, month: number) {
-    return this.json<MonthUsage>(
-      "GET",
-      `/api/usage/month?year=${String(year)}&month=${String(month)}`,
-    );
+  usagePeriod(unit: PeriodUnit, date: string) {
+    return this.json<UsagePeriod>("GET", `/api/usage/period?unit=${unit}&date=${date}`);
   }
 
   usageLimits() {

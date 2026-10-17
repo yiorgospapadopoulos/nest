@@ -24,7 +24,7 @@ import type {
   HabitRun,
   NestEvent,
   JsonObject,
-  MonthUsage,
+  PeriodUnit,
   NotificationSettings,
   Pixie,
   PixieActivity,
@@ -1078,8 +1078,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return attempt(() => api.diff(sessionId));
     },
 
-    month(year: number, month: number): Promise<MonthUsage | null> {
-      return attempt(() => api.usageMonth(year, month));
+    /** Shows another usage period; `date` is a day in it, null for the current one. */
+    viewUsage(unit: PeriodUnit, date: string | null): void {
+      dispatch({ type: "usageView", unit, date });
+    },
+
+    /** Loads the usage period of `unit` holding `date` (YYYY-MM-DD). */
+    async loadUsage(unit: PeriodUnit, date: string): Promise<void> {
+      const period = await attempt(() => api.usagePeriod(unit, date));
+      if (period !== null) dispatch({ type: "usagePeriod", period });
     },
 
     async loadNotifications(): Promise<void> {

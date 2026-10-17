@@ -19,6 +19,7 @@ import {
   session,
   task,
   team,
+  usagePeriod,
 } from "../test/fixtures.ts";
 import { reduce } from "./reducer.ts";
 import { initialState, type State } from "./state.ts";
@@ -863,5 +864,28 @@ describe("live events", () => {
         reduce(state, { type: "replayed", events: [event({ type: "session.message" })] }).agentLive,
       ).toEqual(state.agentLive);
     });
+  });
+
+  it("shows the usage period asked for and drops one that arrives late (B84)", () => {
+    const october = usagePeriod();
+    const september = usagePeriod({ start: "2026-09-01", end: "2026-09-30", current: false });
+    // The current month, before any day was chosen.
+    let state = reduce(initialState, { type: "usagePeriod", period: september });
+    expect(state.usage.period).toBeNull();
+    state = reduce(state, { type: "usagePeriod", period: october });
+    expect(state.usage.period).toBe(october);
+
+    // A day in the same period keeps it; another period or unit waits for its own.
+    state = reduce(state, { type: "usageView", unit: "month", date: "2026-10-03" });
+    expect(state.usage).toEqual({ unit: "month", date: "2026-10-03", period: october });
+    state = reduce(state, { type: "usageView", unit: "month", date: "2026-09-30" });
+    expect(state.usage.period).toBeNull();
+    state = reduce(state, { type: "usagePeriod", period: october });
+    expect(state.usage.period).toBeNull();
+    state = reduce(state, { type: "usagePeriod", period: september });
+    expect(state.usage.period).toBe(september);
+    state = reduce(state, { type: "usageView", unit: "week", date: "2026-09-30" });
+    expect(state.usage.period).toBeNull();
+    expect(reduce(state, { type: "usagePeriod", period: september }).usage.period).toBeNull();
   });
 });
