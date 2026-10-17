@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from nestd.config.errors import ConfigError
 from nestd.config.loader import load_settings, save_pixie_defaults, save_storage, save_usage
-from nestd.config.models import PixieDefaults, StorageSettings, UsageSettings
+from nestd.config.models import PixieDefaults, Settings, StorageSettings, UsageSettings
 from nestd.paths import AppPaths
 
 
@@ -31,10 +32,8 @@ def test_defaults(paths: AppPaths) -> None:
         model=None,
         autonomy="observe",
         project_access="edit",
-        projects="all",
         max_running=2,
         max_per_day=5,
-        report_push="action",
         habits_paused=False,
         habit_usage_percent=80,
     )
@@ -94,8 +93,7 @@ def test_a_warning_level_is_saved(paths: AppPaths) -> None:
         {"max_per_day": 0},
         {"max_per_day": 101},
         {"autonomy": "everything"},
-        {"report_push": "urgent"},
-        {"projects": "some"},
+        {"project_access": "some"},
         {"model": ""},
     ],
 )
@@ -109,10 +107,8 @@ def test_pixie_defaults_are_saved(paths: AppPaths) -> None:
         model="opus",
         autonomy="start",
         project_access="read",
-        projects="current",
         max_running=3,
         max_per_day=10,
-        report_push="info",
         habits_paused=True,
         habit_usage_percent=95,
     )
@@ -124,11 +120,57 @@ def test_pixie_defaults_are_saved(paths: AppPaths) -> None:
     assert _on_disk(paths)["pixies"] == {
         "autonomy": "observe",
         "project_access": "edit",
-        "projects": "all",
         "max_running": 2,
         "max_per_day": 5,
-        "report_push": "action",
         "habits_paused": False,
         "habit_usage_percent": 80,
     }
     assert load_settings(paths).pixies.model is None
+
+
+@pytest.mark.parametrize(
+    ("notifications", "level"),
+    [
+        ("", "info"),
+        ('[notifications]\nvapid_subject = "mailto:me@example.com"\n', "info"),
+        ('[notifications]\npixie_report_level = "warn"\n', "warn"),
+    ],
+)
+def test_a_file_from_before_b85_still_loads(
+    paths: AppPaths, notifications: str, level: str
+) -> None:
+    """`[pixies] projects` went and `report_push` became `[notifications]
+    pixie_report_level`, unless that level is set already (D109).
+    """
+    paths.settings_file.write_text(
+        f'{notifications}[pixies]\nprojects = "current"\nreport_push = "info"\nmax_running = 3\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(paths)
+
+    assert settings.notifications.pixie_report_level == level
+    assert settings.pixies.max_running == 3
+    assert "report_push" not in settings.pixies.model_dump()
+
+
+def test_without_an_old_level_the_report_level_is_the_default(paths: AppPaths) -> None:
+    paths.settings_file.write_text("[pixies]\nmax_running = 3\n", encoding="utf-8")
+
+    assert load_settings(paths).notifications.pixie_report_level == "action"
+
+
+@pytest.mark.parametrize(
+    "text", ["pixies = 3\n", 'notifications = 3\n[pixies]\nreport_push = "info"\n']
+)
+def test_sections_that_are_no_tables_are_still_refused(paths: AppPaths, text: str) -> None:
+    paths.settings_file.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_settings(paths)
+
+
+@pytest.mark.parametrize("model", [Settings, PixieDefaults])
+def test_settings_that_are_no_table_are_refused(model: type[Settings | PixieDefaults]) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate("pixies")

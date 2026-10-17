@@ -104,7 +104,6 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
         </div>
       }
     >
-      <div className={`pxbg pxbg-${pixie.background}`} aria-hidden="true" />
       {tab === "chat" ? (
         // A new chat (after the first message or a reset) is a fresh transcript.
         <PixieChat

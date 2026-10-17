@@ -124,32 +124,3 @@ extension Color {
         self.init(PixieColor.rgba(hex) ?? PixieColor.rgba(PixieColor.standard)!)
     }
 }
-
-/// The tinted backdrop of a pixie's chat, as on the iPhone: a soft vertical blend of two
-/// status colours, or nothing for Plain.
-struct PixieBackdrop: View {
-    let background: PixieBackground
-
-    var body: some View {
-        if let stops {
-            LinearGradient(colors: stops, startPoint: .top, endPoint: .bottom)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var stops: [Color]? {
-        switch background {
-        case .meadow:
-            [StatusTone.review.color.opacity(0.16), StatusTone.waiting.color.opacity(0.06)]
-        case .dusk:
-            [StatusTone.waiting.color.opacity(0.16), StatusTone.failed.color.opacity(0.08)]
-        case .night:
-            [StatusTone.running.color.opacity(0.18), Palette.t1.opacity(0.08)]
-        case .dawn:
-            [StatusTone.failed.color.opacity(0.10), StatusTone.waiting.color.opacity(0.12)]
-        case .plain, .unknown:
-            nil
-        }
-    }
-}

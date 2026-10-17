@@ -59,58 +59,11 @@ struct PixieDetails: View {
                     .padding(.horizontal, 8)
                 SectionBreak()
                 PixieSettings(pixie: pixie)
-                DetailNote(text: "\(pixie.autonomy.label): \(pixie.autonomy.summary)")
 
                 DetailHeading(title: "Limits")
                 PixieLimitRows(pixie: pixie)
-                DetailNote(text: "For the chats it starts on its own.")
 
-                DetailHeading(title: "Projects")
-                PixieProjects(pixie: pixie)
-
-                DetailHeading(title: "Reports")
-                DetailGroup {
-                    PickerRow(title: ReportSeverity.pushTitle, value: pixie.reportPush.pushLabel) {
-                        Section(ReportSeverity.pushTitle) {
-                            ForEach(ReportSeverity.pushChoices, id: \.self) { severity in
-                                OptionItem(
-                                    title: severity.pushLabel, detail: "",
-                                    checked: pixie.reportPush == severity
-                                ) { save(UpdatePixieRequest(reportPush: severity)) }
-                            }
-                        }
-                    }
-                }
-                DetailNote(
-                    text:
-                        "Which reports reach the iPhone. Every report shows in its chat; warnings and actions also in Reports."
-                )
-
-                DetailHeading(title: "Skills")
-                DetailGroup {
-                    ChipList(
-                        label: "Skill", add: "Add skill", items: pixie.skills, empty: "All skills"
-                    ) { save(UpdatePixieRequest(skills: $0)) }
-                    .padding(.horizontal, 8)
-                }
-
-                DetailHeading(title: "Tools")
-                DetailGroup {
-                    VStack(alignment: .leading, spacing: 5) {
-                        DetailSubheading(title: "Never ask for")
-                        ChipList(
-                            label: "Never ask for", items: pixie.allowedTools,
-                            empty: "Asks as its permission mode says"
-                        ) { save(UpdatePixieRequest(allowedTools: $0)) }
-                        DetailSubheading(title: "Never allow")
-                            .padding(.top, 6)
-                        ChipList(
-                            label: "Never allow", items: pixie.disallowedTools,
-                            empty: "Nothing beyond the git rules"
-                        ) { save(UpdatePixieRequest(disallowedTools: $0)) }
-                    }
-                    .padding(.horizontal, 8)
-                }
+                PixieSkillChips(pixie: pixie)
 
                 SectionBreak()
                 DetailGroup {
@@ -384,7 +337,7 @@ struct InlineField: View {
     }
 }
 
-/// Mascots, colours and backgrounds; a click saves the choice.
+/// Mascots and colours; a click saves the choice.
 private struct PixieLook: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
@@ -411,13 +364,6 @@ private struct PixieLook: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            HStack(spacing: 4) {
-                ForEach(PixieBackground.choices, id: \.self) { background in
-                    BackgroundChoice(background: background, on: pixie.background == background) {
-                        save(UpdatePixieRequest(background: background))
-                    }
-                }
-            }
         }
     }
 
@@ -531,42 +477,6 @@ private struct CustomColorDot: View {
                     pick(hex)
                 }
             })
-    }
-}
-
-private struct BackgroundChoice: View {
-    let background: PixieBackground
-    let on: Bool
-    let pick: () -> Void
-
-    var body: some View {
-        Button(action: pick) {
-            VStack(spacing: 3) {
-                RoundedRectangle.rounded(Radius.chip)
-                    .fill(Palette.soft)
-                    .overlay(
-                        PixieBackdrop(background: background).clipShape(
-                            RoundedRectangle.rounded(Radius.chip))
-                    )
-                    .frame(height: 18)
-                    .padding(2)
-                    .overlay {
-                        if on {
-                            RoundedRectangle.rounded(Radius.chip + 2).strokeBorder(
-                                Palette.t2, lineWidth: 1)
-                        }
-                    }
-                Text(background.label)
-                    .font(.ui(TypeSize.meta))
-                    .foregroundStyle(on ? Palette.t1 : Palette.t3)
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .accessibilityLabel("\(background.label) background")
-        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -730,134 +640,110 @@ struct PickerRow<Items: View>: View {
     }
 }
 
-/// Every project, or the ones picked from the registered repos.
-private struct PixieProjects: View {
+/// The skills it may use, as removable chips; Add, at the right of the heading, offers
+/// the skills not chosen yet (B85): standalone ones, then a submenu per plugin, so a long
+/// list stays short. None chosen means every skill.
+private struct PixieSkillChips: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let chosen = pixie.projects
-        DetailGroup {
-            if let chosen {
-                if chosen.isEmpty {
-                    DetailLine(text: "No projects", dim: true)
+        let menu = PixieSkillMenu(
+            choices: shell.pixies.skillChoices ?? [], chosen: pixie.skills)
+        DetailHeading(title: "Skills") {
+            HeadingAddMenu(label: "Add skill") {
+                if let empty = menu.emptyText {
+                    Text(empty)
                 }
-                ForEach(chosen, id: \.self) { name in
-                    HStack(spacing: 8) {
-                        ProjectIcon(name: name, size: 14)
-                        Text(name).font(.ui(TypeSize.ui)).foregroundStyle(Palette.t1).lineLimit(1)
-                        Spacer(minLength: 4)
-                        RemoveButton(label: "Remove \(name)") {
-                            save(UpdatePixieRequest(projects: chosen.filter { $0 != name }))
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(height: Metrics.rowHeight + 2)
+                ForEach(menu.standalone) { skill in
+                    skillButton(skill)
                 }
-            } else {
-                DetailLine(text: "All projects", dim: false)
-            }
-            AddMenuRow(title: "Add project") {
-                if chosen != nil {
-                    Button("All projects") { save(UpdatePixieRequest(allProjects: true)) }
+                if !menu.standalone.isEmpty && !menu.groups.isEmpty {
                     Divider()
                 }
-                ForEach(shell.app.repos.filter { !(chosen ?? []).contains($0.name) }) { repo in
-                    Button(repo.name) {
-                        save(UpdatePixieRequest(projects: (chosen ?? []) + [repo.name]))
+                ForEach(menu.groups) { group in
+                    Menu(group.plugin) {
+                        ForEach(group.skills) { skill in
+                            skillButton(skill)
+                        }
                     }
                 }
             }
         }
+        DetailGroup {
+            FlowLayout(spacing: 6) {
+                if pixie.skills.isEmpty {
+                    Text("All skills")
+                        .font(.ui(TypeSize.ui))
+                        .foregroundStyle(Palette.t3)
+                        .frame(height: 22)
+                }
+                ForEach(pixie.skills, id: \.self) { skill in
+                    HStack(spacing: 3) {
+                        Text(skill)
+                            .font(.mono(TypeSize.meta))
+                            .foregroundStyle(Palette.t1)
+                            .lineLimit(1)
+                        RemoveButton(label: "Remove \(skill)") {
+                            save(pixie.skills.filter { $0 != skill })
+                        }
+                    }
+                    .padding(.leading, 7)
+                    .padding(.trailing, 2)
+                    .frame(height: 22)
+                    .background(Palette.soft, in: .rounded(Radius.button))
+                }
+            }
+            .padding(.horizontal, 8)
+        }
+        .task { try? await shell.pixies.loadSkillChoices() }
     }
 
-    private func save(_ request: UpdatePixieRequest) {
-        shell.updatePixie(pixie.id, request)
+    private func skillButton(_ skill: PixieSkillChoice) -> some View {
+        Button(skill.shortName) { save(pixie.skills + [skill.name]) }
+            .help(skill.description ?? skill.name)
+    }
+
+    private func save(_ skills: [String]) {
+        shell.updatePixie(pixie.id, UpdatePixieRequest(skills: skills))
     }
 }
 
-/// "+ Add …" opening a menu.
-private struct AddMenuRow<Items: View>: View {
-    let title: String
+/// "+ Add" at the right of a heading, the one place every Add of the details sits (B85).
+struct HeadingAddButton: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Add", systemImage: Icon.plus)
+        }
+        .buttonStyle(.nest(.plain, height: 22))
+        .padding(.vertical, -4)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// `HeadingAddButton` opening a menu of what to add.
+struct HeadingAddMenu<Items: View>: View {
+    let label: String
     @ViewBuilder let items: () -> Items
-    @State private var hovering = false
 
     var body: some View {
         Menu {
             items()
         } label: {
-            HStack(spacing: 7) {
-                Image(systemName: Icon.plus).font(.system(size: 10, weight: .medium))
-                Text(title).font(.ui(TypeSize.ui))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(hovering ? Palette.t1 : Palette.t2)
-            .padding(.horizontal, 8)
-            .frame(height: Metrics.rowHeight + 2)
-            .background(hovering ? Palette.soft : .clear, in: .rounded(Radius.row))
-            .contentShape(Rectangle())
+            Label("Add", systemImage: Icon.plus)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.nest(.plain, height: 22))
         .menuIndicator(.hidden)
+        .fixedSize()
+        .padding(.vertical, -4)
         .pointerStyle(.link)
-        .onHover { hovering = $0 }
-        .accessibilityLabel(title)
-    }
-}
-
-/// Removable chips and a field to add one more, saved as soon as it changes.
-private struct ChipList: View {
-    /// The field's name, also in "Add to <label>" unless `add` names the button.
-    let label: String
-    var add: String?
-    let items: [String]
-    let empty: String
-    let change: ([String]) -> Void
-    @State private var adding = false
-
-    var body: some View {
-        FlowLayout(spacing: 6) {
-            if items.isEmpty && !adding {
-                Text(empty)
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(Palette.t3)
-                    .frame(height: 22)
-            }
-            ForEach(items, id: \.self) { item in
-                HStack(spacing: 3) {
-                    Text(item)
-                        .font(.mono(TypeSize.meta))
-                        .foregroundStyle(Palette.t1)
-                        .lineLimit(1)
-                    RemoveButton(label: "Remove \(item)") {
-                        change(items.filter { $0 != item })
-                    }
-                }
-                .padding(.leading, 7)
-                .padding(.trailing, 2)
-                .frame(height: 22)
-                .background(Palette.soft, in: .rounded(Radius.button))
-            }
-            if adding {
-                InlineField(label: label, initial: "", font: .mono(TypeSize.meta), center: false) {
-                    text in
-                    adding = false
-                    if let text, !text.isEmpty, !items.contains(text) {
-                        change(items + [text])
-                    }
-                }
-                .frame(width: 180)
-            } else {
-                Button {
-                    adding = true
-                } label: {
-                    Label("Add", systemImage: Icon.plus)
-                }
-                .buttonStyle(.nest(.plain))
-                .accessibilityLabel(add ?? "Add to \(label)")
-            }
-        }
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 
@@ -1037,33 +923,37 @@ struct SectionBreak: View {
     }
 }
 
-/// A small grey section label, after a line across the panel unless it opens the page.
-struct DetailHeading: View {
+/// A small grey section label, after a line across the panel unless it opens the page,
+/// with its Add, if any, at the full right of the row.
+struct DetailHeading<Trailing: View>: View {
     let title: String
     var divided = true
+    @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if divided {
                 SectionBreak()
             }
-            Text(title)
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .padding(.horizontal, 8)
-                .padding(.top, divided ? 2 : 12)
-                .padding(.bottom, 4)
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                Spacer(minLength: 0)
+                trailing()
+            }
+            .frame(minHeight: 14)
+            .padding(.leading, 8)
+            .padding(.trailing, 2)
+            .padding(.top, divided ? 2 : 12)
+            .padding(.bottom, 4)
         }
     }
 }
 
-struct DetailSubheading: View {
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(.ui(TypeSize.meta))
-            .foregroundStyle(Palette.t2)
+extension DetailHeading where Trailing == EmptyView {
+    init(title: String, divided: Bool = true) {
+        self.init(title: title, divided: divided) { EmptyView() }
     }
 }
 

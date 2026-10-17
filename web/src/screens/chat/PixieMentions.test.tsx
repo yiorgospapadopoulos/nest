@@ -21,7 +21,7 @@ const PIXIES = [
   pixie({ id: "rev", slug: "reviewer", name: "Reviewer", position: 2 }),
   pixie({ id: "shy", slug: "shy", name: "Shy", position: 3, hidden: true }),
   pixie({ id: "none", slug: "blind", name: "Blind", position: 4, project_access: "none" }),
-  pixie({ id: "other", slug: "other", name: "Elsewhere", position: 5, projects: ["narrative"] }),
+  pixie({ id: "other", slug: "other", name: "Elsewhere", position: 5 }),
 ];
 const TEAMS = [
   team({ id: "qa", name: "QA crew", handle: "qa", leader_id: "lead" }),
@@ -64,8 +64,12 @@ describe("pixie mentions", () => {
     const list = await screen.findByRole("listbox", { name: "Pixies and files" });
     await screen.findByRole("option", { name: /src\/app\.py/ });
     await waitFor(() => {
-      // A team's pixies are called with their team only.
-      expect(optionsIn("Pixies")).toEqual(["QA crew @qa", "Reviewer @reviewerSoul of rev"]);
+      // A team's pixies are called with their team only; every pixie works in every project.
+      expect(optionsIn("Pixies")).toEqual([
+        "QA crew @qa",
+        "Reviewer @reviewerSoul of rev",
+        "Elsewhere @otherSoul of other",
+      ]);
     });
     expect(optionsIn("Files")).toEqual(["src/app.py"]);
     // Pixies come first.
@@ -73,7 +77,7 @@ describe("pixie mentions", () => {
     // The team shows its members' mascots.
     const crew = screen.getByRole("option", { name: /QA crew/ });
     expect(crew.querySelectorAll("svg")).toHaveLength(2);
-    expect(api.pixieFile.mock.calls.map(([id]) => id)).toEqual(["rev"]);
+    expect(api.pixieFile.mock.calls.map(([id]) => id)).toEqual(["rev", "other"]);
     // Each soul is read once.
     await user.type(field, "x{Backspace}");
     expect(api.pixieFile.mock.calls.filter(([id]) => id === "rev")).toHaveLength(1);

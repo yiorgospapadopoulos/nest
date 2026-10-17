@@ -331,18 +331,3 @@ describe("reports in the inbox and the pixie list (B42)", () => {
     expect(screen.getByLabelText("2 reports need action")).toBeInTheDocument();
   });
 });
-
-describe("report settings (B42)", () => {
-  it("picks what reaches the phone in the pixie's details", async () => {
-    const api = fakeApi();
-    const { user } = await openPixie(api, tester, "Details");
-
-    await user.click(screen.getByRole("button", { name: "Phone alerts: Needs action" }));
-    const picker = screen.getByRole("dialog", { name: "Phone alerts" });
-    await user.click(within(picker).getByRole("menuitemradio", { name: /^Warnings and up/ }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { report_push: "warn" });
-    expect(
-      await screen.findByRole("button", { name: "Phone alerts: Warnings and up" }),
-    ).toBeInTheDocument();
-  });
-});

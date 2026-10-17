@@ -50,6 +50,32 @@ async def test_crud(api: Api) -> None:
     assert deleted.status_code == 204
 
 
+# Pixie keys removed in B85 (D109), as a client from before it still sends them.
+REMOVED_KEYS = {
+    "projects": ["web"],
+    "all_projects": True,
+    "background": "dusk",
+    "report_push": "info",
+    "allowed_tools": ["Bash(ls:*)"],
+    "disallowed_tools": ["WebFetch"],
+}
+
+
+async def test_keys_removed_in_b85_are_ignored_not_refused(api: Api) -> None:
+    created = await api.http.post("/api/pixies", json={"name": "Old", **REMOVED_KEYS})
+    pid = created.json()["id"]
+    patched = await api.http.patch(f"/api/pixies/{pid}", json={"name": "Older", **REMOVED_KEYS})
+    unknown = await api.http.patch(f"/api/pixies/{pid}", json={"colour": "#000000"})
+
+    assert created.status_code == 201
+    assert patched.status_code == 200
+    assert patched.json()["name"] == "Older"
+    for pixie in (created.json(), patched.json()):
+        assert set(pixie).isdisjoint(REMOVED_KEYS)
+    # Other unknown keys are still refused.
+    assert unknown.status_code == 422
+
+
 async def test_messages_and_reset(api: Api) -> None:
     api.provider.script(reply("hi"))
     pid = (await api.http.post("/api/pixies", json={"name": "Tester"})).json()["id"]

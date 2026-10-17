@@ -331,9 +331,6 @@ class SessionSpec:
     write_root: Path | None = None
     # Claude Code skill names for this run; empty leaves Claude Code's default (all).
     skills: tuple[str, ...] = ()
-    # Permission rules that never prompt, and ones denied besides any git rules (D072).
-    allowed_tools: tuple[str, ...] = ()
-    disallowed_tools: tuple[str, ...] = ()
     # Subagents by the name the agent calls them with; fixed for the run's life (B40).
     subagents: Mapping[str, Subagent] = field(default_factory=dict[str, Subagent])
     # Which agents may call which pixies among the subagents; None guards no calls (B70).

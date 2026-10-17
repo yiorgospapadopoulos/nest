@@ -268,19 +268,65 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
 }
 
 @Suite struct PixieMentionTests {
-    @Test func aPixieIsAvailableWhereItMayWork() {
+    /// Every pixie may work in every project (B85), unless hidden or without project files.
+    @Test func aPixieIsCallableUnlessHiddenOrWithoutProjectFiles() {
         var pixie = Fixture.decode(Pixie.self, "pixie")
-        #expect(pixie.isAvailable(inRepo: "cv-page"))
-        pixie.projects = ["llm-hunter"]
-        #expect(!pixie.isAvailable(inRepo: "cv-page"))
-        #expect(pixie.isAvailable(inRepo: "llm-hunter"))
+        #expect(pixie.isCallable)
         pixie.projectAccess = .read
-        #expect(pixie.isAvailable(inRepo: "llm-hunter"))
+        #expect(pixie.isCallable)
         pixie.projectAccess = .noAccess
-        #expect(!pixie.isAvailable(inRepo: "llm-hunter"))
+        #expect(!pixie.isCallable)
         pixie.projectAccess = .edit
         pixie.hidden = true
-        #expect(!pixie.isAvailable(inRepo: "llm-hunter"))
+        #expect(!pixie.isCallable)
+    }
+
+    /// Add in Skills (B85): the skills a pixie may use, from `GET /api/pixies/skills`, not
+    /// chosen yet; standalone ones first, then one group per plugin, each by name.
+    @Test func skillsToAddAreGroupedByPlugin() {
+        let choices = [
+            PixieSkillChoice(
+                name: "code-review:review", description: "Reviews", plugin: "code-review"),
+            PixieSkillChoice(name: "notes", description: nil, plugin: nil),
+            PixieSkillChoice(name: "pdf:fill", description: nil, plugin: "pdf"),
+            PixieSkillChoice(name: "code-review:diff", description: nil, plugin: "code-review"),
+            PixieSkillChoice(name: "release-notes", description: nil, plugin: nil),
+        ]
+        let menu = PixieSkillMenu(choices: choices, chosen: ["notes", "pdf:fill"])
+        #expect(menu.standalone.map(\.name) == ["release-notes"])
+        #expect(menu.groups.map(\.plugin) == ["code-review"])
+        #expect(menu.groups[0].skills.map(\.name) == ["code-review:diff", "code-review:review"])
+        #expect(menu.groups[0].id == "code-review")
+        #expect(menu.groups[0].skills.map(\.shortName) == ["diff", "review"])
+        #expect(menu.standalone[0].shortName == "release-notes")
+        #expect(menu.groups[0].skills[1].id == "code-review:review")
+        #expect(!menu.isEmpty)
+        #expect(menu.emptyText == nil)
+        // Groups go by plugin name, standalone ones by name.
+        let all = PixieSkillMenu(choices: choices, chosen: [])
+        #expect(all.groups.map(\.plugin) == ["code-review", "pdf"])
+        #expect(all.standalone.map(\.name) == ["notes", "release-notes"])
+        let done = PixieSkillMenu(choices: choices, chosen: choices.map(\.name))
+        #expect(done.isEmpty)
+        #expect(done.emptyText == "Every installed skill is added")
+        #expect(PixieSkillMenu(choices: [], chosen: []).emptyText == "No skills installed")
+        #expect(
+            Fixture.decode(
+                [PixieSkillChoice].self,
+                json: #"[{"name": "pdf:fill", "description": null, "plugin": "pdf"}]"#)
+                == [PixieSkillChoice(name: "pdf:fill", description: nil, plugin: "pdf")])
+    }
+
+    @MainActor @Test func theStoreReadsTheSkillsAPixieMayUse() async throws {
+        let api = FakeAPI()
+        api.set {
+            $0.pixieSkills = [PixieSkillChoice(name: "notes", description: nil, plugin: nil)]
+        }
+        let store = PixiesStore(api: api)
+        #expect(store.skillChoices == nil)
+        try await store.loadSkillChoices()
+        #expect(store.skillChoices?.map(\.name) == ["notes"])
+        #expect(api.calls == ["pixieSkills"])
     }
 
     @Test func availableTeamsComeBeforePixies() {
@@ -288,7 +334,7 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
             ("a", "t1"), ("b", "t1"), ("c", nil), ("d", "t2"), ("e", "t3"), ("f", "t1"),
             ("g", "t3"))
         list[1].hidden = true
-        list[4].projects = ["other"]
+        list[4].projectAccess = .noAccess
         let teams = [
             team("t1", 0, leader: "a", handle: "qa"),
             // Its leader may not work here: left out, so its members are called alone.
@@ -300,7 +346,7 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
             team("t5", 4, leader: "c"),
         ]
         let mentions = PixieMentions.available(
-            pixies: list, teams: teams, repo: "cv-page", souls: ["c": "Reviews."])
+            pixies: list, teams: teams, souls: ["c": "Reviews."])
         // A member of an offered team is called only through its team (B46).
         #expect(mentions.map(\.token) == ["qa", "t2", "c", "g"])
         guard case .team(let qa, let members) = mentions[0] else {
@@ -320,8 +366,7 @@ private func team(_ id: String, _ position: Int, leader: String?, handle: String
         var list = pixies(("rev", nil), ("tester", "t1"))
         list[0].name = "Reviewer"
         let mentions = PixieMentions.available(
-            pixies: list, teams: [team("t1", 0, leader: "tester", handle: "qa")],
-            repo: "x", souls: [:])
+            pixies: list, teams: [team("t1", 0, leader: "tester", handle: "qa")], souls: [:])
         #expect(PixieMentions.matching(mentions, query: "").count == 2)
         #expect(PixieMentions.matching(mentions, query: "RE").map(\.token) == ["rev"])
         #expect(PixieMentions.matching(mentions, query: "q").map(\.token) == ["qa"])

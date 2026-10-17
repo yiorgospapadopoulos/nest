@@ -62,6 +62,7 @@ import type {
   InstalledPlugin,
   Marketplace,
   PluginDetails,
+  PixieSkill,
   StandaloneSkill,
   ClaudeAccount,
   ClaudeCodeInfo,
@@ -195,6 +196,8 @@ export interface Api {
   pixieFile(id: string, name: string): Promise<PixieFile>;
   savePixieFile(id: string, name: string, text: string, hash: string | null): Promise<PixieFile>;
   pixieNotes(id: string): Promise<string[]>;
+  // Every skill a pixie may be given (B85).
+  pixieSkills(): Promise<PixieSkill[]>;
   pixieActivity(id: string): Promise<PixieActivity[]>;
   searchPixie(id: string, q: string): Promise<PixieSearchHit[]>;
   duplicatePixie(id: string): Promise<Pixie>;
@@ -586,6 +589,10 @@ export class HttpApi implements Api {
 
   pixieNotes(id: string) {
     return this.json<string[]>("GET", `${pixiePath(id)}/notes`);
+  }
+
+  pixieSkills() {
+    return this.json<PixieSkill[]>("GET", "/api/pixies/skills");
   }
 
   /** What the pixie did in chats, newest first; the latest 200 are kept (B41). */

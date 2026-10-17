@@ -102,10 +102,6 @@ public enum PixieSettingsText {
         guard let value, !base.contains(value) else { return base }
         return (base + [value]).sorted()
     }
-
-    public static func projectsLabel(_ projects: PixieProjects) -> String {
-        projects == .current ? "Only the current one" : "All projects"
-    }
 }
 
 /// The words of Settings > Accounts (B81).

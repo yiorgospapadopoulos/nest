@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
+from nestd.config.models import Severity
 from nestd.context import AppContext
 from nestd.events import types
-from nestd.pixies.models import UpdatePixie
 from nestd.pixies.reporting import follow_up
 from nestd.providers.base import ToolRefusedError
 from tests.async_support import until
@@ -91,11 +91,13 @@ async def test_a_report_from_the_chat_shows_as_a_card_and_pushes_an_action(
         ("info", ["info", "warn", "action"]),
     ],
 )
-async def test_the_phone_gets_reports_from_the_pixies_minimum_severity(
-    ctx: AppContext, provider: FakeProvider, push: str, severities: list[str]
+async def test_the_phone_gets_reports_from_the_notifications_report_level(
+    ctx: AppContext, provider: FakeProvider, push: Severity, severities: list[str]
 ) -> None:
+    """One level for every pixie, set in `[notifications]` and read for each report (D109)."""
     pixie = await make_pixie(ctx)
-    await ctx.pixies.update(pixie.id, UpdatePixie.model_validate({"report_push": push}))
+    notifications = ctx.settings.notifications.model_copy(update={"pixie_report_level": push})
+    ctx.settings = ctx.settings.model_copy(update={"notifications": notifications})
     _chat_id, chat = await chat_tools(ctx, provider, pixie)
 
     for severity in ("info", "warn"):

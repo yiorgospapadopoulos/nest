@@ -703,7 +703,7 @@ private func agent(
 
     @Test func membersOfAnOfferedTeamAreLeftOutOfTheList() {
         let mentions = PixieMentions.available(
-            pixies: list, teams: teams, repo: "cv-page", souls: [:])
+            pixies: list, teams: teams, souls: [:])
         // t2 is not offered (its leader is unknown), so Dee is called on her own.
         #expect(mentions.map(\.token) == ["qa", "cy", "dee"])
         #expect(PixieMentions.members(mentions) == ["ada": "qa", "bob": "qa"])
@@ -711,7 +711,7 @@ private func agent(
 
     @Test func callingAMemberAloneIsStoppedBeforeSending() {
         let mentions = PixieMentions.available(
-            pixies: list, teams: teams, repo: "cv-page", souls: [:])
+            pixies: list, teams: teams, souls: [:])
         #expect(
             PixieMentions.memberCall(in: "please @bob look", mentions: mentions)
                 == "Bob is in @qa; call the team or a solo copy")
@@ -725,7 +725,7 @@ private func agent(
 
     @Test func aMemberIsNotColouredAsAMention() {
         let mentions = PixieMentions.available(
-            pixies: list, teams: teams, repo: "cv-page", souls: [:])
+            pixies: list, teams: teams, souls: [:])
         let found = MentionHighlights.find(
             in: "@bob @cy @qa", pixies: list, teams: teams,
             plain: Set(PixieMentions.members(mentions).keys))

@@ -350,12 +350,9 @@ final class Shell {
     /// New pixie and the starters open the new pixie's pane; New pixie also opens its
     /// details to set it up.
     func createPixie(_ request: CreatePixieRequest, details: Bool) {
-        let project = self.project
         run("Could not create the pixie") {
-            // New pixies start with Settings > Pixies; "Only the current one" names the open
-            // project (B81).
-            let prepared = await self.model.pixieSettings.prepare(request, openProject: project)
-            let created = try await self.pixies.create(prepared)
+            // The daemon fills in the rest from Settings > Pixies (B81).
+            let created = try await self.pixies.create(request)
             self.openPixie(created.id)
             withAnimation(.smooth(duration: 0.22)) { self.pixieDetailsOpen = details }
         }
@@ -460,7 +457,7 @@ final class Shell {
         guard let repo = sessions.session(chat)?.repo ?? project, Pixie.id(ofRepo: repo) == nil
         else { return nil }
         return PixieMentions.available(
-            pixies: pixies.pixies, teams: pixies.teams, repo: repo, souls: pixies.soulLines)
+            pixies: pixies.pixies, teams: pixies.teams, souls: pixies.soulLines)
     }
 
     // MARK: Each chat's pixies and subagents (B46)

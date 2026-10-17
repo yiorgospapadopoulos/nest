@@ -260,8 +260,8 @@ def build_options(
         can_use_tool=can_use_tool,
         mcp_servers=tool_servers(spec.tools, spec.nest_tools),
         # Also allowed by rule, so they never prompt in any mode or subagent (B79).
-        allowed_tools=[*spec.allowed_tools, *sorted(every_run_tools)],
-        disallowed_tools=[*(GIT_WRITE_RULES if spec.guard_git else ()), *spec.disallowed_tools],
+        allowed_tools=sorted(every_run_tools),
+        disallowed_tools=list(GIT_WRITE_RULES) if spec.guard_git else [],
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,
         agents={name: _agent(sub, own_tools) for name, sub in spec.subagents.items()} or None,

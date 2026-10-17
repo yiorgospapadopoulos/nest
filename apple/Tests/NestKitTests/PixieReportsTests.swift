@@ -63,22 +63,15 @@ import Testing
         #expect(ReportSeverity.warn.tone == .waiting)
         #expect(ReportSeverity.action.tone == .failed)
         #expect(ReportSeverity.unknown.tone == .done)
-        #expect(ReportSeverity.pushChoices == [.action, .warn, .info])
-        #expect(
-            ReportSeverity.pushChoices.map(\.pushLabel) == [
-                "Needs action", "Warnings and up", "Everything",
-            ])
-        #expect(ReportSeverity.unknown.pushLabel == "")
-        #expect(ReportSeverity.pushTitle == "Phone alerts")
     }
 
-    @Test func aPixieSaysWhatReachesThePhone() {
-        let pixie = Fixture.decode(Pixie.self, "pixie")
-        #expect(pixie.reportPush == .action)
-        #expect(pixie.unreadActionReports == 0)
-        #expect(pixie.applying(UpdatePixieRequest(reportPush: .warn)).reportPush == .warn)
-        #expect(pixie.applying(UpdatePixieRequest(name: "X")).reportPush == .action)
-        #expect(Fixture.json(UpdatePixieRequest(reportPush: .info)) == #"{"report_push":"info"}"#)
+    /// Settings > Notifications: one level for every pixie's reports to the phone (B85).
+    @Test func thePhoneLevelReadsAsTheOldReportsSetting() {
+        #expect(ReportSeverity.phoneLevelTitle == "Send to the phone from")
+        #expect(ReportSeverity.phoneLevels == [.info, .warn, .action])
+        #expect(
+            ReportSeverity.phoneLevels.map(\.phoneLevelLabel) == ["Info", "Warnings", "Action"])
+        #expect(ReportSeverity.unknown.phoneLevelLabel == "")
     }
 
     // MARK: Events

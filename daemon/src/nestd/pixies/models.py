@@ -1,9 +1,9 @@
 """Pixies and their files, as the API and the store see them (D072)."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, cast
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from nestd.config.models import (
     Autonomy,
@@ -15,10 +15,7 @@ from nestd.config.models import (
     PermissionMode,
     PixieDefaults,
     ProjectAccess,
-    Severity,
 )
-
-type Background = Literal["plain", "meadow", "dusk", "night", "dawn"]
 
 NAME_MAX = 40
 type Name = Annotated[
@@ -26,34 +23,47 @@ type Name = Annotated[
 ]
 
 
-class PixieSettings(BaseModel):
-    """Everything the user sets on a pixie."""
+# Keys of pixie requests from clients before B85 (D109): ignored, not refused.
+_REMOVED = (
+    "projects",
+    "all_projects",
+    "background",
+    "report_push",
+    "allowed_tools",
+    "disallowed_tools",
+)
 
+
+class _IgnoresRemoved(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ignore_removed(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        items = cast("dict[str, object]", data).items()
+        return {key: value for key, value in items if key not in _REMOVED}
+
+
+class PixieSettings(_IgnoresRemoved):
+    """Everything the user sets on a pixie."""
 
     name: Name
     mascot: Mascot = "invader"
     color: Color = "#8B7CF6"
-    background: Background = "plain"
     # None: the agent defaults' model and effort.
     model: str | None = None
     effort: Effort | None = None
     permission_mode: PermissionMode = "default"
     autonomy: Autonomy = "observe"
     project_access: ProjectAccess = "edit"
-    # Repo names; None means every project.
-    projects: list[str] | None = None
     # Claude Code skill names; empty means every skill.
     skills: list[str] = Field(default_factory=list[str])
     can_call: list[str] = Field(default_factory=list[str])
-    # Permission rules, such as "Bash(npm test:*)": never prompt, or never available.
-    allowed_tools: list[str] = Field(default_factory=list[str])
-    disallowed_tools: list[str] = Field(default_factory=list[str])
     hidden: bool = False
     max_running: MaxRunning = 2
     max_per_day: MaxPerDay = 5
-    # The lowest severity of its reports that reaches the phone (B42).
-    report_push: Severity = "action"
 
 
 class CreatePixie(PixieSettings):
@@ -72,21 +82,13 @@ class CreatePixie(PixieSettings):
         return self.model_copy(update=wanted)
 
 
-# The `[pixies]` keys a new pixie starts with; `projects` is applied by the client.
-_FROM_DEFAULTS = (
-    "model",
-    "autonomy",
-    "project_access",
-    "max_running",
-    "max_per_day",
-    "report_push",
-)
+# The `[pixies]` keys a new pixie starts with.
+_FROM_DEFAULTS = ("model", "autonomy", "project_access", "max_running", "max_per_day")
 
 
-class UpdatePixie(BaseModel):
+class UpdatePixie(_IgnoresRemoved):
     """Fields left out (or null) are unchanged, except that an explicit null `model` or
-    `effort` sets it back to the default and an explicit null `team_id` leaves the team;
-    `projects` uses `all_projects` to clear.
+    `effort` sets it back to the default and an explicit null `team_id` leaves the team.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -95,23 +97,16 @@ class UpdatePixie(BaseModel):
     slug: str | None = None
     mascot: Mascot | None = None
     color: Color | None = None
-    background: Background | None = None
     model: str | None = None
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
     autonomy: Autonomy | None = None
     project_access: ProjectAccess | None = None
-    projects: list[str] | None = None
-    # True sets `projects` back to every project.
-    all_projects: bool = False
     skills: list[str] | None = None
     can_call: list[str] | None = None
-    allowed_tools: list[str] | None = None
-    disallowed_tools: list[str] | None = None
     hidden: bool | None = None
     max_running: MaxRunning | None = None
     max_per_day: MaxPerDay | None = None
-    report_push: Severity | None = None
     # A team's id to join it (B40).
     team_id: str | None = None
 

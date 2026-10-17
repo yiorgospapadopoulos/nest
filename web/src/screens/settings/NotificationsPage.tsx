@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import type { NotificationSettings, QuietHours } from "../../api/types.ts";
+import { Fragment, useEffect, useState } from "react";
+import type { NotificationSettings, QuietHours, ReportSeverity } from "../../api/types.ts";
 import { browserPushEnv, pushStatus, type PushStatus } from "../../pwa/push.ts";
 import { useStore } from "../../store/context.ts";
 import { Pill } from "../../ui/bits.tsx";
 import { KINDS } from "./notifyKinds.ts";
-import { Loading, Section, SwitchRow } from "./rows.tsx";
+import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
 
 const DEFAULT_QUIET: QuietHours = { start: "22:00", end: "07:00" };
 
@@ -82,23 +82,45 @@ export function NotificationsPage() {
   );
 }
 
-/** Which kinds reach the phone; saved to the Mac at once. */
+// The least severe pixie report that reaches the phone, in the Mac's short words (B85).
+const LEVELS: { value: ReportSeverity; label: string }[] = [
+  { value: "info", label: "Info" },
+  { value: "warn", label: "Warnings" },
+  { value: "action", label: "Action" },
+];
+
+/**
+ * Which kinds reach the phone, and under Pixie reports the least severe one that does, for
+ * every pixie (B85); saved to the Mac at once.
+ */
 function Kinds({ settings }: { settings: NotificationSettings }) {
   const { actions } = useStore();
+  const save = (change: Partial<NotificationSettings>) => {
+    void actions.saveNotifications({ ...settings, ...change }, settings);
+  };
   return (
     <Section title="Notify me about">
       {KINDS.map(({ kind, label }) => (
-        <SwitchRow
-          key={kind}
-          label={label}
-          on={settings.kinds[kind]}
-          onToggle={() => {
-            void actions.saveNotifications(
-              { ...settings, kinds: { ...settings.kinds, [kind]: !settings.kinds[kind] } },
-              settings,
-            );
-          }}
-        />
+        <Fragment key={kind}>
+          <SwitchRow
+            label={label}
+            on={settings.kinds[kind]}
+            onToggle={() => {
+              save({ kinds: { ...settings.kinds, [kind]: !settings.kinds[kind] } });
+            }}
+          />
+          {kind === "pixie_report" && (
+            <SelectRow<ReportSeverity>
+              label="Send to the phone from"
+              value={settings.pixie_report_level}
+              choices={LEVELS}
+              disabled={!settings.kinds.pixie_report}
+              onChange={(pixie_report_level) => {
+                save({ pixie_report_level });
+              }}
+            />
+          )}
+        </Fragment>
       ))}
     </Section>
   );

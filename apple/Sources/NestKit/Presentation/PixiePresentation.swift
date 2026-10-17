@@ -31,19 +31,39 @@ extension Mascot {
     public var rows: [String] { MascotSprites.rows[rawValue] ?? [] }
 }
 
-extension PixieBackground {
-    public static var choices: [PixieBackground] { allCases.filter { $0 != .unknown } }
+/// The Add menu of a pixie's Skills (B85): the skills not chosen yet, standalone ones at
+/// the top and one group per plugin, each in name order.
+public struct PixieSkillMenu: Sendable, Hashable {
+    public let standalone: [PixieSkillChoice]
+    public let groups: [PixieSkillGroup]
+    /// Whether any skill was offered at all.
+    private let anyInstalled: Bool
 
-    public var label: String {
-        switch self {
-        case .plain: "Plain"
-        case .meadow: "Meadow"
-        case .dusk: "Dusk"
-        case .night: "Night"
-        case .dawn: "Dawn"
-        case .unknown: "Unknown"
-        }
+    public init(choices: [PixieSkillChoice], chosen: [String]) {
+        anyInstalled = !choices.isEmpty
+        let open = choices.filter { !chosen.contains($0.name) }.sorted { $0.name < $1.name }
+        standalone = open.filter { $0.plugin == nil }
+        let byPlugin = open.compactMap { skill in skill.plugin.map { ($0, [skill]) } }
+        groups = Dictionary(byPlugin, uniquingKeysWith: +)
+            .map { PixieSkillGroup(plugin: $0.key, skills: $0.value) }
+            .sorted { $0.plugin < $1.plugin }
     }
+
+    public var isEmpty: Bool { standalone.isEmpty && groups.isEmpty }
+
+    /// What the menu says when it offers none; nil when it offers some.
+    public var emptyText: String? {
+        guard isEmpty else { return nil }
+        return anyInstalled ? "Every installed skill is added" : "No skills installed"
+    }
+}
+
+/// One plugin's skills in the Add menu.
+public struct PixieSkillGroup: Sendable, Hashable, Identifiable {
+    public let plugin: String
+    public let skills: [PixieSkillChoice]
+
+    public var id: String { plugin }
 }
 
 extension ProjectAccess {

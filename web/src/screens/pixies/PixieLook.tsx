@@ -1,7 +1,7 @@
 import { useCallback, useRef, type CSSProperties } from "react";
-import type { Pixie, PixieBackground, UpdatePixieBody } from "../../api/types.ts";
+import type { Pixie, UpdatePixieBody } from "../../api/types.ts";
 import { PIXIE_COLORS } from "../../generated/mascots.ts";
-import { BACKGROUNDS, MASCOTS } from "./options.ts";
+import { MASCOTS } from "./options.ts";
 import { Sprite } from "./Sprite.tsx";
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
   save: (body: UpdatePixieBody) => void;
 }
 
-/** The mascot, colour and background rows, each saved on tap. */
+/** The mascot and colour rows, each saved on tap. */
 export function PixieLook({ pixie, save }: Props) {
   const picker = useRef<HTMLInputElement | null>(null);
   // The colour is saved when the system picker closes ("change"), not on every move ("input").
@@ -71,21 +71,6 @@ export function PixieLook({ pixie, save }: Props) {
           aria-label="Custom colour value"
           defaultValue={pixie.color.toLowerCase()}
         />
-      </div>
-      <div className="pxpick" role="group" aria-label="Background">
-        {(Object.entries(BACKGROUNDS) as [PixieBackground, string][]).map(([background, label]) => (
-          <button
-            key={background}
-            className="pxbgs"
-            aria-label={`${label} background`}
-            aria-pressed={pixie.background === background}
-            onClick={() => {
-              save({ background });
-            }}
-          >
-            <i className={`pxbg-${background}`} />
-          </button>
-        ))}
       </div>
     </>
   );

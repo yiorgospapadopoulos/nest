@@ -8,6 +8,9 @@ struct PixieMemoryPage: View {
     @Environment(Shell.self) private var shell
     @State private var file: LoadedFile?
     @State private var fact = ""
+    /// The Add fact field shows, from Add at the right of Facts.
+    @State private var adding = false
+    @FocusState private var factFocused: Bool
     @State private var notes: [String]?
     @State private var query = ""
     @State private var hits: [PixieSearchHit]?
@@ -21,12 +24,21 @@ struct PixieMemoryPage: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    DetailHeading(title: "Facts", divided: false)
+                    DetailHeading(title: "Facts", divided: false) {
+                        if file != nil {
+                            HeadingAddButton(label: "Add fact") {
+                                adding = true
+                                factFocused = true
+                            }
+                        }
+                    }
                     if let file {
+                        if adding {
+                            addField(file)
+                                .padding(.horizontal, 8)
+                                .padding(.bottom, 6)
+                        }
                         facts(in: file)
-                        addField(file)
-                            .padding(.horizontal, 8)
-                            .padding(.top, 6)
                     }
 
                     DetailHeading(title: "Notes")
@@ -115,27 +127,31 @@ struct PixieMemoryPage: View {
         }
     }
 
+    /// Return adds the fact and keeps the field open for the next; Escape closes it.
     private func addField(_ file: LoadedFile) -> some View {
-        HStack(spacing: 6) {
-            TextField("Add fact", text: $fact)
-                .textFieldStyle(.plain)
-                .font(.ui(TypeSize.ui))
-                .padding(.horizontal, 8)
-                .frame(height: 24)
-                .background(Palette.soft, in: .rounded(Radius.button))
-                .onSubmit { add(to: file) }
-                .accessibilityLabel("Add fact")
-            Button("Add") { add(to: file) }
-                .buttonStyle(.nest(.primary, height: 24))
-                .disabled(fact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
+        TextField("New fact, Return to add", text: $fact)
+            .textFieldStyle(.plain)
+            .font(.ui(TypeSize.ui))
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .background(Palette.soft, in: .rounded(Radius.button))
+            .focused($factFocused)
+            .onSubmit { add(to: file) }
+            .onExitCommand {
+                fact = ""
+                adding = false
+            }
+            .accessibilityLabel("Add fact")
     }
 
     private func add(to file: LoadedFile) {
         let text = fact.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let day = PixieMemory.day(of: Date())
-        write(PixieMemory.adding(text, to: file.text, on: day), over: file) { fact = "" }
+        write(PixieMemory.adding(text, to: file.text, on: day), over: file) {
+            fact = ""
+            factFocused = true
+        }
     }
 
     /// Saves MEMORY.md on the hash it was read with. When the pixie wrote meanwhile, its

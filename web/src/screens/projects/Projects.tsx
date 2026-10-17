@@ -97,7 +97,7 @@ export function Projects({
 
   const listsView = (
     <>
-      <PixieSection project={project} onOpen={onOpenPixie} />
+      <PixieSection onOpen={onOpenPixie} />
       {state.repos.length === 0 && (
         <p className="sempty">No projects yet. Add one in the Nest app on your Mac.</p>
       )}

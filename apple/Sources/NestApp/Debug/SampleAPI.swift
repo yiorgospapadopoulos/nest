@@ -22,6 +22,7 @@
         private var usage = UsageSettings(refreshMinutes: 3)
         private var archiveDays: Int? = 30
         private var pixieDefaults = PixieSettings()
+        private var rules = NotificationRules()
         private var stuck = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
         /// What searches answer for `indexing`.
@@ -628,22 +629,23 @@
 
         // MARK: Pixies
 
-        /// "Reviewer" the owl on dusk and "Watcher" the ghost on night.
+        /// "Reviewer" the owl, with one skill, and "Watcher" the ghost.
         private static func samplePixies(now: Date) -> [Pixie] {
-            let rows: [(String, String, String, String, String, String, Int, String)] = [
-                ("reviewer", "Reviewer", "owl", "#8B7CF6", "dusk", "default", 0, "p1"),
-                ("watcher", "Watcher", "ghost", "#12A594", "night", "plan", 1, "p2"),
+            let rows: [(String, String, String, String, String, Int, String, [String])] = [
+                (
+                    "reviewer", "Reviewer", "owl", "#8B7CF6", "default", 0, "p1",
+                    ["superpowers:brainstorming"]
+                ),
+                ("watcher", "Watcher", "ghost", "#12A594", "plan", 1, "p2", []),
             ]
-            return rows.map { id, name, mascot, color, background, permission, position, chat in
+            return rows.map { id, name, mascot, color, permission, position, chat, skills in
                 let object: [String: Any] = [
                     "id": id, "slug": id, "name": name, "mascot": mascot, "color": color,
-                    "background": background, "model": NSNull(), "effort": NSNull(),
-                    "permission_mode": permission, "autonomy": "observe",
-                    "project_access": "read", "projects": NSNull(), "skills": [String](),
-                    "can_call": [String](), "allowed_tools": [String](),
-                    "disallowed_tools": [String](), "hidden": false, "position": position,
+                    "model": NSNull(), "effort": NSNull(), "permission_mode": permission,
+                    "autonomy": "observe", "project_access": "read", "skills": skills,
+                    "can_call": [String](), "hidden": false, "position": position,
                     "chat_session_id": chat, "max_running": 2, "max_per_day": 5,
-                    "report_push": "action", "unread_action_reports": 0,
+                    "unread_action_reports": 0,
                     "created_at": SampleData.iso(now - 86_400 * 5),
                     "updated_at": SampleData.iso(now - 3600),
                 ]
@@ -682,7 +684,7 @@
                 pixie.name = request.name
                 pixie.mascot = request.mascot ?? .invader
                 pixie.color = request.color ?? pixie.color
-                pixie.background = request.background ?? pixie.background
+                pixie.skills = request.skills ?? []
                 // A new pixie has no chat before its first message.
                 pixie.chatSessionID = nil
                 pixie.position = pixieList.count
@@ -1182,6 +1184,15 @@
             return settings
         }
 
+        func notificationRules() async throws -> NotificationRules {
+            lock.withLock { rules }
+        }
+
+        func updateNotificationRules(_ rules: NotificationRules) async throws -> NotificationRules {
+            lock.withLock { self.rules = rules }
+            return rules
+        }
+
         func githubAccount() async throws -> GitHubAccount {
             GitHubAccount(state: .signedIn, login: "yiorgospapadopoulos", checkedAt: now)
         }
@@ -1225,6 +1236,74 @@
                     marketplace: "knowledge-work", enabled: false,
                     description: "View and annotate PDFs"),
             ]
+        }
+
+        /// What the plugins of a well-stocked Claude Code offer, and three standalone skills.
+        func pixieSkills() async throws -> [PixieSkillChoice] {
+            let plugins: [(String, [(String, String?)])] = [
+                (
+                    "superpowers",
+                    [
+                        ("brainstorming", "Explore intent and design before building"),
+                        ("test-driven-development", "Write the test first, watch it fail"),
+                        ("systematic-debugging", "Find the root cause before fixing"),
+                        ("writing-plans", "Turn a spec into a step by step plan"),
+                        ("executing-plans", "Carry out a written plan step by step"),
+                        ("verification-before-completion", "Check the work before saying done"),
+                        ("requesting-code-review", nil), ("receiving-code-review", nil),
+                        ("using-git-worktrees", nil), ("dispatching-parallel-agents", nil),
+                        ("finishing-a-development-branch", nil), ("writing-skills", nil),
+                    ]
+                ),
+                (
+                    "engineering",
+                    [
+                        ("architecture", "Write or review an architecture decision record"),
+                        ("code-review", "Review changes for bugs and risks"),
+                        ("debug", "Reproduce, isolate, diagnose and fix"),
+                        ("deploy-checklist", nil), ("documentation", nil),
+                        ("incident-response", nil), ("standup", nil), ("system-design", nil),
+                        ("tech-debt", nil), ("testing-strategy", nil),
+                    ]
+                ),
+                (
+                    "data",
+                    [
+                        ("analyze", nil), ("build-dashboard", nil), ("create-viz", nil),
+                        ("explore-data", nil), ("sql-queries", nil),
+                        ("statistical-analysis", nil), ("validate-data", nil),
+                        ("write-query", nil),
+                    ]
+                ),
+                (
+                    "document-skills",
+                    [
+                        ("docx", nil), ("pdf", "Read, fill and make PDFs"), ("pptx", nil),
+                        ("xlsx", nil),
+                    ]
+                ),
+                (
+                    "marketing",
+                    [
+                        ("brand-review", nil), ("campaign-plan", nil), ("content-creation", nil),
+                        ("email-sequence", nil), ("seo-audit", nil),
+                    ]
+                ),
+                ("pdf-viewer", [("annotate", nil), ("fill-form", nil), ("open", nil)]),
+            ]
+            let fromPlugins = plugins.flatMap { plugin, skills in
+                skills.map {
+                    PixieSkillChoice(name: "\(plugin):\($0.0)", description: $0.1, plugin: plugin)
+                }
+            }
+            let standalone = [
+                PixieSkillChoice(
+                    name: "release-notes", description: "Writes release notes from the git log",
+                    plugin: nil),
+                PixieSkillChoice(name: "cv-copy", description: nil, plugin: nil),
+                PixieSkillChoice(name: "screenshot-review", description: nil, plugin: nil),
+            ]
+            return (standalone + fromPlugins).sorted { $0.name < $1.name }
         }
 
         func standaloneSkills() async throws -> [StandaloneSkill] {
@@ -1272,7 +1351,7 @@
                 description: "Reviews pull requests with several agents",
                 source: "./plugins/code-review",
                 components: PluginComponents(
-                    skills: PluginComponent(count: 1, names: ["code-review"]),
+                    skills: PluginComponent(count: 1, names: ["superpowers:brainstorming"]),
                     agents: PluginComponent(count: 3, names: ["reviewer", "tester", "critic"]),
                     hooks: PluginComponent(count: 0, names: []),
                     mcpServers: PluginComponent(count: 0, names: []),

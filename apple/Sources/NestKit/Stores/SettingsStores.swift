@@ -97,17 +97,40 @@ public final class PixieSettingsStore {
             throw error
         }
     }
+}
 
-    /// A new pixie's request as the settings make it (`PixieSettings.prepared`); the
-    /// settings are read first when they were not yet, and a failed read leaves the request
-    /// as it is.
-    public func prepare(_ request: CreatePixieRequest, openProject: String?) async
-        -> CreatePixieRequest
-    {
-        if settings == nil {
-            try? await load()
+/// Settings > Notifications: the pixie report level the daemon keeps for the phone (B85).
+@MainActor @Observable
+public final class NotificationRulesStore {
+    /// Nil until loaded.
+    public private(set) var rules: NotificationRules?
+
+    let api: any NestAPI
+
+    public init(api: any NestAPI) {
+        self.api = api
+    }
+
+    public func load() async throws {
+        rules = try await api.notificationRules()
+    }
+
+    /// Shows the level at once and restores the old one if the daemon refuses it. The
+    /// whole section is sent, so it is read first when it was not yet.
+    public func setPixieReportLevel(_ level: ReportSeverity) async throws {
+        if rules == nil {
+            try await load()
         }
-        return settings?.prepared(request, openProject: openProject) ?? request
+        guard let previous = rules else { return }
+        var changed = previous
+        changed.pixieReportLevel = level
+        rules = changed
+        do {
+            rules = try await api.updateNotificationRules(changed)
+        } catch {
+            rules = previous
+            throw error
+        }
     }
 }
 

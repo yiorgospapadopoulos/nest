@@ -2,8 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { pixie, pixieDefaults, repo } from "../../test/fixtures.ts";
-import { renderApp } from "../../test/render.tsx";
+import { pixie, pixieDefaults } from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openPixies = (api = fakeApi()) => openSettings("Pixies", { api });
@@ -42,7 +41,7 @@ describe("pixie list", () => {
     expect(screen.getByText("Ghost")).toBeInTheDocument();
   });
 
-  it("creates a pixie and opens its details", async () => {
+  it("creates a pixie for every project and opens its details", async () => {
     const api = fakeApi();
     api.createPixie.mockResolvedValue(pixie({ id: "p9", name: "New pixie" }));
     const { user } = await openPixies(api);
@@ -51,19 +50,6 @@ describe("pixie list", () => {
 
     expect(api.createPixie).toHaveBeenCalledWith({ name: "New pixie" });
     expect(await screen.findByRole("region", { name: "New pixie" })).toBeInTheDocument();
-  });
-
-  it("gives a new pixie the open project when the defaults say so", async () => {
-    const api = fakeApi();
-    api.repos.mockResolvedValue([repo("cv-page")]);
-    api.pixieDefaults.mockResolvedValue(pixieDefaults({ projects: "current" }));
-    const { user } = await openPixies(api);
-
-    await user.click(await screen.findByRole("button", { name: "New pixie" }));
-
-    await waitFor(() => {
-      expect(api.createPixie).toHaveBeenCalledWith({ name: "New pixie", projects: ["cv-page"] });
-    });
   });
 
   it("stays put when the pixie cannot be created", async () => {
@@ -75,22 +61,6 @@ describe("pixie list", () => {
 
     expect(await screen.findByText("no pixie")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Pixies" })).toBeInTheDocument();
-  });
-
-  it("gives a pixie made on the Projects tab that project, and leaves set projects alone", async () => {
-    const api = fakeApi();
-    api.repos.mockResolvedValue([repo("cv-page")]);
-    api.pixieDefaults.mockResolvedValue(pixieDefaults({ projects: "current" }));
-    const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
-
-    await user.click(await screen.findByRole("button", { name: "New pixie" }));
-    await waitFor(() => {
-      expect(api.createPixie).toHaveBeenLastCalledWith({
-        name: "New pixie",
-        projects: ["cv-page"],
-      });
-    });
   });
 });
 
@@ -106,30 +76,25 @@ describe("new pixie defaults", () => {
     expect(options("Autonomy")).toEqual(["Observe", "Message", "Start", "Answer"]);
     expect(options("Chats running at once")).toEqual(["1", "2", "3", "5"]);
     expect(options("Chats started per day")).toEqual(["3", "5", "10", "20"]);
-    expect(options("Send to the phone from")).toEqual([
-      "Needs action",
-      "Warnings and up",
-      "Everything",
-    ]);
+    // Projects and the phone alerts level are not set per pixie (B85).
+    expect(screen.queryByLabelText("Projects")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Send to the phone from")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Reports" })).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText("Model"), "opus");
     await user.selectOptions(screen.getByLabelText("Autonomy"), "message");
     await user.click(within(start).getByRole("button", { name: "Read only" }));
-    await user.selectOptions(screen.getByLabelText("Projects"), "current");
     await user.selectOptions(screen.getByLabelText("Chats running at once"), "3");
     await user.selectOptions(screen.getByLabelText("Chats started per day"), "10");
     await user.click(screen.getByRole("switch", { name: "Pause all habits" }));
     await user.selectOptions(screen.getByLabelText("Skip habit runs above"), "90");
-    await user.selectOptions(screen.getByLabelText("Send to the phone from"), "info");
 
     expect(api.savePixieDefaults).toHaveBeenLastCalledWith({
       model: "opus",
       autonomy: "message",
       project_access: "read",
-      projects: "current",
       max_running: 3,
       max_per_day: 10,
-      report_push: "info",
       habits_paused: true,
       habit_usage_percent: 90,
     });

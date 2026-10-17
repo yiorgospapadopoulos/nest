@@ -52,11 +52,8 @@ class PixieRuntime:
             prompt = system_prompt(pixie, soul, memory, self._files.notes(pid), recent)
         dirs: tuple[Path, ...] = ()
         if pixie.project_access != "none":
-            dirs = tuple(
-                repo.path
-                for repo in self._repos.list_repos()
-                if pixie.projects is None or repo.name in pixie.projects
-            )
+            # Every pixie works in every project (D109).
+            dirs = tuple(repo.path for repo in self._repos.list_repos())
         return RunExtras(
             system_prompt=prompt,
             extra_dirs=dirs,
@@ -65,6 +62,4 @@ class PixieRuntime:
             # `edit` works like any chat; the others may write only in the workdir.
             write_root=None if pixie.project_access == "edit" else self._files.workdir(pid),
             skills=tuple(pixie.skills),
-            allowed_tools=tuple(pixie.allowed_tools),
-            disallowed_tools=tuple(pixie.disallowed_tools),
         )

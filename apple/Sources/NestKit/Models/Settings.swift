@@ -85,49 +85,37 @@ public struct LargeAttachment: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// Which projects a new pixie works on: all, or only the one open when it is made.
-public enum PixieProjects: String, UnknownSafeEnum {
-    case all, current
-    case unknown
-}
-
 /// `GET/PUT /api/pixie-settings`: what new pixies start with, and the habits' switches.
 public struct PixieSettings: Codable, Sendable, Hashable {
     /// Nil follows the agent default.
     public var model: String?
     public var autonomy: Autonomy
     public var projectAccess: ProjectAccess
-    public var projects: PixieProjects
     public var maxRunning: Int
     public var maxPerDay: Int
-    public var reportPush: ReportSeverity
     public var habitsPaused: Bool
     /// Habit runs are skipped while the 5 hour limit is above this percent.
     public var habitUsagePercent: Int
 
     public init(
         model: String? = nil, autonomy: Autonomy = .observe, projectAccess: ProjectAccess = .edit,
-        projects: PixieProjects = .all, maxRunning: Int = 2, maxPerDay: Int = 5,
-        reportPush: ReportSeverity = .action, habitsPaused: Bool = false,
+        maxRunning: Int = 2, maxPerDay: Int = 5, habitsPaused: Bool = false,
         habitUsagePercent: Int = 80
     ) {
         self.model = model
         self.autonomy = autonomy
         self.projectAccess = projectAccess
-        self.projects = projects
         self.maxRunning = maxRunning
         self.maxPerDay = maxPerDay
-        self.reportPush = reportPush
         self.habitsPaused = habitsPaused
         self.habitUsagePercent = habitUsagePercent
     }
 
     enum CodingKeys: String, CodingKey {
-        case model, autonomy, projects
+        case model, autonomy
         case projectAccess = "project_access"
         case maxRunning = "max_running"
         case maxPerDay = "max_per_day"
-        case reportPush = "report_push"
         case habitsPaused = "habits_paused"
         case habitUsagePercent = "habit_usage_percent"
     }
@@ -137,10 +125,8 @@ public struct PixieSettings: Codable, Sendable, Hashable {
         model = try container.decodeIfPresent(String.self, forKey: .model)
         autonomy = try container.decode(Autonomy.self, forKey: .autonomy)
         projectAccess = try container.decode(ProjectAccess.self, forKey: .projectAccess)
-        projects = try container.decode(PixieProjects.self, forKey: .projects)
         maxRunning = try container.decode(Int.self, forKey: .maxRunning)
         maxPerDay = try container.decode(Int.self, forKey: .maxPerDay)
-        reportPush = try container.decode(ReportSeverity.self, forKey: .reportPush)
         habitsPaused = try container.decode(Bool.self, forKey: .habitsPaused)
         habitUsagePercent = try container.decode(Int.self, forKey: .habitUsagePercent)
     }
@@ -151,25 +137,45 @@ public struct PixieSettings: Codable, Sendable, Hashable {
         try container.encode(model, forKey: .model)
         try container.encode(autonomy, forKey: .autonomy)
         try container.encode(projectAccess, forKey: .projectAccess)
-        try container.encode(projects, forKey: .projects)
         try container.encode(maxRunning, forKey: .maxRunning)
         try container.encode(maxPerDay, forKey: .maxPerDay)
-        try container.encode(reportPush, forKey: .reportPush)
         try container.encode(habitsPaused, forKey: .habitsPaused)
         try container.encode(habitUsagePercent, forKey: .habitUsagePercent)
     }
 
-    /// A new pixie's request with what the daemon cannot fill in itself: "Only the current
-    /// one" names the open project, when there is one and the request names none.
-    public func prepared(_ request: CreatePixieRequest, openProject: String?) -> CreatePixieRequest
-    {
-        guard projects == .current, request.projects == nil, let openProject else {
-            return request
-        }
-        var prepared = request
-        prepared.projects = [openProject]
-        return prepared
+}
+
+/// `GET/PUT /api/notifications/settings`: the daemon's rules for what reaches the phone.
+/// The Mac changes only the pixie report level (B85); the rest of the section is sent back
+/// as it was read, since a save replaces the whole section.
+public struct NotificationRules: Codable, Sendable, Hashable {
+    /// The section as the daemon sent it.
+    public var fields: [String: JSONValue]
+
+    public init(fields: [String: JSONValue] = [:]) {
+        self.fields = fields
     }
+
+    public init(from decoder: any Decoder) throws {
+        fields = try decoder.singleValueContainer().decode([String: JSONValue].self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(fields)
+    }
+
+    /// The least severe pixie report that reaches the phone, for every pixie; a daemon
+    /// that names none uses Needs action.
+    public var pixieReportLevel: ReportSeverity {
+        get {
+            fields[Self.levelKey]?.stringValue.map { ReportSeverity(rawValue: $0) ?? .unknown }
+                ?? .action
+        }
+        set { fields[Self.levelKey] = .string(newValue.rawValue) }
+    }
+
+    private static let levelKey = "pixie_report_level"
 }
 
 public enum GitHubLoginState: String, UnknownSafeEnum {

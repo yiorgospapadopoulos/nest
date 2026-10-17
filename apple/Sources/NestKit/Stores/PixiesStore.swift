@@ -10,6 +10,8 @@ public final class PixiesStore {
     public private(set) var teams: [PixieTeam] = []
     /// The first line of each pixie's soul, by pixie id, once read (`loadSoulLines`).
     public private(set) var soulLines: [String: String] = [:]
+    /// The skills a pixie may be given, once read (`loadSkillChoices`, B85).
+    public private(set) var skillChoices: [PixieSkillChoice]?
     /// Pixies whose soul was asked for or read.
     private var soulsAsked: Set<String> = []
 
@@ -42,6 +44,10 @@ public final class PixiesStore {
         async let loadedTeams = api.pixieTeams()
         pixies = Self.sorted(try await api.pixies())
         teams = Self.sorted(try await loadedTeams)
+    }
+
+    public func loadSkillChoices() async throws {
+        skillChoices = try await api.pixieSkills()
     }
 
     public func apply(_ event: Event) {

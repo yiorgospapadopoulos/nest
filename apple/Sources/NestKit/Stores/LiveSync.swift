@@ -173,6 +173,7 @@ public final class AppModel {
     /// Settings (B81): storage, pixie defaults, accounts, extensions and the shortcuts.
     public let storage: StorageStore
     public let pixieSettings: PixieSettingsStore
+    public let notificationRules: NotificationRulesStore
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
     public let shortcuts: ShortcutsStore
@@ -213,6 +214,7 @@ public final class AppModel {
         chatPixies = ChatPixiesStore(api: api)
         storage = StorageStore(api: api)
         pixieSettings = PixieSettingsStore(api: api)
+        notificationRules = NotificationRulesStore(api: api)
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)

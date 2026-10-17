@@ -5,7 +5,6 @@ import type {
   PermissionMode,
   Pixie,
   ProjectAccess,
-  ReportSeverity,
   UpdatePixieBody,
 } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
@@ -22,7 +21,7 @@ import {
   type Option,
 } from "../chat/options.ts";
 import { PickerSheet } from "../chat/PickerSheet.tsx";
-import { AUTONOMY, optionsOf, PROJECT_ACCESS, REPORT_PUSH } from "./options.ts";
+import { AUTONOMY, optionsOf, PROJECT_ACCESS } from "./options.ts";
 
 // Shown while the pixie keeps the agent default.
 const DEFAULT = "Default";
@@ -46,8 +45,7 @@ interface Props {
 }
 
 /**
- * Model, thinking, permissions, project files, autonomy and which of its reports reach the
- * phone (B42): a value on the right that opens
+ * Model, thinking, permissions, project files and autonomy: a value on the right that opens
  * a picker sheet. Model and thinking follow the composer's rules for an open chat.
  */
 export function PixieSettings({ pixie, save }: Props) {
@@ -103,13 +101,6 @@ export function PixieSettings({ pixie, save }: Props) {
       options: optionsOf(AUTONOMY),
       checked: pixie.autonomy,
       pick: (autonomy) => ({ autonomy: autonomy as Autonomy }),
-    },
-    {
-      title: "Phone alerts",
-      value: REPORT_PUSH[pixie.report_push].label,
-      options: optionsOf(REPORT_PUSH),
-      checked: pixie.report_push,
-      pick: (push) => ({ report_push: push as ReportSeverity }),
     },
   ];
 

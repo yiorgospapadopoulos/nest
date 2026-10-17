@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response, status
 
 from nestd.api.deps import Context, RequireDevice
+from nestd.claude_code.extensions import PixieSkill
 from nestd.pixies.habit_models import CreateHabit, Habit, HabitRun, ReadReports, UpdateHabit
 from nestd.pixies.models import (
     CreatePixie,
@@ -30,6 +31,14 @@ async def list_pixies(ctx: Context) -> list[Pixie]:
 async def create_pixie(body: CreatePixie, ctx: Context) -> Pixie:
     """Fields left out start as `GET /api/pixie-settings` says (D104)."""
     return await ctx.pixies.create(body.with_defaults(ctx.settings.pixies))
+
+
+@router.get("/skills")
+async def pixie_skills(ctx: Context) -> list[PixieSkill]:
+    """Skills a pixie can be given, by name: standalone ones from `~/.claude/skills` and
+    each enabled plugin's as `<plugin>:<skill>` (D109). 502 when `claude plugin list` fails.
+    """
+    return await ctx.extensions.pixie_skills()
 
 
 @router.put("/order")

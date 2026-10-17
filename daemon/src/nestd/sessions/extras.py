@@ -16,8 +16,6 @@ class RunExtras:
     # None: the run may edit anywhere its permission mode allows.
     write_root: Path | None
     skills: tuple[str, ...] = ()
-    allowed_tools: tuple[str, ...] = ()
-    disallowed_tools: tuple[str, ...] = ()
 
 
 type RunExtrasSource = Callable[[Session], Awaitable[RunExtras]]

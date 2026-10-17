@@ -3,7 +3,6 @@ import type { Pixie, UpdatePixieBody } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActivityPage } from "./ActivityPage.tsx";
-import { ChipList } from "./ChipList.tsx";
 import { Confirm } from "./Confirm.tsx";
 import { FilePage } from "./FilePage.tsx";
 import { HabitsPage } from "./HabitsPage.tsx";
@@ -12,12 +11,9 @@ import { factLines } from "./memory.ts";
 import { MemoryPage } from "./MemoryPage.tsx";
 import { PixieLimits } from "./PixieLimits.tsx";
 import { PixieLook } from "./PixieLook.tsx";
-import { PixieProjects } from "./PixieProjects.tsx";
 import { PixieSettings } from "./PixieSettings.tsx";
+import { PixieSkills } from "./PixieSkills.tsx";
 import { Sprite } from "./Sprite.tsx";
-
-// The skill names offered while adding one.
-const SKILL_LIST = "pixie-skills";
 
 /**
  * Everything that sets a pixie up, in one scrolling panel laid out like Monocode's Details
@@ -67,39 +63,7 @@ export function PixieDetails({
       <h2 className="pg-h">Chats it starts</h2>
       <PixieLimits pixie={pixie} save={update} />
 
-      <h2 className="pg-h">Projects</h2>
-      <PixieProjects pixie={pixie} save={update} />
-
-      <h2 className="pg-h">Skills</h2>
-      <div className="lgrp gl pad">
-        <ChipList
-          label="Skill"
-          add="Add skill"
-          items={pixie.skills}
-          empty="All skills"
-          list={SKILL_LIST}
-          save={(skills) => update({ skills })}
-        />
-        <SkillNames />
-      </div>
-
-      <h2 className="pg-h">Tools</h2>
-      <div className="lgrp gl pad pxtools">
-        <h3 className="pxsub">Never ask for</h3>
-        <ChipList
-          label="Never ask for"
-          items={pixie.allowed_tools}
-          empty="Asks as its permission mode says"
-          save={(allowed_tools) => update({ allowed_tools })}
-        />
-        <h3 className="pxsub">Never allow</h3>
-        <ChipList
-          label="Never allow"
-          items={pixie.disallowed_tools}
-          empty="Nothing beyond the git rules"
-          save={(disallowed_tools) => update({ disallowed_tools })}
-        />
-      </div>
+      <PixieSkills pixie={pixie} save={update} />
 
       <div className="lgrp gl pxgap">
         <DrillIn
@@ -316,26 +280,6 @@ function PixieHeader({ pixie, working, save }: HeaderProps) {
         </p>
       )}
     </div>
-  );
-}
-
-/** The skill names of the slash-command catalog, from the first project's last known list. */
-function SkillNames() {
-  const { state, actions } = useStore();
-  const repo = state.repos[0]?.name;
-  const [names, setNames] = useState<string[]>([]);
-  useEffect(() => {
-    if (repo === undefined) return;
-    void actions.commands({ repo }).then((list) => {
-      if (list !== null) setNames(list.commands.map((command) => command.name));
-    });
-  }, [actions, repo]);
-  return (
-    <datalist id={SKILL_LIST}>
-      {names.map((name) => (
-        <option key={name} value={name} />
-      ))}
-    </datalist>
   );
 }
 

@@ -95,10 +95,10 @@ describe("Pixie page", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
-  it("uses the pixie's background", async () => {
-    const { container } = await openPixie(fakeApi(), pixie({ background: "dusk" }));
+  it("draws no backdrop of its own over the wallpaper (B85)", async () => {
+    const { container } = await openPixie(fakeApi(), pixie());
 
-    expect(container.ownerDocument.querySelector(".pxbg-dusk")).not.toBeNull();
+    expect(container.ownerDocument.querySelector("[class*='pxbg']")).toBeNull();
   });
 
   it("switches between chat and details", async () => {

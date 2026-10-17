@@ -34,14 +34,6 @@ struct PixieHabitsPage: View {
                         if habits.isEmpty {
                             DetailNote(text: HabitText.emptyList)
                                 .padding(.top, 8)
-                            Button {
-                                shell.pixiePanel = .habit(nil)
-                            } label: {
-                                Label("New habit", systemImage: Icon.plus)
-                            }
-                            .buttonStyle(.nest(.primary))
-                            .padding(.horizontal, 8)
-                            .padding(.top, 10)
                         }
                         ForEach(habits) { habit in
                             HabitRow(habit: habit) { deleting = habit }
@@ -195,7 +187,7 @@ struct HabitEditor: View {
             } trailing: {
                 Button("Save") { save(habit) }
                     .buttonStyle(.nest(.primary))
-                    .disabled(draft.problem != nil || saving || !ready)
+                    .disabled(!draft.canSave || saving || !ready)
                     .keyboardShortcut("s", modifiers: .command)
                     .help(draft.problem ?? "Save the habit")
             }
@@ -247,7 +239,7 @@ struct HabitEditor: View {
                         }
                     }
                     DetailNote(
-                        text: "In chats of this pixie's projects. At most once in 5 minutes.")
+                        text: "In any project's chats. At most once in 5 minutes.")
 
                     DetailHeading(title: "Limit")
                     StepperRow(

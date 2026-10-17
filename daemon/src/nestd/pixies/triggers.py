@@ -1,4 +1,4 @@
-"""Starts habits on events in their pixie's projects (B42): a chat looks stuck, failed, is
+"""Starts habits on events in any project (B42, D109): a chat looks stuck, failed, is
 ready for review, or its pull request's checks failed. These are the `notify` events of
 those kinds. Pixie chats, habit runs and chats the habit's own pixie started never start
 its habits; the last keeps a pixie's runs from starting each other.
@@ -16,7 +16,6 @@ from nestd.events.models import Event
 from nestd.pixies.habit_models import TRIGGERS
 from nestd.pixies.habit_store import HabitStore
 from nestd.pixies.scheduler import HabitScheduler
-from nestd.pixies.store import PixieStore
 from nestd.sessions.errors import SessionNotFoundError
 from nestd.sessions.models import PIXIE_REPO_PREFIX
 from nestd.sessions.store import SessionStore
@@ -35,13 +34,11 @@ class HabitTriggers:
         bus: EventBus,
         sessions: SessionStore,
         habits: HabitStore,
-        pixies: PixieStore,
         scheduler: HabitScheduler,
     ) -> None:
         self._bus = bus
         self._sessions = sessions
         self._habits = habits
-        self._pixies = pixies
         self._scheduler = scheduler
         self._task: asyncio.Task[None] | None = None
 
@@ -87,9 +84,7 @@ class HabitTriggers:
                 continue
             if session.started_by_pixie == habit.pixie_id:
                 continue
-            projects = (await self._pixies.get(habit.pixie_id)).projects
-            if projects is None or session.repo in projects:
-                await self._scheduler.queue_trigger(habit, entry)
+            await self._scheduler.queue_trigger(habit, entry)
 
     async def _listen(self, after: int) -> None:
         """Follow events stored after `after`; after falling behind, from the last seen."""

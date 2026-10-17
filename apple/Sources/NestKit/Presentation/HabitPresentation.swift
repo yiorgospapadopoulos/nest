@@ -250,11 +250,14 @@ public struct HabitDraft: Sendable, Hashable {
         }
     }
 
-    /// Why it cannot be saved yet, as the daemon would refuse it.
+    /// Whether Save is on: it has a name and no `problem`.
+    public var canSave: Bool { !trimmedName.isEmpty && problem == nil }
+
+    /// Why it cannot be saved yet, as the daemon would refuse it. An empty name only keeps
+    /// Save off: it goes without saying (B85).
     public var problem: String? {
         let name = trimmedName
         let prompt = trimmedPrompt
-        if name.isEmpty { return "Name the habit" }
         if name.count > 60 { return "A name has at most 60 characters" }
         if prompt.isEmpty { return "Say what it should check" }
         if prompt.count > 4000 { return "The instructions have at most 4000 characters" }
@@ -320,15 +323,15 @@ extension ReportSeverity {
         }
     }
 
-    public static let pushTitle = "Phone alerts"
-    /// The Phone alerts choices, from the fewest alerts.
-    public static var pushChoices: [ReportSeverity] { [.action, .warn, .info] }
+    /// Settings > Notifications, under Pixie reports: one level for every pixie (B85).
+    public static let phoneLevelTitle = "Send to the phone from"
+    public static var phoneLevels: [ReportSeverity] { [.info, .warn, .action] }
 
-    public var pushLabel: String {
+    public var phoneLevelLabel: String {
         switch self {
-        case .action: "Needs action"
-        case .warn: "Warnings and up"
-        case .info: "Everything"
+        case .info: "Info"
+        case .warn: "Warnings"
+        case .action: "Action"
         case .unknown: ""
         }
     }

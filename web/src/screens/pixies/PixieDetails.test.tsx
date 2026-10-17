@@ -3,12 +3,27 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { agentDefaults, commandList, pixie, repo, session } from "../../test/fixtures.ts";
+import { agentDefaults, pixie, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 
 const details = (api = fakeApi(), shown = pixie()) => openPixie(api, shown, "Details");
 
 const sheet = (name: string) => screen.getByRole("dialog", { name });
+
+/** Each group of the skill sheet: its heading and its rows' text. */
+const groups = (picker: HTMLElement) =>
+  within(picker)
+    .queryAllByRole("region")
+    .map((group) => [
+      group.querySelector("h3")?.textContent,
+      [...group.querySelectorAll("button")].map((row) => row.textContent),
+    ]);
+
+const skill = (name: string, description: string | null = null, plugin: string | null = null) => ({
+  name,
+  description,
+  plugin,
+});
 
 describe("Pixie details", () => {
   it("saves a mascot at once", async () => {
@@ -22,7 +37,7 @@ describe("Pixie details", () => {
     expect(screen.getByRole("button", { name: "ghost" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("saves a preset, a custom colour and a background", async () => {
+  it("saves a preset and a custom colour, and offers no background", async () => {
     const api = fakeApi();
     const { user } = await details(api);
 
@@ -49,8 +64,7 @@ describe("Pixie details", () => {
       );
     });
 
-    await user.click(screen.getByRole("button", { name: "Night background" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { background: "night" });
+    expect(screen.queryByRole("group", { name: "Background" })).not.toBeInTheDocument();
   });
 
   it("renames inline and shows why a slug is refused", async () => {
@@ -111,36 +125,21 @@ describe("Pixie details", () => {
     expect(screen.getByRole("button", { name: "Edit slug, @tester" })).toBeInTheDocument();
   });
 
-  it("adds projects, chooses all of them and removes one", async () => {
-    const api = fakeApi();
-    api.repos.mockResolvedValue([repo("web"), repo("api")]);
-    const { user } = await details(api);
+  it("has no projects, tools or phone alerts of its own (B85)", async () => {
+    await details();
 
-    expect(screen.getByText("All projects")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Add project" }));
-    await user.click(within(sheet("Add project")).getByRole("menuitem", { name: "web" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: ["web"] });
-
-    await user.click(await screen.findByRole("button", { name: "Add project" }));
-    const picker = sheet("Add project");
-    expect(within(picker).queryByRole("menuitem", { name: "web" })).not.toBeInTheDocument();
-    await user.click(within(picker).getByRole("menuitem", { name: "api" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: ["web", "api"] });
-
-    await user.click(await screen.findByRole("button", { name: "Remove web" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: ["api"] });
-    await user.click(await screen.findByRole("button", { name: "Remove api" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: [] });
-    expect(await screen.findByText("No projects")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Add project" }));
-    await user.click(within(sheet("Add project")).getByRole("menuitem", { name: "All projects" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { all_projects: true });
+    const panel = screen.getByRole("tabpanel", { name: "Details" });
+    expect(within(panel).getByRole("heading", { name: "Skills" })).toBeInTheDocument();
+    for (const gone of ["Projects", "Tools"]) {
+      expect(within(panel).queryByRole("heading", { name: gone })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: /^Phone alerts/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add project" })).not.toBeInTheDocument();
   });
 
   it("keeps both of two quick chip removals, saving them one after the other", async () => {
     const api = fakeApi();
-    const shown = pixie({ skills: ["a", "b", "c"], projects: ["web", "api"] });
+    const shown = pixie({ skills: ["a", "b", "c"] });
     const { user } = await details(api, shown);
     let finish: () => void = () => undefined;
     api.updatePixie.mockImplementation(
@@ -172,26 +171,16 @@ describe("Pixie details", () => {
       expect(screen.getByRole("button", { name: "Remove c" })).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Remove b" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Remove web" }));
-    await user.click(screen.getByRole("button", { name: "Remove api" }));
-    expect(await screen.findByText("No projects")).toBeInTheDocument();
-    finish();
-    await waitFor(() => {
-      expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { projects: [] });
-    });
-    finish();
-    expect(await screen.findByText("No projects")).toBeInTheDocument();
   });
 
   it("puts a chip back when the Mac refuses its removal", async () => {
     const api = fakeApi();
-    const { user } = await details(api, pixie({ allowed_tools: ["Bash"] }));
+    const { user } = await details(api, pixie({ skills: ["review"] }));
     api.updatePixie.mockRejectedValueOnce(new Error("Mac asleep"));
 
-    await user.click(screen.getByRole("button", { name: "Remove Bash" }));
+    await user.click(screen.getByRole("button", { name: "Remove review" }));
     expect(await screen.findByText("Mac asleep")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove Bash" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove review" })).toBeInTheDocument();
   });
 
   it("sets project files, autonomy and permissions from picker sheets", async () => {
@@ -276,77 +265,116 @@ describe("Pixie details", () => {
     expect(await screen.findByRole("button", { name: "Thinking: Not available" })).toBeDisabled();
   });
 
-  it("offers no skill names when the project's commands cannot load", async () => {
+  it("adds a skill from the list Claude Code offers, never one already chosen (B85)", async () => {
     const api = fakeApi();
-    api.repoCommands.mockRejectedValue(new Error("no list"));
+    let answer: (list: ReturnType<typeof skill>[]) => void = () => undefined;
+    api.pixieSkills.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { user } = await details(api, pixie({ skills: ["triage"] }));
+
+    // At the full right of the Skills heading row.
+    const add = screen.getByRole("button", { name: "Add skill" });
+    expect(add.parentElement).toHaveClass("pxhrow");
+    expect(add.previousElementSibling).toHaveTextContent("Skills");
+    await user.click(add);
+    // The sheet opens at once and says it is loading.
+    expect(sheet("Add skill")).toHaveTextContent("Loading skills");
+    expect(api.skills).not.toHaveBeenCalled();
+    answer([
+      skill("deploy", "Ships the app"),
+      // A plugin's skill named without the prefix keeps its name.
+      skill("lint", null, "zeta"),
+      skill("review:pr", "Reviews a pull request", "review"),
+      skill("review:style", null, "review"),
+      skill("triage"),
+      skill("zeta:go", "Goes", "zeta"),
+    ]);
+    const picker = sheet("Add skill");
+    await within(picker).findByRole("region", { name: "Your skills" });
+    expect(picker).not.toHaveTextContent("Loading skills");
+    // Your skills first, then each plugin's, named without the plugin's prefix.
+    expect(groups(picker)).toEqual([
+      ["Your skills", ["deployShips the app"]],
+      ["review", ["prReviews a pull request", "style"]],
+      ["zeta", ["lint", "goGoes"]],
+    ]);
+    // A long list scrolls in the sheet's body, and descriptions are clamped.
+    expect(picker.querySelector(".pxskills")?.closest(".sh-b")).not.toBeNull();
+    await user.click(within(picker).getByRole("button", { name: /^pr/ }));
+    // The full name is saved.
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["triage", "review:pr"] });
+    expect(screen.queryByRole("dialog", { name: "Add skill" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Remove review:pr" })).toBeInTheDocument();
+
+    api.pixieSkills.mockResolvedValue([
+      skill("deploy", "Ships the app"),
+      skill("review:pr", "Reviews a pull request", "review"),
+    ]);
+    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    await within(sheet("Add skill")).findByRole("region", { name: "Your skills" });
+    expect(groups(sheet("Add skill"))).toEqual([["Your skills", ["deployShips the app"]]]);
+    await user.click(within(sheet("Add skill")).getByRole("button", { name: "Done" }));
+    expect(api.updatePixie).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Remove triage" }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["review:pr"] });
+  });
+
+  it("filters the skills by name and description", async () => {
+    const api = fakeApi();
+    api.pixieSkills.mockResolvedValue([
+      skill("deploy", "Ships the app"),
+      skill("review:pr", "Reviews a pull request", "review"),
+      skill("review:style", null, "review"),
+    ]);
     const { user } = await details(api);
 
     await user.click(screen.getByRole("button", { name: "Add skill" }));
-    await waitFor(() => {
-      expect(api.repoCommands).toHaveBeenCalled();
-    });
-    expect(document.querySelectorAll("#pixie-skills option")).toHaveLength(0);
+    const picker = sheet("Add skill");
+    const search = await within(picker).findByRole("searchbox", { name: "Search skills" });
+    await user.type(search, "PULL");
+    expect(groups(picker)).toEqual([["review", ["prReviews a pull request"]]]);
+    await user.clear(search);
+    await user.type(search, "sty");
+    expect(groups(picker)).toEqual([["review", ["style"]]]);
+    await user.clear(search);
+    await user.type(search, "nothing like it");
+    expect(groups(picker)).toEqual([]);
+    expect(picker).toHaveTextContent("No matching skills");
   });
 
-  it("adds skills from the catalog or typed, and removes them", async () => {
+  it("says when no skills are available, or every one is chosen", async () => {
     const api = fakeApi();
-    api.repoCommands.mockResolvedValue(commandList({ source: "repo" }));
+    api.pixieSkills.mockResolvedValueOnce([]);
     const { user } = await details(api);
 
     expect(screen.getByText("All skills")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add skill" }));
-    const field = screen.getByRole("combobox", { name: "Skill" });
-    await waitFor(() => {
-      expect(document.querySelectorAll("#pixie-skills option")).toHaveLength(4);
-    });
-    expect(api.repoCommands).toHaveBeenCalledWith("cv-page");
-    await user.type(field, "review{Enter}");
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["review"] });
+    expect(await within(sheet("Add skill")).findByText("No skills installed")).toBeInTheDocument();
+    expect(within(sheet("Add skill")).queryByRole("searchbox")).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
+    api.pixieSkills.mockResolvedValue([skill("review")]);
+    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    await user.click(await within(sheet("Add skill")).findByRole("button", { name: /^review/ }));
     await user.click(await screen.findByRole("button", { name: "Add skill" }));
-    await user.type(screen.getByRole("combobox", { name: "Skill" }), "review{Enter}");
-    // Already there: nothing to save.
-    expect(api.updatePixie).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByRole("button", { name: "Remove review" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: [] });
+    expect(
+      await within(sheet("Add skill")).findByText("Every skill is chosen"),
+    ).toBeInTheDocument();
   });
 
-  it("offers no skill names when the catalog cannot load", async () => {
+  it("closes the skill list when the skills cannot load", async () => {
     const api = fakeApi();
-    api.repos.mockResolvedValue([]);
+    api.pixieSkills.mockRejectedValue(new Error("claude plugin failed"));
     const { user } = await details(api);
 
     await user.click(screen.getByRole("button", { name: "Add skill" }));
-    expect(screen.getByRole("combobox", { name: "Skill" })).toBeInTheDocument();
-    expect(document.querySelectorAll("#pixie-skills option")).toHaveLength(0);
-    expect(api.repoCommands).not.toHaveBeenCalled();
-  });
-
-  it("adds tool rules to never ask for and never allow", async () => {
-    const api = fakeApi();
-    const { user } = await details(api);
-
-    await user.click(screen.getByRole("button", { name: "Add to Never ask for" }));
-    await user.type(
-      screen.getByRole("textbox", { name: "Never ask for" }),
-      "Bash(npm test:*){Enter}",
-    );
-    expect(api.updatePixie).toHaveBeenCalledWith("p1", { allowed_tools: ["Bash(npm test:*)"] });
-
-    await user.click(screen.getByRole("button", { name: "Add to Never allow" }));
-    const never = screen.getByRole("textbox", { name: "Never allow" });
-    await user.type(never, "   ");
-    fireEvent.blur(never);
-    expect(api.updatePixie).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: "Add to Never allow" }));
-    await user.type(screen.getByRole("textbox", { name: "Never allow" }), "WebFetch");
-    fireEvent.blur(screen.getByRole("textbox", { name: "Never allow" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { disallowed_tools: ["WebFetch"] });
-
-    await user.click(screen.getByRole("button", { name: "Add to Never allow" }));
-    await user.type(screen.getByRole("textbox", { name: "Never allow" }), "x{Escape}");
-    expect(screen.queryByRole("textbox", { name: "Never allow" })).not.toBeInTheDocument();
+    expect(await screen.findByText("claude plugin failed")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Add skill" })).not.toBeInTheDocument();
   });
 
   it("opens the soul, counts memory facts and habits", async () => {
