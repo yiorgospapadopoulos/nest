@@ -11,6 +11,16 @@ export function fixedMedia(matches: boolean) {
  * `matchMedia`; the test file undoes it with `vi.unstubAllGlobals()`.
  */
 export function reduceMotion(on: boolean) {
+  return systemMedia("(prefers-reduced-motion: reduce)", on);
+}
+
+/** The system's dark appearance on or off, flipped as `reduceMotion` is. */
+export function systemDark(on: boolean) {
+  return systemMedia("(prefers-color-scheme: dark)", on);
+}
+
+/** One media query answered and flippable; every other query does not match. */
+function systemMedia(media: string, on: boolean) {
   const listeners = new Set<() => void>();
   const list = {
     matches: on,
@@ -18,7 +28,7 @@ export function reduceMotion(on: boolean) {
     removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
   };
   vi.stubGlobal("matchMedia", (query: string) =>
-    query === "(prefers-reduced-motion: reduce)" ? list : { ...list, matches: false },
+    query === media ? list : { ...list, matches: false },
   );
   return {
     listeners,

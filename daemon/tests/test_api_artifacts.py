@@ -53,6 +53,7 @@ async def test_list_get_read_see_and_delete(api: Api) -> None:
     content = await api.http.get(f"/api/artifacts/{page}/versions/1")
     seen = await api.http.post(f"/api/artifacts/{page}/seen")
     unseen_after = await api.http.get("/api/artifacts/unseen")
+    notes_page = (await api.http.get(f"/api/artifacts/{notes}/versions/1")).json()["page"]
     deleted = await api.http.delete(f"/api/artifacts/{notes}")
 
     assert [a["id"] for a in listed.json()] == [notes, page]
@@ -73,9 +74,13 @@ async def test_list_get_read_see_and_delete(api: Api) -> None:
         "kind": "html",
         "title": "Page",
         "content": PAGE,
+        # An HTML page is shown as saved.
+        "page": PAGE,
         "size": len(PAGE),
         "created_at": body["created_at"],
     }
+    assert notes_page.startswith("<!doctype html>")
+    assert '<pre id="nest-md">\n# Notes</pre>' in notes_page
     assert seen.json()["seen"] is True
     assert unseen_after.json() == {"unseen": 1}
     assert deleted.status_code == 204

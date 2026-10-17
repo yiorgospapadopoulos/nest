@@ -752,7 +752,8 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             """
     static let contentJSON = """
         {"artifact_id": "a1", "version": 2, "kind": "html", "title": "Options compared",
-         "content": "<p>Hi</p>", "size": 9, "created_at": "2026-10-17T09:41:00+00:00"}
+         "content": "<p>Hi</p>", "page": "<!doctype html><p>Hi</p>", "size": 9,
+         "created_at": "2026-10-17T09:41:00+00:00"}
         """
 
     static let commandsJSON = """

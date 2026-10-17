@@ -15,7 +15,10 @@ import {
 } from "../../test/fixtures.ts";
 import { activityTime } from "../../format.ts";
 import { openPixie } from "../../test/pixies.ts";
-import { renderApp } from "../../test/render.tsx";
+import { systemDark } from "../../test/motion.ts";
+import { memoryStorage, renderApp } from "../../test/render.tsx";
+import { STORAGE_KEY } from "../../appearance/appearance.ts";
+import { ARTIFACT_CSP, withCsp } from "./html.ts";
 
 const plan = artifact({
   id: "a1",
@@ -36,15 +39,21 @@ interface Setup {
   api?: FakeApi;
   chat?: Session;
   events?: NestEvent[];
+  storage?: Storage;
 }
 
 /** The app with a chat open, and the API answering for artifacts. */
-async function openChat({ api = fakeApi(), chat = session(), events = [] }: Setup = {}) {
+async function openChat({
+  api = fakeApi(),
+  chat = session(),
+  events = [],
+  storage = memoryStorage(),
+}: Setup = {}) {
   api.repos.mockResolvedValue([repo("cv-page")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
-  const rendered = await renderApp({ api });
+  const rendered = await renderApp({ api, storage });
   await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
@@ -64,6 +73,20 @@ async function openChat({ api = fakeApi(), chat = session(), events = [] }: Setu
     });
   };
   return { ...rendered, reconnect };
+}
+
+/** The reader's sandboxed frame. */
+function frameIn(sheet: HTMLElement): HTMLIFrameElement {
+  const frame = sheet.querySelector("iframe");
+  if (frame === null) throw new Error("no frame");
+  return frame;
+}
+
+/** Waits until the reader's frame shows a page holding the text. */
+async function showing(sheet: HTMLElement, text: string) {
+  await waitFor(() => {
+    expect(frameIn(sheet).getAttribute("srcdoc")).toContain(text);
+  });
 }
 
 /** The history, opened from the chat's header. */
@@ -288,7 +311,7 @@ describe("the artifact reader", () => {
     await openHistory(rendered);
     await rendered.user.click(await screen.findByRole("button", { name: /^Rollout plan/ }));
     const sheet = await screen.findByRole("dialog", { name: "Rollout plan" });
-    await within(sheet).findByRole("heading", { name: "Plan 3" });
+    await showing(sheet, "# Plan 3");
     return { ...rendered, sheet };
   }
 
@@ -296,7 +319,15 @@ describe("the artifact reader", () => {
     const api = fakeApi();
     const { sheet } = await reading(api);
     expect(api.artifactVersion).toHaveBeenCalledWith("a1", 3);
-    expect(within(sheet).getByText("it").tagName).toBe("STRONG");
+    // Rendered by the daemon's page in the sandboxed frame, not by the app.
+    const frame = frameIn(sheet);
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("srcdoc")).toBe(
+      withCsp(
+        '<!doctype html><title>Rollout plan</title><pre id="nest-md"># Plan 3\n\nShip **it**.</pre>',
+      ),
+    );
+    expect(within(sheet).queryByText("it")).not.toBeInTheDocument();
     expect(sheet).toHaveTextContent("Markdown");
     expect(sheet).toHaveTextContent("Validate contact form");
     expect(within(sheet).getByRole("group", { name: "Versions" })).toHaveTextContent(
@@ -314,14 +345,14 @@ describe("the artifact reader", () => {
     const versions = within(sheet).getByRole("group", { name: "Versions" });
     expect(within(versions).getByRole("button", { name: "Next version" })).toBeDisabled();
     await user.click(within(versions).getByRole("button", { name: "Previous version" }));
-    expect(await within(sheet).findByRole("heading", { name: "Plan 2" })).toBeInTheDocument();
+    await showing(sheet, "# Plan 2");
     expect(versions).toHaveTextContent("Version 2 of 3");
     expect(screen.getByRole("dialog", { name: "Draft plan" })).toBe(sheet);
     await user.click(within(versions).getByRole("button", { name: "Previous version" }));
-    await within(sheet).findByRole("heading", { name: "Plan 1" });
+    await showing(sheet, "# Plan 1");
     expect(within(versions).getByRole("button", { name: "Previous version" })).toBeDisabled();
     await user.click(within(versions).getByRole("button", { name: "Next version" }));
-    await within(sheet).findByRole("heading", { name: "Plan 2" });
+    await showing(sheet, "# Plan 2");
     expect(api.artifactVersion.mock.calls.filter(([, v]) => v === 2)).toHaveLength(1);
   });
 
@@ -382,7 +413,7 @@ describe("the artifact reader", () => {
     await user.click(within(sheet).getByRole("button", { name: "Artifacts" }));
     expect(screen.getByRole("dialog", { name: "Artifacts" })).toBe(sheet);
     await user.click(within(sheet).getByRole("button", { name: /^Rollout plan/ }));
-    await within(sheet).findByRole("heading", { name: "Plan 3" });
+    await showing(sheet, "# Plan 3");
     push({ type: "artifact.deleted", payload: { artifact_id: "a1", unseen: 0 } });
     expect(screen.getByRole("dialog", { name: "Artifacts" })).toBe(sheet);
   });
@@ -399,12 +430,12 @@ describe("the artifact reader", () => {
     const versions = within(sheet).getByRole("group", { name: "Versions" });
     await user.click(within(versions).getByRole("button", { name: "Previous version" }));
     await user.click(within(versions).getByRole("button", { name: "Next version" }));
-    expect(await within(sheet).findByRole("heading", { name: "Plan 3" })).toBeInTheDocument();
+    await showing(sheet, "# Plan 3");
     act(() => {
       late(artifactContent({ version: 2, content: "# Plan 2" }));
     });
     await Promise.resolve();
-    expect(within(sheet).getByRole("heading", { name: "Plan 3" })).toBeInTheDocument();
+    expect(frameIn(sheet).getAttribute("srcdoc")).toContain("# Plan 3");
   });
 
   it("offers Retry when a version cannot be read", async () => {
@@ -418,7 +449,7 @@ describe("the artifact reader", () => {
     expect(await within(sheet).findByText(/could not be loaded/)).toBeInTheDocument();
     expect(within(sheet).queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
     await rendered.user.click(within(sheet).getByRole("button", { name: "Retry" }));
-    expect(await within(sheet).findByRole("heading", { name: "Options" })).toBeInTheDocument();
+    await showing(sheet, "# Options");
   });
 });
 
@@ -442,7 +473,7 @@ describe("an HTML artifact", () => {
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame).not.toHaveAttribute("src");
     expect(frame.getAttribute("srcdoc")).toBe(
-      `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">${page.slice(15)}`,
+      `<!doctype html><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}">${page.slice(15)}`,
     );
     expect(document.getElementById("evil")).toBeNull();
     expect(screen.queryByText("Evil")).not.toBeInTheDocument();
@@ -462,6 +493,54 @@ describe("an HTML artifact", () => {
     await rendered.user.click(within(sheet).getByRole("button", { name: "Save as file" }));
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("Usage report.html");
     expect(await files[0]?.text()).toBe(page);
+  });
+});
+
+describe("the frame's colour scheme", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The reader open on the plan, with the app's theme saved as given. */
+  async function framedWith(theme: string) {
+    const api = fakeApi();
+    api.artifacts.mockResolvedValue([plan]);
+    const storage = memoryStorage();
+    storage.setItem(STORAGE_KEY, JSON.stringify({ theme }));
+    const rendered = await openChat({ api, storage });
+    await openHistory(rendered);
+    await rendered.user.click(await screen.findByRole("button", { name: /^Rollout plan/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Options compared" });
+    await showing(sheet, "# Options");
+    return sheet;
+  }
+
+  it.each([
+    ["dark", false, "dark"],
+    ["light", true, "light"],
+    ["auto", true, "dark"],
+    ["auto", false, "light"],
+  ])("is Nest's %s theme over a system that is dark: %s", async (theme, dark, scheme) => {
+    systemDark(dark);
+    const sheet = await framedWith(theme);
+    expect(frameIn(sheet).style.colorScheme).toBe(scheme);
+  });
+
+  it("is light under Auto where the system cannot be asked", async () => {
+    const sheet = await framedWith("auto");
+    expect(frameIn(sheet).style.colorScheme).toBe("light");
+  });
+
+  it("follows the system under Auto, with a fresh page as it changes", async () => {
+    const system = systemDark(false);
+    const sheet = await framedWith("auto");
+    const before = frameIn(sheet);
+    system.flip(true);
+    const after = frameIn(sheet);
+    expect(after.style.colorScheme).toBe("dark");
+    // A new document, since WebKit may not redo an open one's prefers-color-scheme.
+    expect(after).not.toBe(before);
+    expect(after.getAttribute("srcdoc")).toBe(before.getAttribute("srcdoc"));
   });
 });
 

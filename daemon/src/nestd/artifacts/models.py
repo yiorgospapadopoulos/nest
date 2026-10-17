@@ -71,7 +71,11 @@ class VersionContent(BaseModel):
     version: int
     kind: ArtifactKind
     title: str
+    # As saved.
     content: str
+    # The whole document a client shows in its sandbox (B82): the content of an HTML
+    # artifact, a rendering page around a Markdown one.
+    page: str
     size: int
     created_at: datetime
 
