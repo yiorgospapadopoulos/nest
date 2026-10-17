@@ -6,6 +6,7 @@ import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { toolIcon } from "../../ui/toolIcon.ts";
 import { Sheet } from "../../ui/Sheet.tsx";
+import { Fireflies } from "../../ui/Fireflies.tsx";
 
 const TONES: Record<TrackedAgent["status"], Tone> = {
   running: "run",
@@ -50,7 +51,7 @@ export function AgentsSheet({ agents, onClose }: { agents: TrackedAgent[]; onClo
                       {step.result === null &&
                       agent.status === "running" &&
                       i === steps.length - 1 ? (
-                        <span className="spin" aria-hidden="true" />
+                        <Fireflies size={10} />
                       ) : (
                         <Icon name={toolIcon(step.tool)} />
                       )}
