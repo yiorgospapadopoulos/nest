@@ -168,12 +168,6 @@ public struct ProjectState: Sendable, Hashable {
         }
     }
 
-    /// A rail button: unfolds the panel with that card open.
-    public mutating func showCard(_ card: RightCard) {
-        rightCollapsed = false
-        openCards.insert(card)
-    }
-
     /// Opens or closes a chat's background bar.
     public mutating func toggleBackground(_ chat: String) {
         if expandedBackground.remove(chat) == nil {

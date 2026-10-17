@@ -256,11 +256,5 @@ private let workspace = CGSize(width: 1000, height: 600)
         #expect(state.openCards == [.goals])
         state.toggleCard(.needsYou)
         #expect(state.openCards == [.needsYou, .goals])
-
-        state.rightCollapsed = true
-        state.toggleCard(.goals)
-        state.showCard(.goals)
-        #expect(!state.rightCollapsed)
-        #expect(state.openCards.contains(.goals))
     }
 }
