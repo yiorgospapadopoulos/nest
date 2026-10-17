@@ -9,6 +9,8 @@ public final class DevicesStore {
     public private(set) var pairingCode: PairingCode?
     public private(set) var revoking: Set<String> = []
     public private(set) var isCreatingCode = false
+    /// How many devices get push notifications; nil until read (B81).
+    public private(set) var pushDevices: Int?
 
     let api: any NestAPI
     let now: @Sendable () -> Date
@@ -21,6 +23,20 @@ public final class DevicesStore {
     public func load() async throws {
         let all = try await api.devices().filter { $0.revokedAt == nil }
         devices = all.filter(\.isLocal) + all.filter { !$0.isLocal }
+    }
+
+    public func loadPushStatus() async throws {
+        pushDevices = try await api.pushStatus().devices
+    }
+
+    /// "On for 2 devices", "Off" with none, "-" before it was read.
+    public var pushText: String {
+        switch pushDevices {
+        case nil: "-"
+        case 0: "Off"
+        case 1: "On for 1 device"
+        case let count?: "On for \(count) devices"
+        }
     }
 
     /// Revokes a device; its token stops working at once.

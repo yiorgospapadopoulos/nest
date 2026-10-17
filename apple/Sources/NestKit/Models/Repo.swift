@@ -16,6 +16,8 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
     public var icon: Mascot?
     /// A pixie colour (`#RRGGBB`) for the icon; nil is the default colour.
     public var iconColor: String?
+    /// The one address Nest pushes to; nil before it is set or for a plain folder.
+    public var remoteURL: String?
 
     public var id: String { name }
 
@@ -24,6 +26,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         case defaultBranch = "default_branch"
         case currentBranch = "current_branch"
         case iconColor = "icon_color"
+        case remoteURL = "remote_url"
     }
 
     /// `git` and the icon are optional, since older daemons do not send them. A sprite this
@@ -40,6 +43,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
             $0 == .unknown ? nil : $0
         }
         iconColor = try container.decodeIfPresent(String.self, forKey: .iconColor)
+        remoteURL = try container.decodeIfPresent(String.self, forKey: .remoteURL)
     }
 
     /// The project's icon as Project settings edits it.
@@ -166,6 +170,27 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
     /// The icon's colour changed; `iconColor` is then the new one, nil the default colour.
     public var changesIconColor = false
     public var iconColor: String?
+    /// A git repo's new default branch, which must exist locally (B81).
+    public var defaultBranch: String?
+    /// The push address changed; `remoteURL` is then the new one, nil clearing it.
+    public var changesRemoteURL = false
+    public var remoteURL: String?
+    /// Each setup command's time limit, in seconds.
+    public var setupTimeoutSeconds: Int?
+
+    /// Changes only these; the rest stay as they are.
+    public init(
+        defaultBranch: String? = nil, setupTimeoutSeconds: Int? = nil
+    ) {
+        self.defaultBranch = defaultBranch
+        self.setupTimeoutSeconds = setupTimeoutSeconds
+    }
+
+    /// Sets the push address, or clears it with nil.
+    public init(remoteURL: String?) {
+        changesRemoteURL = true
+        self.remoteURL = remoteURL
+    }
 
     /// The worktree settings that differ between the two.
     public init(from old: WorktreeConfig, to new: WorktreeConfig) {
@@ -185,12 +210,16 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
 
     public var isEmpty: Bool {
         !changesDefault && link == nil && setup == nil && !changesIcon && !changesIconColor
+            && defaultBranch == nil && !changesRemoteURL && setupTimeoutSeconds == nil
     }
 
     enum CodingKeys: String, CodingKey {
         case link, setup, icon
         case isDefault = "default"
         case iconColor = "icon_color"
+        case defaultBranch = "default_branch"
+        case remoteURL = "remote_url"
+        case setupTimeoutSeconds = "setup_timeout_seconds"
     }
 
     /// A changed value that became nil is sent as null, which clears it.
@@ -207,6 +236,11 @@ public struct RepoPatch: Encodable, Sendable, Hashable {
         if changesIconColor {
             try container.encode(iconColor, forKey: .iconColor)
         }
+        try container.encodeIfPresent(defaultBranch, forKey: .defaultBranch)
+        if changesRemoteURL {
+            try container.encode(remoteURL, forKey: .remoteURL)
+        }
+        try container.encodeIfPresent(setupTimeoutSeconds, forKey: .setupTimeoutSeconds)
     }
 }
 

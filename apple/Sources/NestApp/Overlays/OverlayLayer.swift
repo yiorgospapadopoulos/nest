@@ -40,16 +40,10 @@ struct OverlayLayer: View {
         switch overlay {
         case .palette:
             PaletteView().padding(.top, 96)
-        case .settings:
-            SettingsSheet().padding(.top, 70)
-        case .connectors:
-            ConnectorsSheet().padding(.top, 70)
         case .diff(let id):
             DiffSheet(approvalID: id).padding(.vertical, 40).padding(.horizontal, 48)
         case .publish(let id):
             PublishSheet(approvalID: id).padding(.top, 70)
-        case .project(let name):
-            ProjectSettingsSheet(project: name).padding(.top, 70)
         case .rewind:
             RewindSheet().padding(.top, 70)
         case .habitRun(let session):

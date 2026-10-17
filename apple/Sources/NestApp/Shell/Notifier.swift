@@ -21,6 +21,21 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // but called on a background queue, which traps.
         Task { _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge]) }
         shell.model.live.onNotice = { [weak self] notice in self?.post(notice) }
+        shell.model.live.onUsageWarning = { [weak self] warning in self?.post(warning) }
+    }
+
+    /// A usage warning becomes a notification too when its setting is on (B81).
+    private func post(_ warning: UsageWarning) {
+        let usage = shell.model.usage
+        let text = usage.warningText(warning)
+        Task {
+            let notify = await usage.warningNotifies()
+            if let content = NotificationPolicy.content(
+                forWarning: text, notify: notify, preferences: shell.settings.notifications)
+            {
+                deliver(content)
+            }
+        }
     }
 
     /// The chats on screen; on the Pixies tab, those of the pixie panes on screen.
@@ -45,8 +60,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let message = UNMutableNotificationContent()
         message.title = content.title
         message.body = content.body
-        message.userInfo = ["session": content.sessionID, "project": content.project]
-        message.threadIdentifier = content.sessionID
+        // A usage warning opens no chat.
+        if !content.sessionID.isEmpty {
+            message.userInfo = ["session": content.sessionID, "project": content.project]
+            message.threadIdentifier = content.sessionID
+        }
         if content.playsSound {
             message.sound = .default
         }

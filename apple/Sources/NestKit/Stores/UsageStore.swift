@@ -26,8 +26,13 @@ public final class UsageStore {
     public private(set) var retryAt: Date?
     /// Why the last manual refresh failed, other than being too soon.
     public private(set) var refreshFailure: String?
+    /// The `[usage]` settings; nil until loaded.
+    public private(set) var settings: UsageSettings?
+    /// The latest `usage.warning` not dismissed yet, for the in-app notice (B81).
+    public private(set) var warning: UsageWarning?
+
     /// Minutes between automatic refreshes (0 is off); nil until loaded.
-    public private(set) var refreshMinutes: Int?
+    public var refreshMinutes: Int? { settings?.refreshMinutes }
 
     let api: any NestAPI
     let now: @Sendable () -> Date
@@ -93,20 +98,56 @@ public final class UsageStore {
     }
 
     public func loadSettings() async throws {
-        refreshMinutes = try await api.usageSettings().refreshMinutes
+        settings = try await api.usageSettings()
     }
 
-    /// Shows the new interval at once and restores the old one if the daemon refuses it.
     public func setRefreshMinutes(_ minutes: Int) async throws {
-        let previous = refreshMinutes
-        refreshMinutes = minutes
+        try await changeSettings { $0.refreshMinutes = minutes }
+    }
+
+    /// The warning level in percent, or nil to turn the warning off.
+    public func setWarnPercent(_ percent: Int?) async throws {
+        try await changeSettings { $0.warnPercent = percent }
+    }
+
+    public func setWarnNotify(_ notify: Bool) async throws {
+        try await changeSettings { $0.warnNotify = notify }
+    }
+
+    /// Shows the change at once and restores the old settings if the daemon refuses it. The
+    /// whole section is sent, so it is read first when it was not yet.
+    private func changeSettings(_ change: (inout UsageSettings) -> Void) async throws {
+        if settings == nil {
+            try await loadSettings()
+        }
+        guard let previous = settings else { return }
+        var changed = previous
+        change(&changed)
+        settings = changed
         do {
-            let saved = try await api.updateUsageSettings(UsageSettings(refreshMinutes: minutes))
-            refreshMinutes = saved.refreshMinutes
+            settings = try await api.updateUsageSettings(changed)
         } catch {
-            refreshMinutes = previous
+            settings = previous
             throw error
         }
+    }
+
+    /// Whether a usage warning should also be a notification on this Mac: the setting as
+    /// last read, read now when it was not yet.
+    public func warningNotifies() async -> Bool {
+        if settings == nil {
+            try? await loadSettings()
+        }
+        return settings?.warnNotify ?? false
+    }
+
+    public func dismissWarning() {
+        warning = nil
+    }
+
+    /// "You have used 82% of your 5 hour limit. Resets 18:30."
+    public func warningText(_ warning: UsageWarning) -> String {
+        UsageText.warning(warning, now: now(), calendar: calendar)
     }
 
     /// Later months are not shown beyond the current one.
@@ -167,6 +208,10 @@ public final class UsageStore {
 
     /// Windows from the engine replace the shown ones; it may report only one of them.
     public func apply(_ event: Event) {
+        if case .usageWarning(let warning) = event.body {
+            self.warning = warning
+            return
+        }
         guard case .usageUpdated(let update) = event.body else { return }
         var merged = limits ?? UsageLimits(fiveHour: nil, sevenDay: nil)
         if var window = update.fiveHour {

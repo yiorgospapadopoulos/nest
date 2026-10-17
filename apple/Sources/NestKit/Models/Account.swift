@@ -82,13 +82,39 @@ public struct ProbeTotals: Decodable, Sendable, Hashable {
 /// client is on screen; 0 turns it off.
 public struct UsageSettings: Codable, Sendable, Hashable {
     public var refreshMinutes: Int
+    /// Warns once per window period when a limit reaches this percent; nil is off (B81).
+    public var warnPercent: Int?
+    /// The warning also reaches the phone, and this Mac as a notification.
+    public var warnNotify: Bool
 
-    public init(refreshMinutes: Int) {
+    public init(refreshMinutes: Int, warnPercent: Int? = 80, warnNotify: Bool = true) {
         self.refreshMinutes = refreshMinutes
+        self.warnPercent = warnPercent
+        self.warnNotify = warnNotify
     }
 
     enum CodingKeys: String, CodingKey {
         case refreshMinutes = "refresh_minutes"
+        case warnPercent = "warn_percent"
+        case warnNotify = "warn_notify"
+    }
+
+    /// The warning keys are optional, since older daemons do not send them.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        refreshMinutes = try container.decode(Int.self, forKey: .refreshMinutes)
+        warnNotify = try container.decodeIfPresent(Bool.self, forKey: .warnNotify) ?? true
+        warnPercent =
+            container.contains(.warnPercent)
+            ? try container.decodeIfPresent(Int.self, forKey: .warnPercent) : 80
+    }
+
+    /// The whole section, with an off warning as null.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(refreshMinutes, forKey: .refreshMinutes)
+        try container.encode(warnPercent, forKey: .warnPercent)
+        try container.encode(warnNotify, forKey: .warnNotify)
     }
 }
 

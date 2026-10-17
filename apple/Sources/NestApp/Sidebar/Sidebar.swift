@@ -60,7 +60,8 @@ private struct SidebarFull: View {
                         .frame(width: 10)
                     Text("New chat")
                     Spacer(minLength: 0)
-                    Text("⌘N").font(.ui(10.5)).foregroundStyle(Palette.t3)
+                    Text(shell.shortcuts.shortcut(for: .newChat).display).font(.ui(10.5))
+                        .foregroundStyle(Palette.t3)
                 }
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
@@ -70,7 +71,7 @@ private struct SidebarFull: View {
             }
             .buttonStyle(RowHoverStyle())
             .padding(.top, 2)
-            .help("New chat (⌘N)")
+            .help("New chat (\(shell.shortcuts.shortcut(for: .newChat).display))")
 
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: []) {
