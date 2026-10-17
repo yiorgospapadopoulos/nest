@@ -706,16 +706,24 @@ export function artifactDetail(overrides: Partial<Artifact> = {}): ArtifactDetai
   };
 }
 
+/** A version as read; unless given, its page holds the content as the daemon's would. */
 export function artifactContent(overrides: Partial<ArtifactContent> = {}): ArtifactContent {
-  return {
+  const read = {
     artifact_id: "a1",
     version: 1,
-    kind: "markdown",
+    kind: "markdown" as const,
     title: "Options compared",
     content: "# Options\n\nPick **one**.",
     size: 24,
     created_at: NOW,
     ...overrides,
+  };
+  return {
+    page:
+      read.kind === "html"
+        ? read.content
+        : `<!doctype html><title>${read.title}</title><pre id="nest-md">${read.content}</pre>`,
+    ...read,
   };
 }
 
