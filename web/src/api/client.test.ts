@@ -442,6 +442,38 @@ const calls: Call[] = [
     "/api/sessions/s%201/agents/toolu%2F1/transcript",
     undefined,
   ],
+  ["artifacts", (a) => a.artifacts({}), "GET", "/api/artifacts", undefined],
+  [
+    "artifacts",
+    (a) => a.artifacts({ session_id: "s1", repo: "cv page" }),
+    "GET",
+    "/api/artifacts?session_id=s1&repo=cv+page",
+    undefined,
+  ],
+  [
+    "artifacts",
+    (a) => a.artifacts({ pixie_id: "p1" }),
+    "GET",
+    "/api/artifacts?pixie_id=p1",
+    undefined,
+  ],
+  ["artifactsUnseen", (a) => a.artifactsUnseen(), "GET", "/api/artifacts/unseen", undefined],
+  ["artifact", (a) => a.artifact("a/1"), "GET", "/api/artifacts/a%2F1", undefined],
+  [
+    "artifactVersion",
+    (a) => a.artifactVersion("a1", 2),
+    "GET",
+    "/api/artifacts/a1/versions/2",
+    undefined,
+  ],
+  [
+    "markArtifactSeen",
+    (a) => a.markArtifactSeen("a1"),
+    "POST",
+    "/api/artifacts/a1/seen",
+    undefined,
+  ],
+  ["deleteArtifact", (a) => a.deleteArtifact("a1"), "DELETE", "/api/artifacts/a1", undefined],
 ];
 
 describe("HttpApi", () => {

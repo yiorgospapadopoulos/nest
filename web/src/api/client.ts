@@ -2,6 +2,10 @@ import type {
   AccountInfo,
   AgentDefaults,
   AgentWork,
+  Artifact,
+  ArtifactContent,
+  ArtifactDetail,
+  ArtifactFilter,
   CallWork,
   Goal,
   GroupEntry,
@@ -203,6 +207,14 @@ export interface Api {
   pixieCalls(sessionId: string, pixieId: string): Promise<CallWork[]>;
   // A subagent's transcript so far; 404 for a call the chat did not make.
   agentTranscript(sessionId: string, toolUseId: string): Promise<AgentWork>;
+  // Newest first, at most 500 (B79).
+  artifacts(filter: ArtifactFilter): Promise<Artifact[]>;
+  // Artifacts of every project whose latest version is not opened yet.
+  artifactsUnseen(): Promise<{ unseen: number }>;
+  artifact(id: string): Promise<ArtifactDetail>;
+  artifactVersion(id: string, version: number): Promise<ArtifactContent>;
+  markArtifactSeen(id: string): Promise<Artifact>;
+  deleteArtifact(id: string): Promise<null>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -211,6 +223,7 @@ export const SEARCH_LIMIT = 50;
 const session = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 const repo = (name: string) => `/api/repos/${encodeURIComponent(name)}`;
 const claudeChat = (id: string) => `/api/claude-chats/${encodeURIComponent(id)}`;
+const artifact = (id: string) => `/api/artifacts/${encodeURIComponent(id)}`;
 
 /** The daemon's REST API; the device token travels in the same-origin cookie. */
 export class HttpApi implements Api {
@@ -614,6 +627,31 @@ export class HttpApi implements Api {
       "GET",
       `${session(sessionId)}/agents/${encodeURIComponent(toolUseId)}/transcript`,
     );
+  }
+
+  artifacts(filter: ArtifactFilter) {
+    const query = new URLSearchParams(Object.entries(filter)).toString();
+    return this.json<Artifact[]>("GET", query ? `/api/artifacts?${query}` : "/api/artifacts");
+  }
+
+  artifactsUnseen() {
+    return this.json<{ unseen: number }>("GET", "/api/artifacts/unseen");
+  }
+
+  artifact(id: string) {
+    return this.json<ArtifactDetail>("GET", artifact(id));
+  }
+
+  artifactVersion(id: string, version: number) {
+    return this.json<ArtifactContent>("GET", `${artifact(id)}/versions/${String(version)}`);
+  }
+
+  markArtifactSeen(id: string) {
+    return this.json<Artifact>("POST", `${artifact(id)}/seen`);
+  }
+
+  deleteArtifact(id: string) {
+    return this.json<null>("DELETE", artifact(id));
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -3,6 +3,9 @@ import type { Api } from "../api/client.ts";
 import {
   account,
   agentDefaults,
+  artifact,
+  artifactContent,
+  artifactDetail,
   commandList,
   detail,
   diff,
@@ -164,6 +167,20 @@ export function fakeApi(): FakeApi {
     agentTranscript: vi
       .fn<Api["agentTranscript"]>()
       .mockResolvedValue({ tool_use_id: "a1", prompt: null, messages: [], report: null }),
+    artifacts: vi.fn<Api["artifacts"]>().mockResolvedValue([]),
+    artifactsUnseen: vi.fn<Api["artifactsUnseen"]>().mockResolvedValue({ unseen: 0 }),
+    artifact: vi
+      .fn<Api["artifact"]>()
+      .mockImplementation((id) => Promise.resolve(artifactDetail({ id }))),
+    artifactVersion: vi
+      .fn<Api["artifactVersion"]>()
+      .mockImplementation((id, version) =>
+        Promise.resolve(artifactContent({ artifact_id: id, version })),
+      ),
+    markArtifactSeen: vi
+      .fn<Api["markArtifactSeen"]>()
+      .mockImplementation((id) => Promise.resolve(artifact({ id, seen: true }))),
+    deleteArtifact: vi.fn<Api["deleteArtifact"]>().mockResolvedValue(null),
   };
   return fake;
 }

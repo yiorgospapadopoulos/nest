@@ -43,6 +43,8 @@ import { workRoot } from "../approvals/hooks.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { TeamFace } from "../pixies/TeamFace.tsx";
 import type { WorkOf } from "../projects/ChatTree.tsx";
+import { ArtifactCard } from "../artifacts/ArtifactCard.tsx";
+import { chatScopes } from "../artifacts/view.ts";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
 import { ResultImages } from "./ResultImages.tsx";
@@ -437,6 +439,8 @@ function Item({
           onOpenWork={onOpenWork}
         />
       );
+    case "artifact":
+      return <ArtifactCard item={item} ev={ev} scopes={chatScopes(session)} />;
     case "card":
       // Only a pixie's chat holds cards.
       return session.pixie_id == null ? null : (
@@ -477,8 +481,11 @@ function MessageActions({ onClose, onEdit, onRewind, onFork }: MessageActionsPro
   );
 }
 
-// Pixie calls and cards show only in a Nest chat's transcript.
-export type MessageEntry = Exclude<TranscriptItem, { kind: "approval" | "pixie" | "card" }>;
+// Pixie calls and cards, and artifacts, show only in a Nest chat's transcript.
+export type MessageEntry = Exclude<
+  TranscriptItem,
+  { kind: "approval" | "pixie" | "card" | "artifact" }
+>;
 
 interface EntryProps {
   item: MessageEntry;

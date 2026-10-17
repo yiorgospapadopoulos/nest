@@ -872,3 +872,56 @@ export interface Health {
   status: "ok";
   version: string;
 }
+
+export type ArtifactKind = "markdown" | "html";
+
+/** A document a chat's agent saved (B79); every update adds a version. */
+export interface Artifact {
+  id: string;
+  title: string;
+  kind: ArtifactKind;
+  // The saving chat's project, or "pixie:<id>" for a pixie's chat or habit run.
+  repo: string;
+  session_id: string | null;
+  // The chat's current title, or its last one once deleted.
+  chat_title: string | null;
+  chat_deleted: boolean;
+  pixie_id: string | null;
+  pixie_name: string | null;
+  created_at: string;
+  // When the latest version was saved; lists are newest first by it.
+  updated_at: string;
+  latest_version: number;
+  version_count: number;
+  // The user opened the latest version.
+  seen: boolean;
+}
+
+export interface ArtifactVersion {
+  version: number;
+  title: string;
+  size: number;
+  created_at: string;
+}
+
+export interface ArtifactDetail extends Artifact {
+  // Oldest first.
+  versions: ArtifactVersion[];
+}
+
+export interface ArtifactContent {
+  artifact_id: string;
+  version: number;
+  kind: ArtifactKind;
+  title: string;
+  content: string;
+  size: number;
+  created_at: string;
+}
+
+/** Which artifacts a list shows; the filters combine, none means every project. */
+export interface ArtifactFilter {
+  repo?: string;
+  session_id?: string;
+  pixie_id?: string;
+}

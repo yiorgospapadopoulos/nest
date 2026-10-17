@@ -3,6 +3,8 @@ import type { Pixie } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { pixieWorking } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
+import { ArtifactsButton } from "../artifacts/ArtifactsButton.tsx";
+import { pixieScopes } from "../artifacts/view.ts";
 import { Composer } from "../chat/Composer.tsx";
 import { Frame } from "../chat/Frame.tsx";
 import { Transcript } from "../chat/Transcript.tsx";
@@ -82,6 +84,7 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
       }
       back="Projects"
       onBack={onBack}
+      tools={<ArtifactsButton scopes={pixieScopes(pixie.id)} />}
       details={
         <div className="pxtabs mseg" role="tablist" aria-label={`${pixie.name} sections`}>
           {TABS.map(({ tab: value, label }) => (

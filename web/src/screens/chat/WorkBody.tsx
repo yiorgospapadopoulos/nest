@@ -5,7 +5,10 @@ import { Markdown } from "../../ui/Markdown.tsx";
 import { MessageItem, type MessageEntry } from "./Transcript.tsx";
 
 const isMessage = (item: TranscriptItem): item is MessageEntry =>
-  item.kind !== "approval" && item.kind !== "pixie" && item.kind !== "card";
+  item.kind !== "approval" &&
+  item.kind !== "pixie" &&
+  item.kind !== "card" &&
+  item.kind !== "artifact";
 
 /** The messages as transcript rows: text, thinking, and tool calls with their results. */
 function workItems(messages: AgentMessage[], root: string | null): MessageEntry[] {
