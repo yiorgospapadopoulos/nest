@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useState } from "react";
 import type { ClaudeChat, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
@@ -16,7 +16,6 @@ import { ChatTree, type WorkOf } from "./ChatTree.tsx";
 import { ClaudeChatActions } from "./ClaudeChatActions.tsx";
 import { ClaudeChatRow } from "./ClaudeChatRow.tsx";
 import { GoalsSection } from "./GoalsSection.tsx";
-import { ProjectSettings } from "./ProjectSettings.tsx";
 import { SearchField, SearchResultsList } from "./Search.tsx";
 import { PixieSection } from "../pixies/PixieSection.tsx";
 import type { PixieTab } from "../pixies/PixieView.tsx";
@@ -32,6 +31,8 @@ interface Props {
   // A subagent's transcript, or a pixie's or team's work, in a chat (B46).
   onOpenAgent: (sessionId: string, toolUseId: string) => void;
   onOpenWork: (sessionId: string, who: WorkOf) => void;
+  // The project's page in Settings (B81).
+  onOpenSettings: (repo: string) => void;
 }
 
 /**
@@ -47,17 +48,13 @@ export function Projects({
   onOpenPixie,
   onOpenAgent,
   onOpenWork,
+  onOpenSettings,
 }: Props) {
   const { state, actions } = useStore();
   const [showArchived, setShowArchived] = useState(false);
   const [acting, setActing] = useState<Session | null>(null);
   const [actingChat, setActingChat] = useState<ClaudeChat | null>(null);
   const [query, setQuery] = useState("");
-  // The project whose settings are open.
-  const [settings, setSettings] = useState<string | null>(null);
-  const closeSettings = useCallback(() => {
-    setSettings(null);
-  }, []);
   const lists = project === null ? null : chatLists(state, project);
   const empty = lists !== null && lists.groups.length === 0 && lists.archived.length === 0;
 
@@ -99,7 +96,7 @@ export function Projects({
 
   const listsView = (
     <>
-      <PixieSection onOpen={onOpenPixie} />
+      <PixieSection project={project} onOpen={onOpenPixie} />
       {state.repos.length === 0 && (
         <p className="sempty">No projects yet. Add one in the Nest app on your Mac.</p>
       )}
@@ -183,9 +180,8 @@ export function Projects({
             <button
               className="ib gl"
               aria-label={`Settings for ${project}`}
-              aria-haspopup="dialog"
               onClick={() => {
-                setSettings(project);
+                onOpenSettings(project);
               }}
             >
               <Icon name="gear" />
@@ -224,7 +220,6 @@ export function Projects({
           }}
         />
       )}
-      {settings !== null && <ProjectSettings name={settings} onClose={closeSettings} />}
       {actingChat !== null && (
         <ClaudeChatActions
           chat={actingChat}

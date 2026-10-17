@@ -249,15 +249,23 @@ describe("tap targets", () => {
     reach(await screen.findByRole("button", { name: "Feedback" }), "height");
     await user.click(screen.getByRole("tab", { name: "Projects" }));
     reach(screen.getByRole("switch", { name: "Show automated chats" }));
-    await user.click(screen.getByRole("tab", { name: "Account" }));
-    for (const swatch of within(await screen.findByRole("group", { name: "Accent" })).getAllByRole(
-      "button",
-    )) {
+    await user.click(screen.getByRole("tab", { name: "Settings" }));
+    // The Settings list's rows.
+    reach(await screen.findByRole("button", { name: "Appearance" }), "height");
+    await user.click(screen.getByRole("button", { name: "Appearance" }));
+    reach(screen.getByRole("button", { name: "Back to Settings" }), "height");
+    for (const swatch of within(
+      await screen.findByRole("group", { name: "Accent colour" }),
+    ).getAllByRole("button")) {
       reach(swatch);
     }
+    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
+    await user.click(screen.getByRole("button", { name: "Accounts" }));
     reach(await screen.findByRole("button", { name: "Show email" }), "height");
+    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
+    await user.click(screen.getByRole("button", { name: "Agents" }));
     // A segmented control's segments.
-    reach(await screen.findByRole("button", { name: "Work on current branch" }), "height");
+    reach(await screen.findByRole("button", { name: "Current branch" }), "height");
   });
 
   it("are at least 44 points for a new chat's place selector", async () => {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { AppearanceCard } from "../screens/account/AppearanceCard.tsx";
+import { AppearancePage } from "../screens/settings/AppearancePage.tsx";
 import { memoryStorage } from "../test/render.tsx";
 import {
   applyAppearance,
@@ -115,7 +115,7 @@ describe("appearance", () => {
   });
 
   it("renders the defaults without a provider", () => {
-    render(<AppearanceCard />);
+    render(<AppearancePage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Dark" }));
 

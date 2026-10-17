@@ -85,6 +85,27 @@ const PATHS = {
   ),
   restore: <path d="M4 5v5h5M5.3 15a7.5 7.5 0 1 0 1.6-8.1L4 10" />,
   bell: <path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" />,
+  // The Settings list (B81).
+  contrast: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor" />
+    </>
+  ),
+  pixie: (
+    <>
+      <rect x="4.5" y="4.5" width="15" height="15" rx="1" />
+      <path d="M8.5 10h1.5M14 10h1.5M9 15h6" />
+    </>
+  ),
+  star: <path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L12 16.8 6.4 20l1.4-6.2L3 9.5l6.4-.6z" />,
+  devices: (
+    <>
+      <rect x="2.5" y="4.5" width="13" height="10" rx="1.5" />
+      <path d="M1.5 18h15" />
+      <rect x="17" y="8" width="5" height="10.5" rx="1.2" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

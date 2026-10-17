@@ -1,5 +1,8 @@
 import type { AgentDefaults, Effort, PermissionMode, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
+import { StuckChats } from "./StuckChats.tsx";
+import { UsageLimits } from "./UsageLimits.tsx";
 import {
   CLAUDE_CODE_MODE,
   CLAUDE_DEFAULT,
@@ -11,26 +14,21 @@ import {
   thinkingLevels,
 } from "../chat/options.ts";
 
-const MODES: { mode: SessionMode; label: string }[] = [
-  { mode: "in_place", label: "Work on current branch" },
-  { mode: "worktree", label: "New worktree" },
+const MODES: Choice<SessionMode>[] = [
+  { value: "in_place", label: "Current branch" },
+  { value: "worktree", label: "New worktree" },
 ];
 
-/** What new chats use unless the composer chooses otherwise; saved to the Mac at once. */
-export function AgentDefaultsCard() {
+/** New chats, usage limits and stuck chats (B81); each change is saved to the Mac at once. */
+export function AgentsPage() {
   const { state } = useStore();
   const defaults = state.agentDefaults;
   return (
-    <section aria-labelledby="agent-defaults-title">
-      <h2 className="pg-h" id="agent-defaults-title">
-        Agent defaults
-      </h2>
-      {defaults === null ? (
-        <div className="lgrp gl pad note">Loading...</div>
-      ) : (
-        <Choices defaults={defaults} />
-      )}
-    </section>
+    <>
+      {defaults === null ? <Loading title="New chats" /> : <Choices defaults={defaults} />}
+      <UsageLimits />
+      <StuckChats />
+    </>
   );
 }
 
@@ -62,7 +60,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
   const modeListed =
     defaults.permission_mode === null || modes.some((o) => o.value === defaults.permission_mode);
   return (
-    <div className="lgrp gl">
+    <Section title="New chats">
       <div className="srow">
         <label htmlFor="default-model">Model</label>
         <select
@@ -107,7 +105,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         )}
       </div>
       <div className="srow">
-        <label htmlFor="default-permission">Permission mode</label>
+        <label htmlFor="default-permission">Permissions</label>
         <select
           id="default-permission"
           className="ssel"
@@ -130,22 +128,14 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
           )}
         </select>
       </div>
-      <div className="srow col">
-        <span id="default-mode-label">New chats work in</span>
-        <div className="mseg" role="group" aria-labelledby="default-mode-label">
-          {MODES.map(({ mode, label }) => (
-            <button
-              key={mode}
-              aria-pressed={defaults.mode === mode}
-              onClick={() => {
-                save({ mode });
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+      <SegRow
+        label="Work in"
+        value={defaults.mode}
+        choices={MODES}
+        onChange={(mode) => {
+          save({ mode });
+        }}
+      />
+    </Section>
   );
 }

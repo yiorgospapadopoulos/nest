@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/context.ts";
 import { Sheet } from "../../ui/Sheet.tsx";
-import { ConnectorGroups } from "../account/ConnectorsCard.tsx";
+import { ConnectorGroups } from "../settings/ConnectorsCard.tsx";
 import { SearchField, SearchResultsList } from "../projects/Search.tsx";
 
 /** Where a chat can go from `/resume`, as the tabs open chats (B59). */

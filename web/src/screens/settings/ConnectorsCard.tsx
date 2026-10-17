@@ -22,20 +22,8 @@ export const CLAUDE_AI_CONNECTORS = "https://claude.ai/settings/connectors";
 // Signs in to an MCP server on the Mac, where Claude Code can open the browser for it.
 const SIGN_IN_COMMAND = "claude /mcp";
 
-/** MCP servers and claude.ai connectors with the status Claude Code last reported. */
-export function ConnectorsCard() {
-  return (
-    <section aria-labelledby="connectors-title">
-      <h2 className="pg-h" id="connectors-title">
-        Connectors
-      </h2>
-      <ConnectorGroups opened={false} />
-    </section>
-  );
-}
-
 /**
- * The connectors in their groups, closed by default on the Account tab; `opened` shows them
+ * The connectors in their groups, closed by default in Settings; `opened` shows them
  * at once, as `/mcp` does (B59).
  */
 export function ConnectorGroups({ opened }: { opened: boolean }) {

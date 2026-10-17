@@ -3,13 +3,13 @@ import type { Tab } from "../routes.ts";
 import { Icon, type IconName } from "../ui/Icon.tsx";
 
 // Arrow keys move between tabs, wrapping around.
-const NEXT: Record<Tab, Tab> = { inbox: "projects", projects: "account", account: "inbox" };
-const PREVIOUS: Record<Tab, Tab> = { inbox: "account", projects: "inbox", account: "projects" };
+const NEXT: Record<Tab, Tab> = { inbox: "projects", projects: "settings", settings: "inbox" };
+const PREVIOUS: Record<Tab, Tab> = { inbox: "settings", projects: "inbox", settings: "projects" };
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: "inbox", label: "Inbox", icon: "inbox" },
   { id: "projects", label: "Projects", icon: "folder" },
-  { id: "account", label: "Account", icon: "user" },
+  { id: "settings", label: "Settings", icon: "gear" },
 ];
 
 export function TabBar({
