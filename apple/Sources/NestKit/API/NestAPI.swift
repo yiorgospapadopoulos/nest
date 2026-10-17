@@ -180,6 +180,49 @@ public protocol NestAPI: Sendable {
     func createPairingCode() async throws -> PairingCode
     func devices() async throws -> [Device]
     func revokeDevice(_ id: String) async throws
+    /// How many devices get push notifications (B81).
+    func pushStatus() async throws -> PushStatus
+
+    // MARK: Settings (B81)
+
+    /// The repo's local branches, for its default branch.
+    func repoBranches(_ name: String) async throws -> [String]
+    /// How many artifacts the project's chats saved (B79's list, counted).
+    func artifactCount(repo: String) async throws -> Int
+    func storage() async throws -> StorageUsage
+    func storageSettings() async throws -> StorageSettings
+    func updateStorageSettings(_ settings: StorageSettings) async throws -> StorageSettings
+    /// The largest attachments, largest first.
+    func largeAttachments(limit: Int) async throws -> [LargeAttachment]
+    func deleteAttachment(_ id: String) async throws
+    /// Clears the search index and builds it again in the background.
+    func rebuildSearch() async throws
+    func pixieSettings() async throws -> PixieSettings
+    func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings
+    func githubAccount() async throws -> GitHubAccount
+    /// Asks `gh` again.
+    func checkGitHubAccount() async throws -> GitHubAccount
+    func claudeLogin() async throws -> ClaudeLogin
+    /// Starts Claude Code's browser sign-in on the Mac; `account.claude` tells the outcome.
+    func signInClaude() async throws
+    func signOutClaude() async throws -> ClaudeLogin
+    func claudeCode() async throws -> ClaudeCodeStatus
+    /// Runs Anthropic's installer; `claude_code.install` events tell how it goes.
+    func installClaudeCode() async throws
+    /// The installed Claude Code plugins.
+    func plugins() async throws -> [InstalledPlugin]
+    /// The skills in `~/.claude/skills`.
+    func standaloneSkills() async throws -> [StandaloneSkill]
+    func marketplaces() async throws -> [PluginMarketplace]
+    /// Adds a marketplace from a URL, a path or a GitHub repo.
+    func addMarketplace(source: String) async throws
+    func removeMarketplace(_ name: String) async throws
+    /// Every plugin the marketplaces offer.
+    func availablePlugins() async throws -> [AvailablePlugin]
+    func pluginDetails(_ id: String) async throws -> PluginDetails
+    func installPlugin(_ id: String) async throws
+    func uninstallPlugin(_ id: String) async throws
+    func setPluginEnabled(_ id: String, enabled: Bool) async throws
 }
 
 extension NestAPI {

@@ -503,6 +503,24 @@ public final class AppStore {
         }
     }
 
+    /// Changes a project's default branch, push address or setup time limit (B81), saved
+    /// in turn with its other settings. Nil when the project is gone.
+    @discardableResult
+    public func changeRepo(_ name: String, _ patch: RepoPatch) async throws -> Repo? {
+        try await saveSettings(of: name) { _ in patch }
+    }
+
+    /// The project's local branches, for its default branch.
+    public func branches(of name: String) async throws -> [String] {
+        try await api.repoBranches(name)
+    }
+
+    /// How many artifacts the project has; nil while the daemon cannot say, such as one
+    /// without artifacts yet (B79).
+    public func artifactCount(of name: String) async -> Int? {
+        try? await api.artifactCount(repo: name)
+    }
+
     private func saveSettings(
         of name: String, _ patch: @escaping @Sendable (Repo) -> RepoPatch
     ) async throws -> Repo? {

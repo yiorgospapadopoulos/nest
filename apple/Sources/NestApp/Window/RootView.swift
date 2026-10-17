@@ -34,6 +34,7 @@ struct ShellView: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.offscreen) private var snapshot
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.openWindow) private var openWindow
     @State private var fullScreen = false
     @State private var windowSize = CGSize.zero
 
@@ -55,6 +56,7 @@ struct ShellView: View {
             }
             VStack(spacing: 8) {
                 ConnectionBanner()
+                UsageWarningBanner()
                 if let toast = shell.toast {
                     ToastView(toast: toast)
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -86,6 +88,7 @@ struct ShellView: View {
             NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)
         ) { _ in fullScreen = false }
         .onAppear {
+            shell.openWindow = { openWindow(id: $0) }
             shell.startWatchingDrags()
             // A window restored in full screen sends no notification (I-N).
             fullScreen = NSApp.windows.contains {
@@ -181,6 +184,34 @@ private struct NoProjectView: View {
 /// Shown while the daemon cannot be reached or refuses this Mac, with a Retry. While it
 /// cannot be reached it also offers to start the Nest service, and shows how to
 /// install the service when it is missing.
+/// A usage limit reached the warning level set in Settings > Agents (B81), until dismissed.
+private struct UsageWarningBanner: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let usage = shell.model.usage
+        if let warning = usage.warning {
+            HStack(spacing: 10) {
+                Image(systemName: Icon.warning).foregroundStyle(StatusTone.waiting.color)
+                Text(usage.warningText(warning)).foregroundStyle(Palette.t1)
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) { usage.dismissWarning() }
+                } label: {
+                    Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
+                .accessibilityLabel("Dismiss the usage warning")
+            }
+            .font(.ui(TypeSize.ui, .medium))
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .frame(height: 36)
+            .sheetSurface(radius: Radius.card)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
+
 private struct ConnectionBanner: View {
     @Environment(Shell.self) private var shell
     @Environment(AppController.self) private var controller
@@ -319,7 +350,7 @@ private struct ServiceNote: View {
     }
 }
 
-private struct ToastView: View {
+struct ToastView: View {
     let toast: Toast
 
     var body: some View {

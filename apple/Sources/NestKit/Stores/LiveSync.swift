@@ -18,6 +18,10 @@ public final class LiveSync {
     let reports: PixieReportsStore
     let habits: HabitsStore
     let chatPixies: ChatPixiesStore
+    let accounts: AccountsStore
+    let extensions: ExtensionsStore
+    /// Called for each `usage.warning` event, for a notification (B81).
+    public var onUsageWarning: ((UsageWarning) -> Void)?
     /// Called for each `notify` event, for notification delivery.
     public var onNotice: ((Notice) -> Void)?
     /// Called after each connect has reloaded the stores.
@@ -28,7 +32,7 @@ public final class LiveSync {
         activity: ActivityStore, transcripts: Transcripts, usage: UsageStore,
         connectors: ConnectorsStore, claudeChats: ClaudeChatsStore, agents: AgentsStore,
         pixies: PixiesStore, reports: PixieReportsStore, habits: HabitsStore,
-        chatPixies: ChatPixiesStore
+        chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore
     ) {
         self.source = source
         self.app = app
@@ -44,6 +48,8 @@ public final class LiveSync {
         self.reports = reports
         self.habits = habits
         self.chatPixies = chatPixies
+        self.accounts = accounts
+        self.extensions = extensions
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -106,7 +112,11 @@ public final class LiveSync {
         reports.apply(event)
         habits.apply(event)
         chatPixies.apply(event)
+        accounts.apply(event)
+        extensions.apply(event)
         switch event.body {
+        case .usageWarning(let warning):
+            onUsageWarning?(warning)
         case .sessionDeleted(let id):
             app.forgetChat(id)
         case .notify(let notice):
@@ -155,6 +165,12 @@ public final class AppModel {
     public let habits: HabitsStore
     /// Each chat's pixies and the open work page (B46).
     public let chatPixies: ChatPixiesStore
+    /// Settings (B81): storage, pixie defaults, accounts, extensions and the shortcuts.
+    public let storage: StorageStore
+    public let pixieSettings: PixieSettingsStore
+    public let accounts: AccountsStore
+    public let extensions: ExtensionsStore
+    public let shortcuts: ShortcutsStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -188,11 +204,16 @@ public final class AppModel {
         reports = PixieReportsStore(api: api, now: now)
         habits = HabitsStore(api: api)
         chatPixies = ChatPixiesStore(api: api)
+        storage = StorageStore(api: api)
+        pixieSettings = PixieSettingsStore(api: api)
+        accounts = AccountsStore(api: api)
+        extensions = ExtensionsStore(api: api)
+        shortcuts = ShortcutsStore(store: preferences)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, pixies: pixies, reports: reports,
-            habits: habits, chatPixies: chatPixies)
+            habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }

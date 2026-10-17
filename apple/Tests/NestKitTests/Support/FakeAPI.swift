@@ -75,6 +75,33 @@ final class FakeAPI: NestAPI {
         var pixieCallWork: [String: [PixieCallWork]] = [:]
         /// What each project's chats are working towards, by repo name (B47).
         var goals: [String: [SessionGoals]] = [:]
+        // Settings (B81)
+        var pushDevices = 1
+        var branches: [String: [String]] = [:]
+        var artifactCounts: [String: Int] = [:]
+        var storage = StorageUsage(
+            totalBytes: 1_400, chatsBytes: 800, attachmentsBytes: 500, artifactsBytes: 40,
+            otherBytes: 60)
+        var storageSettings = StorageSettings()
+        var largeAttachments: [LargeAttachment] = []
+        var pixieSettings = PixieSettings()
+        var github = GitHubAccount(
+            state: .signedIn, login: "octo", checkedAt: Date(timeIntervalSince1970: 0))
+        var claudeLogin = ClaudeLogin(
+            signedIn: true, email: "me@example.com", plan: "Max",
+            checkedAt: Date(timeIntervalSince1970: 0))
+        var claudeCode = ClaudeCodeStatus(
+            installed: false, path: nil, version: nil, bundledVersion: "2.1.0")
+        var plugins = [InstalledPlugin(id: "pdf@official", name: "pdf", marketplace: "official")]
+        var skills = [StandaloneSkill(name: "notes", path: "/s/notes")]
+        var marketplaces = [PluginMarketplace(name: "official", kind: "github", source: "a/b")]
+        var available = [
+            AvailablePlugin(
+                id: "pdf@official", name: "pdf", marketplace: "official", source: "official",
+                installed: true),
+            AvailablePlugin(
+                id: "lint@official", name: "lint", marketplace: "official", source: "x"),
+        ]
     }
 
     let state = Mutex(State())
@@ -154,6 +181,15 @@ final class FakeAPI: NestAPI {
             }
             if patch.changesIconColor {
                 state.repos[index].iconColor = patch.iconColor
+            }
+            if let branch = patch.defaultBranch {
+                state.repos[index].defaultBranch = branch
+            }
+            if patch.changesRemoteURL {
+                state.repos[index].remoteURL = patch.remoteURL
+            }
+            if let seconds = patch.setupTimeoutSeconds {
+                state.repos[index].worktree.setupTimeoutSeconds = seconds
             }
             return state.repos[index]
         }
@@ -853,5 +889,144 @@ final class FakeAPI: NestAPI {
 
     func revokeDevice(_ id: String) async throws {
         try call("revokeDevice", id) { state in state.devices.removeAll { $0.id == id } }
+    }
+
+    func pushStatus() async throws -> PushStatus {
+        try call("pushStatus") { PushStatus(devices: $0.pushDevices) }
+    }
+
+    // MARK: Settings (B81)
+
+    func repoBranches(_ name: String) async throws -> [String] {
+        try call("repoBranches", name) { $0.branches[name] ?? [] }
+    }
+
+    func artifactCount(repo: String) async throws -> Int {
+        try call("artifactCount", repo) { $0.artifactCounts[repo] ?? 0 }
+    }
+
+    func storage() async throws -> StorageUsage {
+        try call("storage") { $0.storage }
+    }
+
+    func storageSettings() async throws -> StorageSettings {
+        try call("storageSettings") { $0.storageSettings }
+    }
+
+    func updateStorageSettings(_ settings: StorageSettings) async throws -> StorageSettings {
+        await pass("updateStorageSettings")
+        return try call("updateStorageSettings", "\(settings.archiveAfterDays ?? 0)") { state in
+            state.storageSettings = settings
+            return settings
+        }
+    }
+
+    func largeAttachments(limit: Int) async throws -> [LargeAttachment] {
+        try call("largeAttachments", "\(limit)") { Array($0.largeAttachments.prefix(limit)) }
+    }
+
+    func deleteAttachment(_ id: String) async throws {
+        await pass("deleteAttachment")
+        try call("deleteAttachment", id) { state in
+            state.largeAttachments.removeAll { $0.id == id }
+        }
+    }
+
+    func rebuildSearch() async throws {
+        await pass("rebuildSearch")
+        try call("rebuildSearch") { _ in }
+    }
+
+    func pixieSettings() async throws -> PixieSettings {
+        try call("pixieSettings") { $0.pixieSettings }
+    }
+
+    func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings {
+        try call("updatePixieSettings") { state in
+            state.pixieSettings = settings
+            return settings
+        }
+    }
+
+    func githubAccount() async throws -> GitHubAccount {
+        try call("githubAccount") { $0.github }
+    }
+
+    func checkGitHubAccount() async throws -> GitHubAccount {
+        await pass("checkGitHubAccount")
+        return try call("checkGitHubAccount") { $0.github }
+    }
+
+    func claudeLogin() async throws -> ClaudeLogin {
+        try call("claudeLogin") { $0.claudeLogin }
+    }
+
+    func signInClaude() async throws {
+        try call("signInClaude") { _ in }
+    }
+
+    func signOutClaude() async throws -> ClaudeLogin {
+        await pass("signOutClaude")
+        return try call("signOutClaude") { state in
+            state.claudeLogin = ClaudeLogin(signedIn: false, checkedAt: state.claudeLogin.checkedAt)
+            return state.claudeLogin
+        }
+    }
+
+    func claudeCode() async throws -> ClaudeCodeStatus {
+        try call("claudeCode") { $0.claudeCode }
+    }
+
+    func installClaudeCode() async throws {
+        try call("installClaudeCode") { _ in }
+    }
+
+    func plugins() async throws -> [InstalledPlugin] {
+        try call("plugins") { $0.plugins }
+    }
+
+    func standaloneSkills() async throws -> [StandaloneSkill] {
+        try call("standaloneSkills") { $0.skills }
+    }
+
+    func marketplaces() async throws -> [PluginMarketplace] {
+        try call("marketplaces") { $0.marketplaces }
+    }
+
+    func addMarketplace(source: String) async throws {
+        try call("addMarketplace", source) { state in
+            state.marketplaces.append(PluginMarketplace(name: source, kind: "url", source: source))
+        }
+    }
+
+    func removeMarketplace(_ name: String) async throws {
+        try call("removeMarketplace", name) { state in
+            state.marketplaces.removeAll { $0.name == name }
+        }
+    }
+
+    func availablePlugins() async throws -> [AvailablePlugin] {
+        try call("availablePlugins") { $0.available }
+    }
+
+    func pluginDetails(_ id: String) async throws -> PluginDetails {
+        try call("pluginDetails", id) { _ in
+            PluginDetails(id: id, name: id, marketplace: "official", source: "x")
+        }
+    }
+
+    func installPlugin(_ id: String) async throws {
+        await pass("installPlugin")
+        try call("installPlugin", id) { state in
+            state.plugins.append(InstalledPlugin(id: id, name: id, marketplace: "official"))
+        }
+    }
+
+    func uninstallPlugin(_ id: String) async throws {
+        try call("uninstallPlugin", id) { state in state.plugins.removeAll { $0.id == id } }
+    }
+
+    func setPluginEnabled(_ id: String, enabled: Bool) async throws {
+        try call("setPluginEnabled", "\(id) \(enabled)") { _ in }
     }
 }

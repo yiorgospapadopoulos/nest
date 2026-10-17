@@ -47,6 +47,14 @@ public struct NotificationPreferences: Sendable, Hashable {
         ]
     }
 
+    /// The toggles of Notify me about: every kind, without Sound, which is under Delivery
+    /// (B81).
+    public static var kindToggles:
+        [(title: String, path: WritableKeyPath<NotificationPreferences, Bool>)]
+    {
+        toggles.filter { $0.path != \.sound }
+    }
+
     /// Whether this kind of notice is switched on.
     public func wants(_ kind: NoticeKind) -> Bool {
         switch kind {
@@ -93,6 +101,16 @@ public enum NotificationPolicy {
         return NotificationContent(
             title: "\(source(of: notice, pixies: pixies)) · \(notice.title)", body: notice.text,
             sessionID: notice.sessionID, project: notice.repo, playsSound: preferences.sound)
+    }
+
+    /// A usage warning as a notification, when its setting is on (B81); it opens no chat.
+    public static func content(
+        forWarning text: String, notify: Bool, preferences: NotificationPreferences
+    ) -> NotificationContent? {
+        guard notify else { return nil }
+        return NotificationContent(
+            title: "Usage warning", body: text, sessionID: "", project: "",
+            playsSound: preferences.sound)
     }
 
     /// The project a notice comes from, or the pixie's name for a pixie chat (D072).

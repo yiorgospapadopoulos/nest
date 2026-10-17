@@ -33,6 +33,32 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let defaultsJSON = """
         {"model": "opus", "effort": "high", "permission_mode": "default", "mode": "in_place"}
         """
+    static let storageJSON = """
+        {"total_bytes": 10, "chats_bytes": 4, "attachments_bytes": 3, "artifacts_bytes": 0,
+         "other_bytes": 3}
+        """
+    static let githubJSON = """
+        {"state": "signed_in", "login": "octo", "checked_at": "2026-10-17T09:00:00Z"}
+        """
+    static let claudeJSON = """
+        {"signed_in": true, "email": "me@example.com", "organization": null, "plan": "max",
+         "method": "claude.ai", "checked_at": "2026-10-17T09:00:00Z"}
+        """
+    static let pluginsJSON = """
+        [{"id": "pdf@official", "name": "pdf", "marketplace": "official", "version": null,
+          "enabled": true, "scope": "user", "description": "PDFs"}]
+        """
+    static let availableJSON = """
+        [{"id": "pdf@official", "name": "pdf", "marketplace": "official", "description": null,
+          "version": "1.0", "source": "official", "install_count": 12, "installed": true}]
+        """
+    static let detailsJSON = """
+        {"id": "pdf@official", "name": "pdf", "marketplace": "official", "description": null,
+         "source": "./pdf", "installed": false, "components": {
+           "skills": {"count": 2, "names": ["a", "b"]}, "agents": {"count": 1, "names": ["c"]},
+           "hooks": {"count": 0, "names": []}, "mcp_servers": {"count": 1, "names": ["d"]},
+           "lsp_servers": {"count": 0, "names": []}}}
+        """
     static let pixieJSON = Fixture.text("pixie")
     static let teamJSON = Fixture.text("pixie_team")
     static let habitJSON = PixieHabitsTests.habitJSON()
@@ -443,9 +469,99 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.usageSettings()
         },
         RouteCase(
-            "PUT", "/api/usage/settings", body: #"{"refresh_minutes":0}"#,
+            "PUT", "/api/usage/settings",
+            body: #"{"refresh_minutes":0,"warn_notify":true,"warn_percent":80}"#,
             response: #"{"refresh_minutes": 0}"#
         ) { _ = try await $0.updateUsageSettings(UsageSettings(refreshMinutes: 0)) },
+        RouteCase("GET", "/api/push/status", response: #"{"devices": 2}"#) {
+            _ = try await $0.pushStatus()
+        },
+        RouteCase("GET", "/api/repos/cv-page/branches", response: #"{"branches": ["main"]}"#) {
+            _ = try await $0.repoBranches("cv-page")
+        },
+        RouteCase(
+            "GET", "/api/artifacts?repo=cv-page", response: #"[{"id": "a"}, {"id": "b"}]"#
+        ) { _ = try await $0.artifactCount(repo: "cv-page") },
+        RouteCase("GET", "/api/storage", response: storageJSON) { _ = try await $0.storage() },
+        RouteCase("GET", "/api/storage/settings", response: #"{"archive_after_days": null}"#) {
+            _ = try await $0.storageSettings()
+        },
+        RouteCase(
+            "PUT", "/api/storage/settings", body: #"{"archive_after_days":30}"#,
+            response: #"{"archive_after_days": 30}"#
+        ) { _ = try await $0.updateStorageSettings(StorageSettings(archiveAfterDays: 30)) },
+        RouteCase(
+            "GET", "/api/storage/attachments?limit=20",
+            response:
+                #"[{"id": "a1", "name": "big.png", "bytes": 9, "media_type": "image/png", "session_id": null, "session_title": null, "created_at": "2026-10-17T09:00:00Z"}]"#
+        ) { _ = try await $0.largeAttachments(limit: 20) },
+        RouteCase("DELETE", "/api/attachments/a1", response: "") {
+            try await $0.deleteAttachment("a1")
+        },
+        RouteCase("POST", "/api/search/rebuild", response: "") { try await $0.rebuildSearch() },
+        RouteCase("GET", "/api/pixie-settings", response: Fixture.json(PixieSettings())) {
+            _ = try await $0.pixieSettings()
+        },
+        RouteCase(
+            "PUT", "/api/pixie-settings", body: Fixture.json(PixieSettings()),
+            response: Fixture.json(PixieSettings())
+        ) { _ = try await $0.updatePixieSettings(PixieSettings()) },
+        RouteCase("GET", "/api/accounts/github", response: githubJSON) {
+            _ = try await $0.githubAccount()
+        },
+        RouteCase("POST", "/api/accounts/github/check", response: githubJSON) {
+            _ = try await $0.checkGitHubAccount()
+        },
+        RouteCase("GET", "/api/accounts/claude", response: claudeJSON) {
+            _ = try await $0.claudeLogin()
+        },
+        RouteCase("POST", "/api/accounts/claude/login", response: "") {
+            try await $0.signInClaude()
+        },
+        RouteCase("POST", "/api/accounts/claude/logout", response: claudeJSON) {
+            _ = try await $0.signOutClaude()
+        },
+        RouteCase(
+            "GET", "/api/claude-code",
+            response:
+                #"{"installed": false, "path": null, "version": null, "bundled_version": "2.1.0"}"#
+        ) { _ = try await $0.claudeCode() },
+        RouteCase("POST", "/api/claude-code/install", response: "") {
+            try await $0.installClaudeCode()
+        },
+        RouteCase("GET", "/api/extensions/plugins", response: pluginsJSON) {
+            _ = try await $0.plugins()
+        },
+        RouteCase(
+            "GET", "/api/extensions/skills",
+            response: #"[{"name": "notes", "description": null, "path": "/s/notes"}]"#
+        ) { _ = try await $0.standaloneSkills() },
+        RouteCase(
+            "GET", "/api/extensions/marketplaces",
+            response: #"[{"name": "official", "kind": "github", "source": "a/b"}]"#
+        ) { _ = try await $0.marketplaces() },
+        RouteCase(
+            "POST", "/api/extensions/marketplaces", body: #"{"source":"a/b"}"#, response: ""
+        ) { try await $0.addMarketplace(source: "a/b") },
+        RouteCase("DELETE", "/api/extensions/marketplaces/official", response: "") {
+            try await $0.removeMarketplace("official")
+        },
+        RouteCase("GET", "/api/extensions/available", response: availableJSON) {
+            _ = try await $0.availablePlugins()
+        },
+        RouteCase("GET", "/api/extensions/plugins/pdf@official/details", response: detailsJSON) {
+            _ = try await $0.pluginDetails("pdf@official")
+        },
+        RouteCase("POST", "/api/extensions/plugins/pdf@official/install", response: "") {
+            try await $0.installPlugin("pdf@official")
+        },
+        RouteCase("POST", "/api/extensions/plugins/pdf@official/uninstall", response: "") {
+            try await $0.uninstallPlugin("pdf@official")
+        },
+        RouteCase(
+            "PUT", "/api/extensions/plugins/pdf@official/enabled", body: #"{"enabled":false}"#,
+            response: ""
+        ) { try await $0.setPluginEnabled("pdf@official", enabled: false) },
         RouteCase(
             "POST", "/api/clients/visibility", body: #"{"client":"mac","visible":true}"#,
             response: ""

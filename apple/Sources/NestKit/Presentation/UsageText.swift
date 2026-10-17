@@ -48,6 +48,25 @@ public enum UsageText {
         return now.timeIntervalSince(date) > staleAfter
     }
 
+    /// "You have used 82% of your 5 hour limit. Resets 18:30." for a `usage.warning`.
+    public static func warning(_ warning: UsageWarning, now: Date, calendar: Calendar) -> String {
+        let percent = Int((warning.utilization * 100).rounded())
+        let limit = warning.window == .fiveHour ? "5 hour" : "weekly"
+        let window = LimitWindow(utilization: warning.utilization, resetsAt: warning.resetsAt)
+        let reset =
+            warning.resetsAt == nil
+            ? "" : " \(UsageText.reset(window, now: now, calendar: calendar))."
+        return "You have used \(percent)% of your \(limit) limit.\(reset)"
+    }
+
+    /// The warning levels offered in Settings, in percent; nil is off.
+    public static let warnChoices: [Int?] = [70, 80, 90, nil]
+
+    /// "80%", or "Off".
+    public static func warnLevel(_ percent: Int?) -> String {
+        percent.map { "\($0)%" } ?? "Off"
+    }
+
     /// The refresh intervals offered in Settings, in minutes; 0 is off.
     public static let refreshChoices = [0, 1, 3, 5, 10, 15]
 

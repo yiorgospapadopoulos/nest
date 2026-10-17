@@ -33,7 +33,7 @@ struct StatusBar: View {
     var body: some View {
         HStack(spacing: 6) {
             Button {
-                shell.show(.settings)
+                shell.openSettings()
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: Icon.gear).font(.system(size: 11))
@@ -41,7 +41,7 @@ struct StatusBar: View {
                 }
             }
             .buttonStyle(FooterButtonStyle())
-            .help("Settings (⌘,)")
+            .help("Settings (\(shell.shortcuts.shortcut(for: .settings).display))")
             .accessibilityLabel("Settings")
             Spacer(minLength: 0)
             if inProject {

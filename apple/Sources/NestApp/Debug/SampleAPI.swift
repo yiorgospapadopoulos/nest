@@ -19,7 +19,9 @@
         private var openElsewhere: Set<String> = []
         /// Manual usage refreshes so far; the daemon refuses one within 20 s of another.
         private var refreshes = 0
-        private var refreshMinutes = 3
+        private var usage = UsageSettings(refreshMinutes: 3)
+        private var archiveDays: Int? = 30
+        private var pixieDefaults = PixieSettings()
         private var stuck = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
         /// What searches answer for `indexing`.
@@ -109,6 +111,12 @@
             if patch.changesIconColor {
                 repo.iconColor = patch.iconColor
             }
+            repo.defaultBranch = patch.defaultBranch ?? repo.defaultBranch
+            if patch.changesRemoteURL {
+                repo.remoteURL = patch.remoteURL
+            }
+            repo.worktree.setupTimeoutSeconds =
+                patch.setupTimeoutSeconds ?? repo.worktree.setupTimeoutSeconds
             return repo
         }
 
@@ -481,11 +489,11 @@
         }
 
         func usageSettings() async throws -> UsageSettings {
-            UsageSettings(refreshMinutes: lock.withLock { refreshMinutes })
+            lock.withLock { usage }
         }
 
         func updateUsageSettings(_ settings: UsageSettings) async throws -> UsageSettings {
-            lock.withLock { refreshMinutes = settings.refreshMinutes }
+            lock.withLock { usage = settings }
             return settings
         }
 
@@ -1128,6 +1136,162 @@
         }
 
         func revokeDevice(_ id: String) async throws {}
+
+        func pushStatus() async throws -> PushStatus { PushStatus(devices: 1) }
+
+        // MARK: Settings (B81)
+
+        func repoBranches(_ name: String) async throws -> [String] {
+            ["main", "develop", "feat/contact-form"]
+        }
+
+        func artifactCount(repo: String) async throws -> Int {
+            repo == "cv-page" ? 12 : 0
+        }
+
+        func storage() async throws -> StorageUsage {
+            StorageUsage(
+                totalBytes: 1_420_000_000, chatsBytes: 820_000_000, attachmentsBytes: 540_000_000,
+                artifactsBytes: 40_000_000, otherBytes: 20_000_000)
+        }
+
+        func storageSettings() async throws -> StorageSettings {
+            StorageSettings(archiveAfterDays: lock.withLock { archiveDays })
+        }
+
+        func updateStorageSettings(_ settings: StorageSettings) async throws -> StorageSettings {
+            lock.withLock { archiveDays = settings.archiveAfterDays }
+            return settings
+        }
+
+        func largeAttachments(limit: Int) async throws -> [LargeAttachment] {
+            [
+                ("screen-recording.mov", 182_000_000, "video/quicktime", "Fix the login redirect"),
+                ("design-export.png", 24_300_000, "image/png", "Dark mode contrast"),
+                ("trace.json", 8_100_000, "application/json", nil),
+            ].enumerated().map { index, item in
+                LargeAttachment(
+                    id: "att-\(index)", name: item.0, bytes: item.1, mediaType: item.2,
+                    sessionID: item.3 == nil ? nil : "c\(index + 1)", sessionTitle: item.3,
+                    createdAt: now - Double(index + 1) * 86_400 * 9)
+            }
+        }
+
+        func deleteAttachment(_ id: String) async throws {}
+
+        func rebuildSearch() async throws {}
+
+        func pixieSettings() async throws -> PixieSettings {
+            lock.withLock { pixieDefaults }
+        }
+
+        func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings {
+            lock.withLock { pixieDefaults = settings }
+            return settings
+        }
+
+        func githubAccount() async throws -> GitHubAccount {
+            GitHubAccount(state: .signedIn, login: "yiorgospapadopoulos", checkedAt: now)
+        }
+
+        func checkGitHubAccount() async throws -> GitHubAccount {
+            try await githubAccount()
+        }
+
+        func claudeLogin() async throws -> ClaudeLogin {
+            ClaudeLogin(
+                signedIn: true, email: "giorgos@example.com", plan: "Max", method: "claude.ai",
+                checkedAt: now)
+        }
+
+        func signInClaude() async throws {}
+
+        func signOutClaude() async throws -> ClaudeLogin {
+            ClaudeLogin(signedIn: false, checkedAt: now)
+        }
+
+        func claudeCode() async throws -> ClaudeCodeStatus {
+            ClaudeCodeStatus(
+                installed: true, path: "/Users/giorgos/.local/bin/claude", version: "2.1.14",
+                bundledVersion: "2.1.12")
+        }
+
+        func installClaudeCode() async throws {}
+
+        func plugins() async throws -> [InstalledPlugin] {
+            [
+                InstalledPlugin(
+                    id: "superpowers@claude-plugins-official", name: "superpowers",
+                    marketplace: "claude-plugins-official", version: "4.3.0",
+                    description: "Brainstorming, debugging, TDD and 12 more"),
+                InstalledPlugin(
+                    id: "engineering@knowledge-work", name: "engineering",
+                    marketplace: "knowledge-work", version: "1.2.0",
+                    description: "Code review, debug, architecture"),
+                InstalledPlugin(
+                    id: "pdf-viewer@knowledge-work", name: "pdf-viewer",
+                    marketplace: "knowledge-work", enabled: false,
+                    description: "View and annotate PDFs"),
+            ]
+        }
+
+        func standaloneSkills() async throws -> [StandaloneSkill] {
+            [
+                StandaloneSkill(
+                    name: "release-notes", description: "Writes release notes from the git log",
+                    path: "/Users/giorgos/.claude/skills/release-notes")
+            ]
+        }
+
+        func marketplaces() async throws -> [PluginMarketplace] {
+            [
+                PluginMarketplace(
+                    name: "claude-plugins-official", kind: "github",
+                    source: "anthropics/claude-plugins-official"),
+                PluginMarketplace(
+                    name: "knowledge-work", kind: "github",
+                    source: "anthropics/knowledge-work-plugins"),
+            ]
+        }
+
+        func addMarketplace(source: String) async throws {}
+
+        func removeMarketplace(_ name: String) async throws {}
+
+        func availablePlugins() async throws -> [AvailablePlugin] {
+            [
+                AvailablePlugin(
+                    id: "code-review@claude-plugins-official", name: "code-review",
+                    marketplace: "claude-plugins-official",
+                    description: "Reviews pull requests with several agents", version: "1.0.0",
+                    source: "./plugins/code-review", installCount: 48_210),
+                AvailablePlugin(
+                    id: "superpowers@claude-plugins-official", name: "superpowers",
+                    marketplace: "claude-plugins-official",
+                    description: "Brainstorming, debugging, TDD and 12 more", version: "4.3.0",
+                    source: "claude-plugins-official", installCount: 120_400, installed: true),
+            ]
+        }
+
+        func pluginDetails(_ id: String) async throws -> PluginDetails {
+            PluginDetails(
+                id: id, name: String(id.split(separator: "@")[0]),
+                marketplace: "claude-plugins-official",
+                description: "Reviews pull requests with several agents",
+                source: "./plugins/code-review",
+                components: PluginComponents(
+                    skills: PluginComponent(count: 1, names: ["code-review"]),
+                    agents: PluginComponent(count: 3, names: ["reviewer", "tester", "critic"]),
+                    hooks: PluginComponent(count: 0, names: []),
+                    mcpServers: PluginComponent(count: 0, names: []),
+                    lspServers: PluginComponent(count: 0, names: [])))
+        }
+
+        func installPlugin(_ id: String) async throws {}
+
+        func uninstallPlugin(_ id: String) async throws {}
+
+        func setPluginEnabled(_ id: String, enabled: Bool) async throws {}
 
         private func decode<T: Decodable>(_ object: Any) throws -> T {
             try SampleData.decode(object)

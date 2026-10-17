@@ -357,6 +357,132 @@ public struct APIClient: NestAPI {
         try await perform("DELETE", ["devices", id])
     }
 
+    public func pushStatus() async throws -> PushStatus {
+        try await get("push", "status")
+    }
+
+    // MARK: Settings (B81)
+
+    public func repoBranches(_ name: String) async throws -> [String] {
+        let list: BranchList = try await get("repos", name, "branches")
+        return list.branches
+    }
+
+    public func artifactCount(repo: String) async throws -> Int {
+        let list: [ArtifactListEntry] = try await call(
+            "GET", ["artifacts"], query: [URLQueryItem(name: "repo", value: repo)])
+        return list.count
+    }
+
+    public func storage() async throws -> StorageUsage {
+        try await get("storage")
+    }
+
+    public func storageSettings() async throws -> StorageSettings {
+        try await get("storage", "settings")
+    }
+
+    public func updateStorageSettings(_ settings: StorageSettings) async throws
+        -> StorageSettings
+    {
+        try await call("PUT", ["storage", "settings"], body: settings)
+    }
+
+    public func largeAttachments(limit: Int) async throws -> [LargeAttachment] {
+        try await call(
+            "GET", ["storage", "attachments"],
+            query: [URLQueryItem(name: "limit", value: "\(limit)")])
+    }
+
+    public func deleteAttachment(_ id: String) async throws {
+        try await perform("DELETE", ["attachments", id])
+    }
+
+    public func rebuildSearch() async throws {
+        try await perform("POST", ["search", "rebuild"])
+    }
+
+    public func pixieSettings() async throws -> PixieSettings {
+        try await get("pixie-settings")
+    }
+
+    public func updatePixieSettings(_ settings: PixieSettings) async throws -> PixieSettings {
+        try await call("PUT", ["pixie-settings"], body: settings)
+    }
+
+    public func githubAccount() async throws -> GitHubAccount {
+        try await get("accounts", "github")
+    }
+
+    public func checkGitHubAccount() async throws -> GitHubAccount {
+        try await call("POST", ["accounts", "github", "check"])
+    }
+
+    public func claudeLogin() async throws -> ClaudeLogin {
+        try await get("accounts", "claude")
+    }
+
+    public func signInClaude() async throws {
+        try await perform("POST", ["accounts", "claude", "login"])
+    }
+
+    public func signOutClaude() async throws -> ClaudeLogin {
+        try await call("POST", ["accounts", "claude", "logout"])
+    }
+
+    public func claudeCode() async throws -> ClaudeCodeStatus {
+        try await get("claude-code")
+    }
+
+    public func installClaudeCode() async throws {
+        try await perform("POST", ["claude-code", "install"])
+    }
+
+    // MARK: Extensions (B81)
+
+    public func plugins() async throws -> [InstalledPlugin] {
+        try await get("extensions", "plugins")
+    }
+
+    public func standaloneSkills() async throws -> [StandaloneSkill] {
+        try await get("extensions", "skills")
+    }
+
+    public func marketplaces() async throws -> [PluginMarketplace] {
+        try await get("extensions", "marketplaces")
+    }
+
+    public func addMarketplace(source: String) async throws {
+        try await perform(
+            "POST", ["extensions", "marketplaces"], body: MarketplaceRequest(source: source))
+    }
+
+    public func removeMarketplace(_ name: String) async throws {
+        try await perform("DELETE", ["extensions", "marketplaces", name])
+    }
+
+    public func availablePlugins() async throws -> [AvailablePlugin] {
+        try await get("extensions", "available")
+    }
+
+    public func pluginDetails(_ id: String) async throws -> PluginDetails {
+        try await get("extensions", "plugins", id, "details")
+    }
+
+    public func installPlugin(_ id: String) async throws {
+        try await perform("POST", ["extensions", "plugins", id, "install"])
+    }
+
+    public func uninstallPlugin(_ id: String) async throws {
+        try await perform("POST", ["extensions", "plugins", id, "uninstall"])
+    }
+
+    public func setPluginEnabled(_ id: String, enabled: Bool) async throws {
+        try await perform(
+            "PUT", ["extensions", "plugins", id, "enabled"],
+            body: PluginEnabledRequest(enabled: enabled))
+    }
+
     // MARK: Pixies
 
     public func pixies() async throws -> [Pixie] {

@@ -18,8 +18,11 @@ struct NestApp: App {
         #endif
     }
 
+    /// The main window's scene id.
+    static let mainWindowID = "main"
+
     var body: some Scene {
-        Window("Nest", id: "main") {
+        Window("Nest", id: Self.mainWindowID) {
             RootView()
                 .environment(controller)
                 .containerBackground(.clear, for: .window)
@@ -28,10 +31,18 @@ struct NestApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
         .commands { NestCommands(controller: controller) }
+        // A window of its own (B81), opened with Settings, a project's settings or /mcp.
+        Window("Settings", id: SettingsWindow.id) {
+            SettingsWindow().environment(controller)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 980, height: 700)
+        .windowResizability(.contentMinSize)
+        .defaultPosition(.center)
     }
 }
 
-/// Menu bar commands and their keyboard shortcuts.
+/// Menu bar commands, with the keyboard shortcuts Settings > Keyboard shortcuts sets (B81).
 struct NestCommands: Commands {
     let controller: AppController
 
@@ -39,58 +50,58 @@ struct NestCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { shell?.show(.settings) }
-                .keyboardShortcut(",")
+            Button("Settings…") { shell?.openSettings() }
+                .shortcut(.settings, shell)
         }
         CommandGroup(replacing: .newItem) {
             Button("New Chat") { shell?.newChat() }
-                .keyboardShortcut("n")
+                .shortcut(.newChat, shell)
                 .disabled(shell?.project == nil)
         }
         CommandGroup(replacing: .saveItem) {
             Button("Close Pane") { shell?.closeFocused() }
-                .keyboardShortcut("w")
+                .shortcut(.closePane, shell)
         }
         CommandGroup(after: .newItem) {
             Button("Search Chats and Commands") { shell?.toggle(.palette) }
-                .keyboardShortcut("k")
+                .shortcut(.palette, shell)
             Button("New Terminal") { shell?.newTerminal() }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .shortcut(.newTerminal, shell)
                 .disabled(shell?.project == nil)
             Button("New Browser") { shell?.newBrowser() }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .shortcut(.newBrowser, shell)
                 .disabled(shell?.project == nil)
             Button("Open Project in VS Code") { shell?.openProject(in: .vscode) }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .shortcut(.openInVSCode, shell)
                 .disabled(shell?.project == nil)
             Divider()
             Button("Send Message") { shell?.sendFocused() }
-                .keyboardShortcut(.return)
+                .shortcut(.sendMessage, shell)
             Button("Show Usage") { shell?.toggle(.usage) }
-            Button("Connectors") { shell?.show(.connectors) }
+            Button("Connectors") { shell?.openSettings(.extensions, extensionsTab: .connections) }
         }
         CommandGroup(before: .sidebar) {
             Button("Toggle Sidebar") { shell?.update { $0.leftCollapsed.toggle() } }
-                .keyboardShortcut("s", modifiers: [.command, .control])
+                .shortcut(.toggleSidebar, shell)
             Button("Toggle Activity Panel") { shell?.update { $0.rightCollapsed.toggle() } }
-                .keyboardShortcut("a", modifiers: [.command, .control])
+                .shortcut(.toggleActivity, shell)
             Button("Workspace") { shell?.update { $0.view = .workspace } }
-                .keyboardShortcut("1", modifiers: [.command, .option])
+                .shortcut(.workspace, shell)
             Button("Board") { shell?.update { $0.view = .board } }
-                .keyboardShortcut("2", modifiers: [.command, .option])
+                .shortcut(.board, shell)
             Divider()
         }
         CommandMenu("Projects") {
             Button("Previous Project") { shell?.selectProject(offset: -1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .shortcut(.previousProject, shell)
             Button("Next Project") { shell?.selectProject(offset: 1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .shortcut(.nextProject, shell)
             Divider()
             Button("Pixies") { shell?.openPixies() }
-                .keyboardShortcut("0")
+                .shortcut(.pixies, shell)
             ForEach(1..<10) { number in
                 Button(projectTitle(number)) { shell?.selectProject(at: number - 1) }
-                    .keyboardShortcut(KeyEquivalent(Character("\(number)")))
+                    .shortcut(.project, shell, digit: number)
             }
         }
     }
@@ -101,5 +112,40 @@ struct NestCommands: Commands {
             return last
         }
         return open.indices.contains(number - 1) ? open[number - 1] : "Project \(number)"
+    }
+}
+
+extension View {
+    /// The command's shortcut as the user set it, else its default; Project 1 to 9 takes
+    /// its digit.
+    func shortcut(_ action: ShortcutAction, _ shell: Shell?, digit: Int? = nil) -> some View {
+        let shortcut = shell?.shortcuts.shortcut(for: action) ?? action.defaultShortcut
+        return keyboardShortcut(shortcut.keyboardShortcut(digit: digit))
+    }
+}
+
+extension Shortcut {
+    /// SwiftUI's form of the shortcut.
+    func keyboardShortcut(digit: Int? = nil) -> KeyboardShortcut {
+        let equivalent: KeyEquivalent =
+            switch key {
+            case "return": .return
+            case "escape": .escape
+            case "tab": .tab
+            case "delete": .delete
+            case "space": .space
+            case "up": .upArrow
+            case "down": .downArrow
+            case "left": .leftArrow
+            case "right": .rightArrow
+            case Shortcut.digits: KeyEquivalent(Character("\(digit ?? 1)"))
+            default: KeyEquivalent(key.first ?? " ")
+            }
+        var flags: EventModifiers = []
+        if modifiers.contains(.command) { flags.insert(.command) }
+        if modifiers.contains(.shift) { flags.insert(.shift) }
+        if modifiers.contains(.option) { flags.insert(.option) }
+        if modifiers.contains(.control) { flags.insert(.control) }
+        return KeyboardShortcut(equivalent, modifiers: flags)
     }
 }

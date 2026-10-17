@@ -80,14 +80,10 @@ struct Toast: Identifiable, Equatable {
 enum Overlay: Equatable {
     case palette
     case usage
-    case settings
-    case connectors
     /// The diff of a review, by approval id.
     case diff(String)
     /// The approve sheet of a review, by approval id.
     case publish(String)
-    /// A project's settings, by repo name.
-    case project(String)
     /// Rewinding to before a message, or editing one (`Shell.rewinding`).
     case rewind
     /// A habit run's transcript, read-only, by session id (B42).
@@ -140,7 +136,14 @@ final class Shell {
     /// Right panel rows opened or closed by the user, by row key; the rest keep their
     /// default (B77).
     var foldedRows: [String: Bool] = [:]
-    /// The Connectors sheet's unfolded groups; all are folded at first.
+    /// The Settings window's page, search text and tabs (B81).
+    var settingsPage = SettingsPage.general
+    var settingsQuery = ""
+    var projectTab = ProjectSettingsTab.general
+    var extensionsTab = ExtensionsTab.plugins
+    /// Opens a window scene by id; the main window sets it once it shows.
+    @ObservationIgnored var openWindow: ((String) -> Void)?
+    /// The Connections list's unfolded groups; all are folded at first.
     var connectorGroupsOpen: Set<ConnectorSectionKind> = []
     /// Expanded tool calls and thinking blocks, by transcript item id.
     var expandedItems: Set<String> = []
@@ -191,6 +194,7 @@ final class Shell {
     var reports: PixieReportsStore { model.reports }
     var habits: HabitsStore { model.habits }
     var chatPixies: ChatPixiesStore { model.chatPixies }
+    var shortcuts: ShortcutsStore { model.shortcuts }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
@@ -345,8 +349,12 @@ final class Shell {
     /// New pixie and the starters open the new pixie's pane; New pixie also opens its
     /// details to set it up.
     func createPixie(_ request: CreatePixieRequest, details: Bool) {
+        let project = self.project
         run("Could not create the pixie") {
-            let created = try await self.pixies.create(request)
+            // New pixies start with Settings > Pixies; "Only the current one" names the open
+            // project (B81).
+            let prepared = await self.model.pixieSettings.prepare(request, openProject: project)
+            let created = try await self.pixies.create(prepared)
             self.openPixie(created.id)
             withAnimation(.smooth(duration: 0.22)) { self.pixieDetailsOpen = details }
         }
@@ -1143,7 +1151,7 @@ final class Shell {
         case .permissions:
             withAnimation(.smooth(duration: 0.15)) { draft.picker = .permissions }
         case .mcp:
-            show(.connectors)
+            openSettings(.extensions, extensionsTab: .connections)
         case .resume(let search):
             show(.palette)
             if let search {
@@ -1466,6 +1474,29 @@ final class Shell {
         }
     }
 
+    // MARK: Settings window (B81)
+
+    /// Shows the Settings window on a page; a project's page opens on its General tab.
+    func openSettings(_ page: SettingsPage = .general, extensionsTab: ExtensionsTab? = nil) {
+        if page != settingsPage, case .project = page {
+            projectTab = .general
+        }
+        settingsPage = page
+        if let extensionsTab {
+            self.extensionsTab = extensionsTab
+        }
+        openWindow?(SettingsWindow.id)
+    }
+
+    /// Brings the main window forward, such as after Open on a pixie in Settings.
+    func showMainWindow() {
+        openWindow?(NestApp.mainWindowID)
+    }
+
+    /// The Artifacts view of a project. B79 adds the view; until it merges this does
+    /// nothing (B81 stage, coordinator instruction).
+    func openArtifacts(project: String) {}
+
     // MARK: Sheets
 
     func show(_ overlay: Overlay) {
@@ -1739,8 +1770,8 @@ final class Shell {
     /// Removes a project from Nest, deleting its chats; the folder stays.
     func removeProject(_ name: String) {
         let chats = sessions.sessions(in: name).count
-        if overlay == .project(name) {
-            close()
+        if settingsPage == .project(name) {
+            settingsPage = .general
         }
         run("Could not remove \(name)") {
             try await self.app.removeProject(name, purgeChats: chats > 0)

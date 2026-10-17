@@ -101,7 +101,7 @@ private struct ProjectMenu: View {
             } label: {
                 Label("Open in VS Code", systemImage: Icon.code)
             }
-            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .shortcut(.openInVSCode, shell)
             Button {
                 shell.openProject(in: .finder)
             } label: {
@@ -121,7 +121,7 @@ private struct ProjectMenu: View {
             Divider()
             Button {
                 if let project = shell.project {
-                    shell.show(.project(project))
+                    shell.openSettings(.project(project))
                 }
             } label: {
                 Label("Project settings…", systemImage: Icon.gear)

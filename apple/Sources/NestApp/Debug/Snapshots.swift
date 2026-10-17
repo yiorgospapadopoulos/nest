@@ -188,6 +188,10 @@
                 try await renderReviewBar(model, shell, controller, folder)
                 return
             }
+            if only == "b81" {
+                try await renderSettings(model, shell, controller, folder)
+                return
+            }
             if only == "b47" {
                 try await renderGoals(model, shell, controller, folder)
                 return
@@ -296,13 +300,12 @@
             try await snap(controller, "palette-search-light", .aqua, folder)
             shell.show(.usage)
             try await pair(controller, "usage", folder)
-            shell.show(.settings)
-            try await pair(controller, "settings", folder)
-            shell.show(.connectors)
-            try await pair(controller, "connectors", folder)
+            try await pairSettings(controller, .general, "settings", folder)
+            try await pairSettings(controller, .extensions, "connectors", folder) {
+                shell.extensionsTab = .connections
+            }
             try await model.devices.createPairingCode()
-            shell.show(.settings)
-            try await pair(controller, "pairing", folder)
+            try await pairSettings(controller, .devices, "pairing", folder)
 
             try await renderClaudeChats(model, shell, controller, folder)
             try await renderBackground(model, shell, controller, folder)
@@ -499,8 +502,7 @@
             }
             try await pair(controller, "b33-needs-you", folder)
 
-            shell.show(.project("cv-page"))
-            try await pair(controller, "b33-project-settings", folder)
+            try await pairSettings(controller, .project("cv-page"), "b33-project-settings", folder)
 
             model.app.update("cv-page") { state in
                 state.layout = WorkspaceLayout()
@@ -517,8 +519,7 @@
 
             try await model.agents.setDefaultEffort(nil)
             try await model.agents.setDefaultPermissionMode(nil)
-            shell.show(.settings)
-            try await pair(controller, "b33-agent-defaults", folder)
+            try await pairSettings(controller, .agents, "b33-agent-defaults", folder)
 
             let review = model.approvals.pending.first { $0.kind == .review }!
             (model.api as? SampleAPI)?.refuseApprove(
@@ -1460,8 +1461,7 @@
                     .frame(width: SidebarWidth.standard - 12)
                     .padding(6), "b42-inbox", folder)
 
-            shell.show(.settings)
-            try await pair(controller, "b42-settings", folder)
+            try await pairSettings(controller, .notifications, "b42-settings", folder)
             shell.close()
         }
 
@@ -1608,10 +1608,10 @@
             shell.archivedOpen.remove("cv-page")
 
             shell.connectorGroupsOpen = []
-            shell.show(.connectors)
-            try await pair(controller, "b28-connectors-folded", folder)
+            shell.extensionsTab = .connections
+            try await pairSettings(controller, .extensions, "b28-connectors-folded", folder)
             shell.connectorGroupsOpen = [.claudeCode]
-            try await pair(controller, "b28-connectors-open", folder)
+            try await pairSettings(controller, .extensions, "b28-connectors-open", folder)
             shell.close()
 
             model.app.openProject("recipes")
@@ -1716,24 +1716,15 @@
             shell.pixieDetailsOpen = false
             try await pair(controller, "b39-pixies-panes-background", folder)
             shell.selectProject("cv-page")
-            shell.show(.settings)
-            try await pair(controller, "b39-settings-background", folder)
+            try await pairSettings(controller, .appearance, "b39-settings-background", folder)
             model.settings.chatBackground.projects["cv-page"] = model.settings.chatBackground
                 .newProjectBackground(image: image.path)
-            try await pair(controller, "b39-settings-project-background", folder)
+            try await pairSettings(
+                controller, .project("cv-page"), "b39-settings-project-background", folder)
             model.settings.chatBackground = ChatBackgroundSettings()
-            try await pair(controller, "b39-settings-no-background", folder)
+            try await pairSettings(controller, .appearance, "b39-settings-no-background", folder)
             shell.close()
-            try await pairView(
-                VStack(alignment: .leading, spacing: 0) {
-                    AccountSection()
-                    SheetSection(title: "Connectors") { ConnectorsList(top: 4) }
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 16)
-                .frame(width: 580)
-                .environment(shell),
-                "b39-settings-account-connectors", folder)
+            try await pairSettings(controller, .accounts, "b39-settings-account", folder)
         }
 
         /// A busy, photo-like picture for the chat background snapshots: overlapping leaves
@@ -1820,13 +1811,14 @@
             model.app.update("cv-page") { $0.view = .board }
             try await pair(controller, "b36-board", folder)
             model.app.update("cv-page") { $0.view = .workspace }
-            shell.show(.settings)
-            try await pair(controller, "b36-settings", folder)
+            try await pairSettings(controller, .appearance, "b36-settings", folder)
             // The icon picker with a sprite chosen, and with the initials.
-            shell.show(.project("cv-page"))
-            try await pair(controller, "b36-project-icon-sprite", folder)
-            shell.show(.project("narrative-engine"))
-            try await pair(controller, "b36-project-icon-initials", folder)
+            shell.projectTab = .look
+            try await pairSettings(
+                controller, .project("cv-page"), "b36-project-icon-sprite", folder)
+            try await pairSettings(
+                controller, .project("narrative-engine"), "b36-project-icon-initials", folder)
+            shell.projectTab = .general
             shell.close()
             try await pairView(LookSampler(), "b36-components", folder)
             try await pairView(
@@ -1936,15 +1928,7 @@
                     MenuPreview(title: "Thinking", rows: rows).frame(width: 240),
                     "b26-thinking-\(name)", folder)
             }
-            try await pairView(
-                VStack(alignment: .leading, spacing: 0) {
-                    AgentDefaultsSection()
-                    AccountSection()
-                }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 12)
-                .frame(width: 580)
-                .environment(shell), "b26-settings-agents", folder)
+            try await pairSettings(controller, .agents, "b26-settings-agents", folder)
 
             // A new chat: the composer starts from the shared defaults.
             let workspace = CGSize(width: 828, height: 790)
@@ -1969,8 +1953,7 @@
                 state.focusPane("c1")
             }
             try await pair(controller, "b26-two-chats", folder)
-            shell.show(.settings)
-            try await pair(controller, "b26-settings-sheet", folder)
+            try await pairSettings(controller, .agents, "b26-settings-sheet", folder)
             shell.close()
 
             // A browser pane beside two chats stays in its slot (regression).
@@ -2160,15 +2143,7 @@
             }
             try await pair(controller, "b14-stuck", folder)
             try await model.stuck.load()
-            try await pairView(
-                VStack(alignment: .leading, spacing: 0) {
-                    StuckSection()
-                    NotificationsSection()
-                }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 12)
-                .frame(width: 580)
-                .environment(shell), "b14-settings", folder)
+            try await pairSettings(controller, .agents, "b14-settings", folder)
             model.app.selectProject("cv-page")
         }
 
@@ -2433,8 +2408,7 @@
                 try await snap(controller, "usage-retry-\(appearance.0)", appearance.1, folder)
             }
             model.devices.clearPairingCode()
-            shell.show(.settings)
-            try await pair(controller, "settings-usage", folder)
+            try await pairSettings(controller, .agents, "settings-usage", folder)
             shell.close()
         }
 
@@ -2624,8 +2598,7 @@
             try await pair(controller, "claude-chat-pane", folder)
 
             try await model.claudeChats.setShowAutomated(true)
-            shell.show(.settings)
-            try await snap(controller, "claude-chats-automated-light", .aqua, folder)
+            try await pairSettings(controller, .general, "claude-chats-automated", folder)
             shell.close()
 
             model.app.update("cv-page") { $0.leftCollapsed = true }
@@ -2687,10 +2660,98 @@
             try await snap(controller, "live-palette", .aqua, folder)
             shell.show(.usage)
             try await snap(controller, "live-usage", .darkAqua, folder)
-            shell.show(.settings)
-            try await snap(controller, "live-settings", .aqua, folder)
-            shell.show(.connectors)
-            try await snap(controller, "live-connectors", .darkAqua, folder)
+            try await snapSettings(controller, .general, "live-settings", .aqua, folder)
+            shell.extensionsTab = .connections
+            try await snapSettings(controller, .extensions, "live-connectors", .darkAqua, folder)
+        }
+
+        static let settingsSize = CGSize(width: 980, height: 700)
+
+        /// The Settings window on a page (B81), in light and dark.
+        private static func pairSettings(
+            _ controller: AppController, _ page: SettingsPage, _ name: String, _ folder: URL,
+            height: Double = settingsSize.height, prepare: () -> Void = {}
+        ) async throws {
+            prepare()
+            for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                try await snapSettings(
+                    controller, page, "\(name)-\(suffix)", appearance, folder, height: height)
+            }
+        }
+
+        private static func snapSettings(
+            _ controller: AppController, _ page: SettingsPage, _ name: String,
+            _ appearance: NSAppearance.Name, _ folder: URL,
+            height: Double = settingsSize.height
+        ) async throws {
+            controller.shell?.settingsPage = page
+            let size = CGSize(width: settingsSize.width, height: height)
+            let window = NSWindow(
+                contentRect: CGRect(origin: CGPoint(x: -30_000, y: -30_000), size: size),
+                styleMask: [.borderless], backing: .buffered, defer: false)
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+            window.appearance = NSAppearance(named: appearance)
+            let host = NSHostingView(
+                rootView: SettingsWindow()
+                    .environment(controller)
+                    .environment(\.offscreen, true)
+                    .environment(\.reducedMotion, true))
+            host.frame = CGRect(origin: .zero, size: size)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(700))
+            host.layoutSubtreeIfNeeded()
+            guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try bitmap.representation(using: .png, properties: [:])?
+                .write(to: folder.appending(path: "\(name).png"))
+            window.contentView = nil
+            print("wrote \(name).png")
+        }
+
+        /// B81: every page of the Settings window, a project's tabs, a search, the usage
+        /// warning banner and a shortcut being recorded.
+        private static func renderSettings(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let tall = 1_000.0
+            for page in SettingsPage.fixed {
+                let name = "b81-\(page.title.lowercased().replacingOccurrences(of: " ", with: "-"))"
+                try await pairSettings(controller, page, name, folder, height: tall)
+            }
+            shell.extensionsTab = .connections
+            try await pairSettings(controller, .extensions, "b81-extensions-connections", folder)
+            shell.extensionsTab = .plugins
+            try await model.extensions.loadAvailable()
+            try await pairSettings(
+                controller, .extensions, "b81-extensions-browse", folder, height: 1_300)
+            try await model.storage.loadAttachments()
+            try await pairSettings(
+                controller, .general, "b81-general-attachments", folder, height: tall)
+            model.storage.closeAttachments()
+            for tab in ProjectSettingsTab.allCases {
+                shell.projectTab = tab
+                try await pairSettings(
+                    controller, .project("cv-page"), "b81-project-\(tab.rawValue.lowercased())",
+                    folder)
+            }
+            shell.projectTab = .general
+            try await pairSettings(controller, .addProject, "b81-add-project", folder)
+            shell.settingsQuery = "branch"
+            try await pairSettings(controller, .project("cv-page"), "b81-search", folder)
+            shell.settingsQuery = ""
+            model.live.route(
+                try SampleData.decode([
+                    "type": EventType.usageWarning, "ts": SampleData.iso(Date()),
+                    "payload": [
+                        "window": "five_hour", "utilization": 0.82,
+                        "resets_at": SampleData.iso(Date().addingTimeInterval(3 * 3600)),
+                    ],
+                ]))
+            try await pair(controller, "b81-usage-warning", folder)
+            model.usage.dismissWarning()
         }
 
         /// The same state in light and dark.

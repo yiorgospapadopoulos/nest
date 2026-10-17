@@ -286,6 +286,7 @@ private struct PixiesTab: View {
             return state == .running || state == .starting
         }
         let mascot = shell.shownPixie ?? shell.pixies.visible.first
+        let pixiesKeys = shell.shortcuts.shortcut(for: .pixies).display
         HStack(spacing: 7) {
             SpriteView(
                 mascot: mascot?.mascot ?? .invader, color: mascot?.color ?? PixieColor.standard,
@@ -301,7 +302,10 @@ private struct PixiesTab: View {
         .modifier(TabBackground(isCurrent: isCurrent, hovering: hovering, padding: 12))
         .onTapGesture { shell.openPixies() }
         .onHover { hovering = $0 }
-        .help(attention > 0 ? "Pixies, \(attention) need you (⌘0)" : "Pixies (⌘0)")
+        .help(
+            attention > 0
+                ? "Pixies, \(attention) need you (\(pixiesKeys))" : "Pixies (\(pixiesKeys))"
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
         .accessibilityLabel(attention > 0 ? "Pixies, \(attention) need you" : "Pixies")
@@ -414,7 +418,7 @@ private struct SearchButton: View {
                 Image(systemName: Icon.search).font(.system(size: 11, weight: .regular))
                 Text("Search")
                 Spacer(minLength: 0)
-                Text("⌘K").font(.ui(10.5))
+                Text(shell.shortcuts.shortcut(for: .palette).display).font(.ui(10.5))
             }
             .font(.ui(TypeSize.ui))
             .foregroundStyle(Palette.t3)

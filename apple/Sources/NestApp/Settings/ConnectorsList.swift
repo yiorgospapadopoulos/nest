@@ -2,43 +2,29 @@ import AppKit
 import NestKit
 import SwiftUI
 
-/// The MCP servers and claude.ai connectors Claude Code reported, with their status and
-/// where to set them up; Sign in opens Claude Code's `/mcp` in the terminal, or claude.ai
-/// for its connectors (B59). The same list is a section of Settings.
-struct ConnectorsSheet: View {
-    var body: some View {
-        SheetFrame(title: "Connectors") { ConnectorsList() }
-    }
-}
-
-/// The connectors, grouped, under a line on where they come from.
+/// The MCP servers and claude.ai connectors Claude Code reported, grouped, with their
+/// status and where to set them up; Sign in opens Claude Code's `/mcp` in the terminal, or
+/// claude.ai for its connectors (B59). Settings > Extensions > Connections (B81).
 struct ConnectorsList: View {
-    /// Space above the first line.
-    var top = 12.0
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let sections = shell.model.connectors.sections
-        Text(
-            "These come from your Claude Code setup. Agents in Nest can use the connected ones."
-        )
-        .font(.ui(TypeSize.ui))
-        .foregroundStyle(Palette.t2)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.top, top)
+        VStack(alignment: .leading, spacing: 0) {
+            if sections.isEmpty {
+                Text(
+                    "Claude Code has not reported any yet. They appear after an agent's first turn."
+                )
+                .font(.ui(TypeSize.ui))
+                .foregroundStyle(Palette.t3)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+            }
+            ForEach(sections) { section in
+                ConnectorGroup(section: section)
+            }
+        }
         .task { try? await shell.model.connectors.load() }
-        if sections.isEmpty {
-            Text(
-                "Claude Code has not reported any yet. They appear after an agent's first turn."
-            )
-            .font(.ui(TypeSize.ui))
-            .foregroundStyle(Palette.t3)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-        }
-        ForEach(sections) { section in
-            ConnectorGroup(section: section)
-        }
     }
 }
 
