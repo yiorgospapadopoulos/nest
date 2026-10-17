@@ -92,7 +92,8 @@ private struct PixiePaneHeader: View {
             if let session {
                 StatusLabel(
                     tone: tone, label: shell.statusLabel(of: session),
-                    showsLabel: fit.showsStatusLabel
+                    // The sprite beside it already hops while the pixie works.
+                    showsLabel: fit.showsStatusLabel, animates: false
                 )
                 .allowsHitTesting(false)
             }

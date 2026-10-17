@@ -287,17 +287,20 @@ struct TranscriptRow: View {
 private struct UserBubble: View {
     let text: String
     let attachments: [Attachment]
-    /// Pixie and team mentions, drawn in their colour and semibold (B40).
+    /// Pixie and team mentions, semibold in the bubble's text colour: their own colours
+    /// (B40) do not read on the accent fill.
     let mentions: [MentionHighlight]
     /// Edit, Rewind and Fork from here, while no turn runs (B59).
     let actions: MessageActions?
+    @Environment(\.accentColors) private var accent
     @Environment(\.revealsHoverControls) private var reveal
     @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             if !text.isEmpty {
-                let color = NSColor(Palette.Mac.textPrimary)
+                // The solid accent bubble (B80): the accent's fill, its on colour for text.
+                let color = NSColor(accent.onFill)
                 SelectableText(key: "\(color)\n\(mentions)\n\(text)", hugsWidth: true) {
                     let styled = NSMutableAttributedString(
                         attributedString: TextStyling.plain(
@@ -305,16 +308,14 @@ private struct UserBubble: View {
                             lineSpacing: 3))
                     for mention in mentions {
                         styled.addAttributes(
-                            [
-                                .foregroundColor: NSColor(Color(hex: mention.color)),
-                                .font: TextStyling.ui(TypeSize.reading, .semibold),
-                            ], range: mention.range)
+                            [.font: TextStyling.ui(TypeSize.reading, .semibold)],
+                            range: mention.range)
                     }
                     return styled
                 }
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
-                .background(Palette.raised, in: .rounded(Radius.bubble))
+                .background(accent.fill, in: .rounded(Radius.bubble))
                 .overlay(alignment: .leading) {
                     if let actions, hovering || reveal {
                         MessageActionsMenu(actions: actions)
@@ -1174,9 +1175,10 @@ struct SystemLine: View {
     }
 }
 
-/// Three blinking dots and how long the turn has been running: "Working... 12s". While
-/// thinking streams (B59), "Thinking... 4s" previews its latest line and opens to all of
-/// it, like the finished "Thought for 8s" block.
+/// The fireflies and how long the turn has been running, "Working... 12s", with the
+/// running row's glow across the line (B80). While thinking streams (B59), "Thinking...
+/// 4s" previews its latest line and opens to all of it, like the finished "Thought for 8s"
+/// block.
 private struct WorkingLine: View {
     static let expandID = "live-thinking"
 
@@ -1190,7 +1192,7 @@ private struct WorkingLine: View {
         let expanded = streams && shell.expandedItems.contains(Self.expandID)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                BlinkingDots()
+                Fireflies(height: 10)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(TurnText.working(since: since, at: context.date, thinking: thinking))
                         .font(.ui(TypeSize.meta))
@@ -1210,6 +1212,14 @@ private struct WorkingLine: View {
                     toggle(Self.expandID, in: shell)
                 }
             }
+            // The glow spans the transcript's width and a little past the line, which keeps
+            // its place.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 3)
+            .padding(.horizontal, 6)
+            .rowGlow(true)
+            .padding(.vertical, -3)
+            .padding(.horizontal, -6)
             if expanded {
                 SelectableText(key: thought) {
                     TextStyling.plain(
@@ -1239,25 +1249,6 @@ private struct TurnEndLine: View {
             .monospacedDigit()
             .foregroundStyle(Palette.t3.opacity(shown ? 1 : 0))
             .animation(.easeOut(duration: 0.2), value: shown)
-    }
-}
-
-struct BlinkingDots: View {
-    @Environment(\.reducedMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3) {
-                ForEach(0..<3) { index in
-                    let phase = (time - Double(index) * 0.2) / 1.2 * 2 * .pi
-                    Circle()
-                        .frame(width: 3.5, height: 3.5)
-                        .opacity(reduceMotion ? 0.6 : 0.625 + 0.375 * sin(phase))
-                }
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
 
@@ -1349,7 +1340,7 @@ private struct BashRow: View {
                     .truncationMode(.tail)
                     .textSelection(.enabled)
                 if running {
-                    Spinner()
+                    Fireflies()
                 }
                 ForEach(notes, id: \.self) { note in
                     Text("\u{00B7} \(note)")
@@ -1411,7 +1402,7 @@ private struct ToolImages: View {
                             .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                     } else {
-                        Spinner()
+                        Fireflies()
                     }
                 }
                 .task(id: image.attachmentID) { await shell.images.load(image.attachmentID) }

@@ -20,7 +20,8 @@ struct ClaudeChatRow: View {
         let isSelected = state.selectedChat == pane
         let place = ChatPlace.of(chat, repo: shell.repo)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            StatusDot(tone: .done)
+            // A plain dot in the same slot as the chat rows' marks, so the titles line up.
+            StatusMark(tone: .done, animates: false)
             VStack(alignment: .leading, spacing: 1) {
                 Text(chat.title)
                     .font(.ui(TypeSize.ui))

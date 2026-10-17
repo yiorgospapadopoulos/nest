@@ -70,7 +70,7 @@ struct PaletteView: View {
             if shell.palette.indexing {
                 // Hits from older history may be missing until the first pass is done.
                 HStack(spacing: 7) {
-                    ProgressView().controlSize(.mini)
+                    Fireflies(height: 9)
                     Text("Indexing history…")
                 }
                 .font(.ui(TypeSize.meta))
@@ -155,7 +155,7 @@ private struct PaletteRow: View {
     @ViewBuilder private var glyph: some View {
         switch item.glyph {
         case .status(let tone):
-            StatusDot(tone: tone)
+            StatusMark(tone: tone, slot: false)
         default:
             Image(systemName: symbol).font(.system(size: 11))
         }

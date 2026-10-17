@@ -116,8 +116,9 @@ private struct HabitRow: View {
             }
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 HStack(spacing: 5) {
-                    StatusDot(
-                        tone: habit.lastRun?.outcome.tone ?? .done, hollow: habit.lastRun == nil)
+                    StatusMark(
+                        tone: habit.lastRun?.outcome.tone ?? .done, hollow: habit.lastRun == nil,
+                        slot: false)
                     Text(HabitText.lastRun(habit.lastRun, now: context.date))
                         .lineLimit(1)
                     Text("·")
@@ -454,7 +455,7 @@ private struct RunRow: View {
             .compactMap { $0 }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    StatusDot(tone: run.outcome.tone)
+                    StatusMark(tone: run.outcome.tone)
                     Text(run.outcome.label)
                         .font(.ui(TypeSize.ui, .medium))
                         .foregroundStyle(Palette.t1)

@@ -75,7 +75,7 @@ private struct ApprovalRow: View {
             HStack(spacing: 6) {
                 NeedsLineText(line: NeedsYouLine.of(approval))
                 if shell.approvals.busy.contains(approval.id) {
-                    ProgressView().controlSize(.mini)
+                    Fireflies(height: 9)
                 }
             }
         } detail: {
@@ -250,7 +250,7 @@ private struct Checklist: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(StatusTone.review.color)
         case .inProgress:
-            Spinner(size: 9, lineWidth: 1.5)
+            Fireflies(height: 9)
         default:
             Circle().strokeBorder(Palette.t3, lineWidth: 1).frame(width: 8, height: 8)
         }

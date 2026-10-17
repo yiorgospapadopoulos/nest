@@ -22,7 +22,7 @@ struct FoldRow<Name: View, Line: View, Detail: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HoverReader { hovering in
                 HStack(alignment: .top, spacing: 8) {
-                    StatusDot(tone: tone).padding(.top, 5)
+                    StatusMark(tone: tone).padding(.top, 3.5)
                     VStack(alignment: .leading, spacing: 2) {
                         name
                             .font(.ui(TypeSize.ui, .medium))
@@ -58,7 +58,8 @@ struct FoldRow<Name: View, Line: View, Detail: View>: View {
             }
             if open {
                 detail
-                    .padding(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 0))
+                    // Under the name: the 6 point inset, the 12 point mark slot and the 8 point gap.
+                    .padding(EdgeInsets(top: 0, leading: 26, bottom: 8, trailing: 0))
                     .transition(.opacity)
             }
         }
