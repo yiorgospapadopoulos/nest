@@ -168,6 +168,7 @@ private struct PaletteRow: View {
         case .browser: Icon.globe
         case .board: Icon.board
         case .workspace: Icon.workspace
+        case .artifacts: Icon.artifact
         case .sidebar: Icon.leftPanel
         case .activityPanel: Icon.rightPanel
         case .usage: "clock"

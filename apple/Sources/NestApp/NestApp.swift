@@ -74,10 +74,12 @@ struct NestCommands: Commands {
                 .keyboardShortcut("s", modifiers: [.command, .control])
             Button("Toggle Activity Panel") { shell?.update { $0.rightCollapsed.toggle() } }
                 .keyboardShortcut("a", modifiers: [.command, .control])
-            Button("Workspace") { shell?.update { $0.view = .workspace } }
+            Button("Workspace") { shell?.showView(.workspace) }
                 .keyboardShortcut("1", modifiers: [.command, .option])
-            Button("Board") { shell?.update { $0.view = .board } }
+            Button("Board") { shell?.showView(.board) }
                 .keyboardShortcut("2", modifiers: [.command, .option])
+            Button("Artifacts") { shell?.showView(.artifacts) }
+                .keyboardShortcut("3", modifiers: [.command, .option])
             Divider()
         }
         CommandMenu("Projects") {

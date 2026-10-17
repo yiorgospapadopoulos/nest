@@ -280,6 +280,8 @@ struct TranscriptRow: View {
             HookRow(id: item.id, run: run)
         case .bash(let block):
             BashRow(id: item.id, command: block.command, output: block.output)
+        case .artifact(let card):
+            ArtifactCardView(card: card, chat: chat)
         }
     }
 }
@@ -636,7 +638,7 @@ private struct ToolRow: View {
                     .font(.system(size: 10))
                     .foregroundStyle(Palette.t3)
                     .frame(width: 12)
-                Text(call.name)
+                Text(ToolSummary.name(of: call.name))
                     .font(.ui(TypeSize.ui, .medium))
                     .foregroundStyle(Palette.t1)
                     .fixedSize()

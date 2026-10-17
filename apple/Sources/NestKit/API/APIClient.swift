@@ -499,6 +499,40 @@ public struct APIClient: NestAPI {
         try await get("sessions", id, "agents", toolUseID, "transcript")
     }
 
+    // MARK: Artifacts (B79)
+
+    public func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws
+        -> [Artifact]
+    {
+        let filters = [("repo", repo), ("session_id", sessionID), ("pixie_id", pixieID)]
+        return try await call(
+            "GET", ["artifacts"],
+            query: filters.compactMap { name, value in
+                value.map { URLQueryItem(name: name, value: $0) }
+            })
+    }
+
+    public func unseenArtifacts() async throws -> Int {
+        let answer: UnseenArtifacts = try await get("artifacts", "unseen")
+        return answer.unseen
+    }
+
+    public func artifact(_ id: String) async throws -> ArtifactDetail {
+        try await get("artifacts", id)
+    }
+
+    public func artifactContent(_ id: String, version: Int) async throws -> ArtifactContent {
+        try await get("artifacts", id, "versions", String(version))
+    }
+
+    public func markArtifactSeen(_ id: String) async throws -> Artifact {
+        try await call("POST", ["artifacts", id, "seen"])
+    }
+
+    public func deleteArtifact(_ id: String) async throws {
+        try await perform("DELETE", ["artifacts", id])
+    }
+
     /// A name such as `notes/ideas` is one path segment per slash.
     private static func filePath(_ id: String, _ name: String) -> [String] {
         ["pixies", id, "files"] + name.split(separator: "/").map(String.init)

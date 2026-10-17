@@ -2,8 +2,8 @@ import NestKit
 import SwiftUI
 
 /// The Pixies tab: the pixie list, the workspace where pixies open as panes like chats
-/// (B37), and the focused pixie's details on the right; or the starters while there are
-/// no pixies (D072).
+/// (B37) or the pixies' artifacts (B79), and the focused pixie's details on the right; or
+/// the starters while there are no pixies (D072).
 struct PixiesView: View {
     static let detailsWidth = 320.0
     @Environment(Shell.self) private var shell
@@ -16,9 +16,15 @@ struct PixiesView: View {
             HStack(spacing: 0) {
                 PixieList()
                 Separator(axis: .vertical)
-                WorkspaceView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .chatBackdrop()
+                if shell.app.pixieState.view == .artifacts {
+                    ArtifactsView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .paneSurface()
+                } else {
+                    WorkspaceView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .chatBackdrop()
+                }
                 if shell.pixieDetailsOpen, let pixie = shell.shownPixie {
                     HStack(spacing: 0) {
                         Separator(axis: .vertical)
