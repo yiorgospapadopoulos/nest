@@ -66,7 +66,10 @@ private func fourPanes() -> WorkspaceLayout {
 
     @Test func aPaneTooNarrowForTwoColumnsIsSplitBelow() {
         var layout = WorkspaceLayout()
-        let size = CGSize(width: 2 * WorkspaceLayout.minimumSideBySideWidth + 8, height: 300)
+        // Half a point short of two readable columns and the divider.
+        let size = CGSize(
+            width: 2 * WorkspaceLayout.minimumSideBySideWidth + WorkspaceLayout.gutter - 0.5,
+            height: 300)
         layout.open("a", in: size)
         layout.open("b", in: size)
         #expect(layout.root == column(1, leaf("a"), leaf("b")))
@@ -276,10 +279,10 @@ private func fourPanes() -> WorkspaceLayout {
     @Test func paneFramesLeaveAGutterBetweenPanes() {
         let frames = fourPanes().paneFrames(in: wide)
         #expect(frames.map(\.chat) == ["a", "c", "b", "d"])
-        #expect(frames[0].frame == CGRect(x: 0, y: 0, width: 495, height: 295))
-        #expect(frames[1].frame == CGRect(x: 0, y: 305, width: 495, height: 295))
-        #expect(frames[2].frame == CGRect(x: 505, y: 0, width: 495, height: 295))
-        #expect(frames[3].frame == CGRect(x: 505, y: 305, width: 495, height: 295))
+        #expect(frames[0].frame == CGRect(x: 0, y: 0, width: 499.5, height: 299.5))
+        #expect(frames[1].frame == CGRect(x: 0, y: 300.5, width: 499.5, height: 299.5))
+        #expect(frames[2].frame == CGRect(x: 500.5, y: 0, width: 499.5, height: 299.5))
+        #expect(frames[3].frame == CGRect(x: 500.5, y: 300.5, width: 499.5, height: 299.5))
         #expect(WorkspaceLayout().paneFrames(in: wide).isEmpty)
     }
 
@@ -289,20 +292,21 @@ private func fourPanes() -> WorkspaceLayout {
         #expect(layout.placements(in: wide).map(\.chat) == ["a", "c", "b", "d"])
         #expect(
             layout.placements(in: wide)[0]
-                == PanePlacement(chat: "a", frame: CGRect(x: 0, y: 0, width: 594, height: 295)))
+                == PanePlacement(
+                    chat: "a", frame: CGRect(x: 0, y: 0, width: 999 * 0.6, height: 299.5)))
         let gutters = layout.gutterFrames(in: wide)
         #expect(gutters.map(\.split) == [1, 2, 3])
         #expect(
             gutters[0]
                 == GutterFrame(
                     split: 1, direction: .row, ratio: 0.6,
-                    frame: CGRect(x: 594, y: 0, width: 10, height: 600), span: 990))
+                    frame: CGRect(x: 999 * 0.6, y: 0, width: 1, height: 600), span: 999))
         #expect(
             gutters[1]
                 == GutterFrame(
                     split: 2, direction: .column, ratio: 0.5,
-                    frame: CGRect(x: 0, y: 295, width: 594, height: 10), span: 590))
-        #expect(gutters[2].frame.minX == 604)
+                    frame: CGRect(x: 0, y: 299.5, width: 999 * 0.6, height: 1), span: 599))
+        #expect(gutters[2].frame.minX == 999 * 0.6 + 1)
         #expect(WorkspaceLayout().gutterFrames(in: wide).isEmpty)
     }
 
@@ -317,12 +321,12 @@ private func fourPanes() -> WorkspaceLayout {
         )
 
         layout.resize(split: 1, ratio: 0.05, in: wide)
-        #expect(ratio(of: layout.root, split: 1) == 280.0 / 990)
+        #expect(ratio(of: layout.root, split: 1) == 280.0 / 999)
         layout.resize(split: 1, ratio: 0.99, in: wide)
-        #expect(ratio(of: layout.root, split: 1) == 1 - 280.0 / 990)
+        #expect(ratio(of: layout.root, split: 1) == 1 - 280.0 / 999)
 
         layout.resize(split: 3, ratio: 0.9, in: wide)
-        #expect(ratio(of: layout.root, split: 3) == 1 - 180.0 / 590)
+        #expect(ratio(of: layout.root, split: 3) == 1 - 180.0 / 599)
     }
 
     @Test func nestedSplitsNeedRoomForAllTheirPanes() {
@@ -333,10 +337,10 @@ private func fourPanes() -> WorkspaceLayout {
         layout.drop("d", onto: "a", side: .bottom)
         // Split 1 is a | (b | c): its second side needs two pane widths and a gutter.
         layout.resize(split: 1, ratio: 0.9, in: CGSize(width: 1400, height: 600))
-        #expect(ratio(of: layout.root, split: 1) == 1 - 570.0 / 1390)
+        #expect(ratio(of: layout.root, split: 1) == 1 - 561.0 / 1399)
         // Its first side is a over d, which needs only one pane width.
         layout.resize(split: 1, ratio: 0, in: CGSize(width: 1400, height: 600))
-        #expect(ratio(of: layout.root, split: 1) == 280.0 / 1390)
+        #expect(ratio(of: layout.root, split: 1) == 280.0 / 1399)
     }
 
     @Test func aTooSmallSplitSharesSpaceByMinimumSizes() {
@@ -344,7 +348,7 @@ private func fourPanes() -> WorkspaceLayout {
         layout.open("a", in: wide)
         layout.open("b", in: wide)
         layout.resize(split: 1, ratio: 0.9, in: CGSize(width: 500, height: 600))
-        #expect(ratio(of: layout.root, split: 1) == 0.5)
+        #expect(abs((ratio(of: layout.root, split: 1) ?? 0) - 0.5) < 1e-9)
     }
 
     @Test func resizingAnUnknownSplitChangesNothing() {
@@ -389,5 +393,105 @@ private func fourPanes() -> WorkspaceLayout {
         #expect(layout.pane(at: CGPoint(x: 10, y: 10), in: wide) == "b")
         #expect(layout.pane(at: CGPoint(x: 500, y: 300), in: wide) == "b")
         #expect(layout.pane(at: CGPoint(x: 1001, y: 300), in: wide) == nil)
+    }
+}
+
+/// Focus dim (B93): panes sit edge to edge with a 1 point divider between them, and with
+/// two or more panes every pane but the focused one is dimmed.
+@Suite struct WorkspaceFocusDimTests {
+    @Test func panesAreSplitByAOnePointDivider() {
+        #expect(WorkspaceLayout.gutter == 1)
+        let frames = fourPanes().paneFrames(in: wide)
+        #expect(frames[0].frame == CGRect(x: 0, y: 0, width: 499.5, height: 299.5))
+        #expect(frames[1].frame == CGRect(x: 0, y: 300.5, width: 499.5, height: 299.5))
+        #expect(frames[2].frame == CGRect(x: 500.5, y: 0, width: 499.5, height: 299.5))
+        #expect(frames[3].frame.maxX == 1000)
+        #expect(frames[3].frame.maxY == 600)
+    }
+
+    @Test func theGrabAreaIsWiderThanTheDividerAndCentredOnIt() {
+        #expect(WorkspaceLayout.gutterGrabWidth == 10)
+        let gutters = fourPanes().gutterFrames(in: wide)
+        // A row split's divider is a vertical line: the grab area widens it sideways.
+        #expect(gutters[0].frame == CGRect(x: 499.5, y: 0, width: 1, height: 600))
+        #expect(gutters[0].grabArea == CGRect(x: 495, y: 0, width: 10, height: 600))
+        // A column split's divider is a horizontal line: the grab area grows up and down.
+        #expect(gutters[1].frame == CGRect(x: 0, y: 299.5, width: 499.5, height: 1))
+        #expect(gutters[1].grabArea == CGRect(x: 0, y: 295, width: 499.5, height: 10))
+    }
+
+    @Test func onePaneIsNeverDimmed() {
+        var layout = WorkspaceLayout()
+        #expect(!layout.isDimmed("a"))
+        layout.open("a", in: wide)
+        #expect(!layout.isDimmed("a"))
+    }
+
+    @Test func withTwoOrMorePanesAllButTheFocusedOneAreDimmed() {
+        var layout = fourPanes()
+        layout.focus("b")
+        #expect(!layout.isDimmed("b"))
+        #expect(layout.isDimmed("a"))
+        #expect(layout.isDimmed("c"))
+        #expect(layout.isDimmed("d"))
+        layout.focus("c")
+        #expect(layout.isDimmed("b"))
+        #expect(!layout.isDimmed("c"))
+    }
+
+    @Test func aPaneThatIsNotOpenIsNotDimmed() {
+        let layout = fourPanes()
+        #expect(!layout.isDimmed("zzz"))
+    }
+
+    @Test func aMaximizedPaneShowsAloneUndimmed() {
+        var layout = fourPanes()
+        layout.toggleMaximize("a")
+        #expect(!layout.isDimmed("a"))
+        #expect(!layout.isDimmed("b"))
+        layout.toggleMaximize("a")
+        #expect(layout.isDimmed("b"))
+    }
+}
+
+/// Sidebar rows that fill (B93 stage 2): a row shows whether its chat's pane is focused,
+/// open in the workspace but not focused, or closed.
+@Suite struct WorkspaceRowStateTests {
+    @Test func aChatWithNoPaneIsClosed() {
+        #expect(WorkspaceLayout().rowState(of: "a") == .closed)
+        #expect(fourPanes().rowState(of: "zzz") == .closed)
+    }
+
+    @Test func theOnlyOpenChatIsFocused() {
+        var layout = WorkspaceLayout()
+        layout.open("a", in: wide)
+        #expect(layout.rowState(of: "a") == .focused)
+    }
+
+    @Test func theOnlyChatBesideAFocusedToolPaneIsFocused() {
+        var layout = WorkspaceLayout()
+        layout.open("a", in: wide)
+        layout.open("terminal:1", in: wide)
+        #expect(layout.focused == "terminal:1")
+        #expect(layout.rowState(of: "a") == .focused, "the only open chat")
+        #expect(layout.rowState(of: "terminal:1") == .closed, "tool panes have no row")
+    }
+
+    @Test func theFocusedPanesChatIsFocusedAndTheOtherOpenOnesAreOpen() {
+        var layout = fourPanes()
+        layout.focus("c")
+        #expect(layout.rowState(of: "c") == .focused)
+        #expect(layout.rowState(of: "a") == .open)
+        #expect(layout.rowState(of: "b") == .open)
+        #expect(layout.rowState(of: "d") == .open)
+    }
+
+    @Test func twoChatsBesideAFocusedToolPaneAreBothOpen() {
+        var layout = WorkspaceLayout()
+        layout.open("a", in: wide)
+        layout.open("b", in: wide)
+        layout.open("terminal:1", in: wide)
+        #expect(layout.rowState(of: "a") == .open)
+        #expect(layout.rowState(of: "b") == .open)
     }
 }
