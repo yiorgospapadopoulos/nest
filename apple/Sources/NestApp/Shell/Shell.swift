@@ -168,6 +168,9 @@ final class Shell {
     @ObservationIgnored var inlineEdit: InlineEdit?
     /// Each open pane's size, to place drops within it.
     @ObservationIgnored var paneSizes: [String: CGSize] = [:]
+    /// The start screen's question, the next one each time it appears again (B90); the
+    /// screen keeps the one it took while it stays.
+    @ObservationIgnored var startQuestions = StartQuestionRotation()
     @ObservationIgnored private let drafts = DraftBook { ComposerDraft() }
     @ObservationIgnored private var draftCount = 0
     @ObservationIgnored private var toastTask: Task<Void, Never>?
