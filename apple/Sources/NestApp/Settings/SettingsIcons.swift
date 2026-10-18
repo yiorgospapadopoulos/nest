@@ -1,7 +1,7 @@
 import NestKit
 import SwiftUI
 
-/// The Pixies page's winged pixie (B86): the sprites' 12 by 10 grid, its filled rows centred
+/// The Pixies page's winged pixie (B86): a 12 by 10 grid, its filled rows centred
 /// in the icon box; each cell is a whole number of pixels so it stays crisp.
 struct PixieGlyph: View {
     /// The icon box's side, in points.
@@ -17,7 +17,8 @@ struct PixieGlyph: View {
         Canvas(rendersAsynchronously: false) { context, canvas in
             let top = ((canvas.height - height * cell) / 2 * scale).rounded() / scale - first * cell
             let path = SpritePixels.path(
-                rows, cell: cell, scale: scale, origin: CGPoint(x: 0, y: top))
+                GridCell.all("#", in: rows), cell: cell, scale: scale,
+                origin: CGPoint(x: 0, y: top))
             context.fill(path, with: .color(Palette.t2), style: FillStyle(antialiased: false))
         }
         .frame(width: 12 * cell, height: side)

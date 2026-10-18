@@ -77,7 +77,7 @@
         /// pixie sprites as their icons, the others their initials.
         func repos() async throws -> [Repo] {
             let icons: [String: (mascot: String, color: String)] = [
-                "cv-page": ("cat", "#E2A16F"), "llm-hunter": ("frog", "#46A758"),
+                "cv-page": ("bluebell", "#E2A16F"), "llm-hunter": ("dragonfly", "#46A758"),
             ]
             return try ["cv-page", "narrative-engine", "llm-hunter", "nest", "recipes"].map {
                 name in
@@ -629,14 +629,14 @@
 
         // MARK: Pixies
 
-        /// "Reviewer" the owl, with one skill, and "Watcher" the ghost.
+        /// "Reviewer" the moth, with one skill, and "Watcher" the brook fairy.
         private static func samplePixies(now: Date) -> [Pixie] {
             let rows: [(String, String, String, String, String, Int, String, [String])] = [
                 (
-                    "reviewer", "Reviewer", "owl", "#8B7CF6", "default", 0, "p1",
+                    "reviewer", "Reviewer", "moth", "#8B7CF6", "default", 0, "p1",
                     ["superpowers:brainstorming"]
                 ),
-                ("watcher", "Watcher", "ghost", "#12A594", "plan", 1, "p2", []),
+                ("watcher", "Watcher", "brook", "#12A594", "plan", 1, "p2", []),
             ]
             return rows.map { id, name, mascot, color, permission, position, chat, skills in
                 let object: [String: Any] = [
@@ -682,7 +682,7 @@
                 pixie.id = "pixie-\(pixieList.count + 1)"
                 pixie.slug = pixie.id
                 pixie.name = request.name
-                pixie.mascot = request.mascot ?? .invader
+                pixie.mascot = request.mascot ?? .bluebell
                 pixie.color = request.color ?? pixie.color
                 pixie.skills = request.skills ?? []
                 // A new pixie has no chat before its first message.

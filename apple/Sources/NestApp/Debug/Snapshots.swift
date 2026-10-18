@@ -143,6 +143,10 @@
                 try await renderPixieMotion(model, shell, controller, folder)
                 return
             }
+            if only == "b89" {
+                try await renderPixieDesigns(model, shell, controller, folder)
+                return
+            }
             if only == "b70" {
                 try await renderTeamCalls(model, shell, controller, folder)
                 return
@@ -696,7 +700,7 @@
             try await pair(controller, "pixies-two-panes-details", folder)
             // A third pixie dropped below Watcher splits its pane top and bottom.
             let scout = try await model.pixies.create(
-                CreatePixieRequest(name: "Scout", mascot: .frog, color: "#4CAF50"))
+                CreatePixieRequest(name: "Scout", mascot: .dragonfly, color: "#4CAF50"))
             shell.pixieDetailsOpen = false
             shell.perform(.chat(scout.id), onto: "watcher", zone: .split(.bottom))
             try await pair(controller, "pixies-three-panes", folder)
@@ -717,15 +721,15 @@
             let pixies = model.pixies
             let bugs = try await pixies.create(
                 CreatePixieRequest(
-                    name: "Bug hunter", mascot: .crab, color: "#E5484D",
+                    name: "Bug hunter", mascot: .firefly, color: "#E5484D",
                     soul: "I find the bugs others miss, starting with the edge cases.\n"))
             let stylist = try await pixies.create(
                 CreatePixieRequest(
-                    name: "Stylist", mascot: .bunny, color: "#D6409F",
+                    name: "Stylist", mascot: .nightshade, color: "#D6409F",
                     soul: "I keep names, comments and layout tidy.\n"))
             let scout = try await pixies.create(
                 CreatePixieRequest(
-                    name: "Scout", mascot: .frog, color: "#46A758",
+                    name: "Scout", mascot: .dragonfly, color: "#46A758",
                     soul: "I read new code and tell the others what changed.\n"))
             let qa = try await pixies.createTeam(name: "QA", handle: "qa")
             let ops = try await pixies.createTeam(name: "Ops", handle: "ops")
@@ -926,9 +930,9 @@
             shell.close()
             let pixies = model.pixies
             let bugs = try await pixies.create(
-                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+                CreatePixieRequest(name: "Bug hunter", mascot: .firefly, color: "#E5484D"))
             let stylist = try await pixies.create(
-                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+                CreatePixieRequest(name: "Stylist", mascot: .nightshade, color: "#D6409F"))
             let qa = try await pixies.createTeam(name: "QA", handle: "qa")
             try await pixies.setTeam(bugs.id, to: qa.id)
             try await pixies.setTeam(stylist.id, to: qa.id)
@@ -1008,11 +1012,11 @@
             shell.close()
             let pixies = model.pixies
             let bugs = try await pixies.create(
-                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+                CreatePixieRequest(name: "Bug hunter", mascot: .firefly, color: "#E5484D"))
             let stylist = try await pixies.create(
-                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+                CreatePixieRequest(name: "Stylist", mascot: .nightshade, color: "#D6409F"))
             let scout = try await pixies.create(
-                CreatePixieRequest(name: "Scout", mascot: .owl, color: "#0090FF"))
+                CreatePixieRequest(name: "Scout", mascot: .moth, color: "#0090FF"))
             let qa = try await pixies.createTeam(name: "QA", handle: "qa")
             for member in [bugs, stylist, scout] {
                 try await pixies.setTeam(member.id, to: qa.id)
@@ -1049,6 +1053,68 @@
             try await pairView(SpriteFramesPreview(members: members), "b48-frames", folder)
         }
 
+        /// B89: the fairies in the Pixies list, one pixie of each; a pixie's details with the
+        /// mascot picker; the tree under a chat whose team of four shows its grid; and every
+        /// fairy at rest, lifted and blinking.
+        private static func renderPixieDesigns(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let pixies = model.pixies
+            // Reviewer and Watcher are the moth and brook; one more pixie for each other fairy.
+            var made: [Mascot: Pixie] = [:]
+            for (index, mascot) in Mascot.choices.enumerated()
+            where !pixies.pixies.contains(where: { $0.mascot == mascot }) {
+                made[mascot] = try await pixies.create(
+                    CreatePixieRequest(
+                        name: mascot.rawValue.capitalized, mascot: mascot,
+                        color: PixieColors.presets[index]))
+            }
+            let members = [made[.firefly]!, made[.nightshade]!, made[.dragonfly]!, made[.rose]!]
+            let qa = try await pixies.createTeam(name: "QA", handle: "qa")
+            for member in members {
+                try await pixies.setTeam(member.id, to: qa.id)
+            }
+            try await pixies.load()
+
+            shell.openPixies()
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b89-pixies", folder)
+            shell.pixieDetailsOpen = true
+            shell.pixiePanel = .details
+            try await pair(controller, "b89-details", folder)
+            shell.close()
+
+            let now = Date()
+            let team: ChatPixieEntry = try SampleData.decode(
+                SampleTree.team(
+                    qa.id, state: "running",
+                    members: [
+                        (members[0].id, true, "running"), (members[1].id, false, "done"),
+                        (members[2].id, false, nil), (members[3].id, false, "running"),
+                    ],
+                    calls: [
+                        SampleTree.call(
+                            "k4", pixie: members[0].id, tool: "qa1", agent: "c41",
+                            state: "running", started: now - 50)
+                    ]))
+            (model.api as? SampleAPI)?.setGroup("c2", SampleTree.groups(now: now)["c2"]! + [team])
+            await model.chatPixies.load()
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+                state.openCards = [.goals]
+                state.openChat("c2", in: CGSize(width: 828, height: 790))
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b89-tree", folder)
+            try await pairView(SpriteFramesPreview(members: members), "b89-frames", folder)
+        }
+
         /// B70: a project chat calling a team through its leader: the team's grid and name,
         /// "QA working" while it runs, then its leader's report, opened in place with the
         /// leader's member calls; a call of a pixie that leads no team stays a pixie row.
@@ -1058,11 +1124,11 @@
             shell.close()
             let pixies = model.pixies
             let bugs = try await pixies.create(
-                CreatePixieRequest(name: "Bug hunter", mascot: .crab, color: "#E5484D"))
+                CreatePixieRequest(name: "Bug hunter", mascot: .firefly, color: "#E5484D"))
             let stylist = try await pixies.create(
-                CreatePixieRequest(name: "Stylist", mascot: .bunny, color: "#D6409F"))
+                CreatePixieRequest(name: "Stylist", mascot: .nightshade, color: "#D6409F"))
             let scout = try await pixies.create(
-                CreatePixieRequest(name: "Scout", mascot: .owl, color: "#0090FF"))
+                CreatePixieRequest(name: "Scout", mascot: .moth, color: "#0090FF"))
             let qa = try await pixies.createTeam(name: "QA", handle: "qa")
             for member in [bugs, stylist, scout] {
                 try await pixies.setTeam(member.id, to: qa.id)
@@ -3358,19 +3424,19 @@
         }
     }
 
-    /// Each mascot at rest, lifted and lifted blinking (B48), then team icons of one, two,
-    /// three and five members, drawn three times larger.
+    /// Each mascot at rest, lifted and lifted blinking (B48), in the preset colours (B89),
+    /// then team icons of one, two, three and five members, drawn three times larger.
     private struct SpriteFramesPreview: View {
         let members: [Pixie]
 
         var body: some View {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(Mascot.choices, id: \.self) { mascot in
+                ForEach(Array(Mascot.choices.enumerated()), id: \.element) { index, mascot in
                     HStack(spacing: 18) {
                         Text(mascot.rawValue)
                             .font(.ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
-                            .frame(width: 64, alignment: .leading)
+                            .frame(width: 72, alignment: .leading)
                         ForEach(
                             [
                                 SpriteFrame.rest, .init(lifted: true, blinking: false),
@@ -3378,7 +3444,8 @@
                             ], id: \.self
                         ) { frame in
                             SpritePixels(
-                                mascot: mascot, color: PixieColor.standard, size: 36, frame: frame)
+                                mascot: mascot, color: PixieColors.presets[index], size: 42,
+                                frame: frame)
                         }
                     }
                 }
@@ -3388,7 +3455,7 @@
                             .enumerated().map { TeamIconCell(pixie: $1, working: false, index: $0) }
                         TeamIconView(cells: cells)
                             .scaleEffect(3)
-                            .frame(width: 48, height: 40)
+                            .frame(width: 48, height: 48)
                     }
                 }
                 .padding(.top, 8)
@@ -3403,7 +3470,7 @@
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        ProjectIcon(name: "cv-page", mascot: .cat, color: "#E2A16F", size: 15)
+                        ProjectIcon(name: "cv-page", mascot: .bluebell, color: "#E2A16F", size: 15)
                         Text("cv-page").font(.ui(TypeSize.reading, .semibold))
                     }
                     .frame(height: 30)
