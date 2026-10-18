@@ -27,7 +27,8 @@ extension Mascot {
     /// The mascots to pick from, in the order of `design/mascots.toml`.
     public static var choices: [Mascot] { allCases.filter { $0 != .unknown } }
 
-    /// Its pixel grid, top row first; "#" is filled. Empty for an unknown mascot.
+    /// Its 14 by 14 pixel grid, top row first, in the cell codes of `MascotSprites`. Empty
+    /// for an unknown mascot.
     public var rows: [String] { MascotSprites.rows[rawValue] ?? [] }
 }
 
@@ -152,13 +153,13 @@ public struct PixieTemplate: Sendable, Hashable {
     /// Reviewer and Tester, with the iPhone's starter souls.
     public static let all = [
         PixieTemplate(
-            name: "Reviewer", mascot: .owl,
+            name: "Reviewer", mascot: .moth,
             soul:
                 "You review code changes. Look for bugs, missing tests and unclear names first, "
                 + "style last. Say what you checked, then list problems by severity with file and line."
         ),
         PixieTemplate(
-            name: "Tester", mascot: .robot,
+            name: "Tester", mascot: .star,
             soul:
                 "You test changes. Find how the project runs its tests, run them, add missing "
                 + "cases for the change, and report what passed, what failed and why."),

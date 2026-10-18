@@ -295,7 +295,7 @@ private struct PixiesTab: View {
         let pixiesKeys = shell.shortcuts.shortcut(for: .pixies).display
         HStack(spacing: 7) {
             SpriteView(
-                mascot: mascot?.mascot ?? .invader, color: mascot?.color ?? PixieColor.standard,
+                mascot: mascot?.mascot ?? .bluebell, color: mascot?.color ?? PixieColor.standard,
                 size: 15, working: mascot.map(shell.isWorking) ?? false,
                 phaseKey: mascot?.id ?? "")
             Text("Pixies")

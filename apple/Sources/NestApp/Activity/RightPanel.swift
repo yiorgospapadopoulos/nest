@@ -209,7 +209,7 @@ struct PixieLink: View {
         } label: {
             HStack(spacing: 5) {
                 SpriteView(
-                    mascot: pixie?.mascot ?? .invader, color: pixie?.color ?? PixieColor.standard,
+                    mascot: pixie?.mascot ?? .bluebell, color: pixie?.color ?? PixieColor.standard,
                     size: 14)
                 Text(pixie?.name ?? "Pixie")
                     .lineLimit(1)
