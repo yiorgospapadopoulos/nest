@@ -27,8 +27,8 @@ struct ChatRow: View {
 
     private var row: some View {
         let state = shell.projectState
-        let isOpen = state.layout.contains(session.id)
-        let isSelected = state.selectedChat == session.id
+        let rowState = state.layout.rowState(of: session.id)
+        let isOpen = rowState != .closed
         let tone = shell.tone(of: session)
         let startedBy = PixieLabels.startedBy(session, pixies: shell.pixies.pixies)
         let place = ChatPlace.of(session, repo: shell.repo)
@@ -37,7 +37,9 @@ struct ChatRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.title)
                     .font(.ui(TypeSize.ui))
-                    .foregroundStyle(finished && !isSelected ? Palette.t2 : Palette.t1)
+                    .foregroundStyle(
+                        finished && rowState != .focused ? Palette.t2 : rowState.titleColor
+                    )
                     .lineLimit(1)
                 if place != nil || session.pinned || session.stuck != nil || startedBy != nil {
                     HStack(spacing: 4) {
@@ -66,13 +68,11 @@ struct ChatRow: View {
             // Room for the "..." button, so the lines end before it rather than under it.
             .padding(.trailing, showsMenu ? 20 : 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, SidebarRowMetrics.inset)
         .padding(.vertical, 5)
-        .background(
-            isSelected ? accent.selection : (isOpen || hovering) ? Palette.soft : .clear,
-            in: .rounded(Radius.row)
-        )
-        .rowGlow(tone == .running)
+        .frame(minHeight: SidebarRowMetrics.height)
+        .sidebarRow(rowState, hovering: hovering)
+        .rowGlow(tone == .running, radius: 0)
         .overlay(alignment: .trailing) {
             if showsMenu {
                 RowActionsMenu(title: session.title) { ChatActions(session: session) }
@@ -104,12 +104,10 @@ struct ChatRow: View {
         return TextField("Rename chat", text: $shell.renameText)
             .textFieldStyle(.plain)
             .font(.ui(TypeSize.ui))
-            .padding(.horizontal, 10)
-            .frame(height: Metrics.rowHeight)
-            .background(Palette.soft, in: .rounded(Radius.row))
-            .overlay(
-                RoundedRectangle.rounded(Radius.row).strokeBorder(accent.focus, lineWidth: 1)
-            )
+            .padding(.horizontal, SidebarRowMetrics.inset)
+            .frame(height: SidebarRowMetrics.height)
+            .background(Palette.soft)
+            .overlay(Rectangle().strokeBorder(accent.focus, lineWidth: 1))
             .focused($renameFocused)
             .onAppear { renameFocused = true }
             .onSubmit { shell.commitRename(save: true) }

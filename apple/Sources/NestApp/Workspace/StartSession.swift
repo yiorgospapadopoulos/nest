@@ -6,9 +6,9 @@ import SwiftUI
 /// the user in the project and its latest chats. Over a chat background a fade from the
 /// base colour keeps the text readable.
 struct StartSession: View {
-    /// From the workspace's edges, with the workspace's own inset.
-    static let sides = 28.0 - PanePanel.inset
-    static let bottom = 18.0 - PanePanel.inset
+    /// From the workspace's edges.
+    static let sides = 28.0
+    static let bottom = 18.0
     static let gap = 32.0
     @Environment(Shell.self) private var shell
     /// Taken when the screen appears and kept while it stays, through typing and resizing.
@@ -99,8 +99,6 @@ private struct StartFade: View {
                 .frame(height: min(480, geometry.size.height * 0.6))
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
-            // Down to the workspace's edges, under its inset.
-            .padding(-PanePanel.inset)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }

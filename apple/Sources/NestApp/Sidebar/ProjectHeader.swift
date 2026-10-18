@@ -17,8 +17,9 @@ struct ProjectHeader: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 2)
+        // Where it sat inside the bar's former 6 point inset (B93).
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
         .frame(height: 30)
     }
 }

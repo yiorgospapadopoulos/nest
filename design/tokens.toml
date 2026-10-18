@@ -45,6 +45,18 @@ window_opaque = { light = "#f8f8f6", dark = "#171717" }
 side = { light = "rgba(0,0,0,0.02)", dark = "rgba(0,0,0,0.1)" }
 pane = { light = "rgba(255,255,255,0.25)", dark = "rgba(0,0,0,0)" }
 chat_pane = { light = "rgba(255,255,255,0.55)", dark = "rgba(0,0,0,0)" }
+# Focus dim (B93): with two or more panes, every pane but the focused one takes this darker
+# fill in place of chat_pane, and its content (below the header) shows through the mask:
+# only the mask's alpha counts, as the content's opacity.
+unfocused_pane = { light = "rgba(0,0,0,0.03)", dark = "rgba(0,0,0,0.22)" }
+unfocused_content_mask = { light = "rgba(0,0,0,0.5)", dark = "rgba(0,0,0,0.5)" }
+# Sidebar rows that fill (B93): the row of the chat in the focused pane, the rows of chats
+# open in other panes (and any hovered row), and their titles; a closed row's title is the
+# dimmest and the focused row's is text_primary.
+sidebar_row_focused = { light = "rgba(28,28,29,0.07)", dark = "rgba(235,235,235,0.09)" }
+sidebar_row_open = { light = "rgba(28,28,29,0.03)", dark = "rgba(235,235,235,0.035)" }
+sidebar_text_open = { light = "rgba(28,28,29,0.92)", dark = "rgba(235,235,235,0.92)" }
+sidebar_text_closed = { light = "rgba(28,28,29,0.8)", dark = "rgba(235,235,235,0.8)" }
 # With a chat background image (B39), the window's chrome lays this over the blurred image,
 # leaving a deep tint of its colors.
 backdrop_tint = { light = "rgba(248,248,246,0.82)", dark = "rgba(23,23,23,0.82)" }
