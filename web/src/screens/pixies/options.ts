@@ -2,16 +2,16 @@ import type { Autonomy, Mascot, ProjectAccess } from "../../api/types.ts";
 import type { Option } from "../chat/options.ts";
 
 export const MASCOTS: readonly Mascot[] = [
-  "invader",
-  "ghost",
-  "cat",
-  "owl",
-  "robot",
-  "frog",
-  "mushroom",
-  "bunny",
-  "crab",
-  "sprout",
+  "bluebell",
+  "dragonfly",
+  "moth",
+  "firefly",
+  "rose",
+  "frost",
+  "sprig",
+  "nightshade",
+  "brook",
+  "star",
 ];
 
 interface Choice {

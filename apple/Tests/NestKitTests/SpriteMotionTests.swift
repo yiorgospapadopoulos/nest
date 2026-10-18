@@ -3,8 +3,8 @@ import Testing
 
 @testable import NestKit
 
-private func cells(_ pairs: (Int, Int)...) -> Set<GridCell> {
-    Set(pairs.map { GridCell(x: $0.0, y: $0.1) })
+private func ink(_ hex: String, _ opacity: Double = 1) -> SpriteInk {
+    SpriteInk(hex: hex, opacity: opacity)
 }
 
 private func pixie(_ id: String) -> Pixie {
@@ -59,51 +59,66 @@ private func pixie(_ id: String) -> Pixie {
         #expect(phases.allSatisfy { $0 >= 0 && $0 < 2040 })
     }
 
-    @Test func eyesAreTheTopmostSmallClosedHolesAndBlinkingFillsThem() {
-        #expect(Mascot.invader.blink == .fill(cells((4, 3), (7, 3))))
-        #expect(Mascot.ghost.blink == .fill(cells((4, 3), (7, 3), (4, 4), (7, 4))))
-        // Not its mouth, lower down.
-        #expect(Mascot.cat.blink == .fill(cells((4, 5), (7, 5))))
-        // Its eye rings, five cells each, not the gap under its beak.
+    @Test func eachCellCodeHasItsToneOfThePixiesColour() {
+        let violet = "#8B7CF6"
+        #expect(SpriteTones.ink(of: "#", color: violet, blinking: false) == ink("#8B7CF6"))
+        // Shade 30% toward black, light 70% and wing 45% toward white, per channel, rounded.
+        #expect(SpriteTones.ink(of: "+", color: violet, blinking: false) == ink("#6157AC"))
+        #expect(SpriteTones.ink(of: "o", color: violet, blinking: false) == ink("#DCD8FC"))
         #expect(
-            Mascot.owl.blink
-                == .fill(
-                    cells(
-                        (3, 3), (4, 3), (3, 4), (3, 5), (4, 5),
-                        (7, 3), (8, 3), (8, 4), (7, 5), (8, 5))))
-        #expect(Mascot.frog.blink == .fill(cells((3, 3), (8, 3))))
-        #expect(Mascot.mushroom.blink == .fill(cells((5, 2), (6, 2))))
-        #expect(Mascot.bunny.blink == .fill(cells((3, 6), (8, 6))))
-        #expect(Mascot.crab.blink == .fill(cells((4, 4), (7, 4))))
-        #expect(Mascot.sprout.blink == .fill(cells((4, 7), (7, 7))))
+            SpriteTones.ink(of: "*", color: violet, blinking: false) == ink("#BFB7FA", 0.85))
+        #expect(SpriteTones.ink(of: "+", color: "#E5484D", blinking: false) == ink("#A03236"))
+        #expect(SpriteTones.ink(of: "o", color: "#FFC53D", blinking: false) == ink("#FFEEC5"))
+        #expect(SpriteTones.ink(of: "*", color: "#FFC53D", blinking: false)?.hex == "#FFDF94")
+        // Eyes and ink marks are the ink in any colour.
+        #expect(SpriteTones.ink(of: "e", color: violet, blinking: false) == ink("#221E29"))
+        #expect(SpriteTones.ink(of: "k", color: "#E5484D", blinking: false) == ink("#221E29"))
+        #expect(SpriteTones.ink(of: ".", color: violet, blinking: false) == nil)
+        #expect(SpriteTones.ink(of: "x", color: violet, blinking: false) == nil)
     }
 
-    @Test func eyeHolesHoldAtMostSixCells() {
-        // Six closed cells are eyes; seven are not, so the lone cell blinks instead.
-        let six = ["#########", "#......##", "#########", "#.#####.#", "#########"]
-        #expect(
-            Mascot.blink(of: six)
-                == .fill(cells((1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1))))
-        let seven = ["#########", "#.......#", "#########", ".........", "....#...."]
-        #expect(Mascot.blink(of: seven) == .hide(cells((4, 4))))
+    @Test func blinkingDrawsTheEyesInTheBodyColourOnly() {
+        #expect(SpriteTones.ink(of: "e", color: "#46A758", blinking: true) == ink("#46A758"))
+        #expect(SpriteTones.ink(of: "k", color: "#46A758", blinking: true) == ink("#221E29"))
+        #expect(SpriteTones.ink(of: "+", color: "#46A758", blinking: true) == ink("#31753E"))
     }
 
-    @Test func aMascotWithNoHolesHidesItsLoneCells() {
-        #expect(Mascot.robot.blink == .hide(cells((4, 4), (7, 4))))
-        #expect(Mascot.unknown.blink == .hide([]))
+    @Test func aColourIsReadInCapitalsAndAnUnreadableOneIsTheStandardViolet() {
+        #expect(SpriteTones.ink(of: "#", color: "#8b7cf6", blinking: false) == ink("#8B7CF6"))
+        #expect(SpriteTones.ink(of: "#", color: "teal", blinking: false) == ink("#8B7CF6"))
+        #expect(SpriteTones.ink(of: "o", color: "teal", blinking: false) == ink("#DCD8FC"))
+        #expect(SpriteTones.ink(of: "e", color: "teal", blinking: true) == ink("#8B7CF6"))
     }
 
-    @Test func blinkingRowsFillTheEyesOrHideTheLoneCells() {
-        #expect(Mascot.invader.rows(blinking: false) == Mascot.invader.rows)
-        let invader = Mascot.invader.rows(blinking: true)
-        #expect(invader[3] == "..########..")
+    @Test func aMascotsLayersHoldEveryDrawnCellOnceByCode() throws {
+        let rest = Mascot.bluebell.layers(color: "#8B7CF6", blinking: false)
         #expect(
-            invader.enumerated().allSatisfy {
-                $0.offset == 3 || $0.element == Mascot.invader.rows[$0.offset]
-            })
-        let robot = Mascot.robot.rows(blinking: true)
-        #expect(robot[4] == "..#......#..")
-        #expect(Mascot.unknown.rows(blinking: true).isEmpty)
+            rest.map(\.ink)
+                == ["#", "+", "o", "*", "e", "k"].map {
+                    SpriteTones.ink(of: $0, color: "#8B7CF6", blinking: false)!
+                })
+        #expect(rest.map(\.cells.count) == [60, 12, 26, 30, 2, 2])
+        let eyes = try #require(rest.first { $0.cells.contains(GridCell(x: 4, y: 5)) })
+        #expect(eyes.cells == [GridCell(x: 4, y: 5), GridCell(x: 9, y: 5)])
+        #expect(eyes.ink == ink("#221E29"))
+        let drawn = Set(rest.flatMap(\.cells))
+        #expect(drawn.count == 14 * 14 - 64)
+        #expect(!drawn.contains(GridCell(x: 0, y: 0)))
+        // A code a mascot lacks gives no layer: Rose has no ink marks.
+        #expect(Mascot.rose.layers(color: "#E5484D", blinking: false).count == 5)
+        #expect(
+            GridCell.all("#", in: ["#.#", ".+#"])
+                == [GridCell(x: 0, y: 0), GridCell(x: 2, y: 0), GridCell(x: 2, y: 1)])
+    }
+
+    @Test func blinkingLayersOnlyRepaintTheEyes() {
+        let rest = Mascot.frost.layers(color: "#0090FF", blinking: false)
+        let blink = Mascot.frost.layers(color: "#0090FF", blinking: true)
+        #expect(blink.map(\.cells) == rest.map(\.cells))
+        #expect(blink[4].cells == [GridCell(x: 4, y: 4), GridCell(x: 9, y: 4)])
+        #expect(blink[4].ink == ink("#0090FF"))
+        #expect(Array(blink.prefix(4)) == Array(rest.prefix(4)))
+        #expect(Mascot.unknown.layers(color: "#0090FF", blinking: true).isEmpty)
     }
 
     @Test func aTeamIconFillsFourCellsLeaderFirst() {

@@ -213,7 +213,7 @@ describe("tap targets", () => {
     await openPixie(api, pixie({ skills: ["review"] }), "Details");
 
     const controls = [
-      screen.getByRole("button", { name: "ghost" }),
+      screen.getByRole("button", { name: "brook" }),
       screen.getByRole("button", { name: "Colour #E5484D" }),
       screen.getByRole("button", { name: "Custom colour" }),
       screen.getByRole("button", { name: "Remove review" }),

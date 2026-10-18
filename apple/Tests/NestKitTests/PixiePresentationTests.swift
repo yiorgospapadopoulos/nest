@@ -28,9 +28,14 @@ import Testing
     }
 
     @Test func choicesLeaveUnknownOut() {
-        #expect(Mascot.choices.count == 10)
-        #expect(Mascot.choices.first == .invader)
-        #expect(Mascot.owl.rows.count == 10)
+        // In the order of design/mascots.toml (B89).
+        #expect(
+            Mascot.choices.map(\.rawValue) == [
+                "bluebell", "dragonfly", "moth", "firefly", "rose", "frost", "sprig",
+                "nightshade", "brook", "star",
+            ])
+        #expect(Mascot.choices.allSatisfy { $0.rows.count == 14 })
+        #expect(Mascot.choices.allSatisfy { $0.rows.allSatisfy { $0.count == 14 } })
         #expect(Mascot.unknown.rows.isEmpty)
         #expect(ProjectAccess.choices.map(\.label) == ["Edit", "Read only", "None"])
         #expect(ProjectAccess.noAccess.rawValue == "none")
@@ -67,10 +72,10 @@ import Testing
 
     @Test func templatesAreReviewerAndTester() throws {
         #expect(PixieTemplate.all.map(\.name) == ["Reviewer", "Tester"])
-        #expect(PixieTemplate.all.map(\.mascot) == [.owl, .robot])
+        #expect(PixieTemplate.all.map(\.mascot) == [.moth, .star])
         let request = PixieTemplate.all[0].request
         #expect(request.name == "Reviewer")
-        #expect(request.mascot == .owl)
+        #expect(request.mascot == .moth)
         #expect(request.soul?.hasPrefix("You review code changes.") == true)
     }
 

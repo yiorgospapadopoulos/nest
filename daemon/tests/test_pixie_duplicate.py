@@ -38,7 +38,7 @@ async def test_a_copy_has_the_settings_and_files_but_not_the_chat(
         CreatePixie(
             name="Tester",
             soul="You test.",
-            mascot="ghost",
+            mascot="brook",
             model="opus",
             effort="high",
             project_access="read",
