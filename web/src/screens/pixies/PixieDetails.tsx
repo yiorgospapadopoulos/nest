@@ -226,7 +226,7 @@ function PixieHeader({ pixie, working, save }: HeaderProps) {
       <Sprite
         mascot={pixie.mascot}
         color={pixie.color}
-        size={96}
+        size={80}
         working={working}
         phaseKey={pixie.id}
       />

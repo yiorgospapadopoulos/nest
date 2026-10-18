@@ -6,7 +6,7 @@ import { detail, event, habit, pixie, report, session, NOW } from "../../test/fi
 import { openPixie } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
-const tester = pixie({ id: "p1", name: "Tester", mascot: "owl", chat_session_id: "pc" });
+const tester = pixie({ id: "p1", name: "Tester", mascot: "moth", chat_session_id: "pc" });
 const pixieChat = session({ id: "pc", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
 
 /** The app with the pixie and the events of its chat. */

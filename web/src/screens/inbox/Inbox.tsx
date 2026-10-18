@@ -36,7 +36,7 @@ export function Inbox({ onOpenChat, onOpenPixie }: Props) {
     if (pixie === undefined) return <span>Pixie</span>;
     return (
       <>
-        <Sprite mascot={pixie.mascot} color={pixie.color} size={22} />
+        <Sprite mascot={pixie.mascot} color={pixie.color} size={20} />
         <span>{pixie.name}</span>
         <button
           className="pxopen"
