@@ -216,6 +216,10 @@
                 try await renderGoals(model, shell, controller, folder)
                 return
             }
+            if only == "b90" {
+                try await renderStartScreen(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -342,6 +346,51 @@
             try await renderWorkingCopies(model, shell, controller, folder)
             try await renderReviewBar(model, shell, controller, folder)
             try await renderArtifacts(model, shell, controller, folder)
+            try await renderStartScreen(model, shell, controller, folder)
+        }
+
+        /// B90: the start screen (design I) with what waits on the user and recent chats
+        /// beside the docked composer, over the chat background with its fade; at a width
+        /// too narrow for the column; and in a project with nothing to list. Each shot is
+        /// a new appearance, so each asks the next question.
+        private static func renderStartScreen(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
+            try await pair(controller, "b90-start", folder)
+            let draft = shell.startDraft()
+            let mode = draft.mode
+            draft.mode = .worktree
+            draft.permission = .bypassPermissions
+            try await snap(controller, "b90-start-worktree-dark", .darkAqua, folder)
+            draft.mode = mode
+            draft.permission = model.agents.current.permissionMode
+            try await pair(
+                controller, "b90-start-narrow", folder, size: CGSize(width: 1180, height: 820))
+
+            let image = try sampleBackgroundImage()
+            let saved = model.settings.chatBackground
+            model.settings.chatBackground.image = image.path
+            model.settings.chatBackground.emptyVisibility = 0.6
+            _ = await BackdropRenderer.shared.image(for: .init(path: image.path, blur: 0))
+            _ = await BackdropRenderer.shared.image(
+                for: .init(path: image.path, blur: ChatBackground.workspaceBlur(hasChats: true)))
+            _ = await BackdropRenderer.shared.image(
+                for: .init(path: image.path, blur: ChatBackground.chromeBlur, dithered: false))
+            try await pair(controller, "b90-start-background", folder)
+            model.settings.chatBackground = saved
+
+            model.app.openProject("nest")
+            shell.selectProject("nest")
+            try await pair(controller, "b90-start-empty-column", folder)
+            shell.selectProject("cv-page")
         }
 
         /// B56: a pending review is one line above the composer, not a card in the
@@ -3109,15 +3158,15 @@
         private static func pair(
             _ controller: AppController, _ name: String, _ folder: URL,
             revealsHoverControls: Bool = false, motionTime: Double? = nil,
-            prepare: (NSView) async -> Void = { _ in }
+            size: CGSize = Snapshots.size, prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             try await snap(
                 controller, "\(name)-light", .aqua, folder,
-                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime, size: size,
                 prepare: prepare)
             try await snap(
                 controller, "\(name)-dark", .darkAqua, folder,
-                revealsHoverControls: revealsHoverControls, motionTime: motionTime,
+                revealsHoverControls: revealsHoverControls, motionTime: motionTime, size: size,
                 prepare: prepare)
         }
 
@@ -3244,7 +3293,7 @@
         private static func snap(
             _ controller: AppController, _ name: String, _ appearance: NSAppearance.Name,
             _ folder: URL, revealsHoverControls: Bool = false, motionTime: Double? = nil,
-            prepare: (NSView) async -> Void = { _ in }
+            size: CGSize = Snapshots.size, prepare: (NSView) async -> Void = { _ in }
         ) async throws {
             // Far off screen and fully transparent: nothing shows up on the user's display.
             let window = SnapshotWindow(

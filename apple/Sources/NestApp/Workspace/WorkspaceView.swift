@@ -183,7 +183,7 @@ private struct Gutter: View {
 }
 
 /// Shown before any chat (or, on the Pixies tab, any pixie) is open; accepts a dropped
-/// chat or pixie. A project's is MonoCode's empty session: "What should we work on in
+/// chat or pixie. A project's is the start screen (B90): "What should we work on in
 /// <project>?" over the composer, whose first message starts a chat in the project.
 private struct EmptyWorkspace: View {
     @Environment(Shell.self) private var shell
@@ -205,37 +205,6 @@ private struct EmptyWorkspace: View {
             }
         }
         .onDrop(of: [.nestChat], delegate: PaneDropDelegate(pane: nil, shell: shell))
-    }
-}
-
-/// A column up to 896 points wide, centred: the 18 point question, then the composer.
-private struct StartSession: View {
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let project = shell.project
-        let draft = shell.startDraft()
-        VStack(alignment: .leading, spacing: 0) {
-            Text(project.map { "What should we work on in \($0)?" } ?? "What should we work on?")
-                .font(.ui(18))
-                .foregroundStyle(Ink.content(1))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 16)
-                .accessibilityAddTraits(.isHeader)
-            Composer(start: shell.startDraftID)
-                .id(shell.startDraftID)
-        }
-        .frame(maxWidth: 896)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 48)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: shell.agents.defaults == nil) { _, missing in
-            if !missing && draft.text.isEmpty {
-                shell.startDefaultsLoaded()
-            }
-        }
     }
 }
 
