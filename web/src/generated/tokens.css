@@ -17,6 +17,12 @@
   --mac-side: rgba(0,0,0,0.02);
   --mac-pane: rgba(255,255,255,0.25);
   --mac-chat-pane: rgba(255,255,255,0.55);
+  --mac-unfocused-pane: rgba(0,0,0,0.03);
+  --mac-unfocused-content-mask: rgba(0,0,0,0.5);
+  --mac-sidebar-row-focused: rgba(28,28,29,0.07);
+  --mac-sidebar-row-open: rgba(28,28,29,0.03);
+  --mac-sidebar-text-open: rgba(28,28,29,0.92);
+  --mac-sidebar-text-closed: rgba(28,28,29,0.8);
   --mac-backdrop-tint: rgba(248,248,246,0.82);
   --mac-sheet: rgba(251,251,250,0.98);
   --mac-selection: rgba(28,28,29,0.06);
@@ -171,6 +177,12 @@
     --mac-side: rgba(0,0,0,0.1);
     --mac-pane: rgba(0,0,0,0);
     --mac-chat-pane: rgba(0,0,0,0);
+    --mac-unfocused-pane: rgba(0,0,0,0.22);
+    --mac-unfocused-content-mask: rgba(0,0,0,0.5);
+    --mac-sidebar-row-focused: rgba(235,235,235,0.09);
+    --mac-sidebar-row-open: rgba(235,235,235,0.035);
+    --mac-sidebar-text-open: rgba(235,235,235,0.92);
+    --mac-sidebar-text-closed: rgba(235,235,235,0.8);
     --mac-backdrop-tint: rgba(23,23,23,0.82);
     --mac-sheet: rgba(27,27,27,0.98);
     --mac-selection: rgba(235,235,235,0.1);
@@ -271,6 +283,12 @@
   --mac-side: rgba(0,0,0,0.1);
   --mac-pane: rgba(0,0,0,0);
   --mac-chat-pane: rgba(0,0,0,0);
+  --mac-unfocused-pane: rgba(0,0,0,0.22);
+  --mac-unfocused-content-mask: rgba(0,0,0,0.5);
+  --mac-sidebar-row-focused: rgba(235,235,235,0.09);
+  --mac-sidebar-row-open: rgba(235,235,235,0.035);
+  --mac-sidebar-text-open: rgba(235,235,235,0.92);
+  --mac-sidebar-text-closed: rgba(235,235,235,0.8);
   --mac-backdrop-tint: rgba(23,23,23,0.82);
   --mac-sheet: rgba(27,27,27,0.98);
   --mac-selection: rgba(235,235,235,0.1);
