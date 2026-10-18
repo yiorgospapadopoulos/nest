@@ -62,7 +62,7 @@ async def test_recent_conversation_keeps_the_last_text_messages(db: Database) ->
     await db.execute(
         "INSERT INTO pixies (id, slug, name, mascot, color, permission_mode,"
         " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
-        " VALUES ('p1', 't', 'T', 'sprout', '#000000', 'default', 'observe', 'none',"
+        " VALUES ('p1', 't', 'T', 'sprig', '#000000', 'default', 'observe', 'none',"
         " '[]', '[]', 0, 'x', 'x')"
     )
     for i in range(14):
