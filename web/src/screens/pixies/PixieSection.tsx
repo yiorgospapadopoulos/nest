@@ -18,14 +18,14 @@ import { Fireflies } from "../../ui/Fireflies.tsx";
 const TEMPLATES: readonly { name: string; mascot: Mascot; soul: string }[] = [
   {
     name: "Reviewer",
-    mascot: "owl",
+    mascot: "moth",
     soul:
       "You review code changes. Look for bugs, missing tests and unclear names first, " +
       "style last. Say what you checked, then list problems by severity with file and line.",
   },
   {
     name: "Tester",
-    mascot: "robot",
+    mascot: "star",
     soul:
       "You test changes. Find how the project runs its tests, run them, add missing " +
       "cases for the change, and report what passed, what failed and why.",

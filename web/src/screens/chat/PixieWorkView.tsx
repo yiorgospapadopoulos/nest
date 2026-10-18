@@ -127,7 +127,7 @@ export function PixieWorkView({ sessionId, who, onBack }: Props) {
             <Sprite
               mascot={pixie.mascot}
               color={pixie.color}
-              size={22}
+              size={20}
               working={callRunning(entry, pixie.id)}
               phaseKey={pixie.id}
             />
@@ -135,7 +135,7 @@ export function PixieWorkView({ sessionId, who, onBack }: Props) {
         ) : (
           entry !== undefined &&
           entry.members.length > 0 && (
-            <TeamFace members={entry.members} pixies={state.pixies} className="wkteam" size={11} />
+            <TeamFace members={entry.members} pixies={state.pixies} className="wkteam" size={9} />
           )
         )
       }
@@ -163,7 +163,7 @@ export function PixieWorkView({ sessionId, who, onBack }: Props) {
                       <Sprite
                         mascot={by.mascot}
                         color={by.color}
-                        size={16}
+                        size={13}
                         working={call.state === "running"}
                         phaseKey={by.id}
                       />

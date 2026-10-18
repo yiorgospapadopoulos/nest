@@ -25,7 +25,7 @@ async def test_pixie_chats_are_kept_out_of_session_lists(db: Database, clock: Fa
     await db.execute(
         "INSERT INTO pixies (id, slug, name, mascot, color, permission_mode,"
         " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
-        " VALUES ('p1', 'tester', 'Tester', 'sprout', '#8B7CF6', 'default',"
+        " VALUES ('p1', 'tester', 'Tester', 'sprig', '#8B7CF6', 'default',"
         " 'observe', 'none', '[]', '[]', 0, 'x', 'x')"
     )
     store = SessionStore(db, clock)

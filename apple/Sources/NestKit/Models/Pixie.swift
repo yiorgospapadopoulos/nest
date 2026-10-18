@@ -1,9 +1,22 @@
 import Foundation
 
-/// The pixie's pixel-art mascot; `MascotSprites` draws it (D072).
+/// The pixie's pixel-art mascot, a fairy since B89; `MascotSprites` draws it (D072).
 public enum Mascot: String, Codable, Sendable, CaseIterable, UnknownSafeEnum {
-    case invader, ghost, cat, owl, robot, frog, mushroom, bunny, crab, sprout
+    case bluebell, dragonfly, moth, firefly, rose, frost, sprig, nightshade, brook, star
     case unknown
+
+    /// The mascots before B89, read as the fairies that took their place.
+    static let renamed: [String: Mascot] = [
+        "invader": .frost, "ghost": .brook, "cat": .bluebell, "owl": .moth, "robot": .star,
+        "frog": .dragonfly, "mushroom": .rose, "bunny": .nightshade, "crab": .firefly,
+        "sprout": .sprig,
+    ]
+
+    /// A name this app does not know reads as `unknown`, an old one as its fairy.
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? Self.renamed[raw] ?? .unknown
+    }
 }
 
 /// What a pixie may do in Nest with its tools; each level includes the ones before (B41).

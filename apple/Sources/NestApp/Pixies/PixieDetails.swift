@@ -196,7 +196,7 @@ private struct PixieIdentity: View {
         VStack(spacing: 2) {
             let working = shell.isWorking(pixie)
             SpriteView(
-                mascot: pixie.mascot, color: pixie.color, size: 72, working: working,
+                mascot: pixie.mascot, color: pixie.color, size: 63, working: working,
                 phaseKey: pixie.id
             )
             .overlay(alignment: .topTrailing) {

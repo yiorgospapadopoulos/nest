@@ -673,7 +673,16 @@ export interface AgentDefaults {
 }
 
 export type Mascot =
-  "invader" | "ghost" | "cat" | "owl" | "robot" | "frog" | "mushroom" | "bunny" | "crab" | "sprout";
+  | "bluebell"
+  | "dragonfly"
+  | "moth"
+  | "firefly"
+  | "rose"
+  | "frost"
+  | "sprig"
+  | "nightshade"
+  | "brook"
+  | "star";
 export type Autonomy = "observe" | "message" | "start" | "answer";
 export type ProjectAccess = "edit" | "read" | "none";
 

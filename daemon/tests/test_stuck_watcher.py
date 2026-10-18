@@ -514,7 +514,7 @@ async def test_a_pixie_chat_is_never_flagged(env: Env, db: Database) -> None:
     await db.execute(
         "INSERT INTO pixies (id, slug, name, mascot, color, permission_mode,"
         " autonomy, project_access, skills, can_call, position, created_at, updated_at)"
-        " VALUES ('p1', 't', 'T', 'sprout', '#000000', 'default', 'observe', 'none',"
+        " VALUES ('p1', 't', 'T', 'sprig', '#000000', 'default', 'observe', 'none',"
         " '[]', '[]', 0, 'x', 'x')"
     )
     session = await env.store.create(new_session(repo="pixie:p1", pixie_id="p1"))

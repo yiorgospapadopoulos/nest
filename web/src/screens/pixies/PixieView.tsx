@@ -75,7 +75,7 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
           <Sprite
             mascot={pixie.mascot}
             color={pixie.color}
-            size={24}
+            size={20}
             working={working}
             phaseKey={pixie.id}
           />
@@ -151,7 +151,7 @@ function PixieChat({ pixie, working, onOpenPixie, onOpenChat }: ChatProps) {
               <Sprite
                 mascot={pixie.mascot}
                 color={pixie.color}
-                size={96}
+                size={80}
                 working={working}
                 phaseKey={pixie.id}
               />

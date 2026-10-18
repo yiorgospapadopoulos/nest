@@ -50,7 +50,7 @@ class PixieSettings(_IgnoresRemoved):
     """Everything the user sets on a pixie."""
 
     name: Name
-    mascot: Mascot = "invader"
+    mascot: Mascot = "bluebell"
     color: Color = "#8B7CF6"
     # None: the agent defaults' model and effort.
     model: str | None = None

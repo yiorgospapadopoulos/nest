@@ -1332,13 +1332,6 @@ a.csign {
   animation-iteration-count: infinite;
   animation-delay: var(--pxph);
 }
-.pxwork .pxeye {
-  animation-name: pxwink;
-  animation-duration: 2040ms;
-  animation-timing-function: step-end;
-  animation-iteration-count: infinite;
-  animation-delay: var(--pxph);
-}
 @keyframes pxhop {
   0%,
   75% {
@@ -1348,7 +1341,7 @@ a.csign {
     transform: translateY(-1px);
   }
 }
-/* Eye holes fill, and lone eye cells go out, from 1530 ms to 1870 ms of 2040. */
+/* The lids cover the eyes in the body colour from 1530 ms to 1870 ms of 2040 (B89). */
 @keyframes pxblink {
   0%,
   91.6666% {
@@ -1356,15 +1349,6 @@ a.csign {
   }
   75% {
     opacity: 1;
-  }
-}
-@keyframes pxwink {
-  0%,
-  91.6666% {
-    opacity: 1;
-  }
-  75% {
-    opacity: 0;
   }
 }
 /* In a pixie row the name has priority: the @handle starts from no width and only grows
@@ -2700,7 +2684,7 @@ div.pxr:active {
 /* The same grid before a team's name in its work page's header. */
 .wkteam {
   display: inline-grid;
-  grid-template-columns: repeat(2, 11px);
+  grid-template-columns: repeat(2, 9px);
   gap: 2px;
   vertical-align: -3px;
   margin-right: 8px;

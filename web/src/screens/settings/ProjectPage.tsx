@@ -280,7 +280,7 @@ function Look({ repo }: { repo: RepoConfig }) {
           { value: "sprite", label: "Pixie sprite" },
         ]}
         onChange={(kind) => {
-          save({ icon: kind === "initials" ? null : (repo.icon ?? "invader") });
+          save({ icon: kind === "initials" ? null : (repo.icon ?? "bluebell") });
         }}
       />
       {repo.icon !== null && (

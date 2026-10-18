@@ -319,10 +319,10 @@ const calls: Call[] = [
   ],
   [
     "updatePixie",
-    (a) => a.updatePixie("p 1", { mascot: "ghost" }),
+    (a) => a.updatePixie("p 1", { mascot: "brook" }),
     "PATCH",
     "/api/pixies/p%201",
-    { mascot: "ghost" },
+    { mascot: "brook" },
   ],
   ["deletePixie", (a) => a.deletePixie("p1"), "DELETE", "/api/pixies/p1", undefined],
   [

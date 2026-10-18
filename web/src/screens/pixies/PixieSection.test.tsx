@@ -73,7 +73,7 @@ describe("Pixies section", () => {
     const api = fakeApi();
     api.createPixie
       .mockRejectedValueOnce(new Error("Disk full"))
-      .mockResolvedValueOnce(pixie({ id: "p2", name: "Tester", mascot: "robot" }));
+      .mockResolvedValueOnce(pixie({ id: "p2", name: "Tester", mascot: "star" }));
     const { user } = await renderApp({ api });
     await user.click(screen.getByRole("tab", { name: "Projects" }));
 
@@ -85,7 +85,7 @@ describe("Pixies section", () => {
     expect(api.createPixie).toHaveBeenLastCalledWith(
       expect.objectContaining({
         name: "Tester",
-        mascot: "robot",
+        mascot: "star",
         soul: expect.any(String) as string,
       }),
     );

@@ -21,7 +21,7 @@ async def test_create_list_update_and_delete(db: Database, clock: FakeClock) -> 
     await store.delete(second.id)
 
     assert (first.position, second.position) == (0, 1)
-    assert first.mascot == "invader"
+    assert first.mascot == "bluebell"
     assert first.autonomy == "observe"
     assert first.project_access == "edit"
     assert first.can_call == ["x"]
