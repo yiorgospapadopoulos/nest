@@ -273,8 +273,12 @@ struct Composer: View {
         .padding(.trailing, 5)
         .background {
             // Over the chat background, the start field keeps its own ground.
+            // A click anywhere in the field, not only on the text line, puts the cursor in it.
             shape.fill(Palette.soft)
                 .background(start ? Palette.windowOpaque.opacity(0.85) : .clear, in: shape)
+                .contentShape(shape)
+                .pointerStyle(.horizontalText)
+                .onTapGesture { focused = true }
         }
         .overlay(
             shape.strokeBorder(
