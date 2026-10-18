@@ -255,7 +255,7 @@ async def test_the_project_icon_is_set_cleared_or_left_alone(api: Api, tmp_path:
     await api.http.post("/api/repos", json={"path": str(repo)})
     config = api.ctx.paths.repos_dir / "project.toml"
 
-    sprite = await api.http.patch("/api/repos/project", json={"icon": "frog"})
+    sprite = await api.http.patch("/api/repos/project", json={"icon": "dragonfly"})
     colored = await api.http.patch("/api/repos/project", json={"icon_color": "#3DDC84"})
     saved = config.read_text(encoding="utf-8")
     worktree = await api.http.patch("/api/repos/project", json={"default": True})
@@ -263,11 +263,11 @@ async def test_the_project_icon_is_set_cleared_or_left_alone(api: Api, tmp_path:
     plain = await api.http.patch("/api/repos/project", json={"icon_color": None})
 
     assert sprite.status_code == 200, sprite.text
-    assert (sprite.json()["icon"], sprite.json()["icon_color"]) == ("frog", None)
-    assert (colored.json()["icon"], colored.json()["icon_color"]) == ("frog", "#3DDC84")
-    assert 'icon = "frog"' in saved
+    assert (sprite.json()["icon"], sprite.json()["icon_color"]) == ("dragonfly", None)
+    assert (colored.json()["icon"], colored.json()["icon_color"]) == ("dragonfly", "#3DDC84")
+    assert 'icon = "dragonfly"' in saved
     assert 'icon_color = "#3DDC84"' in saved
-    assert (worktree.json()["icon"], worktree.json()["icon_color"]) == ("frog", "#3DDC84")
+    assert (worktree.json()["icon"], worktree.json()["icon_color"]) == ("dragonfly", "#3DDC84")
     assert (initials.json()["icon"], initials.json()["icon_color"]) == (None, "#3DDC84")
     assert (plain.json()["icon"], plain.json()["icon_color"]) == (None, None)
     assert plain.json()["worktree"]["default"] is True
@@ -278,6 +278,36 @@ async def test_the_project_icon_is_set_cleared_or_left_alone(api: Api, tmp_path:
         (None, {"name": "project", "repo": response.json()})
         for response in (sprite, colored, worktree, initials, plain)
     ]
+
+
+async def test_an_old_icon_name_is_taken_and_saved_as_its_new_name(
+    api: Api, tmp_path: Path
+) -> None:
+    """B89: a client from before the fairy redesign sends the old mascot names."""
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    config = api.ctx.paths.repos_dir / "project.toml"
+
+    response = await api.http.patch("/api/repos/project", json={"icon": "frog"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["icon"] == "dragonfly"
+    assert 'icon = "dragonfly"' in config.read_text(encoding="utf-8")
+
+
+async def test_an_icon_saved_with_an_old_name_is_written_back_new(api: Api, tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "project")
+    await api.http.post("/api/repos", json={"path": str(repo)})
+    config = api.ctx.paths.repos_dir / "project.toml"
+    # A top-level key, so it goes before the file's tables.
+    config.write_text('icon = "mushroom"\n' + config.read_text(encoding="utf-8"), encoding="utf-8")
+
+    listed = await api.http.get("/api/repos/project")
+    colored = await api.http.patch("/api/repos/project", json={"icon_color": "#3DDC84"})
+
+    assert listed.json()["icon"] == "rose"
+    assert colored.json()["icon"] == "rose"
+    assert 'icon = "rose"' in config.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
