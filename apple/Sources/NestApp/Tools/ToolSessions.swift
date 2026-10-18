@@ -46,7 +46,9 @@ final class ToolSessions {
 /// A container for a pane's AppKit content that reports clicks, so a click into the
 /// terminal or the page focuses its pane like a click anywhere else in a pane. It clips
 /// its content to its bounds, since SwiftUI's clip shapes do not reach AppKit views and
-/// views no longer clip by default, and it keeps the content exactly its own size.
+/// views no longer clip by default, and it keeps the content exactly its own size. It fades
+/// itself while another pane has the focus (B93), as SwiftUI's opacity does not reliably
+/// reach AppKit content either.
 final class PaneContentView: NSView {
     var onClick: (() -> Void)?
 
@@ -55,11 +57,14 @@ final class PaneContentView: NSView {
         wantsLayer = true
         clipsToBounds = true
         layer?.masksToBounds = true
-        // The pane's panel is rounded and SwiftUI's clip does not reach AppKit content: its
-        // bottom corners (the header covers the top) round with the panel, inside its ring.
-        layer?.cornerRadius = PaneColors.radius - 1
-        layer?.cornerCurve = .continuous
-        layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+    }
+
+    /// Hides the content under a maximized pane and fades it in an unfocused one.
+    func follow(_ environment: EnvironmentValues) {
+        isHidden = environment.paneHidden
+        alphaValue =
+            environment.paneDimmed
+            ? PaneColors.contentOpacity(dark: environment.colorScheme == .dark) : 1
     }
 
     @available(*, unavailable)
