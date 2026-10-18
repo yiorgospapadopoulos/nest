@@ -6,7 +6,7 @@ import { fakeApi } from "../../test/fakeApi.ts";
 import { detail, event, groupEntry, pixie, repo, session, team } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 
-const tester = pixie({ id: "p1", slug: "tester", name: "Tester", mascot: "owl" });
+const tester = pixie({ id: "p1", slug: "tester", name: "Tester", mascot: "moth" });
 const message = (id: number, parent: string | null, ...blocks: JsonObject[]) =>
   event({ id, type: "session.message", payload: { parent_tool_use_id: parent, blocks } });
 const callTester = (id: string) => ({

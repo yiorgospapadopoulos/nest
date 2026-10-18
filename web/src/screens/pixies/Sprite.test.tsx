@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defined } from "../../test/defined.ts";
 import { reduceMotion } from "../../test/motion.ts";
+import { MASCOT_SPRITES } from "../../generated/mascots.ts";
 import { phaseOffset } from "./motion.ts";
+import { MASCOTS } from "./options.ts";
 import { Sprite, WorkingDot } from "./Sprite.tsx";
 
 // The spec both apps follow (B48): what a working sprite shows `t` ms into its clock.
@@ -17,51 +19,101 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const sprite = () => screen.getByRole("img", { name: "invader" });
-const cells = (group: Element | null) =>
-  [...(group?.querySelectorAll("rect") ?? [])].map(
-    (r) => `${String(r.getAttribute("x"))},${String(r.getAttribute("y"))}`,
-  );
+const sprite = (name = "bluebell") => screen.getByRole("img", { name });
 
-describe("a pixie's sprite at rest and at work (B48)", () => {
-  it("stays perfectly still while idle", () => {
-    render(<Sprite mascot="invader" color="#E5484D" size={24} />);
+// Every drawn cell as "x,y fill opacity", a rect of width n standing for n cells in a row.
+function painted(group: Element | null): string[] {
+  return [...(group?.querySelectorAll(":scope > rect") ?? [])].flatMap((r) => {
+    const x = Number(r.getAttribute("x"));
+    const y = Number(r.getAttribute("y"));
+    expect(r).toHaveAttribute("height", "1");
+    const tone = `${String(r.getAttribute("fill"))} ${r.getAttribute("fill-opacity") ?? "1"}`;
+    return Array.from(
+      { length: Number(r.getAttribute("width")) },
+      (_, i) => `${String(x + i)},${String(y)} ${tone}`,
+    );
+  });
+}
+
+describe("a pixie's sprite at rest and at work (B48, B89)", () => {
+  it("stays perfectly still while idle, square on its 14 by 14 grid", () => {
+    render(<Sprite mascot="bluebell" color="#E5484D" size={24} />);
     const svg = sprite();
     expect(svg).not.toHaveClass("pxwork");
     expect(svg.style.getPropertyValue("--pxph")).toBe("");
     expect(svg.querySelector(".pxlid")).toBeNull();
     expect(svg).toHaveAttribute("width", "24");
-    expect(svg).toHaveAttribute("height", "20");
+    expect(svg).toHaveAttribute("height", "24");
+    expect(svg).toHaveAttribute("viewBox", "0 0 14 14");
   });
 
-  it("hops and blinks its eye holes while working, from its own phase", () => {
-    render(<Sprite mascot="invader" color="#E5484D" size={24} working phaseKey="scribe" />);
+  it("draws each cell in its tone of the pixie's colour and leaves empty cells out", () => {
+    // The tones of #E5484D, worked by hand (see tones.test.ts).
+    const tones: Record<string, string> = {
+      "#": "#E5484D 1",
+      "+": "#A03236 1",
+      o: "#F7C8CA 1",
+      "*": "#F19A9D 0.85",
+      e: "#221E29 1",
+      k: "#221E29 1",
+    };
+    for (const mascot of MASCOTS) {
+      const { unmount } = render(<Sprite mascot={mascot} color="#E5484D" size={28} />);
+      const expected = MASCOT_SPRITES[mascot].flatMap((row, y) =>
+        Array.from({ length: row.length }, (_, x) => row.charAt(x)).flatMap((code, x) =>
+          code === "." ? [] : [`${String(x)},${String(y)} ${defined(tones[code])}`],
+        ),
+      );
+      expect(painted(sprite(mascot).querySelector(".pxhop")).sort(), mascot).toEqual(
+        expected.sort(),
+      );
+      unmount();
+    }
+  });
+
+  it("offers every mascot in the picker, in the design's order", () => {
+    expect(MASCOTS).toEqual(Object.keys(MASCOT_SPRITES));
+  });
+
+  it("joins a row's run of one tone into a single rect", () => {
+    render(<Sprite mascot="bluebell" color="#E5484D" size={24} />);
+    // Row 0 is "....######....": one rect six cells wide.
+    const top = [...sprite().querySelectorAll(".pxhop > rect[y='0']")];
+    expect(top).toHaveLength(1);
+    expect(top[0]).toHaveAttribute("x", "4");
+    expect(top[0]).toHaveAttribute("width", "6");
+  });
+
+  it("hops and blinks while working, from its own phase, drawing its eyes in its colour", () => {
+    render(<Sprite mascot="bluebell" color="#E5484D" size={24} working phaseKey="scribe" />);
     const svg = sprite();
     expect(svg).toHaveClass("pxwork");
     expect(svg.style.getPropertyValue("--pxph")).toBe(`-${String(phaseOffset("scribe"))}ms`);
     // The same box: the hop draws above it rather than growing it.
     expect(svg).toHaveAttribute("width", "24");
-    expect(svg).toHaveAttribute("height", "20");
+    expect(svg).toHaveAttribute("height", "24");
     expect(svg).toHaveAttribute("overflow", "visible");
-    expect(cells(svg.querySelector(".pxhop > .pxlid"))).toEqual(["4,3", "7,3"]);
-    expect(svg.querySelector(".pxlid rect")).toHaveAttribute("fill", "#E5484D");
+    // Bluebell's eyes are the two "e" cells of row 5, ".oeooooeo.".
+    expect(painted(svg.querySelector(".pxhop > .pxlid"))).toEqual([
+      "4,5 #E5484D 1",
+      "9,5 #E5484D 1",
+    ]);
   });
 
-  it("lets a mascot without eye holes put its lone eye cells out instead", () => {
-    const { rerender } = render(<Sprite mascot="robot" color="#0090FF" size={24} />);
-    const svg = screen.getByRole("img", { name: "robot" });
-    // The eyes are drawn in their own group at rest too, so nothing moves on start.
-    expect(cells(svg.querySelector(".pxhop > .pxeye"))).toEqual(["4,4", "7,4"]);
-    expect(svg.querySelector(".pxlid")).toBeNull();
-    const all = svg.querySelectorAll("rect");
-    rerender(<Sprite mascot="robot" color="#0090FF" size={24} working />);
-    expect(svg).toHaveClass("pxwork");
-    expect(svg.querySelectorAll("rect")).toHaveLength(all.length);
+  it("gives every mascot eyes to blink", () => {
+    for (const mascot of MASCOTS) {
+      const { unmount } = render(<Sprite mascot={mascot} color="#0090FF" size={24} working />);
+      const lid = painted(sprite(mascot).querySelector(".pxlid"));
+      const eyes = MASCOT_SPRITES[mascot].join("").split("e").length - 1;
+      expect(lid.length, mascot).toBe(eyes);
+      expect(eyes, mascot).toBeGreaterThan(0);
+      unmount();
+    }
   });
 
   it("does not move under Reduce Motion, and follows the setting as it changes", () => {
     const motion = reduceMotion(true);
-    const { unmount } = render(<Sprite mascot="invader" color="#E5484D" size={24} working />);
+    const { unmount } = render(<Sprite mascot="bluebell" color="#E5484D" size={24} working />);
     expect(sprite()).not.toHaveClass("pxwork");
     expect(sprite().querySelector(".pxlid")).toBeNull();
     motion.flip(false);
@@ -74,7 +126,7 @@ describe("a pixie's sprite at rest and at work (B48)", () => {
 
   it("moves where the browser cannot tell the setting", () => {
     vi.stubGlobal("matchMedia", undefined);
-    const { unmount } = render(<Sprite mascot="invader" color="#E5484D" size={24} working />);
+    const { unmount } = render(<Sprite mascot="bluebell" color="#E5484D" size={24} working />);
     expect(sprite()).toHaveClass("pxwork");
     unmount();
   });
@@ -121,7 +173,6 @@ describe("the stylesheet's keyframes (B48)", () => {
   };
   const hop = keyframes("pxhop");
   const lid = keyframes("pxblink");
-  const eye = keyframes("pxwink");
 
   it("match the spec at every 10 ms of the blink cycle", () => {
     for (let t = 0; t < 2040; t += 10) {
@@ -130,9 +181,6 @@ describe("the stylesheet's keyframes (B48)", () => {
       expect(up ? -1 : 0, `hop at ${String(t)} ms`).toBe(frame.dy);
       const shut = valueAt(lid, "opacity", t / 2040) === "1";
       expect(shut, `lids at ${String(t)} ms`).toBe(frame.blink);
-      expect(valueAt(eye, "opacity", t / 2040) === "0", `eyes at ${String(t)} ms`).toBe(
-        frame.blink,
-      );
     }
   });
 
@@ -146,7 +194,6 @@ describe("the stylesheet's keyframes (B48)", () => {
     for (const [selector, name, ms] of [
       [".pxwork .pxhop", "pxhop", "680ms"],
       [".pxwork .pxlid", "pxblink", "2040ms"],
-      [".pxwork .pxeye", "pxwink", "2040ms"],
     ] as const) {
       const s = style(selector);
       expect(s.getPropertyValue("animation-name")).toBe(name);
