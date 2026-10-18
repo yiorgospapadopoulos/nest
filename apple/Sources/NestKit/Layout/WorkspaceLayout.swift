@@ -150,21 +150,39 @@ public indirect enum LayoutNode: Sendable, Hashable {
     }
 }
 
-/// The space between a split's two children, where dragging resizes them.
+/// The divider between a split's two children, where dragging resizes them.
 public struct GutterFrame: Sendable, Hashable {
     public let split: Int
     public let direction: SplitDirection
     public let ratio: Double
+    /// The divider line itself.
     public let frame: CGRect
     /// The split's length along its direction without the gutter; a drag of this many
     /// points moves the ratio by 1.
     public let span: Double
+
+    /// Where the pointer grabs the divider: `WorkspaceLayout.gutterGrabWidth` across,
+    /// centred on the line and reaching over the edges of the panes on both sides.
+    public var grabArea: CGRect {
+        let reach = (WorkspaceLayout.gutterGrabWidth - WorkspaceLayout.gutter) / 2
+        return direction == .row
+            ? frame.insetBy(dx: -reach, dy: 0) : frame.insetBy(dx: 0, dy: -reach)
+    }
 }
 
 /// Where a chat's pane sits in the workspace.
 public struct PanePlacement: Sendable, Hashable {
     public let chat: String
     public let frame: CGRect
+}
+
+/// How a chat's (or pixie's) sidebar row shows its pane (B93).
+public enum PaneRowState: Sendable, Hashable {
+    /// In the focused pane, or the only chat open.
+    case focused
+    /// Open in another pane.
+    case open
+    case closed
 }
 
 /// What opening a chat did.
@@ -181,7 +199,10 @@ public struct WorkspaceLayout: Sendable, Hashable {
     public static let maximumPanes = 4
     public static let minimumPaneWidth = 280.0
     public static let minimumPaneHeight = 180.0
-    public static let gutter = 10.0
+    /// The divider between two panes (B93: panes sit edge to edge).
+    public static let gutter = 1.0
+    /// How wide the divider is to grab for resizing.
+    public static let gutterGrabWidth = 10.0
     /// A new chat goes beside a pane when both halves keep at least this width.
     public static let minimumSideBySideWidth = 360.0
 
@@ -316,6 +337,21 @@ public struct WorkspaceLayout: Sendable, Hashable {
         if focused == chat {
             focused = leaves.first
         }
+    }
+
+    /// Whether a pane draws dimmed (B93): with two or more panes on screen, every pane
+    /// but the focused one. A maximized pane shows alone, so nothing is dimmed then.
+    public func isDimmed(_ pane: String) -> Bool {
+        maximized == nil && leaves.count > 1 && contains(pane) && focused != pane
+    }
+
+    /// How the sidebar row of a chat or pixie shows its pane: focused when its pane has the
+    /// focus or it is the only chat open (beside terminal or browser panes), open when
+    /// another pane has it, else closed. Tool panes have no row and read as closed.
+    public func rowState(of chat: String) -> PaneRowState {
+        guard PaneKind(paneID: chat) == .chat, contains(chat) else { return .closed }
+        let chats = leaves.filter { PaneKind(paneID: $0) == .chat }
+        return focused == chat || chats == [chat] ? .focused : .open
     }
 
     public mutating func focus(_ chat: String) {

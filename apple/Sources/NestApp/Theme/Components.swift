@@ -327,7 +327,41 @@ private struct RowGlowEffect: ViewModifier {
     }
 }
 
+extension PaneRowState {
+    /// A sidebar row's title: primary when focused, a little brighter when open than when
+    /// closed (B93).
+    var titleColor: Color {
+        switch self {
+        case .focused: Palette.t1
+        case .open: Palette.sidebarTextOpen
+        case .closed: Palette.sidebarTextClosed
+        }
+    }
+}
+
+/// Sidebar rows' sizes (B93): content and section labels 16 points in from the bar's
+/// leading edge; one-line rows 30 points high.
+enum SidebarRowMetrics {
+    static let inset = 16.0
+    static let height = 30.0
+}
+
 extension View {
+    /// A sidebar row that fills the bar's width with square corners (B93): the soft fill
+    /// for the chat in the focused pane, the faint one for chats open in other panes and
+    /// for a hovered row, none for a closed one.
+    func sidebarRow(_ state: PaneRowState, hovering: Bool) -> some View {
+        background(
+            state == .focused
+                ? Palette.sidebarRowFocused
+                : state == .open || hovering ? Palette.sidebarRowOpen : .clear)
+    }
+
+    /// New chat and the other action rows of a sidebar, filled faintly on hover.
+    func sidebarActionRow() -> some View {
+        buttonStyle(RowHoverStyle(radius: 0, fill: Palette.sidebarRowOpen))
+    }
+
     /// The running row's glow while `active`.
     func rowGlow(_ active: Bool, radius: Double = Radius.row) -> some View {
         modifier(RowGlowEffect(active: active, radius: radius))
@@ -512,13 +546,14 @@ private struct ListRowBackground: ViewModifier {
 /// Buttons laid out as list rows: primary text, the hover fill while hovered or pressed.
 struct RowHoverStyle: ButtonStyle {
     var radius = Radius.row
+    var fill = Palette.hover
 
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
                 .foregroundStyle(Palette.t1)
                 .background(
-                    hovering || configuration.isPressed ? Palette.hover : .clear,
+                    hovering || configuration.isPressed ? fill : .clear,
                     in: .rounded(radius)
                 )
                 .pointerStyle(.link)

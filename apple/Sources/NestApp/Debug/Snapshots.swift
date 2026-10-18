@@ -220,6 +220,10 @@
                 try await renderGoals(model, shell, controller, folder)
                 return
             }
+            if only == "b93" {
+                try await renderFocusDim(model, shell, controller, folder)
+                return
+            }
             if only == "b90" {
                 try await renderStartScreen(model, shell, controller, folder)
                 return
@@ -1973,6 +1977,110 @@
             return url
         }
 
+        /// B93 focus dim: panes edge to edge with 1 point dividers; every pane but the
+        /// focused one darker with its content faded and its title grey. Three chats with
+        /// the middle one focused (and over the chat background), one chat alone, a chat
+        /// beside a terminal (focused, then the terminal focused), and two pixie panes.
+        private static func renderFocusDim(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            for id in ["c1", "c2", "c3"] {
+                try await model.transcripts.transcript(for: id).load()
+            }
+            func arrange(_ build: @escaping (inout ProjectState) -> Void) {
+                model.app.update("cv-page") { state in
+                    state.view = .workspace
+                    state.layout = WorkspaceLayout()
+                    state.leftCollapsed = false
+                    state.rightCollapsed = false
+                    state.openCards = [.needsYou]
+                    build(&state)
+                }
+                shell.syncTools()
+            }
+            arrange { state in
+                for id in ["c1", "c2", "c3"] {
+                    state.openChat(id, in: workspace)
+                }
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b93-three-chats", folder)
+
+            // Scrolled up in the focused c2 with a message out of view, then c1 takes the
+            // focus: c2 jumps to the latest on its own and the Jump to latest button goes.
+            let c2 = model.transcripts.transcript(for: "c2")
+            c2.receive(
+                sampleMessage(
+                    nextMessageID,
+                    (1...12).map { "Paragraph \($0) of a long answer that runs past the pane." }
+                        .joined(separator: "\n\n")))
+            nextMessageID += 1
+            arrange { state in
+                state.openChat("c2", in: workspace)
+                state.openChat("c1", in: workspace)
+                state.focusPane("c2")
+            }
+            try await snap(controller, "b93-unfocused-jumps-dark", .darkAqua, folder) { host in
+                await scrollUpThenReceive(in: host, transcript: c2)
+                model.app.update("cv-page") { $0.focusPane("c1") }
+                try? await Task.sleep(for: .milliseconds(700))
+                if let scroll = textViews(in: host).first?.enclosingScrollView {
+                    let clip = scroll.contentView
+                    let bottom = (scroll.documentView?.frame.height ?? 0) - clip.bounds.height
+                    print("unfocused c2 offset \(clip.bounds.origin.y) of \(bottom)")
+                }
+            }
+
+            arrange { $0.openChat("c1", in: workspace) }
+            try await pair(controller, "b93-one-chat", folder)
+
+            let terminal = ToolPane.terminal(in: "/Users/me/Personal projects/cv-page")
+            arrange { state in
+                state.openChat("c1", in: workspace)
+                state.openTool(terminal, in: workspace)
+                state.focusPane("c1")
+            }
+            let session = shell.tools.terminal(for: terminal)
+            session.view.feed(text: sampleTerminal)
+            try await pair(controller, "b93-chat-and-terminal", folder) { _ in
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            model.app.update("cv-page") { $0.focusPane(terminal.id) }
+            try await pair(controller, "b93-terminal-focused", folder) { _ in
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+
+            // Over the chat background image.
+            let image = try sampleBackgroundImage()
+            model.settings.chatBackground.image = image.path
+            model.settings.chatBackground.chatsVisibility = 0.12
+            for blur in [0, ChatBackground.workspaceBlur(hasChats: true)] {
+                _ = await BackdropRenderer.shared.image(for: .init(path: image.path, blur: blur))
+            }
+            _ = await BackdropRenderer.shared.image(
+                for: .init(path: image.path, blur: ChatBackground.chromeBlur, dithered: false))
+            arrange { state in
+                for id in ["c1", "c2", "c3"] {
+                    state.openChat(id, in: workspace)
+                }
+                state.focusPane("c2")
+            }
+            try await pair(controller, "b93-three-chats-background", folder)
+            model.settings.chatBackground = ChatBackgroundSettings()
+
+            // Two pixie panes on the Pixies tab, Watcher focused.
+            try await model.sessions.fetch("p2")
+            shell.openPixies()
+            shell.openPixie("reviewer")
+            shell.openPixie("watcher")
+            shell.pixieDetailsOpen = false
+            try await pair(controller, "b93-pixies", folder)
+            shell.keepPixiePanes()
+            shell.selectProject("cv-page")
+        }
+
         /// B36: the Mac look in light and dark: two chats side by side as in the mockup, the
         /// board, the Settings sheet, Project settings' icon picker, the base components with a second accent, and panes at
         /// the widths a window gives them.
@@ -3293,7 +3401,21 @@
             for (view, image) in images {
                 let rect = view.convert(view.bounds, to: host)
                 let y = host.isFlipped ? host.bounds.height - rect.maxY : rect.minY
-                image.draw(in: CGRect(x: rect.minX, y: y, width: rect.width, height: rect.height))
+                // At the alpha its pane gives it, faded while another pane has the focus.
+                var alpha = 1.0
+                var ancestor: NSView? = view
+                while let current = ancestor {
+                    alpha *= current.alphaValue
+                    ancestor = current.superview
+                }
+                let target = CGRect(x: rect.minX, y: y, width: rect.width, height: rect.height)
+                // The full-strength terminal the window's own drawing left under it: covered
+                // with its background, which is the pane's fill, before it fades on top.
+                if alpha < 1, let terminal = view as? NestTerminalView {
+                    terminal.nativeBackgroundColor.setFill()
+                    target.fill()
+                }
+                image.draw(in: target, from: .zero, operation: .sourceOver, fraction: alpha)
             }
             NSGraphicsContext.restoreGraphicsState()
         }

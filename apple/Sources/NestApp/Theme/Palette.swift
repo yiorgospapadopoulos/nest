@@ -44,6 +44,14 @@ enum Palette {
     static let pane = Color(Mac.pane)
     /// A chat, terminal or browser pane: a soft card in light, the base in dark.
     static let chatPane = Color(Mac.chatPane)
+    /// An unfocused pane's darker fill when two or more panes are open (B93 focus dim).
+    static let unfocusedPane = Color(Mac.unfocusedPane)
+    /// Sidebar rows (B93): the focused pane's chat, chats open in other panes or a
+    /// hovered row, and the titles of open and closed rows.
+    static let sidebarRowFocused = Color(Mac.sidebarRowFocused)
+    static let sidebarRowOpen = Color(Mac.sidebarRowOpen)
+    static let sidebarTextOpen = Color(Mac.sidebarTextOpen)
+    static let sidebarTextClosed = Color(Mac.sidebarTextClosed)
     /// Sheets, popovers, menus, the palette and floating banners.
     static let sheet = Color(Mac.sheet)
     /// A selected row, tab or segment with the default accent; see `AccentColors.selection`.
@@ -131,6 +139,9 @@ extension EnvironmentValues {
     /// The pane sits under a maximized one: its AppKit content (a web view or terminal)
     /// must hide, since transparency alone neither hides it reliably nor stops its clicks.
     @Entry var paneHidden = false
+    /// Another pane has the focus (B93): the pane's fill darkens, its content below the
+    /// header fades and its title turns grey.
+    @Entry var paneDimmed = false
     /// The pane's slot in the workspace: its content lays out to it and never past it.
     @Entry var paneSize: CGSize?
     /// What the pane's header and composer show at the slot's width.

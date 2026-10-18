@@ -104,6 +104,15 @@ private final class ProcessRelay: @preconcurrency LocalProcessTerminalViewDelega
 
 /// The terminal in the theme's colors and the app's mono font, following light and dark.
 final class NestTerminalView: LocalProcessTerminalView {
+    /// Another pane has the focus: the cells paint the unfocused pane's fill (B93).
+    var dimmed = false {
+        didSet {
+            if dimmed != oldValue {
+                applyTheme()
+            }
+        }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
@@ -125,7 +134,7 @@ final class NestTerminalView: LocalProcessTerminalView {
         let mac = DesignTokens.Colors.Mac.self
         nativeForegroundColor = .resolved(mac.textPrimary, dark: dark)
         // SwiftTerm paints cells opaquely, so the panel's fill is laid over the window's.
-        nativeBackgroundColor = PaneColors.opaqueFill(dark: dark)
+        nativeBackgroundColor = PaneColors.opaqueFill(dark: dark, dimmed: dimmed)
         caretColor = .resolved(mac.textSecondary, dark: dark)
         selectedTextBackgroundColor = .resolved(mac.selection, over: mac.windowOpaque, dark: dark)
     }
@@ -146,7 +155,8 @@ private struct TerminalHost: NSViewRepresentable {
     func updateNSView(_ container: PaneContentView, context: Context) {
         container.onClick = focus
         container.show(session.view)
-        container.isHidden = context.environment.paneHidden
+        container.follow(context.environment)
+        session.view.dimmed = context.environment.paneDimmed
     }
 
     func sizeThatFits(
@@ -170,7 +180,7 @@ struct TerminalPaneView: View {
                     .foregroundStyle(Palette.t3)
                 Text(pane.title)
                     .font(.ui(TypeSize.ui, .medium))
-                    .foregroundStyle(Palette.t1)
+                    .modifier(PaneTitleColor())
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(pane.folder ?? "")
@@ -181,7 +191,7 @@ struct TerminalPaneView: View {
                 .padding(EdgeInsets(top: 8, leading: 14, bottom: 6, trailing: 4))
                 .overlay(alignment: .bottom) {
                     if session.exited {
-                        ExitedBar { session.start() }
+                        ExitedBar { session.start() }.modifier(PaneBodyDim())
                     }
                 }
         }

@@ -21,7 +21,7 @@ struct ChatTreeView: View {
                 }
             }
             // The tree's line starts under the centre of the chat's status mark slot.
-            .padding(.leading, 11.5)
+            .padding(.leading, SidebarRowMetrics.inset + 1.5)
             .padding(.bottom, 2)
         }
     }

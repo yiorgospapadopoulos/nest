@@ -7,7 +7,6 @@ import SwiftUI
 struct ClaudeChatRow: View {
     let chat: ClaudeChat
     @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
     @Environment(\.revealsHoverControls) private var revealsHoverControls
     @State private var hovering = false
 
@@ -17,7 +16,7 @@ struct ClaudeChatRow: View {
         let state = shell.projectState
         let pane = chat.paneID
         let isOpen = state.layout.contains(pane)
-        let isSelected = state.selectedChat == pane
+        let rowState = state.layout.rowState(of: pane)
         let place = ChatPlace.of(chat, repo: shell.repo)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             // A plain dot in the same slot as the chat rows' marks, so the titles line up.
@@ -25,7 +24,7 @@ struct ClaudeChatRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(chat.title)
                     .font(.ui(TypeSize.ui))
-                    .foregroundStyle(Palette.t1)
+                    .foregroundStyle(rowState.titleColor)
                     .lineLimit(1)
                 if place != nil || chat.openInClaudeCode {
                     HStack(spacing: 4) {
@@ -48,12 +47,10 @@ struct ClaudeChatRow: View {
             // Room for the "..." button, so the lines end before it rather than under it.
             .padding(.trailing, showsMenu ? 20 : 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, SidebarRowMetrics.inset)
         .padding(.vertical, 5)
-        .background(
-            isSelected ? accent.selection : (isOpen || hovering) ? Palette.soft : .clear,
-            in: .rounded(Radius.row)
-        )
+        .frame(minHeight: SidebarRowMetrics.height)
+        .sidebarRow(rowState, hovering: hovering)
         .overlay(alignment: .trailing) {
             if showsMenu {
                 RowActionsMenu(title: chat.title) { ClaudeChatActions(chat: chat) }

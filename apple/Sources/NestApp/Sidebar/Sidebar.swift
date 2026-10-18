@@ -69,11 +69,11 @@ private struct SidebarFull: View {
                 }
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(Palette.t2)
-                .padding(.horizontal, 10)
-                .frame(height: Metrics.rowHeight)
+                .padding(.horizontal, SidebarRowMetrics.inset)
+                .frame(height: SidebarRowMetrics.height)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(RowHoverStyle())
+            .sidebarActionRow()
             .padding(.top, 2)
             .help("New chat (\(shell.shortcuts.shortcut(for: .newChat).display))")
 
@@ -92,7 +92,8 @@ private struct SidebarFull: View {
             }
             .scrollIndicators(.never)
         }
-        .padding(EdgeInsets(top: 8, leading: 6, bottom: 4, trailing: 6))
+        // Rows fill the bar's width (B93); their content keeps its own inset.
+        .padding(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
     }
 }
 
@@ -155,7 +156,11 @@ private struct GroupSection: View {
             marker()
             SectionLabel(text: group.kind.title, count: group.entries.count)
         }
-        .padding(EdgeInsets(top: 12, leading: 10, bottom: 4, trailing: 10))
+        .padding(
+            EdgeInsets(
+                top: 12, leading: SidebarRowMetrics.inset, bottom: 4,
+                trailing: SidebarRowMetrics.inset)
+        )
         .contentShape(Rectangle())
     }
 }
