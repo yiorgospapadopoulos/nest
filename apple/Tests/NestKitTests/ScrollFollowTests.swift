@@ -14,6 +14,10 @@ import Testing
         follow.update(metrics)
     }
 
+    private func focus(_ follow: inout ScrollFollow, _ focused: Bool) -> Bool {
+        follow.focusChanged(focused: focused)
+    }
+
     private func arrive(_ follow: inout ScrollFollow) -> Bool {
         follow.contentArrived()
     }
@@ -138,5 +142,56 @@ import Testing
         #expect(follow.showsJump)
         #expect(!scroll(&follow, metrics(900, content: 1400)))
         #expect(follow.following)
+    }
+
+    // B93: a pane that loses the focus to another pane jumps to the latest and follows.
+
+    @Test func losingTheFocusJumpsToTheLatestAndFollowsAgain() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        _ = follow.update(metrics(100, content: 1000))
+        _ = follow.contentArrived()
+        #expect(follow.showsJump)
+        #expect(focus(&follow, false))
+        #expect(follow.following)
+        #expect(!follow.showsJump)
+        // New content keeps the unfocused pane at the bottom.
+        #expect(arrive(&follow))
+        // The jump's own scroll steps do not count as the user scrolling up.
+        #expect(scroll(&follow, metrics(300, content: 1200)))
+        _ = follow.update(metrics(700, content: 1200))
+        #expect(follow.following)
+    }
+
+    @Test func gainingOrKeepingTheFocusMovesNothing() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        _ = follow.update(metrics(100, content: 1000))
+        _ = follow.contentArrived()
+        // Still focused, or focused again: a reader who scrolled up stays where they are.
+        #expect(!focus(&follow, true))
+        #expect(!follow.following)
+        #expect(follow.showsJump)
+        // Unfocused, the jump reaches the bottom; the user then scrolls up again.
+        _ = follow.focusChanged(focused: false)
+        _ = follow.update(metrics(500, content: 1000))
+        _ = follow.update(metrics(100, content: 1000))
+        #expect(!focus(&follow, false), "already unfocused")
+        #expect(!focus(&follow, true))
+        #expect(!follow.following)
+    }
+
+    @Test func anUnfocusedPaneScrolledUpGoesBackToTheLatestWhenContentArrives() {
+        var follow = ScrollFollow()
+        _ = follow.focusChanged(focused: false)
+        // Scrolled up by hand while another pane has the focus.
+        _ = follow.update(metrics(500, content: 1000))
+        _ = follow.update(metrics(100, content: 1000))
+        #expect(!follow.following)
+        #expect(!follow.showsJump)
+        // New content brings it back to the latest; Jump to latest never shows.
+        #expect(arrive(&follow))
+        #expect(follow.following)
+        #expect(!follow.showsJump)
     }
 }
