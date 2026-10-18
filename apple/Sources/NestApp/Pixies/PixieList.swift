@@ -20,10 +20,10 @@ struct PixieList: View {
                     .foregroundStyle(Palette.t1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, SidebarRowMetrics.inset - 2)
             .frame(height: 30)
 
-            HStack(spacing: 2) {
+            HStack(spacing: 0) {
                 NewButton(title: "New pixie", icon: Icon.plus) {
                     shell.createPixie(CreatePixieRequest(name: "New pixie"), details: true)
                 }
@@ -34,7 +34,8 @@ struct PixieList: View {
 
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ReportsInbox()
+                    // Its cards keep the bar's former inset; the rows fill it (B93).
+                    ReportsInbox().padding(.horizontal, 6)
                     ForEach(sections.teams) { section in
                         TeamSection(section: section)
                     }
@@ -53,10 +54,10 @@ struct PixieList: View {
                 }
                 .buttonStyle(.nest(.plain))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 4)
+                .padding(.leading, 10)
             }
         }
-        .padding(EdgeInsets(top: 8, leading: 6, bottom: 8, trailing: 6))
+        .padding(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
         .frame(maxHeight: .infinity, alignment: .top)
         .sideSurface()
         .resizableSidebar()
@@ -79,11 +80,12 @@ private struct NewButton: View {
             }
             .font(.ui(TypeSize.ui))
             .foregroundStyle(Palette.t2)
-            .padding(.horizontal, 10)
-            .frame(height: Metrics.rowHeight)
+            .padding(.leading, SidebarRowMetrics.inset)
+            .padding(.trailing, 4)
+            .frame(height: SidebarRowMetrics.height)
             .contentShape(Rectangle())
         }
-        .buttonStyle(RowHoverStyle())
+        .sidebarActionRow()
     }
 }
 
@@ -107,7 +109,7 @@ private struct TeamSection: View {
                         .font(.ui(TypeSize.meta))
                         .foregroundStyle(Palette.t3)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 34)
+                        .padding(.leading, SidebarRowMetrics.inset + 25)
                         .frame(height: 24)
                 }
             }
@@ -148,11 +150,11 @@ private struct TeamHeader: View {
             }
         }
         .lineLimit(1)
-        .padding(.leading, 10)
-        .padding(.trailing, 3)
+        .padding(.leading, SidebarRowMetrics.inset - 6)
+        .padding(.trailing, 9)
         .frame(height: 28)
         .background(
-            targeted ? accent.selection : hovering ? Palette.soft : .clear, in: .rounded(Radius.row)
+            targeted ? accent.selection : hovering ? Palette.sidebarRowOpen : .clear
         )
         .contentShape(Rectangle())
         .pointerStyle(.link)
@@ -204,9 +206,9 @@ private struct LooseSection: View {
                         .foregroundStyle(Palette.t3)
                     Spacer(minLength: 0)
                 }
-                .padding(.leading, 34)
+                .padding(.leading, SidebarRowMetrics.inset + 25)
                 .frame(height: 28)
-                .background(targeted ? accent.selection : .clear, in: .rounded(Radius.row))
+                .background(targeted ? accent.selection : .clear)
                 .contentShape(Rectangle())
                 .onDrop(of: [.nestChat], isTargeted: $targeted) { _ in
                     guard case .chat(let id) = shell.dragging, shell.pixie(id) != nil else {
@@ -241,8 +243,9 @@ private struct PixieRow: View {
 
     var body: some View {
         let state = shell.app.pixieState
-        let selected = state.layout.focused == pixie.id
-        let open = state.layout.contains(pixie.id)
+        let rowState = state.layout.rowState(of: pixie.id)
+        let selected = rowState == .focused
+        let open = rowState != .closed
         let running = shell.isWorking(pixie)
         let waiting =
             shell.approvals.pending.count { $0.repo == "\(Pixie.repoPrefix)\(pixie.id)" }
@@ -273,13 +276,10 @@ private struct PixieRow: View {
                 StatusDot(tone: .running)
             }
         }
-        .padding(.leading, 10)
-        .padding(.trailing, showsMenu ? 3 : 10)
-        .frame(height: 30)
-        .background(
-            selected ? accent.selection : (open || hovering) ? Palette.soft : .clear,
-            in: .rounded(Radius.row)
-        )
+        .padding(.leading, SidebarRowMetrics.inset - 1)
+        .padding(.trailing, showsMenu ? 9 : SidebarRowMetrics.inset)
+        .frame(height: SidebarRowMetrics.height)
+        .sidebarRow(rowState, hovering: hovering)
         .contentShape(Rectangle())
         .overlay(alignment: dropsBelow ? .bottom : .top) {
             if targeted && dragged != pixie.id {
@@ -315,11 +315,16 @@ private struct PixieRow: View {
         .accessibilityAction(named: "Move Down") { shell.movePixie(pixie.id, by: 1) }
     }
 
+    /// The name's color by its pane: focused, open or closed (B93).
+    private var titleColor: Color {
+        shell.app.pixieState.layout.rowState(of: pixie.id).titleColor
+    }
+
     /// The name, "Leader" for the team's leader, and the @slug when `handle`.
     private func label(handle: Bool) -> some View {
         HStack(spacing: 6) {
             Text(pixie.name)
-                .foregroundStyle(pixie.hidden ? Palette.t2 : Palette.t1)
+                .foregroundStyle(pixie.hidden ? Palette.t2 : titleColor)
             if leader {
                 Text("Leader")
                     .font(.ui(TypeSize.micro, .medium))
