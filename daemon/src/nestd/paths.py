@@ -109,6 +109,11 @@ class AppPaths:
         return self.data_dir / "probe"
 
     @property
+    def ask_dir(self) -> Path:
+        """The empty working directory of the Claude calls artifact pages make (B88)."""
+        return self.data_dir / "ask"
+
+    @property
     def pixies_dir(self) -> Path:
         """Each pixie's soul, memory, notes and chat folder (D072)."""
         return self.data_dir / "pixies"
@@ -132,6 +137,7 @@ class AppPaths:
             self.agent_gh_dir,
             self.launchers_dir,
             self.probe_dir,
+            self.ask_dir,
             self.pixies_dir,
             self.artifacts_dir,
         ):

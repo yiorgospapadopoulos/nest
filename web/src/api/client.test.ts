@@ -605,6 +605,42 @@ const calls: Call[] = [
     undefined,
   ],
   ["deleteArtifact", (a) => a.deleteArtifact("a1"), "DELETE", "/api/artifacts/a1", undefined],
+  [
+    "artifactStorage",
+    (a) => a.artifactStorage("a/1"),
+    "GET",
+    "/api/artifacts/a%2F1/storage",
+    undefined,
+  ],
+  [
+    "writeArtifactStorage",
+    (a) => a.writeArtifactStorage("a1", { set: { k: "v" }, remove: ["x"] }),
+    "POST",
+    "/api/artifacts/a1/storage",
+    { set: { k: "v" }, remove: ["x"] },
+  ],
+  [
+    "clearArtifactStorage",
+    (a) => a.clearArtifactStorage("a1"),
+    "DELETE",
+    "/api/artifacts/a1/storage",
+    undefined,
+  ],
+  ["askStatus", (a) => a.askStatus("a1"), "GET", "/api/artifacts/a1/ask", undefined],
+  [
+    "askArtifact",
+    (a) => a.askArtifact("a1", { prompt: "Hi", system: "Brief" }),
+    "POST",
+    "/api/artifacts/a1/ask",
+    { prompt: "Hi", system: "Brief" },
+  ],
+  [
+    "saveArtifactVersion",
+    (a) => a.saveArtifactVersion("a/1", { content: "# New", base_version: 3 }),
+    "POST",
+    "/api/artifacts/a%2F1/versions",
+    { content: "# New", base_version: 3 },
+  ],
 ];
 
 describe("HttpApi", () => {

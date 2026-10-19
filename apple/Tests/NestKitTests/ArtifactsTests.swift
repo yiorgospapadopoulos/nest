@@ -43,6 +43,10 @@ import Testing
         #expect(artifact.versionCount == 3)
         #expect(artifact.seen)
         #expect(Fixture.artifact(kind: "pdf").kind == .unknown)
+        #expect(
+            ["markdown", "html", "slides", "document", "design", "design_system"].map {
+                Fixture.artifact(kind: $0).kind
+            } == [.markdown, .html, .slides, .document, .design, .designSystem])
         let made = Artifact(
             id: "a1", title: "Options compared", kind: .html, repo: "cv-page", sessionID: "s1",
             chatTitle: "Pick a queue", pixieID: "p1", pixieName: "Reviewer",
@@ -58,6 +62,30 @@ import Testing
         #expect(detail.versions[0].title == "Options compared")
         #expect(detail.versions[0].size == 10)
         #expect(detail.versions[0].createdAt == Fixture.date("2026-10-17T09:30:00Z"))
+        #expect(detail.versions[0].author == .agent)
+    }
+
+    @Test func versionsSayWhoMadeThem() {
+        func version(_ author: String?) -> ArtifactVersion {
+            let field = author.map { #", "author": "\#($0)""# } ?? ""
+            return Fixture.decode(
+                ArtifactVersion.self,
+                json:
+                    #"{"version": 4, "title": "Plan", "size": 7, "created_at": "2026-10-17T09:30:00+00:00"\#(field)}"#
+            )
+        }
+        #expect(version("user").author == .user)
+        #expect(version("agent").author == .agent)
+        #expect(version("robot").author == .unknown)
+        // A daemon from before B88 sends no author: those were all the agent's.
+        #expect(version(nil).author == .agent)
+        let made = ArtifactVersion(
+            version: 4, title: "Plan", size: 7, createdAt: Fixture.date("2026-10-17T09:30:00Z"),
+            author: .user)
+        #expect(made == version("user"))
+        #expect(
+            ArtifactVersion(version: 1, title: "T", size: 0, createdAt: made.createdAt).author
+                == .agent)
     }
 
     @Test func versionContentDecodesAndMeasuresItsBytes() {
@@ -71,6 +99,13 @@ import Testing
         #expect(decoded.size == 9)
         #expect(decoded.createdAt == Fixture.date("2026-10-17T09:41:00Z"))
         #expect(Fixture.content("a1", 1, "é").size == 2)
+        #expect(decoded.author == .agent)
+        let edited = Fixture.decode(
+            ArtifactContent.self,
+            json: String(RouteCase.contentJSON.dropLast()) + #", "author": "user"}"#)
+        #expect(edited.author == .user)
+        #expect(edited.content == "<p>Hi</p>")
+        #expect(Fixture.content("a1", 1).author == .agent)
     }
 
     @Test func artifactEventsDecode() {
@@ -235,6 +270,29 @@ import Testing
         #expect(ArtifactFile.name(title: "\n\t", kind: .unknown) == "Artifact.txt")
         let long = String(repeating: "x", count: 300)
         #expect(ArtifactFile.name(title: long, kind: .html).count == 125)
+        #expect(
+            [ArtifactKind.slides, .document, .design, .designSystem].map {
+                ArtifactFile.name(title: "Plan", kind: $0)
+            } == ["Plan.md", "Plan.md", "Plan.json", "Plan.json"])
+        #expect(ArtifactFile.pdfName(title: "Q3: review") == "Q3 review.pdf")
+        #expect(ArtifactFile.pdfName(title: "") == "Artifact.pdf")
+    }
+
+    @Test func onlySlidesAndDocumentsExportAPDF() throws {
+        let slides = try #require(ArtifactPrint.layout(.slides))
+        // The template's 1280 by 720 stage, at 72 points per 96 CSS pixels.
+        #expect(slides.width == 960)
+        #expect(slides.height == 540)
+        #expect(slides.landscape)
+        #expect(slides.margin == 0)
+        let document = try #require(ArtifactPrint.layout(.document))
+        #expect(document.width == 595)
+        #expect(document.height == 842)
+        #expect(!document.landscape)
+        #expect(document.margin == 36)
+        for kind in [ArtifactKind.markdown, .html, .design, .designSystem, .unknown] {
+            #expect(ArtifactPrint.layout(kind) == nil)
+        }
     }
 
     @Test func theViewsWordsReadPlainly() {
@@ -250,7 +308,27 @@ import Testing
         #expect(ArtifactText.kind(.markdown) == "Markdown")
         #expect(ArtifactText.kind(.html) == "HTML")
         #expect(ArtifactText.kind(.unknown) == "Document")
+        #expect(
+            [ArtifactKind.slides, .document, .design, .designSystem].map(ArtifactText.kind) == [
+                "Slides", "Document", "Design", "Design system",
+            ])
+        #expect(
+            [ArtifactKind.markdown, .html, .slides, .document, .design, .designSystem, .unknown]
+                .map(\.symbol) == [
+                    "doc.richtext", "chevron.left.forwardslash.chevron.right", "play.rectangle",
+                    "doc.text", "rectangle.3.group", "swatchpalette", "doc.richtext",
+                ])
         #expect(ArtifactText.version(2, of: 3) == "Version 2 of 3")
+        let artifact = Fixture.artifact(kind: "document")
+        #expect(
+            ArtifactText.line(artifact, author: .agent, saved: now - 540, now: now)
+                == "Document · Pick a queue · saved 9m ago")
+        #expect(
+            ArtifactText.line(artifact, author: .user, saved: now - 540, now: now)
+                == "Document · Pick a queue · Edited by you 9m ago")
+        #expect(
+            ArtifactText.line(artifact, author: .unknown, saved: now, now: now)
+                == "Document · Pick a queue · saved now")
         #expect(ArtifactText.empty(.chat("s1")) == "This chat has saved no artifacts yet.")
         #expect(
             ArtifactText.empty(.project("cv-page"))
@@ -275,6 +353,8 @@ import Testing
         }
         #expect(ArtifactText.cardState(card("created", 1)) == "Saved")
         #expect(ArtifactText.cardState(card("updated", 3)) == "Version 3")
+        #expect(card("edited", 4).action == .edited)
+        #expect(ArtifactText.cardState(card("edited", 4)) == "Version 4")
         #expect(card("renamed", 2).action == .unknown)
         #expect(ArtifactText.cardState(card("renamed", 2)) == "Saved")
     }
@@ -404,12 +484,82 @@ import Testing
         #expect(store.selected?.seen == true)
         #expect(store.unseen == 1)
         #expect(api.calls.filter { $0.hasPrefix("markArtifactSeen") } == ["markArtifactSeen a1"])
-        // Read versions are kept; out of range versions show the nearest.
+        // Read versions are kept; out of range versions show the nearest. The latest is
+        // shown already; moving back to version 1 reads its page again (B88).
         try await store.select("a1", version: 9)
         try await store.select("a1", version: 0)
         #expect(store.selection?.version == 1)
-        #expect(api.calls.filter { $0.hasPrefix("artifactContent") }.count == 3)
+        #expect(api.calls.filter { $0.hasPrefix("artifactContent") }.count == 4)
         #expect(store.content(ArtifactSelection(id: "a1", version: 2))?.content == "two")
+    }
+
+    // MARK: Saving a document (B88)
+
+    func documentStore(latest: Int = 2) async throws -> ArtifactsStore {
+        let store = store([Fixture.artifact(kind: "document", latest: latest, seen: true)])
+        api.set {
+            $0.artifactContents = [
+                "a1/1": Fixture.content("a1", 1, "one"), "a1/2": Fixture.content("a1", 2, "two"),
+                "a1/3": Fixture.content("a1", 3, "three"),
+            ]
+        }
+        try await store.select("a1")
+        return store
+    }
+
+    @Test func savingTheLatestDocumentMovesTheReaderToTheNewVersion() async throws {
+        let store = try await documentStore()
+        let page = ArtifactSelection(id: "a1", version: 2)
+        let version = try await store.saveDocument(page, content: "# New", baseVersion: 2)
+        #expect(version == 3)
+        #expect(api.calls.contains("saveArtifactVersion a1 base=2 # New"))
+        #expect(store.selection == ArtifactSelection(id: "a1", version: 3))
+        #expect(store.selectedContent?.content == "three")
+        #expect(store.selected?.latestVersion == 3)
+        #expect(store.selected?.versionCount == 3)
+        #expect(store.selected?.title == "Edited")
+        #expect(store.selected?.updatedAt == Fixture.date("2026-10-17T10:00:00Z"))
+        #expect(store.canStep(by: -1))
+    }
+
+    @Test func aSaveWhileTheReaderMovedOnLeavesItThere() async throws {
+        let store = try await documentStore()
+        try await store.select("a1", version: 1)
+        let version = try await store.saveDocument(
+            ArtifactSelection(id: "a1", version: 2), content: "x", baseVersion: 2)
+        #expect(version == 3)
+        #expect(store.selection == ArtifactSelection(id: "a1", version: 1))
+        #expect(store.artifact("a1")?.latestVersion == 3)
+    }
+
+    @Test func onlyTheLatestVersionOfADocumentSaves() async throws {
+        let store = try await documentStore()
+        await #expect(throws: ArtifactsStore.SaveRefused.self) {
+            try await store.saveDocument(
+                ArtifactSelection(id: "a1", version: 1), content: "x", baseVersion: 1)
+        }
+        await #expect(throws: ArtifactsStore.SaveRefused.self) {
+            try await store.saveDocument(
+                ArtifactSelection(id: "zz", version: 1), content: "x", baseVersion: 1)
+        }
+        let markdown = self.store([Fixture.artifact(latest: 1)])
+        try? await markdown.select("a1")
+        await #expect(throws: ArtifactsStore.SaveRefused.self) {
+            try await markdown.saveDocument(
+                ArtifactSelection(id: "a1", version: 1), content: "x", baseVersion: 1)
+        }
+        #expect(!api.calls.contains { $0.hasPrefix("saveArtifactVersion") })
+    }
+
+    @Test func aRefusedSaveKeepsTheReaderWhereItIs() async throws {
+        let store = try await documentStore()
+        api.fail("saveArtifactVersion", with: APIError.conflict("The document changed."))
+        await #expect(throws: APIError.conflict("The document changed.")) {
+            try await store.saveDocument(
+                ArtifactSelection(id: "a1", version: 2), content: "x", baseVersion: 2)
+        }
+        #expect(store.selection == ArtifactSelection(id: "a1", version: 2))
+        #expect(store.selected?.latestVersion == 2)
     }
 
     @Test func anArtifactOpenedFromACardIsReadFirst() async throws {

@@ -4,8 +4,10 @@ import { fakeApi } from "../test/fakeApi.ts";
 import {
   artifact,
   artifactContent,
+  artifactDetail,
   callWork,
   detail,
+  event,
   groupEntry,
   pixie,
   session,
@@ -376,6 +378,180 @@ describe("artifact actions (B79)", () => {
     expect(dispatched).toEqual([
       { type: "toast", toast: { id: 1, text: "unknown artifact", tone: "error" } },
     ]);
+  });
+
+  it("saves a user's edit of a document and reads the artifact again (B88)", async () => {
+    const { api, dispatched, actions } = setup();
+    const saved = { version: 4, title: "Plan", size: 6, created_at: "x", author: "user" as const };
+    api.saveArtifactVersion.mockResolvedValueOnce(saved);
+    api.artifact.mockResolvedValueOnce(artifactDetail({ latest_version: 4 }));
+    expect(await actions.saveArtifactDocument("a1", "# Plan", 3)).toEqual(saved);
+    expect(api.saveArtifactVersion).toHaveBeenCalledWith("a1", {
+      content: "# Plan",
+      base_version: 3,
+    });
+    expect(dispatched).toEqual([
+      { type: "artifact", artifact: artifactDetail({ latest_version: 4 }) },
+    ]);
+  });
+
+  it("passes a refused save on to the page, with no toast", async () => {
+    const { api, dispatched, actions } = setup();
+    const stale = new ApiError(409, "changed");
+    api.saveArtifactVersion.mockRejectedValueOnce(stale);
+    await expect(actions.saveArtifactDocument("a1", "x", 1)).rejects.toBe(stale);
+    expect(dispatched).toEqual([]);
+    expect(api.artifact).not.toHaveBeenCalled();
+  });
+
+  it("reads what a page stored quietly, null when it cannot (B88)", async () => {
+    const { api, dispatched, actions } = setup();
+    expect(await actions.artifactStorage("a1")).toEqual({ items: {}, size: 0 });
+    api.artifactStorage.mockRejectedValueOnce(new Error("offline"));
+    expect(await actions.artifactStorage("a1")).toBeNull();
+    expect(dispatched).toEqual([]);
+  });
+
+  it("writes and clears a page's data, leaving refusals to the caller", async () => {
+    const { api, dispatched, actions } = setup();
+    api.writeArtifactStorage.mockResolvedValueOnce({ size: 7 });
+    expect(await actions.writeArtifactStorage("a1", { set: { k: "v" }, remove: [] })).toEqual({
+      size: 7,
+    });
+    expect(api.writeArtifactStorage).toHaveBeenCalledWith("a1", { set: { k: "v" }, remove: [] });
+    await actions.clearArtifactStorage("a1");
+    expect(api.clearArtifactStorage).toHaveBeenCalledWith("a1");
+    const full = new ApiError(413, "Over 2 MiB");
+    api.writeArtifactStorage.mockRejectedValueOnce(full);
+    await expect(actions.writeArtifactStorage("a1", { set: {}, remove: [] })).rejects.toBe(full);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("tells those listening of storage changes, and stops when they leave", () => {
+    const { dispatched, actions } = setup();
+    const heard: unknown[] = [];
+    const leave = actions.onArtifactStorage((change) => heard.push(change));
+    const change = { artifact_id: "a1", set: { k: "v" }, remove: [], clear: false };
+    actions.receive(event({ id: null, type: "artifact.storage", payload: change }));
+    actions.receive(event({ id: null, type: "artifact.seen", payload: { artifact_id: "a1" } }));
+    leave();
+    actions.receive(event({ id: null, type: "artifact.storage", payload: change }));
+    expect(heard).toEqual([change]);
+    expect(dispatched.map((a) => a.type)).toEqual(["event", "event", "event"]);
+  });
+
+  it("reads a storage change's fields plainly, and skips one naming no artifact", () => {
+    const { actions } = setup();
+    const heard: unknown[] = [];
+    actions.onArtifactStorage((change) => heard.push(change));
+    actions.receive(event({ id: null, type: "artifact.storage", payload: { set: { a: "1" } } }));
+    actions.receive(
+      event({
+        id: null,
+        type: "artifact.storage",
+        payload: { artifact_id: "a1", set: { a: "1", b: 2 }, remove: ["c", 3], clear: "yes" },
+      }),
+    );
+    actions.receive(
+      event({ id: null, type: "artifact.storage", payload: { artifact_id: "a2", clear: true } }),
+    );
+    expect(heard).toEqual([
+      { artifact_id: "a1", set: { a: "1" }, remove: ["c"], clear: false },
+      { artifact_id: "a2", set: {}, remove: [], clear: true },
+    ]);
+  });
+
+  it("reads usage for a page: the limits, today and this week, fresh for a minute", async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 17, 15, 0), toFake: ["Date"] });
+    const { api, actions } = setup();
+    api.usagePeriod.mockImplementation((unit) =>
+      Promise.resolve(
+        usagePeriod({
+          unit,
+          sessions: unit === "day" ? 3 : 20,
+          tokens: { ...usagePeriod().tokens, total: unit === "day" ? 900 : 7000 },
+        }),
+      ),
+    );
+    const expected = {
+      limits: { five_hour: { utilization: 0.3, resets_at: null }, seven_day: null },
+      today: { tokens: 900, sessions: 3 },
+      week: { tokens: 7000, sessions: 20 },
+    };
+    expect(await actions.pageUsage()).toEqual(expected);
+    expect(api.usagePeriod).toHaveBeenCalledWith("day", "2026-10-17");
+    expect(api.usagePeriod).toHaveBeenCalledWith("week", "2026-10-17");
+    await actions.pageUsage();
+    expect(api.usageLimits).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date(2026, 9, 17, 15, 1, 1));
+    await actions.pageUsage();
+    expect(api.usageLimits).toHaveBeenCalledTimes(2);
+    await actions.pageUsage(true);
+    expect(api.usageLimits).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  it("reads usage again after a failure", async () => {
+    const { api, actions } = setup();
+    api.usageLimits.mockRejectedValueOnce(new Error("offline"));
+    await expect(actions.pageUsage()).rejects.toThrow("offline");
+    await actions.pageUsage();
+    expect(api.usageLimits).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a newer read when an older one fails after it", async () => {
+    const { api, actions } = setup();
+    let fail: (error: Error) => void = () => undefined;
+    api.usageLimits.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+    );
+    const old = actions.pageUsage();
+    const fresh = actions.pageUsage(true);
+    fail(new Error("offline"));
+    await expect(old).rejects.toThrow("offline");
+    await fresh;
+    await actions.pageUsage();
+    expect(api.usageLimits).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads today's asks quietly, null when it cannot", async () => {
+    const { api, dispatched, actions } = setup();
+    expect(await actions.askStatus("a1")).toEqual({
+      used: 0,
+      limit: 20,
+      remaining: 20,
+      resets_at: null,
+      enabled: true,
+    });
+    expect(api.askStatus).toHaveBeenCalledWith("a1");
+    api.askStatus.mockRejectedValueOnce(new Error("offline"));
+    expect(await actions.askStatus("a1")).toBeNull();
+    expect(dispatched).toEqual([]);
+  });
+
+  it("asks Claude for a page, leaving refusals to the caller", async () => {
+    const { api, dispatched, actions } = setup();
+    expect(await actions.askArtifact("a1", { prompt: "Hi" })).toEqual({
+      text: "Hello",
+      remaining: 19,
+    });
+    expect(api.askArtifact).toHaveBeenCalledWith("a1", { prompt: "Hi" });
+    api.askArtifact.mockRejectedValueOnce(new ApiError(429, "used"));
+    await expect(actions.askArtifact("a1", { prompt: "Hi" })).rejects.toThrow("used");
+    expect(dispatched).toEqual([]);
+  });
+
+  it("tells those listening of every event, until they leave", () => {
+    const { actions } = setup();
+    const heard: string[] = [];
+    const leave = actions.onEvent((received) => heard.push(received.type));
+    actions.receive(event({ id: null, type: "artifact.ask", payload: {} }));
+    leave();
+    actions.receive(event({ id: null, type: "usage.updated", payload: {} }));
+    expect(heard).toEqual(["artifact.ask"]);
   });
 
   it("looks an artifact up once while a lookup runs", async () => {

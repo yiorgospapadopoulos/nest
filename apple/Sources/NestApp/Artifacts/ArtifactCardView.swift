@@ -12,7 +12,7 @@ struct ArtifactCardView: View {
     var body: some View {
         let deleted = shell.artifacts.availability(of: card.artifactID) == .deleted
         HStack(spacing: 10) {
-            Image(systemName: card.kind.icon)
+            Image(systemName: card.kind.symbol)
                 .font(.system(size: 13))
                 .foregroundStyle(Palette.t2)
                 .frame(width: 18)

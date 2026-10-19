@@ -6,10 +6,12 @@ interface Props {
   action: string;
   onConfirm: () => void;
   onClose: () => void;
+  // The action is not destructive, so it is not shown in the danger color.
+  neutral?: boolean;
 }
 
 /** A question before something that cannot be undone; it opens on Cancel. */
-export function Confirm({ title, about, action, onConfirm, onClose }: Props) {
+export function Confirm({ title, about, action, onConfirm, onClose, neutral = false }: Props) {
   return (
     <ActionSheet
       label={title}
@@ -23,7 +25,7 @@ export function Confirm({ title, about, action, onConfirm, onClose }: Props) {
       }
     >
       <button
-        className="asi dng mid"
+        className={neutral ? "asi mid" : "asi dng mid"}
         onClick={() => {
           onClose();
           onConfirm();

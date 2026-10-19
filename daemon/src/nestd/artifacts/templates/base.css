@@ -1,0 +1,105 @@
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--nest-bg);
+  color: var(--nest-text);
+  font: 15px/1.6 var(--nest-font);
+  overflow-wrap: anywhere;
+}
+button, textarea { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+a { color: var(--nest-link); }
+code, pre, kbd, samp { font-family: var(--nest-mono); }
+.raw {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.55 var(--nest-mono);
+}
+.button {
+  appearance: none;
+  border: 1px solid var(--nest-line-strong);
+  border-radius: 8px;
+  background: var(--nest-fill);
+  padding: 5px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.button:hover { background: var(--nest-fill-strong); }
+.button:disabled { opacity: 0.5; cursor: default; }
+.button.primary {
+  border-color: transparent;
+  background: var(--nest-accent);
+  color: var(--nest-on-accent);
+}
+.button:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--nest-link);
+  outline-offset: 2px;
+}
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  line-height: 1.3;
+  margin: 1.4em 0 0.5em;
+  font-weight: 650;
+  scroll-margin-top: 16px;
+}
+.prose h1 { font-size: 1.75em; letter-spacing: -0.01em; }
+.prose h2 { font-size: 1.35em; }
+.prose h3 { font-size: 1.12em; }
+.prose h4, .prose h5, .prose h6 { font-size: 1em; }
+.prose p, .prose ul, .prose ol, .prose table, .prose pre, .prose blockquote { margin: 0 0 0.9em; }
+.prose ul, .prose ol { padding-left: 1.4em; }
+.prose li + li { margin-top: 0.2em; }
+.prose strong { font-weight: 650; }
+.prose hr { border: 0; border-top: 1px solid var(--nest-line-strong); margin: 1.6em 0; }
+.prose blockquote {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--nest-line-strong);
+  color: var(--nest-text-2);
+}
+.prose code, .prose pre { font-size: 13px; }
+.prose :not(pre) > code { padding: 1px 5px; border-radius: 5px; background: var(--nest-fill); }
+.prose pre {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--nest-fill);
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  line-height: 1.5;
+}
+.prose pre.mermaid {
+  padding: 0;
+  background: none;
+  font: 16px/1.5 var(--nest-font);
+  text-align: center;
+  white-space: pre-wrap;
+}
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  overflow-wrap: normal;
+}
+.prose th, .prose td {
+  padding: 6px 10px;
+  border: 1px solid var(--nest-line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+.prose th { background: var(--nest-fill-strong); font-weight: 650; }
+.prose img, .prose svg { max-width: 100%; }
+.prose img { height: auto; }
+.hljs-keyword, .hljs-selector-tag, .hljs-name { color: var(--nest-hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-addition { color: var(--nest-hl-string); }
+.hljs-number, .hljs-literal { color: var(--nest-hl-number); }
+.hljs-title, .hljs-section, .hljs-attr, .hljs-attribute { color: var(--nest-hl-title); }
+.hljs-built_in, .hljs-type, .hljs-deletion { color: var(--nest-hl-type); }
+.hljs-meta, .hljs-variable, .hljs-template-variable { color: var(--nest-hl-meta); }
+.hljs-comment, .hljs-quote { color: var(--nest-text-3); font-style: italic; }
+.empty { color: var(--nest-text-2); }

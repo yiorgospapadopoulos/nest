@@ -664,6 +664,43 @@ public struct APIClient: NestAPI {
         try await call("POST", ["artifacts", id, "seen"])
     }
 
+    public func artifactStorage(_ id: String) async throws -> ArtifactStorage {
+        try await get("artifacts", id, "storage")
+    }
+
+    public func writeArtifactStorage(_ id: String, set: [String: String], remove: [String])
+        async throws -> Int
+    {
+        let answer: ArtifactStorageSize = try await call(
+            "POST", ["artifacts", id, "storage"],
+            body: ArtifactStorageWrite(set: set, remove: remove))
+        return answer.size
+    }
+
+    public func askStatus(_ id: String) async throws -> ArtifactAskStatus {
+        try await get("artifacts", id, "ask")
+    }
+
+    public func askArtifact(_ id: String, prompt: String, system: String?) async throws
+        -> ArtifactAnswer
+    {
+        try await call(
+            "POST", ["artifacts", id, "ask"],
+            body: AskArtifactRequest(prompt: prompt, system: system))
+    }
+
+    public func clearArtifactStorage(_ id: String) async throws {
+        try await perform("DELETE", ["artifacts", id, "storage"])
+    }
+
+    public func saveArtifactVersion(_ id: String, content: String, baseVersion: Int)
+        async throws -> ArtifactVersion
+    {
+        try await call(
+            "POST", ["artifacts", id, "versions"],
+            body: SaveArtifactVersionRequest(content: content, baseVersion: baseVersion))
+    }
+
     public func deleteArtifact(_ id: String) async throws {
         try await perform("DELETE", ["artifacts", id])
     }

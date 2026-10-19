@@ -1,8 +1,22 @@
 import type { Artifact, ArtifactFilter, ArtifactKind, Session } from "../../api/types.ts";
 import type { IconName } from "../../ui/Icon.tsx";
 
-export const KIND_LABELS: Record<ArtifactKind, string> = { markdown: "Markdown", html: "HTML" };
-export const KIND_ICONS: Record<ArtifactKind, IconName> = { markdown: "doc", html: "code" };
+export const KIND_LABELS: Record<ArtifactKind, string> = {
+  markdown: "Markdown",
+  html: "HTML",
+  slides: "Slides",
+  document: "Document",
+  design: "Design",
+  design_system: "Design system",
+};
+export const KIND_ICONS: Record<ArtifactKind, IconName> = {
+  markdown: "doc",
+  html: "code",
+  slides: "chart",
+  document: "list",
+  design: "devices",
+  design_system: "contrast",
+};
 
 /** One choice of the history's switch: which artifacts it lists. */
 export interface ArtifactScope {

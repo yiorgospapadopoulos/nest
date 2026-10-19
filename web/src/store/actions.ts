@@ -11,8 +11,14 @@ import type {
   AgentWork,
   Approval,
   ApproveBody,
+  ArtifactAnswer,
   ArtifactContent,
+  AskStatus,
   ArtifactFilter,
+  ArtifactStorage,
+  ArtifactStorageChange,
+  ArtifactStorageWrite,
+  ArtifactVersion,
   Attachment,
   CallWork,
   ClaudeChat,
@@ -26,6 +32,7 @@ import type {
   JsonObject,
   PeriodUnit,
   NotificationSettings,
+  PageUsage,
   Pixie,
   PixieActivity,
   PixieSearchHit,
@@ -48,6 +55,7 @@ import type {
   UpdatePixieBody,
   UpdateSessionBody,
   UpdateTeamBody,
+  UsageLimits,
 } from "../api/types.ts";
 import {
   loadFoldedTeams,
@@ -55,6 +63,8 @@ import {
   saveFoldedTeams,
   saveShowAutomated,
 } from "./devicePrefs.ts";
+import { storageChangeOf } from "../api/payloads.ts";
+import { isoDay } from "../format.ts";
 import { filterKey } from "./artifacts.ts";
 import { nudgeText } from "./selectors.ts";
 import { settingsActions } from "./settingsActions.ts";
@@ -179,6 +189,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   const lookups = new Map<string, Promise<void>>();
   // Versions read so far: a version never changes once saved.
   const versions = new Map<string, ArtifactContent>();
+  // Open pages kept in step with their stored data (B88).
+  const storageListeners = new Set<(change: ArtifactStorageChange) => void>();
+  const eventListeners = new Set<(event: NestEvent) => void>();
+  // Usage as pages read it, kept a minute.
+  let pageUsage: { at: number; usage: Promise<PageUsage> } | null = null;
 
   const toast = (text: string, tone: Toast["tone"] = "ok") => {
     toastId += 1;
@@ -594,6 +609,11 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         for (const arrived of arriving) arrived.push(event);
       }
       dispatch({ type: "event", event });
+      for (const listener of [...eventListeners]) listener(event);
+      if (event.type === "artifact.storage") {
+        const change = storageChangeOf(event.payload);
+        if (change !== null) for (const listener of [...storageListeners]) listener(change);
+      }
       if (event.type === "usage.warning") toast(warningText(event.payload), "info");
       if (event.type === "extensions.updated") void settings.extensionsChanged();
     },
@@ -1122,6 +1142,79 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (marked !== null) dispatch({ type: "artifact", artifact: marked });
     },
 
+    /** What the artifact's pages stored; null when it cannot be read now. */
+    artifactStorage(id: string): Promise<ArtifactStorage | null> {
+      return quietly(() => api.artifactStorage(id));
+    },
+
+    /** A page's write; a refusal (413 over a cap) is the caller's to report. */
+    writeArtifactStorage(id: string, write: ArtifactStorageWrite): Promise<{ size: number }> {
+      return api.writeArtifactStorage(id, write);
+    },
+
+    async clearArtifactStorage(id: string): Promise<void> {
+      await api.clearArtifactStorage(id);
+    },
+
+    /** Hears every event until the returned call. */
+    onEvent(listener: (event: NestEvent) => void): () => void {
+      eventListeners.add(listener);
+      return () => {
+        eventListeners.delete(listener);
+      };
+    },
+
+    /**
+     * Usage for a page: the limits, today's and this week's totals, as the Usage page
+     * shows them. Read again after a minute, or at once when `fresh`; a failure is thrown.
+     */
+    pageUsage(fresh = false): Promise<PageUsage> {
+      const now = Date.now();
+      if (fresh || pageUsage === null || now - pageUsage.at > USAGE_FRESH_MS) {
+        const usage = readPageUsage(api, new Date(now));
+        pageUsage = { at: now, usage };
+        usage.catch(() => {
+          if (pageUsage?.usage === usage) pageUsage = null;
+        });
+      }
+      return pageUsage.usage;
+    },
+
+    /** Today's asks of the artifact's pages; null when they cannot be read now. */
+    askStatus(id: string): Promise<AskStatus | null> {
+      return quietly(() => api.askStatus(id));
+    },
+
+    /** Claude's answer to a page's question; a refusal is the caller's to report. */
+    askArtifact(
+      id: string,
+      question: { prompt: string; system?: string },
+    ): Promise<ArtifactAnswer> {
+      return api.askArtifact(id, question);
+    },
+
+    /** Hears every `artifact.storage` change until the returned call. */
+    onArtifactStorage(listener: (change: ArtifactStorageChange) => void): () => void {
+      storageListeners.add(listener);
+      return () => {
+        storageListeners.delete(listener);
+      };
+    },
+
+    /**
+     * The user's edit of a document as its new version, the artifact read again so its
+     * latest version shows at once. A refusal is the caller's to report (the page says it).
+     */
+    async saveArtifactDocument(
+      id: string,
+      content: string,
+      baseVersion: number,
+    ): Promise<ArtifactVersion> {
+      const saved = await api.saveArtifactVersion(id, { content, base_version: baseVersion });
+      await lookUpArtifact(id);
+      return saved;
+    },
+
     async deleteArtifact(id: string): Promise<boolean> {
       const done = await attempt(() => api.deleteArtifact(id).then(() => true));
       if (done === null) return false;
@@ -1235,5 +1328,23 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       const saved = await attempt(() => api.saveAgentDefaults(next));
       dispatch({ type: "agentDefaults", defaults: saved ?? previous });
     },
+  };
+}
+
+const USAGE_FRESH_MS = 60_000;
+
+async function readPageUsage(api: Api, now: Date): Promise<PageUsage> {
+  const day = isoDay(now);
+  const [limits, today, week] = await Promise.all([
+    api.usageLimits(),
+    api.usagePeriod("day", day),
+    api.usagePeriod("week", day),
+  ]);
+  const window = (found: UsageLimits["five_hour"]) =>
+    found === null ? null : { utilization: found.utilization, resets_at: found.resets_at };
+  return {
+    limits: { five_hour: window(limits.five_hour), seven_day: window(limits.seven_day) },
+    today: { tokens: today.tokens.total, sessions: today.sessions },
+    week: { tokens: week.tokens.total, sessions: week.sessions },
   };
 }

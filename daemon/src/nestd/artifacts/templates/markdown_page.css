@@ -1,0 +1,8 @@
+#nest-md,
+#nest-doc { max-width: 760px; margin: 0 auto; padding: 20px 16px 32px; }
+#nest-md {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.55 var(--nest-mono);
+}
+.prose h1 { font-size: 1.6em; }

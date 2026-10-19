@@ -13,6 +13,7 @@ import {
   github,
   installedPlugin,
   marketplace,
+  NOW,
   pluginDetails,
   pixieDefaults,
   storageUsage,
@@ -241,6 +242,28 @@ export function fakeApi(): FakeApi {
       .fn<Api["markArtifactSeen"]>()
       .mockImplementation((id) => Promise.resolve(artifact({ id, seen: true }))),
     deleteArtifact: vi.fn<Api["deleteArtifact"]>().mockResolvedValue(null),
+    artifactStorage: vi.fn<Api["artifactStorage"]>().mockResolvedValue({ items: {}, size: 0 }),
+    writeArtifactStorage: vi.fn<Api["writeArtifactStorage"]>().mockResolvedValue({ size: 0 }),
+    clearArtifactStorage: vi.fn<Api["clearArtifactStorage"]>().mockResolvedValue(null),
+    askStatus: vi.fn<Api["askStatus"]>().mockResolvedValue({
+      used: 0,
+      limit: 20,
+      remaining: 20,
+      resets_at: null,
+      enabled: true,
+    }),
+    askArtifact: vi.fn<Api["askArtifact"]>().mockResolvedValue({ text: "Hello", remaining: 19 }),
+    saveArtifactVersion: vi
+      .fn<Api["saveArtifactVersion"]>()
+      .mockImplementation((_id, { base_version }) =>
+        Promise.resolve({
+          version: base_version + 1,
+          title: "Options compared",
+          size: 10,
+          created_at: NOW,
+          author: "user",
+        }),
+      ),
   };
   return fake;
 }

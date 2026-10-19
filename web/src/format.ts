@@ -80,3 +80,25 @@ export function prLabel(url: string): string {
   const number = /\/pull\/(\d+)/.exec(url)?.[1];
   return number === undefined ? "PR" : `#${number}`;
 }
+
+/** "820 MB", "1.4 GB", "12 KB". */
+export function sizeText(bytes: number): string {
+  let value = bytes;
+  for (const unit of ["bytes", "KB", "MB", "GB"]) {
+    if (value < 1000) return shown(value, unit);
+    value /= 1000;
+  }
+  return shown(value, "TB");
+}
+
+/** Whole numbers, with one decimal below 10 (except bytes). */
+function shown(value: number, unit: string): string {
+  const rounded = unit === "bytes" || value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${String(rounded)} ${unit}`;
+}
+
+/** "2026-10-17" for a local date. */
+export function isoDay(at: Date): string {
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${String(at.getFullYear())}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
+}

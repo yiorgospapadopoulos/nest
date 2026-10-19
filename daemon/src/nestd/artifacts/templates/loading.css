@@ -1,0 +1,36 @@
+/* Until the page's script has rendered it (nest-ready on the html element), nothing half built shows:
+   the Markdown source is not displayed and pending parts keep their place but stay invisible.
+   A quiet ring appears only when that takes over 150 ms. nest-fallback (the libraries kept
+   the script from running) shows the source as it is. */
+html:not(.nest-ready):not(.nest-fallback) #nest-md { display: none; }
+/* Opacity too: a child may set its own visibility (the current slide does). */
+html:not(.nest-ready):not(.nest-fallback) .nest-pending { visibility: hidden; opacity: 0; }
+.nest-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  animation: nest-appear 0.2s ease 0.15s forwards;
+}
+html.nest-ready .nest-loading, html.nest-fallback .nest-loading { display: none; }
+.nest-loading span {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--nest-line-strong);
+  border-top-color: var(--nest-text-2);
+  border-radius: 50%;
+  animation: nest-spin 0.8s linear infinite;
+}
+@keyframes nest-appear { to { opacity: 1; } }
+@keyframes nest-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .nest-loading { animation: nest-appear 0s linear 0.15s forwards; }
+  .nest-loading span { animation: none; }
+}
+@media print {
+  .nest-loading { display: none; }
+}

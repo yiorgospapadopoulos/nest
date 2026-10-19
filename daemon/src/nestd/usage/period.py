@@ -62,7 +62,12 @@ def bar_walls(period: Period) -> list[datetime]:
 
 
 def summarize(
-    period: Period, edges: list[datetime], turns: list[Turn], probes: list[int], today: date
+    period: Period,
+    edges: list[datetime],
+    turns: list[Turn],
+    probes: list[int],
+    asks: list[int],
+    today: date,
 ) -> PeriodUsage:
     """`edges` are the bars' aware starts and the period's end; rows outside are ignored."""
     turns = [turn for turn in turns if edges[0] <= turn.at < edges[-1]]
@@ -93,6 +98,7 @@ def summarize(
             if tokens
         ],
         probes=ProbeTotals(count=len(probes), tokens=sum(probes)),
+        asks=ProbeTotals(count=len(asks), tokens=sum(asks)),
     )
 
 

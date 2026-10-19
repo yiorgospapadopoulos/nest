@@ -34,10 +34,6 @@ struct ArtifactsView: View {
     }
 }
 
-extension ArtifactKind {
-    var icon: String { self == .html ? Icon.code : Icon.artifact }
-}
-
 /// The scope switch over the history rows.
 private struct ArtifactList: View {
     let failure: String?
@@ -160,7 +156,7 @@ private struct ArtifactRow: View {
             Task { try? await shell.artifacts.select(artifact.id) }
         } label: {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: artifact.kind.icon)
+                Image(systemName: artifact.kind.symbol)
                     .font(.system(size: 11))
                     .foregroundStyle(Palette.t3)
                     .frame(width: 14)
@@ -201,11 +197,16 @@ private struct ArtifactRow: View {
     }
 }
 
-/// The selected version: its title, kind, where it came from and when, the version
-/// stepper, Copy, Save as file and Delete, then the document.
+/// The selected version: its title, kind, where it came from and when (or that the user
+/// edited it), the version stepper, Export PDF for slides and documents, Copy, Save as
+/// file and Delete, then the document. The page's links ask "Open link?" here; moving to
+/// another version or artifact, or closing, dismisses it.
 private struct ArtifactReader: View {
     @Environment(Shell.self) private var shell
     @State private var confirmingDelete = false
+    @State private var linkPrompt = ArtifactLinkPrompt()
+    @State private var handle = ArtifactPageHandle()
+    @State private var confirmingClear = false
 
     var body: some View {
         let store = shell.artifacts
@@ -216,7 +217,7 @@ private struct ArtifactReader: View {
                 Separator()
                 Group {
                     if let content, content.version == selection.version {
-                        ArtifactDocument(content: content)
+                        ArtifactDocument(content: content, prompt: linkPrompt, handle: handle)
                             .id(selection)
                     } else {
                         Fireflies(height: 14)
@@ -234,6 +235,41 @@ private struct ArtifactReader: View {
             } message: {
                 Text("Every version is removed. Its cards in chats show it as deleted.")
             }
+            .confirmationDialog(
+                "Open link?", isPresented: linkShown, titleVisibility: .visible,
+                presenting: linkPrompt.request
+            ) { request in
+                Button("Open") { linkPrompt.answer(true, to: request.id) }
+                Button("Cancel", role: .cancel) { linkPrompt.answer(false, to: request.id) }
+            } message: { request in
+                Text(request.message)
+            }
+            .confirmationDialog(
+                "Clear this page\u{2019}s data?", isPresented: $confirmingClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear page data", role: .destructive) { clearPageData(artifact.id) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "What the page stored is removed for every version and on every device. Open pages are told."
+                )
+            }
+            .onChange(of: selection) { linkPrompt.dismiss() }
+            .onDisappear { linkPrompt.dismiss() }
+            .task(id: artifact.id) {
+                try? await store.loadStorage(artifact.id)
+                try? await store.loadAsks(artifact.id)
+            }
+            .onAppear {
+                handle.reportSave = { [shell] result in
+                    switch result {
+                    case .success(let url):
+                        shell.show("Saved \(url.lastPathComponent)", kind: .done)
+                    case .failure(let error): shell.show(error, doing: "Could not save the file")
+                    }
+                }
+            }
         } else {
             VStack(spacing: 8) {
                 Image(systemName: Icon.artifact)
@@ -247,6 +283,17 @@ private struct ArtifactReader: View {
         }
     }
 
+    /// Shown while a link waits. A dismissal without a button declines it, after any
+    /// button's own answer has run.
+    private var linkShown: Binding<Bool> {
+        Binding(
+            get: { linkPrompt.request != nil },
+            set: { shown in
+                guard !shown, let id = linkPrompt.request?.id else { return }
+                Task { @MainActor in linkPrompt.answer(false, to: id) }
+            })
+    }
+
     private func header(
         _ artifact: Artifact, selection: ArtifactSelection, content: ArtifactContent?
     ) -> some View {
@@ -258,9 +305,12 @@ private struct ArtifactReader: View {
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
                 TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let saved = content?.createdAt ?? artifact.updatedAt
                     Text(
-                        "\(ArtifactText.kind(artifact.kind)) · \(ArtifactText.origin(artifact)) · saved \(ArtifactText.when(saved, now: context.date))"
+                        ArtifactText.line(
+                            artifact, author: content?.author ?? .agent,
+                            saved: content?.createdAt ?? artifact.updatedAt, now: context.date,
+                            stored: store.storageSize(of: artifact.id),
+                            asks: store.askCount(of: artifact.id))
                     )
                     .lineLimit(1)
                 }
@@ -268,6 +318,16 @@ private struct ArtifactReader: View {
                 .foregroundStyle(Palette.t3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if store.isAsking(artifact.id) {
+                HStack(spacing: 6) {
+                    Fireflies(height: 10)
+                    Text(ArtifactText.asking)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                        .fixedSize()
+                }
+                .accessibilityElement(children: .combine)
+            }
             if artifact.latestVersion > 1 {
                 HStack(spacing: 2) {
                     stepButton(-1, icon: Icon.chevronLeft, label: "Previous version")
@@ -279,6 +339,16 @@ private struct ArtifactReader: View {
                     stepButton(1, icon: Icon.chevronRight, label: "Next version")
                 }
                 .disabled(!store.canStep(by: -1) && !store.canStep(by: 1))
+            }
+            if let layout = ArtifactPrint.layout(artifact.kind) {
+                Button {
+                    exportPDF(content, layout: layout)
+                } label: {
+                    Label("Export PDF\u{2026}", systemImage: "doc.richtext")
+                }
+                .buttonStyle(.nest())
+                .disabled(content?.version != selection.version)
+                .help(ArtifactFile.pdfName(title: content?.title ?? artifact.title))
             }
             Button {
                 if let content {
@@ -300,6 +370,16 @@ private struct ArtifactReader: View {
             .buttonStyle(.nest())
             .disabled(content == nil)
             .help(ArtifactFile.name(title: content?.title ?? artifact.title, kind: artifact.kind))
+            if store.storageSize(of: artifact.id) > 0 {
+                Button {
+                    confirmingClear = true
+                } label: {
+                    Image(systemName: "eraser")
+                }
+                .buttonStyle(.nest(.plain, iconOnly: true))
+                .help("Clear page data")
+                .accessibilityLabel("Clear page data")
+            }
             Button {
                 confirmingDelete = true
             } label: {
@@ -311,6 +391,28 @@ private struct ArtifactReader: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func clearPageData(_ id: String) {
+        Task {
+            do {
+                try await shell.artifacts.writeStorage(id, .clear)
+            } catch {
+                shell.show(error, doing: "Could not clear the page data")
+            }
+        }
+    }
+
+    private func exportPDF(_ content: ArtifactContent?, layout: ArtifactPrint) {
+        guard let content else { return }
+        handle.exportPDF(name: ArtifactFile.pdfName(title: content.title), layout: layout) {
+            saved, url in
+            if saved {
+                shell.show("Saved \(url.lastPathComponent)", kind: .done)
+            } else {
+                shell.show("Could not export the PDF", kind: .failed)
+            }
+        }
     }
 
     private func stepButton(_ offset: Int, icon: String, label: String) -> some View {
@@ -326,17 +428,23 @@ private struct ArtifactReader: View {
     }
 }
 
-/// A version's document: its page, HTML as saved or the daemon's rendering of the
-/// Markdown, in the sandboxed web view once its rule list is ready.
+/// A version's document: its page, HTML as saved or the page the daemon built for the
+/// other kinds, in the sandboxed web view once its rule list is ready. A document's page
+/// may save the user's edit, which moves the reader to the new version.
 private struct ArtifactDocument: View {
     let content: ArtifactContent
+    let prompt: ArtifactLinkPrompt
+    let handle: ArtifactPageHandle
+    @Environment(Shell.self) private var shell
     @State private var rules: WKContentRuleList?
     @State private var failure: String?
 
     var body: some View {
         Group {
             if let rules {
-                ArtifactWebView(page: content.page, rules: rules)
+                ArtifactWebView(
+                    page: content.page, artifactID: content.artifactID, rules: rules,
+                    prompt: prompt, save: save, store: shell.artifacts, handle: handle)
             } else if let failure {
                 Text(failure)
                     .font(.ui(TypeSize.ui))
@@ -352,6 +460,17 @@ private struct ArtifactDocument: View {
             } catch {
                 failure = "This page cannot be shown safely: \(error.localizedDescription)"
             }
+        }
+    }
+}
+
+extension ArtifactDocument {
+    private var save: ArtifactBridgeSession.Save? {
+        guard content.kind == .document else { return nil }
+        let store = shell.artifacts
+        let page = ArtifactSelection(id: content.artifactID, version: content.version)
+        return { text, base in
+            try await store.saveDocument(page, content: text, baseVersion: base)
         }
     }
 }

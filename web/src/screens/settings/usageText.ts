@@ -1,5 +1,5 @@
 import type { PeriodUnit, ProjectUsage, UsageBar, UsagePeriod } from "../../api/types.ts";
-import { monthName, tokens } from "../../format.ts";
+import { isoDay, monthName, tokens } from "../../format.ts";
 
 // The usage detail's periods and numbers (B84), titled and written as the Mac writes them.
 
@@ -16,11 +16,8 @@ const BAR_MIN = 3;
 // Projects shown by name in the breakdown; the rest are one "Others" row.
 const TOP_PROJECTS = 4;
 
-/** "2026-10-17" for a local date. */
-export function isoDay(at: Date): string {
-  const two = (n: number) => String(n).padStart(2, "0");
-  return `${String(at.getFullYear())}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
-}
+// Kept here for the Usage screens; the store reads it from format.ts.
+export { isoDay };
 
 // Noon, so a daylight saving change never moves the day.
 function day(iso: string): Date {
