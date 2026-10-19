@@ -22,6 +22,16 @@ import Testing
         follow.contentArrived()
     }
 
+    @Test func aPaneThatLostTheFocusAtTheBottomStillScrollsUpOnceFocusedAgain() {
+        var follow = ScrollFollow()
+        _ = follow.update(metrics(500, content: 1000))
+        // Already at the latest: the jump has nowhere to go, so no geometry change ends it.
+        _ = focus(&follow, false)
+        _ = focus(&follow, true)
+        #expect(!scroll(&follow, metrics(200, content: 1000)))
+        #expect(!follow.following)
+    }
+
     @Test func atBottomAllowsASmallThreshold() {
         #expect(metrics(500, content: 1000).isAtBottom)
         #expect(metrics(461, content: 1000).isAtBottom)
