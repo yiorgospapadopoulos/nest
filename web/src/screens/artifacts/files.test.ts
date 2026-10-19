@@ -5,6 +5,10 @@ describe("fileName", () => {
   it.each([
     ["Options compared", "markdown", "Options compared.md"],
     ["Report", "html", "Report.html"],
+    ["Deck", "slides", "Deck.md"],
+    ["Guide", "document", "Guide.md"],
+    ["Mockups", "design", "Mockups.json"],
+    ["Tokens", "design_system", "Tokens.json"],
     ['a/b\\c:d*e?f"g<h>i|j', "markdown", "a b c d e f g h i j.md"],
     ["  spaced \n\t out  ", "markdown", "spaced out.md"],
     ["...hidden", "html", "hidden.html"],
@@ -52,6 +56,29 @@ describe("saveFile", () => {
     expect(revoke).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);
     expect(revoke).toHaveBeenCalledWith("blob:x");
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["slides", "text/markdown;charset=utf-8"],
+    ["document", "text/markdown;charset=utf-8"],
+    ["design", "application/json;charset=utf-8"],
+    ["design_system", "application/json;charset=utf-8"],
+  ] as const)("saves %s as %s", (kind, type) => {
+    const blobs: Blob[] = [];
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: (blob: Blob) => {
+          blobs.push(blob);
+          return "blob:x";
+        },
+        revokeObjectURL: () => undefined,
+      }),
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    saveFile("A", kind, "{}");
+    expect(blobs[0]?.type).toBe(type);
     vi.unstubAllGlobals();
   });
 });

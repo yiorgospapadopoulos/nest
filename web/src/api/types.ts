@@ -997,7 +997,10 @@ export interface UsageWarning {
   resets_at: string | null;
 }
 
-export type ArtifactKind = "markdown" | "html";
+export type ArtifactKind = "markdown" | "html" | "slides" | "document" | "design" | "design_system";
+
+// Who saved a version: the agent, or the user editing a document in place (B88).
+export type ArtifactAuthor = "agent" | "user";
 
 /** A document a chat's agent saved (B79); every update adds a version. */
 export interface Artifact {
@@ -1096,6 +1099,7 @@ export interface ArtifactVersion {
   title: string;
   size: number;
   created_at: string;
+  author: ArtifactAuthor;
 }
 
 export interface ArtifactDetail extends Artifact {
@@ -1109,11 +1113,66 @@ export interface ArtifactContent {
   kind: ArtifactKind;
   title: string;
   content: string;
-  // The whole document the sandboxed frame shows: the page itself for HTML, and for
-  // Markdown a page that renders it.
+  // The whole document the sandboxed frame shows: the page itself for HTML, and for the
+  // other kinds a page that renders the content.
   page: string;
   size: number;
   created_at: string;
+  author: ArtifactAuthor;
+  // An html page's other files (B88), built into `page`; none for the other kinds.
+  files: ArtifactFile[];
+}
+
+export interface ArtifactFile {
+  path: string;
+  size: number;
+  mime: string;
+}
+
+/** What an artifact's pages stored (B88), shared by all its versions. */
+export interface ArtifactStorage {
+  items: Record<string, string>;
+  size: number;
+}
+
+/** Keys to set and to remove, applied together. */
+export interface ArtifactStorageWrite {
+  set: Record<string, string>;
+  remove: string[];
+}
+
+/** A change to an artifact's stored data (`artifact.storage`); a clear comes first. */
+export interface ArtifactStorageChange extends ArtifactStorageWrite {
+  artifact_id: string;
+  clear: boolean;
+}
+
+/** Claude's answer to a page's question (B88), and the asks left today. */
+export interface ArtifactAnswer {
+  text: string;
+  remaining: number;
+  // The daily limit, when the Mac says it.
+  limit?: number;
+}
+
+/** Today's asks of an artifact's pages (B88), by the Mac's local day. */
+export interface AskStatus {
+  used: number;
+  limit: number;
+  remaining: number;
+  resets_at: string | null;
+  // Asking is on in the Mac's settings.
+  enabled: boolean;
+}
+
+/** Usage as a page reads it (B88): the Usage page's numbers, nothing else. */
+export interface PageUsage {
+  limits: {
+    five_hour: { utilization: number; resets_at: string | null } | null;
+    seven_day: { utilization: number; resets_at: string | null } | null;
+  };
+  today: { tokens: number; sessions: number };
+  week: { tokens: number; sessions: number };
 }
 
 /** Which artifacts a list shows; the filters combine, none means every project. */

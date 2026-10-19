@@ -994,6 +994,11 @@
   font-size: 0.7647rem;
   color: var(--t3);
   line-height: 1.35;
+  /* A long link a page asks to open (B88) shows in full, its host on a line before it. */
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .ast b {
   display: block;
@@ -2149,6 +2154,22 @@
 .afk .ic {
   width: 14px;
   height: 14px;
+}
+/* Export PDF (B88): the page prints itself; the link sits at the row's end. */
+.afmeta .afpdf {
+  padding: 4px 0 4px 8px;
+  font-weight: 600;
+  color: var(--accent);
+}
+/* Clear page data (B88): a quiet link after the stored size, not pushed to the end. */
+.afmeta .afclr {
+  margin-left: 0;
+  padding: 4px 0;
+}
+/* Asking Claude... (B88): the working line, quiet, in the meta row. */
+.afmeta .afask {
+  margin-left: 0;
+  padding: 0 6px;
 }
 .afo {
   min-width: 0;
