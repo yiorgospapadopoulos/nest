@@ -250,6 +250,25 @@ async def test_limits_keep_the_latest_of_each_window(usage: UsageStore, clock: F
     assert limits.seven_day.updated_at == clock.now() - timedelta(minutes=5)
 
 
+async def test_page_asks_are_counted_apart_like_probes(
+    usage: UsageStore, db: Database, clock: FakeClock
+) -> None:
+    session = await SessionStore(db, clock).create(new_session())
+    await usage.record_turn(session.id, tokens(1))
+    await usage.record_ask(tokens(10))
+    await usage.record_probe(tokens(5))
+    clock.current = datetime(2026, 2, 1, 12, tzinfo=UTC)
+    await usage.record_ask(tokens(1000))
+
+    january = await usage.period("month", date(2026, 1, 1))
+
+    assert (january.sessions, january.tokens.total) == (1, 10)
+    assert january.asks.model_dump() == {"count": 1, "tokens": 100}
+    assert january.probes.model_dump() == {"count": 1, "tokens": 50}
+    assert (await usage.period("month", date(2026, 2, 1))).asks.count == 1
+    assert (await usage.period("day", date(2026, 1, 2))).asks.count == 0
+
+
 async def test_probes_are_counted_apart_from_the_users_sessions(
     usage: UsageStore, db: Database, clock: FakeClock
 ) -> None:

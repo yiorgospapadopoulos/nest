@@ -4,20 +4,40 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from nestd.errors import ConflictError, InvalidInputError, NotFoundError
 
-type ArtifactKind = Literal["markdown", "html"]
-KINDS: tuple[ArtifactKind, ...] = ("markdown", "html")
-EXTENSIONS: dict[ArtifactKind, str] = {"markdown": "md", "html": "html"}
+# Markdown and HTML are shown as the agent wrote them; Nest builds the page of the four
+# ready-made kinds from the data an agent sends (B88).
+type ArtifactKind = Literal["markdown", "html", "slides", "document", "design", "design_system"]
+KINDS: tuple[ArtifactKind, ...] = (
+    "markdown",
+    "html",
+    "slides",
+    "document",
+    "design",
+    "design_system",
+)
+EXTENSIONS: dict[ArtifactKind, str] = {
+    "markdown": "md",
+    "html": "html",
+    "slides": "md",
+    "document": "md",
+    "design": "json",
+    "design_system": "json",
+}
+# Only documents are edited by the user, in the reader (B88).
+EDITABLE: tuple[ArtifactKind, ...] = ("document",)
 TITLE_MAX = 200
 # Bytes of a version's UTF-8 content.
 CONTENT_MAX = 1024 * 1024
 # Artifacts a listing returns at most, the most recently updated first.
 LIST_MAX = 500
 
-type SaveAction = Literal["created", "updated"]
+# Who saved a version: the chat's agent, or the user editing a document in the reader.
+type Author = Literal["agent", "user"]
+type SaveAction = Literal["created", "updated", "edited"]
 
 
 class ArtifactNotFoundError(NotFoundError):
@@ -30,6 +50,10 @@ class InvalidArtifactError(InvalidInputError):
 
 class ForeignArtifactError(ConflictError):
     """An agent tried to update an artifact of another chat or pixie."""
+
+
+class StaleVersionError(ConflictError):
+    """The user saved an edit of a version that is no longer the latest."""
 
 
 class Artifact(BaseModel):
@@ -59,11 +83,20 @@ class ArtifactVersion(BaseModel):
     title: str
     size: int
     created_at: datetime
+    author: Author
 
 
 class ArtifactDetail(Artifact):
     # Oldest first.
     versions: list[ArtifactVersion]
+
+
+class PageFile(BaseModel):
+    """A file of a version of a multi-file HTML page (B88), as a client lists it."""
+
+    path: str
+    size: int
+    mime: str
 
 
 class VersionContent(BaseModel):
@@ -73,11 +106,21 @@ class VersionContent(BaseModel):
     title: str
     # As saved.
     content: str
-    # The whole document a client shows in its sandbox (B82): the content of an HTML
-    # artifact, a rendering page around a Markdown one.
+    # The whole document a client shows in its sandbox (B82): an HTML artifact with its
+    # files inlined, or the page Nest's template builds; with what the page stored (B88).
     page: str
     size: int
     created_at: datetime
+    author: Author
+    # The files of a multi-file HTML page (B88), whose bytes the page also carries.
+    files: list[PageFile]
+
+
+class EditDocument(BaseModel):
+    """The user's whole new Markdown of a document, edited from `base_version`."""
+
+    content: str
+    base_version: int = Field(ge=1)
 
 
 class UnseenCount(BaseModel):

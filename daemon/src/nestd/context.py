@@ -15,7 +15,9 @@ from claude_agent_sdk import ClaudeSDKClient
 from nestd.accounts.github import GithubAccount
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
+from nestd.artifacts.ask import PageAsks
 from nestd.artifacts.service import Artifacts
+from nestd.artifacts.storage import PageStorage
 from nestd.artifacts.store import ArtifactStore
 from nestd.artifacts.tools import artifact_tools
 from nestd.attachments.store import AttachmentStore
@@ -31,7 +33,7 @@ from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.composer.service import ComposerActions
 from nestd.config.loader import load_settings
-from nestd.config.models import Settings
+from nestd.config.models import ArtifactSettings, Settings
 from nestd.connectors.registry import ConnectorRegistry
 from nestd.engine.fetch import InfoClientFactory, fetch_details
 from nestd.engine.service import EngineInfo
@@ -179,10 +181,25 @@ class AppContext:
         notifier = Notifier(bus, pixie_store.name)
         repos = RepoService(paths, bus)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
-        artifacts = Artifacts(ArtifactStore(db, clock, paths.artifacts_dir), bus)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
         tracking = Tracking(bus)
         usage = UsageStore(db, clock, zone)
+
+        artifacts = Artifacts(
+            ArtifactStore(db, clock, paths.artifacts_dir),
+            bus,
+            PageStorage(db, clock),
+            PageAsks(
+                db=db,
+                bus=bus,
+                clock=clock,
+                usage=usage,
+                factory=probe_factory,
+                cwd=paths.ask_dir,
+                settings=lambda: context.artifact_settings(),
+                zone=zone,
+            ),
+        )
         connectors = ConnectorRegistry(db, clock, bus)
         store = SessionStore(db, clock)
         live_chats = LiveChats(paths.claude_dir)
@@ -309,7 +326,9 @@ class AppContext:
         habit_tools = PixieHabitTools(
             habits=habits, store=habit_store, reports=reports, activity=activity
         )
-        pixie_runtime = PixieRuntime(
+        # Typed here: the session manager's `extras` above names it, and inferring it would
+        # loop through the context the artifact asks read their settings from.
+        pixie_runtime: PixieRuntime = PixieRuntime(
             pixie_store,
             pixie_files,
             repos,
@@ -454,6 +473,10 @@ class AppContext:
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
         )
         return context
+
+    def artifact_settings(self) -> ArtifactSettings:
+        """Read at each ask, so a change to the settings applies at once."""
+        return self.settings.artifacts
 
     def usage_interval(self) -> timedelta | None:
         """How often the usage probe may run; None when the refresh is off."""
