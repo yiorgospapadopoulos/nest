@@ -2984,7 +2984,7 @@
         /// The real daemon's data in the B09 sheets; only reads.
         static func renderLive(to folder: URL) async throws {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let model = try await AppModel.local()
+            let model = try await AppController.localModel()
             guard model.hasDeviceToken else {
                 print("no device token: the daemon is not running")
                 return

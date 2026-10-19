@@ -53,6 +53,8 @@
         /// Saved artifacts newest first, and their versions by "<id>/<version>" (B79).
         private var artifactList: [Artifact]
         private let artifactTexts: [String: ArtifactContent]
+        /// What sample pages stored, by artifact id.
+        private var artifactItems: [String: [String: String]] = [:]
 
         init(now: Date = Date()) {
             self.now = now
@@ -1413,6 +1415,50 @@
                 artifactList[index].seen = true
                 return artifactList[index]
             }
+        }
+
+        func artifactStorage(_ id: String) async throws -> ArtifactStorage {
+            lock.withLock {
+                let items = artifactItems[id] ?? [:]
+                return ArtifactStorage(items: items, size: Self.size(items))
+            }
+        }
+
+        func writeArtifactStorage(_ id: String, set: [String: String], remove: [String])
+            async throws -> Int
+        {
+            lock.withLock {
+                var items = (artifactItems[id] ?? [:]).merging(set) { $1 }
+                for key in remove {
+                    items[key] = nil
+                }
+                artifactItems[id] = items
+                return Self.size(items)
+            }
+        }
+
+        func askStatus(_ id: String) async throws -> ArtifactAskStatus {
+            ArtifactAskStatus(used: 0, limit: 20, remaining: 20, resetsAt: nil, enabled: true)
+        }
+
+        func askArtifact(_ id: String, prompt: String, system: String?) async throws
+            -> ArtifactAnswer
+        {
+            ArtifactAnswer(text: "Sample pages get a sample answer.", remaining: 19, limit: 20)
+        }
+
+        func clearArtifactStorage(_ id: String) async throws {
+            _ = lock.withLock { artifactItems.removeValue(forKey: id) }
+        }
+
+        private static func size(_ items: [String: String]) -> Int {
+            items.reduce(0) { $0 + $1.key.utf8.count + $1.value.utf8.count }
+        }
+
+        func saveArtifactVersion(_ id: String, content: String, baseVersion: Int) async throws
+            -> ArtifactVersion
+        {
+            throw APIError.invalidInput("The sample artifacts cannot be edited.")
         }
 
         func deleteArtifact(_ id: String) async throws {
