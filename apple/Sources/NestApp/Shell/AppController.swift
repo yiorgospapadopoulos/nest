@@ -59,9 +59,10 @@ final class AppController {
     /// Asks the daemon for the device token (away from the main thread) and builds the
     /// window's model. A daemon that is not running gives none: the window opens showing it
     /// as unreachable, with the offer to start the service, and asks again on connect.
+    /// `NEST_DAEMON_URL` and `NEST_DATA_DIR` may point it at a test daemon.
     private func open() async {
         do {
-            let model = try await AppModel.local()
+            let model = try await Self.localModel()
             let shell = Shell(model: model)
             self.shell = shell
             phase = .ready
@@ -73,6 +74,15 @@ final class AppController {
         } catch {
             phase = .failed(Shell.describe(error))
         }
+    }
+
+    /// The model for the daemon this launch talks to: the default one, or the test daemon
+    /// the environment names (`DaemonLocation`).
+    static func localModel() async throws -> AppModel {
+        let location = DaemonLocation(environment: ProcessInfo.processInfo.environment)
+        return try await AppModel.local(
+            tokens: SocketTokenStore(dataFolder: location.dataFolder),
+            baseURL: location.baseURL)
     }
 
     /// Starts or restarts the daemon's service, then connects again once it is up.
