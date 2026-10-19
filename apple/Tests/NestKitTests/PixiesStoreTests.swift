@@ -21,7 +21,7 @@ import Testing
         store.apply(
             Fixture.event(
                 EventType.pixieUpdated,
-                ##"{"pixie": {"id": "p1", "slug": "tester", "name": "QA", "mascot": "sprout", "##
+                ##"{"pixie": {"id": "p1", "slug": "tester", "name": "QA", "mascot": "sprig", "##
                     + ##""color": "#8B7CF6", "model": null, "effort": null, "##
                     + ##""permission_mode": "default", "autonomy": "observe", "project_access": "edit", "##
                     + ##""skills": [], "can_call": [], "hidden": false, "##
@@ -303,12 +303,12 @@ import Testing
         let pixie = Self.pixies("a")[0]
         let changed = pixie.applying(
             UpdatePixieRequest(
-                name: "N", slug: "n", mascot: .cat, color: "#000000", model: "opus",
+                name: "N", slug: "n", mascot: .bluebell, color: "#000000", model: "opus",
                 effort: .low, permissionMode: .plan, autonomy: .start, projectAccess: .noAccess,
                 skills: ["s"], hidden: true))
         #expect(changed.name == "N")
         #expect(changed.slug == "n")
-        #expect(changed.mascot == .cat)
+        #expect(changed.mascot == .bluebell)
         #expect(changed.color == "#000000")
         #expect(changed.model == "opus")
         #expect(changed.effort == .low)
@@ -370,12 +370,12 @@ import Testing
 
     @Test func requestsEncodeTheirFields() {
         let create = CreatePixieRequest(
-            name: "A", slug: "a", mascot: .owl, color: "#E5484D", model: "opus", effort: .high,
+            name: "A", slug: "a", mascot: .moth, color: "#E5484D", model: "opus", effort: .high,
             permissionMode: .plan, autonomy: .message, projectAccess: .read, skills: ["s"],
             hidden: true, soul: "Hi")
         #expect(
             Fixture.json(create)
-                == ##"{"autonomy":"message","color":"#E5484D","effort":"high","hidden":true,"mascot":"owl","model":"opus","name":"A","permission_mode":"plan","project_access":"read","skills":["s"],"slug":"a","soul":"Hi"}"##
+                == ##"{"autonomy":"message","color":"#E5484D","effort":"high","hidden":true,"mascot":"moth","model":"opus","name":"A","permission_mode":"plan","project_access":"read","skills":["s"],"slug":"a","soul":"Hi"}"##
         )
         #expect(Fixture.json(CreatePixieRequest(name: "A")) == #"{"name":"A"}"#)
         #expect(Fixture.json(UpdatePixieRequest()) == "{}")
@@ -389,12 +389,12 @@ import Testing
                 == #"{"effort":null,"model":"opus"}"#)
         #expect(Fixture.json(ReorderPixiesRequest(ids: ["b", "a"])) == #"{"ids":["b","a"]}"#)
         let full = UpdatePixieRequest(
-            name: "N", slug: "n", mascot: .cat, color: "#000000", model: "m", effort: .low,
+            name: "N", slug: "n", mascot: .bluebell, color: "#000000", model: "m", effort: .low,
             permissionMode: .default, autonomy: .start, projectAccess: .noAccess, skills: [],
             hidden: false, teamID: "t1", maxRunning: 1, maxPerDay: 3)
         #expect(
             Fixture.json(full)
-                == ##"{"autonomy":"start","color":"#000000","effort":"low","hidden":false,"mascot":"cat","max_per_day":3,"max_running":1,"model":"m","name":"N","permission_mode":"default","project_access":"none","skills":[],"slug":"n","team_id":"t1"}"##
+                == ##"{"autonomy":"start","color":"#000000","effort":"low","hidden":false,"mascot":"bluebell","max_per_day":3,"max_running":1,"model":"m","name":"N","permission_mode":"default","project_access":"none","skills":[],"slug":"n","team_id":"t1"}"##
         )
         #expect(
             Fixture.json(CreatePixieRequest(name: "A", projectAccess: .noAccess))
@@ -420,9 +420,30 @@ import Testing
         #expect(Fixture.decode(Pixie.self, json: older) == Fixture.decode(Pixie.self, "pixie"))
     }
 
+    /// B89: the ten mascots of before read as the fairies that took their place, so a
+    /// pixie or project saved by an older daemon keeps a sprite; only new names are written.
+    @Test func oldMascotNamesReadAsTheirFairies() throws {
+        let old = [
+            "invader": Mascot.frost, "ghost": .brook, "cat": .bluebell, "owl": .moth,
+            "robot": .star, "frog": .dragonfly, "mushroom": .rose, "bunny": .nightshade,
+            "crab": .firefly, "sprout": .sprig,
+        ]
+        for (name, mascot) in old {
+            let json = Fixture.text("pixie").replacingOccurrences(
+                of: "\"sprig\"", with: "\"\(name)\"")
+            #expect(Fixture.decode(Pixie.self, json: json).mascot == mascot)
+        }
+        for mascot in Mascot.choices {
+            let decoded = try NestJSON.decoder.decode(
+                Mascot.self, from: Data("\"\(mascot.rawValue)\"".utf8))
+            #expect(decoded == mascot)
+        }
+        #expect(Fixture.json(UpdatePixieRequest(mascot: .frost)) == #"{"mascot":"frost"}"#)
+    }
+
     @Test func unknownWireValuesReadAsUnknown() throws {
         var json = Fixture.text("pixie")
-        json = json.replacingOccurrences(of: "\"sprout\"", with: "\"dragon\"")
+        json = json.replacingOccurrences(of: "\"sprig\"", with: "\"dragon\"")
             .replacingOccurrences(of: "\"observe\"", with: "\"roam\"")
             .replacingOccurrences(of: "\"edit\"", with: "\"admin\"")
         let pixie = Fixture.decode(Pixie.self, json: json)

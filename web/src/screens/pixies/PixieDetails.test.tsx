@@ -30,11 +30,14 @@ describe("Pixie details", () => {
     const api = fakeApi();
     const { user } = await details(api);
 
-    expect(screen.getByRole("button", { name: "invader" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "ghost" }));
+    expect(screen.getByRole("button", { name: "bluebell" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(screen.getByRole("button", { name: "brook" }));
 
-    expect(api.updatePixie).toHaveBeenCalledWith("p1", { mascot: "ghost" });
-    expect(screen.getByRole("button", { name: "ghost" })).toHaveAttribute("aria-pressed", "true");
+    expect(api.updatePixie).toHaveBeenCalledWith("p1", { mascot: "brook" });
+    expect(screen.getByRole("button", { name: "brook" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("saves a preset and a custom colour, and offers no background", async () => {
@@ -91,7 +94,7 @@ describe("Pixie details", () => {
     await user.click(screen.getByRole("button", { name: "Edit slug, @tester" }));
     await user.clear(screen.getByRole("textbox", { name: "Slug" }));
     await user.type(screen.getByRole("textbox", { name: "Slug" }), "checker");
-    await user.click(screen.getByRole("button", { name: "ghost" }));
+    await user.click(screen.getByRole("button", { name: "brook" }));
     expect(api.updatePixie).toHaveBeenCalledWith("p1", { slug: "checker" });
     await waitFor(() => {
       expect(screen.queryByText("That slug is taken")).not.toBeInTheDocument();

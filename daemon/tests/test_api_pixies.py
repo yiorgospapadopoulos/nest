@@ -34,7 +34,7 @@ async def test_crud(api: Api) -> None:
     created = await api.http.post("/api/pixies", json={"name": "Tester", "color": "#112233"})
     pid = created.json()["id"]
     listed = await api.http.get("/api/pixies")
-    patched = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": "ghost"})
+    patched = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": "brook"})
     bad = await api.http.post("/api/pixies", json={"name": "P", "slug": "plan"})
     taken = await api.http.post("/api/pixies", json={"name": "X", "slug": "tester"})
     unknown = await api.http.get("/api/pixies/nope")
@@ -43,11 +43,48 @@ async def test_crud(api: Api) -> None:
     assert created.status_code == 201
     assert created.json()["slug"] == "tester"
     assert [p["id"] for p in listed.json()] == [pid]
-    assert patched.json()["mascot"] == "ghost"
+    assert patched.json()["mascot"] == "brook"
     assert bad.status_code == 422
     assert taken.status_code == 409
     assert unknown.status_code == 404
     assert deleted.status_code == 204
+
+
+OLD_MASCOTS = {
+    "invader": "frost",
+    "ghost": "brook",
+    "cat": "bluebell",
+    "owl": "moth",
+    "robot": "star",
+    "frog": "dragonfly",
+    "mushroom": "rose",
+    "bunny": "nightshade",
+    "crab": "firefly",
+    "sprout": "sprig",
+}
+
+
+@pytest.mark.parametrize(("old", "new"), OLD_MASCOTS.items())
+async def test_an_old_mascot_name_is_taken_as_its_new_name(api: Api, old: str, new: str) -> None:
+    """B89: clients from before the fairy redesign still send the old names;
+    responses only carry the new ones.
+    """
+    created = await api.http.post("/api/pixies", json={"name": "Old", "mascot": old})
+    pid = created.json()["id"]
+    patched = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": old})
+
+    assert created.status_code == 201, created.text
+    assert created.json()["mascot"] == new
+    assert patched.json()["mascot"] == new
+    assert (await api.http.get(f"/api/pixies/{pid}")).json()["mascot"] == new
+
+
+async def test_a_new_pixie_is_a_bluebell_and_unknown_mascots_are_refused(api: Api) -> None:
+    created = await api.http.post("/api/pixies", json={"name": "New"})
+    unknown = await api.http.post("/api/pixies", json={"name": "X", "mascot": "dragon"})
+
+    assert created.json()["mascot"] == "bluebell"
+    assert unknown.status_code == 422
 
 
 # Pixie keys removed in B85 (D109), as a client from before it still sends them.
@@ -221,7 +258,7 @@ async def test_an_explicit_null_clears_the_model_and_effort(api: Api) -> None:
         await api.http.post("/api/pixies", json={"name": "T", "model": "opus", "effort": "high"})
     ).json()["id"]
 
-    kept = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": "ghost"})
+    kept = await api.http.patch(f"/api/pixies/{pid}", json={"mascot": "brook"})
     cleared = await api.http.patch(f"/api/pixies/{pid}", json={"model": None, "effort": None})
 
     assert (kept.json()["model"], kept.json()["effort"]) == ("opus", "high")

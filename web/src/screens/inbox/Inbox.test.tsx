@@ -80,7 +80,7 @@ describe("Inbox", () => {
     const groups = screen.getAllByRole("heading", { level: 2 });
     expect(groups.map((h) => h.textContent)).toEqual(["Pixie1", "Tester1"]);
     expect(screen.queryByText("pixie:p1")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "invader" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "bluebell" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open Pixie" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Open Tester" }));

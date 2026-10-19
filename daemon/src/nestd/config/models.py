@@ -2,10 +2,11 @@
 
 import re
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal, cast
+from typing import Annotated, Final, Literal, cast
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StrictBool,
@@ -19,9 +20,41 @@ PermissionMode = Literal["default", "acceptEdits", "bypassPermissions", "plan", 
 # The modes an approved plan may continue in; `auto` only with a model that supports it.
 PlanApprovalMode = Literal["acceptEdits", "default", "auto"]
 type SessionMode = Literal["worktree", "in_place"]
-# A pixie's sprite and colour (D072); a project's icon reuses them (B36).
-type Mascot = Literal[
-    "invader", "ghost", "cat", "owl", "robot", "frog", "mushroom", "bunny", "crab", "sprout"
+# The names of the sprites before the fairy redesign (B89), still accepted when read so
+# older clients and saved project icons keep working; only the new names are written.
+MASCOT_RENAMES: Final = {
+    "invader": "frost",
+    "ghost": "brook",
+    "cat": "bluebell",
+    "owl": "moth",
+    "robot": "star",
+    "frog": "dragonfly",
+    "mushroom": "rose",
+    "bunny": "nightshade",
+    "crab": "firefly",
+    "sprout": "sprig",
+}
+
+
+def _renamed_mascot(value: object) -> object:
+    return MASCOT_RENAMES.get(value, value) if isinstance(value, str) else value
+
+
+# A pixie's sprite and colour (D072, B89); a project's icon reuses them (B36).
+type Mascot = Annotated[
+    Literal[
+        "bluebell",
+        "dragonfly",
+        "moth",
+        "firefly",
+        "rose",
+        "frost",
+        "sprig",
+        "nightshade",
+        "brook",
+        "star",
+    ],
+    BeforeValidator(_renamed_mascot),
 ]
 type Color = Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]
 # Which Nest tools a pixie gets (stage 3); every level includes the ones before it.

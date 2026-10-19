@@ -1,5 +1,5 @@
 {
-  "id": "p1", "slug": "tester", "name": "Tester", "mascot": "sprout", "color": "#8B7CF6",
+  "id": "p1", "slug": "tester", "name": "Tester", "mascot": "sprig", "color": "#8B7CF6",
   "model": null, "effort": null, "permission_mode": "default",
   "autonomy": "observe", "project_access": "edit", "skills": [], "can_call": [],
   "hidden": false, "position": 0, "chat_session_id": null, "team_id": null,

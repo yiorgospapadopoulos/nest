@@ -325,7 +325,7 @@ async def test_cosmetic_changes_keep_the_run(ctx: AppContext, provider: FakeProv
     chat = await ctx.pixies.send(pixie.id, "hello", [])
     await until(lambda: not ctx.sessions.busy(chat.id))
 
-    await ctx.pixies.update(pixie.id, UpdatePixie(mascot="ghost", hidden=True))
+    await ctx.pixies.update(pixie.id, UpdatePixie(mascot="brook", hidden=True))
     await ctx.pixies.write_file(pixie.id, "notes/a", WriteFile(text="x", hash=None))
     await ctx.pixies.send(pixie.id, "more", [])
     await until(lambda: len(provider.runs[0].inputs) == 2)
@@ -400,7 +400,7 @@ async def test_null_model_and_effort_go_back_to_the_default(
     chat = await ctx.pixies.send(pixie.id, "hello", [])
     await until(lambda: not ctx.sessions.busy(chat.id))
 
-    kept = await ctx.pixies.update(pixie.id, UpdatePixie.model_validate({"mascot": "ghost"}))
+    kept = await ctx.pixies.update(pixie.id, UpdatePixie.model_validate({"mascot": "brook"}))
     await ctx.pixies.update(pixie.id, UpdatePixie(model="opus"))  # no change for the chat
     cleared = await ctx.pixies.update(
         pixie.id, UpdatePixie.model_validate({"model": None, "effort": None})

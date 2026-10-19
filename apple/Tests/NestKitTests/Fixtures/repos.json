@@ -20,7 +20,7 @@
     "name": "map-viewer",
     "path": "/Users/example/projects/map-viewer",
     "default_branch": "develop",
-    "icon": "frog",
+    "icon": "dragonfly",
     "icon_color": "#3DDC84",
     "worktree": {
       "default": false,
