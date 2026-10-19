@@ -42,16 +42,6 @@ import Testing
         #expect(throws: TokenStoreError.socket(EACCES)) { try store.deviceToken() }
     }
 
-    @Test func defaultsToTheDaemonsDataFolder() {
-        let home = URL(fileURLWithPath: "/Users/someone")
-        #expect(
-            SocketTokenStore.path(home: home)
-                == "/Users/someone/Library/Application Support/nest/token.sock")
-        #expect(
-            SocketTokenStore().path
-                == SocketTokenStore.path(home: FileManager.default.homeDirectoryForCurrentUser))
-    }
-
     @Test func errorsReadAsSentences() {
         #expect(
             TokenStoreError.socket(EACCES).message
@@ -66,11 +56,12 @@ import Testing
         #expect(TokenStoreError.noAnswer.localizedDescription == TokenStoreError.noAnswer.message)
     }
 
-    /// The real socket read, for a home where no daemon runs; never the user's own daemon.
-    @Test func aHomeWithoutARunningDaemonGivesNoToken() throws {
-        let home = URL(fileURLWithPath: TestSocketServer.makeFolder())
-        defer { rmdir(home.path) }
-        #expect(try SocketTokenStore(home: home).deviceToken() == nil)
+    /// The real socket read, for a data folder where no daemon runs; never the user's own
+    /// daemon.
+    @Test func aDataFolderWithoutARunningDaemonGivesNoToken() throws {
+        let folder = URL(fileURLWithPath: TestSocketServer.makeFolder())
+        defer { rmdir(folder.path) }
+        #expect(try SocketTokenStore(dataFolder: folder).deviceToken() == nil)
     }
 }
 

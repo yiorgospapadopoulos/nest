@@ -9,6 +9,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     field_validator,
     model_validator,
@@ -214,6 +215,18 @@ class StorageSettings(_Strict):
     archive_after_days: int | None = Field(default=None, ge=1, le=3650)
 
 
+class ArtifactSettings(_Strict):
+    """What artifact pages may ask Claude (B88, D118): small text tasks, one call each, no
+    tools, at most `ask_daily_limit` a day per artifact, answers of about
+    `ask_max_output_tokens`.
+    """
+
+    ask: StrictBool = True
+    ask_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = "haiku"
+    ask_daily_limit: int = Field(default=20, ge=1, le=200)
+    ask_max_output_tokens: int = Field(default=1000, ge=100, le=4000)
+
+
 # `[pixies]` keys before B85: `report_push` moved to `[notifications]
 # pixie_report_level`, `projects` went (every pixie works in every project).
 _REMOVED_PIXIE_KEYS = ("projects", "report_push")
@@ -272,6 +285,7 @@ class Settings(_Strict):
     projects: ProjectSettings = Field(default_factory=ProjectSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)
+    artifacts: ArtifactSettings = Field(default_factory=ArtifactSettings)
 
     @model_validator(mode="before")
     @classmethod

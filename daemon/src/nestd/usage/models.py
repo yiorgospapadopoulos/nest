@@ -63,6 +63,8 @@ class PeriodUsage(BaseModel):
     # By project, most tokens first; none without tokens.
     projects: list[ProjectUsage]
     probes: ProbeTotals = Field(default_factory=ProbeTotals)
+    # The Claude calls artifact pages made (B88), Nest overhead like the probes.
+    asks: ProbeTotals = Field(default_factory=ProbeTotals)
 
 
 class LimitWindow(BaseModel):

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { artifact, session } from "../../test/fixtures.ts";
-import { chatScopes, originOf, pixieScopes } from "./view.ts";
+import { KIND_ICONS, KIND_LABELS, chatScopes, originOf, pixieScopes } from "./view.ts";
 
 describe("the history's choices", () => {
   it("are a project chat's, its project's and every project's", () => {
@@ -35,5 +35,26 @@ describe("where an artifact came from", () => {
     [artifact({ pixie_id: "p1", pixie_name: null }), "A pixie"],
   ])("%#: %s", (found, expected) => {
     expect(originOf(found)).toBe(expected);
+  });
+});
+
+describe("the kinds", () => {
+  it("each have a label and an icon of their own", () => {
+    expect(KIND_LABELS).toEqual({
+      markdown: "Markdown",
+      html: "HTML",
+      slides: "Slides",
+      document: "Document",
+      design: "Design",
+      design_system: "Design system",
+    });
+    expect(KIND_ICONS).toEqual({
+      markdown: "doc",
+      html: "code",
+      slides: "chart",
+      document: "list",
+      design: "devices",
+      design_system: "contrast",
+    });
   });
 });

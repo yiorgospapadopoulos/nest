@@ -675,7 +675,7 @@ final class Shell {
     }
 
     /// Writes the version as a file where the user picks; HTML without the injected
-    /// policy, as it was saved.
+    /// policy, as it was saved, or a multi-file page as its built, self-contained page.
     func saveArtifact(_ content: ArtifactContent) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = ArtifactFile.name(title: content.title, kind: content.kind)
@@ -685,7 +685,7 @@ final class Shell {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                try Data(content.content.utf8).write(to: url, options: .atomic)
+                try Data(ArtifactFile.savedText(content).utf8).write(to: url, options: .atomic)
                 self.show("Saved \(url.lastPathComponent)", kind: .done)
             } catch {
                 self.show(error, doing: "Could not save the file")

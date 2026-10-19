@@ -1,5 +1,6 @@
 import type {
   Approval,
+  ArtifactStorageChange,
   ContextUsage,
   JsonObject,
   JsonValue,
@@ -186,4 +187,17 @@ export function stuckOf(value: JsonObject): StuckFlag | null {
   const since = str(value.since);
   if (reason === null || !STUCK_REASONS.includes(reason) || since === null) return null;
   return { reason: reason as StuckReason, since, details: str(value.details) ?? "" };
+}
+
+/** An `artifact.storage` event's change, its fields read plainly; null without an artifact. */
+export function storageChangeOf(p: JsonObject): ArtifactStorageChange | null {
+  const id = str(p.artifact_id);
+  if (id === null) return null;
+  const set = Object.fromEntries(
+    Object.entries(obj(p.set)).filter((entry): entry is [string, string] => {
+      return typeof entry[1] === "string";
+    }),
+  );
+  const remove = list(p.remove).filter((key): key is string => typeof key === "string");
+  return { artifact_id: id, set, remove, clear: p.clear === true };
 }

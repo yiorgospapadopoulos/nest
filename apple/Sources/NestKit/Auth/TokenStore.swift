@@ -46,8 +46,9 @@ public enum TokenStoreError: LocalizedError, Sendable, Equatable {
 }
 
 /// Asks the running daemon for this Mac's device token over its private Unix socket
-/// (D075): `~/Library/Application Support/nest/token.sock`, in a folder only this user
-/// can open. The daemon checks that the caller runs as the same user, writes the token and
+/// (D075): `token.sock` in the daemon's data folder (`~/Library/Application Support/nest`,
+/// or the folder `NEST_DATA_DIR` names, see `DaemonLocation`), which only this user can
+/// open. The daemon checks that the caller runs as the same user, writes the token and
 /// a newline, and closes. The token itself stays in the daemon's Keychain item, which the
 /// app never reads.
 public struct SocketTokenStore: TokenStore {
@@ -57,19 +58,15 @@ public struct SocketTokenStore: TokenStore {
     let path: String
     let exchange: Exchange
 
-    public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        self.init(path: Self.path(home: home)) { try UnixSocket.read(path: $0) }
+    public init(dataFolder: URL = DaemonLocation.defaultDataFolder()) {
+        self.init(path: dataFolder.appending(path: "token.sock").path) {
+            try UnixSocket.read(path: $0)
+        }
     }
 
     init(path: String, exchange: @escaping Exchange) {
         self.path = path
         self.exchange = exchange
-    }
-
-    /// The daemon's default data folder; a daemon run with `NEST_DATA_DIR` elsewhere is
-    /// not found.
-    public static func path(home: URL) -> String {
-        home.appending(path: "Library/Application Support/nest/token.sock").path
     }
 
     public func deviceToken() throws -> String? {

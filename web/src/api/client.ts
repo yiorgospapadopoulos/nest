@@ -3,9 +3,14 @@ import type {
   AgentDefaults,
   AgentWork,
   Artifact,
+  ArtifactAnswer,
+  AskStatus,
   ArtifactContent,
   ArtifactDetail,
   ArtifactFilter,
+  ArtifactStorage,
+  ArtifactStorageWrite,
+  ArtifactVersion,
   CallWork,
   Goal,
   GroupEntry,
@@ -274,6 +279,18 @@ export interface Api {
   artifactVersion(id: string, version: number): Promise<ArtifactContent>;
   markArtifactSeen(id: string): Promise<Artifact>;
   deleteArtifact(id: string): Promise<null>;
+  artifactStorage(id: string): Promise<ArtifactStorage>;
+  /** 413 when the result would be over a cap. */
+  writeArtifactStorage(id: string, body: ArtifactStorageWrite): Promise<{ size: number }>;
+  clearArtifactStorage(id: string): Promise<unknown>;
+  askStatus(id: string): Promise<AskStatus>;
+  /** 429 when today's asks are used, 403 when asking is off, 409 while one runs. */
+  askArtifact(id: string, body: { prompt: string; system?: string }): Promise<ArtifactAnswer>;
+  /** The user's edit of a document (B88); 409 when `base_version` is no longer the latest. */
+  saveArtifactVersion(
+    id: string,
+    body: { content: string; base_version: number },
+  ): Promise<ArtifactVersion>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -846,6 +863,30 @@ export class HttpApi implements Api {
 
   deleteArtifact(id: string) {
     return this.json<null>("DELETE", artifact(id));
+  }
+
+  artifactStorage(id: string) {
+    return this.json<ArtifactStorage>("GET", `${artifact(id)}/storage`);
+  }
+
+  writeArtifactStorage(id: string, body: ArtifactStorageWrite) {
+    return this.json<{ size: number }>("POST", `${artifact(id)}/storage`, body);
+  }
+
+  clearArtifactStorage(id: string) {
+    return this.json<unknown>("DELETE", `${artifact(id)}/storage`);
+  }
+
+  askStatus(id: string) {
+    return this.json<AskStatus>("GET", `${artifact(id)}/ask`);
+  }
+
+  askArtifact(id: string, body: { prompt: string; system?: string }) {
+    return this.json<ArtifactAnswer>("POST", `${artifact(id)}/ask`, body);
+  }
+
+  saveArtifactVersion(id: string, body: { content: string; base_version: number }) {
+    return this.json<ArtifactVersion>("POST", `${artifact(id)}/versions`, body);
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {
