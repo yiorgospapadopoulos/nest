@@ -702,6 +702,7 @@ export function artifactDetail(overrides: Partial<Artifact> = {}): ArtifactDetai
       title: found.title,
       size: 10,
       created_at: NOW,
+      author: "agent" as const,
     })),
   };
 }
@@ -716,6 +717,8 @@ export function artifactContent(overrides: Partial<ArtifactContent> = {}): Artif
     content: "# Options\n\nPick **one**.",
     size: 24,
     created_at: NOW,
+    author: "agent" as const,
+    files: [],
     ...overrides,
   };
   return {

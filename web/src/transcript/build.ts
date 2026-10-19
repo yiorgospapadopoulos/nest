@@ -299,6 +299,15 @@ export function buildTranscript(
   return groupTools(items.filter((item) => item.kind !== "tool" || !saved.has(item.id)));
 }
 
+const ARTIFACT_KINDS: ReadonlySet<unknown> = new Set<ArtifactKind>([
+  "markdown",
+  "html",
+  "slides",
+  "document",
+  "design",
+  "design_system",
+]);
+
 /** A saved artifact's card from its event; null for a malformed one. */
 function artifactItem(key: string, p: JsonObject): ArtifactItem | null {
   const artifactId = str(p.artifact_id);
@@ -310,7 +319,7 @@ function artifactItem(key: string, p: JsonObject): ArtifactItem | null {
     artifactId,
     version,
     title: str(p.title) ?? "Artifact",
-    artifactKind: p.kind === "html" ? "html" : "markdown",
+    artifactKind: ARTIFACT_KINDS.has(p.kind) ? (p.kind as ArtifactKind) : "markdown",
     action: p.action === "updated" ? "updated" : "created",
   };
 }

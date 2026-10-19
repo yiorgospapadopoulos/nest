@@ -118,6 +118,18 @@ describe("artifacts in the transcript (B79)", () => {
     ]);
   });
 
+  it.each(["slides", "document", "design", "design_system"])(
+    "names a %s card's kind (B88)",
+    (kind) => {
+      const items = buildTranscript(
+        [saved(1, { artifact_id: "a1", version: 1, title: "T", kind, action: "created" })],
+        {},
+        null,
+      );
+      expect(items[0]).toMatchObject({ kind: "artifact", artifactKind: kind });
+    },
+  );
+
   it("leaves out a malformed card and reads unknown fields plainly", () => {
     const items = buildTranscript(
       [

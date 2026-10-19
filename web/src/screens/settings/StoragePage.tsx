@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StorageUsage, StoredAttachment } from "../../api/types.ts";
+import { sizeText } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
 import { Sheet } from "../../ui/Sheet.tsx";
 import { Confirm } from "../pixies/Confirm.tsx";
@@ -7,22 +8,6 @@ import { Loading, Row, Section, SelectRow, type Choice } from "./rows.tsx";
 
 // Archive chats idle for this many days; null never (D104).
 const ARCHIVE_DAYS = [null, 7, 30, 90];
-
-/** "820 MB", "1.4 GB", "12 KB". */
-function sizeText(bytes: number): string {
-  let value = bytes;
-  for (const unit of ["bytes", "KB", "MB", "GB"]) {
-    if (value < 1000) return shown(value, unit);
-    value /= 1000;
-  }
-  return shown(value, "TB");
-}
-
-/** Whole numbers, with one decimal below 10 (except bytes). */
-function shown(value: number, unit: string): string {
-  const rounded = unit === "bytes" || value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${String(rounded)} ${unit}`;
-}
 
 function archiveChoices(current: number | null): Choice<number | null>[] {
   const days = ARCHIVE_DAYS.includes(current) ? ARCHIVE_DAYS : [...ARCHIVE_DAYS, current];
