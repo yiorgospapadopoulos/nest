@@ -1,8 +1,16 @@
 import Foundation
 
-/// What an artifact holds, fixed when it is made (B79).
+/// What an artifact holds, fixed when it is made (B79). Slides and documents are Markdown,
+/// designs and design systems JSON, each shown in a page the daemon builds (B88).
 public enum ArtifactKind: String, UnknownSafeEnum {
-    case markdown, html
+    case markdown, html, slides, document, design
+    case designSystem = "design_system"
+    case unknown
+}
+
+/// Who saved a version: the agent, or the user editing a document in place (B88).
+public enum ArtifactAuthor: String, UnknownSafeEnum {
+    case agent, user
     case unknown
 }
 
@@ -73,10 +81,42 @@ public struct ArtifactVersion: Decodable, Sendable, Hashable {
     /// Bytes of UTF-8 content.
     public let size: Int
     public let createdAt: Date
+    public let author: ArtifactAuthor
+
+    public init(
+        version: Int, title: String, size: Int, createdAt: Date, author: ArtifactAuthor = .agent
+    ) {
+        self.version = version
+        self.title = title
+        self.size = size
+        self.createdAt = createdAt
+        self.author = author
+    }
 
     enum CodingKeys: String, CodingKey {
-        case version, title, size
+        case version, title, size, author
         case createdAt = "created_at"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        title = try container.decode(String.self, forKey: .title)
+        size = try container.decode(Int.self, forKey: .size)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        author = try container.decodeIfPresent(ArtifactAuthor.self, forKey: .author) ?? .agent
+    }
+}
+
+/// `POST /api/artifacts/{id}/versions`: the user's edit of a document, made from
+/// `baseVersion`, which must still be the latest.
+struct SaveArtifactVersionRequest: Encodable {
+    let content: String
+    let baseVersion: Int
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case baseVersion = "base_version"
     }
 }
 
@@ -108,10 +148,14 @@ public struct ArtifactContent: Decodable, Sendable, Hashable {
     public let page: String
     public let size: Int
     public let createdAt: Date
+    public let author: ArtifactAuthor
+    /// A multi-file html page's other files, already built into `page` (B88).
+    public let files: [ArtifactFileInfo]
 
     public init(
         artifactID: String, version: Int, kind: ArtifactKind, title: String, content: String,
-        page: String, createdAt: Date
+        page: String, createdAt: Date, author: ArtifactAuthor = .agent,
+        files: [ArtifactFileInfo] = []
     ) {
         self.artifactID = artifactID
         self.version = version
@@ -121,19 +165,36 @@ public struct ArtifactContent: Decodable, Sendable, Hashable {
         self.page = page
         size = content.utf8.count
         self.createdAt = createdAt
+        self.author = author
+        self.files = files
     }
 
     enum CodingKeys: String, CodingKey {
-        case version, kind, title, content, page, size
+        case version, kind, title, content, page, size, author, files
         case artifactID = "artifact_id"
         case createdAt = "created_at"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        artifactID = try container.decode(String.self, forKey: .artifactID)
+        version = try container.decode(Int.self, forKey: .version)
+        kind = try container.decode(ArtifactKind.self, forKey: .kind)
+        title = try container.decode(String.self, forKey: .title)
+        content = try container.decode(String.self, forKey: .content)
+        page = try container.decode(String.self, forKey: .page)
+        size = try container.decode(Int.self, forKey: .size)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        author = try container.decodeIfPresent(ArtifactAuthor.self, forKey: .author) ?? .agent
+        files = try container.decodeIfPresent([ArtifactFileInfo].self, forKey: .files) ?? []
     }
 }
 
 /// `session.artifact`: the chat saved an artifact, a card in its transcript.
 public struct ArtifactCard: Decodable, Sendable, Hashable {
     public enum Action: String, UnknownSafeEnum {
-        case created, updated
+        /// `edited` is the user's own save of a document (B88).
+        case created, updated, edited
         case unknown
     }
 

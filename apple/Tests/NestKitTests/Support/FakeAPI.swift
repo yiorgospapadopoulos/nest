@@ -106,6 +106,11 @@ final class FakeAPI: NestAPI {
         var artifacts: [Artifact] = []
         var artifactContents: [String: ArtifactContent] = [:]
         var unseenArtifacts = 0
+        /// What each artifact's page stored, by artifact id (B88).
+        var artifactStorage: [String: ArtifactStorage] = [:]
+        var askAnswer = ArtifactAnswer(text: "", remaining: 19, limit: 20)
+        var askStatus = ArtifactAskStatus(
+            used: 0, limit: 20, remaining: 20, resetsAt: nil, enabled: true)
     }
 
     let state = Mutex(State())
@@ -921,6 +926,63 @@ final class FakeAPI: NestAPI {
             state.artifacts[index].seen = true
             return state.artifacts[index]
         }
+    }
+
+    /// A user's save: the next version, titled "Edited", once the artifact is known.
+    func saveArtifactVersion(_ id: String, content: String, baseVersion: Int) async throws
+        -> ArtifactVersion
+    {
+        try call("saveArtifactVersion", "\(id) base=\(baseVersion) \(content)") { state in
+            let index = state.artifacts.firstIndex { $0.id == id }!
+            state.artifacts[index].latestVersion += 1
+            return ArtifactVersion(
+                version: state.artifacts[index].latestVersion, title: "Edited",
+                size: content.utf8.count, createdAt: Fixture.date("2026-10-17T10:00:00Z"),
+                author: .user)
+        }
+    }
+
+    func artifactStorage(_ id: String) async throws -> ArtifactStorage {
+        try call("artifactStorage", id) {
+            $0.artifactStorage[id] ?? ArtifactStorage(items: [:], size: 0)
+        }
+    }
+
+    /// Applies the change; the size counts each key's and value's UTF-8 bytes.
+    func writeArtifactStorage(_ id: String, set: [String: String], remove: [String])
+        async throws -> Int
+    {
+        let detail =
+            "\(id) set=\(set.keys.sorted().joined(separator: ",")) remove=\(remove.joined(separator: ","))"
+        return try call("writeArtifactStorage", detail) { state in
+            var items = state.artifactStorage[id]?.items ?? [:]
+            items.merge(set) { $1 }
+            for key in remove {
+                items[key] = nil
+            }
+            let size = items.reduce(0) { $0 + $1.key.utf8.count + $1.value.utf8.count }
+            state.artifactStorage[id] = ArtifactStorage(items: items, size: size)
+            return size
+        }
+    }
+
+    func askArtifact(_ id: String, prompt: String, system: String?) async throws
+        -> ArtifactAnswer
+    {
+        // A refusal answers at once; an answer may wait at the gate.
+        let answer = try call("askArtifact", "\(id) \(prompt) system=\(system ?? "")") {
+            $0.askAnswer
+        }
+        await pass("askArtifact")
+        return answer
+    }
+
+    func askStatus(_ id: String) async throws -> ArtifactAskStatus {
+        try call("askStatus", id) { $0.askStatus }
+    }
+
+    func clearArtifactStorage(_ id: String) async throws {
+        try call("clearArtifactStorage", id) { $0.artifactStorage[id] = nil }
     }
 
     func deleteArtifact(_ id: String) async throws {

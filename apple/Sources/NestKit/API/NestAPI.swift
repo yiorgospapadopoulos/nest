@@ -188,6 +188,22 @@ public protocol NestAPI: Sendable {
     func artifactContent(_ id: String, version: Int) async throws -> ArtifactContent
     /// The user opened its latest version; answers the artifact.
     func markArtifactSeen(_ id: String) async throws -> Artifact
+    /// The user's edit of a document as a new version, made from `baseVersion`; a 409
+    /// (`APIError.conflict`) when that is no longer the latest (B88).
+    /// What the artifact's page stored (B88).
+    func artifactStorage(_ id: String) async throws -> ArtifactStorage
+    /// Sets and removes keys at once and answers the new size; over a cap is
+    /// `APIError.payloadTooLarge`.
+    func writeArtifactStorage(_ id: String, set: [String: String], remove: [String])
+        async throws -> Int
+    func clearArtifactStorage(_ id: String) async throws
+    /// A page's small request to Claude: 429 is the day's limit used, 403 asking turned
+    /// off, 409 an ask already running for the artifact.
+    func askStatus(_ id: String) async throws -> ArtifactAskStatus
+    func askArtifact(_ id: String, prompt: String, system: String?) async throws
+        -> ArtifactAnswer
+    func saveArtifactVersion(_ id: String, content: String, baseVersion: Int) async throws
+        -> ArtifactVersion
     /// Removes it with every version.
     func deleteArtifact(_ id: String) async throws
 

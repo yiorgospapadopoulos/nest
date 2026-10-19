@@ -110,6 +110,10 @@ public enum EventType {
     public static let artifactSaved = "artifact.saved"
     public static let artifactSeen = "artifact.seen"
     public static let artifactDeleted = "artifact.deleted"
+    /// A page's storage changed on some device or was cleared (B88); not stored.
+    public static let artifactStorage = "artifact.storage"
+    /// A page's ask to Claude started or finished (B88); not stored.
+    public static let artifactAsk = "artifact.ask"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -187,6 +191,8 @@ public enum EventBody: Sendable, Hashable {
     case artifactSaved(ArtifactSaved)
     case artifactSeen(id: String, unseen: Int)
     case artifactDeleted(id: String, unseen: Int)
+    case artifactStorage(ArtifactStorageEvent)
+    case artifactAsk(ArtifactAskEvent)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -294,6 +300,9 @@ public enum EventBody: Sendable, Hashable {
             self = .artifactDeleted(
                 id: try field("artifact_id", as: String.self),
                 unseen: try field("unseen", as: Int.self))
+        case EventType.artifactStorage:
+            self = .artifactStorage(try payload.decode(ArtifactStorageEvent.self))
+        case EventType.artifactAsk: self = .artifactAsk(try payload.decode(ArtifactAskEvent.self))
         default: self = .other
         }
     }
