@@ -141,7 +141,8 @@ CLAUDE_CODE_UPDATED: Final = "claude_code.updated"
 # Plugins or marketplaces changed through Nest, `{}`; clients list them again.
 EXTENSIONS_UPDATED: Final = "extensions.updated"
 # Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
-# `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`.
+# `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`, or
+# `edited` when the user saved a document section in the reader (B88).
 SESSION_ARTIFACT: Final = "session.artifact"
 # Global, each with `unseen`, the count of artifacts whose latest version is not opened
 # yet. Saved: `{artifact, action, version, unseen}` with the whole artifact. Seen (opened
@@ -149,3 +150,11 @@ SESSION_ARTIFACT: Final = "session.artifact"
 ARTIFACT_SAVED: Final = "artifact.saved"
 ARTIFACT_SEEN: Final = "artifact.seen"
 ARTIFACT_DELETED: Final = "artifact.deleted"
+# Ephemeral (B88): what an artifact's page stores changed, `{artifact_id, set, remove, clear,
+# client}` with the new values, so the user's other open pages stay in step; `client` is
+# the writer's own id, if it sent one, so it can skip its echo.
+ARTIFACT_STORAGE: Final = "artifact.storage"
+# Ephemeral (B88): an artifact's page asked Claude, `{artifact_id, state, remaining, limit}`,
+# `state` `started` or `finished`, `remaining` the asks it has left today of `limit` a day;
+# readers show it working.
+ARTIFACT_ASK: Final = "artifact.ask"

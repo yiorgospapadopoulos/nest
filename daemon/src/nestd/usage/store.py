@@ -57,9 +57,16 @@ class UsageStore:
 
     async def record_probe(self, tokens: TokenUsage) -> None:
         """Tokens a usage probe used; counted apart from the user's sessions (D031)."""
+        await self._record_overhead("probe_usage", tokens)
+
+    async def record_ask(self, tokens: TokenUsage) -> None:
+        """Tokens an artifact page's ask used (B88); counted apart like the probes'."""
+        await self._record_overhead("ask_usage", tokens)
+
+    async def _record_overhead(self, table: str, tokens: TokenUsage) -> None:
         columns = ", ".join(COMPONENTS)
         await self._db.execute(
-            f"INSERT INTO probe_usage (ts, {columns})"  # noqa: S608
+            f"INSERT INTO {table} (ts, {columns})"  # noqa: S608
             f" VALUES (?, {', '.join('?' for _ in COMPONENTS)})",
             (self._clock.now().isoformat(), *(getattr(tokens, name) for name in COMPONENTS)),
         )
@@ -78,13 +85,17 @@ class UsageStore:
             )
             for row in await self._rows("turn_usage", edges[0], edges[-1])
         ]
-        probes = [
+        probes = await self._overhead("probe_usage", edges)
+        asks = await self._overhead("ask_usage", edges)
+        today = self._clock.now().astimezone(self._zone).date()
+        return summarize(period, edges, turns, probes, asks, today)
+
+    async def _overhead(self, table: str, edges: list[datetime]) -> list[int]:
+        return [
             total(_tokens(row))
-            for row in await self._rows("probe_usage", edges[0], edges[-1])
+            for row in await self._rows(table, edges[0], edges[-1])
             if edges[0] <= datetime.fromisoformat(row["ts"]) < edges[-1]
         ]
-        today = self._clock.now().astimezone(self._zone).date()
-        return summarize(period, edges, turns, probes, today)
 
     async def update_limits(self, info: UsageInfo) -> None:
         """Keep the latest report of each window the engine included."""
