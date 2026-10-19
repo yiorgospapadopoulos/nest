@@ -1,0 +1,135 @@
+.ds { max-width: 1040px; margin: 0 auto; padding: 28px 16px 56px; }
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nest-text-3);
+}
+.ds-head h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.desc { max-width: 64ch; margin: 8px 0 0; color: var(--nest-text-2); white-space: pre-wrap; }
+.ds > .empty { margin-top: 32px; }
+.ds-section { margin-top: 40px; }
+.ds-section h2 {
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--nest-line);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nest-text-3);
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+}
+.swatch {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--nest-line);
+  border-radius: 14px;
+  background: var(--nest-surface);
+}
+.swatch-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 12px; }
+.swatch-name { font-size: 14px; font-weight: 650; }
+.role { font-size: 12px; color: var(--nest-text-3); }
+.modes { display: grid; grid-template-columns: 1fr 1fr; }
+.mode {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "chip sample" "hex hex" "ratio ratio";
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  padding: 12px;
+  font-size: 12px;
+}
+.chip {
+  grid-area: chip;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background:
+    linear-gradient(var(--chip), var(--chip)),
+    repeating-conic-gradient(#c8c8c8 0% 25%, #ffffff 0% 50%) 50% / 10px 10px;
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.35);
+}
+.sample { grid-area: sample; font-size: 26px; font-weight: 650; line-height: 1; }
+.hex { grid-area: hex; font-family: var(--nest-mono); font-size: 11.5px; }
+.ratio { grid-area: ratio; opacity: 0.8; }
+.types { display: flex; flex-direction: column; }
+.type-row {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--nest-line);
+}
+.type-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12px; color: var(--nest-text-2); }
+.type-meta strong { font-size: 13px; color: var(--nest-text); }
+.family { font-family: var(--nest-mono); font-size: 11px; color: var(--nest-text-3); }
+.type-sample { min-width: 0; margin: 0; }
+@media (max-width: 600px) {
+  .type-row { grid-template-columns: minmax(0, 1fr); }
+}
+.spaces { display: flex; flex-direction: column; gap: 8px; }
+.space-row {
+  display: grid;
+  grid-template-columns: minmax(0, 120px) 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.value { font-family: var(--nest-mono); font-size: 12px; color: var(--nest-text-2); }
+.bar {
+  display: block;
+  min-width: 1px;
+  max-width: 100%;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--nest-link);
+  opacity: 0.75;
+}
+.radii { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 16px; }
+.radius { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; }
+.tile {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 4px;
+  border: 1.5px solid var(--nest-line-strong);
+  background: var(--nest-fill-strong);
+}
+.components { display: grid; gap: 16px; }
+.component {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--nest-line);
+  border-radius: 14px;
+  background: var(--nest-surface);
+}
+.component figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--nest-line);
+  font-size: 14px;
+}
+.component-desc { font-size: 13px; color: var(--nest-text-2); }
+.preview { min-height: 72px; padding: 24px; overflow: auto; }
+@media print {
+  .swatch, .type-row, .component { break-inside: avoid; }
+}
