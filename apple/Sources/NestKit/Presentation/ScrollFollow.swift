@@ -88,7 +88,9 @@ public struct ScrollFollow: Sendable, Equatable {
     public mutating func jumpToLatest() {
         following = true
         unseen = false
-        jumping = true
+        // Already at the bottom, no scroll follows to end the jump, and a stuck jump would
+        // pull every later scroll up back down.
+        jumping = last?.isAtBottom != true
     }
 
     /// The pane's focus, read whenever it changes. Losing the focus to another pane jumps
