@@ -59,21 +59,75 @@ public enum ArtifactFile {
     static let longest = 120
 
     public static func name(title: String, kind: ArtifactKind) -> String {
+        name(title: title, fileExtension: fileExtension(kind))
+    }
+
+    /// Export PDF's file name.
+    public static func pdfName(title: String) -> String {
+        name(title: title, fileExtension: "pdf")
+    }
+
+    private static func name(title: String, fileExtension: String) -> String {
+        let cleaned = clean(title)
+        return "\(cleaned.isEmpty ? "Artifact" : cleaned).\(fileExtension)"
+    }
+
+    /// The text without characters a file name may not hold, its spaces folded, at most
+    /// 120 characters; empty when nothing usable is left.
+    static func clean(_ text: String) -> String {
         let forbidden = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.controlCharacters)
         let cleaned = String(
-            title.unicodeScalars.map { forbidden.contains($0) ? " " : Character($0) }
+            text.unicodeScalars.map { forbidden.contains($0) ? " " : Character($0) }
         )
         .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-        let base = cleaned.isEmpty ? "Artifact" : String(cleaned.prefix(longest))
-        return "\(base).\(fileExtension(kind))"
+        return String(cleaned.prefix(longest))
+    }
+
+    /// What Save as file writes: the content as saved, or for a multi-file html page the
+    /// built page, which holds its files.
+    public static func savedText(_ content: ArtifactContent) -> String {
+        content.kind == .html && !content.files.isEmpty ? content.page : content.content
     }
 
     public static func fileExtension(_ kind: ArtifactKind) -> String {
         switch kind {
-        case .markdown: "md"
+        case .markdown, .slides, .document: "md"
         case .html: "html"
+        case .design, .designSystem: "json"
         case .unknown: "txt"
+        }
+    }
+}
+
+/// Export PDF's paper (B88), in points: slides one 16:9 stage per landscape page with no
+/// margin, as the template's print CSS lays them out; documents A4 portrait. Other kinds
+/// have no export.
+public struct ArtifactPrint: Equatable, Sendable {
+    public let width: Double
+    public let height: Double
+    public let landscape: Bool
+    public let margin: Double
+
+    public static func layout(_ kind: ArtifactKind) -> ArtifactPrint? {
+        switch kind {
+        case .slides: ArtifactPrint(width: 960, height: 540, landscape: true, margin: 0)
+        case .document: ArtifactPrint(width: 595, height: 842, landscape: false, margin: 36)
+        case .markdown, .html, .design, .designSystem, .unknown: nil
+        }
+    }
+}
+
+extension ArtifactKind {
+    /// The SF Symbol the views show for the kind.
+    public var symbol: String {
+        switch self {
+        case .markdown, .unknown: "doc.richtext"
+        case .html: "chevron.left.forwardslash.chevron.right"
+        case .slides: "play.rectangle"
+        case .document: "doc.text"
+        case .design: "rectangle.3.group"
+        case .designSystem: "swatchpalette"
         }
     }
 }
@@ -99,9 +153,34 @@ public enum ArtifactText {
         switch kind {
         case .markdown: "Markdown"
         case .html: "HTML"
-        case .unknown: "Document"
+        case .slides: "Slides"
+        case .document, .unknown: "Document"
+        case .design: "Design"
+        case .designSystem: "Design system"
         }
     }
+
+    /// The reader's line under the title: the kind, who made it, and when this version
+    /// was saved, "Edited by you" when the user saved it.
+    /// What the page stored follows, when it stored anything, then today's asks once it
+    /// asked Claude.
+    public static func line(
+        _ artifact: Artifact, author: ArtifactAuthor, saved: Date, now: Date, stored: Int = 0,
+        asks: ArtifactAskCount? = nil
+    ) -> String {
+        let made = author == .user ? "Edited by you" : "saved"
+        var parts = [kind(artifact.kind), origin(artifact), "\(made) \(when(saved, now: now))"]
+        if stored > 0 {
+            parts.append("\(StorageText.bytes(stored)) stored")
+        }
+        if let asks {
+            parts.append(asks.text)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The reader's quiet indicator while a page's ask runs.
+    public static let asking = "Asking Claude\u{2026}"
 
     /// "Version 2 of 3".
     public static func version(_ version: Int, of count: Int) -> String {
@@ -110,7 +189,7 @@ public enum ArtifactText {
 
     /// A transcript card's state: "Saved" for a new artifact, "Version 3" for an update.
     public static func cardState(_ card: ArtifactCard) -> String {
-        card.action == .updated ? "Version \(card.version)" : "Saved"
+        card.action == .updated || card.action == .edited ? "Version \(card.version)" : "Saved"
     }
 
     public static let deleted = "Deleted"

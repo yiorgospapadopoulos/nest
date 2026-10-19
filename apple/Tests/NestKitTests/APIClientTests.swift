@@ -740,6 +740,55 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("DELETE", "/api/artifacts/a1", response: "") {
             try await $0.deleteArtifact("a1")
         },
+        RouteCase(
+            "GET", "/api/artifacts/a1/storage", response: #"{"items": {"a": "1"}, "size": 2}"#
+        ) {
+            let storage = try await $0.artifactStorage("a1")
+            #expect(storage == ArtifactStorage(items: ["a": "1"], size: 2))
+        },
+        RouteCase(
+            "POST", "/api/artifacts/a1/storage", body: #"{"remove":["b"],"set":{"a":"1"}}"#,
+            response: #"{"size": 2}"#
+        ) {
+            let size = try await $0.writeArtifactStorage("a1", set: ["a": "1"], remove: ["b"])
+            #expect(size == 2)
+        },
+        RouteCase(
+            "POST", "/api/artifacts/a1/ask", body: #"{"prompt":"Hi","system":"Brief"}"#,
+            response: #"{"text": "Hello", "remaining": 4}"#
+        ) {
+            let answer = try await $0.askArtifact("a1", prompt: "Hi", system: "Brief")
+            #expect(answer == ArtifactAnswer(text: "Hello", remaining: 4, limit: 20))
+        },
+        RouteCase(
+            "POST", "/api/artifacts/a1/ask", body: #"{"prompt":"Hi"}"#,
+            response: #"{"text": "", "remaining": 0}"#
+        ) {
+            _ = try await $0.askArtifact("a1", prompt: "Hi", system: nil)
+        },
+        RouteCase(
+            "GET", "/api/artifacts/a1/ask",
+            response:
+                #"{"used": 1, "limit": 20, "remaining": 19, "resets_at": null, "enabled": false}"#
+        ) {
+            let status = try await $0.askStatus("a1")
+            #expect(!status.enabled)
+            #expect(status.used == 1)
+        },
+        RouteCase("DELETE", "/api/artifacts/a1/storage", response: "") {
+            try await $0.clearArtifactStorage("a1")
+        },
+        RouteCase(
+            "POST", "/api/artifacts/a1/versions", body: ##"{"base_version":2,"content":"# Plan"}"##,
+            response: """
+                {"version": 3, "title": "Plan", "size": 6, "author": "user",
+                 "created_at": "2026-10-17T09:50:00+00:00"}
+                """
+        ) {
+            let saved = try await $0.saveArtifactVersion("a1", content: "# Plan", baseVersion: 2)
+            #expect(saved.version == 3)
+            #expect(saved.author == .user)
+        },
     ]
 
     static let artifactJSON = Fixture.artifactJSON()
