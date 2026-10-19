@@ -12,22 +12,25 @@ struct PixiePane: View {
         VStack(spacing: 0) {
             PixiePaneHeader(pixie: pixie)
             Rectangle().fill(Palette.divider).frame(height: 1)
-            Group {
-                if let chat = pixie.chatSessionID {
-                    // A new chat (after a reset or a fresh run) is a fresh transcript.
-                    TranscriptView(chat: chat).id(chat)
-                } else {
-                    SayHi(pixie: pixie)
+            VStack(spacing: 0) {
+                Group {
+                    if let chat = pixie.chatSessionID {
+                        // A new chat (after a reset or a fresh run) is a fresh transcript.
+                        TranscriptView(chat: chat).id(chat)
+                    } else {
+                        SayHi(pixie: pixie)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let chat = pixie.chatSessionID {
+                    PendingReviewBar(chat: chat)
+                    LimitPauseBar(chat: chat)
+                }
+                Composer(pixie: pixie.id)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let chat = pixie.chatSessionID {
-                PendingReviewBar(chat: chat)
-                LimitPauseBar(chat: chat)
-            }
-            Composer(pixie: pixie.id)
+            .modifier(PaneBodyDim())
         }
-        .modifier(PaneChrome(pane: pixie.id, chat: pixie.chatSessionID))
+        .modifier(PaneChrome(pane: pixie.id))
         // Its reports are read once its pane is on screen, as reports arrive too (B42).
         .task(id: ReadKey(unread: shell.reports.unread(of: pixie.id), visible: visible)) {
             if visible && shell.reports.unread(of: pixie.id) > 0 {
@@ -76,7 +79,7 @@ private struct PixiePaneHeader: View {
             .allowsHitTesting(false)
             Text(pixie.name)
                 .font(.ui(TypeSize.ui, .medium))
-                .foregroundStyle(Palette.t1)
+                .modifier(PaneTitleColor())
                 .lineLimit(1)
                 .layoutPriority(0.5)
                 .allowsHitTesting(false)

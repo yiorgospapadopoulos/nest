@@ -6,7 +6,7 @@ import { check, detail, event, pixie, prStatus, repo, session } from "../../test
 import { openPixie } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
-const tester = pixie({ id: "p1", name: "Tester", mascot: "owl", chat_session_id: "pc" });
+const tester = pixie({ id: "p1", name: "Tester", mascot: "moth", chat_session_id: "pc" });
 const pixieChat = session({ id: "pc", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
 
 /** The app with these project chats, and the events of whichever chat is opened. */
@@ -40,7 +40,7 @@ describe("chats a pixie started (B41)", () => {
       "Check the form, Idle, Started by Tester, worktree agent/contact",
     );
     expect(within(started).getByText("Started by Tester")).toBeInTheDocument();
-    expect(within(started).getByRole("img", { hidden: true, name: "owl" })).toBeInTheDocument();
+    expect(within(started).getByRole("img", { hidden: true, name: "moth" })).toBeInTheDocument();
     const old = screen.getByRole("button", { name: /^Old check,/ });
     expect(within(old).getByText("Started by a pixie")).toBeInTheDocument();
     expect(within(old).queryByRole("img", { hidden: true })).not.toBeInTheDocument();

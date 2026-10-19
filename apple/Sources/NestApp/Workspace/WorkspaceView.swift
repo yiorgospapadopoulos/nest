@@ -5,8 +5,8 @@ import UniformTypeIdentifiers
 /// The split workspace of the project, or of the Pixies tab (B37): up to four panes
 /// placed by the layout engine. Panes are keyed by chat (or pixie), so closing, opening or
 /// swapping one keeps the others' views (and their transcripts) alive instead of
-/// rebuilding the split tree. Each pane is its own rounded panel, `PanePanel.inset` from
-/// the area's edges and `PanePanel.gap` apart.
+/// rebuilding the split tree. The panes fill the area edge to edge, split by 1 point
+/// dividers (B93 "focus dim").
 struct WorkspaceView: View {
     /// The coordinate space of pane placements, where pane drags are followed.
     static let space = "workspace"
@@ -25,8 +25,7 @@ struct WorkspaceView: View {
                     let hidden = maximized != nil && maximized != placement.chat
                     let frame =
                         maximized == placement.chat
-                        ? CGRect(origin: .zero, size: size)
-                        : PanePanel.frame(placement.frame, in: size)
+                        ? CGRect(origin: .zero, size: size) : placement.frame
                     PaneContent(pane: placement.chat)
                         .frame(width: frame.width, height: frame.height)
                         .position(x: frame.midX, y: frame.midY)
@@ -34,13 +33,14 @@ struct WorkspaceView: View {
                         .allowsHitTesting(!hidden)
                         .accessibilityHidden(hidden)
                         .environment(\.paneHidden, hidden)
+                        .environment(\.paneDimmed, layout.isDimmed(placement.chat))
                         .environment(\.paneSize, frame.size)
                         .environment(\.paneFit, PaneFit(width: frame.width))
                         .zIndex(hidden ? 0 : 1)
                 }
                 if maximized == nil {
                     ForEach(layout.gutterFrames(in: size), id: \.split) { gutter in
-                        let frame = PanePanel.gap(gutter)
+                        let frame = gutter.grabArea
                         Gutter(gutter: gutter)
                             .frame(width: frame.width, height: frame.height)
                             .position(x: frame.midX, y: frame.midY)
@@ -52,39 +52,12 @@ struct WorkspaceView: View {
             .coordinateSpace(.named(Self.space))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The frame inside the padding: the one the layout places the panes in.
         .onGeometryChange(for: CGRect.self) {
             $0.frame(in: .global)
         } action: {
             shell.workspaceSize = $0.size
             shell.workspaceFrame = $0
         }
-        .padding(PanePanel.inset)
-    }
-}
-
-/// The gaps of the separated panes. The layout engine keeps `WorkspaceLayout.gutter`
-/// between panes; each pane reaches into it on the sides it shares with another pane so
-/// the gap between them is `gap`.
-enum PanePanel {
-    /// Around the panes, from the workspace area's edges.
-    static let inset = 8.0
-    /// Between two panes.
-    static let gap = 8.0
-    private static let reach = (WorkspaceLayout.gutter - gap) / 2
-
-    static func frame(_ frame: CGRect, in size: CGSize) -> CGRect {
-        let minX = frame.minX > 0.5 ? frame.minX - reach : frame.minX
-        let minY = frame.minY > 0.5 ? frame.minY - reach : frame.minY
-        let maxX = frame.maxX < size.width - 0.5 ? frame.maxX + reach : frame.maxX
-        let maxY = frame.maxY < size.height - 0.5 ? frame.maxY + reach : frame.maxY
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
-
-    /// The gutter's grab area: the visible gap between the two panes, never over them.
-    static func gap(_ gutter: GutterFrame) -> CGRect {
-        gutter.direction == .row
-            ? gutter.frame.insetBy(dx: reach, dy: 0) : gutter.frame.insetBy(dx: 0, dy: reach)
     }
 }
 
@@ -134,8 +107,9 @@ private struct PaneDragGhost: View {
     }
 }
 
-/// The gap between two panes; a short handle shows while the pointer is over it, and
-/// dragging it resizes the panes within the engine's minimums.
+/// The 1 point divider between two panes, grabbed over a wider area that reaches over both
+/// panes' edges; a short handle shows while the pointer is over it, and dragging it
+/// resizes the panes within the engine's minimums.
 private struct Gutter: View {
     let gutter: GutterFrame
     @Environment(Shell.self) private var shell
@@ -149,6 +123,13 @@ private struct Gutter: View {
         let active = hovering || startRatio != nil
         Rectangle()
             .fill(.clear)
+            .overlay {
+                Rectangle()
+                    .fill(Palette.divider)
+                    .frame(
+                        width: row ? WorkspaceLayout.gutter : nil,
+                        height: row ? nil : WorkspaceLayout.gutter)
+            }
             .overlay {
                 Capsule()
                     .fill(accent.focus)
@@ -183,7 +164,7 @@ private struct Gutter: View {
 }
 
 /// Shown before any chat (or, on the Pixies tab, any pixie) is open; accepts a dropped
-/// chat or pixie. A project's is MonoCode's empty session: "What should we work on in
+/// chat or pixie. A project's is the start screen (B90): "What should we work on in
 /// <project>?" over the composer, whose first message starts a chat in the project.
 private struct EmptyWorkspace: View {
     @Environment(Shell.self) private var shell
@@ -205,37 +186,6 @@ private struct EmptyWorkspace: View {
             }
         }
         .onDrop(of: [.nestChat], delegate: PaneDropDelegate(pane: nil, shell: shell))
-    }
-}
-
-/// A column up to 896 points wide, centred: the 18 point question, then the composer.
-private struct StartSession: View {
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        let project = shell.project
-        let draft = shell.startDraft()
-        VStack(alignment: .leading, spacing: 0) {
-            Text(project.map { "What should we work on in \($0)?" } ?? "What should we work on?")
-                .font(.ui(18))
-                .foregroundStyle(Ink.content(1))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 16)
-                .accessibilityAddTraits(.isHeader)
-            Composer(start: shell.startDraftID)
-                .id(shell.startDraftID)
-        }
-        .frame(maxWidth: 896)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 48)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: shell.agents.defaults == nil) { _, missing in
-            if !missing && draft.text.isEmpty {
-                shell.startDefaultsLoaded()
-            }
-        }
     }
 }
 
@@ -314,7 +264,8 @@ struct DropHighlightView: View {
     }
 
     private func highlight(_ rect: CGRect) -> some View {
-        let shape = RoundedRectangle.rounded(Radius.card)
+        // A small radius: the panes it lies over are square (B93).
+        let shape = RoundedRectangle.rounded(Radius.chip)
         return ZStack {
             shape.fill(accent.selection)
             shape.strokeBorder(accent.focus, lineWidth: 1)

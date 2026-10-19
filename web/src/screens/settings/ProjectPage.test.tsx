@@ -264,10 +264,10 @@ describe("project page", () => {
     expect(screen.queryByRole("group", { name: "Sprite" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Pixie sprite" }));
-    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "invader" });
+    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "bluebell" });
     const sprites = await screen.findByRole("group", { name: "Sprite" });
-    await user.click(within(sprites).getByRole("button", { name: "owl" }));
-    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "owl" });
+    await user.click(within(sprites).getByRole("button", { name: "moth" }));
+    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "moth" });
     await user.click(screen.getByRole("button", { name: "Colour #46A758" }));
     expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon_color: "#46A758" });
     await user.click(screen.getByRole("button", { name: "Default colour" }));
@@ -275,15 +275,17 @@ describe("project page", () => {
   });
 
   it("keeps a chosen sprite when switching from initials and back", async () => {
-    const styled = { ...repo("cv-page"), icon: "frog" as const, icon_color: "#46A758" };
+    const styled = { ...repo("cv-page"), icon: "dragonfly" as const, icon_color: "#46A758" };
     const { user, api } = await openFromProjects([styled]);
     await user.click(tab("Look"));
 
     expect(
-      within(screen.getByRole("group", { name: "Sprite" })).getByRole("button", { name: "frog" }),
+      within(screen.getByRole("group", { name: "Sprite" })).getByRole("button", {
+        name: "dragonfly",
+      }),
     ).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Pixie sprite" }));
-    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "frog" });
+    expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: "dragonfly" });
     await user.click(screen.getByRole("button", { name: "Initials" }));
     expect(api.updateRepo).toHaveBeenLastCalledWith("cv-page", { icon: null });
   });

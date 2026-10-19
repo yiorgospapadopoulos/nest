@@ -114,7 +114,7 @@ import Testing
     @Test func decodesTheProjectIcon() throws {
         let repos = Fixture.repos
         #expect(repos[0].projectIcon == ProjectIcon())
-        #expect(repos[1].projectIcon == ProjectIcon(mascot: .frog, color: "#3DDC84"))
+        #expect(repos[1].projectIcon == ProjectIcon(mascot: .dragonfly, color: "#3DDC84"))
         // Older daemons send neither key.
         #expect(Fixture.plainRepo.projectIcon == ProjectIcon())
         // A sprite this app does not know shows the initials.
@@ -124,6 +124,10 @@ import Testing
             """#
         let repo = try NestJSON.decoder.decode(Repo.self, from: Data(json.utf8))
         #expect(repo.projectIcon == ProjectIcon(mascot: nil, color: "#000000"))
+        // A project icon saved before B89 shows the fairy that took its place.
+        let older = try NestJSON.decoder.decode(
+            Repo.self, from: Data(json.replacingOccurrences(of: "dragon", with: "owl").utf8))
+        #expect(older.projectIcon == ProjectIcon(mascot: .moth, color: "#000000"))
     }
 
     @Test func aRepoWithoutItsOwnChoiceFollowsTheSharedDefault() throws {

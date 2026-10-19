@@ -135,7 +135,7 @@ private struct WebHost: NSViewRepresentable {
     func updateNSView(_ container: PaneContentView, context: Context) {
         container.onClick = focus
         container.show(session.view)
-        container.isHidden = context.environment.paneHidden
+        container.follow(context.environment)
     }
 
     func sizeThatFits(
@@ -164,13 +164,12 @@ struct BrowserPaneView: View {
             Rectangle().fill(Palette.divider).frame(height: 1)
             ZStack {
                 if session.url == nil {
-                    StartPage(session: session)
+                    StartPage(session: session).modifier(PaneBodyDim())
                 } else {
-                    // Inside the panel's 1 point ring.
+                    // The web view fades itself; the rest fades in SwiftUI (B93).
                     WebHost(session: session) { shell.focusPane(id) }
-                        .padding([.horizontal, .bottom], 1)
                     if let failure = session.failure {
-                        LoadFailure(text: failure) { session.reload() }
+                        LoadFailure(text: failure) { session.reload() }.modifier(PaneBodyDim())
                     }
                 }
             }

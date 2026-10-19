@@ -131,15 +131,32 @@ def test_repo_names_must_be_safe_file_names(name: str) -> None:
 
 def test_a_repo_file_may_set_a_pixie_icon_and_colour(paths: AppPaths) -> None:
     (paths.repos_dir / "a.toml").write_text(
-        'name = "alpha"\npath = "/src/alpha"\nicon = "owl"\nicon_color = "#ff8800"\n',
+        'name = "alpha"\npath = "/src/alpha"\nicon = "moth"\nicon_color = "#ff8800"\n',
         encoding="utf-8",
     )
     (paths.repos_dir / "b.toml").write_text('name = "beta"\npath = "/src/beta"\n', encoding="utf-8")
 
     alpha, beta = load_repos(paths)
 
-    assert (alpha.icon, alpha.icon_color) == ("owl", "#ff8800")
+    assert (alpha.icon, alpha.icon_color) == ("moth", "#ff8800")
     assert (beta.icon, beta.icon_color) == (None, None)
+
+
+def test_a_repo_icon_saved_with_an_old_mascot_name_reads_as_its_new_name(
+    paths: AppPaths,
+) -> None:
+    """B89: a project icon chosen before the fairy redesign keeps working and is
+    written back with the new name on its next save.
+    """
+    (paths.repos_dir / "a.toml").write_text(
+        'name = "alpha"\npath = "/src/alpha"\nicon = "owl"\n', encoding="utf-8"
+    )
+
+    (alpha,) = load_repos(paths)
+    save_repo(paths, alpha)
+
+    assert alpha.icon == "moth"
+    assert 'icon = "moth"' in (paths.repos_dir / "alpha.toml").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

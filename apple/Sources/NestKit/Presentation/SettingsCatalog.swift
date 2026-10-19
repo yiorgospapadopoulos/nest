@@ -33,7 +33,7 @@ public enum SettingsPage: Sendable, Hashable {
         }
     }
 
-    /// The Pixies page's icon (B86): a winged pixie on the sprites' 12 by 10 grid.
+    /// The Pixies page's icon (B86): a winged pixie on a 12 by 10 grid.
     public static let pixieGlyph = [
         "............", "....####....", "#..######..#", "##.#.##.#.##", "############",
         "##.######.##", "#..######..#", "....#..#....", "............", "............",

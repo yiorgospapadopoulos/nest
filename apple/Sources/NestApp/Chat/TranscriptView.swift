@@ -8,6 +8,8 @@ struct TranscriptView: View {
     let chat: String
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
+    /// Another pane has the focus (B93): losing it jumps to the latest.
+    @Environment(\.paneDimmed) private var unfocused
     @State private var store: TranscriptStore?
     @State private var loadError: String?
     @State private var position = ScrollPosition(edge: .bottom)
@@ -142,6 +144,12 @@ struct TranscriptView: View {
             }
         }
         .animation(.smooth(duration: 0.2), value: follow.showsJump)
+        // A pane that loses the focus to another one goes back to the latest and follows.
+        .onChange(of: unfocused) { _, unfocused in
+            if follow.focusChanged(focused: !unfocused) {
+                withAnimation(.smooth(duration: 0.3)) { position.scrollTo(edge: .bottom) }
+            }
+        }
         .task(id: chat) { await load() }
         // A load that failed while the daemon was down is retried when it connects again.
         .onChange(of: store?.isLoaded) { _, loaded in
@@ -164,6 +172,8 @@ struct TranscriptView: View {
 
     private func load() async {
         follow = ScrollFollow()
+        // A pane opened beside the focused one starts at the latest like any other.
+        _ = follow.focusChanged(focused: !unfocused)
         let transcript = shell.model.transcripts.transcript(for: chat)
         store = transcript
         if transcript.isLoaded && transcript.needsLoad {

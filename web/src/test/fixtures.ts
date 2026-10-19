@@ -119,7 +119,7 @@ export function pixie(overrides: Partial<Pixie> = {}): Pixie {
     id: "p1",
     slug: "tester",
     name: "Tester",
-    mascot: "invader",
+    mascot: "bluebell",
     color: "#8B7CF6",
     model: null,
     effort: null,

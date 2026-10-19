@@ -14,7 +14,7 @@ const PIXIES = [
     id: "bugs",
     slug: "bugs",
     name: "Bug hunter",
-    mascot: "owl",
+    mascot: "moth",
     position: 1,
     team_id: "qa",
   }),

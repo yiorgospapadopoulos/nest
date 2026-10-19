@@ -20,7 +20,7 @@
     "name": "llm-hunter",
     "path": "/Users/example/projects/llm-hunter",
     "default_branch": "develop",
-    "icon": "frog",
+    "icon": "dragonfly",
     "icon_color": "#3DDC84",
     "worktree": {
       "default": false,

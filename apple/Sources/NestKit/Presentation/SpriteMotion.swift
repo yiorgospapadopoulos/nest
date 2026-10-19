@@ -2,7 +2,7 @@ import Foundation
 
 // A working pixie's sprite hops and blinks (B48), step for step as on the iPhone: steps of
 // 170 ms, lifted one cell on the middle two of every four, blinking while lifted on every
-// third hop. A resting sprite holds still.
+// third hop. A resting sprite holds still. A blink draws its eye cells in its colour (B89).
 
 /// A cell of a mascot's grid: `x` from the left, `y` from the top.
 public struct GridCell: Sendable, Hashable {
@@ -12,6 +12,13 @@ public struct GridCell: Sendable, Hashable {
     public init(x: Int, y: Int) {
         self.x = x
         self.y = y
+    }
+
+    /// The cells of a grid holding `code`, row by row from the top.
+    public static func all(_ code: Character, in rows: [String]) -> [GridCell] {
+        rows.enumerated().flatMap { y, row in
+            row.enumerated().filter { $0.element == code }.map { GridCell(x: $0.offset, y: y) }
+        }
     }
 }
 
@@ -61,83 +68,73 @@ public enum SpriteMotion {
     }
 }
 
-/// What a blink changes in a mascot's grid.
-public enum MascotBlink: Sendable, Hashable {
-    /// Its eyes, small holes, are filled.
-    case fill(Set<GridCell>)
-    /// Its eyes are lone filled cells, and they go.
-    case hide(Set<GridCell>)
+/// What a sprite's cells are drawn in: `#RRGGBB` and an opacity.
+public struct SpriteInk: Sendable, Hashable {
+    public let hex: String
+    public let opacity: Double
+
+    public init(hex: String, opacity: Double = 1) {
+        self.hex = hex
+        self.opacity = opacity
+    }
+}
+
+/// The cells of a sprite drawn in one ink.
+public struct SpriteLayer: Sendable, Hashable {
+    public let ink: SpriteInk
+    public let cells: [GridCell]
+}
+
+/// The tones of a sprite's cell codes, all from the pixie's one colour (B89), as on the
+/// iPhone: "#" the colour, "+" shade, "o" light, "*" wing, "e" eyes and "k" ink marks in
+/// the ink. A blink draws the eyes in the colour.
+public enum SpriteTones {
+    /// The codes that are drawn, in the order their layers are.
+    static let codes: [Character] = ["#", "+", "o", "*", "e", "k"]
+
+    /// The ink of a cell code in a pixie colour; nil for an empty cell or an unknown code.
+    /// A colour that is not `#RRGGBB` reads as the standard violet.
+    public static func ink(of code: Character, color: String, blinking: Bool) -> SpriteInk? {
+        let body = PixieColor.rgba(color) ?? PixieColor.rgba(PixieColor.standard)!
+        switch code {
+        case "#": return SpriteInk(hex: hex(body))
+        case "+": return mix(body, MascotTones.shade)
+        case "o": return mix(body, MascotTones.light)
+        case "*": return mix(body, MascotTones.wing)
+        case "e": return SpriteInk(hex: blinking ? hex(body) : MascotTones.ink)
+        case "k": return SpriteInk(hex: MascotTones.ink)
+        default: return nil
+        }
+    }
+
+    /// The colour moved toward the tone's colour by its amount, per channel of 0 to 255,
+    /// rounded.
+    private static func mix(_ color: RGBA, _ tone: MascotTone) -> SpriteInk {
+        let toward = PixieColor.rgba(tone.toward)!
+        func channel(_ from: Double, _ to: Double) -> Double {
+            let start = (from * 255).rounded()
+            return (start + ((to * 255).rounded() - start) * tone.amount).rounded() / 255
+        }
+        let hex = PixieColor.hex(
+            red: channel(color.red, toward.red), green: channel(color.green, toward.green),
+            blue: channel(color.blue, toward.blue))
+        return SpriteInk(hex: hex, opacity: tone.opacity)
+    }
+
+    private static func hex(_ color: RGBA) -> String {
+        PixieColor.hex(red: color.red, green: color.green, blue: color.blue)
+    }
 }
 
 extension Mascot {
-    /// What a blink changes in its grid.
-    public var blink: MascotBlink { Self.blink(of: rows) }
-
-    /// The eyes of a grid: of the empty regions (cells joined side by side) that do not
-    /// touch the edge and have at most six cells, those starting on the highest row, so
-    /// mouths and spots below stay; with none, its lone filled cells.
-    static func blink(of rows: [String]) -> MascotBlink {
-        let grid = rows.map { Array($0) }
-        let holes = Self.holes(grid).filter { $0.count <= 6 }
-        let tops = holes.map { $0.map(\.y).min()! }
-        if let top = tops.min() {
-            return .fill(Set(zip(holes, tops).filter { $0.1 == top }.flatMap(\.0)))
+    /// Its drawn cells, one layer per cell code it has, in `SpriteTones`' inks.
+    public func layers(color: String, blinking: Bool) -> [SpriteLayer] {
+        SpriteTones.codes.compactMap { code in
+            let cells = GridCell.all(code, in: rows)
+            guard !cells.isEmpty else { return nil }
+            return SpriteLayer(
+                ink: SpriteTones.ink(of: code, color: color, blinking: blinking)!, cells: cells)
         }
-        return .hide(Set(Self.cells(grid, "#").filter { Self.neighbours($0, grid, "#").isEmpty }))
-    }
-
-    /// Its grid as `rows`, with the blink applied while `blinking`.
-    public func rows(blinking: Bool) -> [String] {
-        guard blinking else { return rows }
-        let (cells, mark): (Set<GridCell>, Character) =
-            switch blink {
-            case .fill(let cells): (cells, "#")
-            case .hide(let cells): (cells, ".")
-            }
-        return rows.enumerated().map { y, row in
-            String(row.enumerated().map { cells.contains(GridCell(x: $0, y: y)) ? mark : $1 })
-        }
-    }
-
-    private static func cells(_ grid: [[Character]], _ mark: Character) -> [GridCell] {
-        grid.enumerated().flatMap { y, row in
-            row.indices.filter { row[$0] == mark }.map { GridCell(x: $0, y: y) }
-        }
-    }
-
-    private static func neighbours(_ cell: GridCell, _ grid: [[Character]], _ mark: Character)
-        -> [GridCell]
-    {
-        [(1, 0), (-1, 0), (0, 1), (0, -1)]
-            .map { GridCell(x: cell.x + $0.0, y: cell.y + $0.1) }
-            .filter {
-                grid.indices.contains($0.y) && grid[$0.y].indices.contains($0.x)
-                    && grid[$0.y][$0.x] == mark
-            }
-    }
-
-    /// The empty regions that do not touch the edge.
-    private static func holes(_ grid: [[Character]]) -> [[GridCell]] {
-        var seen: Set<GridCell> = []
-        var holes: [[GridCell]] = []
-        for start in cells(grid, ".") where !seen.contains(start) {
-            var region: [GridCell] = []
-            var queue = [start]
-            seen.insert(start)
-            while let cell = queue.popLast() {
-                region.append(cell)
-                for next in neighbours(cell, grid, ".") where seen.insert(next).inserted {
-                    queue.append(next)
-                }
-            }
-            let edge = region.contains {
-                $0.x == 0 || $0.y == 0 || $0.y == grid.count - 1 || $0.x == grid[$0.y].count - 1
-            }
-            if !edge {
-                holes.append(region)
-            }
-        }
-        return holes
     }
 }
 

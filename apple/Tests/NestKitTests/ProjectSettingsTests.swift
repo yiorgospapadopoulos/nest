@@ -115,16 +115,16 @@ import Testing
         api.set { $0.gates["updateRepo"] = gate.stream }
         let links = Task { try await app.changeSettings(of: "cv-page") { $0.addLink("a") } }
         try await waitFor { app.isSavingSettings(of: "cv-page") }
-        let sprite = Task { try await app.changeIcon(of: "cv-page") { $0.mascot = .owl } }
+        let sprite = Task { try await app.changeIcon(of: "cv-page") { $0.mascot = .moth } }
         try await Task.sleep(for: .milliseconds(20))
         gate.continuation.finish()
         _ = try await links.value
         let saved = try await sprite.value
 
-        #expect(saved?.projectIcon == ProjectIcon(mascot: .owl))
-        #expect(app.repo("cv-page")?.projectIcon == ProjectIcon(mascot: .owl))
+        #expect(saved?.projectIcon == ProjectIcon(mascot: .moth))
+        #expect(app.repo("cv-page")?.projectIcon == ProjectIcon(mascot: .moth))
         #expect(app.repo("cv-page")?.worktree.link == [".env.local", "a"])
-        #expect(api.calls.last == #"updateRepo cv-page {"icon":"owl"}"#)
+        #expect(api.calls.last == #"updateRepo cv-page {"icon":"moth"}"#)
 
         try await app.changeIcon(of: "cv-page") { $0.color = "#FF8800" }
         #expect(api.calls.last == ##"updateRepo cv-page {"icon_color":"#FF8800"}"##)
@@ -135,7 +135,7 @@ import Testing
         // Nothing changed, nothing sent; a project gone meanwhile is left alone.
         let calls = api.calls.count
         #expect(try await app.changeIcon(of: "cv-page") { $0.mascot = nil } == app.repo("cv-page"))
-        #expect(try await app.changeIcon(of: "gone") { $0.mascot = .cat } == nil)
+        #expect(try await app.changeIcon(of: "gone") { $0.mascot = .bluebell } == nil)
         #expect(api.calls.count == calls)
         #expect(!app.isSavingSettings(of: "cv-page"))
     }

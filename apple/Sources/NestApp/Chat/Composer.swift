@@ -7,9 +7,8 @@ import UniformTypeIdentifiers
 /// plain row with attach and dictation on the left and the quiet selectors on the right. A
 /// pixie's composer sends through the pixie and leaves out attachments, selectors and
 /// suggestions: its settings live in its details, and it belongs to no project (D072).
-/// The empty workspace's composer (`init(start:)`, B39) is MonoCode's: a box with the
-/// working copy on top, the field, and attach, model, thinking and permission chips with
-/// a square send under it.
+/// The empty workspace's composer (`init(start:)`, B90) is the pane's, with where the new
+/// chat works in the row under the field.
 struct Composer: View {
     /// The draft's key: the pane's chat, or `Shell.pixieDraft` for a pixie.
     let chat: String
@@ -70,30 +69,14 @@ struct Composer: View {
                 }
                 .transition(.opacity)
             }
-            if start {
-                StartBox(
-                    chat: chat, draft: draft, focused: $focused, dropTargeted: dropTargeted
-                ) {
-                    MessageField(draft: draft, focused: $focused, style: .start) { key in
-                        handle(key, draft: draft, suggestions: open ? suggestions : nil)
-                    }
-                } send: {
-                    send()
-                }
-                .onDrop(of: Self.dropTypes, isTargeted: $dropTargeted) { providers in
-                    loadFiles(providers)
-                    return true
-                }
-            } else {
-                if pixie == nil && shell.isDraft(chat) && shell.repo?.git != false {
-                    // The same choice as the empty workspace's box, before the first message;
-                    // once the chat exists its header says where it works (B55).
-                    WorkingCopyRow(draft: draft, repo: shell.repo)
-                        .padding(.horizontal, 4)
-                }
-                field(draft, suggestions: open ? suggestions : nil)
-                ControlRow(chat: chat, live: live, pixie: pixie != nil, draft: draft)
+            if pixie == nil && !start && shell.isDraft(chat) && shell.repo?.git != false {
+                // The same choice as the empty workspace's, before the first message; once
+                // the chat exists its header says where it works (B55).
+                WorkingCopyRow(draft: draft, repo: shell.repo)
+                    .padding(.horizontal, 4)
             }
+            field(draft, suggestions: open ? suggestions : nil)
+            ControlRow(chat: chat, live: live, pixie: pixie != nil, start: start, draft: draft)
         }
         .padding(.horizontal, start ? 0 : 12)
         .padding(.bottom, start ? 0 : 6)
@@ -265,7 +248,8 @@ struct Composer: View {
                     AttachmentChips(draft: draft)
                         .padding(.top, 6)
                 }
-                MessageField(draft: draft, focused: $focused, style: .pane) { key in
+                MessageField(draft: draft, focused: $focused, style: start ? .start : .pane) {
+                    key in
                     handle(key, draft: draft, suggestions: suggestions)
                 }
                 if let line = status ?? draft.hint {
@@ -287,7 +271,15 @@ struct Composer: View {
         }
         .padding(.leading, 13)
         .padding(.trailing, 5)
-        .background(shape.fill(Palette.soft))
+        .background {
+            // Over the chat background, the start field keeps its own ground.
+            // A click anywhere in the field, not only on the text line, puts the cursor in it.
+            shape.fill(Palette.soft)
+                .background(start ? Palette.windowOpaque.opacity(0.85) : .clear, in: shape)
+                .contentShape(shape)
+                .pointerStyle(.horizontalText)
+                .onTapGesture { focused = true }
+        }
         .overlay(
             shape.strokeBorder(
                 bashMode
@@ -327,8 +319,8 @@ struct Composer: View {
     }
 }
 
-/// How a message field is set: a pane's, or the empty workspace's (MonoCode's 14 point
-/// text on 22 point lines).
+/// How a message field is set: a pane's, or the empty workspace's, which names what it
+/// takes.
 struct MessageFieldStyle {
     let size: Double
     let lineSpacing: Double
@@ -341,9 +333,9 @@ struct MessageFieldStyle {
         size: TypeSize.reading, lineSpacing: 2, verticalPadding: 10, minHeight: 38,
         placeholder: "Message", placeholderColor: Palette.t3)
     static let start = MessageFieldStyle(
-        size: 14, lineSpacing: 5, verticalPadding: 6, minHeight: 34,
+        size: TypeSize.reading, lineSpacing: 2, verticalPadding: 10, minHeight: 38,
         placeholder: "Ask, build, / for commands, @ for references...",
-        placeholderColor: Ink.content(0.4))
+        placeholderColor: Palette.t3)
 }
 
 /// A text editor that grows with its text; Return sends and Shift-Return adds a line.
@@ -552,15 +544,18 @@ private struct ImageChip: View {
     }
 }
 
-/// Under the field: attach, the mic and where an open chat works (B71) on the left, then
-/// Model, Thinking and Permission, and the context meter for open chats, on the right. A
-/// pixie's row has the mic and the context meter.
+/// Under the field: attach, the mic and where an open chat works (B71), or where the
+/// empty workspace's new chat will (B90), on the left, then Model, Thinking and
+/// Permission, and the context meter for open chats, on the right. A pixie's row has the
+/// mic and the context meter.
 private struct ControlRow: View {
     /// The draft's key.
     let chat: String
     /// The chat that runs, if any.
     let live: String?
     let pixie: Bool
+    /// The empty workspace's composer.
+    let start: Bool
     let draft: ComposerDraft
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
@@ -581,6 +576,10 @@ private struct ControlRow: View {
                 .accessibilityLabel("Attach")
             }
             MicButton(listening: listening) { toggleDictation() }
+            if start && shell.repo?.git != false {
+                StartPlace(draft: draft, repo: shell.repo)
+                    .padding(.leading, 4)
+            }
             if !pixie && !isDraft,
                 let place = session.flatMap({ ChatPlace.of($0, repo: shell.repo) })
             {
@@ -596,7 +595,8 @@ private struct ControlRow: View {
                     effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
                 PermissionMenu(
                     chat: chat, model: isDraft ? draft.model : session?.model,
-                    mode: isDraft ? draft.permission : session?.permissionMode)
+                    mode: isDraft ? draft.permission : session?.permissionMode,
+                    warnsOnBypass: start)
             }
             if !isDraft, let live, let context = session?.context,
                 let label = fit.context.label(context)
@@ -647,7 +647,7 @@ private struct PlaceLabel: View {
     }
 }
 
-/// Attach and dictation, shared by the pane's control row and the empty workspace's box.
+/// Attach and dictation, for the control row.
 @MainActor
 private struct ComposerActions {
     let shell: Shell
@@ -684,89 +684,6 @@ private struct ComposerActions {
     }
 }
 
-/// The empty workspace's composer, MonoCode's: a box with a 3 percent fill and an 8 point
-/// corner, its border 10 percent (20 while focused); on top the working copy, then the
-/// field, then attach, the model, thinking and permission chips, and a square send.
-private struct StartBox<Field: View>: View {
-    let chat: String
-    let draft: ComposerDraft
-    var focused: FocusState<Bool>.Binding
-    let dropTargeted: Bool
-    @ViewBuilder let field: () -> Field
-    let send: () -> Void
-    @Environment(Shell.self) private var shell
-    @Environment(\.accentColors) private var accent
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let shape = RoundedRectangle.rounded(8)
-        let actions = ComposerActions(
-            shell: shell, chat: chat, live: nil, pixie: false, draft: draft)
-        let status = shell.dictation.status(for: chat)
-        VStack(alignment: .leading, spacing: 0) {
-            if shell.repo?.git != false {
-                WorkingCopyRow(draft: draft, repo: shell.repo)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-            }
-            if !draft.attachments.isEmpty {
-                AttachmentChips(draft: draft)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-            }
-            field()
-                .padding(.horizontal, 7)
-            if let line = status ?? draft.hint {
-                HStack(spacing: 6) {
-                    if status != nil {
-                        Fireflies(height: 9)
-                    }
-                    Text(line)
-                }
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Ink.content(0.45))
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
-                .transition(.opacity)
-            }
-            HStack(spacing: 4) {
-                Button(action: actions.attach) {
-                    Image(systemName: Icon.plus).font(.system(size: 13, weight: .light))
-                }
-                .buttonStyle(StartToolStyle())
-                .help("Attach")
-                .accessibilityLabel("Attach")
-                ModelPill(chat: chat, model: draft.model)
-                EffortPill(chat: chat, model: draft.model, effort: draft.effort)
-                PermissionPill(chat: chat, model: draft.model, mode: draft.permission)
-                Spacer(minLength: 4)
-                MicButton(listening: shell.dictation.activeChat == chat) {
-                    actions.toggleDictation()
-                }
-                StartSendButton(draft: draft, send: send)
-            }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
-        }
-        .background {
-            if scheme == .dark {
-                shape.fill(Ink.content(0.03))
-                    .background(.ultraThinMaterial, in: shape)
-            } else {
-                shape.fill(Palette.windowOpaque)
-                    .shadow(color: Ink.content(0.09), radius: 12, y: 6)
-                    .shadow(color: Ink.content(0.06), radius: 3, y: 2)
-            }
-        }
-        .overlay(
-            shape.strokeBorder(
-                dropTargeted
-                    ? accent.focus : Ink.content(focused.wrappedValue ? 0.2 : 0.1),
-                lineWidth: 1)
-        )
-    }
-}
-
 /// Where a new chat works, over its field (B55): a capsule selector with the branch icon,
 /// "Work on <branch>" (the project folder's current branch) or "New worktree", which
 /// always starts from that branch; a new worktree also takes an optional branch name.
@@ -781,21 +698,63 @@ struct WorkingCopyRow: View {
         let inPlace = NewChatPlace.inPlaceTitle(repo)
         HStack(spacing: 8) {
             PlaceSelector(title: worktree ? NewChatPlace.worktreeTitle : inPlace) {
-                OptionItem(
-                    title: inPlace, detail: NewChatPlace.inPlaceDetail(repo), checked: !worktree
-                ) { draft.mode = .inPlace }
-                OptionItem(
-                    title: NewChatPlace.worktreeTitle, detail: NewChatPlace.worktreeDetail,
-                    checked: worktree
-                ) { draft.mode = .worktree }
+                PlaceItems(draft: draft, repo: repo)
             }
             if worktree {
                 BranchNameField(text: $draft.branchName)
             }
             Spacer(minLength: 0)
         }
-        .task(id: repo?.name) {
-            // The folder's branch may have changed in a terminal since the list was read.
+        .reloadsBranch(of: repo, shell: shell)
+    }
+}
+
+/// The empty workspace's place, in the row under its field (B90): "Work on <branch>" or
+/// "New worktree" as quiet text with its menu, and a new worktree's optional branch name.
+private struct StartPlace: View {
+    @Bindable var draft: ComposerDraft
+    let repo: Repo?
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let worktree = draft.mode == .worktree
+        HStack(spacing: 6) {
+            QuietMenu(
+                title: worktree ? NewChatPlace.worktreeTitle : NewChatPlace.inPlaceTitle(repo),
+                help: "Where the chat works", chevron: true
+            ) {
+                PlaceItems(draft: draft, repo: repo)
+            }
+            if worktree {
+                BranchNameField(text: $draft.branchName)
+            }
+        }
+        .reloadsBranch(of: repo, shell: shell)
+    }
+}
+
+/// Work in the project folder (no mode chosen, the default, D038) or in a new worktree.
+private struct PlaceItems: View {
+    let draft: ComposerDraft
+    let repo: Repo?
+
+    var body: some View {
+        let worktree = draft.mode == .worktree
+        OptionItem(
+            title: NewChatPlace.inPlaceTitle(repo), detail: NewChatPlace.inPlaceDetail(repo),
+            checked: !worktree
+        ) { draft.mode = .inPlace }
+        OptionItem(
+            title: NewChatPlace.worktreeTitle, detail: NewChatPlace.worktreeDetail,
+            checked: worktree
+        ) { draft.mode = .worktree }
+    }
+}
+
+extension View {
+    /// The folder's branch may have changed in a terminal since the list was read.
+    fileprivate func reloadsBranch(of repo: Repo?, shell: Shell) -> some View {
+        task(id: repo?.name) {
             if repo != nil {
                 shell.app.reloadRepos()
             }
@@ -868,55 +827,6 @@ private struct BranchNameField: View {
             .background(Ink.content(focused ? 0.08 : 0.04), in: Capsule())
             .help("A name for the worktree's branch; left empty, Nest names it")
             .accessibilityLabel("Branch name, optional")
-    }
-}
-
-/// The square send: white with a black arrow in dark (content and base in light), at 30
-/// percent until there is something to send.
-private struct StartSendButton: View {
-    let draft: ComposerDraft
-    let send: () -> Void
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let ready = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let dark = scheme == .dark
-        let fill = dark ? Color.white : Ink.content(1)
-        let mark = dark ? Color.black : Palette.windowOpaque
-        Button(action: send) {
-            Group {
-                if draft.sending {
-                    Fireflies(height: 9, color: mark)
-                } else {
-                    Image(systemName: Icon.send).font(.system(size: 12, weight: .bold))
-                }
-            }
-            .foregroundStyle(mark.opacity(ready || draft.sending ? 1 : 0.4))
-            .frame(width: 26, height: 26)
-            .background(fill.opacity(ready || draft.sending ? 1 : 0.3), in: .rounded(6))
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .disabled(!ready || draft.sending)
-        .help("Send")
-        .accessibilityLabel("Send")
-    }
-}
-
-/// The + under the field: a 26 point square on a 10 percent fill, its icon at 50 percent.
-private struct StartToolStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HoverReader { hovering in
-            configuration.label
-                .foregroundStyle(Ink.content(0.5))
-                .frame(width: 26, height: 26)
-                .background(
-                    Ink.content(hovering || configuration.isPressed ? 0.15 : 0.1),
-                    in: .rounded(6)
-                )
-                .contentShape(Rectangle())
-                .pointerStyle(.link)
-        }
     }
 }
 

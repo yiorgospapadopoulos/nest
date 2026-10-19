@@ -222,9 +222,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             response: #"[{"name": "pdf:fill", "description": "Fills forms", "plugin": "pdf"}]"#
         ) { _ = try await $0.pixieSkills() },
         RouteCase(
-            "POST", "/api/pixies", body: #"{"mascot":"owl","name":"Reviewer"}"#,
+            "POST", "/api/pixies", body: #"{"mascot":"moth","name":"Reviewer"}"#,
             response: pixieJSON
-        ) { _ = try await $0.createPixie(CreatePixieRequest(name: "Reviewer", mascot: .owl)) },
+        ) { _ = try await $0.createPixie(CreatePixieRequest(name: "Reviewer", mascot: .moth)) },
         RouteCase(
             "PATCH", "/api/pixies/p1", body: #"{"hidden":true,"skills":["review"]}"#,
             response: pixieJSON
@@ -636,18 +636,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                 RepoPatch(from: WorktreeConfig(setup: ["npm ci"]), to: WorktreeConfig()))
         },
         RouteCase(
-            "PATCH", "/api/repos/cv-page", body: ##"{"icon":"frog","icon_color":"#3DDC84"}"##,
+            "PATCH", "/api/repos/cv-page", body: ##"{"icon":"dragonfly","icon_color":"#3DDC84"}"##,
             response: repoJSON
         ) {
             _ = try await $0.updateRepo(
                 "cv-page",
-                RepoPatch(from: ProjectIcon(), to: ProjectIcon(mascot: .frog, color: "#3DDC84")))
+                RepoPatch(
+                    from: ProjectIcon(), to: ProjectIcon(mascot: .dragonfly, color: "#3DDC84")))
         },
         RouteCase("PATCH", "/api/repos/cv-page", body: #"{"icon":null}"#, response: repoJSON) {
             _ = try await $0.updateRepo(
                 "cv-page",
                 RepoPatch(
-                    from: ProjectIcon(mascot: .owl, color: "#3DDC84"),
+                    from: ProjectIcon(mascot: .moth, color: "#3DDC84"),
                     to: ProjectIcon(color: "#3DDC84")))
         },
         RouteCase("PATCH", "/api/repos/cv-page", body: #"{"icon_color":null}"#, response: repoJSON)

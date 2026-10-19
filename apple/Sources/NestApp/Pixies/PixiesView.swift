@@ -119,7 +119,7 @@ private struct NoPixiesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SpriteView(mascot: .invader, color: PixieColor.standard, size: 64)
+            SpriteView(mascot: .bluebell, color: PixieColor.standard, size: 64)
                 .padding(.bottom, 16)
             Text("Create your first pixie")
                 .font(.ui(TypeSize.body, .semibold))
