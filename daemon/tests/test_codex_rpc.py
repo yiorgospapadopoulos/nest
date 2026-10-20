@@ -72,6 +72,18 @@ async def test_an_error_answer_raises_with_its_code_and_message() -> None:
     await rpc.close()
 
 
+async def test_an_error_answer_keeps_its_data() -> None:
+    server, _, rpc, _ = await connect()
+    server.errors["config/batchWrite"] = (-32600, "write failed")
+    server.error_data["config/batchWrite"] = {"configWriteErrorCode": "configVersionConflict"}
+
+    with pytest.raises(CodexRpcError) as raised:
+        await rpc.request("config/batchWrite", {})
+
+    assert raised.value.data == {"configWriteErrorCode": "configVersionConflict"}
+    await rpc.close()
+
+
 async def test_a_malformed_error_answer_still_raises() -> None:
     server, transport, rpc, _ = await connect()
     server.silent.add("x")
@@ -84,6 +96,7 @@ async def test_a_malformed_error_answer_still_raises() -> None:
 
     assert raised.value.code == INTERNAL_ERROR
     assert raised.value.message == "Codex refused the request"
+    assert raised.value.data is None
     await rpc.close()
 
 

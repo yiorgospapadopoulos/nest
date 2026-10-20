@@ -182,6 +182,15 @@ class Extensions:
         skills += [skill for group in found for skill in group]
         return sorted(skills, key=lambda skill: skill.name)
 
+    async def plugin_folders(self) -> list[tuple[str, Path]]:
+        """Each enabled plugin's name and installed folder (B97), for its skills."""
+        plugins = await self._json(["plugin", "list", "--json"], list[_Installed])
+        return [
+            (plugin.id.split("@", 1)[0], Path(plugin.install_path))
+            for plugin in plugins
+            if plugin.enabled and plugin.install_path is not None
+        ]
+
     async def _plugin_skills(self, plugin: _Installed) -> list[PixieSkill]:
         """Its skills as `plugin details` lists them (commands included, and only the
         skills its marketplace entry names); its folder's skills when that fails.
@@ -378,7 +387,7 @@ def _read_skills(folder: Path) -> list[Skill]:
         file = entry / "SKILL.md"
         if not file.is_file():
             continue
-        fields = _front_matter(file.read_text(encoding="utf-8", errors="replace"))
+        fields = front_matter(file.read_text(encoding="utf-8", errors="replace"))
         skills.append(
             Skill(
                 name=fields.get("name") or entry.name,
@@ -404,13 +413,13 @@ def _descriptions(folder: Path) -> dict[str, str | None]:
             if file.suffix != ".md":
                 continue
             text = file.read_text(encoding="utf-8", errors="replace")
-            found.setdefault(file.stem, _front_matter(text).get("description"))
+            found.setdefault(file.stem, front_matter(text).get("description"))
     except OSError:
         pass
     return found
 
 
-def _front_matter(text: str) -> dict[str, str]:
+def front_matter(text: str) -> dict[str, str]:
     """`key: value` lines between the opening and closing `---`; nothing when unclosed."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -421,5 +430,62 @@ def _front_matter(text: str) -> dict[str, str]:
             return fields
         key, colon, value = line.partition(":")
         if colon and value.strip():
-            fields[key.strip()] = value.strip().strip("\"'")
+            fields[key.strip()] = _scalar(value.strip())
     return {}
+
+
+# YAML's double-quoted escapes Nest reads; `\uXXXX` is handled apart.
+_ESCAPES = {'"': '"', "\\": "\\", "/": "/", "n": "\n", "t": "\t", "r": "\r", "0": "\0"}
+
+
+def _scalar(value: str) -> str:
+    """A quoted value up to its closing quote, unescaped as YAML does; anything after it
+    (a comment) is dropped. An unquoted value, or one never closed, only loses quote marks
+    at its ends.
+    """
+    if value[0] == "'":
+        closed = _single_quoted(value)
+    elif value[0] == '"':
+        closed = _double_quoted(value)
+    else:
+        closed = None
+    return value.strip("\"'") if closed is None else closed
+
+
+def _single_quoted(value: str) -> str | None:
+    text: list[str] = []
+    index = 1
+    while index < len(value):
+        char = value[index]
+        if char == "'":
+            if value[index + 1 : index + 2] != "'":
+                return "".join(text)
+            index += 1
+        text.append(char)
+        index += 1
+    return None
+
+
+def _double_quoted(value: str) -> str | None:
+    text: list[str] = []
+    index = 1
+    while index < len(value):
+        char = value[index]
+        if char == '"':
+            return "".join(text)
+        if char == "\\" and index + 1 < len(value):
+            code = value[index + 1]
+            if code == "u" and _hex(value[index + 2 : index + 6]):
+                text.append(chr(int(value[index + 2 : index + 6], 16)))
+                index += 6
+                continue
+            text.append(_ESCAPES.get(code, code))
+            index += 2
+            continue
+        text.append(char)
+        index += 1
+    return None
+
+
+def _hex(digits: str) -> bool:
+    return len(digits) == 4 and all(c in "0123456789abcdefABCDEF" for c in digits)
