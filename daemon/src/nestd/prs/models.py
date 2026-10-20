@@ -79,7 +79,8 @@ class MergeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     method: MergeMethod = "squash"
-    delete_branch: bool = True
+    # Deletes the branch on GitHub; only when the user ticks it at the merge (B96).
+    delete_branch: bool = False
 
 
 class PrListItem(BaseModel):

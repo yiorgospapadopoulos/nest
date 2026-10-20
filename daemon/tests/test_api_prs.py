@@ -135,13 +135,14 @@ async def test_merging_squashes_closes_the_session_and_removes_the_worktree(api:
     assert session["pr"]["state"] == "merged"
     assert merge_calls(api) == [
         (
-            *("gh", "pr", "merge", PR_URL, "--repo", "me/repo", "--squash", "--delete-branch"),
+            *("gh", "pr", "merge", PR_URL, "--repo", "me/repo", "--squash"),
             *("--match-head-commit", "abc123"),
         )
     ]
     assert not exists(before["worktree_path"])
+    # Nest deletes no branch unless asked to at the merge (B96).
     repo = api.ctx.repos.get("repo").path
-    assert before["branch"] not in git(repo, "branch", "--list")
+    assert before["branch"] in git(repo, "branch", "--list")
     (merge,) = [a for a in await approvals(api) if a["kind"] == "merge"]
     assert (merge["status"], merge["resolution"]) == (
         "resolved",
@@ -169,6 +170,25 @@ async def test_merge_options_and_an_unread_pull_request(api: Api) -> None:
     # IMP-13: a session's lock lives only while it is held.
     gc.collect()
     assert len(api.ctx.prs._locks) == 0  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_the_branch_is_deleted_on_github_only_when_asked(api: Api) -> None:
+    session_id = await opened(api, pr_json())
+    before = await session_of(api, session_id)
+    api.runner.pr_view = pr_json(state="MERGED")
+
+    merged = await api.http.post(f"/api/sessions/{session_id}/merge", json={"delete_branch": True})
+
+    assert merged.status_code == 200, merged.text
+    assert merge_calls(api) == [
+        (
+            *("gh", "pr", "merge", PR_URL, "--repo", "me/repo", "--squash", "--delete-branch"),
+            *("--match-head-commit", "abc123"),
+        )
+    ]
+    # gh, outside any checkout, deletes only the branch on GitHub.
+    repo = api.ctx.repos.get("repo").path
+    assert before["branch"] in git(repo, "branch", "--list")
 
 
 async def test_after_a_merge_an_unreadable_status_is_marked_merged(api: Api) -> None:
