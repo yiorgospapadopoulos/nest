@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections.abc import Collection
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -21,14 +22,18 @@ class SessionStore:
         self._db = db
         self._clock = clock
 
-    async def create(self, new: NewSession, branch: str | None = None) -> Session:
-        """`branch` is a worktree chat's branch name asked for before its worktree exists."""
+    async def create(
+        self, new: NewSession, branch: str | None = None, worktree_path: Path | None = None
+    ) -> Session:
+        """`branch` is a worktree chat's branch name asked for before its worktree exists,
+        or with `worktree_path` the branch of the existing worktree it joins (B96).
+        """
         now = self._clock.now()
         session = Session(
             **new.model_dump(),
             id=uuid4().hex,
             state=SessionState.STARTING,
-            worktree_path=None,
+            worktree_path=worktree_path,
             branch=branch,
             provider_session_id=None,
             created_at=now,
@@ -61,6 +66,25 @@ class SessionStore:
             (repo, repo, archived),
         )
         return [_session(row) for row in rows]
+
+    async def worktree_bases(self, repo: str) -> dict[Path, str]:
+        """The commit each worktree chat of the repo started from, by worktree path; closed,
+        archived and pixie chats included.
+        """
+        rows = await self._db.fetch_all(
+            "SELECT worktree_path, base_ref FROM sessions WHERE repo = ?"
+            " AND worktree_path IS NOT NULL AND base_ref IS NOT NULL",
+            (repo,),
+        )
+        return {Path(row["worktree_path"]): row["base_ref"] for row in rows}
+
+    async def worktree_users(self, excluding: Collection[str]) -> list[Path]:
+        """The worktree path of each session that is not closed and not in `excluding`."""
+        rows = await self._db.fetch_all(
+            "SELECT id, worktree_path FROM sessions WHERE worktree_path IS NOT NULL AND state != ?",
+            (SessionState.CLOSED.value,),
+        )
+        return [Path(row["worktree_path"]) for row in rows if row["id"] not in excluding]
 
     async def provider_session_ids(self) -> set[str]:
         """The engine session ids of every session, archived and closed ones included, and

@@ -110,10 +110,11 @@ public struct MergeProposal: Decodable, Sendable, Hashable {
 /// `POST /api/sessions/{id}/merge`.
 public struct MergeRequest: Encodable, Sendable, Hashable {
     public var method: MergeMethod
-    /// Deletes the remote branch after merging.
+    /// Deletes the branch on GitHub after merging; only when the user ticks it (B96). Nest
+    /// deletes no branch otherwise.
     public var deleteBranch: Bool
 
-    public init(method: MergeMethod = .squash, deleteBranch: Bool = true) {
+    public init(method: MergeMethod = .squash, deleteBranch: Bool = false) {
         self.method = method
         self.deleteBranch = deleteBranch
     }

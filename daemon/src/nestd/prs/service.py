@@ -92,7 +92,8 @@ class PullRequests:
         return await self._sessions.send(session_id, text, [])
 
     async def merge(self, session_id: str, request: MergeRequest) -> Session:
-        """Merge with gh, then close the session and remove its worktree and branch.
+        """Merge with gh, then close the session and remove its worktree; its branch stays
+        (on GitHub too, unless the request asks gh to delete it).
 
         A failed merge changes nothing and can be retried; a merge that worked but whose
         worktree could not be removed leaves the session open to close again.
@@ -140,8 +141,8 @@ class PullRequests:
             return await self.monitor.record(session, merged)
 
     async def _gh_merge(self, session: Session, url: str, request: MergeRequest) -> None:
-        # Outside any checkout and with --repo, gh deletes only the remote branch; the
-        # worktree removal deletes the local one (gh cannot switch a worktree's branch).
+        # Outside any checkout and with --repo, gh deletes only the branch on GitHub; the
+        # local one stays, as Nest deletes no branch (B96).
         argv = ["gh", "pr", "merge", url, "--repo", repo_of(url), f"--{request.method}"]
         if request.delete_branch:
             argv.append("--delete-branch")

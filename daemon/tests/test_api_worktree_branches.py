@@ -140,7 +140,7 @@ async def test_without_a_base_the_worktree_starts_from_the_default_branch(
     assert not (Path(stored["worktree_path"]) / "other.txt").exists()
 
 
-async def test_a_custom_branch_is_removed_with_its_worktree_like_a_generated_one(
+async def test_a_custom_branch_is_kept_when_its_worktree_is_removed(
     api: Api, tmp_path: Path
 ) -> None:
     repo = tmp_path / "repo"
@@ -158,7 +158,7 @@ async def test_a_custom_branch_is_removed_with_its_worktree_like_a_generated_one
     await api.http.delete(f"/api/sessions/{purged['id']}", params={"purge": True})
     await until(lambda: not any(path.exists() for path in paths))
 
-    assert local_branches(repo) == ["main"]
+    assert local_branches(repo) == ["closed-one", "main", "purged-one"]
 
 
 @pytest.mark.parametrize("name", ["-x", "bad..name", "has space", "@{-1}", "HEAD", "end/", ""])

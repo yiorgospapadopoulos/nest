@@ -100,9 +100,12 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(Fixture.decode(Approval.self, json: Fixture.json(approval)).kind == .merge)
     }
 
-    @Test func mergeRequestsDefaultToSquashAndDeleteTheBranch() {
+    @Test func mergeRequestsDefaultToSquashAndKeepTheBranch() {
         #expect(
-            Fixture.json(MergeRequest()) == #"{"delete_branch":true,"method":"squash"}"#)
+            Fixture.json(MergeRequest()) == #"{"delete_branch":false,"method":"squash"}"#)
+        #expect(
+            Fixture.json(MergeRequest(method: .rebase, deleteBranch: true))
+                == #"{"delete_branch":true,"method":"rebase"}"#)
     }
 }
 
@@ -246,5 +249,21 @@ private func prJSON(state: String = "open", checks: String = "failure", items: S
         #expect(approvals.pending.isEmpty)
         #expect(
             api.calls.filter { $0.hasPrefix("merge") } == ["merge s1 rebase", "merge s1 squash"])
+    }
+
+    @Test func theBranchIsDeletedOnlyWhenAskedAtTheMerge() async throws {
+        var merge = Fixture.approval("ap-perm")
+        merge.id = "ap-merge"
+        merge.sessionID = "s1"
+        merge.kind = .merge
+        api.set {
+            $0.sessions = [session("s1", pr: pr(checks: "success"))]
+            $0.approvals = [merge]
+        }
+        try await approvals.load()
+
+        try await approvals.merge(merge, method: .rebase, deleteBranch: true)
+
+        #expect(api.calls.filter { $0.hasPrefix("merge") } == ["merge s1 rebase delete-branch"])
     }
 }

@@ -207,7 +207,8 @@ class TurnRunner:
         `text`, else the chat's first prompt.
         """
         prompt = session.prompt if text is None else text
-        if session.mode == "worktree":
+        # A chat that joined an existing worktree has it already (B96).
+        if session.mode == "worktree" and session.worktree_path is None:
             assert repo is not None  # noqa: S101 (a worktree session always has a project)
             live.preparing = True
             try:
@@ -219,7 +220,7 @@ class TurnRunner:
                 raise
             finally:
                 live.preparing = False
-            if not setup.ok:
+            if setup is not None and not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
         return await self.submit(live, prompt, attachments, sender=sender)
 
