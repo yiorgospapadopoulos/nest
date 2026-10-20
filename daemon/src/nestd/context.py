@@ -89,6 +89,7 @@ from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
+from nestd.repos.branch_watch import BranchWatch
 from nestd.repos.service import RepoService
 from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
@@ -137,6 +138,8 @@ class AppContext:
     local_apps: LocalApps
     notifications: NotificationDelivery
     claude_chats: ClaudeChats
+    # Announces worktrees and checked-out branches changing outside Nest too (B96).
+    branch_watch: BranchWatch
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
@@ -291,6 +294,7 @@ class AppContext:
                 on_removed=None
                 if codex_home is None
                 else lambda path: forget_trust(codex_home, path),
+                bus=bus,
             ),
             attachments=attachments,
             provider=provider
@@ -481,6 +485,7 @@ class AppContext:
                 live=live_chats,
                 on_refresh=search.sync_claude_chats,
             ),
+            branch_watch=BranchWatch(repos=repos, bus=bus),
             usage_refresher=UsageRefresher(
                 store=usage,
                 bus=bus,

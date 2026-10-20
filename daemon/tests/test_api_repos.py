@@ -28,6 +28,7 @@ async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> Asy
         ("GET", "/api/repos/x"),
         ("GET", "/api/repos/x/link-suggestions"),
         ("GET", "/api/repos/x/branches"),
+        ("GET", "/api/repos/x/branch-map"),
         ("PATCH", "/api/repos/x"),
         ("PUT", "/api/repos/order"),
         ("DELETE", "/api/repos/x"),
