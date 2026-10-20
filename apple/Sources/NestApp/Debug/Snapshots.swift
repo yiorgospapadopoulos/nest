@@ -1493,9 +1493,9 @@
             let end = model.transcripts.existing("c3")?.visibleItems.last { item in
                 if case .turnEnd = item.content { true } else { false }
             }
-            shell.hoveredEntry = end?.id
+            shell.setHoveredTurnEnd(end?.id)
             try await pair(controller, "b71-quiet-chat-hover", folder)
-            shell.hoveredEntry = nil
+            shell.setHoveredTurnEnd(nil)
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
                 state.focusPane("c3")

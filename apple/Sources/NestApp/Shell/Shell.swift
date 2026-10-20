@@ -147,8 +147,9 @@ final class Shell {
     var connectorGroupsOpen: Set<ConnectorSectionKind> = []
     /// Expanded tool calls and thinking blocks, by transcript item id.
     var expandedItems: Set<String> = []
-    /// The transcript row under the pointer: its reply's "Worked for" line shows (B71).
-    var hoveredEntry: String?
+    /// The turn end of the transcript row under the pointer: its "Worked for" line shows
+    /// (B71). Set through `setHoveredTurnEnd`.
+    private(set) var hoveredTurnEnd: String?
     var toast: Toast?
     var dragging: DragItem?
     var dropHighlight: DropHighlight?
@@ -223,6 +224,14 @@ final class Shell {
     /// The workspace on screen: the Pixies tab's (its panes are pixies) or the current
     /// project's. The pane views and their actions work on this one.
     var workspaceState: ProjectState { pixiesOpen ? app.pixieState : projectState }
+
+    /// Writes only a change: every turn end line reads it, and rows pass under the pointer
+    /// on each scroll.
+    func setHoveredTurnEnd(_ end: String?) {
+        if hoveredTurnEnd != end {
+            hoveredTurnEnd = end
+        }
+    }
 
     func update(_ change: (inout ProjectState) -> Void) {
         withAnimation(.smooth(duration: 0.22)) {

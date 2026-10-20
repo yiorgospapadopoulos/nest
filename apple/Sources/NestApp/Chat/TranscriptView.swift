@@ -13,7 +13,15 @@ struct TranscriptView: View {
     @State private var store: TranscriptStore?
     @State private var loadError: String?
     @State private var position = ScrollPosition(edge: .bottom)
-    @State private var follow = ScrollFollow()
+    /// Out of the view's state: geometry arrives every scroll frame, and a state change
+    /// there rebuilt the whole transcript each frame. Only what the view shows is state:
+    /// the jump button and whether size changes keep the bottom in place.
+    @State private var follower = Follower()
+    @State private var showsJump = false
+    @State private var following = true
+    /// How many of the latest entries lay out in full (`TranscriptChunks`): the latest at
+    /// first, so a chat opens fast, then the whole chat, so no height is ever guessed.
+    @State private var laidOut = TranscriptChunks.tail
     /// The item a search hit scrolls to, and the one that glows.
     @State private var scrollTarget: String?
     @State private var highlighted: String?
@@ -32,7 +40,7 @@ struct TranscriptView: View {
             store?.entries(live: inFlight, background: background, pixies: pixies) ?? []
         let answered = PixieCards.answered(items)
         let turnEnds = TranscriptGrouping.turnEnds(entries)
-        let shownEnd = shell.hoveredEntry.flatMap { turnEnds[$0] }
+        let chunks = TranscriptChunks.split(entries, tail: laidOut)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -41,39 +49,52 @@ struct TranscriptView: View {
                             try await store?.loadOlder()
                         }
                     }
-                    ForEach(entries) { entry in
-                        Group {
-                            switch entry {
-                            case .item(let item):
-                                TranscriptRow(
-                                    item: item, chat: chat, answered: answered.contains(item.id),
-                                    showsTurnEnd: shownEnd == item.id
-                                )
-                                .background {
-                                    if highlighted == item.id {
-                                        Highlight(accent: accent)
+                    // Each chunk lays out whole, so the messages just above the view are
+                    // measured before they scroll in (`TranscriptChunks`).
+                    ForEach(chunks) { chunk in
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(chunk.entries) { entry in
+                                Group {
+                                    switch entry {
+                                    case .item(let item):
+                                        TranscriptRow(
+                                            item: item, chat: chat,
+                                            answered: answered.contains(item.id),
+                                            turnEndOnHover: true
+                                        )
+                                        .background {
+                                            if highlighted == item.id {
+                                                Highlight(accent: accent)
+                                            }
+                                        }
+                                    case .tools(let group):
+                                        ToolGroupRow(
+                                            group: group, chat: chat, highlighted: highlighted)
+                                    case .pixieCall(let call):
+                                        PixieCallRow(entry: call, chat: chat)
+                                            .background {
+                                                if highlighted == call.id {
+                                                    Highlight(accent: accent)
+                                                }
+                                            }
                                     }
                                 }
-                            case .tools(let group):
-                                ToolGroupRow(group: group, chat: chat, highlighted: highlighted)
-                            case .pixieCall(let call):
-                                PixieCallRow(entry: call, chat: chat)
-                                    .background {
-                                        if highlighted == call.id {
-                                            Highlight(accent: accent)
-                                        }
+                                // Leaving clears only the row it set, so moving from one row to
+                                // the next never blinks the line off in between. Only the turn end
+                                // lines read the result, and it changes only between turns, so rows
+                                // passing under the pointer while scrolling rebuild nothing.
+                                .onHover { inside in
+                                    if inside {
+                                        follower.hovered = entry.id
+                                        shell.setHoveredTurnEnd(turnEnds[entry.id])
+                                    } else if follower.hovered == entry.id {
+                                        follower.hovered = nil
+                                        shell.setHoveredTurnEnd(nil)
                                     }
+                                }
                             }
                         }
-                        // Leaving clears only the row it set, so moving from one row to
-                        // the next never blinks the line off in between.
-                        .onHover { inside in
-                            if inside {
-                                shell.hoveredEntry = entry.id
-                            } else if shell.hoveredEntry == entry.id {
-                                shell.hoveredEntry = nil
-                            }
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if hasNewer {
                         PageButton(title: "Load newer messages") {
@@ -110,45 +131,64 @@ struct TranscriptView: View {
             }
             .onChange(of: scrollTarget) { _, target in
                 if let target {
-                    withAnimation(.smooth(duration: 0.3)) {
-                        proxy.scrollTo(target, anchor: .center)
+                    // The lazy stack finds the target only once its chunk is laid out.
+                    if let chunk = TranscriptChunks.chunk(containing: target, in: chunks) {
+                        proxy.scrollTo(chunk, anchor: .top)
+                    }
+                    Task { @MainActor in
+                        withAnimation(.smooth(duration: 0.3)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
                     }
                 }
             }
         }
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
+        // Following, a message that grows or settles its height keeps the end in place.
+        // Reading earlier messages, nothing moves the view when one arrives below.
+        .defaultScrollAnchor(following ? .bottom : nil, for: .sizeChanges)
+        .onScrollPhaseChange { _, phase in
+            follower.userScrolling =
+                phase == .tracking || phase == .interacting || phase == .decelerating
+        }
         .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
             ScrollMetrics(
                 offset: geometry.contentOffset.y, viewport: geometry.containerSize.height,
                 content: geometry.contentSize.height)
         } action: { _, metrics in
             // Text views settle their height after layout, so growth arrives here too.
-            if follow.update(metrics) {
+            // Never during the user's own scroll or its momentum: a jump to the bottom
+            // then fought their gesture. Following, the bottom anchor keeps the end in view.
+            if follower.follow.update(metrics) && !follower.userScrolling {
                 position.scrollTo(edge: .bottom)
             }
+            syncJump()
         }
         .onChange(of: items.last) {
-            if follow.contentArrived() {
+            if follower.follow.contentArrived() {
                 position.scrollTo(edge: .bottom)
             }
+            syncJump()
         }
         .overlay(alignment: .bottom) {
-            if follow.showsJump {
+            if showsJump {
                 JumpToLatest {
-                    follow.jumpToLatest()
+                    follower.follow.jumpToLatest()
+                    syncJump()
                     withAnimation(.smooth(duration: 0.3)) { position.scrollTo(edge: .bottom) }
                 }
                 .padding(.bottom, 10)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
-        .animation(.smooth(duration: 0.2), value: follow.showsJump)
+        .animation(.smooth(duration: 0.2), value: showsJump)
         // A pane that loses the focus to another one goes back to the latest and follows.
         .onChange(of: unfocused) { _, unfocused in
-            if follow.focusChanged(focused: !unfocused) {
+            if follower.follow.focusChanged(focused: !unfocused) {
                 withAnimation(.smooth(duration: 0.3)) { position.scrollTo(edge: .bottom) }
             }
+            syncJump()
         }
         .task(id: chat) { await load() }
         // A load that failed while the daemon was down is retried when it connects again.
@@ -171,9 +211,11 @@ struct TranscriptView: View {
     }
 
     private func load() async {
-        follow = ScrollFollow()
+        laidOut = TranscriptChunks.tail
+        follower.follow = ScrollFollow()
         // A pane opened beside the focused one starts at the latest like any other.
-        _ = follow.focusChanged(focused: !unfocused)
+        _ = follower.follow.focusChanged(focused: !unfocused)
+        syncJump()
         let transcript = shell.model.transcripts.transcript(for: chat)
         store = transcript
         if transcript.isLoaded && transcript.needsLoad {
@@ -194,12 +236,35 @@ struct TranscriptView: View {
         if transcript.focus != nil {
             await reveal()
         }
+        // The chat opens on its latest messages; the rest are prepared behind them, so a
+        // fast scroll up never builds and measures them as they come into view.
+        await SelectableTextCache.warm(
+            MarkdownText.parts(of: transcript.visibleItems), kind: MarkdownText.kind,
+            build: MarkdownText.build)
+        await layOutEverything()
+    }
+
+    /// Grows the fully laid out part up to the whole chat, a chunk at a time between
+    /// frames. A lazy stack guesses the heights of rows it has not built, and a fast
+    /// scroll that builds many at once moved the view with each corrected guess. It grows
+    /// only while following, where the bottom anchor keeps the view still as rows above
+    /// take their real height.
+    private func layOutEverything() async {
+        while !Task.isCancelled, laidOut < TranscriptChunks.most {
+            let count = store?.visibleItems.count ?? 0
+            guard laidOut < count else { return }
+            if follower.follow.following && !follower.userScrolling {
+                laidOut += TranscriptChunks.size
+            }
+            try? await Task.sleep(for: .milliseconds(16))
+        }
     }
 
     /// Scrolls to the requested message, loading its page when needed, and lets it glow.
     private func reveal() async {
         guard let store, let target = try? await store.resolveFocus() else { return }
-        follow.hold()
+        follower.follow.hold()
+        syncJump()
         // A hit inside a collapsed group of tool calls opens the group first.
         let entries = store.entries(live: false, pixies: PixieCalls.slugs(shell.pixies.pixies))
         if let group = TranscriptGrouping.group(containing: target, in: entries) {
@@ -216,6 +281,17 @@ struct TranscriptView: View {
         }
     }
 
+    /// Shows or hides Jump to latest and sets the size change anchor, writing the state
+    /// only when it changes.
+    private func syncJump() {
+        if showsJump != follower.follow.showsJump {
+            showsJump = follower.follow.showsJump
+        }
+        if following != follower.follow.following {
+            following = follower.follow.following
+        }
+    }
+
     private func reloadClaudeChat() async {
         guard let store, store.source == .claudeChat else { return }
         do {
@@ -227,13 +303,22 @@ struct TranscriptView: View {
     }
 }
 
+/// A transcript's scroll following and the row under the pointer, held by reference so
+/// writing them never rebuilds the view.
+@MainActor private final class Follower {
+    var follow = ScrollFollow()
+    var hovered: String?
+    /// The user drags, scrolls or the view still glides from their scroll.
+    var userScrolling = false
+}
+
 struct TranscriptRow: View {
     let item: TranscriptItem
     let chat: String
     /// A choices card with a user message after it.
     var answered = false
     /// A turn end line shows its text; a chat's shows only while its reply is hovered.
-    var showsTurnEnd = true
+    var turnEndOnHover = false
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -281,7 +366,7 @@ struct TranscriptRow: View {
             SystemLine(text: text)
                 .frame(maxWidth: .infinity)
         case .turnEnd(let end):
-            TurnEndLine(end: end, shown: showsTurnEnd)
+            TurnEndLine(end: end, shown: !turnEndOnHover || shell.hoveredTurnEnd == item.id)
         case .reportBack(let text):
             ReportBackRow(text: text)
         case .pixieCard(let card):
@@ -367,10 +452,28 @@ struct MarkdownText: View {
     }
 
     private var content: some View {
-        SelectableText(key: text, linkColor: NSColor(Palette.Mac.link)) {
-            TextStyling.message(RichText.paragraphs(text))
+        SelectableText(key: text, linkColor: NSColor(Palette.Mac.link), kind: Self.kind) {
+            Self.build(text)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Its kind in `SelectableTextCache`, for preparing a chat's messages ahead.
+    static let kind = "markdown"
+
+    static func build(_ text: String) -> NSAttributedString {
+        TextStyling.message(RichText.paragraphs(text))
+    }
+
+    /// The markdown parts of finished assistant messages, newest first, as `AssistantText`
+    /// shows them.
+    static func parts(of items: [TranscriptItem]) -> [String] {
+        items.reversed().flatMap { item -> [String] in
+            guard case .assistant(let text, streaming: false) = item.content else { return [] }
+            return ShellCommand.segments(text).compactMap { segment in
+                if case .markdown(let part) = segment { part } else { nil }
+            }
+        }
     }
 }
 
