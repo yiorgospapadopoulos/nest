@@ -24,6 +24,7 @@ public final class SettingsStore {
         static let backgroundGrain = "appearance.background.grain"
         static let backgroundProjects = "appearance.background.projects"
         static let sidebarWidth = "sidebar.width"
+        static let usageMeterHidden = "usage.meter.hidden"
     }
 
     public var theme: ThemeMode {
@@ -48,6 +49,28 @@ public final class SettingsStore {
         didSet { save(String(sidebarWidth), Key.sidebarWidth) }
     }
 
+    /// The engines unchecked for the usage meter at the top right (B94), on this Mac only.
+    /// Kept as the engines left out, so an engine added later starts shown.
+    public private(set) var usageMeterHidden: Set<String> {
+        didSet {
+            save(
+                usageMeterHidden.isEmpty ? nil : usageMeterHidden.sorted().joined(separator: ","),
+                Key.usageMeterHidden)
+        }
+    }
+
+    public func showsInUsageMeter(_ engine: String) -> Bool {
+        !usageMeterHidden.contains(engine)
+    }
+
+    public func setUsageMeter(_ engine: String, shown: Bool) {
+        if shown {
+            usageMeterHidden.remove(engine)
+        } else {
+            usageMeterHidden.insert(engine)
+        }
+    }
+
     /// Which notices reach macOS notifications.
     public var notifications: NotificationPreferences {
         didSet {
@@ -69,6 +92,9 @@ public final class SettingsStore {
         showAutomatedChats = store.string(forKey: Key.automatedChats) == "on"
         chatBackground = Self.loadChatBackground(from: store)
         sidebarWidth = SidebarWidth.stored(store.string(forKey: Key.sidebarWidth))
+        usageMeterHidden = Set(
+            (store.string(forKey: Key.usageMeterHidden) ?? "")
+                .split(separator: ",").map(String.init))
         var notifications = NotificationPreferences()
         for (name, path) in NotificationPreferences.fields {
             if let stored = store.string(forKey: Key.notifications + name) {

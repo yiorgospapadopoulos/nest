@@ -172,3 +172,19 @@ struct MarketplaceRequest: Encodable {
 struct PluginEnabledRequest: Encodable {
     var enabled: Bool
 }
+
+extension [AvailablePlugin] {
+    /// Browse's search (B94): the plugins whose name, marketplace, id or description hold
+    /// every word of `query`, ignoring case and accents; a blank query keeps them all.
+    public func matching(_ query: String) -> [AvailablePlugin] {
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return self }
+        return filter { plugin in
+            let text = [plugin.name, plugin.marketplace, plugin.id, plugin.description ?? ""]
+                .joined(separator: " ")
+            return words.allSatisfy {
+                text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+        }
+    }
+}

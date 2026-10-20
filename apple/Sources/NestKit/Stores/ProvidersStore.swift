@@ -11,6 +11,8 @@ public final class ProvidersStore {
     public private(set) var providers: [ProviderInfo] = []
     /// The other engines' models, by engine name.
     public private(set) var models: [String: [ModelInfo]] = [:]
+    /// The other engines' default models, by engine name (B94).
+    public private(set) var defaultModels: [String: String] = [:]
 
     let api: any NestAPI
 
@@ -27,6 +29,7 @@ public final class ProvidersStore {
         for provider in providers where provider.name != ProviderInfo.claude {
             if let list = try? await api.models(provider: provider.name) {
                 models[provider.name] = list.models
+                defaultModels[provider.name] = list.defaultModel
             }
         }
     }
@@ -107,9 +110,18 @@ public final class ProvidersStore {
         }
     }
 
+    /// A model's name, after its engine's off Claude, such as "Codex · GPT-5.5" (B94).
+    public func modelTitle(_ model: String?, on provider: String?, claude: ModelCatalog)
+        -> String
+    {
+        let name = catalog(for: provider, claude: claude).label(for: model)
+        guard let provider, provider != ProviderInfo.claude else { return name }
+        return "\(displayName(provider)) · \(name)"
+    }
+
     /// The engine's models (nil: Claude's, which `AgentsStore` keeps).
     public func catalog(for name: String?, claude: ModelCatalog) -> ModelCatalog {
         guard let name, name != ProviderInfo.claude else { return claude }
-        return ModelCatalog(models: models[name] ?? [])
+        return ModelCatalog(models: models[name] ?? [], defaultModel: defaultModels[name])
     }
 }

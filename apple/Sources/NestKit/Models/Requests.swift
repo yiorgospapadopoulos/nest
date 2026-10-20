@@ -273,15 +273,14 @@ public struct CreatePixieRequest: Encodable, Sendable, Hashable {
     }
 }
 
-/// `PATCH /api/pixies/{id}`; nil fields are left unchanged. `clearsModel` and
-/// `clearsEffort` send an explicit null, which sets Model or Thinking back to Default.
+/// `PATCH /api/pixies/{id}`; nil fields are left unchanged.
 public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var name: String?
     public var slug: String?
     public var mascot: Mascot?
     public var color: String?
-    /// The engine to run on (B91); another one clears the model and thinking unless they
-    /// are given too.
+    /// The engine to run on (B91); another one sets its default model and thinking unless
+    /// they are given too.
     public var provider: String?
     public var model: String?
     public var effort: Effort?
@@ -290,12 +289,6 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var projectAccess: ProjectAccess?
     public var skills: [String]?
     public var hidden: Bool?
-    /// True sends `"model": null`: the pixie follows the agent default again. A `model`
-    /// set as well wins.
-    public var clearsModel: Bool
-    /// True sends `"effort": null`: thinking is left to the model again. An `effort` set as
-    /// well wins.
-    public var clearsEffort: Bool
     /// The team to join.
     public var teamID: String?
     /// True sends `"team_id": null`: the pixie leaves its team. A `teamID` set as well wins.
@@ -310,7 +303,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         provider: String? = nil, model: String? = nil, effort: Effort? = nil,
         permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
         projectAccess: ProjectAccess? = nil, skills: [String]? = nil, hidden: Bool? = nil,
-        clearsModel: Bool = false, clearsEffort: Bool = false, teamID: String? = nil,
+        teamID: String? = nil,
         leavesTeam: Bool = false, maxRunning: Int? = nil, maxPerDay: Int? = nil
     ) {
         self.name = name
@@ -325,8 +318,6 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         self.projectAccess = projectAccess
         self.skills = skills
         self.hidden = hidden
-        self.clearsModel = clearsModel
-        self.clearsEffort = clearsEffort
         self.teamID = teamID
         self.leavesTeam = leavesTeam
         self.maxRunning = maxRunning
@@ -349,16 +340,8 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(mascot, forKey: .mascot)
         try container.encodeIfPresent(color, forKey: .color)
         try container.encodeIfPresent(provider, forKey: .provider)
-        if let model {
-            try container.encode(model, forKey: .model)
-        } else if clearsModel {
-            try container.encodeNil(forKey: .model)
-        }
-        if let effort {
-            try container.encode(effort, forKey: .effort)
-        } else if clearsEffort {
-            try container.encodeNil(forKey: .effort)
-        }
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(effort, forKey: .effort)
         try container.encodeIfPresent(permissionMode, forKey: .permissionMode)
         try container.encodeIfPresent(autonomy, forKey: .autonomy)
         try container.encodeIfPresent(projectAccess, forKey: .projectAccess)

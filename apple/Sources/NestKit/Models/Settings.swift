@@ -87,7 +87,8 @@ public struct LargeAttachment: Codable, Sendable, Hashable, Identifiable {
 
 /// `GET/PUT /api/pixie-settings`: what new pixies start with, and the habits' switches.
 public struct PixieSettings: Codable, Sendable, Hashable {
-    /// Nil follows the agent default.
+    /// The Claude model new Claude pixies start on; nil only before the daemon resolved
+    /// it (B94).
     public var model: String?
     public var autonomy: Autonomy
     public var projectAccess: ProjectAccess
@@ -131,7 +132,7 @@ public struct PixieSettings: Codable, Sendable, Hashable {
         habitUsagePercent = try container.decode(Int.self, forKey: .habitUsagePercent)
     }
 
-    /// The whole section; the agent default model is sent as null.
+    /// The whole section.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(model, forKey: .model)
@@ -232,6 +233,48 @@ public struct ClaudeLogin: Codable, Sendable, Hashable {
         case email, organization, plan, method, error
         case signedIn = "signed_in"
         case checkedAt = "checked_at"
+    }
+}
+
+/// `GET /api/accounts/codex`: the Codex login as Codex's app-server reports it (B94); an
+/// `account.codex` event carries the same, with `error` when signing in failed.
+public struct CodexLogin: Codable, Sendable, Hashable {
+    /// Nil while Codex could not be asked.
+    public var signedIn: Bool?
+    public var email: String?
+    /// Such as "ChatGPT Plus".
+    public var plan: String?
+    public var checkedAt: Date
+    public var error: String?
+
+    public init(
+        signedIn: Bool?, email: String? = nil, plan: String? = nil, checkedAt: Date,
+        error: String? = nil
+    ) {
+        self.signedIn = signedIn
+        self.email = email
+        self.plan = plan
+        self.checkedAt = checkedAt
+        self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case email, plan, error
+        case signedIn = "signed_in"
+        case checkedAt = "checked_at"
+    }
+}
+
+/// `POST /api/accounts/codex/login`: the page to sign in on, opened in the browser.
+public struct CodexSignIn: Codable, Sendable, Hashable {
+    public var authURL: URL
+
+    public init(authURL: URL) {
+        self.authURL = authURL
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case authURL = "auth_url"
     }
 }
 

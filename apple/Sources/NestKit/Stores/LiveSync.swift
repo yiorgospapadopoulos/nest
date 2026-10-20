@@ -28,6 +28,8 @@ public final class LiveSync {
     public var onNotice: ((Notice) -> Void)?
     /// Called after each connect has reloaded the stores.
     public var onConnected: (() -> Void)?
+    /// The reload of the engines and agent defaults an account change started.
+    public private(set) var engineReload: Task<Void, Never>?
 
     public init(
         source: any EventSource, app: AppStore, sessions: SessionsStore, approvals: ApprovalsStore,
@@ -108,6 +110,14 @@ public final class LiveSync {
         await chatPixies.load()
     }
 
+    /// The engines' logins and models, and the defaults the daemon may now resolve.
+    private func reloadEngines() {
+        engineReload = Task {
+            await providers.load()
+            await agents.load()
+        }
+    }
+
     public func route(_ event: Event) {
         sessions.apply(event)
         approvals.apply(event)
@@ -132,6 +142,9 @@ public final class LiveSync {
             onNotice?(notice)
         case .reposChanged:
             app.reloadRepos()
+        case .codexAccount:
+            // Signed in or out: the engines' lists and the defaults may change (B94).
+            reloadEngines()
         case .result:
             // A turn in a plain folder may have run git init; the repo update event, when
             // the daemon sends one, makes this redundant but harmless.

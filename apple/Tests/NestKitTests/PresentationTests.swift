@@ -72,9 +72,8 @@ import Testing
             ])
         #expect(PermissionMode.unknown.summary == "")
         #expect(PermissionMode.auto.summary == "Asks only when Claude Code judges an action risky")
-        #expect(PermissionMode.claudeCodeDefaultSummary == "Your Claude Code setting applies")
-        #expect(PermissionMode.shortLabel(nil) == "Default")
-        #expect(PermissionMode.shortLabel(.acceptEdits) == "Edits")
+        #expect(PermissionMode.acceptEdits.shortLabel == "Edits")
+        #expect(PermissionMode.plan.shortLabel == "Plan")
         #expect(PermissionMode.unknown.planChoiceLabel == "Auto-accept edits")
     }
 }

@@ -79,6 +79,7 @@ public enum EventType {
     public static let usageWarning = "usage.warning"
     /// The Claude Code login changed, or signing in ended (B81).
     public static let accountClaude = "account.claude"
+    public static let accountCodex = "account.codex"
     /// Installing Claude Code moved on.
     public static let claudeCodeInstall = "claude_code.install"
     /// Claude Code was installed: its new state.
@@ -169,6 +170,7 @@ public enum EventBody: Sendable, Hashable {
     case providerUsageUpdated(provider: String, UsageLimits)
     case usageWarning(UsageWarning)
     case claudeAccount(ClaudeLogin)
+    case codexAccount(CodexLogin)
     case claudeCodeInstall(ClaudeCodeInstallProgress)
     case claudeCodeUpdated(ClaudeCodeStatus)
     /// List the plugins, skills and marketplaces again.
@@ -267,6 +269,7 @@ public enum EventBody: Sendable, Hashable {
                 try payload.decode(UsageLimits.self))
         case EventType.usageWarning: self = .usageWarning(try payload.decode(UsageWarning.self))
         case EventType.accountClaude: self = .claudeAccount(try payload.decode(ClaudeLogin.self))
+        case EventType.accountCodex: self = .codexAccount(try payload.decode(CodexLogin.self))
         case EventType.claudeCodeInstall:
             self = .claudeCodeInstall(try payload.decode(ClaudeCodeInstallProgress.self))
         case EventType.claudeCodeUpdated:

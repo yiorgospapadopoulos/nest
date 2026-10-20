@@ -8,7 +8,7 @@ import Testing
 /// calendar's split by engine.
 @MainActor @Suite struct ModelSectionsTests {
     let api = FakeAPI()
-    let claude = ModelCatalog(models: Fixture.models)
+    let claude = ModelCatalog(models: Fixture.models, defaultModel: "opus")
 
     init() {
         api.set {
@@ -16,6 +16,7 @@ import Testing
                 Fixture.decode(ProviderList.self, json: ProviderDecodingTests.json)
                 .providers
             $0.providerModels = ["codex": ProviderDecodingTests.codexModels]
+            $0.providerDefaults = ["codex": "gpt-5.5-codex"]
         }
     }
 
@@ -38,7 +39,7 @@ import Testing
         let sections = store.modelSections(claude: claude, provider: nil, isDraft: true)
         #expect(sections.map(\.title) == ["Claude", "Codex"])
         #expect(sections.map(\.detail) == ["", "Not signed in"])
-        #expect(sections[1].catalog.models.map(\.value) == ["default", "gpt-5.5-codex"])
+        #expect(sections[1].catalog.models.map(\.value) == ["gpt-5.5-codex", "gpt-5.5-mini"])
         #expect(sections.map(\.id) == ["claude", "codex"])
     }
 
@@ -67,8 +68,9 @@ import Testing
 }
 
 @Suite struct ChoosingAModelTests {
-    let claude = ModelCatalog(models: Fixture.models)
-    let codex = ModelCatalog(models: ProviderDecodingTests.codexModels)
+    let claude = ModelCatalog(models: Fixture.models, defaultModel: "opus")
+    let codex = ModelCatalog(
+        models: ProviderDecodingTests.codexModels, defaultModel: "gpt-5.5-codex")
     let defaults = AgentDefaults(
         model: "opus", effort: .xhigh, permissionMode: .acceptEdits, mode: .inPlace)
 
@@ -81,24 +83,27 @@ import Testing
         #expect(
             chosen
                 == NewChatChoices(
-                    provider: "codex", model: "gpt-5.5-codex", effort: nil, permission: .plan))
+                    provider: "codex", model: "gpt-5.5-codex", effort: .medium, permission: .plan))
     }
 
     /// On the same engine only the model changes, its thinking kept where it can be.
     @Test func aModelOfTheSameEngineKeepsTheRest() {
         let draft = NewChatChoices(
             provider: "codex", model: "gpt-5.5-codex", effort: .xhigh, permission: .auto)
-        let chosen = draft.choosing("default", on: "codex", catalog: codex, defaults: defaults)
+        let chosen = draft.choosing(
+            "gpt-5.5-mini", on: "codex", catalog: codex, defaults: defaults)
+        // Mini takes low and high, and no Auto: the agent default's mode.
         #expect(
             chosen
                 == NewChatChoices(
-                    provider: "codex", model: "default", effort: .high, permission: .auto))
+                    provider: "codex", model: "gpt-5.5-mini", effort: .high,
+                    permission: .acceptEdits))
     }
 
     /// Back to a Claude model: Claude's thinking default, Auto left where it is missing.
     @Test func aClaudeModelBringsTheDraftBack() {
         let draft = NewChatChoices(
-            provider: "codex", model: "default", effort: .low, permission: .auto)
+            provider: "codex", model: "gpt-5.5-codex", effort: .low, permission: .auto)
         let chosen = draft.choosing("haiku", on: "claude", catalog: claude, defaults: defaults)
         #expect(chosen.provider == nil)
         #expect(chosen.model == "haiku")

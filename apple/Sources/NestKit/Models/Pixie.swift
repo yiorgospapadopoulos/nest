@@ -117,11 +117,12 @@ extension Pixie {
         pixie.slug = change.slug ?? slug
         pixie.mascot = change.mascot ?? mascot
         pixie.color = change.color ?? color
-        // Another engine starts from its own default model and thinking (B91).
+        // Another engine starts from its own default model and thinking (B91), which the
+        // daemon's answer names.
         let moved = change.provider.map { $0 != engine } ?? false
         pixie.provider = change.provider ?? provider
-        pixie.model = change.model ?? (change.clearsModel || moved ? nil : model)
-        pixie.effort = change.effort ?? (change.clearsEffort || moved ? nil : effort)
+        pixie.model = change.model ?? (moved ? nil : model)
+        pixie.effort = change.effort ?? (moved ? nil : effort)
         pixie.permissionMode = change.permissionMode ?? permissionMode
         pixie.autonomy = change.autonomy ?? autonomy
         pixie.projectAccess = change.projectAccess ?? projectAccess

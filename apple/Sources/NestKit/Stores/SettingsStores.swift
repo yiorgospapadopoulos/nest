@@ -134,11 +134,18 @@ public final class NotificationRulesStore {
     }
 }
 
-/// Settings > Accounts: the Claude Code login and the `gh` login (B81).
+/// Settings > Accounts: the Claude Code login, the Codex login (B94) and the `gh` login
+/// (B81).
 @MainActor @Observable
 public final class AccountsStore {
     public private(set) var claude: ClaudeLogin?
+    public private(set) var codex: CodexLogin?
     public private(set) var github: GitHubAccount?
+    /// Codex's sign-in waits on the browser until `account.codex` ends it.
+    public private(set) var isSigningInCodex = false
+    public private(set) var isSigningOutCodex = false
+    /// Why the last Codex sign-in failed, as the daemon reported it.
+    public private(set) var codexSignInError: String?
     /// Claude Code's sign-in runs on the Mac until `account.claude` ends it.
     public private(set) var isSigningIn = false
     public private(set) var isSigningOut = false
@@ -184,10 +191,46 @@ public final class AccountsStore {
         claude = try await api.signOutClaude()
     }
 
+    public func loadCodex() async throws {
+        codex = try await api.codexLogin()
+    }
+
+    /// Starts Codex's ChatGPT sign-in and answers the page to open in the browser; it goes
+    /// on until the daemon reports the outcome.
+    public func signInCodex() async throws -> URL {
+        codexSignInError = nil
+        isSigningInCodex = true
+        do {
+            return try await api.signInCodex().authURL
+        } catch {
+            isSigningInCodex = false
+            throw error
+        }
+    }
+
+    /// Stops the sign-in that waits on the browser; `account.codex` follows.
+    public func cancelCodexSignIn() async throws {
+        try await api.cancelCodexSignIn()
+    }
+
+    public func signOutCodex() async throws {
+        isSigningOutCodex = true
+        defer { isSigningOutCodex = false }
+        codex = try await api.signOutCodex()
+    }
+
     public func apply(_ event: Event) {
-        guard case .claudeAccount(let login) = event.body else { return }
-        claude = login
-        isSigningIn = false
-        signInError = login.error
+        switch event.body {
+        case .claudeAccount(let login):
+            claude = login
+            isSigningIn = false
+            signInError = login.error
+        case .codexAccount(let login):
+            codex = login
+            isSigningInCodex = false
+            codexSignInError = login.error
+        default:
+            break
+        }
     }
 }

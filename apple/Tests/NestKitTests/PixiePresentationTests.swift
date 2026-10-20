@@ -17,7 +17,9 @@ import Testing
         var asking = auto
         asking.permissionMode = .default
         #expect(auto.droppedAuto(by: UpdatePixieRequest(model: "haiku"), saved: asking))
-        #expect(auto.droppedAuto(by: UpdatePixieRequest(clearsModel: true), saved: asking))
+        #expect(
+            auto.droppedAuto(
+                by: UpdatePixieRequest(provider: "codex", model: "gpt-5.5-mini"), saved: asking))
         // Still Auto, not in Auto before, a mode picked too, or no model change.
         #expect(!auto.droppedAuto(by: UpdatePixieRequest(model: "opus"), saved: auto))
         #expect(!asking.droppedAuto(by: UpdatePixieRequest(model: "haiku"), saved: asking))

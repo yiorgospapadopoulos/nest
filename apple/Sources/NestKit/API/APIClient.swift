@@ -454,6 +454,22 @@ public struct APIClient: NestAPI {
         try await call("POST", ["accounts", "claude", "logout"])
     }
 
+    public func codexLogin() async throws -> CodexLogin {
+        try await get("accounts", "codex")
+    }
+
+    public func signInCodex() async throws -> CodexSignIn {
+        try await call("POST", ["accounts", "codex", "login"])
+    }
+
+    public func cancelCodexSignIn() async throws {
+        try await perform("POST", ["accounts", "codex", "login", "cancel"])
+    }
+
+    public func signOutCodex() async throws -> CodexLogin {
+        try await call("POST", ["accounts", "codex", "logout"])
+    }
+
     public func claudeCode() async throws -> ClaudeCodeStatus {
         try await get("claude-code")
     }
