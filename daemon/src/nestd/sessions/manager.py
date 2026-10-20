@@ -7,7 +7,7 @@ can take it (B59), else it is queued and starts the next turn once this one ends
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
@@ -23,8 +23,9 @@ from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.providers.base import AgentProvider, ApprovalHandler, ModelOption
+from nestd.providers.base import AgentProvider, ApprovalHandler
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
+from nestd.sessions.engines import Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
     CannotRewindError,
     NoAgentRunError,
@@ -69,7 +70,7 @@ from nestd.sessions.rules import (
 )
 from nestd.sessions.states import StateWriter
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
+from nestd.sessions.subagents import CallToolsSource, ChatAgentsSource, PixieCalls
 from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
@@ -84,9 +85,6 @@ LIMIT_TICK = timedelta(seconds=5)
 # What a chat paused at the usage limit is sent when it goes on with nothing queued (B78).
 CONTINUE_TEXT = "Continue where you left off."
 LIMIT_RESUME = Sender(origin="limit_resume")
-
-# The engine's entry for a model (None is Claude Code's default), or None when unknown.
-type ModelLookup = Callable[[str | None], Awaitable[ModelOption | None]]
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +112,17 @@ class SessionManager:
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
         nest_tools: NestToolsSource | None = None,
+        call_tools: CallToolsSource | None = None,
+        engines: Sequence[Engine] = (),
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
-        a project chat calls (B46); `nest_tools` are the tools of every run (B79).
+        a project chat calls (B46); `nest_tools` are the tools of every run (B79);
+        `call_tools` call the pixies a run calls as sessions of their own (B91).
+        `provider` and `models` are the default engine's; `engines` the others a chat
+        can ask for, such as Codex (B91).
         """
-        self._models = models
+        self._engines = Engines(Engine(provider, models), engines)
         self._queue = queue
         self._files = files or FileIndex(clock)
         self._clock = clock
@@ -129,7 +132,6 @@ class SessionManager:
         self._repos = repos
         self._worktrees = worktrees
         self._attachments = attachments
-        self._provider = provider
         self._approvals = approvals
         self._defaults = defaults
         self._hooks = hooks
@@ -144,7 +146,7 @@ class SessionManager:
             worktrees=worktrees,
             repos=repos,
             attachments=attachments,
-            provider=provider,
+            engines=self._engines,
             handler_for=self._handler_for,
             on_mode=self._engine_mode,
             idle_close=idle_close,
@@ -155,11 +157,12 @@ class SessionManager:
             agents=agents,
             calls=calls,
             nest_tools=nest_tools,
+            call_tools=call_tools,
         )
         self._rewinds = Rewinds(
             store=store,
             bus=bus,
-            provider=provider,
+            engines=self._engines,
             turns=self._turns,
             hooks=hooks,
             repos=repos,
@@ -169,6 +172,11 @@ class SessionManager:
         self._live: dict[str, LiveSession] = {}
         # Set when the daemon stops its agents: no message starts a turn after that.
         self._stopping = False
+
+    @property
+    def engines(self) -> Engines:
+        """The engines chats can run on (B91)."""
+        return self._engines
 
     async def list_sessions(self, repo: str | None = None, archived: bool = False) -> list[Session]:
         return await self._store.list_sessions(repo, archived)
@@ -210,14 +218,18 @@ class SessionManager:
         if started_by_pixie is not None and not repo.git:
             msg = f"{repo.name} is not a git repository, so a chat cannot get its own worktree"
             raise InvalidInputError(msg)
+        engine = self._engines.named(request.provider)
+        await engine.require_ready()
         defaults = self._defaults()
-        model = request.model or defaults.model
-        effort = await self._effort(model, request.effort, defaults.effort)
+        # The model defaults are the default engine's; another starts on its own (B91).
+        own = engine is self._engines.default
+        model = request.model or (defaults.model if own else None)
+        effort = await self._effort(engine, model, request.effort, defaults.effort if own else None)
         permission_mode = request.permission_mode
-        await self._require_mode(model, permission_mode)
+        await self._require_mode(engine, model, permission_mode)
         # A default mode the model does not run in is dropped, as the effort default is.
         if permission_mode is None and not await self._mode_problem(
-            model, defaults.permission_mode
+            engine, model, defaults.permission_mode
         ):
             permission_mode = defaults.permission_mode
         # A plain folder has no worktrees or branches: its chats always work in place (D041).
@@ -234,8 +246,9 @@ class SessionManager:
             model=model,
             effort=effort,
             permission_mode=permission_mode or DEFAULT_MODE,
-            follows_claude_code_mode=permission_mode is None,
-            provider=self._provider.name,
+            # Only Claude Code has a mode of its own to follow.
+            follows_claude_code_mode=permission_mode is None and own,
+            provider=engine.name,
             base_ref=base_ref,
             started_by_pixie=started_by_pixie,
             pixie_batch=pixie_batch,
@@ -289,12 +302,18 @@ class SessionManager:
         attachment_ids: list[str],
         sender: Sender = USER,
         habit_run_id: str | None = None,
+        provider: str | None = None,
+        called_by: str | None = None,
     ) -> Session:
         """A pixie's chat: in place in its workdir, with no project, review or git (D072).
         Refused (422) when the model does not run in the pixie's mode, as for any chat.
-        With `habit_run_id` it is the session of one run of the pixie's habit (B42).
+        With `habit_run_id` it is the session of one run of the pixie's habit (B42); with
+        `called_by`, the pixie called from that chat, in `cwd`, the caller's folder (B91).
+        `provider` is the pixie's engine (None: the default), which must be ready (409).
         """
-        await self._require_mode(model, permission_mode)
+        engine = self._engines.default if provider is None else self._engines.by_name(provider)
+        await engine.require_ready()
+        await self._require_mode(engine, model, permission_mode)
         attachments = await self._attachments.for_session(attachment_ids, None)
         session = await self._store.create(
             NewSession(
@@ -304,11 +323,12 @@ class SessionManager:
                 mode="in_place",
                 cwd=cwd,
                 model=model,
-                effort=await self._effort(model, effort, None),
+                effort=await self._effort(engine, model, effort, None),
                 permission_mode=permission_mode,
-                provider=self._provider.name,
+                provider=engine.name,
                 pixie_id=pixie_id,
                 habit_run_id=habit_run_id,
+                called_by=called_by,
             )
         )
         await self._bus.publish(
@@ -375,7 +395,7 @@ class SessionManager:
                 effort=defaults.effort,
                 permission_mode=defaults.permission_mode or DEFAULT_MODE,
                 follows_claude_code_mode=defaults.permission_mode is None,
-                provider=self._provider.name,
+                provider=self._engines.default.name,
                 base_ref=await self._worktrees.head_at(chat.cwd),
             )
         )
@@ -412,6 +432,7 @@ class SessionManager:
         """
         session = await self._store.get(session_id)
         require_open(session)
+        await self._engines.of(session).require_ready()
         await self._refuse_member_calls(session, text)
         await self._require_not_open_elsewhere(session)
         live = self._live.setdefault(session_id, LiveSession(session_id))
@@ -545,7 +566,7 @@ class SessionManager:
         """Stop one running task of the session's agent, a background command or a
         subagent, without stopping the turn; its end arrives as a task event (B59).
         """
-        await self._store.get(session_id)
+        self._engines.of(await self._store.get(session_id)).require("stop_task")
         live = self._live.get(session_id)
         run = live.run if live is not None else None
         if run is None:
@@ -603,6 +624,7 @@ class SessionManager:
         if session.pixie_id is not None:
             # Each pixie run starts fresh, so an earlier run's checkpoints cannot be restored.
             raise PixieChatError(NO_PIXIE_RESTORE)
+        self._engines.of(session).require("rewind")
         require_open(session)
         checkpoint = await self._store.checkpoint(session_id, event_id)
         message = await self._rewinds.user_message(session_id, event_id)
@@ -629,6 +651,7 @@ class SessionManager:
         source = await self._store.get(session_id)
         if source.pixie_id is not None:
             raise PixieChatError("A pixie's chat cannot be forked.")
+        self._engines.of(source).require("fork")
         require_open(source)
         try:
             require_folder(self._repos.get(source.repo))
@@ -897,12 +920,12 @@ class SessionManager:
         return await save_changes(self._store, self._bus, session_id, changes)
 
     async def _effort(
-        self, model: str | None, chosen: Effort | None, default: Effort | None
+        self, engine: Engine, model: str | None, chosen: Effort | None, default: Effort | None
     ) -> Effort | None:
         """The chosen effort, refused (422) when the model does not take it; the default
         effort only when the model takes it. Unchecked while the model list is unknown.
         """
-        option = None if self._models is None else await self._models(model)
+        option = await engine.find(model)
         if option is None:
             return chosen or default
         if chosen is not None:
@@ -919,6 +942,7 @@ class SessionManager:
             request.permission_mode,
             session.permission_mode,
             model_changed=request.model is not None,
+            engine=self._engines.of(session),
         )
         return request.model_copy(update={"permission_mode": mode})
 
@@ -929,31 +953,37 @@ class SessionManager:
         current: PermissionMode,
         *,
         model_changed: bool,
+        engine: Engine | None = None,
     ) -> PermissionMode | None:
         """The mode to save as a chat's or pixie's model and mode change: `chosen`,
         refused (422) when `model` does not run in it. With none chosen, one in Auto moved
         to a model without it asks again (`default`) instead (BUG-86); otherwise None,
-        which keeps the mode it has.
+        which keeps the mode it has. `engine` is the chat's, None the default one.
         """
+        engine = engine or self._engines.default
         if (
             model_changed
             and chosen is None
             and current == AUTO
-            and await self._mode_problem(model, AUTO)
+            and await self._mode_problem(engine, model, AUTO)
         ):
             return DEFAULT_MODE
-        await self._require_mode(model, chosen)
+        await self._require_mode(engine, model, chosen)
         return chosen
 
-    async def _require_mode(self, model: str | None, mode: PermissionMode | None) -> None:
+    async def _require_mode(
+        self, engine: Engine, model: str | None, mode: PermissionMode | None
+    ) -> None:
         """422 when the engine's list knows the model and it does not run in `mode`."""
-        problem = await self._mode_problem(model, mode)
+        problem = await self._mode_problem(engine, model, mode)
         if problem is not None:
             raise InvalidInputError(problem)
 
-    async def _mode_problem(self, model: str | None, mode: PermissionMode | None) -> str | None:
+    async def _mode_problem(
+        self, engine: Engine, model: str | None, mode: PermissionMode | None
+    ) -> str | None:
         """Why `model` does not run in `mode`; None when it does or the list is unknown."""
-        option = None if self._models is None else await self._models(model)
+        option = await engine.find(model)
         return None if option is None else mode_problem(option, mode)
 
     def _handler_for(self, live: LiveSession) -> ApprovalHandler:

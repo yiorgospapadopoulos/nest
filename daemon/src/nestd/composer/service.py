@@ -16,6 +16,7 @@ from nestd.composer.memory import append_memory
 from nestd.composer.shell import MAX_OUTPUT_CHARS, TIMEOUT_SECONDS, ShellResult, run_command
 from nestd.errors import ConflictError
 from nestd.providers.shell_env import ShellEnvSource
+from nestd.sessions.engines import Engine
 from nestd.sessions.errors import PixieChatError
 from nestd.sessions.models import Session
 from nestd.sessions.rules import require_workspace
@@ -39,6 +40,7 @@ class ComposerActions:
         self,
         *,
         sessions: Callable[[str], Awaitable[Session]],
+        engine_of: Callable[[Session], Engine],
         project_folder: Callable[[str], Path],
         user_memory: Path | None,
         shell_env: ShellEnvSource,
@@ -47,10 +49,12 @@ class ComposerActions:
         timeout: float = TIMEOUT_SECONDS,
         max_output: int = MAX_OUTPUT_CHARS,
     ) -> None:
-        """`project_folder` names a project's folder; `user_memory` is the user's
-        CLAUDE.md in Claude Code's config folder, None when there is none.
+        """`engine_of` gives a session's engine; `project_folder` names a project's
+        folder; `user_memory` is the user's CLAUDE.md in Claude Code's config folder, None
+        when there is none.
         """
         self._sessions = sessions
+        self._engine_of = engine_of
         self._project_folder = project_folder
         self._user_memory = user_memory
         self._shell_env = shell_env
@@ -75,9 +79,11 @@ class ComposerActions:
 
     async def remember(self, session_id: str, text: str, scope: MemoryScope) -> MemoryWritten:
         """Append `text` to the project's CLAUDE.md (in its folder, not a worktree) or to
-        the user's.
+        the user's. 409 `unsupported_feature` in a chat on an engine that does not read
+        CLAUDE.md (Codex, B91).
         """
         session = await self._sessions(session_id)
+        self._engine_of(session).require("memory")
         path = self._memory_path(session, scope)
         async with self._memory_lock:
             written = await append_memory(path, text)

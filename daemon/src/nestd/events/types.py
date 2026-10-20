@@ -95,8 +95,10 @@ CONNECTORS_UPDATED: Final = "connectors.updated"
 # them again.
 CLAUDE_CHATS_UPDATED: Final = "claude_chats.updated"
 
-# Subscription usage windows reported by the agent engine; global, not per session.
+# Claude's subscription usage windows, `{five_hour, seven_day}`; global, not per session.
 USAGE_UPDATED: Final = "usage.updated"
+# Another engine's usage windows (B91), `{provider: "codex", five_hour, seven_day}`; global.
+USAGE_PROVIDER_UPDATED: Final = "usage.provider_updated"
 # A usage window first reached `[usage] warn_percent` in its period (D104); global,
 # `{window: "five_hour" | "seven_day", utilization (0 to 1), resets_at}`.
 USAGE_WARNING: Final = "usage.warning"

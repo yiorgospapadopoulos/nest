@@ -30,6 +30,7 @@ from nestd.sessions.live import LiveSession
 from nestd.sessions.result_images import keep_images
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import PixieCalls
+from nestd.usage.publish import publish_usage
 
 # A turn that ended without failing, whatever its result says: it made way for the next
 # message (Send now, or Claude Code ending it holding that message), the user stopped it,
@@ -190,10 +191,7 @@ class SessionSink:
         )
 
     async def usage(self, info: UsageInfo) -> None:
-        await self._isolated(
-            "the usage event",
-            self._bus.publish(types.USAGE_UPDATED, info.model_dump(mode="json")),
-        )
+        await self._isolated("the usage event", publish_usage(self._bus, info))
         await self._isolated("the usage hooks", self._hooks.usage(info))
 
     async def subagent_usage(self, message_id: str, tokens: TokenUsage) -> None:
