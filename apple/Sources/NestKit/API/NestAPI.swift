@@ -271,6 +271,48 @@ public protocol NestAPI: Sendable {
     func installPlugin(_ id: String) async throws
     func uninstallPlugin(_ id: String) async throws
     func setPluginEnabled(_ id: String, enabled: Bool) async throws
+
+    // MARK: Configuration (B97)
+
+    /// The shared instructions, skills and MCP servers, and each signed-in engine's setup.
+    func configuration() async throws -> ConfigurationPage
+    /// A file on the configuration allow-list; a missing one reads as empty.
+    func configurationFile(path: String) async throws -> ConfigFile
+    /// Writes the file and answers its new version; `APIError.conflict` when it changed
+    /// since `expectedVersion`.
+    func saveConfigurationFile(path: String, text: String, expectedVersion: String?)
+        async throws -> String
+    func setUsesShared(engine: String, item: SharedItem, on: Bool) async throws
+        -> ConfigurationPage
+    /// A new skill in the shared folder.
+    func createSkill(name: String, description: String) async throws -> ConfigurationPage
+    func deleteSkill(_ name: String) async throws -> ConfigurationPage
+    /// Moves a skill found only in the engine's own folder into the shared one.
+    func makeSkillShared(_ name: String, engine: String) async throws -> ConfigurationPage
+    /// Whether Codex loads the skill.
+    func setSkillEnabled(_ name: String, codex enabled: Bool) async throws -> ConfigurationPage
+    /// Creates or replaces the server in every engine that shares MCP servers.
+    func saveMCPServer(_ name: String, _ spec: MCPServerSpec) async throws -> ConfigurationPage
+    func deleteMCPServer(_ name: String) async throws -> ConfigurationPage
+    /// The server as Claude stores it, for the edit form.
+    func mcpServer(_ name: String) async throws -> MCPServerSpec
+    func copyPreview(engine: String) async throws -> CopyPreview
+    /// Copies the engine's setup to Shared; `instructions` false keeps Shared's.
+    func copyToShared(engine: String, instructions: Bool) async throws -> CopyResult
+    func undoCopy(_ id: String) async throws -> ConfigurationPage
+    func repoConfiguration(_ repo: String) async throws -> RepoConfiguration
+    /// Writes the server into the repo's `.mcp.json`.
+    func saveRepoMCPServer(_ repo: String, _ name: String, _ spec: MCPServerSpec) async throws
+    func deleteRepoMCPServer(_ repo: String, _ name: String) async throws
+    /// A new skill in the repo's `.claude/skills`.
+    func createRepoSkill(_ repo: String, name: String, description: String) async throws
+    /// Codex's own plugins, installed and offered, matching the query.
+    func codexPlugins(query: String) async throws -> [CodexPlugin]
+    func installCodexPlugin(_ id: String) async throws
+    func uninstallCodexPlugin(_ id: String) async throws
+    func codexMarketplaces() async throws -> [CodexMarketplace]
+    func addCodexMarketplace(source: String) async throws
+    func removeCodexMarketplace(_ name: String) async throws
 }
 
 extension NestAPI {

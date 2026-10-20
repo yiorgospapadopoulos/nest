@@ -149,6 +149,10 @@ CLAUDE_CODE_INSTALL: Final = "claude_code.install"
 CLAUDE_CODE_UPDATED: Final = "claude_code.updated"
 # Plugins or marketplaces changed through Nest, `{}`; clients list them again.
 EXTENSIONS_UPDATED: Final = "extensions.updated"
+# Settings > Configuration (B97): an engine's setup files changed on disk, whoever changed
+# them; ephemeral and global, `{scope: "user" | "repo", repo}` with the repo's name or
+# null. Clients fetch the page (or the project's part) again.
+CONFIGURATION_CHANGED: Final = "configuration.changed"
 # Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
 # `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`, or
 # `edited` when the user saved a document section in the reader (B88).

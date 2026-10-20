@@ -58,6 +58,7 @@
         /// Chats shown as running on Codex, and whether Codex says it is signed in (B91).
         private var codexChats: Set<String> = []
         private var codexSignedIn: Bool? = false
+        private var configuration = SampleConfiguration()
 
         init(now: Date = Date()) {
             self.now = now
@@ -1499,6 +1500,131 @@
         func uninstallPlugin(_ id: String) async throws {}
 
         func setPluginEnabled(_ id: String, enabled: Bool) async throws {}
+
+        // MARK: Configuration (B97)
+
+        func configuration() async throws -> ConfigurationPage {
+            lock.withLock { configuration.page(codexSignedIn: codexSignedIn == true) }
+        }
+
+        func configurationFile(path: String) async throws -> ConfigFile {
+            lock.withLock { configuration.files[path] ?? ConfigFile(path: path, text: "") }
+        }
+
+        func saveConfigurationFile(path: String, text: String, expectedVersion: String?)
+            async throws -> String
+        {
+            // As Codex refuses a config.toml it cannot parse.
+            if path.hasSuffix(".toml"), text.contains("= =") {
+                throw APIError.invalidInput(
+                    "config.toml is not valid TOML: expected a value at line 2, column 9")
+            }
+            return try lock.withLock {
+                guard configuration.files[path]?.version == expectedVersion else {
+                    throw APIError.conflict("The file changed on disk")
+                }
+                let version = "v\(text.count)"
+                configuration.files[path] = ConfigFile(path: path, text: text, version: version)
+                return version
+            }
+        }
+
+        /// Changes the file as another app would, for the "changed on disk" bar.
+        func changeOnDisk(_ path: String, text: String) {
+            lock.withLock {
+                configuration.files[path] = ConfigFile(path: path, text: text, version: "disk")
+            }
+        }
+
+        func setUsesShared(engine: String, item: SharedItem, on: Bool) async throws
+            -> ConfigurationPage
+        {
+            try await configuration()
+        }
+
+        func createSkill(name: String, description: String) async throws -> ConfigurationPage {
+            try await configuration()
+        }
+
+        func deleteSkill(_ name: String) async throws -> ConfigurationPage {
+            try await configuration()
+        }
+
+        func makeSkillShared(_ name: String, engine: String) async throws -> ConfigurationPage {
+            try await configuration()
+        }
+
+        func setSkillEnabled(_ name: String, codex enabled: Bool) async throws
+            -> ConfigurationPage
+        {
+            lock.withLock { configuration.codexEnabled[name] = enabled }
+            return try await configuration()
+        }
+
+        func saveMCPServer(_ name: String, _ spec: MCPServerSpec) async throws
+            -> ConfigurationPage
+        {
+            try await configuration()
+        }
+
+        func deleteMCPServer(_ name: String) async throws -> ConfigurationPage {
+            try await configuration()
+        }
+
+        func mcpServer(_ name: String) async throws -> MCPServerSpec {
+            MCPServerSpec(transport: .stdio, command: "npx", args: ["@playwright/mcp"])
+        }
+
+        func copyPreview(engine: String) async throws -> CopyPreview {
+            lock.withLock { engine == "codex" ? configuration.codexPreview : configuration.preview }
+        }
+
+        func copyToShared(engine: String, instructions: Bool) async throws -> CopyResult {
+            let summary = lock.withLock { configuration.copy() }
+            return CopyResult(
+                summary: summary, undoID: "20261020T210000Z-copy-claude",
+                page: try await configuration())
+        }
+
+        func undoCopy(_ id: String) async throws -> ConfigurationPage {
+            lock.withLock { configuration.undo() }
+            return try await configuration()
+        }
+
+        func repoConfiguration(_ repo: String) async throws -> RepoConfiguration {
+            lock.withLock { configuration.repo }
+        }
+
+        func saveRepoMCPServer(_ repo: String, _ name: String, _ spec: MCPServerSpec)
+            async throws
+        {}
+
+        func deleteRepoMCPServer(_ repo: String, _ name: String) async throws {}
+
+        func createRepoSkill(_ repo: String, name: String, description: String) async throws {}
+
+        func codexPlugins(query: String) async throws -> [CodexPlugin] {
+            [
+                CodexPlugin(
+                    id: "figma@openai-curated", name: "figma", marketplace: "openai-curated",
+                    description: "Reads Figma files and frames"),
+                CodexPlugin(
+                    id: "linear@openai-curated", name: "linear", marketplace: "openai-curated",
+                    description: "Issues and projects from Linear"),
+            ].filter { query.isEmpty || $0.name.contains(query.lowercased()) }
+        }
+
+        func installCodexPlugin(_ id: String) async throws {}
+
+        func uninstallCodexPlugin(_ id: String) async throws {}
+
+        func codexMarketplaces() async throws -> [CodexMarketplace] {
+            [CodexMarketplace(name: "openai-curated", path: "~/.codex/marketplaces/openai-curated")]
+        }
+
+        func addCodexMarketplace(source: String) async throws {}
+
+        func removeCodexMarketplace(_ name: String) async throws {}
 
         // MARK: Artifacts (B79)
 
