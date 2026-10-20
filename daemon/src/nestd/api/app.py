@@ -58,6 +58,8 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         await ctx.sessions.recover()
         await ctx.tracking.stop_stale()
         await ctx.pixie_calls.stop_stale()
+        # Stored defaults that left choices to the engines become concrete (B94).
+        await ctx.settle_defaults()
         if ctx.token_socket is not None:
             await ctx.token_socket.start()
         try:

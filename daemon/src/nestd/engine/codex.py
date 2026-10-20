@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from nestd.clock import Clock
-from nestd.engine.models import ModelList
+from nestd.engine.models import ModelList, engine_default, listed_models
 from nestd.engine.store import EngineInfoStore
 from nestd.providers.base import AccountInfo, EngineDetails, ModelOption, UsageInfo
 from nestd.providers.codex import CodexNotSignedInError
@@ -44,12 +44,15 @@ class CodexEngine:
         clock: Clock,
         fetch_usage: Callable[[], Awaitable[UsageInfo | None]],
         max_age: timedelta = MAX_AGE,
+        on_signed_in: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        """`on_signed_in` hears of every answer saying Codex is signed in (B94)."""
         self._store = store
         self._fetch = fetch
         self._fetch_usage = fetch_usage
         self._clock = clock
         self._max_age = max_age
+        self._on_signed_in = on_signed_in
         self._lock = asyncio.Lock()
         self._status: CodexStatus | None = None
 
@@ -71,12 +74,19 @@ class CodexEngine:
             raise CodexNotSignedInError
 
     async def models(self) -> ModelList:
-        """Codex's last reported list; asked once when none is kept, else empty."""
+        """Codex's last reported list, real models only with its default named (B94);
+        asked once when none is kept, else empty.
+        """
         listed = await self._store.models()
         if listed is None:
             await self.status()
             listed = await self._store.models()
-        return listed or ModelList(models=[], updated_at=None)
+        return listed_models(listed or ModelList(models=[], updated_at=None))
+
+    async def default_model(self) -> str | None:
+        """The concrete model Codex runs when none is named; None before it reported."""
+        listed = await self._store.models()
+        return None if listed is None else engine_default(listed.models)
 
     async def account(self) -> AccountInfo:
         return (await self.status()).account or AccountInfo()
@@ -108,6 +118,8 @@ class CodexEngine:
             logger.warning("could not ask Codex for its models and login: %s", error)
             return CodexStatus(signed_in=None, checked_at=now, error=str(error))
         await self._store.save(EngineDetails(models=details.models, account=details.login.account))
+        if details.login.signed_in and self._on_signed_in is not None:
+            await self._on_signed_in()
         return CodexStatus(
             signed_in=details.login.signed_in, account=details.login.account, checked_at=now
         )
