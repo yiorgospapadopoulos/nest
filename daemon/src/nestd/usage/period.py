@@ -9,7 +9,9 @@ from datetime import date, datetime, time, timedelta
 from nestd.providers.base import TokenUsage
 from nestd.sessions.models import PIXIE_REPO_PREFIX
 from nestd.usage.models import (
+    CLAUDE,
     BarUsage,
+    EngineUsage,
     PeriodUnit,
     PeriodUsage,
     ProbeTotals,
@@ -99,7 +101,21 @@ def summarize(
         ],
         probes=ProbeTotals(count=len(probes), tokens=sum(probes)),
         asks=ProbeTotals(count=len(asks), tokens=sum(asks)),
+        engines=_engines(turns),
     )
+
+
+def _engines(turns: list[Turn]) -> list[EngineUsage]:
+    tokens: defaultdict[str, int] = defaultdict(int)
+    sessions: defaultdict[str, set[str]] = defaultdict(set)
+    for turn in turns:
+        tokens[turn.provider] += total(turn.tokens)
+        sessions[turn.provider].add(turn.session_id)
+    return [
+        EngineUsage(provider=name, tokens=count, sessions=len(sessions[name]))
+        for name, count in sorted(tokens.items(), key=lambda kv: (kv[0] != CLAUDE, kv[0]))
+        if count
+    ]
 
 
 def _totals(turns: list[Turn]) -> TokenTotals:

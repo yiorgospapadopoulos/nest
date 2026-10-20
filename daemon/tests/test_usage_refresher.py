@@ -7,8 +7,9 @@ import pytest
 
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.providers.base import UsageInfo, UsageWindow
+from nestd.providers.base import EngineWindow, UsageInfo, UsageWindow
 from nestd.storage.db import Database
+from nestd.usage.models import EngineLimits
 from nestd.usage.probe import UsageProbe
 from nestd.usage.refresher import (
     FORCED_SPACING,
@@ -35,6 +36,28 @@ class Setting:
         return self.interval
 
 
+class FakeCodex:
+    """Codex's usage reader: the next scripted windows, or None (signed out, no answer)."""
+
+    def __init__(self) -> None:
+        self.replies: list[UsageInfo | None] = []
+        self.calls = 0
+
+    async def __call__(self) -> UsageInfo | None:
+        self.calls += 1
+        return self.replies.pop(0) if self.replies else None
+
+
+def codex_info(used: float = 0.3) -> UsageInfo:
+    """Codex's free plan: one 30-day window."""
+    window = EngineWindow(utilization=used, resets_at=None, minutes=43200)
+    return UsageInfo(five_hour=None, seven_day=None, provider="codex", windows=[window])
+
+
+def codex_used(limits: EngineLimits) -> list[float]:
+    return [window.utilization for window in limits.windows]
+
+
 class Rig:
     def __init__(self, db: Database, clock: FakeClock, tmp_path: Path) -> None:
         self.db = db
@@ -44,6 +67,7 @@ class Rig:
         self.bus = EventBus(db, clock)
         self.visibility = ClientVisibility(clock)
         self.setting = Setting()
+        self.codex = FakeCodex()
         self.refresher = UsageRefresher(
             store=self.store,
             bus=self.bus,
@@ -51,13 +75,12 @@ class Rig:
             probe=UsageProbe(self.factory, tmp_path),
             visibility=self.visibility,
             interval=self.setting,
+            codex=self.codex,
             tick=timedelta(milliseconds=10),
         )
 
-    async def usage_events(self) -> int:
-        rows = await self.db.fetch_all(
-            "SELECT id FROM events WHERE type = ?", (types.USAGE_UPDATED,)
-        )
+    async def usage_events(self, kind: str = types.USAGE_UPDATED) -> int:
+        rows = await self.db.fetch_all("SELECT id FROM events WHERE type = ?", (kind,))
         return len(rows)
 
 
@@ -235,6 +258,7 @@ async def test_the_loop_probes_when_a_client_becomes_visible(h: Rig) -> None:
         probe=UsageProbe(h.factory, Path()),
         visibility=h.visibility,
         interval=h.setting,
+        codex=h.codex,
         # Long enough that only the wake-up can start the probe within the test.
         tick=timedelta(hours=1),
     )
@@ -289,3 +313,71 @@ def test_visibility_is_per_client(clock: FakeClock) -> None:
     visibility.report("phone", visible=False)
     assert not visibility.any_visible()
     assert visibility.report("phone", visible=False) is False
+
+
+async def test_codex_windows_are_read_on_the_same_cadence_without_a_probe(h: Rig) -> None:
+    h.factory.replies.extend([answer(), answer()])
+    h.codex.replies.extend([codex_info(0.3), codex_info(0.4)])
+    h.visibility.report("mac", visible=True)
+    await h.refresher.tick()
+
+    assert codex_used(await h.store.engine_limits("codex")) == [0.3]
+    claude = await h.store.limits()
+    assert claude.five_hour is not None
+    assert claude.five_hour.utilization == 0.42
+    assert await h.usage_events(types.USAGE_PROVIDER_UPDATED) == 1
+    assert await h.usage_events() == 1
+    # Claude's probe tokens only: reading Codex's windows runs no model.
+    month = await h.store.period("month", h.clock.now().date())
+    assert month.probes.count == 1
+
+    h.clock.advance(INTERVAL - timedelta(seconds=1))
+    h.visibility.report("mac", visible=True)
+    await h.refresher.tick()
+    assert h.codex.calls == 1
+    h.clock.advance(timedelta(seconds=1))
+    await h.refresher.tick()
+    assert h.codex.calls == 2
+    assert h.factory.prompts == 2
+
+
+async def test_codex_windows_from_a_turn_put_off_the_next_read(h: Rig) -> None:
+    h.factory.replies.append(answer())
+    h.visibility.report("mac", visible=True)
+    await h.store.update_limits(codex_info())
+
+    await h.refresher.tick()
+
+    assert (h.factory.prompts, h.codex.calls) == (1, 0)
+
+
+async def test_codex_without_windows_publishes_nothing(h: Rig) -> None:
+    h.visibility.report("mac", visible=True)
+    h.factory.replies.append(answer())
+
+    await h.refresher.tick()
+
+    assert h.codex.calls == 1
+    assert await h.usage_events(types.USAGE_PROVIDER_UPDATED) == 0
+    assert (await h.store.engine_limits("codex")).windows == []
+
+
+async def test_a_forced_codex_refresh_is_spaced_apart_from_claudes(h: Rig) -> None:
+    h.factory.replies.append(answer())
+    h.codex.replies.extend([codex_info(0.5), codex_info(0.6)])
+    await h.refresher.refresh()
+
+    limits = await h.refresher.refresh_engine("codex")
+
+    assert codex_used(limits) == [0.5]
+    h.clock.advance(FORCED_SPACING - timedelta(seconds=2))
+    with pytest.raises(RefreshTooSoonError) as caught:
+        await h.refresher.refresh_engine("codex")
+    assert caught.value.retry_after == 2
+    h.clock.advance(timedelta(seconds=2))
+    assert codex_used(await h.refresher.refresh_engine("codex")) == [0.6]
+
+
+async def test_a_failed_codex_refresh_names_codex(h: Rig) -> None:
+    with pytest.raises(ProbeFailedError, match=r"^Codex did not report"):
+        await h.refresher.refresh_engine("codex")
