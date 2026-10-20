@@ -174,3 +174,20 @@ async def test_a_leader_waits_for_each_member_it_calls() -> None:
                 "updatedInput": {**asked, "run_in_background": False},
             }
         }
+
+
+CALL_TOOL = "mcp__nest__call_pixie"
+
+
+async def test_nests_call_tool_is_guarded_like_the_agent_tool() -> None:
+    # The main agent calls solo pixies and leaders; a leader its own members.
+    assert await call({"pixie": "solo", "task": "t"}, tool=CALL_TOOL) == {}
+    assert denial(await call({"pixie": "bugs", "task": "t"}, tool=CALL_TOOL)) == (
+        MEMBER_CALL_DENIED.format(slug="bugs")
+    )
+    assert await call({"pixie": "bugs", "task": "t"}, "lead", tool=CALL_TOOL) == {}
+    assert denial(await call({"pixie": "solo", "task": "t"}, "bugs", tool=CALL_TOOL)) == (
+        PIXIE_CALL_DENIED
+    )
+    # Its input never names a subagent, and it waits for its report anyway.
+    assert await call({"subagent_type": "bugs"}, tool=CALL_TOOL) == {}

@@ -1103,7 +1103,7 @@ async def test_call_rules_guard_the_agent_tools(tmp_path: Path) -> None:
     }
     output = cast(Any, await guard(cast(Any, called), None, cast(Any, {})))
 
-    assert matcher.matcher == "Agent|Task"
+    assert matcher.matcher == "Agent|Task|mcp__nest__call_pixie"
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
     # Without rules no agent call is guarded.
     unguarded = build_options(
