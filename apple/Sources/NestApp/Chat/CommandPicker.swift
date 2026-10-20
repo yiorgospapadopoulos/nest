@@ -90,17 +90,18 @@ struct CommandPicker: View {
         let isDraft = shell.isDraft(chat)
         let session = isDraft ? nil : shell.sessions.session(chat)
         let model = isDraft ? draft.model : session?.model
+        let catalog = shell.catalog(forChat: chat)
         switch picker {
         case .model:
-            return shell.agents.models.map { info in
+            return catalog.models.map { info in
                 Choice(
                     id: info.value, title: info.displayName, detail: info.description,
-                    checked: shell.agents.isSelected(info, current: model)
+                    checked: catalog.isSelected(info, current: model)
                 ) { shell.setModel(info, for: chat) }
             }
         case .permissions:
             let current = isDraft ? draft.permission : session?.permissionMode
-            return shell.agents.permissionModes(for: model).map { mode in
+            return catalog.permissionModes(for: model).map { mode in
                 Choice(
                     id: mode.rawValue, title: mode.label, detail: mode.summary,
                     checked: mode == current

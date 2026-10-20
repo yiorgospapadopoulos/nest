@@ -22,6 +22,11 @@ final class FakeAPI: NestAPI {
         /// What a manual refresh answers.
         var refreshedLimits = Fixture.usageLimits
         var usageSettings = UsageSettings(refreshMinutes: 3)
+        /// Other engines' windows by engine name (B91), and what their refresh answers.
+        var engineLimits: [String: UsageLimits] = [:]
+        var refreshedEngineLimits: [String: UsageLimits] = [:]
+        /// The period answer's split by engine.
+        var periodEngines: [EngineTokens] = []
         var devices = Fixture.decode([Device].self, "devices")
         var claudeChats = Fixture.claudeChats
         var claudeChatEvents: [String: [Event]] = [:]
@@ -40,6 +45,10 @@ final class FakeAPI: NestAPI {
         var stuckSettings = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
         var models = Fixture.models
+        /// `GET /api/providers`; none, as from a daemon before B91, until set.
+        var providers: [ProviderInfo] = []
+        /// The other engines' model lists, by engine name.
+        var providerModels: [String: [ModelInfo]] = [:]
         var account = ClaudeAccount(
             displayName: "Giorgos", email: "me@example.com", plan: "Claude Max",
             organization: nil)
@@ -252,6 +261,7 @@ final class FakeAPI: NestAPI {
             session.model = request.model
             session.effort = request.effort
             session.permissionMode = request.permissionMode ?? .default
+            session.provider = request.provider ?? "claude"
             state.sessions.append(session)
             return session
         }
@@ -540,11 +550,25 @@ final class FakeAPI: NestAPI {
     /// The fixture's numbers for any period, starting on the day asked for.
     func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod {
         await pass("usagePeriod")
-        return try call("usagePeriod", "\(unit.rawValue) \(date.description)") { _ in
+        return try call("usagePeriod", "\(unit.rawValue) \(date.description)") { state in
             var period = Fixture.usagePeriod
             period.unit = unit
             period.start = date
+            period.engines = state.periodEngines
             return period
+        }
+    }
+
+    func usageLimits(provider: String) async throws -> UsageLimits {
+        try call("usageLimitsFor", provider) {
+            $0.engineLimits[provider] ?? UsageLimits(fiveHour: nil, sevenDay: nil)
+        }
+    }
+
+    func refreshUsage(provider: String) async throws -> UsageLimits {
+        try call("refreshUsageFor", provider) { state in
+            state.engineLimits[provider] = state.refreshedEngineLimits[provider]
+            return state.engineLimits[provider] ?? UsageLimits(fiveHour: nil, sevenDay: nil)
         }
     }
 
@@ -589,6 +613,16 @@ final class FakeAPI: NestAPI {
 
     func models() async throws -> ModelList {
         try call("models") { ModelList(models: $0.models, updatedAt: nil) }
+    }
+
+    func models(provider: String) async throws -> ModelList {
+        try call("modelsFor", provider) {
+            ModelList(models: $0.providerModels[provider] ?? [], updatedAt: nil)
+        }
+    }
+
+    func providers(refresh: Bool) async throws -> ProviderList {
+        try call("providers", "\(refresh)") { ProviderList(providers: $0.providers) }
     }
 
     func account() async throws -> ClaudeAccount {

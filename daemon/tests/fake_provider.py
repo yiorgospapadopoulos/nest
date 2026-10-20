@@ -25,6 +25,7 @@ from nestd.providers.base import (
     PlanDecision,
     PlanRequest,
     ProviderEventSink,
+    ProviderFeature,
     QuestionAnswer,
     QuestionRequest,
     ResultInfo,
@@ -159,6 +160,7 @@ class FakeRun:
 
 class FakeProvider:
     name = "fake"
+    unsupported: frozenset[ProviderFeature] = frozenset()
 
     def __init__(self) -> None:
         self.turns: deque[Turn] = deque()

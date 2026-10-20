@@ -9,10 +9,18 @@ import pytest
 from nestd.composer.memory import append_memory
 from nestd.composer.service import ComposerActions, NoUserMemoryError
 from nestd.composer.shell import context_block, run_command
-from nestd.sessions.errors import NoWorkspaceError, PixieChatError, SessionNotFoundError
+from nestd.providers.codex import CODEX_UNSUPPORTED
+from nestd.sessions.engines import Engine, Engines
+from nestd.sessions.errors import (
+    NoWorkspaceError,
+    PixieChatError,
+    SessionNotFoundError,
+    UnsupportedFeatureError,
+)
 from nestd.sessions.models import Session
 from nestd.sessions.store import SessionStore
 from nestd.storage.db import Database
+from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 
@@ -125,8 +133,13 @@ def actions(
     async def get(session_id: str) -> Session:
         return (await store.get(session_id)).model_copy(update=changes)
 
+    codex = FakeProvider()
+    codex.name = "codex"  # type: ignore[misc]
+    codex.unsupported = CODEX_UNSUPPORTED  # type: ignore[misc]
+    engines = Engines(Engine(FakeProvider()), [Engine(codex)])
     return ComposerActions(
         sessions=get,
+        engine_of=engines.of,
         project_folder=lambda repo: tmp_path / "projects" / repo,
         user_memory=user_memory,
         shell_env=fixed_env,
@@ -194,6 +207,21 @@ async def test_a_pixie_chat_has_only_user_memory(store: SessionStore, tmp_path: 
     with pytest.raises(PixieChatError, match="no project memory"):
         await composer.remember(session.id, "x", "project")
     assert (await composer.remember(session.id, "x", "user")).path == tmp_path / "CLAUDE.md"
+
+
+async def test_a_codex_chat_has_no_memory(store: SessionStore, tmp_path: Path) -> None:
+    """Codex reads AGENTS.md, not CLAUDE.md, so `#` is refused there (B91)."""
+    session = await store.create(new_session(repo="app", cwd=tmp_path, provider="codex"))
+    composer = actions(store, tmp_path, tmp_path / "CLAUDE.md")
+    with pytest.raises(UnsupportedFeatureError) as raised:
+        await composer.remember(session.id, "x", "user")
+    assert raised.value.payload() == {
+        "detail": "A Codex chat cannot save a memory to CLAUDE.md.",
+        "code": "unsupported_feature",
+        "provider": "codex",
+        "feature": "memory",
+    }
+    assert not (tmp_path / "CLAUDE.md").exists()
 
 
 async def test_user_memory_needs_claudes_folder(store: SessionStore, tmp_path: Path) -> None:

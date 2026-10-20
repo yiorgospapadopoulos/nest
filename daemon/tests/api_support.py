@@ -11,6 +11,7 @@ from nestd.gitops.runner import CommandRunner, run_command
 from nestd.paths import AppPaths
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
+from tests.codex_support import FakeAppServer
 from tests.fake_claude import FakeClaude, locations
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
@@ -34,7 +35,10 @@ class RecordingModule:
 
 
 def make_paths(
-    tmp_path: Path, modules: list[str] | None = None, token_socket: Path | None = None
+    tmp_path: Path,
+    modules: list[str] | None = None,
+    token_socket: Path | None = None,
+    codex_home: Path | None = None,
 ) -> AppPaths:
     # No web build, so API tests never depend on whether web/dist exists in the checkout.
     paths = AppPaths(
@@ -44,6 +48,7 @@ def make_paths(
         claude_dir=tmp_path / "claude",
         claude_account_file=tmp_path / "claude.json",
         token_socket=token_socket,
+        codex_home=codex_home,
     )
     if modules is not None:
         paths.config_dir.mkdir(parents=True)
@@ -65,10 +70,12 @@ async def build_context(
     engine_factory: FakeInfoFactory | None = None,
     token_socket: Path | None = None,
     claude: FakeClaude | None = None,
+    codex: FakeAppServer | None = None,
+    codex_home: Path | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
-        make_paths(tmp_path, ["recorder"] if log is not None else None, token_socket),
+        make_paths(tmp_path, ["recorder"] if log is not None else None, token_socket, codex_home),
         secrets,
         clock,
         {"recorder": lambda: RecordingModule(record)},
@@ -87,6 +94,8 @@ async def build_context(
         # Never the real `claude` command line, nor the user's installs.
         claude_runner=claude or FakeClaude(),
         claude_locations=locations(tmp_path),
+        # Never the real Codex binary.
+        codex_transport=codex or FakeAppServer(),
     )
 
 

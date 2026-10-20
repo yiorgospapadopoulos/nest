@@ -69,8 +69,7 @@ class SessionReactions:
 
     async def state_changed(self, session: Session) -> None:
         tracker = await self._tracking.sync(session.id)
-        # A habit run speaks only through its reports (B42).
-        quiet = session.habit_run_id is not None
+        quiet = _quiet(session)
         if session.state is SessionState.IDLE and not quiet:
             # A review announces itself; otherwise the user hears the turn finished.
             reviewed = (
@@ -94,7 +93,7 @@ class SessionReactions:
         start counts. A turn the agent starts on its own, say after background work changed
         files, has no start and is reviewed as it is.
         """
-        quiet = session.habit_run_id is not None
+        quiet = _quiet(session)
         if quiet or self._reviews.has_start(session.id):
             return
         if await self._reviewable(session):
@@ -147,6 +146,13 @@ class SessionReactions:
         await self._notifier.notify(
             kind, session.id, session.repo, session.title, one_line(text, MAX_NOTICE_LENGTH)
         )
+
+
+def _quiet(session: Session) -> bool:
+    """A habit run speaks only through its reports (B42), a called pixie through the chat
+    that called it (B91).
+    """
+    return session.habit_run_id is not None or session.called_by is not None
 
 
 def _limit_text(pause: LimitPause) -> str:

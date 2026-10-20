@@ -64,10 +64,11 @@ public struct QueuedMessage: Codable, Sendable, Hashable, Identifiable {
         sent = try container.decodeIfPresent(Bool.self, forKey: .sent) ?? false
     }
 
-    /// The quiet line under the pending message: when Claude gets it.
-    public func note(working: Bool) -> String {
+    /// The quiet line under the pending message: when the chat's agent (its engine's
+    /// name, such as Claude or Codex) gets it.
+    public func note(working: Bool, agent: String) -> String {
         guard working else { return "Waiting" }
-        return sent ? "Claude reads this at its next step" : "Sends when this turn ends"
+        return sent ? "\(agent) reads this at its next step" : "Sends when this turn ends"
     }
 }
 

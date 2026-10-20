@@ -94,8 +94,12 @@ async def send_now(session_id: str, message_id: str, ctx: Context) -> Response:
 
 @router.get("/{session_id}/commands")
 async def session_commands(session_id: str, ctx: Context) -> CommandList:
-    """The slash commands and agents of the session's agent, or else of its repo's latest."""
+    """The slash commands and agents of the session's agent, or else of its repo's latest.
+    None for an engine without slash commands (Codex, B91).
+    """
     session = await ctx.sessions.get(session_id)
+    if not ctx.sessions.engines.of(session).supports("slash_commands"):
+        return CommandList(source="none")
     return await ctx.commands.for_session(session.id, session.repo)
 
 

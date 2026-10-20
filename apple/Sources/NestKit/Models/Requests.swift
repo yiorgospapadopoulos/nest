@@ -14,11 +14,14 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
     public var base: String?
     /// Worktree chats only: the new branch's name; nil lets the daemon name it.
     public var branch: String?
+    /// The engine, such as `codex`; nil runs on Claude (B91).
+    public var provider: String?
 
     public init(
         repo: String, prompt: String, title: String? = nil, mode: SessionMode? = nil,
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
-        attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil
+        attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil,
+        provider: String? = nil
     ) {
         self.repo = repo
         self.prompt = prompt
@@ -30,10 +33,11 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
         self.attachmentIDs = attachmentIDs
         self.base = base
         self.branch = branch
+        self.provider = provider
     }
 
     enum CodingKeys: String, CodingKey {
-        case repo, prompt, title, mode, model, effort, base, branch
+        case repo, prompt, title, mode, model, effort, base, branch, provider
         case permissionMode = "permission_mode"
         case attachmentIDs = "attachment_ids"
     }
@@ -276,6 +280,9 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     public var slug: String?
     public var mascot: Mascot?
     public var color: String?
+    /// The engine to run on (B91); another one clears the model and thinking unless they
+    /// are given too.
+    public var provider: String?
     public var model: String?
     public var effort: Effort?
     public var permissionMode: PermissionMode?
@@ -300,16 +307,17 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
 
     public init(
         name: String? = nil, slug: String? = nil, mascot: Mascot? = nil, color: String? = nil,
-        model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
-        autonomy: Autonomy? = nil, projectAccess: ProjectAccess? = nil, skills: [String]? = nil,
-        hidden: Bool? = nil, clearsModel: Bool = false, clearsEffort: Bool = false,
-        teamID: String? = nil, leavesTeam: Bool = false, maxRunning: Int? = nil,
-        maxPerDay: Int? = nil
+        provider: String? = nil, model: String? = nil, effort: Effort? = nil,
+        permissionMode: PermissionMode? = nil, autonomy: Autonomy? = nil,
+        projectAccess: ProjectAccess? = nil, skills: [String]? = nil, hidden: Bool? = nil,
+        clearsModel: Bool = false, clearsEffort: Bool = false, teamID: String? = nil,
+        leavesTeam: Bool = false, maxRunning: Int? = nil, maxPerDay: Int? = nil
     ) {
         self.name = name
         self.slug = slug
         self.mascot = mascot
         self.color = color
+        self.provider = provider
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
@@ -326,7 +334,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, slug, mascot, color, model, effort, autonomy, skills, hidden
+        case name, slug, mascot, color, provider, model, effort, autonomy, skills, hidden
         case permissionMode = "permission_mode"
         case projectAccess = "project_access"
         case teamID = "team_id"
@@ -340,6 +348,7 @@ public struct UpdatePixieRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(slug, forKey: .slug)
         try container.encodeIfPresent(mascot, forKey: .mascot)
         try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(provider, forKey: .provider)
         if let model {
             try container.encode(model, forKey: .model)
         } else if clearsModel {

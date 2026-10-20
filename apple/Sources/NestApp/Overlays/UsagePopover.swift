@@ -14,7 +14,8 @@ struct UsagePopover: View {
     }
 }
 
-/// Claude's 5 hour and weekly limits with a Refresh that says when they were reported,
+/// Claude's 5 hour and weekly limits, and since B91 those of each other engine signed in
+/// under its name, with a Refresh that says when they were reported,
 /// then a day, week, month or year of tokens as bars with hover detail, its chats and
 /// subagents, and Details, which swaps in the period's breakdown (B84). Shared by the
 /// popover and Settings > Usage (B86), at their widths.
@@ -53,10 +54,20 @@ private struct UsageChart: View {
         }
         .frame(height: Metrics.buttonHeight)
         .padding(.bottom, 12)
-        LimitRow(title: "5 hour", window: usage.limits?.fiveHour)
-            .padding(.bottom, 12)
-        LimitRow(title: "Weekly", window: usage.limits?.sevenDay)
-            .padding(.bottom, 14)
+        ForEach(usage.limitGroups(providers: shell.providers)) { group in
+            if let title = group.title {
+                Text(title)
+                    .font(.ui(TypeSize.meta, .medium))
+                    .foregroundStyle(Palette.t3)
+                    .padding(.bottom, 6)
+            }
+            // Claude's 5 hour and weekly windows; another engine's, whichever it has (B91).
+            let rows = group.rows
+            ForEach(rows) { row in
+                LimitRow(title: row.title, window: row.window)
+                    .padding(.bottom, row == rows.last ? 14 : 12)
+            }
+        }
         Separator().padding(.bottom, 12)
         Segmented(
             options: UsageUnit.allCases.map { ($0, $0.title) }, selection: usage.unit,
@@ -119,8 +130,8 @@ private struct RefreshControl: View {
                 .disabled(usage.isRefreshing)
                 .help(
                     usage.limitsAreStale(at: context.date)
-                        ? "More than 10 minutes old. Ask Claude for the limits now"
-                        : "Ask Claude for the limits now")
+                        ? "More than 10 minutes old. Ask for the limits now"
+                        : "Ask for the limits now")
             }
         }
     }
@@ -135,7 +146,8 @@ private struct RefreshControl: View {
     }
 }
 
-/// A limit's name and percent, a 3 point bar and when it resets.
+/// A limit's name and percent, a 3 point bar and when it resets. Every engine's rows look
+/// the same (B91): how old the limits are shows on Refresh, not by dimming a row.
 private struct LimitRow: View {
     let title: String
     let window: LimitWindow?
@@ -143,17 +155,14 @@ private struct LimitRow: View {
 
     var body: some View {
         let usage = shell.model.usage
-        TimelineView(.everyMinute) { context in
-            let stale = UsageText.isStale(window, now: context.date)
+        TimelineView(.everyMinute) { _ in
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(title).foregroundStyle(Palette.t2)
                     Spacer()
                     Text(UsageText.percent(window)).fontWeight(.medium)
                 }
-                .opacity(stale ? 0.5 : 1)
                 Meter(value: window?.utilization ?? 0, height: 3, color: Palette.t1)
-                    .opacity(stale ? 0.5 : 1)
                 Text(usage.resetText(window))
                     .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
@@ -316,14 +325,14 @@ private struct Totals: View {
     }
 }
 
-/// The shown period's tokens by who, by kind and by project, with the usage checks
-/// counted apart; ‹ goes back to the chart.
+/// The shown period's tokens by engine (B91), by who, by kind and by project, with the
+/// usage checks counted apart; ‹ goes back to the chart.
 private struct UsageBreakdownView: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let usage = shell.model.usage
-        let breakdown = usage.breakdown
+        let breakdown = usage.breakdown(providers: shell.providers)
         HStack(spacing: 6) {
             Button {
                 usage.hideDetails()
@@ -340,6 +349,10 @@ private struct UsageBreakdownView: View {
         .padding(.leading, -6)
         .padding(.bottom, 12)
         if let breakdown {
+            if !breakdown.engines.isEmpty {
+                heading("By engine")
+                ShareRows(rows: breakdown.engines).padding(.bottom, 14)
+            }
             heading("By who")
             ShareRows(rows: breakdown.who).padding(.bottom, 14)
             heading("By kind")

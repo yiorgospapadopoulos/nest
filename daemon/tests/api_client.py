@@ -9,6 +9,7 @@ import httpx
 from nestd.api.app import create_app
 from nestd.context import AppContext
 from tests.api_support import build_context, local_token
+from tests.codex_support import FakeAppServer
 from tests.fake_claude import FakeClaude
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
@@ -30,6 +31,7 @@ class Api:
         engine: FakeInfoFactory,
         restart: RecordingRestart,
         claude: FakeClaude,
+        codex: FakeAppServer,
     ) -> None:
         self.ctx = ctx
         self.http = http
@@ -40,6 +42,7 @@ class Api:
         self.engine = engine
         self.restart = restart
         self.claude = claude
+        self.codex = codex
 
 
 @asynccontextmanager
@@ -48,6 +51,7 @@ async def running_api(
     clock: FakeClock,
     secrets: FakeSecretStore,
     push_transport: httpx.AsyncBaseTransport | None = None,
+    codex_home: Path | None = None,
 ) -> AsyncGenerator[Api]:
     provider = FakeProvider()
     runner = FakeRunner()
@@ -55,6 +59,7 @@ async def running_api(
     probes = FakeProbeFactory()
     engine = FakeInfoFactory()
     claude = FakeClaude()
+    codex = FakeAppServer()
     ctx = await build_context(
         tmp_path,
         clock,
@@ -66,6 +71,8 @@ async def running_api(
         probe_factory=probes,
         engine_factory=engine,
         claude=claude,
+        codex=codex,
+        codex_home=codex_home,
     )
     restart = RecordingRestart()
     app = create_app(ctx, restart=restart)
@@ -76,6 +83,6 @@ async def running_api(
             httpx.AsyncClient(transport=transport, base_url="https://mac.tailnet.ts.net") as http,
         ):
             http.headers["Authorization"] = f"Bearer {local_token(secrets)}"
-            yield Api(ctx, http, provider, runner, opener, probes, engine, restart, claude)
+            yield Api(ctx, http, provider, runner, opener, probes, engine, restart, claude, codex)
     finally:
         await ctx.close()

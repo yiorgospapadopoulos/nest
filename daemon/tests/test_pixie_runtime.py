@@ -7,7 +7,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.paths import AppPaths
 from nestd.pixies.files import PixieFiles
-from nestd.pixies.models import PixieSettings
+from nestd.pixies.models import Pixie, PixieSettings
 from nestd.pixies.prompt import HABIT_RUN_NOTE
 from nestd.pixies.runtime import PixieRuntime
 from nestd.pixies.store import PixieStore
@@ -153,3 +153,92 @@ async def test_a_habit_run_starts_from_its_habit_not_from_the_chat(
     assert "You watch." in extras.system_prompt
     assert "## Recent conversation" not in extras.system_prompt
     assert seen == ["r1"]
+
+
+async def test_a_called_pixie_works_with_its_call_prompt_and_no_tools_of_its_own(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
+    paths.ensure()
+    repos = RepoService(paths)
+    web = await repos.register(init_repo(tmp_path / "web"))
+    store = PixieStore(db, clock)
+    files = PixieFiles(paths.pixies_dir)
+    reader = await store.create(
+        PixieSettings(name="Reader", project_access="read", skills=["review"]), "reader"
+    )
+    editor = await store.create(PixieSettings(name="Editor"), "editor")
+    for pixie in (reader, editor):
+        files.create(pixie.id, "You help.")
+    prompted: list[str] = []
+
+    async def called_prompt(pixie: Pixie) -> str:
+        prompted.append(pixie.id)
+        return f"Called {pixie.name}."
+
+    def tools(_pixie_id: str, _session: Session) -> tuple[AgentTool, ...]:
+        raise AssertionError  # a called pixie keeps its memory tools to itself
+
+    runtime = PixieRuntime(
+        store, files, repos, EventBus(db, clock), clock, tools, called_prompt=called_prompt
+    )
+
+    def call(pixie_id: str) -> NewSession:
+        return NewSession(
+            repo=pixie_repo(pixie_id),
+            title="t",
+            prompt="p",
+            mode="in_place",
+            cwd=web.path,
+            model=None,
+            effort=None,
+            permission_mode="default",
+            provider="fake",
+            pixie_id=pixie_id,
+            called_by="s0",
+        )
+
+    sessions = SessionStore(db, clock)
+    read = await runtime.extras(await sessions.create(call(reader.id)))
+    edit = await runtime.extras(await sessions.create(call(editor.id)))
+
+    assert (read.system_prompt, edit.system_prompt) == ("Called Reader.", "Called Editor.")
+    assert prompted == [reader.id, editor.id]
+    assert read.tools == edit.tools == ()
+    assert read.extra_dirs == (web.path,)
+    # A reader writes only in its workdir, as in its own chat; an editor anywhere.
+    assert read.write_root == files.workdir(reader.id)
+    assert edit.write_root is None
+    assert read.skills == ("review",)
+
+
+async def test_a_runtime_without_call_prompts_refuses_a_called_pixie(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
+    paths.ensure()
+    store = PixieStore(db, clock)
+    files = PixieFiles(paths.pixies_dir)
+    pixie = await store.create(PixieSettings(name="P"), "p")
+    files.create(pixie.id, "You help.")
+    runtime = PixieRuntime(
+        store, files, RepoService(paths), EventBus(db, clock), clock, lambda _p, _s: ()
+    )
+    called = await SessionStore(db, clock).create(
+        NewSession(
+            repo=pixie_repo(pixie.id),
+            title="t",
+            prompt="p",
+            mode="in_place",
+            cwd=tmp_path,
+            model=None,
+            effort=None,
+            permission_mode="default",
+            provider="fake",
+            pixie_id=pixie.id,
+            called_by="s0",
+        )
+    )
+
+    with pytest.raises(ValueError, match="cannot be called"):
+        await runtime.extras(called)

@@ -228,6 +228,10 @@
                 try await renderStartScreen(model, shell, controller, folder)
                 return
             }
+            if only == "b91" {
+                try await renderCodex(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -355,6 +359,93 @@
             try await renderReviewBar(model, shell, controller, folder)
             try await renderArtifacts(model, shell, controller, folder)
             try await renderStartScreen(model, shell, controller, folder)
+            try await renderCodex(model, shell, controller, folder)
+        }
+
+        /// B91: the start composer on a Codex model, signed out (its hint above the field)
+        /// and signed in; the one model menu's sections, drawn as a static list since menus
+        /// do not render offscreen; the usage meter with both engines and with Codex signed
+        /// out; the popover with both engines' windows; and the day's details split by
+        /// engine. Then two Codex chats, an idle one with its hover controls (no Edit,
+        /// Rewind or Fork) and a running one with a message written into its turn (no Edit
+        /// or Remove), each header naming Codex.
+        private static func renderCodex(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
+            await model.providers.load()
+            let codexModel = model.providers.catalog(for: "codex", claude: model.agents.catalog)
+                .models[0]
+            shell.setModel(codexModel, on: "codex", for: shell.startDraftID)
+            try await pair(controller, "b91-start-codex-signed-out", folder)
+            try await pairView(modelMenu(shell), "b91-model-menu-signed-out", folder)
+            try await model.usage.load()
+            try await pair(controller, "b91-usage-codex-signed-out", folder)
+            sample.setCodexSignedIn(true)
+            await model.providers.load()
+            try await model.usage.load()
+            try await pair(controller, "b91-start-codex", folder)
+            try await pairView(modelMenu(shell), "b91-model-menu", folder)
+            shell.show(.usage)
+            try await pair(controller, "b91-usage-popover", folder)
+            // The sample's today may be a quiet weekend day: the latest day with tokens.
+            try await model.usage.choose(.day)
+            for _ in 0..<7 where (model.usage.period?.tokens.total ?? 0) == 0 {
+                try await model.usage.showPrevious()
+            }
+            model.usage.showDetails()
+            try await pair(controller, "b91-usage-day-details", folder)
+            model.usage.hideDetails()
+            try await model.usage.choose(.month)
+            shell.close()
+            try await renderCodexPixie(model, shell, controller, folder)
+            if let claudeModel = model.agents.catalog.models.first {
+                shell.setModel(claudeModel, on: "claude", for: shell.startDraftID)
+            }
+            sample.setCodexSignedIn(false)
+            await model.providers.load()
+            try await model.usage.load()
+
+            sample.runOnCodex(["c2", "c3"])
+            sample.setQueue(
+                [
+                    QueuedMessage(
+                        id: "m-codex", text: "Also keep the DOI links", createdAt: Date(),
+                        sent: true)
+                ], of: "c2")
+            try await model.sessions.load()
+            for id in ["c2", "c3"] {
+                try await model.activity.load(session: id)
+            }
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.openChat("c3", in: workspace)
+                state.dropChat("c2", onto: "c3", side: .right)
+                state.focusPane("c3")
+                state.leftCollapsed = true
+                state.rightCollapsed = true
+            }
+            try await pair(controller, "b91-codex-chats", folder, revealsHoverControls: true)
+
+            sample.runOnCodex([])
+            sample.setQueue([], of: "c2")
+            try await model.sessions.load()
+            for id in ["c2", "c3"] {
+                try await model.activity.load(session: id)
+            }
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
         }
 
         /// B90: the start screen (design I) with what waits on the user and recent chats
@@ -2600,6 +2691,74 @@
                 }
                 .padding(.vertical, 6)
             }
+        }
+
+        /// The model menu's sections for the start draft as `ModelMenu` lists them (B91).
+        @MainActor
+        /// B91 stage 2: Reviewer moved to Codex, its details naming the engine in the Model
+        /// row, and the pixie's model picker with a section per engine, drawn as a static
+        /// list; then back on Claude.
+        private static func renderCodexPixie(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            let codex = model.providers.catalog(for: "codex", claude: model.agents.catalog)
+            let chosen = codex.models.dropFirst().first ?? codex.models[0]
+            try await model.pixies.update(
+                "reviewer", UpdatePixieRequest(provider: "codex", model: chosen.value))
+            shell.openPixie("reviewer")
+            shell.pixieDetailsOpen = true
+            shell.pixiePanel = .details
+            try await pair(controller, "b91-pixie-codex-details", folder)
+            let reviewer = model.pixies.pixies.first { $0.id == "reviewer" }!
+            let picker = PixieModelPicker(
+                pixie: reviewer, providers: model.providers, claude: model.agents.catalog,
+                agentDefault: model.agents.current.model)
+            try await pairView(
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(picker.sections.enumerated()), id: \.offset) { index, section in
+                        if index > 0 {
+                            Divider().padding(.horizontal, 10)
+                        }
+                        MenuPreview(
+                            title: section.title,
+                            rows: (section.detail.isEmpty
+                                ? [] : [MenuPreview.Row(title: section.detail, disabled: true)])
+                                + section.entries.map {
+                                    MenuPreview.Row(
+                                        title: $0.title, detail: $0.detail, checked: $0.checked)
+                                })
+                    }
+                }
+                .frame(width: 320), "b91-pixie-model-picker", folder)
+            try await model.pixies.update(
+                "reviewer", UpdatePixieRequest(provider: "claude", clearsModel: true))
+            shell.close()
+            shell.selectProject("cv-page")
+        }
+
+        private static func modelMenu(_ shell: Shell) -> some View {
+            let chat = shell.startDraftID
+            let draft = shell.draft(for: chat)
+            let sections = shell.providers.modelSections(
+                claude: shell.agents.catalog, provider: draft.provider, isDraft: true)
+            return VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                    if index > 0 {
+                        Divider().padding(.horizontal, 10)
+                    }
+                    MenuPreview(
+                        title: section.title,
+                        rows: (section.detail.isEmpty
+                            ? [] : [MenuPreview.Row(title: section.detail, disabled: true)])
+                            + section.catalog.models.map { info in
+                                MenuPreview.Row(
+                                    title: info.displayName, detail: info.description,
+                                    checked: section.isSelected(
+                                        info, provider: draft.provider, model: draft.model))
+                            })
+                }
+            }
+            .frame(width: 320)
         }
 
         /// A full reset first, so the dark snapshot does not repeat the light one's output.

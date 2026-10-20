@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol, get_args
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, computed_field
 
 from nestd.config.models import Effort, PermissionMode
 
@@ -117,11 +117,45 @@ class UsageWindow(BaseModel):
     resets_at: datetime | None
 
 
+_WEEK = 7 * 24 * 60
+
+
+def window_label(minutes: int | None) -> str:
+    """A window's name from its length, as clients show it: "5 hour", "Weekly", "30 day"."""
+    if minutes is None:
+        return "Usage"
+    if minutes == _WEEK:
+        return "Weekly"
+    if minutes % (24 * 60) == 0:
+        return f"{minutes // (24 * 60)} day"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hour"
+    return f"{minutes} minute"
+
+
+class EngineWindow(UsageWindow):
+    """A usage window an engine reports by its length (B91: Codex's plan windows)."""
+
+    # None when the engine left the length out.
+    minutes: int | None
+
+    @computed_field
+    @property
+    def label(self) -> str:
+        return window_label(self.minutes)
+
+
 class UsageInfo(BaseModel):
-    """Subscription usage: the five-hour and seven-day windows, when reported."""
+    """Subscription usage: Claude's five-hour and seven-day windows, when reported; another
+    engine's windows by length in `windows` (B91).
+    """
 
     five_hour: UsageWindow | None
     seven_day: UsageWindow | None
+    # The engine whose subscription it is (B91): Claude's, or Codex's ChatGPT plan.
+    provider: str = "claude"
+    # Every window of an engine that does not name them as Claude does, shortest first.
+    windows: list[EngineWindow] = Field(default_factory=list[EngineWindow])
 
 
 # The usage window whose limit was reached (B78), as the engine names it.
@@ -288,6 +322,10 @@ class Subagent:
 
 # The tools that call a subagent; "Task" is the name in older Claude Code versions.
 AGENT_TOOLS = frozenset({"Agent", "Task"})
+# Nest's tool that calls a pixie as a session of its own and returns its report, where it
+# or the calling run is on an engine without Nest-defined subagents (B91). Its input
+# names the pixie by slug as `pixie`.
+CALL_PIXIE_TOOL = "call_pixie"
 
 
 @dataclass(frozen=True)
@@ -614,9 +652,39 @@ class AgentRun(Protocol):
         ...
 
 
+# What a provider's chats cannot do (B91): clients hide it, and the API refuses it with
+# 409 `unsupported_feature`. `rewind` covers files and conversation, `withdraw` taking back
+# a message written into the turn, `questions` the agent's questions to the user,
+# `subagents` the pixies a chat calls, `nest_tools` Nest's in-process tools (artifacts),
+# `task_list` Claude Code's task list and `pixies` running pixies on the provider.
+type ProviderFeature = Literal[
+    "rewind",
+    "fork",
+    "slash_commands",
+    "stop_task",
+    "withdraw",
+    "plan_review",
+    "questions",
+    "subagents",
+    "nest_tools",
+    "task_list",
+    "pixies",
+    # The composer's `#` memory, which goes into CLAUDE.md, a file only Claude Code reads.
+    "memory",
+    # A pixie's own list of skills, which limits a Claude run to them; Codex has no per-run
+    # skill list (B91), so a pixie on it takes none.
+    "pixie_skills",
+]
+
+
 class AgentProvider(Protocol):
     @property
     def name(self) -> str: ...
+
+    @property
+    def unsupported(self) -> frozenset[ProviderFeature]:
+        """The features its chats lack (B91); empty for Claude."""
+        ...
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink

@@ -61,6 +61,9 @@ struct OptionItem: View {
     }
 }
 
+/// The chat's model, one menu for both engines (B91): a new chat lists each engine's
+/// models under its name, with its plan or that it is not signed in, and choosing a model
+/// chooses its engine; a chat that exists lists only its own engine's.
 struct ModelMenu: View {
     let chat: String
     let model: String?
@@ -68,9 +71,28 @@ struct ModelMenu: View {
     @Environment(\.paneFit) private var fit
 
     var body: some View {
-        let label = shell.agents.label(for: model)
+        let label = shell.catalog(forChat: chat).label(for: model)
+        let provider = shell.provider(forChat: chat)
         QuietMenu(title: fit.compact ? PaneFit.shortModel(label) : label, help: "Model") {
-            ModelItems(current: model) { shell.setModel($0, for: chat) }
+            ForEach(
+                shell.providers.modelSections(
+                    claude: shell.agents.catalog, provider: provider, isDraft: shell.isDraft(chat))
+            ) { section in
+                Section(section.title) {
+                    if !section.detail.isEmpty {
+                        Text(section.detail)
+                    }
+                    if section.catalog.models.isEmpty {
+                        Button("Models unavailable") {}.disabled(true)
+                    }
+                    ForEach(section.catalog.models) { info in
+                        OptionItem(
+                            title: info.displayName, detail: info.description,
+                            checked: section.isSelected(info, provider: provider, model: model)
+                        ) { shell.setModel(info, on: section.provider, for: chat) }
+                    }
+                }
+            }
         }
     }
 }
@@ -90,7 +112,7 @@ struct ModelItems: View {
     }
 
     var body: some View {
-        let agents = shell.agents
+        let agents = shell.agents.catalog
         Section("Model") {
             if let defaultItem {
                 OptionItem(title: "Default", detail: defaultItem.detail, checked: current == nil) {
@@ -122,13 +144,14 @@ struct EffortMenu: View {
 
     var body: some View {
         let label = fit.compact ? effort?.shortLabel : effort?.label
+        let catalog = shell.catalog(forChat: chat)
         QuietMenu(title: label ?? "Default", help: "Thinking") {
-            ThinkingItems(model: model, effort: effort) { level in
+            ThinkingItems(model: model, effort: effort, catalog: catalog) { level in
                 if let level {
                     shell.setEffort(level, for: chat)
                 }
             }
-            if isOpen && !shell.agents.thinkingLevels(for: model).isEmpty {
+            if isOpen && !catalog.thinkingLevels(for: model).isEmpty {
                 Divider()
                 Text("Applies from your next message")
             }
@@ -141,18 +164,21 @@ struct ThinkingItems: View {
     let model: String?
     let effort: Effort?
     var offersDefault = false
+    /// The chat's engine's models; nil for Claude Code's.
+    var catalog: ModelCatalog?
     let pick: (Effort?) -> Void
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let levels = shell.agents.thinkingLevels(for: model)
+        let catalog = catalog ?? shell.agents.catalog
+        let levels = catalog.thinkingLevels(for: model)
         Section("Thinking") {
             if levels.isEmpty {
                 Button("Not available for this model") {}.disabled(true)
             } else {
                 if offersDefault {
                     OptionItem(
-                        title: shell.agents.defaultEffortLabel(for: model), detail: "",
+                        title: catalog.defaultEffortLabel(for: model), detail: "",
                         checked: effort == nil
                     ) { pick(nil) }
                 }
@@ -184,7 +210,9 @@ struct PermissionMenu: View {
         QuietMenu(
             title: label, help: "Permission mode", tint: warns ? StatusTone.waiting.color : nil
         ) {
-            PermissionItems(modes: shell.agents.permissionModes(for: model), current: mode) {
+            PermissionItems(
+                modes: shell.catalog(forChat: chat).permissionModes(for: model), current: mode
+            ) {
                 shell.setPermission($0, for: chat)
             }
         }

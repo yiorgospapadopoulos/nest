@@ -39,6 +39,7 @@ from nestd.providers.base import (
     PermissionRequest,
     PlanRequest,
     ProviderEventSink,
+    ProviderFeature,
     RewindResult,
     SessionSpec,
     Subagent,
@@ -63,6 +64,7 @@ from nestd.providers.claude_rules import always_updates
 from nestd.providers.claude_steering import engine_uuid, withdraw
 from nestd.providers.claude_thinking import ThinkingTimer
 from nestd.providers.claude_tools import (
+    CALL_TOOL,
     SUBAGENT_DENIED,
     WRITE_TOOLS,
     call_guard,
@@ -232,7 +234,10 @@ def build_options(
         )
     if spec.call_rules is not None:
         pre_tool_use.append(
-            HookMatcher(matcher="|".join(sorted(AGENT_TOOLS)), hooks=[call_guard(spec.call_rules)])
+            HookMatcher(
+                matcher="|".join([*sorted(AGENT_TOOLS), CALL_TOOL]),
+                hooks=[call_guard(spec.call_rules)],
+            )
         )
     if spec.write_root is not None:
         pre_tool_use.append(
@@ -383,6 +388,7 @@ class ClaudeRun:
 
 class ClaudeProvider:
     name = "claude"
+    unsupported: frozenset[ProviderFeature] = frozenset()
 
     def __init__(
         self,

@@ -308,6 +308,16 @@ public struct APIClient: NestAPI {
         try await call("POST", ["usage", "refresh"])
     }
 
+    public func usageLimits(provider: String) async throws -> UsageLimits {
+        try await call(
+            "GET", ["usage", "limits"], query: [URLQueryItem(name: "provider", value: provider)])
+    }
+
+    public func refreshUsage(provider: String) async throws -> UsageLimits {
+        try await call(
+            "POST", ["usage", "refresh"], query: [URLQueryItem(name: "provider", value: provider)])
+    }
+
     public func usageSettings() async throws -> UsageSettings {
         try await get("usage", "settings")
     }
@@ -332,6 +342,15 @@ public struct APIClient: NestAPI {
 
     public func models() async throws -> ModelList {
         try await get("models")
+    }
+
+    public func models(provider: String) async throws -> ModelList {
+        try await call("GET", ["models"], query: [URLQueryItem(name: "provider", value: provider)])
+    }
+
+    public func providers(refresh: Bool) async throws -> ProviderList {
+        let query = refresh ? [URLQueryItem(name: "refresh", value: "true")] : []
+        return try await call("GET", ["providers"], query: query)
     }
 
     public func account() async throws -> ClaudeAccount {

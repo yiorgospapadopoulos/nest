@@ -99,8 +99,12 @@ public protocol NestAPI: Sendable {
     func connectors() async throws -> [Connector]
     func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod
     func usageLimits() async throws -> UsageLimits
+    /// Another engine's windows, such as Codex's (B91).
+    func usageLimits(provider: String) async throws -> UsageLimits
     /// Asks Claude for the limits now; rate limited within 20 s of the previous ask.
     func refreshUsage() async throws -> UsageLimits
+    /// Asks another engine for its windows now, without a model call (B91).
+    func refreshUsage(provider: String) async throws -> UsageLimits
     func usageSettings() async throws -> UsageSettings
     func updateUsageSettings(_ settings: UsageSettings) async throws -> UsageSettings
     func stuckSettings() async throws -> StuckSettings
@@ -110,6 +114,10 @@ public protocol NestAPI: Sendable {
 
     /// Claude Code's model list, with each model's thinking levels.
     func models() async throws -> ModelList
+    /// Another engine's model list, such as Codex's (B91).
+    func models(provider: String) async throws -> ModelList
+    /// The engines a new chat can run on; `refresh` asks for their login now (B91).
+    func providers(refresh: Bool) async throws -> ProviderList
     /// The Claude login Claude Code uses.
     func account() async throws -> ClaudeAccount
     func agentDefaults() async throws -> AgentDefaults

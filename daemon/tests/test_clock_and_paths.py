@@ -130,3 +130,11 @@ def test_ensure_creates_every_directory_and_is_idempotent(tmp_path: Path) -> Non
         paths.pixies_dir,
     ):
         assert directory.is_dir()
+
+
+def test_codexs_home_follows_its_own_setting_and_is_unset_in_tests(tmp_path: Path) -> None:
+    overridden = AppPaths.from_env({"CODEX_HOME": str(tmp_path / "cx")}, home=tmp_path)
+
+    assert AppPaths.from_env({}, home=tmp_path).codex_home == tmp_path / ".codex"
+    assert overridden.codex_home == tmp_path / "cx"
+    assert AppPaths(config_dir=tmp_path, data_dir=tmp_path).codex_home is None

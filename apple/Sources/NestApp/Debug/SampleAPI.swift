@@ -55,6 +55,9 @@
         private let artifactTexts: [String: ArtifactContent]
         /// What sample pages stored, by artifact id.
         private var artifactItems: [String: [String: String]] = [:]
+        /// Chats shown as running on Codex, and whether Codex says it is signed in (B91).
+        private var codexChats: Set<String> = []
+        private var codexSignedIn: Bool? = false
 
         init(now: Date = Date()) {
             self.now = now
@@ -140,13 +143,33 @@
         }
 
         func sessions(repo: String?, archived: Bool) async throws -> [Session] {
-            lock.withLock { sessionList }.filter {
+            lock.withLock { sessionList }.map(onEngine).filter {
                 $0.isArchived == archived && (repo == nil || $0.repo == repo)
             }
         }
 
+        /// Shows the chats as Codex's, on its default model (B91 snapshots).
+        func runOnCodex(_ ids: Set<String>) {
+            lock.withLock { codexChats = ids }
+        }
+
+        func setCodexSignedIn(_ signedIn: Bool?) {
+            lock.withLock { codexSignedIn = signedIn }
+        }
+
+        private func onEngine(_ session: Session) -> Session {
+            guard lock.withLock({ codexChats.contains(session.id) }) else { return session }
+            var session = session
+            session.provider = "codex"
+            session.model = "gpt-5.5-codex"
+            session.effort = .medium
+            return session
+        }
+
         func session(_ id: String) async throws -> Session {
-            guard var detail = details[id] ?? lock.withLock({ sessionList.first { $0.id == id } })
+            guard
+                var detail = (details[id] ?? lock.withLock({ sessionList.first { $0.id == id } }))
+                    .map(onEngine)
             else { throw APIError.notFound("No session \(id)") }
             if let queued = lock.withLock({ pixieQueues[id] }) {
                 detail.queued = queued
@@ -487,6 +510,27 @@
             return try limits(asOf: Date() - 60)
         }
 
+        /// Codex's windows (B91), as its free plan has them: one of 30 days. Nothing while
+        /// it is not signed in, as the daemon has none.
+        func usageLimits(provider: String) async throws -> UsageLimits {
+            guard lock.withLock({ codexSignedIn }) == true else {
+                return UsageLimits(windows: [])
+            }
+            return try decode([
+                "windows": [
+                    [
+                        "utilization": 0.04, "resets_at": SampleData.iso(now + 29 * 86_400 + 3_600),
+                        "updated_at": SampleData.iso(now - 60), "minutes": 43_200,
+                        "label": "30 day",
+                    ]
+                ]
+            ])
+        }
+
+        func refreshUsage(provider: String) async throws -> UsageLimits {
+            try await usageLimits(provider: provider)
+        }
+
         func usageSettings() async throws -> UsageSettings {
             lock.withLock { usage }
         }
@@ -611,6 +655,48 @@
                     ] as [String: Any]
                 },
                 "updated_at": SampleData.iso(now),
+            ])
+        }
+
+        /// Codex's list as the daemon gives it, starting with `default` named after its model.
+        func models(provider: String) async throws -> ModelList {
+            try decode([
+                "models": [
+                    (
+                        "default", "Default (GPT-5.5 Codex)", "Codex's default model",
+                        ["low", "medium", "high"]
+                    ),
+                    (
+                        "gpt-5.5-codex", "GPT-5.5 Codex", "Tuned for coding",
+                        ["low", "medium", "high", "xhigh"]
+                    ),
+                    ("gpt-5.5-mini", "GPT-5.5 mini", "Faster and lighter", ["low", "medium"]),
+                ].map { value, name, description, levels in
+                    [
+                        "value": value, "display_name": name, "description": description,
+                        "effort_levels": levels, "supports_effort": true,
+                        "supports_auto_mode": true, "claude_code_effort": NSNull(),
+                    ] as [String: Any]
+                },
+                "updated_at": SampleData.iso(now),
+            ])
+        }
+
+        func providers(refresh: Bool) async throws -> ProviderList {
+            let signedIn = lock.withLock { codexSignedIn }
+            return ProviderList(providers: [
+                ProviderInfo(
+                    name: "claude", displayName: "Claude",
+                    account: ClaudeAccount(plan: "Claude Max")),
+                ProviderInfo(
+                    name: "codex", displayName: "Codex", signedIn: signedIn,
+                    signInHint: signedIn == false
+                        ? "Codex isn't signed in. Run `codex login` with a ChatGPT plan." : nil,
+                    account: signedIn == true ? ClaudeAccount(plan: "ChatGPT Plus") : nil,
+                    unsupported: [
+                        .rewind, .fork, .slashCommands, .stopTask, .withdraw, .planReview,
+                        .questions, .taskList, .memory, .pixieSkills,
+                    ]),
             ])
         }
 
@@ -1651,6 +1737,13 @@
                 "probes": [
                     "count": unit == .day ? 8 : 96, "tokens": unit == .day ? 3_200 : 38_400,
                 ],
+                // A fifth of the tokens on Codex (B91).
+                "engines": total == 0
+                    ? []
+                    : [
+                        ["provider": "claude", "tokens": total - total / 5, "sessions": 5],
+                        ["provider": "codex", "tokens": total / 5, "sessions": 2],
+                    ] as [[String: Any]],
             ]
         }
 

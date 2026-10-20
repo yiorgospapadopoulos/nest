@@ -1,15 +1,26 @@
 """Turn usage and the latest usage windows in SQLite.
 
-Turn rows stay when their session is deleted: the tokens were spent all the same.
+Turn rows stay when their session is deleted: the tokens were spent all the same. Each row
+keeps the engine its chat ran on, and each engine its own windows (B91).
 """
 
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from sqlite3 import Row
 
 from nestd.clock import Clock
-from nestd.providers.base import TokenUsage, UsageInfo
+from nestd.providers.base import TokenUsage, UsageInfo, UsageWindow
 from nestd.storage.db import Database
-from nestd.usage.models import LimitWindow, PeriodUnit, PeriodUsage, Turn, UsageLimits
+from nestd.usage.models import (
+    CLAUDE,
+    EngineLimits,
+    EngineLimitWindow,
+    LimitWindow,
+    PeriodUnit,
+    PeriodUsage,
+    Turn,
+    UsageLimits,
+    UsageProvider,
+)
 from nestd.usage.period import COMPONENTS, bar_walls, period_of, summarize, total
 
 # Wide enough for any stored time format, so every row in the period is read.
@@ -26,8 +37,9 @@ class UsageStore:
     async def record_turn(self, session_id: str, tokens: TokenUsage) -> None:
         columns = ", ".join(COMPONENTS)
         await self._db.execute(
-            f"INSERT INTO turn_usage (session_id, repo, ts, {columns})"  # noqa: S608
-            f" SELECT id, repo, ?, {', '.join('?' for _ in COMPONENTS)} FROM sessions WHERE id = ?",
+            f"INSERT INTO turn_usage (session_id, repo, provider, ts, {columns})"  # noqa: S608
+            f" SELECT id, repo, provider, ?, {', '.join('?' for _ in COMPONENTS)}"
+            " FROM sessions WHERE id = ?",
             (
                 self._clock.now().isoformat(),
                 *(getattr(tokens, name) for name in COMPONENTS),
@@ -42,8 +54,9 @@ class UsageStore:
         columns = ", ".join(COMPONENTS)
         larger = ", ".join(f"{name} = max({name}, excluded.{name})" for name in COMPONENTS)
         await self._db.execute(
-            f"INSERT INTO turn_usage (session_id, repo, ts, subagent, message_id, {columns})"  # noqa: S608
-            f" SELECT id, repo, ?, 1, ?, {', '.join('?' for _ in COMPONENTS)}"
+            "INSERT INTO turn_usage"  # noqa: S608
+            f" (session_id, repo, provider, ts, subagent, message_id, {columns})"
+            f" SELECT id, repo, provider, ?, 1, ?, {', '.join('?' for _ in COMPONENTS)}"
             " FROM sessions WHERE id = ?"
             " ON CONFLICT (session_id, message_id) WHERE message_id IS NOT NULL"
             f" DO UPDATE SET {larger}",
@@ -82,6 +95,7 @@ class UsageStore:
                 repo=row["repo"],
                 subagent=bool(row["subagent"]),
                 tokens=_tokens(row),
+                provider=row["provider"],
             )
             for row in await self._rows("turn_usage", edges[0], edges[-1])
         ]
@@ -98,36 +112,58 @@ class UsageStore:
         ]
 
     async def update_limits(self, info: UsageInfo) -> None:
-        """Keep the latest report of each window the engine included."""
+        """Keep the latest report of each window the engine included, as that engine's.
+        Windows by length (another engine's, B91) come whole and replace the engine's.
+        """
         now = self._clock.now().isoformat()
+        named = [(name, window, None) for name, window in _claude_windows(info)]
+        sized = [(_sized_name(w.minutes), w, w.minutes) for w in info.windows]
         async with self._db.transaction() as tx:
-            for name, window in (("five_hour", info.five_hour), ("seven_day", info.seven_day)):
-                if window is None:
-                    continue
+            if sized:
+                await tx.execute("DELETE FROM usage_limits WHERE provider = ?", (info.provider,))
+            for name, window, minutes in named + sized:
                 await tx.execute(
-                    "INSERT INTO usage_limits (name, utilization, resets_at, updated_at)"
-                    " VALUES (?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET"
+                    "INSERT INTO usage_limits"
+                    " (provider, name, utilization, resets_at, updated_at, minutes)"
+                    " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (provider, name) DO UPDATE SET"
                     " utilization = excluded.utilization, resets_at = excluded.resets_at,"
                     " updated_at = excluded.updated_at",
                     (
+                        info.provider,
                         name,
                         window.utilization,
                         None if window.resets_at is None else window.resets_at.isoformat(),
                         now,
+                        minutes,
                     ),
                 )
 
-    async def limits_updated_at(self) -> datetime | None:
+    async def limits_updated_at(self, provider: UsageProvider = CLAUDE) -> datetime | None:
         """When the engine last reported any window; None before the first report."""
         rows = await self._db.fetch_all(
-            "SELECT updated_at FROM usage_limits ORDER BY updated_at DESC LIMIT 1"
+            "SELECT updated_at FROM usage_limits WHERE provider = ?"
+            " ORDER BY updated_at DESC LIMIT 1",
+            (provider,),
         )
         return datetime.fromisoformat(rows[0]["updated_at"]) if rows else None
 
     async def limits(self) -> UsageLimits:
-        rows = await self._db.fetch_all("SELECT * FROM usage_limits")
+        """Claude's windows."""
+        rows = await self._db.fetch_all(
+            "SELECT name, utilization, resets_at, updated_at FROM usage_limits WHERE provider = ?",
+            (CLAUDE,),
+        )
         windows = {row["name"]: LimitWindow.model_validate(dict(row)) for row in rows}
         return UsageLimits(five_hour=windows.get("five_hour"), seven_day=windows.get("seven_day"))
+
+    async def engine_limits(self, provider: UsageProvider) -> EngineLimits:
+        """Another engine's windows by length, shortest first (B91)."""
+        rows = await self._db.fetch_all(
+            "SELECT utilization, resets_at, updated_at, minutes FROM usage_limits"
+            " WHERE provider = ? ORDER BY minutes IS NULL, minutes",
+            (provider,),
+        )
+        return EngineLimits(windows=[EngineLimitWindow.model_validate(dict(row)) for row in rows])
 
     async def _rows(self, table: str, start: datetime, end: datetime) -> list[Row]:
         return await self._db.fetch_all(
@@ -141,6 +177,16 @@ class UsageStore:
     def _aware(self, wall: datetime) -> datetime:
         # A naive time's astimezone() reads it in the system's zone, clock changes included.
         return wall.astimezone() if self._zone is None else wall.replace(tzinfo=self._zone)
+
+
+def _claude_windows(info: UsageInfo) -> list[tuple[str, UsageWindow]]:
+    pairs = (("five_hour", info.five_hour), ("seven_day", info.seven_day))
+    return [(name, window) for name, window in pairs if window is not None]
+
+
+def _sized_name(minutes: int | None) -> str:
+    """A window's key by its length; an engine reports one window of each."""
+    return "unsized" if minutes is None else f"{minutes}m"
 
 
 def _tokens(row: Row) -> TokenUsage:

@@ -1,7 +1,8 @@
 """The pixies each project chat calls (B46): recorded as the chat's run reports its calls,
 continued when tagged again, and shown as the chat's group.
 
-A call is an Agent call whose subagent is a pixie the run offers. Claude Code names the
+A call is an Agent call whose subagent is a pixie the run offers, or a call of Nest's
+call tool, which runs the pixie as a session of its own (B91). Claude Code names the
 subagent's agent id in the call's result (or its task's start); a SendMessage to that id
 continues the same agent with its context, as another call of that pixie that ends with
 its task. Pixie chats offer no pixies to record (`ChatAgents.pixies` is empty there).
@@ -39,6 +40,7 @@ from nestd.providers.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from nestd.providers.claude_tools import CALL_TOOL
 from nestd.sessions.errors import AgentCallNotFoundError
 from nestd.sessions.models import Session, SessionState
 from nestd.sessions.subagents import ChatAgents, OfferedPixie
@@ -239,8 +241,8 @@ class PixieCallLog:
         """`allowed` names the pixies the caller may call (None: any); the call guard
         refuses the others. A leader's calls of its members run in the foreground.
         """
-        if block.name in AGENT_TOOLS:
-            slug = block.input.get("subagent_type")
+        if block.name in AGENT_TOOLS or block.name == CALL_TOOL:
+            slug = block.input.get("subagent_type" if block.name in AGENT_TOOLS else "pixie")
             pixie = agents.pixies.get(slug) if isinstance(slug, str) else None
             if pixie is None or (allowed is not None and pixie.slug not in allowed):
                 return False

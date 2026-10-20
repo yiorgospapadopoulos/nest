@@ -7,6 +7,7 @@ import pytest
 
 from nestd.context import AppContext
 from nestd.pixies.agents import EDIT_TOOLS, PixieAgents
+from nestd.pixies.errors import PixieNotFoundError
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import (
     CreatePixie,
@@ -334,3 +335,133 @@ async def test_a_pixie_chat_records_no_pixies(ctx: AppContext, agents: PixieAgen
 
     assert list(offered.subagents) == ["other"]
     assert offered.pixies == {}
+
+
+# B91 stage 2: Codex takes no Nest-defined subagents, so a pixie on Codex, or any pixie a
+# Codex run calls, is called with the call_pixie tool and runs as its own session.
+
+
+async def test_a_claude_chat_calls_a_codex_pixie_with_the_call_tool(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    await ctx.pixies.create(CreatePixie(name="Helper"))
+    coder = await ctx.pixies.create(CreatePixie(name="Coder", provider="codex"))
+
+    offered = await agents.for_session(chat())
+
+    assert offered.tool_calls == {"coder": coder.id}
+    assert list(offered.engine_subagents) == ["helper"]
+    # Its definition is still known, for its fingerprint and its description.
+    assert list(offered.subagents) == ["helper", "coder"]
+    assert offered.rules is not None
+    assert offered.rules.main == frozenset({"helper", "coder"})
+
+
+async def test_a_codex_chat_calls_every_pixie_with_the_call_tool(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lead, bugs = [await ctx.pixies.create(CreatePixie(name=n)) for n in ("Lead", "Bugs")]
+    for pixie in (lead, bugs):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+    codex_chat = chat().model_copy(update={"provider": "codex"})
+
+    offered = await agents.for_session(codex_chat)
+
+    assert offered.tool_calls == {"lead": lead.id, "bugs": bugs.id}
+    assert dict(offered.engine_subagents) == {}
+    assert offered.teams[0].instruction == (
+        "\n\n(The user called the team @qa, a team of pixies set up in Nest. Hand the whole"
+        " request to its leader, the pixie lead, with the call_pixie tool and wait for its"
+        " report. The leader decides which member does which part, calls them itself and puts"
+        " their results together. Do not call its members (bugs) yourself. When it"
+        " reports, give its report and add a short summary of what happened.)"
+    )
+    # A Claude leader calls its Claude members as its own subagents in its own session.
+    assert "(call with call_pixie)" not in offered.subagents["lead"].prompt
+    assert offered.fingerprint != (await agents.for_session(chat())).fingerprint
+
+
+async def test_a_claude_leader_calls_its_codex_members_with_the_call_tool(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lead = await ctx.pixies.create(CreatePixie(name="Lead", soul="You lead."))
+    bugs = await ctx.pixies.create(CreatePixie(name="Bugs", soul="You find bugs."))
+    coder = await ctx.pixies.create(CreatePixie(name="Coder", soul="You code.", provider="codex"))
+    for pixie in (lead, bugs, coder):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+
+    offered = await agents.for_session(chat())
+    prompt = offered.subagents["lead"].prompt
+
+    assert offered.tool_calls == {"coder": coder.id}
+    assert "- bugs: Bugs: You find bugs.\n- coder (call with call_pixie): Coder: You code.\n" in (
+        prompt
+    )
+    assert prompt.endswith(
+        " subagents. Call a member marked (call with call_pixie) with the call_pixie tool"
+        " instead, with `pixie` set to its slug, and wait for its report."
+    )
+    assert offered.rules is not None
+    assert offered.rules.leaders == {"lead": frozenset({"bugs", "coder"})}
+
+
+async def test_a_called_leaders_own_session_calls_its_members(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lead = await ctx.pixies.create(CreatePixie(name="Lead", provider="codex"))
+    bugs, docs = [await ctx.pixies.create(CreatePixie(name=n)) for n in ("Bugs", "Docs")]
+    for pixie in (lead, bugs, docs):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+    solo = await ctx.pixies.create(CreatePixie(name="Solo"))
+    called = chat(f"pixie:{lead.id}").model_copy(
+        update={"pixie_id": lead.id, "called_by": "s0", "provider": "codex"}
+    )
+    called_solo = chat(f"pixie:{solo.id}").model_copy(
+        update={"pixie_id": solo.id, "called_by": "s0"}
+    )
+
+    offered = await agents.for_session(called)
+    alone = await agents.for_session(called_solo)
+
+    assert offered.tool_calls == {"bugs": bugs.id, "docs": docs.id}
+    assert offered.rules == CallRules(frozenset({"bugs", "docs"}), frozenset({"bugs", "docs"}))
+    assert offered.teams == ()
+    assert offered.pixies == {
+        "bugs": OfferedPixie(bugs.id, "bugs", "Bugs", team.id, "qa"),
+        "docs": OfferedPixie(docs.id, "docs", "Docs", team.id, "qa"),
+    }
+    assert alone.subagents == {}
+    assert alone.rules == CallRules()
+
+
+async def test_a_called_pixies_prompt_is_its_call_prompt(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lead = await ctx.pixies.create(CreatePixie(name="Lead", soul="You lead.", provider="codex"))
+    bugs = await ctx.pixies.create(CreatePixie(name="Bugs", soul="You find bugs."))
+    for pixie in (lead, bugs):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+    solo = await ctx.pixies.create(CreatePixie(name="Solo"))
+
+    led = await agents.called_prompt(await ctx.pixies.get(lead.id))
+    alone = await agents.called_prompt(solo)
+
+    assert led.startswith(CALL_PREAMBLE.format(name="Lead", slug="lead") + "\n\n")
+    assert "- bugs (call with call_pixie): Bugs: You find bugs.\n" in led
+    assert alone.startswith(
+        CALL_PREAMBLE.format(name="Solo", slug="solo") + "\n" + NO_PIXIE_CALLS + "\n\n"
+    )
+
+
+async def test_a_called_pixie_without_its_folder_has_no_prompt(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    gone = await ctx.pixies.create(CreatePixie(name="Gone"))
+    shutil.rmtree(ctx.paths.pixies_dir / gone.id)
+
+    with pytest.raises(PixieNotFoundError):
+        await agents.called_prompt(gone)

@@ -145,6 +145,10 @@ import Testing
         #expect(hit.glyph == .message(.assistant))
         #expect(hit.snippet.filter(\.matched).map(\.text) == ["form", "JSON"])
         #expect(palette.messages[2].subtitle == "llm-hunter · Claude Code chat")
+        // A Codex chat's answers say Codex (B91).
+        var codex = palette
+        codex.show(SearchFixture.results, for: "form") { $0 == "s1" ? "Codex" : "Claude" }
+        #expect(codex.messages[1].subtitle == "cv-page · Codex")
         let titles = ["Validate the form"] + palette.messages.map(\.title)
         #expect(palette.visible.map(\.title) == titles)
         palette.move(by: 2)

@@ -124,6 +124,14 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             _ = try await $0.createSession(CreateSessionRequest(repo: "cv-page", prompt: "Go"))
         },
         RouteCase(
+            "POST", "/api/sessions",
+            body: #"{"attachment_ids":[],"prompt":"Go","provider":"codex","repo":"cv-page"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(repo: "cv-page", prompt: "Go", provider: "codex"))
+        },
+        RouteCase(
             "PATCH", "/api/sessions/s1",
             body:
                 #"{"archived":true,"model":"haiku","permission_mode":"default","pinned":true,"title":"New"}"#,
@@ -171,6 +179,15 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         ) { _ = try await $0.search(query: "zod", repo: "cv-page", limit: 5) },
         RouteCase("GET", "/api/models", response: Fixture.text("models")) {
             _ = try await $0.models()
+        },
+        RouteCase("GET", "/api/models?provider=codex", response: Fixture.text("models")) {
+            _ = try await $0.models(provider: "codex")
+        },
+        RouteCase("GET", "/api/providers", response: #"{"providers": []}"#) {
+            _ = try await $0.providers(refresh: false)
+        },
+        RouteCase("GET", "/api/providers?refresh=true", response: #"{"providers": []}"#) {
+            _ = try await $0.providers(refresh: true)
         },
         RouteCase(
             "GET", "/api/account",
@@ -467,6 +484,16 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("POST", "/api/usage/refresh", response: Fixture.text("usage_limits")) {
             _ = try await $0.refreshUsage()
+        },
+        RouteCase(
+            "GET", "/api/usage/limits?provider=codex", response: Fixture.text("usage_limits")
+        ) {
+            _ = try await $0.usageLimits(provider: "codex")
+        },
+        RouteCase(
+            "POST", "/api/usage/refresh?provider=codex", response: Fixture.text("usage_limits")
+        ) {
+            _ = try await $0.refreshUsage(provider: "codex")
         },
         RouteCase("GET", "/api/usage/settings", response: #"{"refresh_minutes": 3}"#) {
             _ = try await $0.usageSettings()
@@ -1037,6 +1064,24 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         #expect(
             await failure(409, #"{"detail": "Too late", "code": "message_taken"}"#)
                 == .messageTaken("Too late"))
+        #expect(
+            await failure(409, #"{"detail": "Run codex login.", "code": "codex_not_signed_in"}"#)
+                == .notSignedIn("Run codex login."))
+        #expect(
+            await failure(
+                409,
+                #"{"detail": "A Codex chat cannot be forked.", "code": "unsupported_feature", "provider": "codex", "feature": "fork"}"#
+            ) == .unsupportedFeature("A Codex chat cannot be forked.", feature: .fork))
+        // Without the daemon's words, the feature says it; an unknown one reads as unknown.
+        #expect(
+            await failure(
+                409,
+                #"{"code": "unsupported_feature", "provider": "codex", "feature": "stop_task"}"#)
+                == .unsupportedFeature(
+                    "A Codex chat cannot stop a single task.", feature: .stopTask))
+        #expect(
+            await failure(409, #"{"code": "unsupported_feature", "feature": "teleport"}"#)
+                == .unsupportedFeature("This chat cannot do that.", feature: .unknown))
         #expect(APIError.messageTaken("Too late").isConflict)
         #expect(APIError.messageTaken("Too late").message == "Too late")
         #expect(
@@ -1146,6 +1191,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             .gitFailed("a", step: "s", stderr: ""), .badGateway("a"),
             .server(status: 500, detail: "a"),
             .transport("a"), .decoding("a"), .approveRefused("a", reason: .headChanged),
+            .notSignedIn("a"), .unsupportedFeature("a", feature: .rewind),
         ]
         #expect(errors.map(\.message) == Array(repeating: "a", count: errors.count))
         #expect(

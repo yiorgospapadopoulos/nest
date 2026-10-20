@@ -2,8 +2,9 @@ import Foundation
 
 /// The usage chip at the top right of the tab strip, as MonoCode's footer chip shows a
 /// provider's limits: each window as "30% 2h 5m" (used, then the time to its reset), a
-/// bar for the 5-hour window (the weekly one when no 5-hour window is reported), and a
-/// tooltip naming each window and its reset.
+/// bar for the shortest window reported (Claude's 5-hour one, else its weekly one), and a
+/// tooltip naming each window and its reset. Another engine's windows are its own, by
+/// length (B91): Codex's free plan has one of 30 days.
 public struct UsageChip: Sendable, Equatable {
     public enum Tone: Sendable, Equatable {
         /// Under 80 percent used.
@@ -22,21 +23,23 @@ public struct UsageChip: Sendable, Equatable {
     }
 
     public let entries: [Entry]
-    /// The 5-hour window's used fraction, else the weekly one's, 0 to 1.
+    /// The shortest reported window's used fraction, 0 to 1.
     public let used: Double
 
     public var tone: Tone { Self.tone(used: used) }
     public var tooltip: String { entries.map(\.tooltip).joined(separator: ". ") }
 
-    /// Nil before Claude reported any window.
+    /// Nil before the engine reported any window.
     public static func of(_ limits: UsageLimits?, now: Date) -> UsageChip? {
-        let windows = [(limits?.fiveHour, "5h", "5-hour"), (limits?.sevenDay, "wk", "Weekly")]
-            .compactMap { window, size, name in window.map { ($0, size, name) } }
+        let windows = (limits?.rows ?? []).compactMap { row in
+            row.window.map { ($0, row.size, row.name) }
+        }
         guard let barWindow = windows.first?.0 else { return nil }
         let entries = windows.map { window, size, name in
             let percent = "\(Int((clamped(window.utilization) * 100).rounded()))%"
             guard let resetsAt = window.resetsAt else {
-                return Entry(text: "\(percent) \(size)", tooltip: "\(name): \(percent)")
+                let text = size.isEmpty ? percent : "\(percent) \(size)"
+                return Entry(text: text, tooltip: "\(name): \(percent)")
             }
             let left = duration(resetsAt.timeIntervalSince(now))
             let countdown = left == "now" ? "resets now" : "resets in \(left)"

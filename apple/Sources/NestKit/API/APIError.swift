@@ -15,6 +15,10 @@ public enum APIError: Error, Sendable, Equatable {
     case invalidInput(String)
     /// The message calls a pixie of a team on its own, which only its team may (B46).
     case pixieInTeam(String)
+    /// The chat's engine is not signed in, such as Codex before `codex login` (B91).
+    case notSignedIn(String)
+    /// The chat's engine cannot do this, such as forking a Codex chat (B91).
+    case unsupportedFeature(String, feature: ProviderFeature)
     case payloadTooLarge(String)
     case rateLimited(String, retryAfter: Int?)
     /// A local app (VS Code) is not installed.
@@ -37,7 +41,8 @@ public enum APIError: Error, Sendable, Equatable {
             "The file changed since you opened it."
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail),
             .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail),
-            .pixieInTeam(let detail), .payloadTooLarge(let detail),
+            .pixieInTeam(let detail), .payloadTooLarge(let detail), .notSignedIn(let detail),
+            .unsupportedFeature(let detail, _),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
             .gitFailed(let detail, _, _), .badGateway(let detail), .server(_, let detail),
             .transport(let detail), .decoding(let detail), .approveRefused(let detail, _, _):
@@ -70,6 +75,14 @@ public enum APIError: Error, Sendable, Equatable {
             return .openInClaudeCode(detail)
         case 409 where body["code"]?.stringValue == "message_taken":
             return .messageTaken(detail)
+        case 409 where body["code"]?.stringValue == "codex_not_signed_in":
+            return .notSignedIn(detail)
+        case 409 where body["code"]?.stringValue == "unsupported_feature":
+            let feature =
+                body["feature"]?.stringValue.flatMap(ProviderFeature.init(rawValue:)) ?? .unknown
+            let chat = body["provider"]?.stringValue.map { "A \($0.capitalized) chat" }
+            let words = "\(chat ?? "This chat") cannot \(feature.refusal)."
+            return .unsupportedFeature(detailText(body["detail"]) ?? words, feature: feature)
         case 409:
             if body["code"]?.stringValue == "stale_file", let text = body["text"]?.stringValue,
                 let hash = body["hash"]?.stringValue

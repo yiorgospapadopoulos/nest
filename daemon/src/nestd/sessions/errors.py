@@ -87,3 +87,36 @@ class PixieInTeamError(InvalidInputError):
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code}
+
+
+# What a chat on another engine cannot do, as the refusal says it (B91).
+_FEATURE_WORDS: dict[str, str] = {
+    "rewind": "be rewound",
+    "fork": "be forked",
+    "stop_task": "stop a single background task",
+    "memory": "save a memory to CLAUDE.md",
+    "pixie_skills": "be limited to chosen skills",
+}
+# What lacks the feature, when it is not a chat.
+_FEATURE_SUBJECTS: dict[str, str] = {"pixie_skills": "pixie"}
+
+
+class UnsupportedFeatureError(ConflictError):
+    """The session's engine lacks the feature, so clients hide it (B91)."""
+
+    code = "unsupported_feature"
+
+    def __init__(self, provider: str, feature: str) -> None:
+        self.provider = provider
+        self.feature = feature
+        words = _FEATURE_WORDS.get(feature, f"use {feature}")
+        subject = _FEATURE_SUBJECTS.get(feature, "chat")
+        super().__init__(f"A {provider.capitalize()} {subject} cannot {words}.")
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {
+            "detail": str(self),
+            "code": self.code,
+            "provider": self.provider,
+            "feature": self.feature,
+        }
