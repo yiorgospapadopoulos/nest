@@ -29,13 +29,32 @@ final class BlockDecoration: NSObject {
 
 /// Read-only text that selects across paragraphs and copies with Cmd+C, sized to its
 /// content for a SwiftUI stack. `key` identifies the content: the text is rebuilt only
-/// when it changes, so redraws keep the selection.
+/// when it changes, so redraws keep the selection. The built text and its measured sizes
+/// are shared through `SelectableTextCache`, by the call site and `key`.
 struct SelectableText: NSViewRepresentable {
     let key: String
     /// Shrinks to the longest line instead of taking the offered width (chat bubbles).
     var hugsWidth = false
     var linkColor: NSColor = .linkColor
+    /// The call site and key, as two sites may style the same text differently; or, for
+    /// text that `SelectableTextCache.warm` prepares ahead, its kind and key.
+    let cacheID: String
+    /// The kind whose offered width is noted, for preparing that kind ahead.
+    let kind: String?
     let build: () -> NSAttributedString
+
+    init(
+        key: String, hugsWidth: Bool = false, linkColor: NSColor = .linkColor,
+        kind: String? = nil, file: String = #fileID, line: Int = #line,
+        build: @escaping () -> NSAttributedString
+    ) {
+        self.key = key
+        self.hugsWidth = hugsWidth
+        self.linkColor = linkColor
+        self.kind = kind
+        cacheID = SelectableTextCache.id(kind: kind ?? "\(file):\(line)", key: key)
+        self.build = build
+    }
 
     final class Coordinator {
         var key: String?
@@ -54,16 +73,97 @@ struct SelectableText: NSViewRepresentable {
         ]
         guard context.coordinator.key != key else { return }
         context.coordinator.key = key
-        view.setContent(build())
+        view.setContent(SelectableTextCache.text(cacheID, build: build), cacheID: cacheID)
     }
 
     func sizeThatFits(
         _ proposal: ProposedViewSize, nsView view: MessageTextView, context: Context
     ) -> CGSize? {
         let offered = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+        if let kind, let offered {
+            SelectableTextCache.noteWidth(offered, of: kind)
+        }
         let size = view.fit(width: offered ?? 100_000)
         guard let offered, !hugsWidth else { return size }
         return CGSize(width: offered, height: size.height)
+    }
+}
+
+/// Built text and measured sizes shared by every `SelectableText`. The lazy transcript
+/// makes a new text view each time a message scrolls back into view; parsing and laying
+/// out its text again on that frame made scrolling stutter.
+@MainActor enum SelectableTextCache {
+    final class Measured: NSObject {
+        let size: CGSize
+        let topOverflow: CGFloat
+
+        init(size: CGSize, topOverflow: CGFloat) {
+            self.size = size
+            self.topOverflow = topOverflow
+        }
+    }
+
+    private static let texts: NSCache<NSString, NSAttributedString> = {
+        let cache = NSCache<NSString, NSAttributedString>()
+        cache.countLimit = 2_000
+        return cache
+    }()
+    private static let sizes: NSCache<NSString, Measured> = {
+        let cache = NSCache<NSString, Measured>()
+        cache.countLimit = 4_000
+        return cache
+    }()
+
+    /// The width each kind was last offered, to measure its texts at ahead of time.
+    private static var widths: [String: CGFloat] = [:]
+    /// Lays out the texts that `warm` prepares, never shown.
+    private static let scratch = MessageTextView.make()
+
+    static func id(kind: String, key: String) -> String { "\(kind)\n\(key)" }
+
+    static func noteWidth(_ width: CGFloat, of kind: String) {
+        widths[kind] = width
+    }
+
+    /// Builds and measures texts of `kind` before they scroll into view, a few at a time
+    /// between frames, so that a fast scroll through a chat just opened finds them ready.
+    /// Waits for a text of the kind to lay out first, to learn its width.
+    static func warm(_ keys: [String], kind: String, build: (String) -> NSAttributedString)
+        async
+    {
+        for _ in 0..<40 where widths[kind] == nil {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        for (index, key) in keys.enumerated() {
+            guard !Task.isCancelled else { return }
+            let id = id(kind: kind, key: key)
+            let text = text(id) { build(key) }
+            if let width = widths[kind], size(id, width: width) == nil {
+                scratch.setContent(text, cacheID: id)
+                _ = scratch.fit(width: width)
+            }
+            if index % 4 == 3 {
+                // Leaves the main thread free for the frames in between.
+                try? await Task.sleep(for: .milliseconds(4))
+            }
+        }
+    }
+
+    static func text(_ id: String, build: () -> NSAttributedString) -> NSAttributedString {
+        if let text = texts.object(forKey: id as NSString) {
+            return text
+        }
+        let text = build()
+        texts.setObject(text, forKey: id as NSString)
+        return text
+    }
+
+    static func size(_ id: String, width: CGFloat) -> Measured? {
+        sizes.object(forKey: "\(width)\n\(id)" as NSString)
+    }
+
+    static func store(_ measured: Measured, _ id: String, width: CGFloat) {
+        sizes.setObject(measured, forKey: "\(width)\n\(id)" as NSString)
     }
 }
 
@@ -93,6 +193,8 @@ final class MessageTextView: NSTextView {
     private let measuringContainer = NSTextContainer()
     private var measured: [CGFloat: CGSize] = [:]
     private var topOverflow: CGFloat = 0
+    /// The content's id in `SelectableTextCache`, for its shared sizes.
+    private var cacheID: String?
 
     static func make() -> MessageTextView {
         let storage = NSTextStorage()
@@ -118,8 +220,9 @@ final class MessageTextView: NSTextView {
         return view
     }
 
-    func setContent(_ text: NSAttributedString) {
+    func setContent(_ text: NSAttributedString, cacheID: String? = nil) {
         textStorage?.setAttributedString(text)
+        self.cacheID = cacheID
         measured = [:]
         needsDisplay = true
     }
@@ -128,6 +231,11 @@ final class MessageTextView: NSTextView {
     func fit(width: CGFloat) -> CGSize {
         if let size = measured[width] {
             return size
+        }
+        if let cacheID, let shared = SelectableTextCache.size(cacheID, width: width) {
+            topOverflow = shared.topOverflow
+            measured[width] = shared.size
+            return shared.size
         }
         measuringContainer.size = NSSize(
             width: max(width, 1), height: CGFloat.greatestFiniteMagnitude)
@@ -140,6 +248,10 @@ final class MessageTextView: NSTextView {
         let bottom = max(used.maxY, blocks.map(\.rect.maxY).max() ?? 0)
         let size = CGSize(width: ceil(used.width) + 1, height: ceil(topOverflow + bottom))
         measured[width] = size
+        if let cacheID {
+            SelectableTextCache.store(
+                .init(size: size, topOverflow: topOverflow), cacheID, width: width)
+        }
         return size
     }
 
