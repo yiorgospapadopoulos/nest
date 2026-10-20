@@ -70,7 +70,6 @@ struct TabStrip: View {
             UsageButton()
                 .fixedSize()
                 .padding(.trailing, 6)
-                .padding(.bottom, Self.centredOnStrip(UsageChipStyle.height))
             SearchButton()
                 .fixedSize()
                 .padding(.bottom, Self.centred(on: Self.fieldHeight))
@@ -326,62 +325,125 @@ extension ProjectIcon {
     }
 }
 
-/// The usage chip, MonoCode's: Claude's mark, a 32 by 4 point bar for the 5-hour window
-/// (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used, then the
-/// time to its reset). Its tooltip names each window and its reset; a click opens the
-/// usage popover, which has the Refresh control (B72).
+/// The usage chip, MonoCode's: an engine's mark, a 32 by 4 point bar for the 5-hour
+/// window (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used,
+/// then the time to its reset). With Codex signed in too (B91), a line per engine, one
+/// above the other in the same chip. Its tooltip names each window and its reset; a click
+/// opens the usage popover, which has the Refresh control (B72).
 private struct UsageButton: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let usage = shell.model.usage
         TimelineView(.everyMinute) { context in
-            let chip = UsageChip.of(usage.limits, now: context.date)
+            let lines = usage.meter(providers: shell.providers, now: context.date)
+            let stacked = lines.count > 1
+            let height = stacked ? UsageChipStyle.stackedHeight : UsageChipStyle.height
             Button {
                 shell.toggle(.usage)
             } label: {
-                HStack(spacing: 6) {
-                    ClaudeMark(size: 12)
-                    if let chip {
-                        UsageBar(chip: chip)
-                        entries(chip)
-                    } else {
-                        Text("···").foregroundStyle(Ink.content(0.35))
-                    }
+                if stacked {
+                    StackedMeter(lines: lines)
+                } else {
+                    MeterLine(line: lines[0])
                 }
             }
-            .buttonStyle(UsageChipStyle())
-            .help(chip?.tooltip ?? "Usage details")
+            .buttonStyle(UsageChipStyle(height: height))
+            .help(stacked ? usage.meterTooltip(lines) : lines[0].chip?.tooltip ?? "Usage details")
             .accessibilityLabel(
-                chip.map { "Claude usage: \($0.tooltip)" } ?? "Claude usage details"
+                stacked
+                    ? "Usage: \(usage.meterTooltip(lines))"
+                    : lines[0].chip.map { "Claude usage: \($0.tooltip)" } ?? "Claude usage details"
             )
-            .font(.ui(11))
+            .font(.ui(stacked ? 10 : 11))
             .monospacedDigit()
+            .padding(.bottom, TabStrip.centredOnStrip(height))
         }
     }
+}
 
-    private func entries(_ chip: UsageChip) -> some View {
-        HStack(spacing: 4) {
-            ForEach(Array(chip.entries.enumerated()), id: \.offset) { index, entry in
-                if index > 0 {
-                    Text("·").foregroundStyle(Ink.content(0.25))
+/// One engine's line: its mark, the bar and its windows, or dots before it reported any.
+private struct MeterLine: View {
+    let line: UsageMeterLine
+
+    var body: some View {
+        HStack(spacing: 6) {
+            EngineMark(provider: line.provider, size: 12)
+            if let chip = line.chip {
+                UsageBar(chip: chip)
+                HStack(spacing: 4) {
+                    ForEach(Array(chip.entries.enumerated()), id: \.offset) { index, entry in
+                        if index > 0 {
+                            Text("·").foregroundStyle(Ink.content(0.25))
+                        }
+                        Text(entry.text)
+                    }
                 }
-                Text(entry.text)
+            } else {
+                Text("···").foregroundStyle(Ink.content(0.35))
             }
         }
     }
 }
 
-/// The 32 by 4 point bar: a 10 percent track, filled to the 5-hour window's use.
+/// Two or more engines' lines one above the other (B91), their bars and windows in
+/// columns: mark, bar, short window, dot, weekly window.
+private struct StackedMeter: View {
+    let lines: [UsageMeterLine]
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 5, verticalSpacing: 0) {
+            ForEach(lines) { line in
+                GridRow {
+                    EngineMark(provider: line.provider, size: 10)
+                    if let chip = line.chip {
+                        UsageBar(chip: chip, height: 3)
+                        Text(chip.entries[0].text)
+                        if chip.entries.count > 1 {
+                            Text("·").foregroundStyle(Ink.content(0.25))
+                            Text(chip.entries[1].text)
+                        }
+                    } else {
+                        Text("···").foregroundStyle(Ink.content(0.35))
+                            .gridCellColumns(4)
+                    }
+                }
+                .frame(height: 13)
+            }
+        }
+    }
+}
+
+/// An engine's small mark: Claude's starburst, else a terminal glyph (Codex runs as a
+/// command line agent), in the chip's grey.
+private struct EngineMark: View {
+    let provider: String
+    let size: Double
+
+    var body: some View {
+        if provider == ProviderInfo.claude {
+            ClaudeMark(size: size)
+        } else {
+            Image(systemName: Icon.terminal)
+                .font(.system(size: size - 1, weight: .medium))
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// The 32 by 4 point bar (3 points tall when stacked): a 10 percent track, filled to the
+/// 5-hour window's use.
 private struct UsageBar: View {
     let chip: UsageChip
+    var height = 4.0
 
     var body: some View {
         Capsule()
             .fill(Ink.content(0.1))
-            .frame(width: 32, height: 4)
+            .frame(width: 32, height: height)
             .overlay(alignment: .leading) {
-                Capsule().fill(fill).frame(width: 32 * chip.used, height: 4)
+                Capsule().fill(fill).frame(width: 32 * chip.used, height: height)
             }
             .clipShape(Capsule())
     }
@@ -396,17 +458,19 @@ private struct UsageBar: View {
     }
 }
 
-/// The chip itself: 20 points tall, text at 55 percent, full strength over a 10 percent
-/// fill while hovered.
+/// The chip itself: 20 points tall (30 with two engines' lines), text at 55 percent, full
+/// strength over a 10 percent fill while hovered.
 private struct UsageChipStyle: ButtonStyle {
     static let height = 20.0
+    static let stackedHeight = 30.0
+    var height = Self.height
 
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
                 .foregroundStyle(Ink.content(hovering ? 1 : 0.55))
                 .padding(.horizontal, 4)
-                .frame(height: Self.height)
+                .frame(height: height)
                 .background(hovering ? Ink.content(0.1) : .clear, in: .rounded(4))
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .contentShape(Rectangle())

@@ -162,6 +162,15 @@ private struct PaneHeader: View {
                 StatusLabel(tone: tone, label: status, showsLabel: false)
                     .help(status)
             }
+            if let engine = shell.providers.label(for: session) {
+                // Only for a chat off Claude, the default (B91).
+                Text(engine)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("Runs on \(engine)")
+            }
             if let session,
                 let startedBy = PixieLabels.startedBy(
                     session, pixies: shell.pixies.pixies)
