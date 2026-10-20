@@ -202,6 +202,8 @@ final class Shell {
     var chatPixies: ChatPixiesStore { model.chatPixies }
     var shortcuts: ShortcutsStore { model.shortcuts }
     var artifacts: ArtifactsStore { model.artifacts }
+    /// The projects' branch maps (B96).
+    var branchMaps: BranchMapStore { model.branchMaps }
 
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
@@ -809,6 +811,11 @@ final class Shell {
         return draft
     }
 
+    /// A new chat that works where a branch map row is (B96, A8), as New chat opens one.
+    func newChat(at choice: NewChatChoice) {
+        newChat().place = choice
+    }
+
     /// The empty workspace's composer (B39): a new chat's draft for the current project,
     /// with the new-chat defaults; its first message opens the chat in a pane.
     var startDraftID: String { "\(Self.draftPrefix)start-\(project ?? "")" }
@@ -831,7 +838,7 @@ final class Shell {
         draft.model = choices.model
         draft.effort = choices.effort
         draft.permission = choices.permission
-        draft.mode = repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode
+        draft.place = NewChatChoice(mode: repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode)
     }
 
     /// A plain folder's Init: a new chat with the git setup request written, not sent.
@@ -1155,13 +1162,14 @@ final class Shell {
         from draftID: String, draft: ComposerDraft, prompt: String, attachments: [String]
     ) async throws -> String {
         guard let repo = project else { return draftID }
-        let place = NewChatPlace(mode: draft.mode, typed: draft.branchName, repo: app.repo(repo))
+        let place = NewChatPlace(draft.place, typed: draft.branchName, repo: app.repo(repo))
         let request = CreateSessionRequest(
             repo: repo, prompt: prompt, mode: place.mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments,
             // The engine is always named: the daemon's own default may be another (B94).
             base: place.base, branch: place.branch,
-            provider: draft.provider ?? ProviderInfo.claude)
+            provider: draft.provider ?? ProviderInfo.claude, worktreePath: place.worktreePath,
+            onBranch: place.onBranch)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1801,9 +1809,11 @@ final class Shell {
     // MARK: Pull requests
 
     /// Merges a green pull request; the daemon closes the chat and removes its worktree.
-    func merge(_ approval: Approval, method: MergeMethod = .squash) {
+    /// The branch is deleted on GitHub only when the user ticked it.
+    func merge(_ approval: Approval, method: MergeMethod = .squash, deleteBranch: Bool = false) {
         run("Could not merge") {
-            let session = try await self.approvals.merge(approval, method: method)
+            let session = try await self.approvals.merge(
+                approval, method: method, deleteBranch: deleteBranch)
             self.sessions.insert(session)
             self.show("Merged \(approval.title)", kind: .done)
         }
@@ -1993,7 +2003,8 @@ final class ComposerDraft {
     var model: String?
     var effort: Effort?
     var permission = PermissionMode.default
-    var mode: SessionMode?
+    /// Where the chat works (B55, B96).
+    var place = NewChatChoice.inPlace
     /// A new worktree's branch name; blank lets the daemon name it.
     var branchName = ""
     /// The caret and selection in the field.
