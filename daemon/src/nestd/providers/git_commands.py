@@ -1,4 +1,5 @@
-"""Whether a shell command line could commit, push, or open or merge a pull request (D049).
+"""Whether a shell command line could push, or open or merge a pull request (D049).
+Commits are allowed (pixies may commit, 2026-10-21).
 
 The line is read the way a shell reads it: `shlex` resolves quotes and escapes, `;`, `&`,
 `|`, `(`, `)`, `<`, `>`, newlines and backticks separate commands, and `#` starts nothing.
@@ -14,10 +15,10 @@ subcommand is enough. Denied when uncertain: a line that cannot be parsed (unbal
 quotes), one that builds words at run time (`$`, backticks) and names a write subcommand,
 or git with an unknown global option followed by a write subcommand.
 
-Read-only commands that mention the words elsewhere (`git log --grep commit`,
-`git diff src/commit.ts`, `git stash push`) are allowed. Accepted false positives: text that
-merely mentions a blocked command (`echo "git push"`), and `$` lines that name commit or
-push for something else (`docker push $IMAGE`).
+Read-only commands that mention the words elsewhere (`git log --grep push`,
+`git diff src/push.ts`, `git stash push`) are allowed. Accepted false positives: text that
+merely mentions a blocked command (`echo "git push"`), and `$` lines that name push for
+something else (`docker push $IMAGE`).
 """
 
 import re
@@ -25,8 +26,8 @@ import shlex
 from collections.abc import Sequence
 from posixpath import basename
 
-# Subcommands that create commits or send them to a remote.
-GIT_WRITES = frozenset({"commit", "commit-tree", "push", "send-pack", "http-push"})
+# Subcommands that send commits to a remote.
+GIT_WRITES = frozenset({"push", "send-pack", "http-push"})
 _DASHED_WRITES = frozenset(f"git-{name}" for name in GIT_WRITES)
 # `gh pr new` is gh's own alias of `gh pr create`.
 _GH_PR_WRITES = frozenset({"create", "merge", "new"})
@@ -48,8 +49,8 @@ _SEPARATOR = re.compile(r"^[;&|()<>]+$")
 # A word with any of these may hold a command line of its own.
 _NESTED = re.compile(r"[\s;&|()<>`$]")
 _DYNAMIC = re.compile(r"[$`]")
-_WRITE_WORD = re.compile(r"\b(?:commit|push|send-pack|http-push)\b", re.IGNORECASE)
-_GIT_MENTION = re.compile(r"\bgit\b.*?\b(?:commit|push|send-pack|http-push)\b", re.I | re.S)
+_WRITE_WORD = re.compile(r"\b(?:push|send-pack|http-push)\b", re.IGNORECASE)
+_GIT_MENTION = re.compile(r"\bgit\b.*?\b(?:push|send-pack|http-push)\b", re.I | re.S)
 _GH_MENTION = re.compile(r"\bgh\b.*?\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
 _GH_DYNAMIC = re.compile(r"\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
 
@@ -138,7 +139,7 @@ def _subcommand_writes(subcommand: str, tail: Sequence[str]) -> bool:
     lowered = [word.lower() for word in tail]
     if subcommand == "subtree":
         return "push" in lowered
-    # Defining an alias that commits or pushes, to run it later.
+    # Defining an alias that pushes, to run it later.
     return (
         subcommand == "config"
         and any(word.startswith(_ALIAS_PREFIX) for word in lowered)

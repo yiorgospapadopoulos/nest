@@ -10,57 +10,57 @@ from nestd.providers.git_guard import (
 )
 
 BLOCKED = [
-    "git commit -m 'x'",
+    "git push -m 'x'",
     "git push",
     "git push origin main --force",
-    "cd sub && git commit --allow-empty -m b",
+    "cd sub && git push --allow-empty -m b",
     "true; git push",
-    "ls | xargs git commit -m x",
-    "sh -c 'git commit --allow-empty -m c'",
+    "ls | xargs git push -m x",
+    "sh -c 'git push --allow-empty -m c'",
     'bash -lc "git push origin HEAD"',
-    "git -c user.name=x commit --allow-empty -m d",
+    "git -c user.name=x push --allow-empty -m d",
     "git -C /tmp/repo push",
-    "git --no-pager -c a=b -C dir commit",
-    "git --git-dir /x/.git --work-tree /x commit -am y",
+    "git --no-pager -c a=b -C dir push",
+    "git --git-dir /x/.git --work-tree /x push -am y",
     "git --git-dir=/x/.git push",
-    "/usr/bin/git commit -m x",
-    "env GIT_AUTHOR_NAME=x git commit",
+    "/usr/bin/git push -m x",
+    "env GIT_AUTHOR_NAME=x git push",
     "sudo git push",
-    "git 'commit' -m quoted",
-    "echo $(git commit -m inline)",
-    "git\tcommit",
-    "git commit-tree HEAD^{tree}",
+    "git 'push' -m quoted",
+    "echo $(git push -m inline)",
+    "git\tpush",
+    "git send-pack origin HEAD",
     "gh pr create --fill",
     "gh  pr   merge 12 --squash",
     "cd x && gh pr create",
     # Quoted and escaped arguments.
-    'git -C "my dir" commit -m x',
-    'git -c user.name="A B" commit -m x',
-    '"git" commit -m x',
+    'git -C "my dir" push -m x',
+    'git -c user.name="A B" push -m x',
+    '"git" push -m x',
     "git -C 'dir with space' --no-pager push",
     'git --git-dir "/a b/.git" --work-tree "/a b" push',
     "g\\it push",
     "g\"i\"t pu'sh'",
-    "git co\\mmit -m x",
+    "git pu\\sh -m x",
     "git \\\n  push",
-    'git commit -m "unbalanced',
+    'git push -m "unbalanced',
     # Environment prefixes and wrappers.
     "GIT_DIR=x git push",
-    'FOO="a b" git commit -m x',
+    'FOO="a b" git push -m x',
     "command git push",
     "env -i PATH=/usr/bin git push",
     "exec git push",
     "timeout 60 git push",
     "nohup git push &",
-    "nice -n 5 git commit -m x",
+    "nice -n 5 git push -m x",
     "xargs -I{} git -C {} push",
     "find . -name .git -execdir git push \\;",
     # Paths to git, and case on a case-insensitive file system.
     "'/usr/bin/git' push",
     "/opt/homebrew/bin/GIT push",
-    "git COMMIT -m x",
+    "git PUSH -m x",
     "git Push",
-    "/usr/libexec/git-core/git-commit -m x",
+    "/usr/libexec/git-core/git-push -m x",
     "git-push origin main",
     # Separators, subshells and groups.
     "(git push)",
@@ -72,13 +72,13 @@ BLOCKED = [
     "git status & git push",
     "git status\ngit push",
     "git log x#; git push",
-    "f() { git commit -m x; }; f",
+    "f() { git push -m x; }; f",
     "if true; then git push; fi",
     "for r in a b; do git -C $r push; done",
     "git -C ';' push",
     # Shells and strings run as commands.
     "sh -c \"git -C 'a b' push\"",
-    "bash -c 'cd \"a b\" && git commit -m x'",
+    "bash -c 'cd \"a b\" && git push -m x'",
     "zsh -c \"eval 'git push'\"",
     'eval "git push"',
     "env -S 'git push'",
@@ -91,18 +91,18 @@ BLOCKED = [
     "`echo git` push",
     "x=`git push`",
     "cmd=push; git $cmd",
-    "git $(echo commit) -m x",
+    "git $(echo push) -m x",
     # Aliases.
     "git -c alias.ship=push ship",
-    "git -c alias.ci=commit ci -m x",
-    "git -c alias.CI=commit ci -m x",
+    "git -c alias.ci=push ci -m x",
+    "git -c alias.CI=push ci -m x",
     "git -c 'alias.x=!git push' x",
-    "git -c alias.x='!sh -c \"git commit\"' x",
-    "git -c alias.a=b -c alias.b=commit a",
+    "git -c alias.x='!sh -c \"git push\"' x",
+    "git -c alias.a=b -c alias.b=push a",
     "git --config-env=alias.x=VAR x",
     "git --config-env alias.x=VAR x",
     "git -c 'alias.x=log \"a' x",
-    "git config alias.ci commit",
+    "git config alias.ci push",
     'git config --global alias.p "push --force"',
     # Other ways to send commits.
     "git subtree push --prefix=x origin main",
@@ -123,9 +123,9 @@ BLOCKED = [
     "GH_REPO=o/r gh pr create",
     "gh pr -R ';' create",
     # Accepted false positives: the command only mentions a blocked command.
-    "echo 'git commit'",
+    "echo 'git push'",
     'grep -r "git push" docs',
-    "echo git commit",
+    "echo git push",
     "docker push $IMAGE",
 ]
 
@@ -187,11 +187,44 @@ ALLOWED = [
     'ls "my dir"',
     "cat <<EOF\nhello\nEOF",
     "echo committed",
+    # Commits are allowed for pixies too (D123).
+    "git co\\mmit -m x",
+    "git commit -m 'x'",
+    "cd sub && git commit --allow-empty -m b",
+    "ls | xargs git commit -m x",
+    "sh -c 'git commit --allow-empty -m c'",
+    "git -c user.name=x commit --allow-empty -m d",
+    "git --no-pager -c a=b -C dir commit",
+    "git --git-dir /x/.git --work-tree /x commit -am y",
+    "/usr/bin/git commit -m x",
+    "env GIT_AUTHOR_NAME=x git commit",
+    "git 'commit' -m quoted",
+    "echo $(git commit -m inline)",
+    "git\tcommit",
+    "git commit-tree HEAD^{tree}",
+    'git -C "my dir" commit -m x',
+    'git -c user.name="A B" commit -m x',
+    '"git" commit -m x',
+    'git commit -m "unbalanced',
+    'FOO="a b" git commit -m x',
+    "nice -n 5 git commit -m x",
+    "git COMMIT -m x",
+    "/usr/libexec/git-core/git-commit -m x",
+    "f() { git commit -m x; }; f",
+    "bash -c 'cd \"a b\" && git commit -m x'",
+    "git $(echo commit) -m x",
+    "git -c alias.ci=commit ci -m x",
+    "git -c alias.CI=commit ci -m x",
+    "git -c alias.x='!sh -c \"git commit\"' x",
+    "git -c alias.a=b -c alias.b=commit a",
+    "git config alias.ci commit",
+    "echo 'git commit'",
+    "echo git commit",
 ]
 
 
 @pytest.mark.parametrize("command", BLOCKED)
-def test_blocks_commits_pushes_and_pull_request_writes(command: str) -> None:
+def test_blocks_pushes_and_pull_request_writes(command: str) -> None:
     assert is_git_write(command) is True
 
 
@@ -202,7 +235,6 @@ def test_allows_read_only_and_unrelated_commands(command: str) -> None:
 
 def test_permission_rules_cover_the_same_commands() -> None:
     assert GIT_WRITE_RULES == (
-        "Bash(git commit:*)",
         "Bash(git push:*)",
         "Bash(gh pr create:*)",
         "Bash(gh pr merge:*)",
@@ -213,19 +245,19 @@ TOOL_WRITES: list[tuple[str, dict[str, object]]] = [
     # Any tool whose input carries a command line or argv.
     ("mcp__plugin_serena_serena__execute_shell_command", {"command": "git push"}),
     ("Monitor", {"command": "git -C 'a b' push", "description": "watch"}),
-    ("mcp__shell__run", {"cmd": "git commit -m x"}),
+    ("mcp__shell__run", {"cmd": "git push origin x"}),
     ("mcp__shell__run", {"script": "cd x\ngit push"}),
     ("mcp__shell__run", {"shellCommand": "gh pr create"}),
     ("mcp__shell__run", {"command_line": "git push"}),
     ("mcp__proc__spawn", {"args": ["git", "push"]}),
-    ("mcp__proc__spawn", {"argv": ["sh", "-c", "git commit -m x"]}),
+    ("mcp__proc__spawn", {"argv": ["sh", "-c", "git push origin x"]}),
     ("mcp__proc__spawn", {"command": ["git", "push", 3]}),
-    # MCP tools that open or merge pull requests, push or commit by themselves.
+    # MCP tools that open or merge pull requests or write to a remote by themselves.
     ("mcp__github__create_pull_request", {"title": "x"}),
     ("mcp__github__merge_pull_request", {"pull_number": 1}),
     ("mcp__github__push_files", {"files": []}),
     ("mcp__github__create_or_update_file", {"path": "a"}),
-    ("mcp__git__git_commit", {"message": "x"}),
+    ("mcp__github__create_commit", {"message": "x"}),
     ("mcp__git__git_push", {}),
     ("mcp__plugin_engineering_github__createPullRequest", {}),
 ]
@@ -242,6 +274,8 @@ TOOL_PASSES: list[tuple[str, dict[str, object]]] = [
     ("mcp__github__list_commits", {}),
     ("mcp__github__create_issue", {"title": "push the release"}),
     ("mcp__git__git_status", {}),
+    ("mcp__git__git_commit", {"message": "x"}),
+    ("Bash", {"command": "git commit -m x"}),
     ("git_push_helper", {}),
 ]
 
@@ -287,7 +321,7 @@ async def test_hook_denies_blocked_bash_commands_with_a_reason() -> None:
 
     assert output == DENIED
     assert DENY_REASON == (
-        "Nest: commits, pushes and pull requests are made by Nest after you approve them"
+        "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
     )
 
 

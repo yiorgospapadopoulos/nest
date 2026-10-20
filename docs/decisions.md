@@ -1128,3 +1128,10 @@ Spike run with `claude-agent-sdk` 0.2.163 and Claude Code 2.1.285, mostly on `cl
 - **Live:** the daemon polls these files every 2 s and publishes `configuration.changed`; running chats pick changes up when their engine next starts.
 - **Mac:** Settings gains Configuration after Keyboard shortcuts; the Extensions tab is gone (its plugins, browse and marketplaces, and the connectors list, are in Claude's section); Accounts keeps sign in and sign out. The Mac opens files and folders itself. The iPhone keeps its screens (B92 list).
 - **Supersedes:** D104's Extensions tab on the Mac.
+
+## D123 (2026-10-21): Pixies may commit; pushes and pull requests stay blocked
+
+- **Why:** the user wants pixies to commit their work like a normal chat, while pushing and opening or merging pull requests stay theirs (user, 2026-10-21 02:33: "pixies should be able to commit. just not push or merge").
+- **What:** pixie chats, habit runs and chats a pixie started no longer block `git commit` (and `commit-tree`, a commit alias, a git MCP server's commit tool). The block keeps `git push` (and `send-pack`, `http-push`, `subtree push`, pushing aliases), `gh pr create` and `gh pr merge`, and MCP tools that write to a remote (GitHub's `create_pull_request`, `merge_pull_request`, `push_files`, `create_or_update_file`, `create_commit`), in all layers: permission rules, the PreToolUse hook, Codex's guarded approvals, the credential-free environment and the prompts, which now say "You may commit your work".
+- **Not covered:** a guarded Codex run's sandbox may still keep `.git` read-only, so a Codex pixie's commit can fail there; not checked live. The review still covers uncommitted changes only (D085), so a pixie's commits leave no review.
+- **Refines:** D013, D049, D072, D078, D085.

@@ -63,7 +63,7 @@ def test_sandbox_policies_follow_the_sandbox(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ["git commit -m wip", "git -C repo push", "gh pr create --fill", "sh -c 'git push'"],
+    ["git push origin wip", "git -C repo push", "gh pr create --fill", "sh -c 'git push'"],
 )
 def test_a_guarded_run_declines_git_writes_in_every_mode(command: str) -> None:
     for mode in ("default", "bypassPermissions", None):
