@@ -9,6 +9,7 @@ import pytest
 from nestd.config.models import RepoConfig, WorktreeConfig
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
+from nestd.providers.codex_trust import forget_trust
 from nestd.worktrees.manager import Worktree, WorktreeManager, branch_name
 from nestd.worktrees.setup import run_commands
 from tests.async_support import until
@@ -386,3 +387,38 @@ async def test_has_work_counts_changes_and_commits_since_the_base(
     assert gone is False
     # git cannot tell outside a repository: kept, to be safe.
     assert unknown is True
+
+
+async def test_removing_a_worktree_drops_its_codex_trust_entry(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    repo = make_repo(tmp_path)
+    manager = WorktreeManager(paths, on_removed=lambda path: forget_trust(codex_home, path))
+    worktree = await manager.create(repo, "cccccccc", "codex")
+    (codex_home / "config.toml").write_text(
+        f'[projects."{worktree.path}"]\ntrust_level = "trusted"\n\n[other]\nx = 1\n',
+        encoding="utf-8",
+    )
+
+    await manager.remove(repo, worktree, delete_branch=True)
+
+    assert (codex_home / "config.toml").read_text(encoding="utf-8") == "[other]\nx = 1\n"
+
+
+async def test_a_failing_removal_hook_still_removes_the_worktree(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    def broken(_path: Path) -> None:
+        msg = "config is locked"
+        raise OSError(msg)
+
+    repo = make_repo(tmp_path)
+    manager = WorktreeManager(paths, on_removed=broken)
+    worktree = await manager.create(repo, "dddddddd", "hook")
+
+    await manager.remove(repo, worktree, delete_branch=True)
+
+    assert not worktree.path.exists()
+    assert worktree.branch not in branches(repo)

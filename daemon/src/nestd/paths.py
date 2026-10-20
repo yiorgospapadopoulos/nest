@@ -14,6 +14,8 @@ WEB_DIST_ENV = "NEST_WEB_DIST"
 LEGACY_ENV_PREFIX = "HARNESS_"
 # Claude Code's own setting for where it keeps its data, `~/.claude` by default.
 CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
+# Codex's own setting for its home, `~/.codex` by default (B91).
+CODEX_HOME_ENV = "CODEX_HOME"
 DB_NAME = "nest.db"
 # The PWA build in this checkout: <repo>/web/dist, next to <repo>/daemon/src/nestd.
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
@@ -45,6 +47,10 @@ class AppPaths:
     claude_dir: Path | None = None
     # Claude Code's own settings file, read only for the account name (D039). None reads nothing.
     claude_account_file: Path | None = None
+    # Codex's home (B91): its config, MCP servers, skills, AGENTS.md and login, used by
+    # Codex chats as in the terminal; Nest only drops its worktrees' trust entries from
+    # its config. None leaves Codex unconfigured, so tests never touch the real one.
+    codex_home: Path | None = None
     # Where the daemon hands this Mac's device token to the Mac app (D075). None serves
     # none, so tests never open a socket by accident.
     token_socket: Path | None = None
@@ -67,6 +73,7 @@ class AppPaths:
             web_dist=Path(web_dist),
             claude_dir=Path(claude_dir),
             claude_account_file=account_file,
+            codex_home=Path(env.get(CODEX_HOME_ENV) or home / ".codex"),
         )
 
     @property

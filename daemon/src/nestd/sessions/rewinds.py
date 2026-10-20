@@ -20,9 +20,10 @@ from nestd.attachments.store import AttachmentStore, UnknownAttachmentError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.events.models import Event
-from nestd.providers.base import AgentProvider, ForkPoint, RewindResult
+from nestd.providers.base import ForkPoint, RewindResult
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated
+from nestd.sessions.engines import Engines
 from nestd.sessions.errors import CannotRewindError
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import LiveSession
@@ -79,7 +80,7 @@ class Rewinds:
         *,
         store: SessionStore,
         bus: EventBus,
-        provider: AgentProvider,
+        engines: Engines,
         turns: TurnRunner,
         hooks: SessionHooks,
         repos: RepoService,
@@ -89,7 +90,7 @@ class Rewinds:
         self._attachments = attachments
         self._store = store
         self._bus = bus
-        self._provider = provider
+        self._engines = engines
         self._turns = turns
         self._hooks = hooks
         self._repos = repos
@@ -262,7 +263,8 @@ class Rewinds:
         if session.provider_session_id is None:
             return None
         cwd = require_cwd(session)
-        return await self._provider.fork_point(cwd, session.provider_session_id, checkpoint)
+        provider = self._engines.of(session).provider
+        return await provider.fork_point(cwd, session.provider_session_id, checkpoint)
 
     async def _drops(self, session_id: str, message: Event, checkpoint: str) -> str | None:
         """The message whose turn the cut drops, so Claude Code checks it drops no more;

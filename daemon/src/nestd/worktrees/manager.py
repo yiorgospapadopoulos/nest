@@ -1,8 +1,10 @@
 """Create, link, set up and remove per-session worktrees; inspect in-place checkouts."""
 
 import asyncio
+import logging
 import re
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
@@ -22,6 +24,8 @@ WORKTREE_PREFIX = "nest-"
 # Worktrees made before the rename to Nest (B43) are still its own.
 OWNED_WORKTREE_PREFIXES = (WORKTREE_PREFIX, "harness-")
 EXCLUDE_LINE = "/.claude/worktrees/"
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidBranchError(InvalidInputError):
@@ -52,9 +56,14 @@ def branch_name(title: str) -> str:
     return f"{BRANCH_PREFIX}{slug or 'task'}-{token_hex(3)}"
 
 
+# Told each worktree path Nest removed, such as to drop its Codex trust entry (B91).
+type RemovedHook = Callable[[Path], object]
+
+
 class WorktreeManager:
-    def __init__(self, paths: AppPaths) -> None:
+    def __init__(self, paths: AppPaths, on_removed: RemovedHook | None = None) -> None:
         self._paths = paths
+        self._on_removed = on_removed
 
     async def create(
         self,
@@ -132,11 +141,21 @@ class WorktreeManager:
         if has_repo and await asyncio.to_thread(_is_worktree, worktree.path):
             await run_hardened_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
         await asyncio.to_thread(self._delete_leftovers, repo, worktree.path)
+        await self._removed(worktree.path)
         if not has_repo:
             return
         await run_hardened_git(["worktree", "prune"], repo.path)
         if delete_branch and await _has_branch(repo, worktree.branch):
             await run_hardened_git(["branch", "-D", worktree.branch], repo.path)
+
+    async def _removed(self, path: Path) -> None:
+        """Bookkeeping: its failure never keeps the worktree from being removed."""
+        if self._on_removed is None:
+            return
+        try:
+            await asyncio.to_thread(self._on_removed, path)
+        except Exception as error:
+            logger.warning("cleaning up after the worktree %s failed (%s)", path, error)
 
     def _delete_leftovers(self, repo: RepoConfig, path: Path) -> None:
         """Delete what remains at a removed worktree's path, only where Nest puts them:
