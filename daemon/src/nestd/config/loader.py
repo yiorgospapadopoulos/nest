@@ -11,6 +11,7 @@ from nestd.config.errors import ConfigError
 from nestd.config.models import (
     AgentChoices,
     AgentDefaults,
+    ConfigurationSettings,
     NotificationSettings,
     PixieDefaults,
     ProjectSettings,
@@ -88,6 +89,13 @@ def save_storage(paths: AppPaths, storage: StorageSettings) -> StorageSettings:
 def save_pixie_defaults(paths: AppPaths, pixies: PixieDefaults) -> PixieDefaults:
     """Replace the `[pixies]` section of settings.toml, keeping every other section."""
     return _save_section(paths, "pixies", _dump(pixies)).pixies
+
+
+def save_configuration(
+    paths: AppPaths, configuration: ConfigurationSettings
+) -> ConfigurationSettings:
+    """Replace the `[configuration]` section of settings.toml, keeping every other section."""
+    return _save_section(paths, "configuration", _dump(configuration)).configuration
 
 
 def save_project_order(paths: AppPaths, order: list[str]) -> list[str]:

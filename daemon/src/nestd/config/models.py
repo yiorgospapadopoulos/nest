@@ -306,6 +306,22 @@ class ProjectSettings(_Strict):
     order: list[str] = Field(default_factory=list[str])
 
 
+class McpSharing(_Strict):
+    """Whether Nest writes the shared MCP servers into each engine's own config (B97)."""
+
+    claude: bool = True
+    codex: bool = True
+
+
+class ConfigurationSettings(_Strict):
+    """Nest's own part of Settings > Configuration (B97); the engines' files hold the rest."""
+
+    mcp_shared: McpSharing = Field(default_factory=McpSharing)
+    # Nest switched the Claude-only claude.ai skills off for Codex once, when it first
+    # pointed Codex at the shared skills; the user's later choices stay.
+    codex_claude_only_off: bool = False
+
+
 class Settings(_Strict):
     server: ServerSettings = Field(default_factory=ServerSettings)
     agents: AgentDefaults = Field(default_factory=AgentDefaults)
@@ -317,6 +333,7 @@ class Settings(_Strict):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)
     artifacts: ArtifactSettings = Field(default_factory=ArtifactSettings)
+    configuration: ConfigurationSettings = Field(default_factory=ConfigurationSettings)
 
     @model_validator(mode="before")
     @classmethod

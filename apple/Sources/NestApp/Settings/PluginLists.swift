@@ -1,150 +1,61 @@
 import NestKit
 import SwiftUI
 
-/// The tabs of Settings > Extensions.
-enum ExtensionsTab: Hashable {
-    case plugins, connections
-}
-
-/// Claude Code on this Mac, its plugins, skills and marketplaces, and the connections
-/// agents can reach (B81). Plugins change through Claude Code's own commands.
-struct ExtensionsPage: View {
-    @Environment(Shell.self) private var shell
-
-    var body: some View {
-        ClaudeCodeSection()
-        SettingsTabs(
-            tabs: [(ExtensionsTab.plugins, "Skills and plugins"), (.connections, "Connections")],
-            selection: shell.extensionsTab
-        ) { shell.extensionsTab = $0 }
-        .padding(.top, 14)
-        switch shell.extensionsTab {
-        case .plugins: PluginsTab()
-        case .connections: ConnectorsList()
-        }
-    }
-}
-
-private struct ClaudeCodeSection: View {
-    @Environment(Shell.self) private var shell
-    @State private var confirming = false
-
-    var body: some View {
-        let extensions = shell.model.extensions
-        let status = extensions.claudeCode
-        SettingsSection(title: "Claude Code") {
-            SettingsRow(label: "On this Mac") {
-                if let status {
-                    if status.installed {
-                        SettingsValue(text: status.version ?? "Installed")
-                        if let path = status.path {
-                            SettingsValue(text: path, mono: true)
-                        }
-                    } else if extensions.isInstalling {
-                        Fireflies()
-                        SettingsValue(text: extensions.install?.message ?? "Installing")
-                    } else {
-                        SettingsValue(text: "Not installed")
-                        Button("Install Claude Code") { confirming = true }
-                            .buttonStyle(.nest(.primary))
-                    }
-                } else {
-                    SettingsValue(text: "-")
-                }
-            }
-            SettingsRow(label: "Agents use") {
-                SettingsValue(text: status.map { "Built-in \($0.bundledVersion)" } ?? "-")
-            }
-            if let install = extensions.install, install.state == .failed {
-                SettingsFailure(text: "Installing failed: \(install.message ?? "no reason given")")
-            }
-        }
-        .task { try? await extensions.loadClaudeCode() }
-        .confirmationDialog(
-            "Install Claude Code?", isPresented: $confirming, titleVisibility: .visible
-        ) {
-            Button("Install") {
-                shell.settingsChange("Could not install Claude Code") {
-                    try await extensions.installClaudeCode()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Nest runs Anthropic's installer from claude.ai/install.sh on this Mac.")
-        }
-    }
-}
-
-private struct PluginsTab: View {
+/// Claude's installed plugins in Settings > Configuration (B97, from B81's Extensions):
+/// each with its switch, removed from its context menu. Plugins change through Claude
+/// Code's own commands.
+struct ClaudePluginRows: View {
     @Environment(Shell.self) private var shell
     @State private var removing: InstalledPlugin?
 
     var body: some View {
         let extensions = shell.model.extensions
-        SettingsSection(title: "Plugins", bare: true) {
-            VStack(alignment: .leading, spacing: 0) {
-                if let plugins = extensions.plugins, plugins.isEmpty {
-                    EmptyLine(text: "No plugins installed")
-                }
-                ForEach(extensions.plugins ?? []) { plugin in
-                    SettingsListRow(
-                        title: plugin.name,
-                        detail: [
-                            plugin.description, plugin.version.map { "v\($0)" }, plugin.marketplace,
-                        ]
-                        .compactMap { $0 }.joined(separator: " · ")
-                    ) {
-                        SettingsBadge(text: String(plugin.name.prefix(2)).uppercased())
-                    } trailing: {
-                        Switch(isOn: plugin.enabled) {
-                            shell.settingsChange("Could not change \(plugin.name)") {
-                                try await extensions.setEnabled(plugin, !plugin.enabled)
-                            }
-                        }
-                        .disabled(extensions.busy.contains(plugin.id))
-                        .accessibilityLabel(plugin.name)
-                        Button("Remove") { removing = plugin }
-                            .buttonStyle(.nest(.danger))
-                            .disabled(extensions.busy.contains(plugin.id))
-                    }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            if let plugins = extensions.plugins, plugins.isEmpty {
+                ConfigSubRow { Text("No plugins installed").foregroundStyle(Palette.t3) }
             }
-            .overlay(alignment: .top) { Separator() }
-        }
-        if !extensions.skills.isEmpty {
-            SettingsSection(title: "Skills", bare: true) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(extensions.skills) { skill in
-                        SettingsListRow(title: skill.name, detail: skill.description ?? skill.path)
-                        {
-                            SettingsBadge(symbol: "star")
-                        } trailing: {
-                            EmptyView()
+            ForEach(extensions.plugins ?? []) { plugin in
+                ConfigSubRow {
+                    HStack(spacing: 0) {
+                        Text(plugin.name).font(.ui(TypeSize.ui, .medium))
+                        Text(" · \(plugin.marketplace)").foregroundStyle(Palette.t3)
+                    }
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                    Text(plugin.description ?? "")
+                        .foregroundStyle(Palette.t3)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Switch(isOn: plugin.enabled, accent: true) {
+                        shell.settingsChange("Could not change \(plugin.name)") {
+                            try await extensions.setEnabled(plugin, !plugin.enabled)
                         }
                     }
+                    .disabled(extensions.busy.contains(plugin.id))
+                    .accessibilityLabel(plugin.name)
                 }
-                .overlay(alignment: .top) { Separator() }
+                .contextMenu {
+                    Button("Remove \(plugin.name)") { removing = plugin }
+                }
             }
         }
-        BrowseSection()
-        MarketplacesSection()
-            .task { try? await extensions.loadInstalled() }
-            .confirmationDialog(
-                "Remove \(removing?.name ?? "this plugin")?", isPresented: removeBinding,
-                titleVisibility: .visible
-            ) {
-                Button("Remove", role: .destructive) {
-                    if let plugin = removing {
-                        shell.settingsChange("Could not remove \(plugin.name)") {
-                            try await extensions.uninstallPlugin(plugin.id)
-                        }
+        .task { try? await extensions.loadInstalled() }
+        .confirmationDialog(
+            "Remove \(removing?.name ?? "this plugin")?", isPresented: removeBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let plugin = removing {
+                    shell.settingsChange("Could not remove \(plugin.name)") {
+                        try await extensions.uninstallPlugin(plugin.id)
                     }
-                    removing = nil
                 }
-                Button("Cancel", role: .cancel) { removing = nil }
-            } message: {
-                Text("Claude Code uninstalls it. Agents stop using it when they next start.")
+                removing = nil
             }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: {
+            Text("Claude Code uninstalls it. Agents stop using it when they next start.")
+        }
     }
 
     private var removeBinding: Binding<Bool> {
@@ -153,7 +64,7 @@ private struct PluginsTab: View {
 }
 
 /// Browse: the plugins the marketplaces offer, each with what it brings, and Install.
-private struct BrowseSection: View {
+struct BrowseSection: View {
     @Environment(Shell.self) private var shell
     @State private var open: String?
     @State private var installing: AvailablePlugin?
@@ -312,7 +223,7 @@ private struct AvailableRow: View {
     }
 }
 
-private struct MarketplacesSection: View {
+struct MarketplacesSection: View {
     @Environment(Shell.self) private var shell
     @State private var source = ""
     @State private var removing: PluginMarketplace?
@@ -375,7 +286,7 @@ private struct MarketplacesSection: View {
     }
 }
 
-private struct EmptyLine: View {
+struct EmptyLine: View {
     let text: String
 
     var body: some View {

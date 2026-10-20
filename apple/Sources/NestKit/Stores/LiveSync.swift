@@ -21,6 +21,7 @@ public final class LiveSync {
     let chatPixies: ChatPixiesStore
     let accounts: AccountsStore
     let extensions: ExtensionsStore
+    let configuration: ConfigurationStore
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -38,7 +39,7 @@ public final class LiveSync {
         providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
         habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
-        artifacts: ArtifactsStore
+        configuration: ConfigurationStore, artifacts: ArtifactsStore
     ) {
         self.source = source
         self.app = app
@@ -57,6 +58,7 @@ public final class LiveSync {
         self.chatPixies = chatPixies
         self.accounts = accounts
         self.extensions = extensions
+        self.configuration = configuration
         self.artifacts = artifacts
     }
 
@@ -132,6 +134,7 @@ public final class LiveSync {
         chatPixies.apply(event)
         accounts.apply(event)
         extensions.apply(event)
+        configuration.apply(event)
         artifacts.apply(event)
         switch event.body {
         case .usageWarning(let warning):
@@ -195,6 +198,8 @@ public final class AppModel {
     public let notificationRules: NotificationRulesStore
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
+    /// Settings > Configuration (B97).
+    public let configuration: ConfigurationStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -237,6 +242,7 @@ public final class AppModel {
         notificationRules = NotificationRulesStore(api: api)
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
+        configuration = ConfigurationStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         live = LiveSync(
@@ -245,7 +251,7 @@ public final class AppModel {
             claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
-            artifacts: artifacts)
+            configuration: configuration, artifacts: artifacts)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }
