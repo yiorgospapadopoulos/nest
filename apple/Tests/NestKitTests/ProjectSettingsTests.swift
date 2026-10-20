@@ -180,9 +180,10 @@ import Testing
                 == "Nest forgets this project. Its folder stays as it is.")
         #expect(
             ProjectRemoval.consequence(chats: 1).hasSuffix(
-                "Its chat is deleted for good, with its worktree and branch."))
+                "Its chat is deleted for good, with its worktree and history; its branch stays."))
         #expect(
             ProjectRemoval.consequence(chats: 3).hasSuffix(
-                "Its 3 chats are deleted for good, with their worktrees and branches."))
+                "Its 3 chats are deleted for good, with their worktrees and history;"
+                    + " their branches stay."))
     }
 }

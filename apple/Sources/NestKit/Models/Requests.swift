@@ -16,12 +16,17 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
     public var branch: String?
     /// The engine, such as `codex`; nil runs on Claude (B91).
     public var provider: String?
+    /// An existing worktree of the repo the chat joins, instead of making one (B96).
+    public var worktreePath: String?
+    /// An existing local branch the chat works on itself (B96 round 3): in place when it
+    /// is the folder's, else in that branch's worktree, made when it has none.
+    public var onBranch: String?
 
     public init(
         repo: String, prompt: String, title: String? = nil, mode: SessionMode? = nil,
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
         attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil,
-        provider: String? = nil
+        provider: String? = nil, worktreePath: String? = nil, onBranch: String? = nil
     ) {
         self.repo = repo
         self.prompt = prompt
@@ -34,12 +39,16 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
         self.base = base
         self.branch = branch
         self.provider = provider
+        self.worktreePath = worktreePath
+        self.onBranch = onBranch
     }
 
     enum CodingKeys: String, CodingKey {
         case repo, prompt, title, mode, model, effort, base, branch, provider
         case permissionMode = "permission_mode"
         case attachmentIDs = "attachment_ids"
+        case worktreePath = "worktree_path"
+        case onBranch = "on_branch"
     }
 }
 

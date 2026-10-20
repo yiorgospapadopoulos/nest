@@ -89,6 +89,8 @@ final class FakeAPI: NestAPI {
         // Settings (B81)
         var pushDevices = 1
         var branches: [String: [String]] = [:]
+        /// Each repo's branch map (B96); a repo without one is not found.
+        var branchMaps: [String: BranchMap] = [:]
         var storage = StorageUsage(
             totalBytes: 1_400, chatsBytes: 800, attachmentsBytes: 500, artifactsBytes: 40,
             otherBytes: 60)
@@ -501,7 +503,8 @@ final class FakeAPI: NestAPI {
     }
 
     func merge(_ sessionID: String, _ request: MergeRequest) async throws -> Session {
-        try call("merge", "\(sessionID) \(request.method.rawValue)") { state in
+        let deleting = request.deleteBranch ? " delete-branch" : ""
+        return try call("merge", "\(sessionID) \(request.method.rawValue)\(deleting)") { state in
             session(sessionID, in: &state) {
                 $0.state = .closed
                 $0.pr?.state = .merged
@@ -1054,6 +1057,13 @@ final class FakeAPI: NestAPI {
 
     func repoBranches(_ name: String) async throws -> [String] {
         try call("repoBranches", name) { $0.branches[name] ?? [] }
+    }
+
+    func repoBranchMap(_ name: String) async throws -> BranchMap {
+        guard let map = try call("repoBranchMap", name, { $0.branchMaps[name] }) else {
+            throw APIError.notFound("unknown repo")
+        }
+        return map
     }
 
     func storage() async throws -> StorageUsage {
