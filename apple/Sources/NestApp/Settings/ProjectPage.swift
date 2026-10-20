@@ -17,6 +17,7 @@ struct ProjectPage: View {
             }
             switch tab {
             case .general: ProjectGeneralTab(repo: repo)
+            case .configuration: ProjectConfigurationTab(repo: repo)
             case .chats: ProjectChatsTab(repo: repo)
             case .worktrees: ProjectWorktreesTab(repo: repo)
             case .look: ProjectLookTab(repo: repo)
@@ -507,5 +508,132 @@ struct AddProjectPage: View {
         let url = URL(fileURLWithPath: (text as NSString).expandingTildeInPath)
         shell.addProject(at: url)
         shell.openSettings(.project(url.standardizedFileURL.lastPathComponent))
+    }
+}
+
+// MARK: Configuration (B97)
+
+/// The project's own instructions files, skills and `.mcp.json` servers, which only
+/// Claude reads.
+private struct ProjectConfigurationTab: View {
+    let repo: Repo
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let store = shell.model.configuration
+        let config = store.repos[repo.name]
+        VStack(alignment: .leading, spacing: 0) {
+            Text(
+                "This project's own instructions, skills and MCP servers. Agents read them on top of the shared ones in Configuration."
+            )
+            .font(.ui(TypeSize.ui))
+            .foregroundStyle(Palette.t2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 10)
+            if let config {
+                ConfigLabel(text: "Instructions")
+                ForEach(config.instructions, id: \.path) { file in
+                    let name = URL(fileURLWithPath: file.path).lastPathComponent
+                    ConfigRow {
+                        ConfigIcon(symbol: "doc.text")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name).font(.mono(TypeSize.ui))
+                            Text(
+                                file.exists
+                                    ? (name == "CLAUDE.md"
+                                        ? "Read by Claude"
+                                        : "Read by Codex; Claude reads it when CLAUDE.md imports it")
+                                    : "Not made yet"
+                            )
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                        }
+                        Spacer(minLength: 8)
+                        Button(file.exists ? "Edit" : "Create") {
+                            shell.editConfiguration(file.path, title: name, note: repo.name)
+                        }
+                        .buttonStyle(.nest())
+                        if file.exists {
+                            OpenMenu(path: file.path)
+                        }
+                    }
+                }
+                ConfigLabel(text: "Skills")
+                ConfigRow {
+                    ConfigIcon(symbol: "star")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Project skills").font(.ui(TypeSize.ui, .medium))
+                        Text(".claude/skills · Claude only")
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                    }
+                    Spacer(minLength: 8)
+                    Button("New skill") { shell.configurationForm = .skill(repo: repo.name) }
+                        .buttonStyle(.nest())
+                    Button("Open folder") {
+                        LocalOpen.folder(repo.path + "/.claude/skills")
+                    }
+                    .buttonStyle(.nest())
+                }
+                ForEach(config.skills) { skill in
+                    ConfigSubRow {
+                        Text(skill.name).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
+                            .layoutPriority(1)
+                        Text(skill.description ?? "")
+                            .foregroundStyle(Palette.t3)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Edit") {
+                            shell.editConfiguration(
+                                skill.path, title: skill.name, note: "project skill")
+                        }
+                        .buttonStyle(.nest())
+                    }
+                }
+                ConfigLabel(text: "MCP servers")
+                ConfigRow {
+                    ConfigIcon(symbol: "server.rack")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Project servers").font(.ui(TypeSize.ui, .medium))
+                        Text(".mcp.json · Claude only")
+                            .font(.ui(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Add server") {
+                        shell.configurationForm = .server(MCPServerForm(), repo: repo.name)
+                    }
+                    .buttonStyle(.nest())
+                    Button("Edit .mcp.json") {
+                        shell.editConfiguration(
+                            repo.path + "/.mcp.json", title: "MCP servers", note: repo.name)
+                    }
+                    .buttonStyle(.nest())
+                }
+                ForEach(config.mcpServers) { server in
+                    ConfigSubRow {
+                        Text(server.name).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
+                            .layoutPriority(1)
+                        Text(server.summary)
+                            .font(.mono(TypeSize.meta))
+                            .foregroundStyle(Palette.t3)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ConfigChip(text: "Claude only")
+                        Button("Remove") {
+                            let (name, repoName) = (server.name, repo.name)
+                            shell.settingsChange("Could not remove \(name)") {
+                                try await store.deleteRepoServer(repoName, name)
+                            }
+                        }
+                        .buttonStyle(.nest(.danger))
+                    }
+                }
+            } else {
+                Fireflies().padding(.vertical, 24)
+            }
+        }
+        .task(id: repo.name) { try? await store.loadRepo(repo.name) }
     }
 }

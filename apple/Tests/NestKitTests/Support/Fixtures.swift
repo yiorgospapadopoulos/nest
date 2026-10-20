@@ -158,3 +158,96 @@ extension Fixture {
             createdAt: date("2026-10-17T09:30:00Z"))
     }
 }
+
+// MARK: Configuration (B97)
+
+extension Fixture {
+    /// `GET /api/configuration` as the contract shows it.
+    static let configurationJSON = """
+        {
+          "shared": {
+            "instructions": {"path": "/Users/x/.codex/AGENTS.md", "exists": true, "version": "abc"},
+            "skills": {
+              "folder": "/Users/x/.claude/skills",
+              "items": [
+                {"name": "release-notes", "description": "Writes release notes",
+                 "path": "/Users/x/.claude/skills/release-notes/SKILL.md", "source": "yours",
+                 "plugin": null, "engine": null, "read_only": false, "codex_enabled": true,
+                 "codex_error": null},
+                {"name": "brainstorming", "description": "Explores intent",
+                 "path": "/p/brainstorming/SKILL.md", "source": "plugin",
+                 "plugin": "superpowers", "engine": null, "read_only": true,
+                 "codex_enabled": true, "codex_error": null},
+                {"name": "hatch-pet", "description": null,
+                 "path": "/Users/x/.codex/skills/hatch-pet/SKILL.md", "source": "engine_only",
+                 "plugin": null, "engine": "codex", "read_only": false, "codex_enabled": true,
+                 "codex_error": null},
+                {"name": "chrome-browser", "description": "Drives Chrome",
+                 "path": "/Users/x/.claude/skills/synced/chrome-browser/SKILL.md",
+                 "source": "synced", "plugin": null, "engine": null, "read_only": true,
+                 "codex_enabled": false, "codex_error": null},
+                {"name": "no-description", "description": null,
+                 "path": "/Users/x/.claude/skills/no-description/SKILL.md", "source": "yours",
+                 "plugin": null, "engine": null, "read_only": false, "codex_enabled": true,
+                 "codex_error": "missing field description"}
+              ]
+            },
+            "mcp_servers": [
+              {"name": "context7", "summary": "https://mcp.context7.com/mcp", "transport": "http",
+               "engines": ["codex", "claude"], "convertible": true, "reason": null},
+              {"name": "linear", "summary": "https://mcp.linear.app/sse", "transport": "sse",
+               "engines": ["claude"], "convertible": false, "reason": "Codex cannot use SSE"}
+            ]
+          },
+          "engines": [
+            {
+              "id": "claude", "name": "Claude", "account": "giorgos@example.com · Max plan",
+              "bundled_version": "2.1.286",
+              "standalone": {"path": "/opt/homebrew/bin/claude", "version": "2.1.160"},
+              "config_folder": "/Users/x/.claude",
+              "uses_shared": {"instructions": {"on": true, "fixed": false},
+                              "skills": {"on": true, "fixed": true},
+                              "mcp_servers": {"on": true, "fixed": false}},
+              "missing_from_shared": {"instructions": true, "skills": ["a", "b"],
+                                      "mcp_servers": ["playwright"]},
+              "items": [
+                {"kind": "plugins", "count": 8, "detail": null, "path": null, "folder": false},
+                {"kind": "hooks", "count": 2, "detail": null,
+                 "path": "/Users/x/.claude/settings.json", "folder": false},
+                {"kind": "subagents", "count": 3, "detail": null,
+                 "path": "/Users/x/.claude/agents", "folder": true},
+                {"kind": "permissions", "count": 16, "detail": "14 allow · 2 deny",
+                 "path": "/Users/x/.claude/settings.json", "folder": false},
+                {"kind": "teleporters", "count": 1, "detail": null, "path": null, "folder": false}
+              ]
+            },
+            {
+              "id": "codex", "name": "Codex", "account": null, "bundled_version": "0.163.0",
+              "standalone": null, "config_folder": "/Users/x/.codex",
+              "uses_shared": {"instructions": {"on": true, "fixed": true},
+                              "skills": {"on": false, "fixed": false},
+                              "mcp_servers": {"on": true, "fixed": false}},
+              "missing_from_shared": {"instructions": false, "skills": [], "mcp_servers": []},
+              "items": []
+            }
+          ]
+        }
+        """
+
+    static var configurationPage: ConfigurationPage {
+        decode(ConfigurationPage.self, json: configurationJSON)
+    }
+
+    static let copyPreviewJSON = """
+        {"instructions": {"replace": true, "engine_path": "/Users/x/.claude/CLAUDE.md",
+                          "shared_path": "/Users/x/.codex/AGENTS.md"},
+         "skills": {"add": ["release-notes", "swift-format-fix"], "already": ["a", "b", "c"],
+                    "same_name": [{"name": "changelog",
+                                   "reason": "Shared has a skill with this name"}]},
+         "mcp_servers": {"add": ["playwright"], "already": ["context7", "serena"],
+                         "not_convertible": [{"name": "linear", "reason": "uses SSE"}]},
+         "stays": ["plugins themselves", "claude.ai connectors", "hooks"]}
+        """
+
+    static var copyPreview: CopyPreview { decode(CopyPreview.self, json: copyPreviewJSON) }
+}

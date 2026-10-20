@@ -127,6 +127,8 @@ class FakeAppServer:
     def __init__(self) -> None:
         self.answers = default_answers()
         self.errors: dict[str, tuple[int, str]] = {}
+        # The `data` of an error answer, by method.
+        self.error_data: dict[str, JsonValue] = {}
         # Methods left unanswered, like a request the server is still working on.
         self.silent: set[str] = set()
         self.turns: deque[list[JsonObject]] = deque()
@@ -181,7 +183,10 @@ class FakeAppServer:
             return
         if method in self.errors:
             code, text = self.errors[method]
-            transport.push({"id": request_id, "error": {"code": code, "message": text}})
+            error: JsonObject = {"code": code, "message": text}
+            if method in self.error_data:
+                error["data"] = self.error_data[method]
+            transport.push({"id": request_id, "error": error})
             return
         answer = self.answers.get(method, {})
         params = cast("JsonObject", message.get("params") or {})

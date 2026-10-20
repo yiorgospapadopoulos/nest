@@ -21,6 +21,7 @@ public final class LiveSync {
     let chatPixies: ChatPixiesStore
     let accounts: AccountsStore
     let extensions: ExtensionsStore
+    let configuration: ConfigurationStore
     let branchMaps: BranchMapStore
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
@@ -39,7 +40,7 @@ public final class LiveSync {
         providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
         habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
-        artifacts: ArtifactsStore, branchMaps: BranchMapStore
+        configuration: ConfigurationStore, artifacts: ArtifactsStore, branchMaps: BranchMapStore
     ) {
         self.source = source
         self.app = app
@@ -58,6 +59,7 @@ public final class LiveSync {
         self.chatPixies = chatPixies
         self.accounts = accounts
         self.extensions = extensions
+        self.configuration = configuration
         self.artifacts = artifacts
         self.branchMaps = branchMaps
     }
@@ -135,6 +137,7 @@ public final class LiveSync {
         chatPixies.apply(event)
         accounts.apply(event)
         extensions.apply(event)
+        configuration.apply(event)
         artifacts.apply(event)
         branchMaps.apply(event)
         switch event.body {
@@ -200,6 +203,8 @@ public final class AppModel {
     public let notificationRules: NotificationRulesStore
     public let accounts: AccountsStore
     public let extensions: ExtensionsStore
+    /// Settings > Configuration (B97).
+    public let configuration: ConfigurationStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -244,6 +249,7 @@ public final class AppModel {
         notificationRules = NotificationRulesStore(api: api)
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
+        configuration = ConfigurationStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)
@@ -253,7 +259,7 @@ public final class AppModel {
             claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
-            artifacts: artifacts, branchMaps: branchMaps)
+            configuration: configuration, artifacts: artifacts, branchMaps: branchMaps)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }

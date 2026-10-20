@@ -78,7 +78,7 @@ struct NestCommands: Commands {
             Button("Send Message") { shell?.sendFocused() }
                 .shortcut(.sendMessage, shell)
             Button("Show Usage") { shell?.toggle(.usage) }
-            Button("Connectors") { shell?.openSettings(.extensions, extensionsTab: .connections) }
+            Button("Connectors") { shell?.openConnectors() }
         }
         CommandGroup(before: .sidebar) {
             Button("Toggle Sidebar") { shell?.update { $0.leftCollapsed.toggle() } }
