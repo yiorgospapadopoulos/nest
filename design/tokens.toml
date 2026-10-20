@@ -87,6 +87,19 @@ bad = { light = "#cf3b30", dark = "#ff6b5f" }
 button = { light = "#1c1c1d", dark = "rgba(255,255,255,0.88)" }
 button_text = { light = "#ffffff", dark = "#1b1b1c" }
 
+# The branch map's lanes (B96): each branch and worktree takes one, the default branch
+# always the grey root; the rest in this order, a branch keeping its colour while the app
+# runs. Light values read at 3:1 or better on the light sidebar.
+[colors.lane]
+root = { light = "#6e6e78", dark = "#a1a1ad" }
+violet = { light = "#7c5cd6", dark = "#b79cff" }
+teal = { light = "#0d8a7c", dark = "#2dd4bf" }
+blue = { light = "#2f6fd0", dark = "#60a5fa" }
+pink = { light = "#c2367f", dark = "#f472b6" }
+lime = { light = "#4f8a10", dark = "#a3e635" }
+orange = { light = "#c2570c", dark = "#fb923c" }
+yellow = { light = "#977300", dark = "#facc15" }
+
 [colors.diff]
 added_fill = { light = "rgba(34,165,89,0.13)", dark = "rgba(53,208,122,0.15)" }
 added_text = { light = "#14723a", dark = "#6be3a0" }
