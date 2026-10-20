@@ -14,6 +14,10 @@ REPO_UPDATED: Final = "repo.updated"
 # The user reordered the projects (D090); global, `{order}` with every repo's name in the
 # new order. Clients sort their list by it.
 REPOS_REORDERED: Final = "repos.reordered"
+# A git project's branch map may have changed (B96): Nest added or removed a worktree, or
+# the poller saw its worktrees or the project folder's branch change; ephemeral and
+# global, `{name}` of the repo. Clients read its branch map again.
+REPO_BRANCHES_CHANGED: Final = "repo.branches_changed"
 
 # Agent sessions; all carry the session id. SESSION_DELTA is ephemeral (never stored).
 SESSION_CREATED: Final = "session.created"

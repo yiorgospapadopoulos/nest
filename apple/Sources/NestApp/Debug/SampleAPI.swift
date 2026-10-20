@@ -1225,6 +1225,40 @@
             ["main", "develop", "feat/contact-form"]
         }
 
+        /// cv-page as A7 draws it (B96): its folder on redesign with three Nest worktrees,
+        /// and two worktrees from main, one of them Claude Code's; the other projects are on
+        /// main alone.
+        func repoBranchMap(_ name: String) async throws -> BranchMap {
+            typealias Branch = BranchMap.Branch
+            guard name == "cv-page" else {
+                return BranchMap(
+                    defaultBranch: "main", currentBranch: "main",
+                    branches: [Branch(name: "main", parent: nil, worktree: nil, here: true)])
+            }
+            let folder = "/Users/me/Personal projects/cv-page/.claude/worktrees"
+            func worktree(_ name: String, from parent: String, _ path: String) -> Branch {
+                let owner: BranchMap.Owner = path.hasPrefix("nest-") ? .nest : .claude
+                return Branch(
+                    name: name, parent: parent,
+                    worktree: BranchMap.Worktree(path: "\(folder)/\(path)", owner: owner),
+                    here: false)
+            }
+            return BranchMap(
+                defaultBranch: "main", currentBranch: "redesign",
+                branches: [
+                    Branch(name: "main", parent: nil, worktree: nil, here: false),
+                    worktree("agent/mobile-nav", from: "main", "nest-c4"),
+                    Branch(name: "redesign", parent: "main", worktree: nil, here: true),
+                    worktree("agent/contact-zod", from: "redesign", "nest-c1"),
+                    worktree("agent/dark-polish", from: "redesign", "nest-c3"),
+                    worktree("agent/search", from: "redesign", "nest-c8"),
+                    worktree("agent/search-ui", from: "agent/search", "search-ui"),
+                    Branch(name: "release", parent: "main", worktree: nil, here: false),
+                    worktree("hotfix-login", from: "release", "nest-c9"),
+                    worktree("worktree-pipeline", from: "main", "pipeline"),
+                ])
+        }
+
         func storage() async throws -> StorageUsage {
             StorageUsage(
                 totalBytes: 1_420_000_000, chatsBytes: 820_000_000, attachmentsBytes: 540_000_000,

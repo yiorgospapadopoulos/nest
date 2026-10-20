@@ -184,7 +184,7 @@ async def update_session(session_id: str, body: UpdateSession, ctx: Context) -> 
 async def close_session(
     session_id: str, ctx: Context, remove_worktree: bool = False, purge: bool = False
 ) -> Session | Response:
-    """Close the session; with purge, delete it with its worktree, branch and history.
+    """Close the session; with purge, delete it with its worktree and history (its branch stays).
     A pixie's chat is refused (409 `pixie_chat`): it goes with its pixie (D072).
     """
     if (await ctx.sessions.get(session_id)).pixie_id is not None:

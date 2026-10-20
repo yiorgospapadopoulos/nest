@@ -275,13 +275,15 @@ public final class ApprovalsStore {
     // MARK: Merges
 
     /// Merges the approval's pull request; the daemon closes the chat and removes its
-    /// worktree. A failed merge leaves the approval pending.
+    /// worktree. Its branch is deleted on GitHub only with `deleteBranch`. A failed merge
+    /// leaves the approval pending.
     @discardableResult
-    public func merge(_ approval: Approval, method: MergeMethod = .squash) async throws
-        -> Session
-    {
+    public func merge(
+        _ approval: Approval, method: MergeMethod = .squash, deleteBranch: Bool = false
+    ) async throws -> Session {
+        let request = MergeRequest(method: method, deleteBranch: deleteBranch)
         let session = try await track(approval) {
-            try await self.api.merge(approval.sessionID, MergeRequest(method: method))
+            try await self.api.merge(approval.sessionID, request)
         }
         remove(approval.id)
         return session

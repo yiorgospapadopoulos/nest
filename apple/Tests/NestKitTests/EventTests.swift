@@ -4,6 +4,14 @@ import Testing
 @testable import NestKit
 
 @Suite struct EventDecodingTests {
+    /// B96: a project's branches or worktrees changed; its name comes along.
+    @Test func decodesBranchesChanged() {
+        let event = Fixture.event(
+            EventType.repoBranchesChanged, #"{"name": "cv-page"}"#, id: nil, session: nil)
+        #expect(event.body == .branchesChanged(repo: "cv-page"))
+        #expect(Fixture.event(EventType.repoBranchesChanged, #"{"name": 3}"#).body == .other)
+    }
+
     @Test func decodesAPersistedSessionHistory() {
         let events = Fixture.events
         #expect(events.map(\.id) == Array(10...21))
