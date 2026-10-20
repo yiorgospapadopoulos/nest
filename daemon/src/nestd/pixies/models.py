@@ -18,6 +18,8 @@ from nestd.config.models import (
 )
 
 NAME_MAX = 40
+# The engine a pixie runs on unless set otherwise (B91).
+DEFAULT_PROVIDER = "claude"
 type Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_MAX)
 ]
@@ -52,7 +54,11 @@ class PixieSettings(_IgnoresRemoved):
     name: Name
     mascot: Mascot = "bluebell"
     color: Color = "#8B7CF6"
-    # None: the agent defaults' model and effort.
+    # The engine it runs on, such as "claude" or "codex" (B91).
+    provider: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = (
+        DEFAULT_PROVIDER
+    )
+    # None: the engine's default model (on Claude, the agent defaults' model) and effort.
     model: str | None = None
     effort: Effort | None = None
     permission_mode: PermissionMode = "default"
@@ -73,11 +79,14 @@ class CreatePixie(PixieSettings):
     soul: Annotated[str, StringConstraints(max_length=20_000)] = ""
 
     def with_defaults(self, defaults: PixieDefaults) -> "CreatePixie":
-        """The fields the client left out taken from `[pixies]` (D104)."""
+        """The fields the client left out taken from `[pixies]` (D104). Its model is a
+        Claude model, so a pixie on another engine starts with that engine's default (B91).
+        """
         wanted = {
             name: getattr(defaults, name)
             for name in _FROM_DEFAULTS
             if name not in self.model_fields_set
+            and (name != "model" or self.provider == DEFAULT_PROVIDER)
         }
         return self.model_copy(update=wanted)
 
@@ -97,6 +106,9 @@ class UpdatePixie(_IgnoresRemoved):
     slug: str | None = None
     mascot: Mascot | None = None
     color: Color | None = None
+    # Another engine starts the pixie's next chat afresh, and its model and effort go back
+    # to that engine's defaults unless given with it.
+    provider: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
     model: str | None = None
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
@@ -194,3 +206,12 @@ class PixieActivity(BaseModel):
     # The chat it acted on, if any.
     session_id: str | None
     summary: str
+
+
+def run_model(pixie: Pixie, default_model: str | None) -> str | None:
+    """The model a run of the pixie asks for: its own, else on Claude the agent defaults'
+    (`default_model`), else its engine's default (B91).
+    """
+    if pixie.model is not None or pixie.provider != DEFAULT_PROVIDER:
+        return pixie.model
+    return default_model

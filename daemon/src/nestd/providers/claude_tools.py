@@ -9,11 +9,13 @@ from typing import Any, cast
 from claude_agent_sdk import McpServerConfig, SdkMcpTool, create_sdk_mcp_server
 from claude_agent_sdk.types import HookCallback, HookContext, HookInput, HookJSONOutput
 
-from nestd.providers.base import AgentTool, CallRules, ToolRefusedError
+from nestd.providers.base import CALL_PIXIE_TOOL, AgentTool, CallRules, ToolRefusedError
 
 TOOL_SERVER = "pixie"
 # The server of the tools every run gets (B79), so a chat shows `mcp__nest__create_artifact`.
 NEST_SERVER = "nest"
+# Nest's call tool as Claude Code names it (B91).
+CALL_TOOL = f"mcp__{NEST_SERVER}__{CALL_PIXIE_TOOL}"
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 WRITE_DENIED = "A pixie may only write files in its own workdir; use its memory tools instead."
 SUBAGENT_DENIED = "A pixie's own tools are only for the pixie, not for agents it calls."
@@ -89,8 +91,9 @@ def subagent_guard(own_tools: frozenset[str]) -> HookCallback:
 
 
 def call_guard(rules: CallRules) -> HookCallback:
-    """PreToolUse hook for the Agent tools: a pixie is called only as `rules` allow, and a
-    leader waits for each member it calls. Calls of ordinary subagents are never touched.
+    """PreToolUse hook for the Agent tools and Nest's call tool (B91): a pixie is called
+    only as `rules` allow, and a leader waits for each member it calls. Calls of ordinary
+    subagents are never touched; the call tool always waits for its report.
     """
 
     async def guard(
@@ -99,7 +102,8 @@ def call_guard(rules: CallRules) -> HookCallback:
         data: dict[str, Any] = dict(input_data)
         raw = data.get("tool_input")
         tool_input = cast("dict[str, Any]", raw) if isinstance(raw, dict) else {}
-        target = tool_input.get("subagent_type")
+        by_tool = data.get("tool_name") == CALL_TOOL
+        target = tool_input.get("pixie" if by_tool else "subagent_type")
         if not isinstance(target, str) or target not in rules.pixies:
             return {}
         # The main agent has no agent id; a subagent's type is the name it was called by.
@@ -108,7 +112,7 @@ def call_guard(rules: CallRules) -> HookCallback:
             return _deny(
                 PIXIE_CALL_DENIED if caller is not None else MEMBER_CALL_DENIED.format(slug=target)
             )
-        if caller is None or tool_input.get("run_in_background") is False:
+        if by_tool or caller is None or tool_input.get("run_in_background") is False:
             return {}
         # Inside a subagent an Agent call runs in the background unless told not to. With
         # no permission decision the changed call still goes through the usual checks.

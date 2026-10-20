@@ -12,6 +12,7 @@ from nestd.pixies.activity import ActivityStore
 from nestd.pixies.errors import DuplicateSlugError
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import (
+    DEFAULT_PROVIDER,
     NAME_MAX,
     CreatePixie,
     FileText,
@@ -21,11 +22,13 @@ from nestd.pixies.models import (
     SearchHit,
     UpdatePixie,
     WriteFile,
+    run_model,
 )
 from nestd.pixies.slugs import check_slug, free_slug, slugify
 from nestd.pixies.store import PixieStore
 from nestd.pixies.teams import TeamService
-from nestd.sessions.errors import SessionNotFoundError
+from nestd.sessions.engines import Engine
+from nestd.sessions.errors import SessionNotFoundError, UnsupportedFeatureError
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import (
     USER,
@@ -90,11 +93,14 @@ class PixieService:
     async def create(self, request: CreatePixie) -> Pixie:
         slug = request.slug or await self._free_slug(slugify(request.name))
         await self._check_slug(slug)
+        engine = self._engine(request.provider)
+        _require_skills(engine, request.skills)
         await self._sessions.fitting_mode(
-            request.model or self._defaults().model,
+            request.model or self._default_model(engine),
             request.permission_mode,
             request.permission_mode,
             model_changed=False,
+            engine=engine,
         )
         settings = PixieSettings.model_validate(request.model_dump(exclude={"slug", "soul"}))
         pixie = await self._store.create(settings, slug)
@@ -123,16 +129,28 @@ class PixieService:
             if request.team_id is not None:
                 await self._teams.get(request.team_id)  # unknown: nothing changes
             changes["team_id"] = request.team_id
-        default_model = self._defaults().model
+        moved = changes.get("provider", before.provider) != before.provider
+        if moved:
+            # The old engine's model and thinking mean nothing on the new one.
+            for name in _CLEARABLE:
+                changes.setdefault(name, None)
+        engine = self._engine(changes.get("provider", before.provider))
+        _require_skills(engine, request.skills)
+        default_model = self._default_model(engine)
         mode = await self._sessions.fitting_mode(
             changes.get("model", before.model) or default_model,
             changes.get("permission_mode"),
             before.permission_mode,
             model_changed="model" in changes,
+            engine=engine,
         )
         if mode is not None:
             changes["permission_mode"] = mode
         pixie = await self._store.update(pixie_id, **changes)
+        if moved and pixie.chat_session_id is not None:
+            # Its chat stays on the engine it began on: the next message starts a new one.
+            await self._sessions.update(pixie.chat_session_id, UpdateSession(archived=True))
+            pixie = await self._store.set_chat(pixie_id, None)
         chat = pixie.chat_session_id
         controls = {name: changes[name] for name in _CONTROLS if name in changes}
         if "model" in controls:
@@ -212,17 +230,17 @@ class PixieService:
             chat = await self._open_chat(pixie)
             if chat is not None:
                 return await self._sessions.send(chat.id, text, attachment_ids, sender=sender)
-            defaults = self._defaults()
             session = await self._sessions.create_pixie_chat(
                 pixie_id=pixie.id,
                 cwd=self._files.workdir(pixie.id),
                 prompt=text,
                 title=pixie.name,
-                model=pixie.model or defaults.model,
+                model=run_model(pixie, self._defaults().model),
                 effort=pixie.effort,
                 permission_mode=pixie.permission_mode,
                 attachment_ids=attachment_ids,
                 sender=sender,
+                provider=pixie.provider,
             )
             await self._announce(await self._store.set_chat(pixie.id, session.id))
             return SendResult(**session.model_dump())
@@ -265,6 +283,19 @@ class PixieService:
         await self._store.get(pixie_id)
         return self._files.search(pixie_id, query)
 
+    def _engine(self, provider: str) -> Engine:
+        """The pixie's engine: Claude's name is the default engine; any other must be one
+        Nest runs (422).
+        """
+        engines = self._sessions.engines
+        return engines.default if provider == DEFAULT_PROVIDER else engines.named(provider)
+
+    def _default_model(self, engine: Engine) -> str | None:
+        """The model a pixie without its own runs: the agent defaults' on the default engine
+        (Claude), the engine's own default on another.
+        """
+        return self._defaults().model if engine is self._sessions.engines.default else None
+
     def _lock(self, pixie_id: str) -> asyncio.Lock:
         return self._locks.setdefault(pixie_id, asyncio.Lock())
 
@@ -291,6 +322,14 @@ class PixieService:
 
     async def _announce(self, pixie: Pixie) -> None:
         await self._bus.publish(types.PIXIE_UPDATED, {"pixie": pixie.model_dump(mode="json")})
+
+
+def _require_skills(engine: Engine, skills: list[str] | None) -> None:
+    """409 when a skill list is set on a pixie whose engine takes none (Codex, B91). A list
+    stored before it moved there stays, unused; clearing it is allowed.
+    """
+    if skills and not engine.supports("pixie_skills"):
+        raise UnsupportedFeatureError(engine.name, "pixie_skills")
 
 
 def _copy_name(name: str, taken: set[str]) -> str:
