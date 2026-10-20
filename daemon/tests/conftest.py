@@ -6,6 +6,10 @@ import pytest
 from nestd.storage.db import Database
 from tests.fakes import FakeClock, FakeSecretStore
 
+# The configuration API tests' daemon and engine folders (B97); a module's own fixture of
+# the same name wins.
+pytest_plugins = ("tests.configuration_api",)
+
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:

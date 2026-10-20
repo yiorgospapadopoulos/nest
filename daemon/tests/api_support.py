@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
+from nestd.configuration.engines import CodexLocations
 from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.paths import AppPaths
@@ -96,6 +97,18 @@ async def build_context(
         claude_locations=locations(tmp_path),
         # Never the real Codex binary.
         codex_transport=codex or FakeAppServer(),
+        # Nor a standalone Codex on this Mac.
+        codex_locations=codex_locations(tmp_path),
+    )
+
+
+def codex_locations(tmp_path: Path) -> CodexLocations:
+    """No standalone Codex; Nest's own is version 0.163.0."""
+    return CodexLocations(
+        search_path="",
+        candidates=(tmp_path / "home" / ".local" / "bin" / "codex",),
+        bundled=None,
+        bundled_version="0.163.0",
     )
 
 
