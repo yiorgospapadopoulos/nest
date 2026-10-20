@@ -126,6 +126,15 @@ final class FakeAPI: NestAPI {
         var askAnswer = ArtifactAnswer(text: "", remaining: 19, limit: 20)
         var askStatus = ArtifactAskStatus(
             used: 0, limit: 20, remaining: 20, resetsAt: nil, enabled: true)
+        // Configuration (B97)
+        var configuration = Fixture.configurationPage
+        /// Configuration files by path; others read as missing.
+        var configFiles: [String: ConfigFile] = [:]
+        var mcpServers: [String: MCPServerSpec] = [:]
+        var copyPreview = Fixture.copyPreview
+        var repoConfigurations: [String: RepoConfiguration] = [:]
+        var codexPlugins: [CodexPlugin] = []
+        var codexMarketplaces: [CodexMarketplace] = []
     }
 
     let state = Mutex(State())
@@ -1210,5 +1219,188 @@ final class FakeAPI: NestAPI {
 
     func setPluginEnabled(_ id: String, enabled: Bool) async throws {
         try call("setPluginEnabled", "\(id) \(enabled)") { _ in }
+    }
+
+    // MARK: Configuration (B97)
+
+    func configuration() async throws -> ConfigurationPage {
+        try call("configuration") { $0.configuration }
+    }
+
+    func configurationFile(path: String) async throws -> ConfigFile {
+        try call("configurationFile", path) {
+            $0.configFiles[path] ?? ConfigFile(path: path, text: "")
+        }
+    }
+
+    /// Refuses with a conflict when the version is not the stored file's, as the daemon.
+    func saveConfigurationFile(path: String, text: String, expectedVersion: String?)
+        async throws -> String
+    {
+        await pass("saveConfigurationFile")
+        let current = try call("saveConfigurationFile", "\(path) \(expectedVersion ?? "nil")") {
+            $0.configFiles[path]?.version
+        }
+        guard current == expectedVersion else {
+            throw APIError.conflict("changed on disk")
+        }
+        let version = "v-\(text.count)-\(text.hashValue)"
+        self.set { $0.configFiles[path] = ConfigFile(path: path, text: text, version: version) }
+        return version
+    }
+
+    func setUsesShared(engine: String, item: SharedItem, on: Bool) async throws
+        -> ConfigurationPage
+    {
+        try call("setUsesShared", "\(engine) \(item.rawValue) \(on)") { state in
+            let index = state.configuration.engines.firstIndex { $0.id == engine }!
+            state.configuration.engines[index].usesShared[item].on = on
+            return state.configuration
+        }
+    }
+
+    func createSkill(name: String, description: String) async throws -> ConfigurationPage {
+        try call("createSkill", "\(name) \(description)") { state in
+            state.configuration.shared.skills.items.append(
+                ConfigSkill(
+                    name: name, description: description, path: "/s/\(name)/SKILL.md",
+                    source: .yours))
+            return state.configuration
+        }
+    }
+
+    func deleteSkill(_ name: String) async throws -> ConfigurationPage {
+        try call("deleteSkill", name) { state in
+            state.configuration.shared.skills.items.removeAll { $0.name == name }
+            return state.configuration
+        }
+    }
+
+    func makeSkillShared(_ name: String, engine: String) async throws -> ConfigurationPage {
+        try call("makeSkillShared", "\(name) \(engine)") { state in
+            let index = state.configuration.shared.skills.items.firstIndex { $0.name == name }!
+            state.configuration.shared.skills.items[index].source = .yours
+            state.configuration.shared.skills.items[index].engine = nil
+            return state.configuration
+        }
+    }
+
+    func setSkillEnabled(_ name: String, codex enabled: Bool) async throws -> ConfigurationPage {
+        await pass("setSkillEnabled")
+        return try call("setSkillEnabled", "\(name) \(enabled)") { state in
+            let index = state.configuration.shared.skills.items.firstIndex { $0.name == name }!
+            state.configuration.shared.skills.items[index].codexEnabled = enabled
+            return state.configuration
+        }
+    }
+
+    func saveMCPServer(_ name: String, _ spec: MCPServerSpec) async throws -> ConfigurationPage {
+        try call("saveMCPServer", "\(name) \(Fixture.json(spec))") { state in
+            state.mcpServers[name] = spec
+            state.configuration.shared.mcpServers.removeAll { $0.name == name }
+            state.configuration.shared.mcpServers.append(
+                MCPServerEntry(
+                    name: name, summary: spec.command ?? spec.url ?? "", transport: spec.transport,
+                    engines: ["claude", "codex"]))
+            return state.configuration
+        }
+    }
+
+    func deleteMCPServer(_ name: String) async throws -> ConfigurationPage {
+        try call("deleteMCPServer", name) { state in
+            state.configuration.shared.mcpServers.removeAll { $0.name == name }
+            return state.configuration
+        }
+    }
+
+    func mcpServer(_ name: String) async throws -> MCPServerSpec {
+        try call("mcpServer", name) { $0.mcpServers[name] ?? MCPServerSpec(transport: .stdio) }
+    }
+
+    func copyPreview(engine: String) async throws -> CopyPreview {
+        try call("copyPreview", engine) { $0.copyPreview }
+    }
+
+    func copyToShared(engine: String, instructions: Bool) async throws -> CopyResult {
+        try call("copyToShared", "\(engine) instructions=\(instructions)") { state in
+            let index = state.configuration.engines.firstIndex { $0.id == engine }!
+            state.configuration.engines[index].missingFromShared = MissingFromShared()
+            return CopyResult(
+                summary: "Copied to Shared: 2 skills added.", undoID: "backup-1",
+                page: state.configuration)
+        }
+    }
+
+    func undoCopy(_ id: String) async throws -> ConfigurationPage {
+        try call("undoCopy", id) { _ in Fixture.configurationPage }
+    }
+
+    func repoConfiguration(_ repo: String) async throws -> RepoConfiguration {
+        try call("repoConfiguration", repo) { state in
+            state.repoConfigurations[repo]
+                ?? RepoConfiguration(instructions: [], skills: [], mcpServers: [])
+        }
+    }
+
+    func saveRepoMCPServer(_ repo: String, _ name: String, _ spec: MCPServerSpec) async throws {
+        try call("saveRepoMCPServer", "\(repo) \(name)") { state in
+            var config =
+                state.repoConfigurations[repo]
+                ?? RepoConfiguration(instructions: [], skills: [], mcpServers: [])
+            config.mcpServers.append(
+                MCPServerEntry(name: name, summary: spec.command ?? "", transport: spec.transport))
+            state.repoConfigurations[repo] = config
+        }
+    }
+
+    func deleteRepoMCPServer(_ repo: String, _ name: String) async throws {
+        try call("deleteRepoMCPServer", "\(repo) \(name)") { state in
+            state.repoConfigurations[repo]?.mcpServers.removeAll { $0.name == name }
+        }
+    }
+
+    func createRepoSkill(_ repo: String, name: String, description: String) async throws {
+        try call("createRepoSkill", "\(repo) \(name) \(description)") { state in
+            state.repoConfigurations[repo]?.skills.append(
+                ConfigSkill(name: name, path: "/r/\(name)/SKILL.md", source: .project))
+        }
+    }
+
+    func codexPlugins(query: String) async throws -> [CodexPlugin] {
+        await pass("codexPlugins \(query)")
+        return try call("codexPlugins", query) { state in
+            query.isEmpty
+                ? state.codexPlugins : state.codexPlugins.filter { $0.name.contains(query) }
+        }
+    }
+
+    func installCodexPlugin(_ id: String) async throws {
+        try call("installCodexPlugin", id) { state in
+            let index = state.codexPlugins.firstIndex { $0.id == id }!
+            state.codexPlugins[index].installed = true
+        }
+    }
+
+    func uninstallCodexPlugin(_ id: String) async throws {
+        try call("uninstallCodexPlugin", id) { state in
+            let index = state.codexPlugins.firstIndex { $0.id == id }!
+            state.codexPlugins[index].installed = false
+        }
+    }
+
+    func codexMarketplaces() async throws -> [CodexMarketplace] {
+        try call("codexMarketplaces") { $0.codexMarketplaces }
+    }
+
+    func addCodexMarketplace(source: String) async throws {
+        try call("addCodexMarketplace", source) { state in
+            state.codexMarketplaces.append(CodexMarketplace(name: source, path: source))
+        }
+    }
+
+    func removeCodexMarketplace(_ name: String) async throws {
+        try call("removeCodexMarketplace", name) { state in
+            state.codexMarketplaces.removeAll { $0.name == name }
+        }
     }
 }

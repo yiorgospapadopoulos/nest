@@ -422,7 +422,7 @@ private struct StackedMeter: View {
 
 /// An engine's small mark: Claude's starburst, OpenAI's blossom for Codex in the chip's
 /// grey, else a terminal glyph for an engine without a mark.
-private struct EngineMark: View {
+struct EngineMark: View {
     /// Codex's provider name, as the daemon lists it.
     static let codex = "codex"
 

@@ -572,26 +572,49 @@ struct LinkButtonStyle: ButtonStyle {
 
 struct Switch: View {
     let isOn: Bool
+    /// In the user's accent at a smaller size, as Settings > Configuration draws its
+    /// switches (B97).
+    var accent = false
     let toggle: () -> Void
+    @Environment(\.accentColors) private var accentColors
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button(action: toggle) {
-            Capsule()
-                .fill(isOn ? StatusTone.review.color : Palette.selection)
-                .frame(width: 38, height: 22)
-                .overlay(alignment: isOn ? .trailing : .leading) {
-                    Circle()
-                        .fill(.white)
-                        .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
-                        .frame(width: 18, height: 18)
-                        .padding(2)
-                }
-                .animation(.smooth(duration: 0.2), value: isOn)
-                .contentShape(Capsule())
+        let width = accent ? 28.0 : 38
+        let height = accent ? 16.0 : 22
+        let track = Capsule()
+            .fill(fill)
+            .frame(width: width, height: height)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(accent && isOn ? accentColors.onAccent : .white)
+                    .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
+                    .frame(width: height - 4, height: height - 4)
+                    .padding(2)
+            }
+            .animation(.smooth(duration: 0.2), value: isOn)
+            .contentShape(Capsule())
+        // A switch that cannot change is drawn, not a disabled button, so the system's
+        // dimming does not wash out its state: on stays in the accent at half strength.
+        Group {
+            if isEnabled {
+                Button(action: toggle) { track }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+            } else {
+                track
+            }
         }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
         .accessibilityAddTraits(isOn ? [.isToggle, .isSelected] : .isToggle)
+    }
+
+    private var onFill: Color {
+        accent ? accentColors.accent : StatusTone.review.color
+    }
+
+    private var fill: Color {
+        let color = isOn ? onFill : Palette.selection
+        return isEnabled ? color : color.opacity(0.5)
     }
 }
 

@@ -274,8 +274,13 @@ import Testing
         #expect(
             SettingsPage.fixed.map(\.title) == [
                 "General", "Appearance", "Notifications", "Agents", "Usage", "Storage",
-                "Pixies", "Accounts", "Extensions", "Devices", "Keyboard shortcuts",
+                "Pixies", "Accounts", "Devices", "Keyboard shortcuts", "Configuration",
             ])
+        // B97: plugins, marketplaces, skills, MCP servers and connectors live there now.
+        for word in ["plugins", "marketplaces", "skills", "mcp servers", "connectors", "hooks"] {
+            #expect(SettingsPage.configuration.matches(word))
+        }
+        #expect(!SettingsPage.accounts.matches("plugins"))
         #expect(SettingsPage.storage.matches("archive"))
         #expect(SettingsPage.storage.matches("search index"))
         #expect(SettingsPage.storage.matches("used by nest"))
@@ -321,8 +326,9 @@ import Testing
     @Test func projectTabs() {
         #expect(
             ProjectSettingsTab.tabs(git: true).map(\.rawValue) == [
-                "General", "Chats", "Worktrees", "Look", "Artifacts",
+                "General", "Configuration", "Chats", "Worktrees", "Look", "Artifacts",
             ])
+        #expect(SettingsPage.project("x").matches(".mcp.json"))
         #expect(!ProjectSettingsTab.tabs(git: false).contains(.worktrees))
     }
 }

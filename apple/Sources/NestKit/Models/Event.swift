@@ -86,6 +86,8 @@ public enum EventType {
     public static let claudeCodeUpdated = "claude_code.updated"
     /// Plugins or marketplaces changed.
     public static let extensionsUpdated = "extensions.updated"
+    /// A watched configuration file or folder changed on disk, whoever changed it (B97).
+    public static let configurationChanged = "configuration.changed"
     public static let claudeChatsUpdated = "claude_chats.updated"
     public static let repoAdded = "repo.added"
     /// A repo's registration changed, such as a plain folder that git now tracks.
@@ -175,6 +177,8 @@ public enum EventBody: Sendable, Hashable {
     case claudeCodeUpdated(ClaudeCodeStatus)
     /// List the plugins, skills and marketplaces again.
     case extensionsChanged
+    /// Read the configuration page again, or a repo's when `repo` is set (B97).
+    case configurationChanged(repo: String?)
     /// The Claude Code chats of these repos changed; list them again.
     case claudeChatsUpdated(repos: [String])
     /// A repo was registered, changed or removed, or the repos were reordered; the list is
@@ -275,6 +279,8 @@ public enum EventBody: Sendable, Hashable {
         case EventType.claudeCodeUpdated:
             self = .claudeCodeUpdated(try payload.decode(ClaudeCodeStatus.self))
         case EventType.extensionsUpdated: self = .extensionsChanged
+        case EventType.configurationChanged:
+            self = .configurationChanged(repo: try field("repo", as: String?.self))
         case EventType.claudeChatsUpdated:
             self = .claudeChatsUpdated(repos: try field("repos", as: [String].self))
         case EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved,
