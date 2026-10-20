@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.config.models import Color, Mascot
+from nestd.repos.branch_map import BranchMap, read_branch_map
 from nestd.repos.service import RepoView
 from nestd.sessions.commands import CommandList
 from nestd.sessions.repo_removal import remove_repo
@@ -112,6 +113,16 @@ class BranchList(BaseModel):
 async def repo_branches(name: str, ctx: Context) -> BranchList:
     """Local branch names, sorted: where a new worktree chat can start from (B55)."""
     return BranchList(branches=await ctx.repos.branches(name))
+
+
+@router.get("/{name}/branch-map")
+async def repo_branch_map(name: str, ctx: Context) -> BranchMap:
+    """The default branch, the project folder's branch and the branches of linked
+    worktrees, each with the branch it comes from (B96); `repo.branches_changed` says when
+    to read it again.
+    """
+    repo = await ctx.repos.git_repo(name)
+    return await read_branch_map(repo, await ctx.sessions.worktree_bases(name))
 
 
 @router.get("/{name}/link-suggestions")
