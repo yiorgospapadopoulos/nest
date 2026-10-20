@@ -1,14 +1,15 @@
 """Layers 1 and 2 of the agent git block (D013, D049): permission rules and a PreToolUse hook.
 Pixie chats, habit runs and chats a pixie started keep the block; other chats do not (B58).
+The block covers pushes and pull requests; commits are allowed (D123).
 
 The hook runs for every tool, not only Bash. It denies:
 - a tool whose input holds a command line (`command`, `cmd`, `script`, `shell_command`,
   `command_line`, as a string or an argv list) or an argv list (`args`, `argv`) that
   `is_git_write` flags, such as Bash, the CLI's Monitor tool or Serena's
   `execute_shell_command`;
-- an MCP tool whose own name opens or merges a pull request, pushes or commits, such as
-  GitHub's `create_pull_request`, `merge_pull_request`, `push_files` and
-  `create_or_update_file`, or a git server's `git_commit` and `git_push`.
+- an MCP tool whose own name opens or merges a pull request or writes to a remote, such
+  as GitHub's `create_pull_request`, `merge_pull_request`, `push_files`,
+  `create_or_update_file` and `create_commit`, or a git server's `git_push`.
 
 Other tools pass untouched, even when their text mentions git (Edit, Write, Skill).
 """
@@ -24,19 +25,20 @@ from nestd.providers.git_commands import is_git_write
 __all__ = ["DENY_REASON", "GIT_WRITE_RULES", "block_git_writes", "is_git_write", "tool_writes"]
 
 GIT_WRITE_RULES = (
-    "Bash(git commit:*)",
     "Bash(git push:*)",
     "Bash(gh pr create:*)",
     "Bash(gh pr merge:*)",
 )
-DENY_REASON = "Nest: commits, pushes and pull requests are made by Nest after you approve them"
+DENY_REASON = (
+    "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
+)
 
 # Input keys, lowercased without separators, that hold a command line or an argv list.
 _COMMAND_KEYS = frozenset({"command", "cmd", "script", "shellcommand", "commandline"})
 _ARGV_KEYS = frozenset({"args", "argv"})
 _MCP_PREFIX = "mcp__"
 _MCP_GIT_WRITE = re.compile(
-    r"(?:create|merge)pullrequest|pushfiles|createorupdatefile|gitcommit|gitpush|createcommit"
+    r"(?:create|merge)pullrequest|pushfiles|createorupdatefile|gitpush|createcommit"
 )
 
 
@@ -65,7 +67,7 @@ def _letters(text: str) -> str:
 async def block_git_writes(
     input_data: HookInput, tool_use_id: str | None, context: HookContext
 ) -> HookJSONOutput:
-    """PreToolUse hook for every tool that denies commits, pushes and PR writes."""
+    """PreToolUse hook for every tool that denies pushes and PR writes."""
     if input_data["hook_event_name"] != "PreToolUse":
         return {}
     if not tool_writes(input_data["tool_name"], input_data["tool_input"]):
