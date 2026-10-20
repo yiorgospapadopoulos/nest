@@ -56,10 +56,12 @@ private struct UsageChart: View {
         .padding(.bottom, 12)
         ForEach(usage.limitGroups(providers: shell.providers)) { group in
             if let title = group.title {
+                // The engine heads its rows, so it reads above them rather than like them.
                 Text(title)
-                    .font(.ui(TypeSize.meta, .medium))
-                    .foregroundStyle(Palette.t3)
-                    .padding(.bottom, 6)
+                    .font(.ui(TypeSize.callout, .semibold))
+                    .foregroundStyle(Palette.t1)
+                    .padding(.top, 2)
+                    .padding(.bottom, 8)
             }
             // Claude's 5 hour and weekly windows; another engine's, whichever it has (B91).
             let rows = group.rows

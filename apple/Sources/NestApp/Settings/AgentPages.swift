@@ -70,38 +70,49 @@ struct AgentsPage: View {
     }
 }
 
-/// What new chats start with, kept on the daemon and shared with the iPhone.
+/// What new chats start with, kept on the daemon and shared with the iPhone: real choices
+/// only (B94). The model menu has a section per engine, and the model chosen picks the
+/// engine new chats run on; Thinking and Permissions follow that model.
 private struct NewChatsSection: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let agents = shell.agents
         let defaults = agents.current
+        let catalog = shell.providers.catalog(for: defaults.provider, claude: agents.catalog)
+        let levels = catalog.thinkingLevels(for: defaults.model)
         SettingsSection(title: "New chats") {
             SettingsRow(label: "Model") {
-                DropdownMenu(title: agents.label(for: defaults.model)) {
-                    ModelItems(current: defaults.model) { info in
-                        change { try await agents.setDefaultModel(info.value) }
+                DropdownMenu(
+                    title: shell.providers.modelTitle(
+                        defaults.model, on: defaults.provider, claude: agents.catalog)
+                ) {
+                    EngineModelItems(provider: defaults.provider, current: defaults.model) {
+                        info, provider in
+                        let catalog = shell.providers.catalog(for: provider, claude: agents.catalog)
+                        change {
+                            try await agents.setDefaultModel(
+                                info.value, provider: provider, catalog: catalog)
+                        }
                     }
                 }
             }
             SettingsRow(label: "Thinking") {
                 DropdownMenu(
-                    title: defaults.effort?.label
-                        ?? agents.defaultEffortLabel(for: defaults.model)
+                    title: defaults.effort?.label ?? (levels.isEmpty ? "Not available" : "-")
                 ) {
-                    ThinkingItems(
-                        model: defaults.model, effort: defaults.effort, offersDefault: true
-                    ) { effort in
+                    ThinkingItems(model: defaults.model, effort: defaults.effort, catalog: catalog)
+                    { effort in
                         change { try await agents.setDefaultEffort(effort) }
                     }
                 }
+                .disabled(levels.isEmpty)
             }
             SettingsRow(label: "Permissions") {
-                DropdownMenu(title: PermissionMode.label(defaults.permissionMode)) {
+                DropdownMenu(title: defaults.permissionMode.label) {
                     PermissionItems(
-                        modes: agents.permissionModes(for: defaults.model),
-                        current: defaults.permissionMode, offersDefault: true
+                        modes: catalog.permissionModes(for: defaults.model),
+                        current: defaults.permissionMode
                     ) { mode in change { try await agents.setDefaultPermissionMode(mode) } }
                 }
             }

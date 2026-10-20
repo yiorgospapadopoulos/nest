@@ -647,7 +647,7 @@ private struct ControlRow: View {
                     effort: isDraft ? draft.effort : session?.effort, isOpen: !isDraft)
                 PermissionMenu(
                     chat: chat, model: isDraft ? draft.model : session?.model,
-                    mode: isDraft ? draft.permission : session?.permissionMode,
+                    mode: isDraft ? draft.permission : session?.permissionMode ?? .default,
                     warnsOnBypass: start)
             }
             if !isDraft, let live, let context = session?.context,

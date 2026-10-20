@@ -157,19 +157,46 @@ private struct BrowseSection: View {
     @Environment(Shell.self) private var shell
     @State private var open: String?
     @State private var installing: AvailablePlugin?
+    /// How many rows are drawn: drawing every marketplace plugin at once made Settings lag.
+    @State private var shown = BrowseSection.page
+    /// Searches every plugin the marketplaces offer, not only the rows drawn.
+    @State private var query = ""
+
+    private static let page = 10
 
     var body: some View {
         let extensions = shell.model.extensions
         SettingsSection(title: "Browse", bare: true) {
-            if let available = extensions.available {
+            if let all = extensions.available {
+                let available = all.matching(query)
                 VStack(alignment: .leading, spacing: 0) {
-                    if available.isEmpty {
-                        EmptyLine(text: "The marketplaces offer no plugins")
+                    if !all.isEmpty {
+                        TextField("Search \(all.count) plugins", text: $query)
+                            .textFieldStyle(.plain)
+                            .font(.ui(TypeSize.ui))
+                            .padding(.horizontal, 8)
+                            .frame(height: 24)
+                            .background(Palette.soft, in: .rounded(Radius.button))
+                            .padding(.vertical, 10)
+                            .onChange(of: query) { shown = BrowseSection.page }
+                            .accessibilityLabel("Search plugins")
                     }
-                    ForEach(available) { plugin in
+                    if all.isEmpty {
+                        EmptyLine(text: "The marketplaces offer no plugins")
+                    } else if available.isEmpty {
+                        EmptyLine(text: "No plugins match")
+                    }
+                    ForEach(available.prefix(shown)) { plugin in
                         AvailableRow(
                             plugin: plugin, open: open == plugin.id,
                             toggle: { toggle(plugin) }, install: { installing = plugin })
+                    }
+                    if available.count > shown {
+                        Button("Load more (\(available.count - shown) left)") {
+                            shown += BrowseSection.page
+                        }
+                        .buttonStyle(.nest(.plain))
+                        .padding(.top, 10)
                     }
                 }
                 .overlay(alignment: .top) { Separator() }

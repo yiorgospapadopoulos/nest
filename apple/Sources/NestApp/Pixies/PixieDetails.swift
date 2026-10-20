@@ -492,8 +492,7 @@ private struct PixieSettings: View {
 
     var body: some View {
         let picker = PixieModelPicker(
-            pixie: pixie, providers: shell.providers, claude: shell.agents.catalog,
-            agentDefault: shell.agents.current.model)
+            pixie: pixie, providers: shell.providers, claude: shell.agents.catalog)
         let runs = picker.runningModel
         let levels = picker.catalog.thinkingLevels(for: runs)
         DetailGroup {
@@ -502,25 +501,18 @@ private struct PixieSettings: View {
             }
             PickerRow(
                 title: "Thinking",
-                value: levels.isEmpty ? "Not available" : pixie.effort?.label ?? "Default",
+                value: levels.isEmpty ? "Not available" : pixie.effort?.label ?? "-",
                 enabled: !levels.isEmpty
             ) {
-                ThinkingItems(
-                    model: runs, effort: pixie.effort, offersDefault: true,
-                    catalog: picker.catalog
-                ) {
-                    save(UpdatePixieRequest(effort: $0, clearsEffort: $0 == nil))
+                ThinkingItems(model: runs, effort: pixie.effort, catalog: picker.catalog) {
+                    save(UpdatePixieRequest(effort: $0))
                 }
             }
             PickerRow(title: "Permissions", value: pixie.permissionMode.label) {
                 // Auto only where the model offers it, as in any chat.
                 PermissionItems(
                     modes: picker.catalog.permissionModes(for: runs), current: pixie.permissionMode
-                ) {
-                    if let mode = $0 {
-                        save(UpdatePixieRequest(permissionMode: mode))
-                    }
-                }
+                ) { save(UpdatePixieRequest(permissionMode: $0)) }
             }
             PickerRow(title: "Project files", value: pixie.projectAccess.label) {
                 Section("Project files") {

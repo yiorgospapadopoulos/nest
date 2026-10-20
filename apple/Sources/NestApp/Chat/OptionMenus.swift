@@ -74,60 +74,65 @@ struct ModelMenu: View {
         let label = shell.catalog(forChat: chat).label(for: model)
         let provider = shell.provider(forChat: chat)
         QuietMenu(title: fit.compact ? PaneFit.shortModel(label) : label, help: "Model") {
-            ForEach(
-                shell.providers.modelSections(
-                    claude: shell.agents.catalog, provider: provider, isDraft: shell.isDraft(chat))
-            ) { section in
-                Section(section.title) {
-                    if !section.detail.isEmpty {
-                        Text(section.detail)
-                    }
-                    if section.catalog.models.isEmpty {
-                        Button("Models unavailable") {}.disabled(true)
-                    }
-                    ForEach(section.catalog.models) { info in
-                        OptionItem(
-                            title: info.displayName, detail: info.description,
-                            checked: section.isSelected(info, provider: provider, model: model)
-                        ) { shell.setModel(info, on: section.provider, for: chat) }
-                    }
-                }
+            EngineModelItems(provider: provider, current: model, isDraft: shell.isDraft(chat)) {
+                shell.setModel($0, on: $1, for: chat)
             }
         }
     }
 }
 
 /// Claude Code's model list with descriptions and a checkmark on the current model; a
-/// model the list does not have shows only as the menu's title. With `defaultItem` set
-/// (a pixie), Default comes first and stands for no model of its own (nil).
+/// model the list does not have shows only as the menu's title. Real models only (B94).
 struct ModelItems: View {
     let current: String?
-    var defaultItem: DefaultItem?
     let pick: (ModelInfo) -> Void
     @Environment(Shell.self) private var shell
-
-    struct DefaultItem {
-        let detail: String
-        let pick: () -> Void
-    }
 
     var body: some View {
         let agents = shell.agents.catalog
         Section("Model") {
-            if let defaultItem {
-                OptionItem(title: "Default", detail: defaultItem.detail, checked: current == nil) {
-                    defaultItem.pick()
-                }
-            }
             if agents.models.isEmpty {
                 Button("Models unavailable") {}.disabled(true)
             }
             ForEach(agents.models) { info in
                 OptionItem(
                     title: info.displayName, detail: info.description,
-                    checked: (defaultItem == nil || current != nil)
-                        && agents.isSelected(info, current: current)
+                    checked: agents.isSelected(info, current: current)
                 ) { pick(info) }
+            }
+        }
+    }
+}
+
+/// Every engine's models under its name with its plan or that it is not signed in (B91);
+/// choosing one picks its engine too. A chat that exists (`isDraft` false) lists only its
+/// own engine's. The composer's menu and the agent defaults' (B94).
+struct EngineModelItems: View {
+    /// Nil is Claude.
+    let provider: String?
+    let current: String?
+    var isDraft = true
+    let pick: (ModelInfo, String) -> Void
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        ForEach(
+            shell.providers.modelSections(
+                claude: shell.agents.catalog, provider: provider, isDraft: isDraft)
+        ) { section in
+            Section(section.title) {
+                if !section.detail.isEmpty {
+                    Text(section.detail)
+                }
+                if section.catalog.models.isEmpty {
+                    Button("Models unavailable") {}.disabled(true)
+                }
+                ForEach(section.catalog.models) { info in
+                    OptionItem(
+                        title: info.displayName, detail: info.description,
+                        checked: section.isSelected(info, provider: provider, model: current)
+                    ) { pick(info, section.provider) }
+                }
             }
         }
     }
@@ -145,13 +150,12 @@ struct EffortMenu: View {
     var body: some View {
         let label = fit.compact ? effort?.shortLabel : effort?.label
         let catalog = shell.catalog(forChat: chat)
-        QuietMenu(title: label ?? "Default", help: "Thinking") {
+        let levels = catalog.thinkingLevels(for: model)
+        QuietMenu(title: label ?? (levels.isEmpty ? "No thinking" : "Thinking"), help: "Thinking") {
             ThinkingItems(model: model, effort: effort, catalog: catalog) { level in
-                if let level {
-                    shell.setEffort(level, for: chat)
-                }
+                shell.setEffort(level, for: chat)
             }
-            if isOpen && !catalog.thinkingLevels(for: model).isEmpty {
+            if isOpen && !levels.isEmpty {
                 Divider()
                 Text("Applies from your next message")
             }
@@ -159,14 +163,13 @@ struct EffortMenu: View {
     }
 }
 
-/// The model's own thinking levels; Model default (nil) only where `offersDefault` is set.
+/// The model's own thinking levels, no default entry (B94).
 struct ThinkingItems: View {
     let model: String?
     let effort: Effort?
-    var offersDefault = false
     /// The chat's engine's models; nil for Claude Code's.
     var catalog: ModelCatalog?
-    let pick: (Effort?) -> Void
+    let pick: (Effort) -> Void
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -176,12 +179,6 @@ struct ThinkingItems: View {
             if levels.isEmpty {
                 Button("Not available for this model") {}.disabled(true)
             } else {
-                if offersDefault {
-                    OptionItem(
-                        title: catalog.defaultEffortLabel(for: model), detail: "",
-                        checked: effort == nil
-                    ) { pick(nil) }
-                }
                 ForEach(levels, id: \.self) { level in
                     OptionItem(title: level.label, detail: "", checked: effort == level) {
                         pick(level)
@@ -195,17 +192,14 @@ struct ThinkingItems: View {
 struct PermissionMenu: View {
     let chat: String
     let model: String?
-    /// Nil only for a new chat whose agent default leaves it to Claude Code; menus do not
-    /// offer it, as the daemon would start the chat with the agent default (audit BUG-87).
-    let mode: PermissionMode?
+    let mode: PermissionMode
     /// Bypass in the warning colour, as the empty workspace shows it.
     var warnsOnBypass = false
     @Environment(Shell.self) private var shell
     @Environment(\.paneFit) private var fit
 
     var body: some View {
-        let label =
-            fit.compact ? PermissionMode.shortLabel(mode) : PermissionMode.label(mode)
+        let label = fit.compact ? mode.shortLabel : mode.label
         let warns = warnsOnBypass && mode == .bypassPermissions
         QuietMenu(
             title: label, help: "Permission mode", tint: warns ? StatusTone.waiting.color : nil
@@ -219,22 +213,15 @@ struct PermissionMenu: View {
     }
 }
 
-/// The permission modes with their descriptions: Auto only for models that offer it,
-/// and Claude Code default (nil) where `offersDefault` is set (agent defaults only).
+/// The permission modes with their descriptions: Auto only for models that offer it, no
+/// default entry (B94).
 struct PermissionItems: View {
     let modes: [PermissionMode]
     let current: PermissionMode?
-    var offersDefault = false
-    let pick: (PermissionMode?) -> Void
+    let pick: (PermissionMode) -> Void
 
     var body: some View {
         Section("Permission mode") {
-            if offersDefault {
-                OptionItem(
-                    title: PermissionMode.claudeCodeDefaultLabel,
-                    detail: PermissionMode.claudeCodeDefaultSummary, checked: current == nil
-                ) { pick(nil) }
-            }
             ForEach(modes, id: \.self) { option in
                 OptionItem(
                     title: option.label, detail: option.summary, checked: current == option
