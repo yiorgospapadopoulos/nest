@@ -136,6 +136,9 @@ SESSION_PIXIES: Final = "session.pixies"
 # Settings (D104); all global. The Claude account after a sign in, sign out or a failed
 # sign in: `GET /api/accounts/claude`'s body plus `error` (null unless it failed).
 ACCOUNT_CLAUDE: Final = "account.claude"
+# The Codex account after a sign in, a cancelled or failed one, or a sign out (B94):
+# `GET /api/accounts/codex`'s body with `error` (null unless signing in failed).
+ACCOUNT_CODEX: Final = "account.codex"
 # Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
 # `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
 CLAUDE_CODE_INSTALL: Final = "claude_code.install"

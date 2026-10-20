@@ -1,5 +1,6 @@
 """Everything the daemon shares between the API, CLI and modules."""
 
+import logging
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from typing import Self
 import httpx
 from claude_agent_sdk import ClaudeSDKClient
 
+from nestd.accounts.codex import CodexAccount
 from nestd.accounts.github import GithubAccount
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
@@ -32,12 +34,15 @@ from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.composer.service import ComposerActions
-from nestd.config.loader import load_settings
-from nestd.config.models import ArtifactSettings, Settings
+from nestd.config.errors import ConfigError
+from nestd.config.loader import load_settings, save_agent_defaults, save_pixie_defaults
+from nestd.config.models import AgentChoices, ArtifactSettings, Settings
 from nestd.connectors.registry import ConnectorRegistry
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
+from nestd.engine.defaults import ChatDefaults
 from nestd.engine.fetch import InfoClientFactory, fetch_details
 from nestd.engine.service import EngineInfo
+from nestd.engine.sign_ins import CLAUDE, CODEX, SignInStore
 from nestd.engine.store import EngineInfoStore
 from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandRunner, run_command
@@ -109,6 +114,9 @@ from nestd.worktrees.manager import WorktreeManager
 LONG_COMMAND_SECONDS = 900.0
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class AppContext:
     paths: AppPaths
@@ -137,6 +145,9 @@ class AppContext:
     engine: EngineInfo
     # Codex's models and login (B91).
     codex: CodexEngine
+    # Which engine was signed in first, and the defaults Nest picks from it (B94).
+    sign_ins: SignInStore
+    chat_defaults: ChatDefaults
     pixies: PixieService
     pixie_calls: PixieCallLog
     teams: TeamService
@@ -151,6 +162,7 @@ class AppContext:
     github: GithubAccount
     claude_code: ClaudeCli
     claude_account: ClaudeAccount
+    codex_account: CodexAccount
     extensions: Extensions
     artifacts: Artifacts
     # None when the paths name no socket, as in tests.
@@ -221,12 +233,14 @@ class AppContext:
         live_chats = LiveChats(paths.claude_dir)
         search = SearchIndex(db)
         commands = CommandStore(db, clock)
+        sign_ins = SignInStore(db, clock)
         engine = EngineInfo(
             EngineInfoStore(db, clock),
             fetch=lambda: fetch_details(engine_factory),
             clock=clock,
             account_file=paths.claude_account_file,
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
+            on_signed_in=lambda: sign_ins.record(CLAUDE),
         )
         codex_home = paths.codex_home
         codex = CodexEngine(
@@ -238,6 +252,7 @@ class AppContext:
             fetch_usage=lambda: fetch_codex_usage(
                 codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
             ),
+            on_signed_in=lambda: sign_ins.record(CODEX),
         )
         pixie_files = PixieFiles(paths.pixies_dir)
         team_store = TeamStore(db, clock)
@@ -303,6 +318,7 @@ class AppContext:
             live_chats=live_chats,
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
+            default_model=engine.default_model,
             extras=lambda session: pixie_runtime.extras(session),
             agents=pixie_agents.for_session,
             calls=pixie_calls,
@@ -318,6 +334,7 @@ class AppContext:
                     ),
                     models=codex.find,
                     ready=codex.require_signed_in,
+                    default=codex.default_model,
                 )
             ],
         )
@@ -495,6 +512,8 @@ class AppContext:
             ),
             engine=engine,
             codex=codex,
+            sign_ins=sign_ins,
+            chat_defaults=ChatDefaults(lambda: sessions.engines, sign_ins),
             pixies=pixies,
             pixie_calls=pixie_calls,
             teams=teams,
@@ -530,6 +549,12 @@ class AppContext:
             github=GithubAccount(runner, paths.data_dir, clock),
             claude_code=claude_code,
             claude_account=ClaudeAccount(claude_code, bus, clock),
+            codex_account=CodexAccount(
+                codex,
+                codex_transport,
+                lambda: app_server_launch(bundled_binary(), os.environ, codex_home),
+                bus,
+            ),
             extensions=Extensions(claude_code, bus, paths.claude_dir),
             artifacts=artifacts,
             # Each request gets the current token: a revoked local device is given a new one.
@@ -538,6 +563,39 @@ class AppContext:
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
         )
         return context
+
+    async def settle_defaults(self) -> AgentChoices:
+        """The agent defaults with nothing left to the engines (B94): nulls stored before
+        are replaced by the values Nest picks and saved once they can be resolved, as are
+        `[pixies] model` and pixies without a model or thinking level of their own.
+        """
+        resolved = await self.chat_defaults.resolve(self.settings.agents)
+        choices = resolved.choices
+        agents = self.settings.agents
+        stored = (agents.provider, agents.model, agents.effort, agents.permission_mode)
+        concrete = (choices.provider, choices.model, choices.effort, choices.permission_mode)
+        try:
+            if resolved.complete and stored != concrete:
+                saved = save_agent_defaults(self.paths, choices)
+                self.settings = self.settings.model_copy(update={"agents": saved})
+            if self.settings.pixies.model is None:
+                await self._settle_pixie_model(choices)
+        except ConfigError as error:
+            logger.warning("could not store the concrete defaults: %s", error)
+        await self.pixies.settle_all()
+        return choices
+
+    async def _settle_pixie_model(self, choices: AgentChoices) -> None:
+        """New Claude pixies start on the agent defaults' model when that is Claude's,
+        else on Claude's default model.
+        """
+        claude = self.sessions.engines.default
+        model = choices.model if choices.provider == claude.name else None
+        model = model or await claude.default_model()
+        if model is not None:
+            pixies = self.settings.pixies.model_copy(update={"model": model})
+            saved = save_pixie_defaults(self.paths, pixies)
+            self.settings = self.settings.model_copy(update={"pixies": saved})
 
     def artifact_settings(self) -> ArtifactSettings:
         """Read at each ask, so a change to the settings applies at once."""
@@ -550,6 +608,7 @@ class AppContext:
 
     async def close(self) -> None:
         await self.claude_account.stop()
+        await self.codex_account.stop()
         await self.claude_code.stop()
         await self.modules.stop_all()
         await self.notifications.close()

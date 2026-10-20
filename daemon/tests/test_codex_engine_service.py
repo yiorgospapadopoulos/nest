@@ -87,19 +87,44 @@ async def test_models_and_account_are_kept_apart_from_claudes(
 
     listed = await codex.models()
 
-    assert listed.models == MODELS
+    # Codex's default entry is kept to learn its default model, never offered (B94).
+    assert listed.models == MODELS[1:]
+    assert listed.default_model == "gpt-5.5"
+    assert await codex.default_model() == "gpt-5.5"
     assert await codex.account() == ACCOUNT
     assert (await claude.account()) == AccountInfo(plan="Claude Max")
     assert (await claude.models()).models == [MODELS[1]]  # type: ignore[union-attr]
     assert await codex.find(None) == MODELS[0]
     assert await codex.find("gpt-5.5") == MODELS[1]
     assert await codex.find("gpt-9") is None
-    assert (await codex.models()).models == MODELS
+    assert (await codex.models()).models == MODELS[1:]
     assert fetch.calls == 1
 
 
 async def test_nothing_is_found_before_codex_reported(db: Database, clock: FakeClock) -> None:
     assert await engine(db, clock, Fetch()).find("gpt-5.5") is None
+    assert await engine(db, clock, Fetch()).default_model() is None
+
+
+async def test_a_signed_in_answer_is_recorded(db: Database, clock: FakeClock) -> None:
+    fetch = Fetch()
+    seen: list[str] = []
+
+    async def signed_in() -> None:
+        seen.append("codex")
+
+    codex = CodexEngine(
+        EngineInfoStore(db, clock, STORE_PREFIX),
+        fetch,
+        clock,
+        FetchUsage(),
+        on_signed_in=signed_in,
+    )
+    await codex.status()
+    fetch.details = CodexDetails(MODELS, CodexLogin(False, AccountInfo()))
+    await codex.status(refresh=True)
+
+    assert seen == ["codex"]
 
 
 async def test_without_a_login_new_chats_are_refused(db: Database, clock: FakeClock) -> None:

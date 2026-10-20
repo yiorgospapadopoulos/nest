@@ -26,7 +26,9 @@ FETCH_TIMEOUT = timedelta(seconds=60)
 MAX_PAGES = 20
 # The model a chat without a model uses: Codex's own default (`model` left out).
 DEFAULT_MODEL = "default"
-NOT_SIGNED_IN = "Codex isn't signed in. Run `codex login` with a ChatGPT plan."
+NOT_SIGNED_IN = (
+    "Codex isn't signed in. Sign in under Settings > Accounts on the Mac, or run `codex login`."
+)
 _EFFORTS: frozenset[str] = frozenset(get_args(Effort))
 _PLANS = {
     "free": "ChatGPT Free",
@@ -149,22 +151,26 @@ async def fetch_codex(
     async def ask(rpc: CodexRpc) -> CodexDetails:
         return CodexDetails(await read_models(rpc), await read_login(rpc))
 
-    return await _ask(factory, launch, time_limit, ask)
+    return await ask_codex(factory, launch, ask, time_limit)
 
 
 async def fetch_codex_usage(
     factory: TransportFactory, launch: CodexLaunch, time_limit: timedelta = FETCH_TIMEOUT
 ) -> UsageInfo | None:
     """Codex's usage windows from a short-lived server; None when it reports none."""
-    return await _ask(factory, launch, time_limit, read_usage)
+    return await ask_codex(factory, launch, read_usage, time_limit)
 
 
-async def _ask[T](
+async def ask_codex[T](
     factory: TransportFactory,
     launch: CodexLaunch,
-    time_limit: timedelta,
     ask: Callable[[CodexRpc], Awaitable[T]],
+    time_limit: timedelta = FETCH_TIMEOUT,
 ) -> T:
+    """`ask` on a short-lived app-server, closed after; CodexFetchError names only the
+    kind of failure.
+    """
+
     async def ignore(_method: str, _params: JsonObject) -> None:
         return None
 
