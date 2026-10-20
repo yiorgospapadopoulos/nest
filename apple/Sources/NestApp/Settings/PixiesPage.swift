@@ -69,16 +69,11 @@ private struct PixieDefaultsSections: View {
         Group {
             SettingsSection(title: "New pixies start with") {
                 SettingsRow(label: "Model") {
-                    DropdownMenu(
-                        title: settings.model.map { shell.agents.label(for: $0) }
-                            ?? "Same as Agents"
-                    ) {
-                        ModelItems(
-                            current: settings.model,
-                            defaultItem: .init(detail: "Same as Agents") {
-                                change { $0.model = nil }
-                            }
-                        ) { info in change { $0.model = info.value } }
+                    // Claude's models: new pixies run on Claude (B94: no default entry).
+                    DropdownMenu(title: shell.agents.label(for: settings.model)) {
+                        ModelItems(current: settings.model) { info in
+                            change { $0.model = info.value }
+                        }
                     }
                 }
                 SettingsRow(label: "Autonomy") {

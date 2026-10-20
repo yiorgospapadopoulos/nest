@@ -822,12 +822,15 @@ final class Shell {
         takeDefaults(startDraft())
     }
 
+    /// The defaults' engine, model, thinking and mode, all concrete (B94).
     private func takeDefaults(_ draft: ComposerDraft) {
         let defaults = agents.current
-        draft.provider = nil
-        draft.model = defaults.model
-        draft.effort = defaults.effort
-        draft.permission = defaults.permissionMode
+        let choices = NewChatChoices.from(
+            defaults, catalog: providers.catalog(for: defaults.provider, claude: agents.catalog))
+        draft.provider = choices.provider
+        draft.model = choices.model
+        draft.effort = choices.effort
+        draft.permission = choices.permission
         draft.mode = repo.map { $0.mode(for: defaults.mode) } ?? defaults.mode
     }
 
@@ -1156,7 +1159,9 @@ final class Shell {
         let request = CreateSessionRequest(
             repo: repo, prompt: prompt, mode: place.mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments,
-            base: place.base, branch: place.branch, provider: draft.provider)
+            // The engine is always named: the daemon's own default may be another (B94).
+            base: place.base, branch: place.branch,
+            provider: draft.provider ?? ProviderInfo.claude)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1476,9 +1481,7 @@ final class Shell {
         }
     }
 
-    /// Menus offer only named modes; a nil is ignored.
-    func setPermission(_ mode: PermissionMode?, for chat: String) {
-        guard let mode else { return }
+    func setPermission(_ mode: PermissionMode, for chat: String) {
         if isDraft(chat) {
             draft(for: chat).permission = mode
         } else {
@@ -1989,8 +1992,7 @@ final class ComposerDraft {
     var provider: String?
     var model: String?
     var effort: Effort?
-    /// Nil leaves it to Claude Code's own setting.
-    var permission: PermissionMode?
+    var permission = PermissionMode.default
     var mode: SessionMode?
     /// A new worktree's branch name; blank lets the daemon name it.
     var branchName = ""

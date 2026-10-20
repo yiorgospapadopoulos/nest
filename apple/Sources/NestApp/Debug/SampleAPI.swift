@@ -620,14 +620,10 @@
             ])
         }
 
-        /// Claude Code's /model list as of Opus 5.5.
+        /// Claude Code's /model list as of Opus 5.5, real models only (B94).
         func models() async throws -> ModelList {
             let all = ["low", "medium", "high", "xhigh", "max"]
             let rows: [(String, String, String, [String])] = [
-                (
-                    "default", "Default (recommended)",
-                    "Opus 5.5 for up to 50% of usage limits, then Sonnet 5.5", all
-                ),
                 ("opus", "Opus 5.5", "Most capable for complex work", all),
                 (
                     "claude-fable-5-1", "Fable 5.1", "Long-form writing and storytelling",
@@ -650,22 +646,18 @@
                     [
                         "value": value, "display_name": name, "description": description,
                         "effort_levels": levels, "supports_effort": !levels.isEmpty,
-                        "supports_auto_mode": value == "default" || value == "opus",
-                        "claude_code_effort": value == "default" ? "high" : NSNull(),
+                        "supports_auto_mode": value == "opus",
                     ] as [String: Any]
                 },
                 "updated_at": SampleData.iso(now),
+                "default_model": "opus",
             ])
         }
 
-        /// Codex's list as the daemon gives it, starting with `default` named after its model.
+        /// Codex's list as the daemon gives it, its default named (B94).
         func models(provider: String) async throws -> ModelList {
             try decode([
                 "models": [
-                    (
-                        "default", "Default (GPT-5.5 Codex)", "Codex's default model",
-                        ["low", "medium", "high"]
-                    ),
                     (
                         "gpt-5.5-codex", "GPT-5.5 Codex", "Tuned for coding",
                         ["low", "medium", "high", "xhigh"]
@@ -675,10 +667,11 @@
                     [
                         "value": value, "display_name": name, "description": description,
                         "effort_levels": levels, "supports_effort": true,
-                        "supports_auto_mode": true, "claude_code_effort": NSNull(),
+                        "supports_auto_mode": true,
                     ] as [String: Any]
                 },
                 "updated_at": SampleData.iso(now),
+                "default_model": "gpt-5.5-codex",
             ])
         }
 
@@ -691,7 +684,7 @@
                 ProviderInfo(
                     name: "codex", displayName: "Codex", signedIn: signedIn,
                     signInHint: signedIn == false
-                        ? "Codex isn't signed in. Run `codex login` with a ChatGPT plan." : nil,
+                        ? "Codex isn't signed in. Sign in under Settings > Accounts." : nil,
                     account: signedIn == true ? ClaudeAccount(plan: "ChatGPT Plus") : nil,
                     unsupported: [
                         .rewind, .fork, .slashCommands, .stopTask, .withdraw, .planReview,
@@ -1299,6 +1292,27 @@
 
         func signOutClaude() async throws -> ClaudeLogin {
             ClaudeLogin(signedIn: false, checkedAt: now)
+        }
+
+        /// Codex's login, following the sample's sign-in switch.
+        func codexLogin() async throws -> CodexLogin {
+            let signedIn = lock.withLock { codexSignedIn }
+            return signedIn == true
+                ? CodexLogin(
+                    signedIn: true, email: "giorgos@example.com", plan: "ChatGPT Plus",
+                    checkedAt: now)
+                : CodexLogin(signedIn: signedIn, checkedAt: now)
+        }
+
+        func signInCodex() async throws -> CodexSignIn {
+            CodexSignIn(authURL: URL(string: "https://auth.openai.com/oauth/authorize")!)
+        }
+
+        func cancelCodexSignIn() async throws {}
+
+        func signOutCodex() async throws -> CodexLogin {
+            lock.withLock { codexSignedIn = false }
+            return CodexLogin(signedIn: false, checkedAt: now)
         }
 
         func claudeCode() async throws -> ClaudeCodeStatus {

@@ -328,15 +328,18 @@ extension ProjectIcon {
 /// The usage chip, MonoCode's: an engine's mark, a 32 by 4 point bar for the 5-hour
 /// window (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used,
 /// then the time to its reset). With Codex signed in too (B91), a line per engine, one
-/// above the other in the same chip. Its tooltip names each window and its reset; a click
-/// opens the usage popover, which has the Refresh control (B72).
+/// above the other in the same chip; Settings > Usage chooses which engines it shows
+/// (B94). Its tooltip names each window and its reset; a click opens the usage popover,
+/// which has the Refresh control (B72).
 private struct UsageButton: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let usage = shell.model.usage
         TimelineView(.everyMinute) { context in
-            let lines = usage.meter(providers: shell.providers, now: context.date)
+            let lines = usage.meter(
+                providers: shell.providers, now: context.date,
+                hidden: shell.settings.usageMeterHidden)
             let stacked = lines.count > 1
             let height = stacked ? UsageChipStyle.stackedHeight : UsageChipStyle.height
             Button {
@@ -353,7 +356,8 @@ private struct UsageButton: View {
             .accessibilityLabel(
                 stacked
                     ? "Usage: \(usage.meterTooltip(lines))"
-                    : lines[0].chip.map { "Claude usage: \($0.tooltip)" } ?? "Claude usage details"
+                    : lines[0].chip.map { "\(lines[0].name) usage: \($0.tooltip)" }
+                        ?? "\(lines[0].name) usage details"
             )
             .font(.ui(stacked ? 10 : 11))
             .monospacedDigit()
@@ -411,18 +415,25 @@ private struct StackedMeter: View {
                 .frame(height: 13)
             }
         }
+        // A line without windows yet must not squeeze the other's numbers (B94 snapshot).
+        .fixedSize()
     }
 }
 
-/// An engine's small mark: Claude's starburst, else a terminal glyph (Codex runs as a
-/// command line agent), in the chip's grey.
+/// An engine's small mark: Claude's starburst, OpenAI's blossom for Codex in the chip's
+/// grey, else a terminal glyph for an engine without a mark.
 private struct EngineMark: View {
+    /// Codex's provider name, as the daemon lists it.
+    static let codex = "codex"
+
     let provider: String
     let size: Double
 
     var body: some View {
         if provider == ProviderInfo.claude {
             ClaudeMark(size: size)
+        } else if provider == Self.codex {
+            OpenAIMark(size: size)
         } else {
             Image(systemName: Icon.terminal)
                 .font(.system(size: size - 1, weight: .medium))

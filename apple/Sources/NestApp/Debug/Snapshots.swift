@@ -232,6 +232,10 @@
                 try await renderCodex(model, shell, controller, folder)
                 return
             }
+            if only == "b94" {
+                try await renderConcreteDefaults(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -360,6 +364,98 @@
             try await renderArtifacts(model, shell, controller, folder)
             try await renderStartScreen(model, shell, controller, folder)
             try await renderCodex(model, shell, controller, folder)
+        }
+
+        /// B94: Settings > Accounts with Codex signed out, signing in and signed in; Settings
+        /// > Agents' New chats with the default model menu's engine sections (a static list,
+        /// as menus do not render offscreen) and its thinking and permissions, on Claude and
+        /// then on a Codex model; the start composer on each; Settings > Usage with the top
+        /// bar choice, and the top bar showing Codex only.
+        private static func renderConcreteDefaults(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            shell.selectProject("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
+            let accounts = model.accounts
+            sample.setCodexSignedIn(false)
+            await model.providers.load()
+            try await accounts.loadCodex()
+            try await pairSettings(controller, .accounts, "b94-accounts-codex-signed-out", folder)
+            _ = try await accounts.signInCodex()
+            try await pairSettings(controller, .accounts, "b94-accounts-codex-signing-in", folder)
+            sample.setCodexSignedIn(true)
+            await model.providers.load()
+            let signedIn = try await model.api.codexLogin()
+            let payload = String(decoding: try NestJSON.encoder.encode(signedIn), as: UTF8.self)
+            let event = try NestJSON.decoder.decode(
+                Event.self,
+                from: Data(
+                    """
+                    {"id": 1, "type": "\(EventType.accountCodex)", "ts": "2026-10-20T10:00:00Z",
+                     "session_id": null, "payload": \(payload)}
+                    """.utf8))
+            accounts.apply(event)
+            try await pairSettings(controller, .accounts, "b94-accounts-codex-signed-in", folder)
+
+            try await model.agents.setDefaultModel("opus")
+            try await model.agents.setDefaultPermissionMode(.default)
+            shell.startDefaultsLoaded()
+            try await pairSettings(controller, .agents, "b94-new-chats", folder)
+            try await pairView(defaultModelMenu(shell), "b94-new-chats-model-menu", folder)
+            try await pair(controller, "b94-composer", folder)
+            let codex = model.providers.catalog(for: "codex", claude: model.agents.catalog)
+            try await model.agents.setDefaultModel(
+                "gpt-5.5-mini", provider: "codex", catalog: codex)
+            shell.startDefaultsLoaded()
+            try await pairSettings(controller, .agents, "b94-new-chats-codex", folder)
+            try await pairView(defaultModelMenu(shell), "b94-new-chats-model-menu-codex", folder)
+            try await pair(controller, "b94-composer-codex", folder)
+
+            try await model.usage.load()
+            shell.settings.setUsageMeter("codex", shown: false)
+            try await pairSettings(controller, .usage, "b94-usage", folder)
+            shell.settings.setUsageMeter("codex", shown: true)
+            shell.settings.setUsageMeter("claude", shown: false)
+            try await pair(controller, "b94-top-bar-codex", folder)
+
+            shell.settings.setUsageMeter("claude", shown: true)
+            try await model.agents.setDefaultModel("opus")
+            shell.startDefaultsLoaded()
+            sample.setCodexSignedIn(false)
+            await model.providers.load()
+            try await accounts.loadCodex()
+        }
+
+        /// The agent defaults' model menu as `EngineModelItems` lists it (B94).
+        private static func defaultModelMenu(_ shell: Shell) -> some View {
+            let defaults = shell.agents.current
+            let sections = shell.providers.modelSections(
+                claude: shell.agents.catalog, provider: defaults.provider, isDraft: true)
+            return VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                    if index > 0 {
+                        Divider().padding(.horizontal, 10)
+                    }
+                    MenuPreview(
+                        title: section.title,
+                        rows: (section.detail.isEmpty
+                            ? [] : [MenuPreview.Row(title: section.detail, disabled: true)])
+                            + section.catalog.models.map { info in
+                                MenuPreview.Row(
+                                    title: info.displayName, detail: info.description,
+                                    checked: section.isSelected(
+                                        info, provider: defaults.provider, model: defaults.model))
+                            })
+                }
+            }
+            .frame(width: 320)
         }
 
         /// B91: the start composer on a Codex model, signed out (its hint above the field)
@@ -687,8 +783,8 @@
                 try await pair(controller, "b33-rewind", folder)
             }
 
-            try await model.agents.setDefaultEffort(nil)
-            try await model.agents.setDefaultPermissionMode(nil)
+            try await model.agents.setDefaultEffort(.medium)
+            try await model.agents.setDefaultPermissionMode(.default)
             try await pairSettings(controller, .agents, "b33-agent-defaults", folder)
 
             let review = model.approvals.pending.first { $0.kind == .review }!
@@ -2711,8 +2807,7 @@
             try await pair(controller, "b91-pixie-codex-details", folder)
             let reviewer = model.pixies.pixies.first { $0.id == "reviewer" }!
             let picker = PixieModelPicker(
-                pixie: reviewer, providers: model.providers, claude: model.agents.catalog,
-                agentDefault: model.agents.current.model)
+                pixie: reviewer, providers: model.providers, claude: model.agents.catalog)
             try await pairView(
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(picker.sections.enumerated()), id: \.offset) { index, section in
@@ -2731,7 +2826,7 @@
                 }
                 .frame(width: 320), "b91-pixie-model-picker", folder)
             try await model.pixies.update(
-                "reviewer", UpdatePixieRequest(provider: "claude", clearsModel: true))
+                "reviewer", UpdatePixieRequest(provider: "claude", model: "opus"))
             shell.close()
             shell.selectProject("cv-page")
         }
