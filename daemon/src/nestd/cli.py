@@ -1,6 +1,6 @@
 """Command line entry point.
 
-`nestd serve | service install|uninstall|status | pair | design generate|check`.
+`nestd serve | service install|uninstall|status | pair | design generate|check|icon`.
 """
 
 import argparse
@@ -14,6 +14,7 @@ from nestd.auth.models import PairingCode
 from nestd.config.errors import ConfigError
 from nestd.context import AppContext
 from nestd.design.errors import DesignError
+from nestd.design.icon import generate_icons
 from nestd.design.loader import find_root
 from nestd.design.outputs import generate, stale_outputs
 from nestd.folder_move import (
@@ -70,6 +71,7 @@ def _parser() -> argparse.ArgumentParser:
     for name, handler, help_text in (
         ("generate", _design_generate, "write the CSS, Swift and mascot files from design/"),
         ("check", _design_check, "fail if the generated token files are missing or stale"),
+        ("icon", _design_icon, "write the app icon PNGs from the icon pixie's sprite"),
     ):
         action = design_actions.add_parser(name, help=help_text)
         action.add_argument("--root", type=Path, help="repository root (default: found upward)")
@@ -167,6 +169,16 @@ def _design_root(args: argparse.Namespace) -> Path:
 
 def _design_generate(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
     for path in generate(_design_root(args)):
+        print(f"Wrote {path}", file=rt.out)
+    return 0
+
+
+def _design_icon(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
+    try:
+        written = generate_icons(_design_root(args))
+    except ValueError as error:
+        raise DesignError(str(error)) from error
+    for path in written:
         print(f"Wrote {path}", file=rt.out)
     return 0
 
