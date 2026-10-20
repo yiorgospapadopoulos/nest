@@ -17,6 +17,8 @@ from nestd.sessions.models import NewSession
 type ModelLookup = Callable[[str | None], Awaitable[ModelOption | None]]
 # Raises when the engine cannot take a chat now, such as Codex without a login.
 type ReadyCheck = Callable[[], Awaitable[None]]
+# The concrete model the engine runs when none is named; None while unknown (B94).
+type DefaultModel = Callable[[], Awaitable[str | None]]
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,7 @@ class Engine:
     provider: AgentProvider
     models: ModelLookup | None = None
     ready: ReadyCheck | None = None
+    default: DefaultModel | None = None
 
     @property
     def name(self) -> str:
@@ -42,6 +45,9 @@ class Engine:
 
     async def find(self, model: str | None) -> ModelOption | None:
         return None if self.models is None else await self.models(model)
+
+    async def default_model(self) -> str | None:
+        return None if self.default is None else await self.default()
 
 
 class Engines:
@@ -63,6 +69,18 @@ class Engines:
             msg = f"unknown provider {name!r}; known: {known}"
             raise InvalidInputError(msg)
         return engine
+
+    async def listing(self, model: str | None, preferred: Engine) -> Engine:
+        """The engine for a model named without one (an older client, which knows only
+        Claude's models): `preferred` when it lists the model or none is named, else the
+        first that lists it, else the default engine (B94).
+        """
+        if model is None or await preferred.find(model) is not None:
+            return preferred
+        for engine in self.all():
+            if await engine.find(model) is not None:
+                return engine
+        return self.default
 
     def of(self, session: NewSession) -> Engine:
         """The session's engine; one not set up here runs on the default."""

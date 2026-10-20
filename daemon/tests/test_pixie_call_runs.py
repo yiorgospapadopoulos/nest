@@ -22,6 +22,7 @@ from nestd.providers.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from nestd.providers.codex_engine import NOT_SIGNED_IN
 from nestd.providers.codex_rpc import JsonObject
 from nestd.providers.codex_tools import TOKEN_ENV
 from tests.api_client import Api, running_api
@@ -311,7 +312,7 @@ async def test_a_called_pixie_on_a_signed_out_codex_is_refused(api: Api) -> None
     chat_id = str((await create(api, mode="in_place"))["id"])
     await reach(api, chat_id, "idle", results=1)
 
-    assert outcome == ["Codex isn't signed in. Run `codex login` with a ChatGPT plan."]
+    assert outcome == [NOT_SIGNED_IN]
 
 
 async def test_the_report_is_the_called_pixies_last_words(api: Api) -> None:

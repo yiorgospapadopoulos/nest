@@ -98,16 +98,18 @@ def save_project_order(paths: AppPaths, order: list[str]) -> list[str]:
 
 def save_agent_defaults(paths: AppPaths, choices: AgentChoices) -> AgentDefaults:
     """Set the client-editable keys of `[agents]`, keeping its other keys and every other
-    section. A null model or effort removes the key, so Claude Code's default applies.
+    section. A null removes the key (TOML has none): a model without thinking levels has
+    no effort.
     """
     file = paths.settings_file
     data = _read_toml(file) if file.exists() else {}
     agents = {
         key: value
         for key, value in data.get("agents", {}).items()
-        if key not in {"model", "effort", "permission_mode", "default_mode"}
+        if key not in {"provider", "model", "effort", "permission_mode", "default_mode"}
     }
     chosen = {
+        "provider": choices.provider,
         "model": choices.model,
         "effort": choices.effort,
         "permission_mode": choices.permission_mode,

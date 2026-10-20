@@ -45,39 +45,67 @@ async def updates(env: Env, session_id: str) -> list[object]:
     ]
 
 
-async def test_without_a_chosen_mode_the_run_opens_in_claude_codes_own(env: Env) -> None:
-    env.provider.script(switched("auto", reply("ok")), reply("again"))
+async def older_chat(env: Env) -> str:
+    """A chat from before B94 that follows Claude Code's own mode, idle, in a daemon
+    started again.
+    """
+    env.provider.script(reply("ok"))
+    created = await env.create()
+    await env.reach(created.id, SessionState.IDLE)
+    await env.store.update(created.id, follows_claude_code_mode=True)
+    await env.manager.shutdown()
+    env.manager = env.build(timedelta(hours=1))
+    return created.id
+
+
+async def test_without_a_chosen_mode_a_new_chat_runs_in_ask(env: Env) -> None:
+    """B94: Nest always passes the mode; none chosen and no default is Ask."""
+    env.provider.script(reply("ok"))
 
     created = await env.create()
-    idle = await env.reach(created.id, SessionState.IDLE)
+    await env.reach(created.id, SessionState.IDLE)
 
-    # Until the engine says, the session shows the placeholder and follows Claude Code.
-    assert (created.permission_mode, created.follows_claude_code_mode) == ("default", True)
-    assert env.provider.runs[0].spec.permission_mode is None
+    assert (created.permission_mode, created.follows_claude_code_mode) == ("default", False)
+    assert env.provider.runs[0].spec.permission_mode == "default"
+
+
+async def test_an_older_chat_following_claude_codes_mode_opens_in_claude_codes_own(
+    env: Env,
+) -> None:
+    session_id = await older_chat(env)
+    env.provider.script(switched("auto", reply("again")), reply("three"))
+
+    await env.manager.send(session_id, "go on", [])
+    await until_results(env, session_id, 2)
+    idle = await env.reach(session_id, SessionState.IDLE)
+
+    assert env.provider.runs[1].spec.permission_mode is None
     assert (idle.permission_mode, idle.follows_claude_code_mode) == ("auto", False)
-    assert await updates(env, created.id) == [
+    assert await updates(env, session_id) == [
         {"permission_mode": "auto", "follows_claude_code_mode": False}
     ]
     # Nest never sent the run a mode of its own.
-    assert env.provider.runs[0].calls == []
+    assert env.provider.runs[1].calls == []
     # A reopened run continues in the mode the engine reported.
     await env.manager.shutdown()
     env.manager = env.build(timedelta(hours=1))
-    await env.manager.send(created.id, "go on", [])
-    await until_results(env, created.id, 2)
-    assert env.provider.runs[1].spec.permission_mode == "auto"
+    await env.manager.send(session_id, "and on", [])
+    await until_results(env, session_id, 3)
+    assert env.provider.runs[2].spec.permission_mode == "auto"
 
 
 async def test_the_reported_mode_ends_following_even_when_it_is_the_placeholder(
     env: Env,
 ) -> None:
-    env.provider.script(switched("default", reply("ok")))
+    session_id = await older_chat(env)
+    env.provider.script(switched("default", reply("again")))
 
-    created = await env.create()
-    idle = await env.reach(created.id, SessionState.IDLE)
+    await env.manager.send(session_id, "go on", [])
+    await until_results(env, session_id, 2)
+    idle = await env.reach(session_id, SessionState.IDLE)
 
     assert (idle.permission_mode, idle.follows_claude_code_mode) == ("default", False)
-    assert await updates(env, created.id) == [{"follows_claude_code_mode": False}]
+    assert await updates(env, session_id) == [{"follows_claude_code_mode": False}]
 
 
 async def test_bypass_reported_by_the_engine_needs_no_new_run(env: Env) -> None:
@@ -99,15 +127,17 @@ async def test_bypass_reported_by_the_engine_needs_no_new_run(env: Env) -> None:
 
 
 async def test_choosing_a_mode_stops_following_claude_codes_own(env: Env) -> None:
-    env.provider.script(reply("ok"))
-    created = await env.create()
-    await env.reach(created.id, SessionState.IDLE)
+    session_id = await older_chat(env)
+    env.provider.script(reply("again"))
+    await env.manager.send(session_id, "go on", [])
+    await until_results(env, session_id, 2)
+    await env.reach(session_id, SessionState.IDLE)
 
     # The same value as the placeholder is still a choice, sent to the run.
-    chosen = await env.manager.update(created.id, UpdateSession(permission_mode="default"))
+    chosen = await env.manager.update(session_id, UpdateSession(permission_mode="default"))
 
     assert (chosen.permission_mode, chosen.follows_claude_code_mode) == ("default", False)
-    assert env.provider.runs[0].calls == [("set_permission_mode", "default")]
+    assert env.provider.runs[1].calls == [("set_permission_mode", "default")]
 
 
 async def test_a_chosen_mode_is_passed_to_the_run(env: Env) -> None:

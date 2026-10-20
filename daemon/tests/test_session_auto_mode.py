@@ -56,9 +56,9 @@ async def test_a_default_auto_the_model_does_not_take_is_dropped_for_a_new_chat(
     created = await env.create(model="haiku", mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
 
-    # As with no default: the chat follows Claude Code's own mode.
-    assert (created.permission_mode, created.follows_claude_code_mode) == ("default", True)
-    assert env.provider.runs[0].spec.permission_mode is None
+    # As with no default: the chat asks (B94), and Nest passes that mode.
+    assert (created.permission_mode, created.follows_claude_code_mode) == ("default", False)
+    assert env.provider.runs[0].spec.permission_mode == "default"
 
 
 async def test_a_default_auto_stays_for_a_model_that_takes_it(env: Env) -> None:
@@ -116,10 +116,12 @@ async def test_auto_reported_by_claude_code_falls_back_on_a_model_change(env: En
 
 
 async def test_a_chat_following_claude_codes_mode_keeps_following(env: Env) -> None:
+    """A chat from before B94 that follows Claude Code's own mode."""
     env.defaults = DEFAULTS.model_copy(update={"permission_mode": None})
     env.provider.script(reply("ok"))
     created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.IDLE)
+    await env.store.update(created.id, follows_claude_code_mode=True)
 
     updated = await env.manager.update(created.id, UpdateSession(model="haiku"))
 

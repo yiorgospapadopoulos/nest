@@ -13,6 +13,8 @@ router = APIRouter(prefix="/api/pixie-settings", dependencies=[RequireDevice])
 
 @router.get("")
 async def get_settings(ctx: Context) -> PixieDefaults:
+    """A model left to the agent defaults before B94 is resolved and stored first."""
+    await ctx.settle_defaults()
     return ctx.settings.pixies
 
 
@@ -24,4 +26,6 @@ async def put_settings(body: PixieDefaults, ctx: Context) -> PixieDefaults:
     except ConfigError as error:
         raise ConflictError(str(error)) from error
     ctx.settings = ctx.settings.model_copy(update={"pixies": saved})
-    return saved
+    # A null model (an older client's "agent default") becomes a concrete one (B94).
+    await ctx.settle_defaults()
+    return ctx.settings.pixies

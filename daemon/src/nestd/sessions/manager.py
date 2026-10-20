@@ -19,13 +19,14 @@ from nestd.claude_sessions.errors import ChatOpenElsewhereError
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.config.models import AgentDefaults, Effort, PermissionMode, RepoConfig, SessionMode
+from nestd.engine.models import closest_effort
 from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.providers.base import AgentProvider, ApprovalHandler
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
-from nestd.sessions.engines import Engine, Engines, ModelLookup
+from nestd.sessions.engines import DefaultModel, Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
     CannotRewindError,
     NoAgentRunError,
@@ -76,7 +77,8 @@ from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
 from nestd.worktrees.manager import WorktreeManager
 
-# What a session following Claude Code's own mode shows until the engine reports it.
+# Ask: a chat's mode when none is chosen or fits (B94); before B94 also what a session
+# following Claude Code's own mode showed until the engine reported it.
 DEFAULT_MODE: PermissionMode = "default"
 AUTO: PermissionMode = "auto"
 
@@ -108,6 +110,7 @@ class SessionManager:
         queue: MessageQueue,
         files: FileIndex | None = None,
         models: ModelLookup | None = None,
+        default_model: DefaultModel | None = None,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
@@ -122,7 +125,7 @@ class SessionManager:
         `provider` and `models` are the default engine's; `engines` the others a chat
         can ask for, such as Codex (B91).
         """
-        self._engines = Engines(Engine(provider, models), engines)
+        self._engines = Engines(Engine(provider, models, default=default_model), engines)
         self._queue = queue
         self._files = files or FileIndex(clock)
         self._clock = clock
@@ -218,12 +221,17 @@ class SessionManager:
         if started_by_pixie is not None and not repo.git:
             msg = f"{repo.name} is not a git repository, so a chat cannot get its own worktree"
             raise InvalidInputError(msg)
-        engine = self._engines.named(request.provider)
-        await engine.require_ready()
         defaults = self._defaults()
-        # The model defaults are the default engine's; another starts on its own (B91).
-        own = engine is self._engines.default
-        model = request.model or (defaults.model if own else None)
+        engine = (
+            self._engines.named(request.provider)
+            if request.provider is not None
+            else await self._engines.listing(request.model, self._defaults_engine(defaults))
+        )
+        await engine.require_ready()
+        # The defaults are their engine's; another engine starts on its own default model,
+        # Medium (or the closest level) and Ask (B91, B94).
+        own = engine is self._defaults_engine(defaults)
+        model = request.model or (defaults.model if own else None) or await engine.default_model()
         effort = await self._effort(engine, model, request.effort, defaults.effort if own else None)
         permission_mode = request.permission_mode
         await self._require_mode(engine, model, permission_mode)
@@ -245,9 +253,9 @@ class SessionManager:
             cwd=repo.path if mode == "in_place" else None,
             model=model,
             effort=effort,
+            # Nest always passes the mode; Ask when none fits (B94).
             permission_mode=permission_mode or DEFAULT_MODE,
-            # Only Claude Code has a mode of its own to follow.
-            follows_claude_code_mode=permission_mode is None and own,
+            follows_claude_code_mode=False,
             provider=engine.name,
             base_ref=base_ref,
             started_by_pixie=started_by_pixie,
@@ -384,6 +392,13 @@ class SessionManager:
             msg = f"the folder of this chat no longer exists: {chat.cwd}"
             raise NoWorkspaceError(msg)
         defaults = self._defaults()
+        engine = self._engines.default
+        # The defaults apply when they are Claude's; else Claude's own default model.
+        own = engine is self._defaults_engine(defaults)
+        model = (defaults.model if own else None) or await engine.default_model()
+        mode = defaults.permission_mode if own else None
+        if await self._mode_problem(engine, model, mode):
+            mode = None
         created = await self._store.create(
             NewSession(
                 repo=repo.name,
@@ -391,11 +406,11 @@ class SessionManager:
                 prompt=chat.prompt,
                 mode="in_place",
                 cwd=chat.cwd,
-                model=defaults.model,
-                effort=defaults.effort,
-                permission_mode=defaults.permission_mode or DEFAULT_MODE,
-                follows_claude_code_mode=defaults.permission_mode is None,
-                provider=self._engines.default.name,
+                model=model,
+                effort=await self._effort(engine, model, None, defaults.effort if own else None),
+                permission_mode=mode or DEFAULT_MODE,
+                follows_claude_code_mode=False,
+                provider=engine.name,
                 base_ref=await self._worktrees.head_at(chat.cwd),
             )
         )
@@ -923,7 +938,8 @@ class SessionManager:
         self, engine: Engine, model: str | None, chosen: Effort | None, default: Effort | None
     ) -> Effort | None:
         """The chosen effort, refused (422) when the model does not take it; the default
-        effort only when the model takes it. Unchecked while the model list is unknown.
+        effort only when the model takes it; else Medium or the closest level the model
+        takes (B94). Unchecked while the model list is unknown.
         """
         option = await engine.find(model)
         if option is None:
@@ -933,7 +949,15 @@ class SessionManager:
             if problem is not None:
                 raise InvalidInputError(problem)
             return chosen
-        return default if effort_problem(option, default) is None else None
+        if default is not None and effort_problem(option, default) is None:
+            return default
+        return closest_effort(option.effort_levels)
+
+    def _defaults_engine(self, defaults: AgentDefaults) -> Engine:
+        """The agent defaults' engine; the default one when they name none (B94)."""
+        if defaults.provider is None:
+            return self._engines.default
+        return self._engines.by_name(defaults.provider)
 
     async def _fitting_mode(self, session: Session, request: UpdateSession) -> UpdateSession:
         """`request`, refused (422) when its model and mode do not fit (`fitting_mode`)."""

@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import timedelta
 from pathlib import Path
+from typing import TypedDict, Unpack
 
 import pytest
 
@@ -28,6 +29,13 @@ HAIKU = ModelOption(value="haiku", display_name="Haiku", description="haiku mode
 ACCOUNT = AccountInfo(email="person@example.com", plan="Claude Max", organization="Acme")
 
 
+class Timing(TypedDict, total=False):
+    start_delay: timedelta
+    interval: timedelta
+    retry: timedelta
+    tick: timedelta
+
+
 class Rig:
     def __init__(self, db: Database, clock: FakeClock) -> None:
         self.db = db
@@ -36,7 +44,7 @@ class Rig:
         self.store = EngineInfoStore(db, clock)
         self.engine = self.build()
 
-    def build(self, **timing: timedelta) -> EngineInfo:
+    def build(self, **timing: Unpack[Timing]) -> EngineInfo:
         return EngineInfo(
             store=self.store,
             fetch=lambda: fetch_details(self.factory, timedelta(seconds=1)),
@@ -110,23 +118,45 @@ async def test_a_failing_disconnect_does_not_lose_the_details() -> None:
 async def test_before_any_report_the_fallback_list_and_an_empty_account_apply(
     h: Rig,
 ) -> None:
-    assert await h.engine.models() == ModelList(models=list(FALLBACK_MODELS), updated_at=None)
-    assert [m.value for m in FALLBACK_MODELS] == ["default", "opus", "sonnet", "haiku"]
-    assert FALLBACK_MODELS[3].effort_levels == []
+    assert await h.engine.models() == ModelList(
+        models=list(FALLBACK_MODELS), updated_at=None, default_model="opus"
+    )
+    # No entry that defers to Claude Code: menus list only real models (B94).
+    assert [m.value for m in FALLBACK_MODELS] == ["opus", "sonnet", "haiku"]
+    assert FALLBACK_MODELS[2].effort_levels == []
     assert await h.engine.account() == AccountInfo()
     assert await h.engine.find("opus") is None
+    # Nest names no default model before Claude Code reported its own.
+    assert await h.engine.default_model() is None
 
 
 async def test_a_refresh_stores_the_models_and_account(h: Rig) -> None:
     assert await h.engine.refresh()
 
     models = await h.engine.models()
-    assert [m.value for m in models.models] == ["default", "opus", "haiku"]
+    assert [m.value for m in models.models] == ["opus", "haiku"]
+    assert models.default_model == "opus"
     assert models.updated_at == START
     assert await h.engine.account() == ACCOUNT
     assert await h.engine.find("opus") == OPUS
-    assert await h.engine.find(None) == models.models[0]
+    # A chat from before B94 without a model still finds Claude Code's default entry.
+    assert (await h.engine.find(None)).value == "default"  # type: ignore[union-attr]
     assert await h.engine.find("claude-unknown") is None
+    assert await h.engine.default_model() == "opus"
+
+
+async def test_a_report_with_an_account_says_claude_is_signed_in(h: Rig) -> None:
+    seen: list[str] = []
+
+    async def signed_in() -> None:
+        seen.append("claude")
+
+    engine = EngineInfo(store=h.store, fetch=_never_called, clock=h.clock, on_signed_in=signed_in)
+    await engine.report(EngineDetails(models=[OPUS], account=None))
+    await engine.report(EngineDetails(models=None, account=AccountInfo()))
+    await engine.report(EngineDetails(models=None, account=ACCOUNT))
+
+    assert seen == ["claude"]
 
 
 async def test_the_cache_survives_a_restart(h: Rig) -> None:
@@ -199,7 +229,9 @@ async def test_a_report_with_only_an_account_keeps_the_models(h: Rig) -> None:
 async def test_a_report_from_a_session_replaces_the_list(h: Rig) -> None:
     await h.engine.report(EngineDetails(models=[HAIKU]))
 
-    assert await h.engine.models() == ModelList(models=[HAIKU], updated_at=START)
+    assert await h.engine.models() == ModelList(
+        models=[HAIKU], updated_at=START, default_model="haiku"
+    )
     assert await h.engine.account() == AccountInfo()
 
 
