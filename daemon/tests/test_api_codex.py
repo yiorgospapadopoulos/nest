@@ -74,9 +74,11 @@ async def test_codexs_models_and_account_are_served_apart_from_claudes(api: Api)
     account = (await api.http.get("/api/account", params={"provider": "codex"})).json()
     bogus = await api.http.get("/api/models", params={"provider": "gemini"})
 
-    assert [m["value"] for m in codex["models"]] == ["default", "gpt-6.1-sol", "gpt-5.5"]
+    # Only real models, each engine's default named (B94).
+    assert [m["value"] for m in codex["models"]] == ["gpt-6.1-sol", "gpt-5.5"]
+    assert codex["default_model"] == "gpt-6.1-sol"
     assert codex["models"][0]["effort_levels"] == ["low", "high"]
-    assert [m["value"] for m in claude["models"]] == ["default", "opus", "sonnet", "haiku"]
+    assert [m["value"] for m in claude["models"]] == ["opus", "sonnet", "haiku"]
     assert account["plan"] == "ChatGPT Plus"
     assert bogus.status_code == 422
 
@@ -93,7 +95,12 @@ async def test_a_codex_chat_runs_a_turn_on_codex(api: Api) -> None:
     session_id = str(session["id"])
     await reach(api, session_id, "idle", results=1)
 
-    assert (session["provider"], session["model"]) == ("codex", None)
+    # Codex's default model by name, its nearest level to Medium (B94).
+    assert (session["provider"], session["model"], session["effort"]) == (
+        "codex",
+        "gpt-6.1-sol",
+        "low",
+    )
     detail = (await api.http.get(f"/api/sessions/{session_id}")).json()
     assert detail["provider_session_id"] == "thread-1"
     events = (await api.http.get(f"/api/sessions/{session_id}/events")).json()
@@ -101,6 +108,7 @@ async def test_a_codex_chat_runs_a_turn_on_codex(api: Api) -> None:
     assert messages == [[{"type": "text", "text": "Hi there"}]]
     [turn] = api.codex.requests("turn/start")
     assert turn["input"][-1]["text"].endswith("Do it")  # type: ignore[index]
+    assert (turn["model"], turn["effort"]) == ("gpt-6.1-sol", "low")
     assert api.provider.runs == []
 
 

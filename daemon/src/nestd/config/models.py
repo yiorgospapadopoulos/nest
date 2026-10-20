@@ -73,6 +73,22 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _engine_default_is_none(value: object) -> object:
+    """The engines' `default` entry is no model Nest offers since B94: an older client
+    sending it asks for the default Nest picks, as a null does.
+    """
+    return None if value == "default" else value
+
+
+# A model chosen from an engine's list; null (or an older client's "default") is the
+# default Nest picks: the engine's default model, by name (B94).
+type ModelChoice = Annotated[
+    Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None,
+    BeforeValidator(_engine_default_is_none),
+]
+type ProviderName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
 _HOST_PATTERN = r"(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*"
 
 
@@ -97,9 +113,17 @@ class ServerSettings(_Strict):
 
 
 class AgentDefaults(_Strict):
-    model: str | None = None
+    """`[agents]`. Since B94 the engine, model, effort and mode are stored as the concrete
+    values new chats start with; a file from before has nulls, which the daemon replaces
+    once it can resolve them (`ChatDefaults`).
+    """
+
+    # The engine new chats run on, such as "claude" or "codex"; null: the first engine
+    # Nest saw signed in.
+    provider: ProviderName | None = None
+    model: ModelChoice = None
     effort: Effort | None = None
-    # None is Claude Code's own setting: no mode is passed, so your `defaultMode` applies.
+    # Null is Ask ("default") since B94; before, Claude Code's own `defaultMode`.
     permission_mode: PermissionMode | None = None
     # Where new chats work; a repo's `[worktree] default` overrides it when set (D038).
     default_mode: SessionMode = "in_place"
@@ -108,12 +132,18 @@ class AgentDefaults(_Strict):
 
 
 class AgentChoices(_Strict):
-    """The agent defaults clients edit: `GET/PUT /api/agents/defaults` (D038)."""
+    """The agent defaults clients edit: `GET/PUT /api/agents/defaults` (D038, B94).
 
-    # A value of the engine's model list ("default", "opus", ...); null is Claude Code's own.
-    model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
+    Served concrete: a null model only while no engine reported its list, a null effort
+    only for a model without thinking levels (or one not known yet). Sent nulls are the
+    defaults Nest picks: the first engine signed in, its default model, Medium (or the
+    closest level), Ask.
+    """
+
+    provider: ProviderName | None = None
+    # A value of the engine's model list, such as "opus" or "gpt-5.5".
+    model: ModelChoice = None
     effort: Effort | None = None
-    # Null is Claude Code's own setting (its `defaultMode`).
     permission_mode: PermissionMode | None = None
     mode: SessionMode = "in_place"
 
@@ -235,8 +265,9 @@ _REMOVED_PIXIE_KEYS = ("projects", "report_push")
 class PixieDefaults(_Strict):
     """What new pixies start with, and the habit rules of every pixie (D104)."""
 
-    # Null: the agent defaults' model.
-    model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
+    # The Claude model new Claude pixies start on; null (from before B94, or sent by an
+    # older client) becomes the agent defaults' model, or Claude's default model.
+    model: ModelChoice = None
     autonomy: Autonomy = "observe"
     project_access: ProjectAccess = "edit"
     max_running: MaxRunning = 2

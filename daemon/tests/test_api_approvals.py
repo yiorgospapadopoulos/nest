@@ -152,10 +152,10 @@ async def test_stopping_the_daemon_expires_prompts_and_keeps_reviews(
 
 async def test_an_approved_plan_continues_in_the_chosen_mode(api: Api) -> None:
     """Auto only with a model that supports it; the session follows the chosen mode."""
-    api.engine.info = server_info("default", "opus", auto=("opus",))
+    api.engine.info = server_info("default", "opus", "sonnet", auto=("opus",))
     assert await api.ctx.engine.refresh()
     api.provider.script(plan("# Plan", reply("Working on it.")))
-    session_id = str((await create(api, permission_mode="plan"))["id"])
+    session_id = str((await create(api, permission_mode="plan", model="sonnet"))["id"])
     item = await pending(api)
     url = f"/api/approvals/{item['id']}/resolve"
 
@@ -165,7 +165,7 @@ async def test_an_approved_plan_continues_in_the_chosen_mode(api: Api) -> None:
     await reach(api, session_id, "idle")
 
     assert auto.status_code == 422
-    assert auto.json() == {"detail": "Default does not support Auto mode"}
+    assert auto.json() == {"detail": "Sonnet does not support Auto mode"}
     assert bypass.status_code == 422
     assert manual.status_code == 200
     assert manual.json()["resolution"] == {"decision": "approve", "mode": "default"}

@@ -14,7 +14,13 @@ from pathlib import Path
 from nestd.clock import Clock
 from nestd.engine.effort import claude_code_effort, effort_settings
 from nestd.engine.fetch import FetchError
-from nestd.engine.models import FALLBACK_MODELS, ModelList
+from nestd.engine.models import (
+    ENGINE_DEFAULT,
+    FALLBACK_MODELS,
+    ModelList,
+    engine_default,
+    listed_models,
+)
 from nestd.engine.profile import profile_name
 from nestd.engine.store import EngineInfoStore
 from nestd.errors import InvalidInputError
@@ -28,8 +34,8 @@ INTERVAL = timedelta(hours=6)
 # After a failed fetch, the next attempt waits this long.
 RETRY = timedelta(minutes=30)
 TICK = timedelta(minutes=5)
-# The model a session without a model uses.
-DEFAULT_MODEL = "default"
+# The model a session from before B94 without a model uses.
+DEFAULT_MODEL = ENGINE_DEFAULT
 
 
 def effort_problem(model: ModelOption, effort: str | None) -> str | None:
@@ -60,10 +66,12 @@ class EngineInfo:
         tick: timedelta = TICK,
         account_file: Path | None = None,
         settings_file: Path | None = None,
+        on_signed_in: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039),
         and `settings_file` its `~/.claude/settings.json`, for its default thinking levels
-        (IMP-07); None reads no file.
+        (IMP-07); None reads no file. `on_signed_in` hears of every report naming an
+        account, which only a signed-in Claude Code gives (B94).
         """
         self._store = store
         self._fetch = fetch
@@ -74,6 +82,7 @@ class EngineInfo:
         self._tick = tick
         self._account_file = account_file
         self._settings_file = settings_file
+        self._on_signed_in = on_signed_in
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._last_attempt: datetime | None = None
@@ -92,10 +101,11 @@ class EngineInfo:
     async def models(self) -> ModelList:
         """The engine's last reported list, or Claude Code's aliases before any report,
         with the thinking level Claude Code uses for each, read from its settings on every
-        call so an edit there shows at once.
+        call so an edit there shows at once. Real models only, with the default named
+        (B94).
         """
         listed = await self._store.models()
-        models = listed or ModelList(models=list(FALLBACK_MODELS), updated_at=None)
+        models = listed_models(listed or ModelList(models=list(FALLBACK_MODELS), updated_at=None))
         settings = await asyncio.to_thread(effort_settings, self._settings_file)
         return models.model_copy(
             update={
@@ -128,6 +138,13 @@ class EngineInfo:
             return None
         return next((option for option in listed.models if option.value == value), None)
 
+    async def default_model(self) -> str | None:
+        """The model Claude Code runs when none is named, as it last reported its list;
+        None before it reported one (B94).
+        """
+        listed = await self._store.models()
+        return None if listed is None else engine_default(listed.models)
+
     async def require_effort(self, model: str | None, effort: str | None) -> None:
         """422 when the engine's list knows `model` and it does not take `effort`."""
         option = await self.find(model)
@@ -146,6 +163,13 @@ class EngineInfo:
         """Details an agent run reported when it opened."""
         await self._store.save(details)
         self._last_report = self._clock.now()
+        account = details.account
+        if (
+            self._on_signed_in is not None
+            and account is not None
+            and (account.email or account.plan)
+        ):
+            await self._on_signed_in()
 
     async def refresh(self) -> bool:
         """Ask the engine now; failures are logged with their kind only, never raised."""

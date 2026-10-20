@@ -8,6 +8,7 @@ from pydantic import JsonValue
 from nestd.claude_sessions.errors import ChatOpenElsewhereError
 from nestd.errors import InvalidInputError
 from nestd.events import types
+from nestd.providers.base import ModelOption
 from nestd.repos.service import RepoFolderMissingError
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.models import ChatImport, SessionState, UpdateSession
@@ -75,6 +76,21 @@ async def test_adopting_a_chat_creates_an_idle_in_place_session_with_its_history
     assert events[1].payload == {"state": "idle", "error": None}
     assert await env.manager.find_by_provider_session(CHAT_A) == session
     assert await env.manager.find_by_provider_session("other") is None
+
+
+async def test_an_adopted_chat_asks_when_the_default_mode_does_not_fit_its_model(
+    env: Env,
+) -> None:
+    """B94: the defaults' Auto on a model without it is Ask, passed explicitly."""
+    env.defaults = env.defaults.model_copy(update={"model": "haiku", "permission_mode": "auto"})
+    env.models = [
+        ModelOption(value="haiku", display_name="Haiku", description="", supports_auto_mode=False)
+    ]
+
+    session = await env.manager.adopt(chat(env))
+
+    assert (session.model, session.effort, session.permission_mode) == ("haiku", None, "default")
+    assert session.follows_claude_code_mode is False
 
 
 async def test_the_next_message_resumes_the_chat_in_its_folder(env: Env) -> None:

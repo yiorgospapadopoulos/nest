@@ -54,9 +54,11 @@ async def test_before_the_engine_reported_the_aliases_and_an_empty_account_show(
     models = (await api.http.get("/api/models")).json()
     account = (await api.http.get("/api/account")).json()
 
-    assert [m["value"] for m in models["models"]] == ["default", "opus", "sonnet", "haiku"]
+    # Claude Code's aliases, no entry that defers to it (B94).
+    assert [m["value"] for m in models["models"]] == ["opus", "sonnet", "haiku"]
     assert models["updated_at"] is None
-    assert models["models"][3] == {
+    assert models["default_model"] == "opus"
+    assert models["models"][2] == {
         "value": "haiku",
         "display_name": "Haiku",
         "description": "Fastest, for quick answers",
@@ -76,13 +78,9 @@ async def test_the_engine_list_and_account_are_served_in_claude_codes_order(api:
     account = (await api.http.get("/api/account")).json()
 
     assert models["updated_at"] == START.isoformat().replace("+00:00", "Z")
-    assert [m["value"] for m in models["models"]] == [
-        "default",
-        "opus",
-        "haiku",
-        "claude-opus-4-8",
-    ]
-    assert models["models"][1] == {
+    assert [m["value"] for m in models["models"]] == ["opus", "haiku", "claude-opus-4-8"]
+    assert models["default_model"] == "opus"
+    assert models["models"][0] == {
         "value": "opus",
         "display_name": "Opus",
         "description": "opus model",
@@ -131,14 +129,17 @@ async def test_a_session_run_refreshes_the_list(api: Api) -> None:
     assert (await api.http.get("/api/account")).json()["plan"] == "Claude Pro"
 
 
-async def test_agent_defaults_start_in_place_with_claude_codes_choices(api: Api) -> None:
+async def test_agent_defaults_start_in_place_with_concrete_choices(api: Api) -> None:
+    await known_models(api, "default", "opus")
+
     defaults = (await api.http.get("/api/agents/defaults")).json()
 
-    # A null mode is Claude Code's own `defaultMode` (IMP-06).
+    # Nothing left to Claude Code (B94): its default model, Medium and Ask.
     assert defaults == {
-        "model": None,
-        "effort": None,
-        "permission_mode": None,
+        "provider": "fake",
+        "model": "opus",
+        "effort": "medium",
+        "permission_mode": "default",
         "mode": "in_place",
     }
 
@@ -147,7 +148,13 @@ async def test_agent_defaults_are_saved_and_used_for_new_sessions(api: Api) -> N
     api.ctx.paths.settings_file.write_text(
         "[agents]\nidle_close_minutes = 20\n[usage]\nrefresh_minutes = 5\n", encoding="utf-8"
     )
-    chosen = {"model": "opus", "effort": "high", "permission_mode": "plan", "mode": "worktree"}
+    chosen = {
+        "provider": "fake",
+        "model": "opus",
+        "effort": "high",
+        "permission_mode": "plan",
+        "mode": "worktree",
+    }
 
     saved = await api.http.put("/api/agents/defaults", json=chosen)
     api.provider.script(reply("ok"))
@@ -158,6 +165,7 @@ async def test_agent_defaults_are_saved_and_used_for_new_sessions(api: Api) -> N
     assert (await api.http.get("/api/agents/defaults")).json() == chosen
     data = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
     assert data["agents"] == {
+        "provider": "fake",
         "model": "opus",
         "effort": "high",
         "permission_mode": "plan",
@@ -196,9 +204,10 @@ async def test_effort_is_checked_against_the_engine_list(api: Api) -> None:
     assert refused.json() == {"detail": "Haiku does not take a thinking level"}
     assert haiku.status_code == 200
     assert haiku.json() == {
+        "provider": "fake",
         "model": "haiku",
         "effort": None,
-        "permission_mode": None,
+        "permission_mode": "default",
         "mode": "in_place",
     }
     assert session.status_code == 422
@@ -254,37 +263,39 @@ async def test_models_say_which_run_in_auto_and_claude_codes_own_effort(api: Api
     models = (await api.http.get("/api/models")).json()["models"]
 
     assert [(m["value"], m["supports_auto_mode"], m["claude_code_effort"]) for m in models] == [
-        ("default", False, "high"),
         ("opus", True, "medium"),
         ("haiku", False, None),
     ]
 
 
 async def test_auto_is_a_default_only_for_a_model_that_supports_it(api: Api) -> None:
-    api.engine.info = server_info("default", "opus", auto=("opus",))
+    api.engine.info = server_info("default", "opus", "sonnet", auto=("opus",))
     assert await api.ctx.engine.refresh()
 
-    refused = await api.http.put("/api/agents/defaults", json={"permission_mode": "auto"})
+    refused = await api.http.put(
+        "/api/agents/defaults", json={"model": "sonnet", "permission_mode": "auto"}
+    )
     opus = await api.http.put(
         "/api/agents/defaults", json={"model": "opus", "permission_mode": "auto"}
     )
 
     assert refused.status_code == 422
-    assert refused.json() == {"detail": "Default does not support Auto mode"}
+    assert refused.json() == {"detail": "Sonnet does not support Auto mode"}
     assert opus.status_code == 200
     assert opus.json()["permission_mode"] == "auto"
 
 
-async def test_a_null_default_mode_leaves_the_mode_to_claude_code(api: Api) -> None:
+async def test_a_null_default_mode_is_ask(api: Api) -> None:
     await api.http.put("/api/agents/defaults", json={"permission_mode": "plan"})
 
     cleared = await api.http.put("/api/agents/defaults", json={"permission_mode": None})
     api.provider.script(reply("ok"))
     session = await create_with_defaults(api)
 
-    assert cleared.json()["permission_mode"] is None
+    # B94: nothing is left to Claude Code's own `defaultMode` any more.
+    assert cleared.json()["permission_mode"] == "default"
     data = tomllib.loads(api.ctx.paths.settings_file.read_text(encoding="utf-8"))
-    assert "permission_mode" not in data["agents"]
-    assert (session["permission_mode"], session["follows_claude_code_mode"]) == ("default", True)
+    assert data["agents"]["permission_mode"] == "default"
+    assert (session["permission_mode"], session["follows_claude_code_mode"]) == ("default", False)
     await reach(api, str(session["id"]), "idle")
-    assert api.provider.runs[0].spec.permission_mode is None
+    assert api.provider.runs[0].spec.permission_mode == "default"

@@ -72,7 +72,9 @@ async def test_a_codex_chat_runs_on_codex_without_claudes_defaults(env: Env, cod
     created = await env.create(provider="codex", mode="in_place")
     idle = await env.reach(created.id, SessionState.IDLE)
 
-    assert (created.provider, created.model, created.effort) == ("codex", None, None)
+    # Not the Claude defaults' model or thinking: Codex's own default, whose entry takes
+    # low first (no default model is known in this fake, so none is named).
+    assert (created.provider, created.model, created.effort) == ("codex", None, "low")
     assert created.permission_mode == "acceptEdits"
     assert not created.follows_claude_code_mode
     assert env.provider.runs == []

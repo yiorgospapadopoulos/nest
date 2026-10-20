@@ -447,7 +447,8 @@ async def test_a_model_without_auto_moves_an_auto_pixie_to_ask(
 
     assert (moved.model, moved.permission_mode) == ("haiku", "default")
     assert (session.model, session.permission_mode) == ("haiku", "default")
-    assert (cleared.model, cleared.permission_mode) == (None, "default")
+    # Back to the default: Opus, the first real model here, which runs in Auto (B94).
+    assert (cleared.model, cleared.permission_mode) == ("opus", "auto")
 
 
 async def test_auto_is_refused_for_a_model_without_it(
@@ -458,7 +459,9 @@ async def test_auto_is_refused_for_a_model_without_it(
 
     with pytest.raises(InvalidInputError, match="Haiku does not support Auto mode"):
         await ctx.pixies.update(pixie.id, UpdatePixie(permission_mode="auto"))
-    with pytest.raises(InvalidInputError, match="Default does not support Auto mode"):
+    # Back to the default model, the agent defaults' Haiku here (B94).
+    ctx.settings.agents = ctx.settings.agents.model_copy(update={"model": "haiku"})
+    with pytest.raises(InvalidInputError, match="Haiku does not support Auto mode"):
         await ctx.pixies.update(
             pixie.id, UpdatePixie.model_validate({"model": None, "permission_mode": "auto"})
         )

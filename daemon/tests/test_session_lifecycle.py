@@ -197,7 +197,8 @@ async def test_the_default_model_is_checked_as_claude_codes_default(env: Env) ->
 
     created = await env.create()
 
-    assert (created.model, created.effort) == (None, None)
+    # Max does not fit, so the level nearest Medium the model takes applies (B94).
+    assert (created.model, created.effort) == (None, "low")
 
 
 async def test_long_prompts_get_a_short_title(env: Env) -> None:

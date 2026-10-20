@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
-from nestd.config.models import Effort, PermissionMode, SessionMode
+from nestd.config.models import Effort, ModelChoice, PermissionMode, SessionMode
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
 from nestd.prs.models import PrStatus
 from nestd.stuck.models import StuckFlag
@@ -144,12 +144,13 @@ class CreateSession(BaseModel):
     title: Annotated[Text, StringConstraints(max_length=200)] | None = None
     # Defaults to the repo's `worktree.default` when set, else `[agents] default_mode`.
     mode: SessionMode | None = None
-    # Defaults come from the `agents` settings.
-    model: str | None = None
+    # Defaults come from the `agents` settings when the chat is on their engine, else the
+    # engine's default model, Medium (or the closest level) and Ask (B94).
+    model: ModelChoice = None
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
-    # The engine the chat runs on: "claude" (the default) or "codex" (B91). A Codex chat
-    # takes Codex's models and no Claude model default.
+    # The engine the chat runs on, such as "claude" or "codex" (B91); null is the agent
+    # defaults' engine (B94).
     provider: Text | None = None
     attachment_ids: list[str] = Field(default_factory=list[str])
     # Only for a worktree chat (B55): its new branch's name instead of a generated one, and

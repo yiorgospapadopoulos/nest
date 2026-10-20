@@ -6,6 +6,7 @@ from contextlib import suppress
 
 from nestd.clock import Clock
 from nestd.config.models import AgentDefaults
+from nestd.engine.defaults import default_effort
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.pixies.activity import ActivityStore
@@ -95,14 +96,18 @@ class PixieService:
         await self._check_slug(slug)
         engine = self._engine(request.provider)
         _require_skills(engine, request.skills)
+        model = request.model or await self._new_model(engine)
         await self._sessions.fitting_mode(
-            request.model or self._default_model(engine),
+            model,
             request.permission_mode,
             request.permission_mode,
             model_changed=False,
             engine=engine,
         )
-        settings = PixieSettings.model_validate(request.model_dump(exclude={"slug", "soul"}))
+        effort = request.effort or default_effort(await engine.find(model))
+        settings = PixieSettings.model_validate(
+            request.model_dump(exclude={"slug", "soul"}) | {"model": model, "effort": effort}
+        )
         pixie = await self._store.create(settings, slug)
         try:
             self._files.create(pixie.id, request.soul.strip() or DEFAULT_SOUL)
@@ -136,7 +141,13 @@ class PixieService:
                 changes.setdefault(name, None)
         engine = self._engine(changes.get("provider", before.provider))
         _require_skills(engine, request.skills)
-        default_model = self._default_model(engine)
+        default_model = await self._new_model(engine)
+        # Back to the default: the concrete model and thinking Nest picks (B94).
+        if "model" in changes and changes["model"] is None:
+            changes["model"] = default_model
+        if "effort" in changes and changes["effort"] is None:
+            model = changes.get("model", before.model) or default_model
+            changes["effort"] = default_effort(await engine.find(model))
         mode = await self._sessions.fitting_mode(
             changes.get("model", before.model) or default_model,
             changes.get("permission_mode"),
@@ -226,7 +237,7 @@ class PixieService:
         message waits for the running turn. `sender` marks the daemon's own reports (B41).
         """
         async with self._lock(pixie_id):
-            pixie = await self._store.get(pixie_id)
+            pixie = await self.settle(await self._store.get(pixie_id))
             chat = await self._open_chat(pixie)
             if chat is not None:
                 return await self._sessions.send(chat.id, text, attachment_ids, sender=sender)
@@ -290,11 +301,43 @@ class PixieService:
         engines = self._sessions.engines
         return engines.default if provider == DEFAULT_PROVIDER else engines.named(provider)
 
-    def _default_model(self, engine: Engine) -> str | None:
-        """The model a pixie without its own runs: the agent defaults' on the default engine
-        (Claude), the engine's own default on another.
+    async def settle(self, pixie: Pixie) -> Pixie:
+        """A pixie stored without a model or thinking level of its own (before B94, or
+        made before its engine's list was known) gets the concrete ones Nest picks, once
+        its engine's list knows the model; announced when they change.
         """
-        return self._defaults().model if engine is self._sessions.engines.default else None
+        if pixie.model is not None and pixie.effort is not None:
+            return pixie
+        engine = self._engine(pixie.provider)
+        model = pixie.model or await self._new_model(engine)
+        option = None if model is None else await engine.find(model)
+        if option is None:
+            return pixie
+        changes: dict[str, object] = {}
+        if pixie.model is None:
+            changes["model"] = model
+        if pixie.effort is None and (effort := default_effort(option)) is not None:
+            changes["effort"] = effort
+        if not changes:
+            return pixie
+        settled = await self._store.update(pixie.id, **changes)
+        await self._announce(settled)
+        return settled
+
+    async def settle_all(self) -> None:
+        for pixie in await self._store.list_pixies():
+            await self.settle(pixie)
+
+    async def _new_model(self, engine: Engine) -> str | None:
+        """The model a pixie gets when none is chosen: the agent defaults' on their engine,
+        else the engine's own default model (B94); None while it is not known.
+        """
+        agents = self._defaults()
+        engines = self._sessions.engines
+        own = engines.default if agents.provider is None else engines.by_name(agents.provider)
+        if engine is own and agents.model is not None:
+            return agents.model
+        return await engine.default_model()
 
     def _lock(self, pixie_id: str) -> asyncio.Lock:
         return self._locks.setdefault(pixie_id, asyncio.Lock())
