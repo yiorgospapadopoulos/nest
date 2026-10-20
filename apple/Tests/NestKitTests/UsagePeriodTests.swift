@@ -214,17 +214,19 @@ private func date(_ text: String) -> Date {
         #expect(usage.totalLabel == "Total")
         #expect(usage.bars.isEmpty)
         #expect(usage.ticks == ["1", "8", "15", "22", "31"])
-        #expect(usage.breakdown == nil)
+        let providers = ProvidersStore(api: api)
+        #expect(usage.breakdown(providers: providers) == nil)
 
         try await usage.load()
 
-        #expect(api.calls == ["usageLimits", "usagePeriod month 2026-10-01"])
+        #expect(
+            api.calls == ["usageLimits", "usageLimitsFor codex", "usagePeriod month 2026-10-01"])
         #expect(usage.periodTitle == "October")
         #expect(usage.chatsText == "13.4M")
         #expect(usage.subagentsText == "1.6M")
         #expect(usage.totalText == "15M")
         #expect(usage.totalLabel == "Total · 74 chats")
-        #expect(usage.breakdown?.total == "15M")
+        #expect(usage.breakdown(providers: providers)?.total == "15M")
         #expect(usage.breakdownTitle == "October tokens")
         #expect(!usage.canShowNext)
     }

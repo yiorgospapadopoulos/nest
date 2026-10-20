@@ -13,14 +13,40 @@ public struct UsageBarCell: Sendable, Hashable, Identifiable {
     public let tip: String?
 }
 
+/// One engine's line of the usage meter at the top right (B91): its name and its windows,
+/// nil before the engine reported any.
+public struct UsageMeterLine: Sendable, Equatable, Identifiable {
+    public let provider: String
+    public let name: String
+    public let chip: UsageChip?
+
+    public var id: String { provider }
+}
+
+/// One engine's windows in the usage popover; `title` names the engine when there is more
+/// than one.
+public struct UsageLimitGroup: Sendable, Equatable, Identifiable {
+    public let provider: String
+    public let title: String?
+    public let limits: UsageLimits?
+
+    public var id: String { provider }
+}
+
 /// Subscription limits and the token chart of the usage popover: a day, week, month or
-/// year at a time, with its breakdown.
+/// year at a time, with its breakdown. Claude's windows, and since B91 those of the other
+/// engines the daemon keeps.
 @MainActor @Observable
 public final class UsageStore {
     /// The tallest bar, in points.
     public static let barsHeight = 64.0
+    /// The engines besides Claude whose windows the daemon keeps (B91).
+    public static let otherEngines = ["codex"]
 
+    /// Claude's windows.
     public private(set) var limits: UsageLimits?
+    /// The other engines' windows, by engine name.
+    public private(set) var engineLimits: [String: UsageLimits] = [:]
     /// The shown period's numbers; nil while it loads.
     public private(set) var period: UsagePeriod?
     public private(set) var unit = UsageUnit.month
@@ -58,9 +84,54 @@ public final class UsageStore {
         shownStart = UsageText.periodStart(of: now(), unit: .month, calendar: calendar)
     }
 
+    /// Another engine's windows the daemon cannot give keep their last value.
     public func load() async throws {
         limits = try await api.usageLimits()
+        for engine in Self.otherEngines {
+            if let loaded = try? await api.usageLimits(provider: engine) {
+                engineLimits[engine] = loaded
+            }
+        }
         try await loadPeriod()
+    }
+
+    /// The meter's lines: Claude's always, then each other engine signed in.
+    public func meter(providers: ProvidersStore, now: Date) -> [UsageMeterLine] {
+        shownEngines(providers).map { provider, name in
+            UsageMeterLine(
+                provider: provider, name: name,
+                chip: UsageChip.of(limits(of: provider), now: now))
+        }
+    }
+
+    /// "Claude: 5-hour: 30%, resets in 2h. Codex: not reported yet".
+    public func meterTooltip(_ lines: [UsageMeterLine]) -> String {
+        lines.map { "\($0.name): \($0.chip?.tooltip ?? "not reported yet")" }
+            .joined(separator: ". ")
+    }
+
+    /// The popover's windows: Claude's alone without a heading, else each shown engine's
+    /// under its name.
+    public func limitGroups(providers: ProvidersStore) -> [UsageLimitGroup] {
+        let engines = shownEngines(providers)
+        return engines.map { provider, name in
+            UsageLimitGroup(
+                provider: provider, title: engines.count > 1 ? name : nil,
+                limits: limits(of: provider))
+        }
+    }
+
+    private func limits(of provider: String) -> UsageLimits? {
+        provider == ProviderInfo.claude ? limits : engineLimits[provider]
+    }
+
+    /// Claude, then the other engines that said they are signed in.
+    private func shownEngines(_ providers: ProvidersStore) -> [(String, String)] {
+        let others = providers.providers.filter {
+            $0.name != ProviderInfo.claude && $0.signedIn == true
+        }
+        return [(ProviderInfo.claude, providers.displayName(nil))]
+            + others.map { ($0.name, $0.displayName) }
     }
 
     public var isLoading: Bool { loads > 0 }
@@ -149,7 +220,10 @@ public final class UsageStore {
         period.map { "Total · \(UsageText.chats($0.sessions))" } ?? "Total"
     }
 
-    public var breakdown: UsageBreakdown? { period.map(UsageBreakdown.init) }
+    /// The Details of the shown period, split by the engines `providers` lists.
+    public func breakdown(providers: ProvidersStore) -> UsageBreakdown? {
+        period.map { UsageBreakdown($0, engines: providers.providers) }
+    }
 
     public func showDetails() {
         showsDetails = true
@@ -181,6 +255,12 @@ public final class UsageStore {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        for engine in Self.otherEngines {
+            // An engine signed out or asked too soon keeps its windows; Claude's note stays.
+            if let refreshed = try? await api.refreshUsage(provider: engine) {
+                engineLimits[engine] = refreshed
+            }
+        }
         do {
             limits = try await api.refreshUsage()
             retryAt = nil
@@ -266,22 +346,43 @@ public final class UsageStore {
         UsageText.reset(window, now: now(), calendar: calendar)
     }
 
-    /// Windows from the engine replace the shown ones; it may report only one of them.
+    /// Windows from the engine replace the shown ones; Claude may report only one of them,
+    /// another engine reports all of its windows at once.
     public func apply(_ event: Event) {
         if case .usageWarning(let warning) = event.body {
             self.warning = warning
             return
         }
-        guard case .usageUpdated(let update) = event.body else { return }
-        var merged = limits ?? UsageLimits(fiveHour: nil, sevenDay: nil)
+        switch event.body {
+        case .usageUpdated(let update):
+            limits = Self.merge(update, into: limits, at: event.ts)
+        case .providerUsageUpdated(let provider, let update):
+            engineLimits[provider] = Self.merge(update, into: engineLimits[provider], at: event.ts)
+        default:
+            return
+        }
+    }
+
+    private static func merge(_ update: UsageLimits, into limits: UsageLimits?, at ts: Date)
+        -> UsageLimits
+    {
+        var merged = limits ?? UsageLimits()
+        if let windows = update.windows {
+            // Another engine reports its windows whole (B91).
+            merged.windows = windows.map { window in
+                var window = window
+                window.updatedAt = ts
+                return window
+            }
+        }
         if var window = update.fiveHour {
-            window.updatedAt = event.ts
+            window.updatedAt = ts
             merged.fiveHour = window
         }
         if var window = update.sevenDay {
-            window.updatedAt = event.ts
+            window.updatedAt = ts
             merged.sevenDay = window
         }
-        limits = merged
+        return merged
     }
 }

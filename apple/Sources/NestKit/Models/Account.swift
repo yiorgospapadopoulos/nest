@@ -77,8 +77,23 @@ public struct ProjectTokens: Decodable, Sendable, Hashable {
     public var pixies: Bool
 }
 
+/// One engine's part of a period's tokens (B91).
+public struct EngineTokens: Decodable, Sendable, Hashable {
+    /// The engine's name, as `GET /api/providers` gives it.
+    public var provider: String
+    public var tokens: Int
+    /// Distinct chats on it.
+    public var sessions: Int
+
+    public init(provider: String, tokens: Int, sessions: Int) {
+        self.provider = provider
+        self.tokens = tokens
+        self.sessions = sessions
+    }
+}
+
 /// `GET /api/usage/period`: the tokens of a day, week (from Monday), month or year, by the
-/// daemon's local calendar.
+/// daemon's local calendar. Every engine counts in the totals.
 public struct UsagePeriod: Decodable, Sendable, Hashable {
     public var unit: UsageUnit
     public var start: CalendarDay
@@ -96,6 +111,29 @@ public struct UsagePeriod: Decodable, Sendable, Hashable {
     public var projects: [ProjectTokens]
     /// Nest's own usage checks, not part of the totals above.
     public var probes: ProbeTotals
+    /// The totals by engine, Claude first; engines without tokens are left out, and a
+    /// daemon before B91 sends none.
+    public var engines: [EngineTokens]
+
+    enum CodingKeys: String, CodingKey {
+        case unit, start, end, current, sessions, tokens, subagents, bars, projects, probes
+        case engines
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        unit = try container.decode(UsageUnit.self, forKey: .unit)
+        start = try container.decode(CalendarDay.self, forKey: .start)
+        end = try container.decode(CalendarDay.self, forKey: .end)
+        current = try container.decode(Bool.self, forKey: .current)
+        sessions = try container.decode(Int.self, forKey: .sessions)
+        tokens = try container.decode(TokenTotals.self, forKey: .tokens)
+        subagents = try container.decode(TokenTotals.self, forKey: .subagents)
+        bars = try container.decode([PeriodBar].self, forKey: .bars)
+        projects = try container.decode([ProjectTokens].self, forKey: .projects)
+        probes = try container.decode(ProbeTotals.self, forKey: .probes)
+        engines = try container.decodeIfPresent([EngineTokens].self, forKey: .engines) ?? []
+    }
 }
 
 /// The period's usage checks: Nest overhead, kept apart from the user's sessions.
@@ -150,21 +188,51 @@ public struct LimitWindow: Codable, Sendable, Hashable {
     public var resetsAt: Date?
     /// When the engine last reported it; absent in `usage.updated` events.
     public var updatedAt: Date?
+    /// Another engine's window (B91): its length, nil when the engine left it out.
+    public var minutes: Int?
+    /// Another engine's window (B91): its name from its length, "30 day".
+    public var label: String?
+
+    public init(
+        utilization: Double, resetsAt: Date? = nil, updatedAt: Date? = nil, minutes: Int? = nil,
+        label: String? = nil
+    ) {
+        self.utilization = utilization
+        self.resetsAt = resetsAt
+        self.updatedAt = updatedAt
+        self.minutes = minutes
+        self.label = label
+    }
 
     enum CodingKeys: String, CodingKey {
         case utilization
         case resetsAt = "resets_at"
         case updatedAt = "updated_at"
+        case minutes
+        case label
     }
 }
 
+/// An engine's usage windows: Claude's five-hour and weekly ones, or another engine's
+/// (B91: Codex's) whichever its plan has, by length in `windows`.
 public struct UsageLimits: Codable, Sendable, Hashable {
     public var fiveHour: LimitWindow?
     public var sevenDay: LimitWindow?
+    /// Another engine's windows, shortest first; nil for Claude's.
+    public var windows: [LimitWindow]?
+
+    public init(
+        fiveHour: LimitWindow? = nil, sevenDay: LimitWindow? = nil, windows: [LimitWindow]? = nil
+    ) {
+        self.fiveHour = fiveHour
+        self.sevenDay = sevenDay
+        self.windows = windows
+    }
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
+        case windows
     }
 }
 

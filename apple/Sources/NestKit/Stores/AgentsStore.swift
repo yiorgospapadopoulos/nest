@@ -6,7 +6,7 @@ import Observation
 @MainActor @Observable
 public final class AgentsStore {
     /// The value Claude Code's list uses for its default model.
-    public static let defaultModel = "default"
+    public static let defaultModel = ModelCatalog.defaultModel
 
     /// Empty until loaded, or when the daemon has no list.
     public private(set) var models: [ModelInfo] = []
@@ -35,65 +35,53 @@ public final class AgentsStore {
 
     // MARK: Models
 
+    /// Claude Code's models with what the menus offer from them.
+    public var catalog: ModelCatalog { ModelCatalog(models: models) }
+
     /// The list entry for a session's model; nil stands for Claude Code's default.
     public func info(for model: String?) -> ModelInfo? {
-        let value = model ?? Self.defaultModel
-        return models.first { $0.value == value }
+        catalog.info(for: model)
     }
 
-    /// The menu title: the model's display name, or its raw value when the list does not
-    /// have it (an older session, or a list not loaded yet).
     public func label(for model: String?) -> String {
-        info(for: model)?.displayName ?? model ?? "Default"
+        catalog.label(for: model)
     }
 
     public func isSelected(_ info: ModelInfo, current model: String?) -> Bool {
-        info.value == (model ?? Self.defaultModel)
+        catalog.isSelected(info, current: model)
     }
 
-    /// The thinking levels to offer: the model's own, or every level for a model the
-    /// list does not describe.
     public func thinkingLevels(for model: String?) -> [Effort] {
-        info(for: model)?.thinkingLevels ?? Effort.selectable
+        catalog.thinkingLevels(for: model)
     }
 
-    /// The effort a chat keeps after switching to this model.
     public func effort(_ current: Effort?, afterSwitchingTo model: String?) -> Effort? {
-        Effort.fallback(current, supported: thinkingLevels(for: model))
+        catalog.effort(current, afterSwitchingTo: model)
     }
 
-    /// Thinking left to the model: what Claude Code's settings give it, when they say,
-    /// such as "Model default (High, from Claude Code)".
     public func defaultEffortLabel(for model: String?) -> String {
-        guard let effort = info(for: model)?.claudeCodeEffort else { return "Model default" }
-        return "Model default (\(effort.label), from Claude Code)"
+        catalog.defaultEffortLabel(for: model)
     }
 
-    /// The model offers Claude Code's Auto mode; unknown models do not.
     public func supportsAuto(_ model: String?) -> Bool {
-        info(for: model)?.supportsAutoMode == true
+        catalog.supportsAuto(model)
     }
 
-    /// The permission modes to offer with this model.
     public func permissionModes(for model: String?) -> [PermissionMode] {
-        PermissionMode.options(supportsAuto: supportsAuto(model))
+        catalog.permissionModes(for: model)
     }
 
-    /// How a chat on this model can go on after its plan is approved.
     public func planChoices(for model: String?) -> [PermissionMode] {
-        PermissionMode.planChoices(supportsAuto: supportsAuto(model))
+        catalog.planChoices(for: model)
     }
 
-    /// The mode a new chat keeps after switching to this model: Auto only where the model
-    /// offers it, else the agent default when it names another mode, else Ask before edits.
-    /// Never Claude Code's own setting (nil): the daemon starts a chat without a mode with
-    /// the agent default (audit BUG-87).
+    /// The mode a new chat keeps after switching to this model, falling back to the agent
+    /// default's (`ModelCatalog.newChatPermission`).
     public func newChatPermission(_ current: PermissionMode?, afterSwitchingTo model: String?)
         -> PermissionMode?
     {
-        guard current == .auto, !supportsAuto(model) else { return current }
-        let fallback = self.current.permissionMode
-        return fallback == nil || fallback == .auto ? .default : fallback
+        catalog.newChatPermission(
+            current, afterSwitchingTo: model, fallback: self.current.permissionMode)
     }
 
     /// The agent default's mode after switching the default model: Auto only where the

@@ -149,9 +149,6 @@ public final class ActivityStore {
         queued[id, default: []].append(message)
     }
 
-    /// What a pending message's row says when Remove came too late.
-    public static let takenNote = "Claude already read this message"
-
     /// Remove was refused because Claude read the message; it leaves with the next list.
     public func isTaken(_ message: String, session id: String) -> Bool {
         taken[id]?.contains(message) == true
@@ -162,9 +159,14 @@ public final class ActivityStore {
         sendingNow[id]?.contains(message) == true
     }
 
-    /// The quiet line under a pending message.
-    public func note(for message: QueuedMessage, session id: String, working: Bool) -> String {
-        isTaken(message.id, session: id) ? Self.takenNote : message.note(working: working)
+    /// The quiet line under a pending message; `agent` names the chat's engine. Remove
+    /// came too late for a taken one.
+    public func note(
+        for message: QueuedMessage, session id: String, working: Bool, agent: String
+    ) -> String {
+        isTaken(message.id, session: id)
+            ? "\(agent) already read this message"
+            : message.note(working: working, agent: agent)
     }
 
     /// Removes a pending message; one already gone leaves the list too. False when Claude
