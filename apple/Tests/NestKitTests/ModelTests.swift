@@ -68,8 +68,6 @@ import Testing
         #expect(PermissionMode.auto.label == "Auto")
         #expect(PermissionMode.options(supportsAuto: false) == PermissionMode.selectable)
         #expect(PermissionMode.options(supportsAuto: true) == PermissionMode.selectable + [.auto])
-        #expect(PermissionMode.label(nil) == "Claude Code default")
-        #expect(PermissionMode.label(.plan) == "Plan")
         #expect(Effort.selectable.map(\.rawValue) == ["low", "medium", "high", "xhigh", "max"])
     }
 

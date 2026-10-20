@@ -14,17 +14,20 @@ import Testing
                 Fixture.decode(ProviderList.self, json: ProviderDecodingTests.json)
                 .providers
             $0.providerModels = ["codex": ProviderDecodingTests.codexModels]
+            $0.providerDefaults = ["codex": "gpt-5.5-codex"]
         }
     }
 
-    static let claude = ModelCatalog(models: [
+    static let claude = ModelCatalog(models: models, defaultModel: "opus")
+
+    static let models = [
         ModelInfo(
             value: "opus", displayName: "Opus", description: "Most capable",
             effortLevels: [.low, .high], supportsEffort: true, supportsAutoMode: true),
         ModelInfo(
             value: "haiku", displayName: "Haiku", description: "Fastest", effortLevels: [],
             supportsEffort: false),
-    ])
+    ]
 
     func pixie(provider: String? = nil, model: String? = nil) -> Pixie {
         var pixie = Fixture.decode(Pixie.self, "pixie")
@@ -38,8 +41,7 @@ import Testing
         if loaded {
             await store.load()
         }
-        return PixieModelPicker(
-            pixie: pixie, providers: store, claude: Self.claude, agentDefault: "opus")
+        return PixieModelPicker(pixie: pixie, providers: store, claude: Self.claude)
     }
 
     @Test func aPixieFromBeforeB91RunsOnClaude() {
@@ -55,19 +57,16 @@ import Testing
         #expect(picker.sections.map(\.title) == ["Claude", "Codex"])
         #expect(picker.sections.map(\.id) == ["claude", "codex"])
         #expect(picker.sections.map(\.detail) == ["", "Not signed in"])
+        // Real models only (B94); a pixie without a model yet shows its engine's default.
         let claude = picker.sections[0].entries
-        #expect(claude.map(\.title) == ["Default", "Opus", "Haiku"])
-        #expect(claude[0].detail == "The agent default, now Opus")
-        #expect(claude.map(\.checked) == [true, false, false])
-        #expect(claude[1].request == UpdatePixieRequest(model: "opus"))
-        #expect(claude[0].request == UpdatePixieRequest(clearsModel: true))
+        #expect(claude.map(\.title) == ["Opus", "Haiku"])
+        #expect(claude.map(\.checked) == [true, false])
+        #expect(claude[0].request == UpdatePixieRequest(model: "opus"))
         let codex = picker.sections[1].entries
-        #expect(codex.map(\.title) == ["Default", "GPT-5.5 Codex"])
+        #expect(codex.map(\.title) == ["GPT-5.5 Codex", "GPT-5.5 Mini"])
         #expect(codex.map(\.checked) == [false, false])
-        // Codex's own default is no model of the pixie's own.
-        #expect(codex[0].request == UpdatePixieRequest(provider: "codex", clearsModel: true))
-        #expect(codex[1].request == UpdatePixieRequest(provider: "codex", model: "gpt-5.5-codex"))
-        #expect(picker.value == "Default")
+        #expect(codex[0].request == UpdatePixieRequest(provider: "codex", model: "gpt-5.5-codex"))
+        #expect(picker.value == "Opus")
         #expect(picker.catalog == Self.claude)
         #expect(picker.runningModel == "opus")
     }
@@ -76,20 +75,19 @@ import Testing
         let onDefault = await picker(pixie(provider: "codex"))
         let chosen = await picker(pixie(provider: "codex", model: "gpt-5.5-codex"))
 
-        #expect(onDefault.value == "Codex · Default")
+        #expect(onDefault.value == "Codex · GPT-5.5 Codex")
         #expect(onDefault.sections[1].entries.map(\.checked) == [true, false])
-        #expect(onDefault.sections[0].entries.map(\.checked) == [false, false, false])
+        #expect(onDefault.sections[0].entries.map(\.checked) == [false, false])
         #expect(chosen.value == "Codex · GPT-5.5 Codex")
-        #expect(chosen.sections[1].entries.map(\.checked) == [false, true])
+        #expect(chosen.sections[1].entries.map(\.checked) == [true, false])
         #expect(
             chosen.sections[0].entries.map(\.request) == [
-                UpdatePixieRequest(provider: "claude", clearsModel: true),
                 UpdatePixieRequest(provider: "claude", model: "opus"),
                 UpdatePixieRequest(provider: "claude", model: "haiku"),
             ])
-        #expect(chosen.catalog.models.map(\.value) == ["default", "gpt-5.5-codex"])
+        #expect(chosen.catalog.models.map(\.value) == ["gpt-5.5-codex", "gpt-5.5-mini"])
         #expect(chosen.runningModel == "gpt-5.5-codex")
-        #expect(onDefault.runningModel == nil)
+        #expect(onDefault.runningModel == "gpt-5.5-codex")
     }
 
     /// With one engine, one Model section as before; an engine whose list is not loaded
@@ -97,7 +95,7 @@ import Testing
     @Test func oneEngineKeepsOneModelSection() async {
         let alone = await picker(pixie(model: "haiku"), loaded: false)
         #expect(alone.sections.map(\.title) == ["Model"])
-        #expect(alone.sections[0].entries.map(\.checked) == [false, false, true])
+        #expect(alone.sections[0].entries.map(\.checked) == [false, true])
         #expect(!alone.sections[0].unavailable)
         #expect(alone.value == "Haiku")
 
@@ -122,8 +120,8 @@ import Testing
 
     @Test func theEngineIsSentOnlyWhenChosen() {
         #expect(
-            Fixture.json(UpdatePixieRequest(provider: "codex", clearsModel: true))
-                == #"{"model":null,"provider":"codex"}"#)
+            Fixture.json(UpdatePixieRequest(provider: "codex", model: "gpt-5.5-codex"))
+                == #"{"model":"gpt-5.5-codex","provider":"codex"}"#)
         #expect(Fixture.json(UpdatePixieRequest(model: "opus")) == #"{"model":"opus"}"#)
     }
 

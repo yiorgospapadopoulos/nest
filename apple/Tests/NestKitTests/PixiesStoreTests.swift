@@ -318,10 +318,6 @@ import Testing
         #expect(changed.skills == ["s"])
         #expect(changed.hidden)
         #expect(changed.applying(UpdatePixieRequest()) == changed)
-        let cleared = changed.applying(
-            UpdatePixieRequest(clearsModel: true, clearsEffort: true))
-        #expect(cleared.model == nil)
-        #expect(cleared.effort == nil)
     }
 
     @Test func staleSavesSurfaceTheCurrentText() async throws {
@@ -379,14 +375,8 @@ import Testing
         )
         #expect(Fixture.json(CreatePixieRequest(name: "A")) == #"{"name":"A"}"#)
         #expect(Fixture.json(UpdatePixieRequest()) == "{}")
-        // Default for Model and Thinking is an explicit null; a key left out is unchanged.
-        #expect(
-            Fixture.json(UpdatePixieRequest(clearsModel: true)) == #"{"model":null}"#)
-        #expect(
-            Fixture.json(UpdatePixieRequest(clearsEffort: true)) == #"{"effort":null}"#)
-        #expect(
-            Fixture.json(UpdatePixieRequest(model: "opus", clearsEffort: true))
-                == #"{"effort":null,"model":"opus"}"#)
+        // A key left out is unchanged; Model and Thinking are always real values (B94).
+        #expect(Fixture.json(UpdatePixieRequest(model: "opus")) == #"{"model":"opus"}"#)
         #expect(Fixture.json(ReorderPixiesRequest(ids: ["b", "a"])) == #"{"ids":["b","a"]}"#)
         let full = UpdatePixieRequest(
             name: "N", slug: "n", mascot: .bluebell, color: "#000000", model: "m", effort: .low,

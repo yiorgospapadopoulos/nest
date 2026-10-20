@@ -1,32 +1,33 @@
 import Foundation
 
 /// One engine's model list and what its menus offer from it: Claude Code's, or another
-/// engine's such as Codex's (B91), which keeps its own models and thinking levels.
+/// engine's such as Codex's (B91), which keeps its own models and thinking levels. Since
+/// B94 the menus list real models only and the engine's default model is named.
 public struct ModelCatalog: Sendable, Hashable {
-    /// The value both engines' lists use for their default model.
-    public static let defaultModel = "default"
-
-    /// Empty until loaded, or when the daemon has no list.
+    /// Empty until loaded, or when the daemon has no list. Real models only (B94).
     public var models: [ModelInfo]
+    /// The model the engine runs when none is named; nil while unknown.
+    public var defaultModel: String?
 
-    public init(models: [ModelInfo]) {
+    public init(models: [ModelInfo], defaultModel: String? = nil) {
         self.models = models
+        self.defaultModel = defaultModel
     }
 
-    /// The list entry for a model; nil stands for the engine's default.
+    /// The list entry for a model; nil (a chat from before B94) is the engine's default.
     public func info(for model: String?) -> ModelInfo? {
-        let value = model ?? Self.defaultModel
+        let value = model ?? defaultModel
         return models.first { $0.value == value }
     }
 
     /// The menu title: the model's display name, or its raw value when the list does not
     /// have it (an older session, or a list not loaded yet).
     public func label(for model: String?) -> String {
-        info(for: model)?.displayName ?? model ?? "Default"
+        info(for: model)?.displayName ?? model ?? defaultModel ?? "Model"
     }
 
     public func isSelected(_ info: ModelInfo, current model: String?) -> Bool {
-        info.value == (model ?? Self.defaultModel)
+        info.value == (model ?? defaultModel)
     }
 
     /// The thinking levels to offer: the model's own, or every level for a model the
@@ -35,16 +36,11 @@ public struct ModelCatalog: Sendable, Hashable {
         info(for: model)?.thinkingLevels ?? Effort.selectable
     }
 
-    /// The effort a chat keeps after switching to this model.
+    /// The effort a chat keeps after switching to this model: the current one as far as
+    /// the model takes it, else Medium or the level nearest it (B94).
     public func effort(_ current: Effort?, afterSwitchingTo model: String?) -> Effort? {
-        Effort.fallback(current, supported: thinkingLevels(for: model))
-    }
-
-    /// Thinking left to the model: what Claude Code's settings give it, when they say,
-    /// such as "Model default (High, from Claude Code)".
-    public func defaultEffortLabel(for model: String?) -> String {
-        guard let effort = info(for: model)?.claudeCodeEffort else { return "Model default" }
-        return "Model default (\(effort.label), from Claude Code)"
+        let levels = thinkingLevels(for: model)
+        return Effort.fallback(current, supported: levels) ?? Effort.standard(supported: levels)
     }
 
     /// The model offers the Auto mode; unknown models do not.
@@ -63,14 +59,14 @@ public struct ModelCatalog: Sendable, Hashable {
     }
 
     /// The mode a new chat keeps after switching to this model: Auto only where the model
-    /// offers it, else `fallback` (the agent default) when it names another mode, else
-    /// Ask before edits. Never the engine's own setting (nil): the daemon starts a chat
-    /// without a mode with the agent default (audit BUG-87).
+    /// offers it, else `fallback` (the agent default) when it names another mode, else Ask.
+    /// None yet takes the fallback, as far as the model allows it.
     public func newChatPermission(
-        _ current: PermissionMode?, afterSwitchingTo model: String?, fallback: PermissionMode?
-    ) -> PermissionMode? {
-        guard current == .auto, !supportsAuto(model) else { return current }
-        return fallback == nil || fallback == .auto ? .default : fallback
+        _ current: PermissionMode?, afterSwitchingTo model: String?, fallback: PermissionMode
+    ) -> PermissionMode {
+        let mode = current ?? fallback
+        guard mode == .auto, !supportsAuto(model) else { return mode }
+        return fallback == .auto ? .default : fallback
     }
 }
 
@@ -94,14 +90,14 @@ public struct ModelSection: Sendable, Hashable, Identifiable {
 
 /// A new chat's engine, model, thinking and mode, sent with its first message (B91).
 public struct NewChatChoices: Sendable, Hashable {
-    /// Nil runs on Claude, the default engine.
+    /// Nil runs on Claude.
     public var provider: String?
     public var model: String?
     public var effort: Effort?
-    public var permission: PermissionMode?
+    public var permission: PermissionMode
 
     public init(
-        provider: String?, model: String?, effort: Effort?, permission: PermissionMode?
+        provider: String?, model: String?, effort: Effort?, permission: PermissionMode
     ) {
         self.provider = provider
         self.model = model
@@ -109,22 +105,22 @@ public struct NewChatChoices: Sendable, Hashable {
         self.permission = permission
     }
 
-    /// The choices on another engine, whose `catalog` is given: Claude takes the agent
-    /// defaults' model and thinking again, which are Claude's (D113); any other engine
-    /// starts on its own default model and thinking. The mode stays where the new model
-    /// allows it; on another engine, where Claude Code's own setting (nil) means nothing,
-    /// it is the agent default's, else Ask.
+    /// The choices on another engine, whose `catalog` is given: the agent defaults' engine
+    /// takes their model and thinking again; any other engine starts on its own default
+    /// model with Medium thinking or the level nearest it (B94). The mode stays where the
+    /// new model allows it.
     public func switching(
         to provider: String?, catalog: ModelCatalog, defaults: AgentDefaults
     ) -> NewChatChoices {
-        let target = provider == ProviderInfo.claude ? nil : provider
+        let target = Self.draftEngine(provider)
         guard target != self.provider else { return self }
-        let model = target == nil ? defaults.model : nil
-        let kept = catalog.newChatPermission(
-            permission, afterSwitchingTo: model, fallback: defaults.permissionMode)
+        let own = target == Self.draftEngine(defaults.provider)
+        let model = own ? defaults.model ?? catalog.defaultModel : catalog.defaultModel
         return NewChatChoices(
-            provider: target, model: model, effort: target == nil ? defaults.effort : nil,
-            permission: target == nil ? kept : kept ?? defaults.permissionMode ?? .default)
+            provider: target, model: model,
+            effort: catalog.effort(own ? defaults.effort : nil, afterSwitchingTo: model),
+            permission: catalog.newChatPermission(
+                permission, afterSwitchingTo: model, fallback: defaults.permissionMode))
     }
 
     /// A model chosen from the menu, of `provider`'s list (`catalog`): the engine follows
@@ -138,5 +134,21 @@ public struct NewChatChoices: Sendable, Hashable {
         next.permission = catalog.newChatPermission(
             next.permission, afterSwitchingTo: model, fallback: defaults.permissionMode)
         return next
+    }
+
+    /// The new chat's choices from the agent defaults (`catalog` is their engine's).
+    public static func from(_ defaults: AgentDefaults, catalog: ModelCatalog) -> NewChatChoices {
+        let model = defaults.model ?? catalog.defaultModel
+        let levels = catalog.thinkingLevels(for: model)
+        return NewChatChoices(
+            provider: draftEngine(defaults.provider), model: model,
+            effort: defaults.effort ?? Effort.standard(supported: levels),
+            permission: catalog.newChatPermission(
+                nil, afterSwitchingTo: model, fallback: defaults.permissionMode))
+    }
+
+    /// How a draft names an engine: nil for Claude.
+    public static func draftEngine(_ provider: String?) -> String? {
+        provider == ProviderInfo.claude ? nil : provider
     }
 }

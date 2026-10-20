@@ -40,6 +40,10 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let githubJSON = """
         {"state": "signed_in", "login": "octo", "checked_at": "2026-10-17T09:00:00Z"}
         """
+    static let codexJSON = """
+        {"signed_in": true, "email": "me@example.com", "plan": "ChatGPT Plus",
+         "checked_at": "2026-10-17T09:00:00Z", "error": null}
+        """
     static let claudeJSON = """
         {"signed_in": true, "email": "me@example.com", "organization": null, "plan": "max",
          "method": "claude.ai", "checked_at": "2026-10-17T09:00:00Z"}
@@ -199,11 +203,14 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase(
             "PUT", "/api/agents/defaults",
-            body: #"{"effort":null,"mode":"worktree","model":null,"permission_mode":"plan"}"#,
+            body:
+                #"{"effort":null,"mode":"worktree","model":"gpt-5.5","permission_mode":"plan","provider":"codex"}"#,
             response: defaultsJSON
         ) {
             _ = try await $0.updateAgentDefaults(
-                AgentDefaults(model: nil, effort: nil, permissionMode: .plan, mode: .worktree))
+                AgentDefaults(
+                    provider: "codex", model: "gpt-5.5", effort: nil, permissionMode: .plan,
+                    mode: .worktree))
         },
         RouteCase("GET", "/api/stuck/settings", response: stuckJSON) {
             _ = try await $0.stuckSettings()
@@ -250,11 +257,10 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                 "p1", UpdatePixieRequest(skills: ["review"], hidden: true))
         },
         RouteCase(
-            "PATCH", "/api/pixies/p1", body: #"{"effort":null,"model":null}"#,
+            "PATCH", "/api/pixies/p1", body: #"{"effort":"low","model":"opus"}"#,
             response: pixieJSON
         ) {
-            _ = try await $0.updatePixie(
-                "p1", UpdatePixieRequest(clearsModel: true, clearsEffort: true))
+            _ = try await $0.updatePixie("p1", UpdatePixieRequest(model: "opus", effort: .low))
         },
         RouteCase(
             "PUT", "/api/pixies/order", body: #"{"ids":["p2","p1"]}"#,
@@ -558,6 +564,22 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("POST", "/api/accounts/claude/logout", response: claudeJSON) {
             _ = try await $0.signOutClaude()
+        },
+        RouteCase("GET", "/api/accounts/codex", response: codexJSON) {
+            _ = try await $0.codexLogin()
+        },
+        RouteCase(
+            "POST", "/api/accounts/codex/login",
+            response: #"{"auth_url": "https://auth.openai.com/oauth/authorize?state=x"}"#
+        ) {
+            let started = try await $0.signInCodex()
+            #expect(started.authURL.absoluteString.hasPrefix("https://auth.openai.com/"))
+        },
+        RouteCase("POST", "/api/accounts/codex/login/cancel", response: "") {
+            try await $0.cancelCodexSignIn()
+        },
+        RouteCase("POST", "/api/accounts/codex/logout", response: codexJSON) {
+            _ = try await $0.signOutCodex()
         },
         RouteCase(
             "GET", "/api/claude-code",

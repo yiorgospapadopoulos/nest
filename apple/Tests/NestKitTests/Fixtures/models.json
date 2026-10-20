@@ -1,11 +1,11 @@
 {
   "models": [
-    {"value": "default", "display_name": "Default (recommended)", "description": "Opus 5.5 for up to 50% of usage limits, then Sonnet 5.5", "effort_levels": ["low", "medium", "high", "xhigh", "max"], "supports_effort": true, "supports_auto_mode": true, "claude_code_effort": "high"},
     {"value": "opus", "display_name": "Opus 5.5", "description": "Most capable for complex work", "effort_levels": ["low", "medium", "high", "xhigh", "max"], "supports_effort": true, "supports_auto_mode": true, "claude_code_effort": null},
     {"value": "claude-fable-5-1", "display_name": "Fable 5.1", "description": "Creative writing and long-form storytelling", "effort_levels": ["low", "medium", "high"], "supports_effort": true},
     {"value": "sonnet", "display_name": "Sonnet 5.5", "description": "Best for everyday tasks", "effort_levels": ["low", "medium", "high", "xhigh", "ultra"], "supports_effort": true},
     {"value": "haiku", "display_name": "Haiku 4.5", "description": "Fastest for quick answers", "effort_levels": [], "supports_effort": false, "supports_auto_mode": false, "claude_code_effort": "ultra"},
     {"value": "claude-opus-4-8", "display_name": "Opus 4.8", "description": "Previous Opus", "effort_levels": ["low", "medium", "high"], "supports_effort": true}
   ],
-  "updated_at": "2026-10-07T08:00:00Z"
+  "updated_at": "2026-10-07T08:00:00Z",
+  "default_model": "opus"
 }

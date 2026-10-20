@@ -45,10 +45,13 @@ final class FakeAPI: NestAPI {
         var stuckSettings = StuckSettings(
             waitingMinutes: 15, silentMinutes: 10, repeatedCalls: 4, turnMinutes: 60)
         var models = Fixture.models
+        var defaultModel: String? = "opus"
         /// `GET /api/providers`; none, as from a daemon before B91, until set.
         var providers: [ProviderInfo] = []
         /// The other engines' model lists, by engine name.
         var providerModels: [String: [ModelInfo]] = [:]
+        /// The other engines' default models, by engine name.
+        var providerDefaults: [String: String] = [:]
         var account = ClaudeAccount(
             displayName: "Giorgos", email: "me@example.com", plan: "Claude Max",
             organization: nil)
@@ -99,6 +102,9 @@ final class FakeAPI: NestAPI {
         var claudeLogin = ClaudeLogin(
             signedIn: true, email: "me@example.com", plan: "Max",
             checkedAt: Date(timeIntervalSince1970: 0))
+        var codexLogin = CodexLogin(
+            signedIn: false, checkedAt: Date(timeIntervalSince1970: 0))
+        var codexSignInURL = URL(string: "https://auth.openai.com/oauth/authorize?state=x")!
         var claudeCode = ClaudeCodeStatus(
             installed: false, path: nil, version: nil, bundledVersion: "2.1.0")
         var plugins = [InstalledPlugin(id: "pdf@official", name: "pdf", marketplace: "official")]
@@ -612,12 +618,14 @@ final class FakeAPI: NestAPI {
     }
 
     func models() async throws -> ModelList {
-        try call("models") { ModelList(models: $0.models, updatedAt: nil) }
+        try call("models") { ModelList(models: $0.models, defaultModel: $0.defaultModel) }
     }
 
     func models(provider: String) async throws -> ModelList {
         try call("modelsFor", provider) {
-            ModelList(models: $0.providerModels[provider] ?? [], updatedAt: nil)
+            ModelList(
+                models: $0.providerModels[provider] ?? [],
+                defaultModel: $0.providerDefaults[provider])
         }
     }
 
@@ -635,8 +643,8 @@ final class FakeAPI: NestAPI {
 
     func updateAgentDefaults(_ defaults: AgentDefaults) async throws -> AgentDefaults {
         let detail = [
-            defaults.model ?? "nil", defaults.effort?.rawValue ?? "nil",
-            defaults.permissionMode?.rawValue ?? "nil", defaults.mode.rawValue,
+            defaults.provider, defaults.model ?? "nil", defaults.effort?.rawValue ?? "nil",
+            defaults.permissionMode.rawValue, defaults.mode.rawValue,
         ].joined(separator: " ")
         return try call("updateAgentDefaults", detail) { state in
             state.agentDefaults = defaults
@@ -1124,6 +1132,26 @@ final class FakeAPI: NestAPI {
         return try call("signOutClaude") { state in
             state.claudeLogin = ClaudeLogin(signedIn: false, checkedAt: state.claudeLogin.checkedAt)
             return state.claudeLogin
+        }
+    }
+
+    func codexLogin() async throws -> CodexLogin {
+        try call("codexLogin") { $0.codexLogin }
+    }
+
+    func signInCodex() async throws -> CodexSignIn {
+        try call("signInCodex") { CodexSignIn(authURL: $0.codexSignInURL) }
+    }
+
+    func cancelCodexSignIn() async throws {
+        try call("cancelCodexSignIn") { _ in }
+    }
+
+    func signOutCodex() async throws -> CodexLogin {
+        await pass("signOutCodex")
+        return try call("signOutCodex") { state in
+            state.codexLogin = CodexLogin(signedIn: false, checkedAt: state.codexLogin.checkedAt)
+            return state.codexLogin
         }
     }
 

@@ -23,6 +23,25 @@ public struct UsageMeterLine: Sendable, Equatable, Identifiable {
     public var id: String { provider }
 }
 
+/// One engine of Settings > Usage > "Top bar shows" (B94): every engine the daemon lists,
+/// checked unless the user unchecked it on this Mac.
+public struct UsageMeterEngine: Sendable, Equatable, Identifiable {
+    public let provider: String
+    public let name: String
+    /// "Not signed in" for an engine that said so: it shows only once signed in.
+    public let detail: String
+    public let shown: Bool
+
+    public var id: String { provider }
+
+    public init(provider: String, name: String, detail: String, shown: Bool) {
+        self.provider = provider
+        self.name = name
+        self.detail = detail
+        self.shown = shown
+    }
+}
+
 /// One engine's windows in the usage popover; `title` names the engine when there is more
 /// than one.
 public struct UsageLimitGroup: Sendable, Equatable, Identifiable {
@@ -95,12 +114,35 @@ public final class UsageStore {
         try await loadPeriod()
     }
 
-    /// The meter's lines: Claude's always, then each other engine signed in.
-    public func meter(providers: ProvidersStore, now: Date) -> [UsageMeterLine] {
-        shownEngines(providers).map { provider, name in
+    /// The meter's lines: Claude (always) and each other engine signed in, in the engine
+    /// list's order, less those in `hidden` (unchecked in Settings > Usage, B94); Claude's
+    /// alone when none of them is left, so the meter stays.
+    public func meter(
+        providers: ProvidersStore, now: Date, hidden: Set<String> = []
+    ) -> [UsageMeterLine] {
+        let engines = shownEngines(providers)
+        let chosen = engines.filter { !hidden.contains($0.0) }
+        return (chosen.isEmpty ? [engines[0]] : chosen).map { provider, name in
             UsageMeterLine(
                 provider: provider, name: name,
                 chip: UsageChip.of(limits(of: provider), now: now))
+        }
+    }
+
+    /// The checkmark list of Settings > Usage > "Top bar shows": every engine the daemon
+    /// lists, in its order (Claude alone before the list loads), checked unless `hidden`.
+    public func meterEngines(providers: ProvidersStore, hidden: Set<String>)
+        -> [UsageMeterEngine]
+    {
+        let listed =
+            providers.providers.isEmpty
+            ? [ProviderInfo(name: ProviderInfo.claude, displayName: providers.displayName(nil))]
+            : providers.providers
+        return listed.map { info in
+            UsageMeterEngine(
+                provider: info.name, name: info.displayName,
+                detail: info.signedIn == false ? providers.detail(for: info) : "",
+                shown: !hidden.contains(info.name))
         }
     }
 

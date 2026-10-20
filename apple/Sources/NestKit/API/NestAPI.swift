@@ -246,6 +246,12 @@ public protocol NestAPI: Sendable {
     /// Starts Claude Code's browser sign-in on the Mac; `account.claude` tells the outcome.
     func signInClaude() async throws
     func signOutClaude() async throws -> ClaudeLogin
+    func codexLogin() async throws -> CodexLogin
+    /// Starts Codex's ChatGPT sign-in; the app opens the page it answers with, and
+    /// `account.codex` tells the outcome (B94).
+    func signInCodex() async throws -> CodexSignIn
+    func cancelCodexSignIn() async throws
+    func signOutCodex() async throws -> CodexLogin
     func claudeCode() async throws -> ClaudeCodeStatus
     /// Runs Anthropic's installer; `claude_code.install` events tell how it goes.
     func installClaudeCode() async throws

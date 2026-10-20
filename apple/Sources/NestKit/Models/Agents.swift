@@ -1,8 +1,9 @@
 import Foundation
 
-/// One entry of Claude Code's own /model list, as `GET /api/models` reports it.
+/// One entry of an engine's model list, as `GET /api/models` reports it: real models only
+/// since B94, no entry that defers to the engine.
 public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
-    /// What a session's `model` holds, such as `default`, `opus` or `claude-fable-5-1`.
+    /// What a session's `model` holds, such as `opus`, `claude-fable-5-1` or `gpt-5.5`.
     public var value: String
     public var displayName: String
     public var description: String
@@ -11,8 +12,6 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
     public var supportsEffort: Bool
     /// The model offers Claude Code's Auto permission mode.
     public var supportsAutoMode: Bool
-    /// The effort Claude Code's own settings give the model, when they set one.
-    public var claudeCodeEffort: Effort?
 
     public var id: String { value }
 
@@ -23,7 +22,7 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
 
     public init(
         value: String, displayName: String, description: String, effortLevels: [Effort],
-        supportsEffort: Bool, supportsAutoMode: Bool = false, claudeCodeEffort: Effort? = nil
+        supportsEffort: Bool, supportsAutoMode: Bool = false
     ) {
         self.value = value
         self.displayName = displayName
@@ -31,7 +30,6 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         self.effortLevels = effortLevels
         self.supportsEffort = supportsEffort
         self.supportsAutoMode = supportsAutoMode
-        self.claudeCodeEffort = claudeCodeEffort
     }
 
     public init(from decoder: any Decoder) throws {
@@ -42,11 +40,9 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         effortLevels = try container.decode([Effort].self, forKey: .effortLevels)
             .filter { $0 != .unknown }
         supportsEffort = try container.decode(Bool.self, forKey: .supportsEffort)
-        // Older daemons send neither; an effort this app does not know reads as none.
+        // Older daemons do not send it.
         supportsAutoMode =
             try container.decodeIfPresent(Bool.self, forKey: .supportsAutoMode) ?? false
-        claudeCodeEffort = try container.decodeIfPresent(Effort.self, forKey: .claudeCodeEffort)
-            .flatMap { $0 == .unknown ? nil : $0 }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -55,7 +51,6 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         case effortLevels = "effort_levels"
         case supportsEffort = "supports_effort"
         case supportsAutoMode = "supports_auto_mode"
-        case claudeCodeEffort = "claude_code_effort"
     }
 }
 
@@ -63,10 +58,20 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
 public struct ModelList: Decodable, Sendable, Hashable {
     public var models: [ModelInfo]
     public var updatedAt: Date?
+    /// The model the engine runs when none is named, a value of `models` where one is it
+    /// (B94); nil while the engine has not said, and from older daemons.
+    public var defaultModel: String?
+
+    public init(models: [ModelInfo], updatedAt: Date? = nil, defaultModel: String? = nil) {
+        self.models = models
+        self.updatedAt = updatedAt
+        self.defaultModel = defaultModel
+    }
 
     enum CodingKeys: String, CodingKey {
         case models
         case updatedAt = "updated_at"
+        case defaultModel = "default_model"
     }
 }
 
@@ -94,44 +99,53 @@ public struct ClaudeAccount: Decodable, Sendable, Hashable {
 }
 
 /// `GET/PUT /api/agents/defaults`: what new chats start with, shared by every client.
+/// Concrete since B94: the daemon never leaves a choice to the engine.
 public struct AgentDefaults: Codable, Sendable, Hashable {
-    /// Nil leaves the choice to Claude Code.
+    /// The engine new chats run on; choosing the default model chooses it.
+    public var provider: String
+    /// Nil only while no engine has reported its models.
     public var model: String?
+    /// Nil only for a model without thinking levels.
     public var effort: Effort?
-    /// Nil passes no mode, so Claude Code's own `defaultMode` applies.
-    public var permissionMode: PermissionMode?
+    public var permissionMode: PermissionMode
     public var mode: SessionMode
 
-    /// What applies before the daemon has answered.
+    /// What applies before the daemon has answered: Claude, Medium and Ask.
     public static let standard = AgentDefaults(
-        model: nil, effort: nil, permissionMode: nil, mode: .inPlace)
+        model: nil, effort: .medium, permissionMode: .default, mode: .inPlace)
 
     public init(
-        model: String?, effort: Effort?, permissionMode: PermissionMode?, mode: SessionMode
+        provider: String = ProviderInfo.claude, model: String?, effort: Effort?,
+        permissionMode: PermissionMode, mode: SessionMode
     ) {
+        self.provider = provider
         self.model = model
         self.effort = effort
         self.permissionMode = permissionMode
         self.mode = mode
     }
 
-    /// Values a newer daemon may add read as the standard ones, so they are never sent back.
+    /// Values a newer daemon may add read as the standard ones, so they are never sent
+    /// back; a daemon before B94 names no engine (Claude) and may name no mode (Ask).
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider =
+            try container.decodeIfPresent(String.self, forKey: .provider) ?? ProviderInfo.claude
         model = try container.decodeIfPresent(String.self, forKey: .model)
         effort = try container.decodeIfPresent(Effort.self, forKey: .effort)
             .flatMap { $0 == .unknown ? nil : $0 }
-        permissionMode = try container.decodeIfPresent(
-            PermissionMode.self, forKey: .permissionMode
-        )
-        .flatMap { $0 == .unknown ? nil : $0 }
+        let permission =
+            try container.decodeIfPresent(PermissionMode.self, forKey: .permissionMode)
+            ?? .default
+        permissionMode = permission == .unknown ? .default : permission
         let mode = try container.decode(SessionMode.self, forKey: .mode)
         self.mode = mode == .unknown ? .inPlace : mode
     }
 
-    /// Sends nulls too: the daemon replaces the whole set.
+    /// The whole set: the daemon replaces it.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
         try container.encode(model, forKey: .model)
         try container.encode(effort, forKey: .effort)
         try container.encode(permissionMode, forKey: .permissionMode)
@@ -139,7 +153,7 @@ public struct AgentDefaults: Codable, Sendable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case model, effort, mode
+        case provider, model, effort, mode
         case permissionMode = "permission_mode"
     }
 }
@@ -150,5 +164,15 @@ extension Effort {
     public static func fallback(_ current: Effort?, supported: [Effort]) -> Effort? {
         guard let current, let rank = selectable.firstIndex(of: current) else { return nil }
         return selectable[...rank].last(where: supported.contains)
+    }
+
+    /// The thinking a chat gets when none is chosen (B94): Medium, or the supported level
+    /// nearest to it (the lower of two as near); nil for a model without levels.
+    public static func standard(supported: [Effort]) -> Effort? {
+        let middle = selectable.firstIndex(of: .medium)!
+        return selectable.enumerated()
+            .filter { supported.contains($0.element) }
+            .min { abs($0.offset - middle) < abs($1.offset - middle) }?
+            .element
     }
 }

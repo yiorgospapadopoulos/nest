@@ -19,7 +19,7 @@ extension Pixie {
     /// model without Auto mode; the app says so. `self` is the pixie before the change.
     public func droppedAuto(by change: UpdatePixieRequest, saved: Pixie) -> Bool {
         permissionMode == .auto && change.permissionMode == nil
-            && (change.model != nil || change.clearsModel) && saved.permissionMode != .auto
+            && change.model != nil && saved.permissionMode != .auto
     }
 }
 

@@ -2,14 +2,13 @@ import Foundation
 import Observation
 
 /// Claude Code's models, the defaults for new chats (shared with the iPhone through the
-/// daemon) and the Claude account the agents run on.
+/// daemon, concrete since B94) and the Claude account the agents run on.
 @MainActor @Observable
 public final class AgentsStore {
-    /// The value Claude Code's list uses for its default model.
-    public static let defaultModel = ModelCatalog.defaultModel
-
     /// Empty until loaded, or when the daemon has no list.
     public private(set) var models: [ModelInfo] = []
+    /// The model Claude Code runs when none is named; nil until it reported one.
+    public private(set) var defaultModel: String?
     /// Nil until loaded.
     public private(set) var defaults: AgentDefaults?
     public private(set) var account: ClaudeAccount?
@@ -24,6 +23,7 @@ public final class AgentsStore {
     public func load() async {
         if let list = try? await api.models() {
             models = list.models
+            defaultModel = list.defaultModel
         }
         if let defaults = try? await api.agentDefaults() {
             self.defaults = defaults
@@ -36,9 +36,9 @@ public final class AgentsStore {
     // MARK: Models
 
     /// Claude Code's models with what the menus offer from them.
-    public var catalog: ModelCatalog { ModelCatalog(models: models) }
+    public var catalog: ModelCatalog { ModelCatalog(models: models, defaultModel: defaultModel) }
 
-    /// The list entry for a session's model; nil stands for Claude Code's default.
+    /// The list entry for a session's model; nil (before B94) is Claude Code's default.
     public func info(for model: String?) -> ModelInfo? {
         catalog.info(for: model)
     }
@@ -59,10 +59,6 @@ public final class AgentsStore {
         catalog.effort(current, afterSwitchingTo: model)
     }
 
-    public func defaultEffortLabel(for model: String?) -> String {
-        catalog.defaultEffortLabel(for: model)
-    }
-
     public func supportsAuto(_ model: String?) -> Bool {
         catalog.supportsAuto(model)
     }
@@ -78,18 +74,10 @@ public final class AgentsStore {
     /// The mode a new chat keeps after switching to this model, falling back to the agent
     /// default's (`ModelCatalog.newChatPermission`).
     public func newChatPermission(_ current: PermissionMode?, afterSwitchingTo model: String?)
-        -> PermissionMode?
+        -> PermissionMode
     {
         catalog.newChatPermission(
             current, afterSwitchingTo: model, fallback: self.current.permissionMode)
-    }
-
-    /// The agent default's mode after switching the default model: Auto only where the
-    /// model offers it, else Claude Code's own setting.
-    public func permission(_ current: PermissionMode?, afterSwitchingTo model: String?)
-        -> PermissionMode?
-    {
-        current == .auto && !supportsAuto(model) ? nil : current
     }
 
     // MARK: Defaults
@@ -97,22 +85,29 @@ public final class AgentsStore {
     /// The defaults new chats start from, before and after loading.
     public var current: AgentDefaults { defaults ?? .standard }
 
-    /// Switches the default model and keeps the default effort and permission mode only
-    /// as far as it allows.
-    public func setDefaultModel(_ model: String) async throws {
+    /// Switches the default model of `provider`'s list (`catalog`), which also makes that
+    /// engine the one new chats run on (B94), and keeps the default effort and permission
+    /// mode as far as the model allows: thinking falls to the nearest level it takes, or
+    /// Medium; Auto on a model without it to Ask.
+    public func setDefaultModel(
+        _ model: String, provider: String = ProviderInfo.claude, catalog: ModelCatalog? = nil
+    ) async throws {
+        let catalog = catalog ?? self.catalog
         try await change {
+            $0.provider = provider
             $0.model = model
-            $0.effort = effort($0.effort, afterSwitchingTo: model)
-            $0.permissionMode = permission($0.permissionMode, afterSwitchingTo: model)
+            $0.effort = catalog.effort($0.effort, afterSwitchingTo: model)
+            if $0.permissionMode == .auto && !catalog.supportsAuto(model) {
+                $0.permissionMode = .default
+            }
         }
     }
 
-    public func setDefaultEffort(_ effort: Effort?) async throws {
+    public func setDefaultEffort(_ effort: Effort) async throws {
         try await change { $0.effort = effort }
     }
 
-    /// Nil leaves the mode to Claude Code's own setting.
-    public func setDefaultPermissionMode(_ mode: PermissionMode?) async throws {
+    public func setDefaultPermissionMode(_ mode: PermissionMode) async throws {
         try await change { $0.permissionMode = mode }
     }
 

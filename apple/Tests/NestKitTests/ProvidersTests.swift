@@ -50,14 +50,15 @@ import Testing
             ])
     }
 
+    /// Codex's list as the daemon gives it since B94: real models, the first its default.
     static let codexModels = [
-        ModelInfo(
-            value: "default", displayName: "Default", description: "Codex's default",
-            effortLevels: [.low, .medium, .high], supportsEffort: true, supportsAutoMode: true),
         ModelInfo(
             value: "gpt-5.5-codex", displayName: "GPT-5.5 Codex", description: "For coding",
             effortLevels: [.low, .medium, .high, .xhigh], supportsEffort: true,
             supportsAutoMode: true),
+        ModelInfo(
+            value: "gpt-5.5-mini", displayName: "GPT-5.5 Mini", description: "Fast",
+            effortLevels: [.low, .high], supportsEffort: true),
     ]
 
     static let hint = "Codex isn't signed in. Run `codex login` with a ChatGPT plan."
@@ -86,6 +87,7 @@ import Testing
                 Fixture.decode(ProviderList.self, json: ProviderDecodingTests.json)
                 .providers
             $0.providerModels = ["codex": ProviderDecodingTests.codexModels]
+            $0.providerDefaults = ["codex": "gpt-5.5-codex"]
         }
     }
 
@@ -96,7 +98,8 @@ import Testing
         await store.load()
         #expect(store.providers.map(\.name) == ["claude", "codex"])
         #expect(store.offersChoice)
-        #expect(store.models["codex"]?.map(\.value) == ["default", "gpt-5.5-codex"])
+        #expect(store.models["codex"]?.map(\.value) == ["gpt-5.5-codex", "gpt-5.5-mini"])
+        #expect(store.defaultModels["codex"] == "gpt-5.5-codex")
         // Claude's list is the agents store's; it is not asked twice.
         #expect(api.calls == ["providers false", "modelsFor codex"])
         await store.load(refresh: true)
@@ -227,10 +230,12 @@ import Testing
         #expect(store.catalog(for: nil, claude: claude) == claude)
         #expect(store.catalog(for: "claude", claude: claude) == claude)
         let codex = store.catalog(for: "codex", claude: claude)
-        #expect(codex.models.map(\.value) == ["default", "gpt-5.5-codex"])
-        #expect(codex.label(for: nil) == "Default")
+        #expect(codex.models.map(\.value) == ["gpt-5.5-codex", "gpt-5.5-mini"])
+        #expect(codex.defaultModel == "gpt-5.5-codex")
+        #expect(codex.label(for: nil) == "GPT-5.5 Codex")
         #expect(codex.thinkingLevels(for: "gpt-5.5-codex") == [.low, .medium, .high, .xhigh])
         #expect(codex.supportsAuto(nil))
+        #expect(!codex.supportsAuto("gpt-5.5-mini"))
     }
 
     @Test func liveSyncLoadsTheEngines() async {
@@ -242,63 +247,49 @@ import Testing
 }
 
 @Suite struct ModelCatalogTests {
-    let catalog = ModelCatalog(models: Fixture.models)
+    let catalog = ModelCatalog(models: Fixture.models, defaultModel: "opus")
 
     @Test func labelsAndSelectsModels() {
-        #expect(catalog.label(for: nil) == "Default (recommended)")
+        #expect(catalog.label(for: nil) == "Opus 5.5")
         #expect(catalog.label(for: "claude-opus-4-1") == "claude-opus-4-1")
-        #expect(ModelCatalog(models: []).label(for: nil) == "Default")
         #expect(catalog.isSelected(Fixture.models[0], current: nil))
         #expect(!catalog.isSelected(Fixture.models[1], current: nil))
     }
 
     /// A new chat leaves Auto for a model without it: for the fallback mode, or Ask when
-    /// the fallback is Auto too or none.
+    /// the fallback is Auto too.
     @Test func newChatsLeaveAutoWhereTheModelLacksIt() {
-        #expect(catalog.newChatPermission(.auto, afterSwitchingTo: "opus", fallback: nil) == .auto)
+        #expect(
+            catalog.newChatPermission(.auto, afterSwitchingTo: "opus", fallback: .default)
+                == .auto)
         #expect(
             catalog.newChatPermission(.auto, afterSwitchingTo: "haiku", fallback: .plan) == .plan)
         #expect(
             catalog.newChatPermission(.auto, afterSwitchingTo: "haiku", fallback: .auto)
                 == .default)
         #expect(
-            catalog.newChatPermission(.auto, afterSwitchingTo: "haiku", fallback: nil) == .default)
-        #expect(
-            catalog.newChatPermission(.plan, afterSwitchingTo: "haiku", fallback: nil) == .plan)
+            catalog.newChatPermission(.plan, afterSwitchingTo: "haiku", fallback: .default)
+                == .plan)
     }
 }
 
 @Suite struct NewChatChoicesTests {
-    let claude = ModelCatalog(models: Fixture.models)
-    let codex = ModelCatalog(models: ProviderDecodingTests.codexModels)
+    let claude = ModelCatalog(models: Fixture.models, defaultModel: "opus")
+    let codex = ModelCatalog(
+        models: ProviderDecodingTests.codexModels, defaultModel: "gpt-5.5-codex")
     let defaults = AgentDefaults(
         model: "opus", effort: .xhigh, permissionMode: .acceptEdits, mode: .inPlace)
 
-    /// Codex starts on its own default model and thinking; the mode stays.
+    /// Codex starts on its own default model, its thinking kept where it takes it; the
+    /// mode stays.
     @Test func switchingToAnotherEngineTakesItsDefaults() {
         let choices = NewChatChoices(
             provider: nil, model: "opus", effort: .max, permission: .plan)
         let switched = choices.switching(to: "codex", catalog: codex, defaults: defaults)
         #expect(
             switched
-                == NewChatChoices(provider: "codex", model: nil, effort: nil, permission: .plan))
-    }
-
-    /// "Claude Code default" means nothing on another engine: it takes the agent default's
-    /// mode, else Ask.
-    @Test func anotherEngineNamesAMode() {
-        let choices = NewChatChoices(provider: nil, model: nil, effort: nil, permission: nil)
-        #expect(
-            choices.switching(to: "codex", catalog: codex, defaults: defaults).permission
-                == .acceptEdits)
-        var unset = defaults
-        unset.permissionMode = nil
-        #expect(
-            choices.switching(to: "codex", catalog: codex, defaults: unset).permission
-                == .default)
-        // Back on Claude, nil is Claude Code's own setting again.
-        let onCodex = NewChatChoices(provider: "codex", model: nil, effort: nil, permission: nil)
-        #expect(onCodex.switching(to: nil, catalog: claude, defaults: unset).permission == nil)
+                == NewChatChoices(
+                    provider: "codex", model: "gpt-5.5-codex", effort: .medium, permission: .plan))
     }
 
     /// Back on Claude, the agent defaults' model and thinking apply again.
@@ -321,7 +312,8 @@ import Testing
         let choices = NewChatChoices(
             provider: "codex", model: "gpt-5.5-codex", effort: .low, permission: .plan)
         #expect(choices.switching(to: "codex", catalog: codex, defaults: defaults) == choices)
-        let onClaude = NewChatChoices(provider: nil, model: "haiku", effort: nil, permission: nil)
+        let onClaude = NewChatChoices(
+            provider: nil, model: "haiku", effort: nil, permission: .default)
         #expect(onClaude.switching(to: "claude", catalog: claude, defaults: defaults) == onClaude)
     }
 }

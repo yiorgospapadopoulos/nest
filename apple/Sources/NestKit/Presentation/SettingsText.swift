@@ -112,6 +112,20 @@ public enum AccountText {
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
+    /// Codex's login in a word (B94); "Not checked" while Codex could not be asked.
+    public static func codexState(_ login: CodexLogin) -> String {
+        switch login.signedIn {
+        case true: "Signed in"
+        case false: "Signed out"
+        case nil: "Not checked"
+        }
+    }
+
+    /// The Codex row's title: the ChatGPT account's email, else the engine's name.
+    public static func codexTitle(_ login: CodexLogin?) -> String {
+        login?.email.flatMap { $0.isEmpty ? nil : $0 } ?? "Codex"
+    }
+
     public static func githubState(_ state: GitHubLoginState) -> String {
         switch state {
         case .signedIn: "Signed in"
