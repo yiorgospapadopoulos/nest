@@ -523,6 +523,143 @@ public struct APIClient: NestAPI {
             body: PluginEnabledRequest(enabled: enabled))
     }
 
+    // MARK: Configuration (B97)
+
+    public func configuration() async throws -> ConfigurationPage {
+        try await get("configuration")
+    }
+
+    public func configurationFile(path: String) async throws -> ConfigFile {
+        try await call(
+            "GET", ["configuration", "file"], query: [URLQueryItem(name: "path", value: path)])
+    }
+
+    public func saveConfigurationFile(path: String, text: String, expectedVersion: String?)
+        async throws -> String
+    {
+        let answer: FileVersion = try await call(
+            "PUT", ["configuration", "file"],
+            body: WriteConfigFileRequest(path: path, text: text, expectedVersion: expectedVersion))
+        return answer.version
+    }
+
+    public func setUsesShared(engine: String, item: SharedItem, on: Bool) async throws
+        -> ConfigurationPage
+    {
+        try await call(
+            "PUT", ["configuration", "uses-shared"],
+            body: UsesSharedRequest(engine: engine, item: item, on: on))
+    }
+
+    public func createSkill(name: String, description: String) async throws
+        -> ConfigurationPage
+    {
+        try await call(
+            "POST", ["configuration", "skills"],
+            body: NewSkillRequest(name: name, description: description))
+    }
+
+    public func deleteSkill(_ name: String) async throws -> ConfigurationPage {
+        try await call("DELETE", ["configuration", "skills", name])
+    }
+
+    public func makeSkillShared(_ name: String, engine: String) async throws
+        -> ConfigurationPage
+    {
+        try await call(
+            "POST", ["configuration", "skills", name, "make-shared"],
+            body: EngineRequest(engine: engine))
+    }
+
+    public func setSkillEnabled(_ name: String, codex enabled: Bool) async throws
+        -> ConfigurationPage
+    {
+        try await call(
+            "PUT", ["configuration", "skills", name, "engines", "codex"],
+            body: PluginEnabledRequest(enabled: enabled))
+    }
+
+    public func saveMCPServer(_ name: String, _ spec: MCPServerSpec) async throws
+        -> ConfigurationPage
+    {
+        try await call("PUT", ["configuration", "mcp-servers", name], body: spec)
+    }
+
+    public func deleteMCPServer(_ name: String) async throws -> ConfigurationPage {
+        try await call("DELETE", ["configuration", "mcp-servers", name])
+    }
+
+    public func mcpServer(_ name: String) async throws -> MCPServerSpec {
+        try await get("configuration", "mcp-servers", name)
+    }
+
+    public func copyPreview(engine: String) async throws -> CopyPreview {
+        try await get("configuration", "copy", engine)
+    }
+
+    public func copyToShared(engine: String, instructions: Bool) async throws -> CopyResult {
+        try await call(
+            "POST", ["configuration", "copy", engine],
+            body: CopyRequest(instructions: instructions))
+    }
+
+    public func undoCopy(_ id: String) async throws -> ConfigurationPage {
+        try await call("POST", ["configuration", "copy", "undo", id])
+    }
+
+    public func repoConfiguration(_ repo: String) async throws -> RepoConfiguration {
+        try await get("repos", repo, "configuration")
+    }
+
+    public func saveRepoMCPServer(_ repo: String, _ name: String, _ spec: MCPServerSpec)
+        async throws
+    {
+        try await perform(
+            "PUT", ["repos", repo, "configuration", "mcp-servers", name], body: spec)
+    }
+
+    public func deleteRepoMCPServer(_ repo: String, _ name: String) async throws {
+        try await perform("DELETE", ["repos", repo, "configuration", "mcp-servers", name])
+    }
+
+    public func createRepoSkill(_ repo: String, name: String, description: String)
+        async throws
+    {
+        try await perform(
+            "POST", ["repos", repo, "configuration", "skills"],
+            body: NewSkillRequest(name: name, description: description))
+    }
+
+    public func codexPlugins(query: String) async throws -> [CodexPlugin] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let list: CodexPluginList = try await call(
+            "GET", ["configuration", "codex", "plugins"],
+            query: trimmed.isEmpty ? [] : [URLQueryItem(name: "query", value: trimmed)])
+        return list.plugins
+    }
+
+    public func installCodexPlugin(_ id: String) async throws {
+        try await perform("POST", ["configuration", "codex", "plugins", id, "install"])
+    }
+
+    public func uninstallCodexPlugin(_ id: String) async throws {
+        try await perform("POST", ["configuration", "codex", "plugins", id, "uninstall"])
+    }
+
+    public func codexMarketplaces() async throws -> [CodexMarketplace] {
+        try await get("configuration", "codex", "marketplaces")
+    }
+
+    public func addCodexMarketplace(source: String) async throws {
+        try await perform(
+            "POST", ["configuration", "codex", "marketplaces"],
+            body: MarketplaceRequest(source: source))
+    }
+
+    public func removeCodexMarketplace(_ name: String) async throws {
+        try await perform("DELETE", ["configuration", "codex", "marketplaces", name])
+    }
+
     // MARK: Pixies
 
     public func pixies() async throws -> [Pixie] {

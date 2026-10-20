@@ -236,6 +236,10 @@
                 try await renderConcreteDefaults(model, shell, controller, folder)
                 return
             }
+            if only == "b97" {
+                try await renderConfiguration(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -342,9 +346,11 @@
             shell.show(.usage)
             try await pair(controller, "usage", folder)
             try await pairSettings(controller, .general, "settings", folder)
-            try await pairSettings(controller, .extensions, "connectors", folder) {
-                shell.extensionsTab = .connections
+            try await pairSettings(controller, .configuration, "connectors", folder, height: 1_500)
+            {
+                shell.configurationFolds.insert("claude:connectors")
             }
+            shell.configurationFolds.remove("claude:connectors")
             try await model.devices.createPairingCode()
             try await pairSettings(controller, .devices, "pairing", folder)
 
@@ -364,6 +370,7 @@
             try await renderArtifacts(model, shell, controller, folder)
             try await renderStartScreen(model, shell, controller, folder)
             try await renderCodex(model, shell, controller, folder)
+            try await renderConfiguration(model, shell, controller, folder)
         }
 
         /// B94: Settings > Accounts with Codex signed out, signing in and signed in; Settings
@@ -431,6 +438,90 @@
             sample.setCodexSignedIn(false)
             await model.providers.load()
             try await accounts.loadCodex()
+        }
+
+        /// B97: Settings > Configuration with Claude open, Codex open, every skill shown,
+        /// the copy popup (and its Compare), the done line with Undo, the editor sheet with
+        /// the "changed on disk" bar, the server and skill forms, and a project's
+        /// Configuration tab; in ocean, and the main states again in clay.
+        private static func renderConfiguration(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            sample.setCodexSignedIn(true)
+            let store = model.configuration
+            try await store.load()
+            try await model.extensions.loadInstalled()
+            let tall = 1_700.0
+            for accent in [AccentName.ocean, .clay] {
+                model.settings.accent = accent
+                let name = "b97-\(accent.rawValue)"
+                store.openEngine("claude")
+                try await pairSettings(
+                    controller, .configuration, "\(name)-claude-open", folder, height: tall)
+                try await store.startCopy("claude")
+                try await pairSettings(
+                    controller, .configuration, "\(name)-copy-popup", folder, height: 1_000)
+                try await store.applyCopy()
+                try await pairSettings(
+                    controller, .configuration, "\(name)-done", folder, height: tall)
+                try await store.undoCopy()
+                store.toggleEngine("codex")
+                try await pairSettings(
+                    controller, .configuration, "\(name)-codex-open", folder, height: tall)
+                store.openEngine("claude")
+            }
+            model.settings.accent = .ocean
+            store.toggleEngine("codex")
+            try await store.startCopy("codex")
+            try await pairSettings(
+                controller, .configuration, "b97-codex-copy-popup", folder, height: 1_000)
+            store.cancelCopy()
+            store.openEngine("claude")
+            store.showsAllSkills = true
+            try await pairSettings(
+                controller, .configuration, "b97-skills-all", folder, height: 1_900)
+            store.showsAllSkills = false
+            try await store.startCopy("claude")
+            store.setKeepInstructions(true)
+            try await store.toggleCompare()
+            try await pairSettings(
+                controller, .configuration, "b97-copy-compare", folder, height: 1_100)
+            store.cancelCopy()
+            try await store.edit(
+                path: SampleConfiguration.shared, title: "Instructions",
+                note: "used by Claude and Codex")
+            store.editor?.text += "\n- Ask before adding a dependency."
+            sample.changeOnDisk(
+                SampleConfiguration.shared, text: "# How I like to work\n\n- Edited in VS Code.")
+            try await store.editor?.checkDisk()
+            try await pairSettings(controller, .configuration, "b97-editor-changed", folder)
+            store.closeEditor()
+            let toml = NSHomeDirectory() + "/.codex/config.toml"
+            try await store.edit(path: toml, title: "Settings file", note: "Codex only")
+            store.editor?.text = "model = \"gpt-5.5-codex\"\nsandbox = = \"workspace-write\"\n"
+            _ = try await store.editor?.save()
+            try await pairSettings(controller, .configuration, "b97-editor-invalid", folder)
+            store.closeEditor()
+            shell.configurationForm = .server(
+                MCPServerForm(
+                    name: "playwright",
+                    spec: MCPServerSpec(
+                        transport: .stdio, command: "npx", args: ["@playwright/mcp"],
+                        env: ["DEBUG": "pw:mcp"])),
+                repo: nil)
+            try await pairSettings(controller, .configuration, "b97-server-form", folder)
+            shell.configurationForm = .skill(repo: nil)
+            try await pairSettings(controller, .configuration, "b97-skill-form", folder)
+            shell.configurationForm = nil
+            shell.projectTab = .configuration
+            try await store.loadRepo("cv-page")
+            try await pairSettings(controller, .project("cv-page"), "b97-project", folder)
+            shell.projectTab = .general
+            sample.setCodexSignedIn(false)
+            try await store.load()
+            model.settings.accent = .graphite
         }
 
         /// The agent defaults' model menu as `EngineModelItems` lists it (B94).
@@ -1986,10 +2077,13 @@
             shell.archivedOpen.remove("cv-page")
 
             shell.connectorGroupsOpen = []
-            shell.extensionsTab = .connections
-            try await pairSettings(controller, .extensions, "b28-connectors-folded", folder)
+            shell.configurationFolds = ["claude:connectors"]
+            try await pairSettings(
+                controller, .configuration, "b28-connectors-folded", folder, height: 1_500)
             shell.connectorGroupsOpen = [.claudeCode]
-            try await pairSettings(controller, .extensions, "b28-connectors-open", folder)
+            try await pairSettings(
+                controller, .configuration, "b28-connectors-open", folder, height: 1_700)
+            shell.configurationFolds = ["claude:plugins"]
             shell.close()
 
             model.app.openProject("recipes")
@@ -3489,8 +3583,9 @@
             try await snap(controller, "live-usage", .darkAqua, folder)
             try await snapSettings(controller, .general, "live-settings", .aqua, folder)
             try await snapSettings(controller, .storage, "live-storage", .aqua, folder)
-            shell.extensionsTab = .connections
-            try await snapSettings(controller, .extensions, "live-connectors", .darkAqua, folder)
+            try await snapSettings(
+                controller, .configuration, "live-configuration", .darkAqua, folder,
+                height: 1_600)
         }
 
         static let settingsSize = CGSize(width: 980, height: 700)
@@ -3549,12 +3644,11 @@
                 let name = "b81-\(page.title.lowercased().replacingOccurrences(of: " ", with: "-"))"
                 try await pairSettings(controller, page, name, folder, height: tall)
             }
-            shell.extensionsTab = .connections
-            try await pairSettings(controller, .extensions, "b81-extensions-connections", folder)
-            shell.extensionsTab = .plugins
             try await model.extensions.loadAvailable()
+            shell.configurationFolds.insert("claude:plugins:browse")
             try await pairSettings(
-                controller, .extensions, "b81-extensions-browse", folder, height: 1_300)
+                controller, .configuration, "b81-configuration-browse", folder, height: 1_900)
+            shell.configurationFolds.remove("claude:plugins:browse")
             try await model.storage.loadAttachments()
             try await pairSettings(
                 controller, .storage, "b81-storage-attachments", folder, height: tall)

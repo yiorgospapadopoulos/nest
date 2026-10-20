@@ -140,7 +140,10 @@ final class Shell {
     var settingsPage = SettingsPage.general
     var settingsQuery = ""
     var projectTab = ProjectSettingsTab.general
-    var extensionsTab = ExtensionsTab.plugins
+    /// Settings > Configuration's open folds, such as "claude:plugins" (B97).
+    var configurationFolds: Set<String> = ["claude:plugins"]
+    /// The Add server, Edit server or New skill form over Settings (B97).
+    var configurationForm: ConfigurationForm?
     /// Opens a window scene by id; the main window sets it once it shows.
     @ObservationIgnored var openWindow: ((String) -> Void)?
     /// The Connections list's unfolded groups; all are folded at first.
@@ -1239,7 +1242,7 @@ final class Shell {
         case .permissions:
             withAnimation(.smooth(duration: 0.15)) { draft.picker = .permissions }
         case .mcp:
-            openSettings(.extensions, extensionsTab: .connections)
+            openConnectors()
         case .resume(let search):
             show(.palette)
             if let search {
@@ -1602,15 +1605,19 @@ final class Shell {
     // MARK: Settings window (B81)
 
     /// Shows the Settings window on a page; a project's page opens on its General tab.
-    func openSettings(_ page: SettingsPage = .general, extensionsTab: ExtensionsTab? = nil) {
+    func openSettings(_ page: SettingsPage = .general) {
         if page != settingsPage, case .project = page {
             projectTab = .general
         }
         settingsPage = page
-        if let extensionsTab {
-            self.extensionsTab = extensionsTab
-        }
         openWindow?(SettingsWindow.id)
+    }
+
+    /// Settings > Configuration with Claude's section and its connectors open (B97).
+    func openConnectors() {
+        model.configuration.openEngine("claude")
+        configurationFolds.insert("claude:connectors")
+        openSettings(.configuration)
     }
 
     /// Brings the main window forward, such as after Open on a pixie in Settings.

@@ -622,6 +622,119 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "PUT", "/api/extensions/plugins/pdf@official/enabled", body: #"{"enabled":false}"#,
             response: ""
         ) { try await $0.setPluginEnabled("pdf@official", enabled: false) },
+        RouteCase("GET", "/api/configuration", response: Fixture.configurationJSON) {
+            _ = try await $0.configuration()
+        },
+        RouteCase(
+            "GET", "/api/configuration/file?path=/Users/x/AGENTS.md",
+            response: #"{"path": "/Users/x/AGENTS.md", "text": "", "version": null}"#
+        ) { _ = try await $0.configurationFile(path: "/Users/x/AGENTS.md") },
+        RouteCase(
+            "PUT", "/api/configuration/file",
+            body: #"{"expected_version":"v1","path":"/a","text":"x"}"#,
+            response: #"{"version": "v2"}"#
+        ) {
+            let version = try await $0.saveConfigurationFile(
+                path: "/a", text: "x", expectedVersion: "v1")
+            #expect(version == "v2")
+        },
+        RouteCase(
+            "PUT", "/api/configuration/uses-shared",
+            body: #"{"engine":"codex","item":"mcp_servers","on":false}"#,
+            response: Fixture.configurationJSON
+        ) { _ = try await $0.setUsesShared(engine: "codex", item: .mcpServers, on: false) },
+        RouteCase(
+            "POST", "/api/configuration/skills", body: #"{"description":"d","name":"deploy"}"#,
+            response: Fixture.configurationJSON
+        ) { _ = try await $0.createSkill(name: "deploy", description: "d") },
+        RouteCase(
+            "DELETE", "/api/configuration/skills/deploy", response: Fixture.configurationJSON
+        ) { _ = try await $0.deleteSkill("deploy") },
+        RouteCase(
+            "POST", "/api/configuration/skills/hatch-pet/make-shared",
+            body: #"{"engine":"codex"}"#, response: Fixture.configurationJSON
+        ) { _ = try await $0.makeSkillShared("hatch-pet", engine: "codex") },
+        RouteCase(
+            "PUT", "/api/configuration/skills/chrome-browser/engines/codex",
+            body: #"{"enabled":true}"#, response: Fixture.configurationJSON
+        ) { _ = try await $0.setSkillEnabled("chrome-browser", codex: true) },
+        RouteCase(
+            "PUT", "/api/configuration/mcp-servers/serena",
+            body:
+                #"{"args":["serena"],"command":"uvx","env":{},"headers":{},"transport":"stdio","url":null}"#,
+            response: Fixture.configurationJSON
+        ) {
+            _ = try await $0.saveMCPServer(
+                "serena", MCPServerSpec(transport: .stdio, command: "uvx", args: ["serena"]))
+        },
+        RouteCase(
+            "DELETE", "/api/configuration/mcp-servers/serena", response: Fixture.configurationJSON
+        ) { _ = try await $0.deleteMCPServer("serena") },
+        RouteCase(
+            "GET", "/api/configuration/mcp-servers/serena", response: #"{"command": "uvx"}"#
+        ) { _ = try await $0.mcpServer("serena") },
+        RouteCase("GET", "/api/configuration/copy/claude", response: Fixture.copyPreviewJSON) {
+            _ = try await $0.copyPreview(engine: "claude")
+        },
+        RouteCase(
+            "POST", "/api/configuration/copy/claude", body: #"{"instructions":true}"#,
+            response: #"{"summary": "s", "undo_id": "u", "page": \#(Fixture.configurationJSON)}"#
+        ) { _ = try await $0.copyToShared(engine: "claude", instructions: true) },
+        RouteCase(
+            "POST", "/api/configuration/copy/undo/20261020-copy",
+            response: Fixture.configurationJSON
+        ) { _ = try await $0.undoCopy("20261020-copy") },
+        RouteCase(
+            "GET", "/api/repos/nest/configuration",
+            response: #"{"instructions": [], "skills": [], "mcp_servers": []}"#
+        ) { _ = try await $0.repoConfiguration("nest") },
+        RouteCase(
+            "PUT", "/api/repos/nest/configuration/mcp-servers/db",
+            body:
+                #"{"args":[],"command":"npx","env":{},"headers":{},"transport":"stdio","url":null}"#,
+            response: ""
+        ) {
+            try await $0.saveRepoMCPServer(
+                "nest", "db", MCPServerSpec(transport: .stdio, command: "npx"))
+        },
+        RouteCase("DELETE", "/api/repos/nest/configuration/mcp-servers/db", response: "") {
+            try await $0.deleteRepoMCPServer("nest", "db")
+        },
+        RouteCase(
+            "POST", "/api/repos/nest/configuration/skills",
+            body: #"{"description":"","name":"deploy"}"#, response: ""
+        ) { try await $0.createRepoSkill("nest", name: "deploy", description: "") },
+        RouteCase(
+            "GET", "/api/configuration/codex/plugins",
+            response: #"{"plugins": [], "marketplaces": []}"#
+        ) { _ = try await $0.codexPlugins(query: " ") },
+        RouteCase(
+            "GET", "/api/configuration/codex/plugins?query=fig",
+            response: """
+                {"plugins": [{"id": "figma@openai", "name": "figma", "marketplace": "openai",
+                  "description": null, "version": "1.0", "installed": false, "enabled": false}],
+                 "marketplaces": [{"name": "openai", "path": "/p"}]}
+                """
+        ) {
+            let plugins = try await $0.codexPlugins(query: "fig ")
+            #expect(plugins.map(\.id) == ["figma@openai"])
+        },
+        RouteCase("POST", "/api/configuration/codex/plugins/figma@openai/install", response: "") {
+            try await $0.installCodexPlugin("figma@openai")
+        },
+        RouteCase(
+            "POST", "/api/configuration/codex/plugins/figma@openai/uninstall", response: ""
+        ) { try await $0.uninstallCodexPlugin("figma@openai") },
+        RouteCase("GET", "/api/configuration/codex/marketplaces", response: "[]") {
+            _ = try await $0.codexMarketplaces()
+        },
+        RouteCase(
+            "POST", "/api/configuration/codex/marketplaces", body: #"{"source":"a/b"}"#,
+            response: ""
+        ) { try await $0.addCodexMarketplace(source: "a/b") },
+        RouteCase("DELETE", "/api/configuration/codex/marketplaces/openai", response: "") {
+            try await $0.removeCodexMarketplace("openai")
+        },
         RouteCase(
             "POST", "/api/clients/visibility", body: #"{"client":"mac","visible":true}"#,
             response: ""
