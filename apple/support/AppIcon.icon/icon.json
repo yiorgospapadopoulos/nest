@@ -1,0 +1,32 @@
+{
+  "fill" : {
+    "solid" : "srgb:0.11765,0.11765,0.12941,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "pixie.png",
+          "name" : "pixie"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

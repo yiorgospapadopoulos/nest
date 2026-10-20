@@ -22,7 +22,7 @@ describe("pwa assets", () => {
     expect(() => tokenColors(":root {}")).toThrow("tokens.css lacks page colors");
   });
 
-  it("ships the column icon at every size the manifest and iOS ask for", () => {
+  it("ships the pixie icon at every size the manifest and iOS ask for", () => {
     for (const [fileName, size] of Object.entries(ICON_SIZES)) {
       expect(pngSize(readFileSync(resolve(ICONS, fileName)))).toEqual([size, size]);
     }

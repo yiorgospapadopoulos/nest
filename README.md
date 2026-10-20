@@ -45,6 +45,7 @@ make app       # build apple/build/Nest.app (signed with "Nest Local Signing" wh
 make run-app   # build and open the Mac app
 make install-app  # build and copy Nest.app into /Applications
 make tokens    # regenerate design token outputs
+make icon      # render the app icon PNGs from the icon pixie's sprite and build AppIcon.icns (D120)
 ```
 
 CI: `.github/workflows/check.yml` is set to run `make check-daemon` and `make check-web` on GitHub Actions (`ubuntu-latest`) for every push and pull request; nothing has been pushed since it was added, so it has not run yet. The Swift gates run only locally (`make check-apple`). See D066 and D071.
@@ -56,6 +57,8 @@ On the Mac a project with no chat open shows the start screen (D111): a question
 To add a project, pick a folder. The root folder of a git repository works as before. Any other folder (outside git, even a new empty one) opens as a plain folder project: chats work in place in it, with no worktrees, branches, reviews, commits or pull requests, and git actions on it answer 409 `not_a_git_repository`. Ask Claude to initialize a repository there (`git init` works like any git command) and the project turns into a normal git project at the end of that turn, or the next time projects are listed. See D041.
 
 The pointer shows what can be done (a pointing hand on buttons, rows and tabs, an open hand on pane headers that can be dragged). In Connectors (click the account name) the claude.ai connectors and the plugins sit in dropdowns, closed until clicked, with a count and a note when something needs sign-in or failed. Add folder (the + after the project tabs) opens the folder picker as a sheet with New Folder; a plain folder shows an Init chip in place of the branch, which opens a new chat with a prefilled (not sent) request to run `git init` (D041).
+
+The app icon is the nightshade pixie in the standard violet on a black tile, the same in every appearance and icon style (D120). `nestd design icon` (`make icon`) renders it from `design/mascots.toml` without an image library: `apple/support/AppIcon-1024.png` and the `.icns` built from it, the sprite alone for `apple/support/AppIcon.icon`, and the iPhone's `web/build/icons`. `make app` compiles the `.icon` bundle with `actool` into the app's `Assets.car`, which macOS 26 draws the Dock and Finder icon from. The committed PNGs must match a fresh render (a daemon test checks), so run `make icon` after changing the sprite.
 
 The Mac app gets its device token from the running daemon over a private socket, so it never asks for the login keychain password (D075). When the daemon is not running, the window shows it as unreachable with Start Nest service, and the app asks for the token again once the daemon is up. `make app` signs the app with a self-signed code-signing certificate named `Nest Local Signing` when the login keychain has one (Certificate Assistant > Create a Certificate, Self-Signed Root, Code Signing, then Always Trust for Code Signing in Keychain Access), else with `Harness Local Signing`, the one made before the rename, and ad hoc otherwise (D042).
 
