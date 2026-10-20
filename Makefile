@@ -1,6 +1,6 @@
 # Quality gates for every part of Nest. `make check` is the single entry point.
 
-.PHONY: install-app check check-daemon check-web check-apple fmt test install tokens app run-app
+.PHONY: install-app check check-daemon check-web check-apple fmt test install tokens icon app run-app
 
 # Swift sources to format and lint; the generated tokens follow the generator's layout.
 APPLE_SWIFT = $$(find apple/Sources apple/Tests -name '*.swift' -not -path '*/Generated/*') apple/Package.swift
@@ -43,6 +43,19 @@ test:
 
 tokens:
 	cd daemon && uv run nestd design generate
+
+# The app icon from the icon pixie's sprite (B95): the PNG sources, then AppIcon.icns from the
+# Mac source at every size the Finder asks for. The appearance-aware icon is compiled from
+# apple/support/AppIcon.icon when the app is bundled.
+icon:
+	cd daemon && uv run nestd design icon
+	rm -rf apple/build/AppIcon.iconset && mkdir -p apple/build/AppIcon.iconset
+	for size in 16 32 128 256 512; do \
+	  sips -z $$size $$size apple/support/AppIcon-1024.png --out apple/build/AppIcon.iconset/icon_$${size}x$${size}.png >/dev/null; \
+	  sips -z $$((size * 2)) $$((size * 2)) apple/support/AppIcon-1024.png --out apple/build/AppIcon.iconset/icon_$${size}x$${size}@2x.png >/dev/null; \
+	done
+	iconutil -c icns apple/build/AppIcon.iconset -o apple/support/AppIcon.icns
+	rm -rf apple/build/AppIcon.iconset
 
 # The Mac app bundle in apple/build/Nest.app, signed with "Nest Local Signing" when present, ad hoc otherwise (D042).
 app:
