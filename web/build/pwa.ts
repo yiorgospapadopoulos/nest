@@ -6,7 +6,7 @@ import { appearanceBootScript, themeColorTags, type Colors } from "../src/appear
 export { themeColorTags, type Colors };
 
 // The installable app's manifest and theme colors, from the design tokens at build time,
-// and its icons: the column mark on white, rendered from apple/support/AppIcon-1024.png.
+// and its icons: the icon pixie on its dark tile, written by `nestd design icon` (B95).
 
 export interface Asset {
   fileName: string;
