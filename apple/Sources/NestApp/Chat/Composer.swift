@@ -58,6 +58,12 @@ struct Composer: View {
             if let blocked = draft.blocked {
                 BlockedNote(text: blocked) { withAnimation { draft.blocked = nil } }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if shell.isDraft(chat),
+                let hint = shell.providers.signInHint(for: draft.provider)
+            {
+                // The engine chosen for the new chat said it is not signed in (B91).
+                SignInNote(text: hint)
+                    .transition(.opacity)
             }
             if let picker = draft.picker, pixie == nil {
                 CommandPicker(chat: chat, picker: picker, draft: draft)
@@ -126,7 +132,9 @@ struct Composer: View {
             draft.wantsFocus = false
         }
         .task(id: commandSource(suggestions)) {
-            guard suggestions?.trigger.kind == .command, let repo = shell.project else { return }
+            guard suggestions?.trigger.kind == .command, let repo = shell.project,
+                shell.supports(.slashCommands, chat: chat)
+            else { return }
             await shell.completions.loadCommands(session: session, repo: repo)
         }
         .task(id: mentionedPixies(suggestions)) {
@@ -162,7 +170,8 @@ struct Composer: View {
         guard let repo = shell.project else { return nil }
         return shell.completions.suggestions(
             text: draft.text, caret: draft.caret, session: session, repo: repo,
-            mentions: shell.pixieMentions(forChat: chat), localCommands: true)
+            mentions: shell.pixieMentions(forChat: chat), localCommands: true,
+            commands: shell.supports(.slashCommands, chat: chat))
     }
 
     /// The pixies the "@" list offers, whose souls' first lines it shows.
@@ -248,7 +257,7 @@ struct Composer: View {
                     AttachmentChips(draft: draft)
                         .padding(.top, 6)
                 }
-                MessageField(draft: draft, focused: $focused, style: start ? .start : .pane) {
+                MessageField(draft: draft, focused: $focused, style: fieldStyle) {
                     key in
                     handle(key, draft: draft, suggestions: suggestions)
                 }
@@ -290,6 +299,12 @@ struct Composer: View {
             loadFiles(providers)
             return true
         }
+    }
+
+    /// The start screen's names `/` only where the engine has slash commands (B91).
+    private var fieldStyle: MessageFieldStyle {
+        guard start else { return .pane }
+        return shell.supports(.slashCommands, chat: chat) ? .start : .startWithoutCommands
     }
 
     /// Half the one-line field's height: an oval while it holds one line, a rounded field
@@ -336,6 +351,9 @@ struct MessageFieldStyle {
         size: TypeSize.reading, lineSpacing: 2, verticalPadding: 10, minHeight: 38,
         placeholder: "Ask, build, / for commands, @ for references...",
         placeholderColor: Palette.t3)
+    static let startWithoutCommands = MessageFieldStyle(
+        size: TypeSize.reading, lineSpacing: 2, verticalPadding: 10, minHeight: 38,
+        placeholder: "Ask, build, @ for references...", placeholderColor: Palette.t3)
 }
 
 /// A text editor that grows with its text; Return sends and Shift-Return adds a line.
@@ -426,6 +444,40 @@ extension MessageField {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .allowsHitTesting(false)
             .accessibilityLabel("Dictating: \(draft.volatile)")
+    }
+}
+
+/// The new chat's engine is not signed in (B91): its hint, such as to run `codex login`,
+/// in quiet grey above the field, with the code in mono; it goes once the engine says it
+/// is signed in.
+private struct SignInNote: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: Icon.warning)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(StatusTone.waiting.color)
+            Text(styled)
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Code in mono at the text's size; its spaces stay in the text's font.
+    private var styled: AttributedString {
+        InlineCode.parts(text).reduce(into: AttributedString()) { result, part in
+            var run = AttributedString(part.text)
+            if part.isCode {
+                run.font = .mono(TypeSize.meta)
+            }
+            result += run
+        }
     }
 }
 

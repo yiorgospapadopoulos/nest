@@ -63,7 +63,10 @@ struct PixieDetails: View {
                 DetailHeading(title: "Limits")
                 PixieLimitRows(pixie: pixie)
 
-                PixieSkillChips(pixie: pixie)
+                // Only an engine that takes a pixie's own skill list shows it (B91).
+                if shell.providers.supports(.pixieSkills, on: pixie.provider) {
+                    PixieSkillChips(pixie: pixie)
+                }
 
                 SectionBreak()
                 DetailGroup {
@@ -481,41 +484,38 @@ private struct CustomColorDot: View {
 }
 
 /// Model, Thinking, Permissions, Project files and Autonomy: a value on the right that
-/// opens a menu of choices.
+/// opens a menu of choices. The Model picker also chooses the engine (B91), a section per
+/// engine; Thinking and Permissions follow that engine's models.
 private struct PixieSettings: View {
     let pixie: Pixie
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let agents = shell.agents
-        // The model the pixie runs: its own, else the agent default's.
-        let runs = pixie.model ?? agents.current.model
-        let levels = agents.thinkingLevels(for: runs)
+        let picker = PixieModelPicker(
+            pixie: pixie, providers: shell.providers, claude: shell.agents.catalog,
+            agentDefault: shell.agents.current.model)
+        let runs = picker.runningModel
+        let levels = picker.catalog.thinkingLevels(for: runs)
         DetailGroup {
-            PickerRow(
-                title: "Model",
-                value: pixie.model == nil ? "Default" : agents.label(for: pixie.model)
-            ) {
-                ModelItems(
-                    current: pixie.model,
-                    defaultItem: .init(
-                        detail: "The agent default, now \(agents.label(for: agents.current.model))"
-                    ) { save(UpdatePixieRequest(clearsModel: true)) }
-                ) { save(UpdatePixieRequest(model: $0.value)) }
+            PickerRow(title: "Model", value: picker.value) {
+                PixieModelItems(picker: picker) { save($0) }
             }
             PickerRow(
                 title: "Thinking",
                 value: levels.isEmpty ? "Not available" : pixie.effort?.label ?? "Default",
                 enabled: !levels.isEmpty
             ) {
-                ThinkingItems(model: runs, effort: pixie.effort, offersDefault: true) {
+                ThinkingItems(
+                    model: runs, effort: pixie.effort, offersDefault: true,
+                    catalog: picker.catalog
+                ) {
                     save(UpdatePixieRequest(effort: $0, clearsEffort: $0 == nil))
                 }
             }
             PickerRow(title: "Permissions", value: pixie.permissionMode.label) {
                 // Auto only where the model offers it, as in any chat.
                 PermissionItems(
-                    modes: agents.permissionModes(for: runs), current: pixie.permissionMode
+                    modes: picker.catalog.permissionModes(for: runs), current: pixie.permissionMode
                 ) {
                     if let mode = $0 {
                         save(UpdatePixieRequest(permissionMode: mode))
@@ -547,6 +547,31 @@ private struct PixieSettings: View {
 
     private func save(_ request: UpdatePixieRequest) {
         shell.updatePixie(pixie.id, request)
+    }
+}
+
+/// The pixie's model picker's items: each engine's section with its plan or that it is not
+/// signed in, then its models; a list not loaded says models are unavailable.
+struct PixieModelItems: View {
+    let picker: PixieModelPicker
+    let pick: (UpdatePixieRequest) -> Void
+
+    var body: some View {
+        ForEach(picker.sections) { section in
+            Section(section.title) {
+                if !section.detail.isEmpty {
+                    Text(section.detail)
+                }
+                if section.unavailable {
+                    Button("Models unavailable") {}.disabled(true)
+                }
+                ForEach(section.entries) { entry in
+                    OptionItem(title: entry.title, detail: entry.detail, checked: entry.checked) {
+                        pick(entry.request)
+                    }
+                }
+            }
+        }
     }
 }
 

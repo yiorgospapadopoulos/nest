@@ -54,7 +54,7 @@ struct ApprovalCard: View {
 
     private var title: String {
         switch approval.kind {
-        case .question: "Question from Claude"
+        case .question: "Question from \(shell.agentName(forChat: approval.sessionID))"
         case .review: "Ready for review"
         case .plan: "Plan ready for review"
         case .merge: "Ready to merge"
@@ -160,6 +160,7 @@ private struct PlanBody: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
+        let agent = shell.agentName(forChat: approval.sessionID)
         let note = Binding(
             get: { shell.approvals.planNote(for: approval) },
             set: { shell.approvals.setPlanNote($0, for: approval) })
@@ -177,12 +178,14 @@ private struct PlanBody: View {
             .padding(.top, 8)
             let model = shell.sessions.session(approval.sessionID)?.model
             Segmented(
-                options: shell.agents.planChoices(for: model).map { ($0, $0.planChoiceLabel) },
+                options: shell.catalog(forChat: approval.sessionID).planChoices(for: model).map {
+                    ($0, $0.planChoiceLabel)
+                },
                 selection: shell.approvals.planMode(for: approval)
             ) { shell.approvals.setPlanMode($0, for: approval) }
             .padding(.top, 8)
-            .help("How Claude goes on once you approve the plan")
-            CardField(placeholder: "Note for Claude (optional)", text: note) {
+            .help("How \(agent) goes on once you approve the plan")
+            CardField(placeholder: "Note for \(agent) (optional)", text: note) {
                 shell.keepPlanning(approval)
             }
             .padding(.top, 8)
@@ -200,7 +203,7 @@ private struct PlanBody: View {
                     Text("Keep planning").grows(style)
                 }
                 .buttonStyle(.nest(.soft))
-                .help("Send Claude back to planning, with the note if you wrote one")
+                .help("Send \(agent) back to planning, with the note if you wrote one")
             }
         }
     }
@@ -263,7 +266,9 @@ private struct QuestionBody: View {
                 Button("Dismiss") { shell.dismiss(approval) }
                     .buttonStyle(.nest(.plain))
                     .fixedSize()
-                    .help("Let Claude continue without an answer")
+                    .help(
+                        "Let \(shell.agentName(forChat: approval.sessionID)) continue without an answer"
+                    )
             }
         }
     }
@@ -398,7 +403,10 @@ private struct ReviewBody: View {
             if style == .panel {
                 HStack(spacing: 6) {
                     // The review stays pending after feedback (B56), so the field clears.
-                    CardField(placeholder: "Feedback for Claude", text: $feedback) {
+                    CardField(
+                        placeholder: "Feedback for \(shell.agentName(forChat: approval.sessionID))",
+                        text: $feedback
+                    ) {
                         send()
                     }
                     Button("Send") { send() }

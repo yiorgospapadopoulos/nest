@@ -239,8 +239,12 @@ struct TranscriptRow: View {
     var body: some View {
         switch item.content {
         case .user(let text, let attachments):
-            let canRewind = RewindFlow.isAvailable(for: shell.sessions.session(chat))
-            let canFork = SessionsStore.canFork(shell.sessions.session(chat))
+            let session = shell.sessions.session(chat)
+            let canRewind =
+                RewindFlow.isAvailable(for: session)
+                && shell.providers.supports(.rewind, in: session)
+            let canFork =
+                SessionsStore.canFork(session) && shell.providers.supports(.fork, in: session)
             VStack(alignment: .trailing, spacing: 4) {
                 if let from = item.fromPixie {
                     FromPixieLabel(label: PixieLabels.from(from, pixies: shell.pixies.pixies))
