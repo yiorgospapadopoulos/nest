@@ -80,6 +80,9 @@ enum SearchFixture {
                 "Title", "You", "Claude", "Tool call", "Tool output", "Claude Code chat",
                 "Message",
             ])
+        // An answer is its chat's engine's (B91).
+        #expect(SearchHitKind.assistant.label(agent: "Codex") == "Codex")
+        #expect(SearchHitKind.user.label(agent: "Codex") == "You")
     }
 
     @Test func snippetsSplitAtTheirMarkers() {

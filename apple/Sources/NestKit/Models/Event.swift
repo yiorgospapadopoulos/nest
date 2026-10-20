@@ -71,7 +71,10 @@ public enum EventType {
     public static let prOpened = "pr.opened"
     public static let notify = "notify"
     public static let connectorsUpdated = "connectors.updated"
+    /// Claude's usage windows.
     public static let usageUpdated = "usage.updated"
+    /// Another engine's usage windows, such as Codex's (B91).
+    public static let usageProviderUpdated = "usage.provider_updated"
     /// A limit window reached the warning level (B81).
     public static let usageWarning = "usage.warning"
     /// The Claude Code login changed, or signing in ended (B81).
@@ -162,6 +165,8 @@ public enum EventBody: Sendable, Hashable {
     case notify(Notice)
     case connectorsUpdated([Connector])
     case usageUpdated(UsageLimits)
+    /// Another engine's windows (B91).
+    case providerUsageUpdated(provider: String, UsageLimits)
     case usageWarning(UsageWarning)
     case claudeAccount(ClaudeLogin)
     case claudeCodeInstall(ClaudeCodeInstallProgress)
@@ -256,6 +261,10 @@ public enum EventBody: Sendable, Hashable {
         case EventType.connectorsUpdated:
             self = .connectorsUpdated(try field("connectors", as: [Connector].self))
         case EventType.usageUpdated: self = .usageUpdated(try payload.decode(UsageLimits.self))
+        case EventType.usageProviderUpdated:
+            self = .providerUsageUpdated(
+                provider: try field("provider", as: String.self),
+                try payload.decode(UsageLimits.self))
         case EventType.usageWarning: self = .usageWarning(try payload.decode(UsageWarning.self))
         case EventType.accountClaude: self = .claudeAccount(try payload.decode(ClaudeLogin.self))
         case EventType.claudeCodeInstall:

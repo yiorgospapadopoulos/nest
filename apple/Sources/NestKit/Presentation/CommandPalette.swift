@@ -96,13 +96,18 @@ public struct CommandPalette: Sendable, Hashable {
         }
     }
 
-    /// The daemon's hits for `text`; ignored when the query changed since.
-    public mutating func show(_ results: SearchResults, for text: String) {
+    /// The daemon's hits for `text`; ignored when the query changed since. `agentName`
+    /// names a chat's engine by session id, for the answers' label (B91).
+    public mutating func show(
+        _ results: SearchResults, for text: String,
+        agentName: (String) -> String = { _ in "Claude" }
+    ) {
         guard text == query, searchesMessages else { return }
         var seen = Set<PaletteAction>()
         messages = results.hits.compactMap { hit in
             let item = PaletteItem(
-                group: .messages, title: hit.title, subtitle: "\(hit.repo) · \(hit.kind.label)",
+                group: .messages, title: hit.title,
+                subtitle: "\(hit.repo) · \(hit.kind.label(agent: agentName(hit.sessionID)))",
                 glyph: .message(hit.kind),
                 action: .openMessage(project: hit.repo, pane: hit.pane, event: hit.eventID),
                 snippet: Snippet.parts(hit.snippet))

@@ -14,6 +14,7 @@ public final class LiveSync {
     let connectors: ConnectorsStore
     let claudeChats: ClaudeChatsStore
     let agents: AgentsStore
+    let providers: ProvidersStore
     let pixies: PixiesStore
     let reports: PixieReportsStore
     let habits: HabitsStore
@@ -32,7 +33,8 @@ public final class LiveSync {
         source: any EventSource, app: AppStore, sessions: SessionsStore, approvals: ApprovalsStore,
         activity: ActivityStore, transcripts: Transcripts, usage: UsageStore,
         connectors: ConnectorsStore, claudeChats: ClaudeChatsStore, agents: AgentsStore,
-        pixies: PixiesStore, reports: PixieReportsStore, habits: HabitsStore,
+        providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
+        habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
         artifacts: ArtifactsStore
     ) {
@@ -46,6 +48,7 @@ public final class LiveSync {
         self.connectors = connectors
         self.claudeChats = claudeChats
         self.agents = agents
+        self.providers = providers
         self.pixies = pixies
         self.reports = reports
         self.habits = habits
@@ -83,8 +86,8 @@ public final class LiveSync {
     }
 
     /// Reloads repos, sessions, approvals, connectors, usage limits, Claude Code chats, pixies
-    /// and their reports, and the artifacts, then the models, agent defaults and account and
-    /// each chat's pixies, which never fail the sync.
+    /// and their reports, and the artifacts, then the models, agent defaults and account,
+    /// the engines and each chat's pixies, which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
@@ -101,6 +104,7 @@ public final class LiveSync {
             app.syncError = error as? APIError ?? .transport(String(describing: error))
         }
         await agents.load()
+        await providers.load()
         await chatPixies.load()
     }
 
@@ -165,6 +169,8 @@ public final class AppModel {
     public let search: MessageSearch
     public let stuck: StuckSettingsStore
     public let agents: AgentsStore
+    /// The engines chats run on, and their models apart from Claude's (B91).
+    public let providers: ProvidersStore
     public let pixies: PixiesStore
     public let reports: PixieReportsStore
     public let habits: HabitsStore
@@ -208,6 +214,7 @@ public final class AppModel {
         search = MessageSearch(api: api)
         stuck = StuckSettingsStore(api: api)
         agents = AgentsStore(api: api)
+        providers = ProvidersStore(api: api)
         pixies = PixiesStore(api: api)
         reports = PixieReportsStore(api: api, now: now)
         habits = HabitsStore(api: api)
@@ -222,7 +229,8 @@ public final class AppModel {
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
-            claudeChats: claudeChats, agents: agents, pixies: pixies, reports: reports,
+            claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
+            reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
             artifacts: artifacts)
         // A restarted daemon has forgotten that this app is on screen.
