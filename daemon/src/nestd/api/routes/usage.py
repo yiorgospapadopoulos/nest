@@ -9,7 +9,14 @@ from nestd.config.errors import ConfigError
 from nestd.config.loader import save_usage
 from nestd.config.models import UsageSettings
 from nestd.errors import ConflictError
-from nestd.usage.models import PeriodUnit, PeriodUsage, UsageLimits
+from nestd.usage.models import (
+    CLAUDE,
+    EngineLimits,
+    PeriodUnit,
+    PeriodUsage,
+    UsageLimits,
+    UsageProvider,
+)
 
 router = APIRouter(prefix="/api/usage", dependencies=[RequireDevice])
 
@@ -24,7 +31,8 @@ async def period_usage(
     date: Annotated[datetime.date, Query(), Field(ge=EARLIEST, le=LATEST)],
 ) -> PeriodUsage:
     """Tokens of chats and subagents in the day, week (from Monday), month or year holding
-    `date`, by the daemon's local calendar, with a bar per hour, day or month.
+    `date`, by the daemon's local calendar, with a bar per hour, day or month. Every engine
+    counts in the totals; `engines` splits them (B91).
 
     Usage probes are counted apart, in `probes`, and not in the other totals.
     """
@@ -32,15 +40,27 @@ async def period_usage(
 
 
 @router.get("/limits")
-async def usage_limits(ctx: Context) -> UsageLimits:
-    """The latest five-hour and seven-day windows the engine reported."""
-    return await ctx.usage.limits()
+async def usage_limits(
+    ctx: Context, provider: UsageProvider = CLAUDE
+) -> UsageLimits | EngineLimits:
+    """The latest windows the engine reported: Claude's five-hour and seven-day ones, or
+    with `provider=codex` Codex's by length, each with its label (B91).
+    """
+    if provider == CLAUDE:
+        return await ctx.usage.limits()
+    return await ctx.usage.engine_limits(provider)
 
 
 @router.post("/refresh")
-async def refresh_limits(ctx: Context) -> UsageLimits:
-    """Probe Claude for the windows now: 429 within 20 s of the last probe, 502 on failure."""
-    return await ctx.usage_refresher.refresh()
+async def refresh_limits(
+    ctx: Context, provider: UsageProvider = CLAUDE
+) -> UsageLimits | EngineLimits:
+    """Ask the engine for its windows now (Claude with a probe, Codex without a model call):
+    429 within 20 s of the engine's last ask, 502 on failure.
+    """
+    if provider == CLAUDE:
+        return await ctx.usage_refresher.refresh()
+    return await ctx.usage_refresher.refresh_engine(provider)
 
 
 @router.get("/settings")
