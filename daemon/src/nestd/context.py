@@ -1,5 +1,6 @@
 """Everything the daemon shares between the API, CLI and modules."""
 
+import asyncio
 import logging
 import os
 from collections.abc import Callable, Mapping
@@ -35,8 +36,22 @@ from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.composer.service import ComposerActions
 from nestd.config.errors import ConfigError
-from nestd.config.loader import load_settings, save_agent_defaults, save_pixie_defaults
-from nestd.config.models import AgentChoices, ArtifactSettings, Settings
+from nestd.config.loader import (
+    load_settings,
+    save_agent_defaults,
+    save_configuration,
+    save_pixie_defaults,
+)
+from nestd.config.models import AgentChoices, ArtifactSettings, ConfigurationSettings, Settings
+from nestd.configuration.backups import Backups
+from nestd.configuration.codex import CodexSetup
+from nestd.configuration.engines import CodexLocations
+from nestd.configuration.locations import Locations
+from nestd.configuration.plugins import CodexPluginSetup
+from nestd.configuration.project import ProjectSetup
+from nestd.configuration.service import Configuration, prepare_engine
+from nestd.configuration.watcher import ConfigurationWatcher
+from nestd.configuration.wiring import build_sources
 from nestd.connectors.registry import ConnectorRegistry
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
 from nestd.engine.defaults import ChatDefaults
@@ -79,6 +94,7 @@ from nestd.providers.claude import ClaudeProvider
 from nestd.providers.codex import CodexProvider
 from nestd.providers.codex_engine import fetch_codex, fetch_codex_usage
 from nestd.providers.codex_process import (
+    CodexLaunch,
     TransportFactory,
     app_server_launch,
     bundled_binary,
@@ -165,6 +181,11 @@ class AppContext:
     codex_account: CodexAccount
     extensions: Extensions
     artifacts: Artifacts
+    # Settings > Configuration (B97).
+    configuration: Configuration
+    project_setup: ProjectSetup
+    codex_plugins: CodexPluginSetup
+    configuration_watcher: ConfigurationWatcher
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
 
@@ -186,6 +207,7 @@ class AppContext:
         claude_runner: CommandRunner | None = None,
         claude_locations: ClaudeLocations | None = None,
         codex_transport: TransportFactory = spawn,
+        codex_locations: CodexLocations | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -199,7 +221,8 @@ class AppContext:
         environment read for the agent and `!` commands. `claude_runner` runs the `claude`
         command line and Claude Code's installer (D104), and `claude_locations` says where
         a standalone Claude Code may be. `codex_transport` starts Codex's app-server
-        (tests use an in-memory one).
+        (tests use an in-memory one), and `codex_locations` says where a standalone Codex
+        may be.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -234,13 +257,26 @@ class AppContext:
         search = SearchIndex(db)
         commands = CommandStore(db, clock)
         sign_ins = SignInStore(db, clock)
+        where = _locations(paths)
+
+        async def signed_in(engine: str) -> None:
+            """Note the engine's first sign in; its standard files are made when missing."""
+            await sign_ins.record(engine)
+            if where is not None:
+                try:
+                    await asyncio.to_thread(
+                        prepare_engine, where, "claude" if engine == CLAUDE else "codex"
+                    )
+                except OSError as error:
+                    logger.warning("could not prepare %s's files: %s", engine, error)
+
         engine = EngineInfo(
             EngineInfoStore(db, clock),
             fetch=lambda: fetch_details(engine_factory),
             clock=clock,
             account_file=paths.claude_account_file,
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
-            on_signed_in=lambda: sign_ins.record(CLAUDE),
+            on_signed_in=lambda: signed_in(CLAUDE),
         )
         codex_home = paths.codex_home
         codex = CodexEngine(
@@ -252,7 +288,7 @@ class AppContext:
             fetch_usage=lambda: fetch_codex_usage(
                 codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
             ),
-            on_signed_in=lambda: sign_ins.record(CODEX),
+            on_signed_in=lambda: signed_in(CODEX),
         )
         pixie_files = PixieFiles(paths.pixies_dir)
         team_store = TeamStore(db, clock)
@@ -454,6 +490,33 @@ class AppContext:
             cwd=paths.data_dir,
             bus=bus,
         )
+
+        def codex_launch() -> CodexLaunch:
+            return app_server_launch(bundled_binary(), os.environ, codex_home)
+
+        codex_setup = CodexSetup(codex_transport, codex_launch)
+        backups = Backups(paths.data_dir / "config-backups", clock)
+        claude_account = ClaudeAccount(claude_code, bus, clock)
+        extensions = Extensions(claude_code, bus, paths.claude_dir)
+        configuration = Configuration(
+            where,
+            backups,
+            codex_setup,
+            build_sources(
+                claude_account=claude_account,
+                claude_cli=claude_code,
+                codex=codex,
+                codex_locations=codex_locations
+                or CodexLocations.default(Path.home(), os.environ, bundled_binary().executable),
+                run=runner,
+                cwd=paths.data_dir,
+                extensions=extensions,
+                connectors=connectors,
+                repos=repos,
+                settings=lambda: context.settings.configuration,
+                save_settings=lambda changed: context.save_configuration_settings(changed),
+            ),
+        )
         context = cls(
             paths=paths,
             settings=settings,
@@ -548,15 +611,21 @@ class AppContext:
             ),
             github=GithubAccount(runner, paths.data_dir, clock),
             claude_code=claude_code,
-            claude_account=ClaudeAccount(claude_code, bus, clock),
+            claude_account=claude_account,
             codex_account=CodexAccount(
                 codex,
                 codex_transport,
                 lambda: app_server_launch(bundled_binary(), os.environ, codex_home),
                 bus,
             ),
-            extensions=Extensions(claude_code, bus, paths.claude_dir),
+            extensions=extensions,
             artifacts=artifacts,
+            configuration=configuration,
+            project_setup=ProjectSetup(backups),
+            codex_plugins=CodexPluginSetup(codex_setup),
+            configuration_watcher=ConfigurationWatcher(
+                bus, where, lambda: {repo.name: repo.path for repo in repos.list_repos()}
+            ),
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None
@@ -597,6 +666,14 @@ class AppContext:
             saved = save_pixie_defaults(self.paths, pixies)
             self.settings = self.settings.model_copy(update={"pixies": saved})
 
+    def save_configuration_settings(
+        self, configuration: ConfigurationSettings
+    ) -> ConfigurationSettings:
+        """Nest's own part of Settings > Configuration, saved and in use at once."""
+        saved = save_configuration(self.paths, configuration)
+        self.settings = self.settings.model_copy(update={"configuration": saved})
+        return saved
+
     def artifact_settings(self) -> ArtifactSettings:
         """Read at each ask, so a change to the settings applies at once."""
         return self.settings.artifacts
@@ -613,3 +690,10 @@ class AppContext:
         await self.modules.stop_all()
         await self.notifications.close()
         await self.db.close()
+
+
+def _locations(paths: AppPaths) -> Locations | None:
+    """The engines' folders; None when Nest was started without one (tests)."""
+    if paths.claude_dir is None or paths.claude_account_file is None or paths.codex_home is None:
+        return None
+    return Locations(paths.claude_dir, paths.claude_account_file, paths.codex_home)

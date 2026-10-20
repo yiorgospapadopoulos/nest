@@ -16,6 +16,7 @@ from nestd.api.routes import (
     claude_code,
     clients,
     composer,
+    configuration,
     connectors,
     devices,
     engine,
@@ -77,11 +78,13 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
             await ctx.sessions.start()
             await ctx.archiver.start()
             await ctx.usage_warnings.start()
+            await ctx.configuration_watcher.start()
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
+            await ctx.configuration_watcher.stop()
             await ctx.archiver.stop()
             await ctx.usage_warnings.stop()
             # Before the agents stop: the runs they cut off count as restarted (B42).
@@ -146,6 +149,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         accounts,
         claude_code,
         extensions,
+        configuration,
     ):
         app.include_router(module.router)
     # Last, so every /api route matches first.

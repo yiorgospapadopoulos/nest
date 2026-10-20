@@ -3,8 +3,10 @@ import Foundation
 /// A page of the Settings window (B81).
 public enum SettingsPage: Sendable, Hashable {
     case general, appearance, notifications, agents, usage, storage, pixies, accounts
-    case extensions, devices
+    case devices
     case shortcuts
+    /// What the agents read, shared and per engine (B97); replaces Extensions.
+    case configuration
     /// A project's page, by repo name.
     case project(String)
     case addProject
@@ -12,7 +14,7 @@ public enum SettingsPage: Sendable, Hashable {
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
         .general, .appearance, .notifications, .agents, .usage, .storage, .pixies,
-        .accounts, .extensions, .devices, .shortcuts,
+        .accounts, .devices, .shortcuts, .configuration,
     ]
 
     public var title: String {
@@ -25,9 +27,9 @@ public enum SettingsPage: Sendable, Hashable {
         case .storage: "Storage"
         case .pixies: "Pixies"
         case .accounts: "Accounts"
-        case .extensions: "Extensions"
         case .devices: "Devices"
         case .shortcuts: "Keyboard shortcuts"
+        case .configuration: "Configuration"
         case .project(let name): name
         case .addProject: "Add project"
         }
@@ -76,10 +78,13 @@ public enum SettingsPage: Sendable, Hashable {
                 "Reports", "Send to the phone from",
             ]
         case .accounts: ["Claude", "Sign in", "Sign out", "GitHub", "Check again"]
-        case .extensions:
+        case .configuration:
             [
-                "Claude Code", "Install Claude Code", "Skills and plugins", "Plugins", "Skills",
-                "Browse", "Marketplaces", "Connections", "Connectors", "MCP",
+                "Shared", "Instructions", "AGENTS.md", "CLAUDE.md", "Skills", "New skill",
+                "MCP servers", "Add server", "Engines", "Claude", "Codex", "Claude Code",
+                "Install Claude Code", "Uses shared", "Copy to Shared", "Plugins", "Browse",
+                "Marketplaces", "Connectors", "Hooks", "Subagents", "Slash commands",
+                "Permission rules", "Settings file", "Rules", "config.toml",
             ]
         case .devices: ["Pair a device", "Revoke", "iPhone"]
         case .shortcuts:
@@ -90,6 +95,7 @@ public enum SettingsPage: Sendable, Hashable {
                 "General", "Name", "Folder", "Kind", "Default branch", "Push to", "Remove",
                 "Chats", "Work in", "Worktrees", "Linked files", "Setup commands",
                 "Setup time limit", "Artifacts", "Look", "Tab icon", "Colour", "Chat background",
+                "Configuration", "Instructions", "Project skills", "MCP servers", ".mcp.json",
             ]
         case .addProject: ["Folder", "Add"]
         }
@@ -116,6 +122,8 @@ public enum SettingsPage: Sendable, Hashable {
 /// The tabs of a project's settings page.
 public enum ProjectSettingsTab: String, Sendable, CaseIterable {
     case general = "General"
+    /// The project's own instructions, skills and MCP servers (B97).
+    case configuration = "Configuration"
     case chats = "Chats"
     case worktrees = "Worktrees"
     case look = "Look"

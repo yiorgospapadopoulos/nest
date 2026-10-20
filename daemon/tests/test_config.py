@@ -5,8 +5,21 @@ import pytest
 from pydantic import ValidationError
 
 from nestd.config.errors import ConfigError
-from nestd.config.loader import load_repos, load_settings, load_templates, save_repo
-from nestd.config.models import RepoConfig, ServerSettings, Settings, WorktreeConfig
+from nestd.config.loader import (
+    load_repos,
+    load_settings,
+    load_templates,
+    save_configuration,
+    save_repo,
+)
+from nestd.config.models import (
+    ConfigurationSettings,
+    McpSharing,
+    RepoConfig,
+    ServerSettings,
+    Settings,
+    WorktreeConfig,
+)
 from nestd.paths import AppPaths
 
 
@@ -267,3 +280,26 @@ def test_allowed_hosts_default_to_empty_and_are_read(paths: AppPaths) -> None:
 def test_allowed_hosts_must_be_host_names(entry: str) -> None:
     with pytest.raises(ValidationError):
         ServerSettings(allowed_hosts=[entry])
+
+
+def test_configuration_settings_default_to_sharing_mcp_servers(paths: AppPaths) -> None:
+    settings = load_settings(paths)
+
+    assert settings.configuration.mcp_shared.claude is True
+    assert settings.configuration.mcp_shared.codex is True
+    assert settings.configuration.codex_claude_only_off is False
+
+
+def test_save_configuration_keeps_the_other_sections(paths: AppPaths) -> None:
+    paths.settings_file.write_text("[server]\nport = 9001\n", encoding="utf-8")
+    changed = ConfigurationSettings(
+        mcp_shared=McpSharing(claude=True, codex=False), codex_claude_only_off=True
+    )
+
+    saved = save_configuration(paths, changed)
+
+    assert saved == changed
+    written = tomllib.loads(paths.settings_file.read_text(encoding="utf-8"))
+    assert written["configuration"]["mcp_shared"] == {"claude": True, "codex": False}
+    assert written["server"]["port"] == 9001
+    assert load_settings(paths).configuration == changed

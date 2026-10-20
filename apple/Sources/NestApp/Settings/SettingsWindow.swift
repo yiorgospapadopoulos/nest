@@ -40,6 +40,7 @@ struct SettingsView: View {
         }
         .background(Palette.windowOpaque)
         .ignoresSafeArea()
+        .overlay { ConfigurationModals() }
         .overlay(alignment: .top) {
             if let toast = shell.toast {
                 ToastView(toast: toast)
@@ -76,9 +77,9 @@ extension SettingsPage {
         case .storage: "internaldrive"
         case .pixies: "face.smiling"
         case .accounts: "person.crop.circle"
-        case .extensions: "puzzlepiece.extension"
         case .devices: "laptopcomputer.and.iphone"
         case .shortcuts: "keyboard"
+        case .configuration: "slider.horizontal.3"
         case .project: "folder"
         case .addProject: "plus"
         }
@@ -281,9 +282,9 @@ private struct SettingsDetail: View {
         case .storage: StoragePage()
         case .pixies: PixiesPage()
         case .accounts: AccountsPage()
-        case .extensions: ExtensionsPage()
         case .devices: DevicesPage()
         case .shortcuts: ShortcutsPage()
+        case .configuration: ConfigurationView()
         case .project(let name): ProjectPage(project: name)
         case .addProject: AddProjectPage()
         }

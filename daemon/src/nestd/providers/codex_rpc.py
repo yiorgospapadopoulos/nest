@@ -33,10 +33,12 @@ type ClosedHandler = Callable[[str], Awaitable[None]]
 class CodexRpcError(Exception):
     """An error answer to a request, from the server or for it."""
 
-    def __init__(self, code: int, message: str) -> None:
+    def __init__(self, code: int, message: str, data: JsonValue = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        # The error's `data`, such as the kind of a config write failure.
+        self.data = data
 
 
 class CodexClosedError(Exception):
@@ -169,6 +171,7 @@ class CodexRpc:
                 CodexRpcError(
                     code if isinstance(code, int) else INTERNAL_ERROR,
                     text if isinstance(text, str) else "Codex refused the request",
+                    error.get("data"),
                 )
             )
             return
