@@ -1,9 +1,11 @@
-"""Keeps the usage windows fresh with a probe while a client is visible (D031)."""
+"""Keeps the usage windows fresh while a client is visible: Claude's with a probe (D031),
+Codex's by asking its app-server for the account's rate limits, without a model call (B91).
+"""
 
 import asyncio
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime, timedelta
 
@@ -11,10 +13,12 @@ from pydantic import JsonValue
 
 from nestd.clock import Clock
 from nestd.errors import NestError
-from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.usage.models import UsageLimits
+from nestd.providers.base import UsageInfo
+from nestd.providers.codex_limits import CODEX
+from nestd.usage.models import CLAUDE, EngineLimits, UsageLimits, UsageProvider
 from nestd.usage.probe import ProbeError, UsageProbe
+from nestd.usage.publish import publish_usage
 from nestd.usage.store import UsageStore
 from nestd.usage.visibility import ClientVisibility
 
@@ -28,6 +32,8 @@ IDLE_CLOSE = timedelta(minutes=10)
 FORCED_SPACING = timedelta(seconds=20)
 
 type Interval = Callable[[], timedelta | None]
+# Codex's windows now; None while it is not signed in or could not say.
+type CodexUsage = Callable[[], Awaitable[UsageInfo | None]]
 
 
 class RefreshTooSoonError(NestError):
@@ -47,8 +53,8 @@ class RefreshTooSoonError(NestError):
 class ProbeFailedError(NestError):
     status_code = 502
 
-    def __init__(self) -> None:
-        super().__init__("Claude did not report the usage limits; see the daemon log")
+    def __init__(self, engine: str = "Claude") -> None:
+        super().__init__(f"{engine} did not report the usage limits; see the daemon log")
 
 
 class UsageRefresher:
@@ -60,6 +66,7 @@ class UsageRefresher:
         probe: UsageProbe,
         visibility: ClientVisibility,
         interval: Interval,
+        codex: CodexUsage,
         tick: timedelta = TICK,
     ) -> None:
         """`interval` reads the refresh setting each time; None turns the schedule off."""
@@ -69,11 +76,13 @@ class UsageRefresher:
         self._probe = probe
         self.visibility = visibility
         self._interval = interval
+        self._codex = codex
         self._tick = tick
         self._lock = asyncio.Lock()
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._last_attempt: datetime | None = None
+        self._codex_attempt: datetime | None = None
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
@@ -91,37 +100,61 @@ class UsageRefresher:
         self._wake.set()
 
     async def tick(self) -> None:
-        """Probe when the refresh is on, a client is visible, and neither a probe nor a
-        session's turn brought the windows within the interval. Closes an idle probe client.
+        """For each engine, ask when the refresh is on, a client is visible, and neither an
+        ask nor a session's turn brought its windows within the interval. Closes an idle
+        probe client.
         """
-        updated = await self._store.limits_updated_at()
         now = self._clock.now()
         if self._last_attempt is not None and now - self._last_attempt >= IDLE_CLOSE:
             await self._probe.close()
         interval = self._interval()
         if interval is None or not self.visibility.any_visible():
             return
-        if any(
-            moment is not None and now - moment < interval
-            for moment in (
-                self._last_attempt,
-                updated,
-            )
-        ):
-            return
-        self._last_attempt = now
-        await self._run_probe()
+        if await self._due(CLAUDE, self._last_attempt, now, interval):
+            self._last_attempt = now
+            await self._run_probe()
+        if await self._due(CODEX, self._codex_attempt, now, interval):
+            self._codex_attempt = now
+            await self._run_codex()
 
     async def refresh(self) -> UsageLimits:
-        """A probe the user asked for, at most once per FORCED_SPACING."""
-        now = self._clock.now()
-        if self._last_attempt is not None and now - self._last_attempt < FORCED_SPACING:
-            wait = FORCED_SPACING - (now - self._last_attempt)
-            raise RefreshTooSoonError(math.ceil(wait.total_seconds()))
-        self._last_attempt = now
+        """An ask the user made for Claude's windows, at most once per FORCED_SPACING."""
+        self._last_attempt = self._spaced(self._last_attempt)
         if not await self._run_probe():
             raise ProbeFailedError
         return await self._store.limits()
+
+    async def refresh_engine(self, provider: UsageProvider) -> EngineLimits:
+        """An ask the user made for another engine's windows (Codex's), spaced as Claude's
+        are but apart from them.
+        """
+        self._codex_attempt = self._spaced(self._codex_attempt)
+        if not await self._run_codex():
+            raise ProbeFailedError("Codex")
+        return await self._store.engine_limits(provider)
+
+    def _spaced(self, last: datetime | None) -> datetime:
+        """Now, unless it is within FORCED_SPACING of the engine's last ask."""
+        now = self._clock.now()
+        if last is not None and now - last < FORCED_SPACING:
+            wait = FORCED_SPACING - (now - last)
+            raise RefreshTooSoonError(math.ceil(wait.total_seconds()))
+        return now
+
+    async def _due(
+        self, provider: UsageProvider, attempt: datetime | None, now: datetime, interval: timedelta
+    ) -> bool:
+        updated = await self._store.limits_updated_at(provider)
+        return all(moment is None or now - moment >= interval for moment in (attempt, updated))
+
+    async def _run_codex(self) -> bool:
+        """Whether Codex reported its windows; it logs its own failures."""
+        info = await self._codex()
+        if info is None:
+            return False
+        await self._store.update_limits(info)
+        await publish_usage(self._bus, info)
+        return True
 
     async def _run_probe(self) -> bool:
         """Whether the probe brought new windows. Failures are logged, never raised."""
@@ -136,7 +169,7 @@ class UsageRefresher:
             logger.warning("usage probe: Claude reported no usage windows")
             return False
         await self._store.update_limits(outcome.limits)
-        await self._bus.publish(types.USAGE_UPDATED, outcome.limits.model_dump(mode="json"))
+        await publish_usage(self._bus, outcome.limits)
         return True
 
     async def _loop(self) -> None:

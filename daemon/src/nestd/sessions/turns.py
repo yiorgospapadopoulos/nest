@@ -15,8 +15,8 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.events.models import Event
 from nestd.providers.base import (
-    AgentProvider,
     AgentRun,
+    AgentTool,
     ApprovalHandler,
     ResultInfo,
     RewindResult,
@@ -24,6 +24,7 @@ from nestd.providers.base import (
 )
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated, isolated_or
+from nestd.sessions.engines import Engines
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.extras import NestToolsSource, RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
@@ -36,7 +37,13 @@ from nestd.sessions.sink import SessionSink, TurnEnd
 from nestd.sessions.states import StateWriter
 from nestd.sessions.steering import Steering
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import NO_AGENTS, ChatAgents, ChatAgentsSource, PixieCalls
+from nestd.sessions.subagents import (
+    NO_AGENTS,
+    CallToolsSource,
+    ChatAgents,
+    ChatAgentsSource,
+    PixieCalls,
+)
 from nestd.sessions.workspace import prepare_worktree
 from nestd.worktrees.manager import WorktreeManager
 
@@ -83,6 +90,22 @@ GUARDED_PROMPT = (
     f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
+# The same for Codex chats, which have no task list but Nest's artifact tools (B91).
+CODEX_PROMPT = (
+    "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
+    f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
+    f"{ARTIFACT_NOTE}"
+)
+CODEX_PLAIN_FOLDER_PROMPT = (
+    f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
+    f"{ARTIFACT_NOTE}"
+)
+CODEX_GUARDED_PROMPT = (
+    "You are running inside Nest. Do not run git commit, git push, gh pr create or "
+    "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
+    f"your work. {_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
+)
+
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it
 # had the message but never answered it (B59).
 HANDOFF_ERROR = "[ede_diagnostic] result_type=user"
@@ -104,7 +127,7 @@ class TurnRunner:
         worktrees: WorktreeManager,
         repos: RepoService,
         attachments: AttachmentStore,
-        provider: AgentProvider,
+        engines: Engines,
         handler_for: Callable[[LiveSession], ApprovalHandler],
         on_mode: Callable[[LiveSession, PermissionMode], Awaitable[None]],
         idle_close: timedelta,
@@ -115,13 +138,16 @@ class TurnRunner:
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
         nest_tools: NestToolsSource | None = None,
+        call_tools: CallToolsSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
         holds the chats paused at the usage limit (B78); `agents` gives a project chat's
         run its subagents (B40), and `calls` follows the pixies it calls (B46).
-        `nest_tools` gives every run the tools all chats and pixies have (B79).
+        `nest_tools` gives every run the tools all chats and pixies have (B79), and
+        `call_tools` the tool that calls the pixies its engine cannot run inside (B91).
         """
         self._nest_tools = nest_tools
+        self._call_tools = call_tools
         self._limits = limits
         self._on_mode = on_mode
         self._calls = calls
@@ -136,7 +162,7 @@ class TurnRunner:
         self._hooks = hooks
         self._worktrees = worktrees
         self._attachments = attachments
-        self._provider = provider
+        self._engines = engines
         self._handler_for = handler_for
         self._idle_close = idle_close
         self.steering = Steering(store, queue, attachments, self._run_fits, self.agent_text)
@@ -315,12 +341,14 @@ class TurnRunner:
 
     async def _limited(self, live: LiveSession, info: ResultInfo) -> bool:
         """Whether the usage limit cut the turn off: it reported the limit and its message
-        was cut off, or it ended with an error. A habit run is not paused: it fails (B78).
+        was cut off, or it ended with an error. A habit run is not paused: it fails (B78);
+        neither is a called pixie, whose caller waits for it (B91).
         """
         hit = live.limit_hit
         if hit is None or not (hit.cut_off or info.is_error):
             return False
-        return (await self._store.get(live.session_id)).habit_run_id is None
+        session = await self._store.get(live.session_id)
+        return session.habit_run_id is None and session.called_by is None
 
     async def turn_finished(
         self, live: LiveSession, error: str | None, end: TurnEnd | None
@@ -605,6 +633,7 @@ class TurnRunner:
         """
         dirs = await self._attachments.file_dirs(session.id)
         agents = await self.chat_agents(session)
+        engine = self._engines.of(session)
         while (run := live.run) is None or not _fits(live, session, dirs, agents):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
@@ -628,10 +657,10 @@ class TurnRunner:
                     extras.system_prompt if extras else await self._nest_prompt(session)
                 ),
                 tools=extras.tools if extras else (),
-                nest_tools=self._nest_tools(session) if self._nest_tools else (),
+                nest_tools=self._run_tools(session, agents),
                 write_root=extras.write_root if extras else None,
                 skills=extras.skills if extras else (),
-                subagents=agents.subagents,
+                subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
             )
@@ -646,7 +675,7 @@ class TurnRunner:
                 attachments=self._attachments,
                 calls=self._calls,
             )
-            live.run = await self._provider.open(spec, self._handler_for(live), sink)
+            live.run = await engine.provider.open(spec, self._handler_for(live), sink)
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
@@ -674,16 +703,33 @@ class TurnRunner:
         return _fits(live, session, folders, await self.chat_agents(session))
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
-        """The pixies the chat may call (B40); a pixie's own chat gets the others (B41)."""
-        if self._agents is None:
+        """The pixies the chat may call (B40); a pixie's own chat gets the others (B41).
+        An engine without subagents gets none (B91).
+        """
+        if self._agents is None or not self._engines.of(session).supports("subagents"):
             return NO_AGENTS
         return await self._agents(session)
 
+    def _run_tools(self, session: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
+        """The tools every run has (B79), and the call tool for the pixies it calls as
+        sessions of their own (B91). Every engine takes them: Claude in-process, Codex
+        from a local MCP server.
+        """
+        tools = self._nest_tools(session) if self._nest_tools else ()
+        calls = self._call_tools(session, agents) if self._call_tools else ()
+        return tools + calls
+
     async def _nest_prompt(self, session: Session) -> str:
+        """Without Claude Code's task list (Codex, B91), the prompt leaves out what it says
+        about it.
+        """
+        claude = self._engines.of(session).supports("task_list")
         if _guarded(session):
-            return GUARDED_PROMPT
+            return GUARDED_PROMPT if claude else CODEX_GUARDED_PROMPT
         git = await self._repos.has_git(session.repo)
-        return NEST_PROMPT if git else PLAIN_FOLDER_PROMPT
+        if git:
+            return NEST_PROMPT if claude else CODEX_PROMPT
+        return PLAIN_FOLDER_PROMPT if claude else CODEX_PLAIN_FOLDER_PROMPT
 
 
 def _guarded(session: Session) -> bool:

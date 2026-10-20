@@ -36,12 +36,19 @@ import Testing
     }
 
     /// What the line under a pending message says, by where it is.
-    @Test func eachPendingMessageSaysWhenClaudeGetsIt() {
-        #expect(pending("a").note(working: true) == "Claude reads this at its next step")
-        #expect(pending("a", sent: false).note(working: true) == "Sends when this turn ends")
-        #expect(pending("a", sent: false).note(working: false) == "Waiting")
+    @Test func eachPendingMessageSaysWhenTheAgentGetsIt() {
+        #expect(
+            pending("a").note(working: true, agent: "Claude")
+                == "Claude reads this at its next step")
+        // A Codex chat names its own engine (B91).
+        #expect(
+            pending("a").note(working: true, agent: "Codex") == "Codex reads this at its next step")
+        #expect(
+            pending("a", sent: false).note(working: true, agent: "Codex")
+                == "Sends when this turn ends")
+        #expect(pending("a", sent: false).note(working: false, agent: "Claude") == "Waiting")
         // Taken back by a Stop, then the chat runs again: it still waits for the turn.
-        #expect(pending("a").note(working: false) == "Waiting")
+        #expect(pending("a").note(working: false, agent: "Claude") == "Waiting")
     }
 
     @Test func removeTakesTheMessageOut() async throws {
@@ -60,9 +67,13 @@ import Testing
         #expect(try await activity.remove("q1", session: "s1") == false)
         #expect(activity.queued(session: "s1").map(\.id) == ["q1"])
         #expect(activity.isTaken("q1", session: "s1"))
+        let message = activity.queued(session: "s1")[0]
         #expect(
-            activity.note(for: activity.queued(session: "s1")[0], session: "s1", working: true)
-                == ActivityStore.takenNote)
+            activity.note(for: message, session: "s1", working: true, agent: "Claude")
+                == "Claude already read this message")
+        #expect(
+            activity.note(for: message, session: "s1", working: true, agent: "Codex")
+                == "Codex already read this message")
 
         activity.apply(Fixture.event(EventType.sessionQueued, #"{"queued": []}"#))
         #expect(activity.queued(session: "s1").isEmpty)

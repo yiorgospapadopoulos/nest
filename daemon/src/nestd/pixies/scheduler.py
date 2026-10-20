@@ -29,6 +29,7 @@ from nestd.pixies.files import PixieFiles
 from nestd.pixies.habit_events import HabitEvents
 from nestd.pixies.habit_models import RunOutcome
 from nestd.pixies.habit_store import HabitStore, StoredHabit, StoredRun
+from nestd.pixies.models import run_model
 from nestd.pixies.prompt import habit_message
 from nestd.pixies.schedule import latest_due
 from nestd.pixies.store import PixieStore
@@ -322,11 +323,12 @@ class HabitScheduler:
                 cwd=self._files.workdir(pixie.id),
                 prompt=habit_message(habit.name, habit.prompt, run.trigger_events),
                 title=habit.name,
-                model=pixie.model or self._defaults().model,
+                model=run_model(pixie, self._defaults().model),
                 effort=pixie.effort,
                 permission_mode=pixie.permission_mode,
                 attachment_ids=[],
                 habit_run_id=run.id,
+                provider=pixie.provider,
             )
         except NestError as error:
             await self._record(run.id, "failed", str(error), started_at=now)

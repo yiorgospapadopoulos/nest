@@ -193,6 +193,8 @@ final class Shell {
     var bash: BashStore { model.bash }
     var images: AttachmentImages { model.images }
     var agents: AgentsStore { model.agents }
+    /// The engines chats run on (B91).
+    var providers: ProvidersStore { model.providers }
     var pixies: PixiesStore { model.pixies }
     var reports: PixieReportsStore { model.reports }
     var habits: HabitsStore { model.habits }
@@ -369,7 +371,8 @@ final class Shell {
             // The daemon's answer to this very save, not what later saves show meanwhile.
             let saved = try await self.pixies.update(id, request)
             if before?.droppedAuto(by: request, saved: saved) == true {
-                let model = saved.model.map { self.agents.label(for: $0) } ?? "The default model"
+                let catalog = self.providers.catalog(for: saved.engine, claude: self.agents.catalog)
+                let model = saved.model.map { catalog.label(for: $0) } ?? "The default model"
                 self.show(
                     "\(model) does not support Auto mode: permissions are now \(saved.permissionMode.label)"
                 )
@@ -457,7 +460,8 @@ final class Shell {
     /// The pixies and teams a chat's `@` list offers: those its project may call; nil in a
     /// pixie's chat, which calls none yet. Souls are read the first time they are needed.
     func pixieMentions(forChat chat: String) -> [PixieMention]? {
-        guard let repo = sessions.session(chat)?.repo ?? project, Pixie.id(ofRepo: repo) == nil
+        guard let repo = sessions.session(chat)?.repo ?? project, Pixie.id(ofRepo: repo) == nil,
+            supports(.pixies, chat: chat)
         else { return nil }
         return PixieMentions.available(
             pixies: pixies.pixies, teams: pixies.teams, souls: pixies.soulLines)
@@ -811,6 +815,7 @@ final class Shell {
 
     private func takeDefaults(_ draft: ComposerDraft) {
         let defaults = agents.current
+        draft.provider = nil
         draft.model = defaults.model
         draft.effort = defaults.effort
         draft.permission = defaults.permissionMode
@@ -1073,6 +1078,9 @@ final class Shell {
                 draft.clearSent(text: typed, attachments: attachments)
             } catch APIError.openInClaudeCode(let message), APIError.pixieInTeam(let message) {
                 withAnimation { draft.blocked = message }
+            } catch APIError.notSignedIn(let message) {
+                withAnimation { draft.blocked = message }
+                Task { await providers.load(refresh: true) }
             } catch {
                 show(error, doing: "Could not send")
             }
@@ -1088,7 +1096,8 @@ final class Shell {
         let bash =
             Pixie.id(ofRepo: draftKey) == nil
             && ComposerInput.canRunShell(in: sessions.session(session))
-        return ComposerInput.of(text, bash: bash, memory: true)
+        // `#` saves to CLAUDE.md, which only Claude Code reads (B91).
+        return ComposerInput.of(text, bash: bash, memory: supports(.memory, chat: draftKey))
     }
 
     /// The chat a composer's `#` and `!` act on; nil before the chat exists.
@@ -1138,7 +1147,7 @@ final class Shell {
         let request = CreateSessionRequest(
             repo: repo, prompt: prompt, mode: place.mode, model: draft.model,
             effort: draft.effort, permissionMode: draft.permission, attachmentIDs: attachments,
-            base: place.base, branch: place.branch)
+            base: place.base, branch: place.branch, provider: draft.provider)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1207,7 +1216,7 @@ final class Shell {
         case .model(nil):
             withAnimation(.smooth(duration: 0.15)) { draft.picker = .model }
         case .model(let name?):
-            if let info = LocalCommand.model(named: name, in: agents.models) {
+            if let info = LocalCommand.model(named: name, in: catalog(forChat: chat).models) {
                 setModel(info, for: chat)
                 show("Model set to \(info.displayName)", kind: .done)
             } else {
@@ -1414,17 +1423,34 @@ final class Shell {
         }
     }
 
-    /// Keeps the chat's effort only as far as the new model supports it.
-    func setModel(_ info: ModelInfo, for chat: String) {
+    /// Keeps the chat's effort only as far as the new model supports it. A new chat takes
+    /// the engine of the model chosen (`provider`, nil: the chat's own; B91): its thinking
+    /// and mode follow (`NewChatChoices`), and the engine's login is asked again, so the
+    /// composer says when it is signed out. A chat that exists keeps its engine.
+    func setModel(_ info: ModelInfo, on provider: String? = nil, for chat: String) {
         if isDraft(chat) {
             let draft = draft(for: chat)
-            draft.model = info.value
-            draft.effort = agents.effort(draft.effort, afterSwitchingTo: info.value)
-            draft.permission = agents.newChatPermission(
-                draft.permission, afterSwitchingTo: info.value)
+            let engine = provider ?? draft.provider
+            let current = NewChatChoices(
+                provider: draft.provider, model: draft.model, effort: draft.effort,
+                permission: draft.permission)
+            let next = current.choosing(
+                info.value, on: engine,
+                catalog: providers.catalog(for: engine, claude: agents.catalog),
+                defaults: agents.current)
+            let switched = next.provider != draft.provider
+            draft.provider = next.provider
+            draft.model = next.model
+            draft.effort = next.effort
+            draft.permission = next.permission
+            if switched {
+                draft.blocked = nil
+                Task { await providers.load(refresh: true) }
+            }
         } else {
+            let catalog = catalog(forChat: chat)
             let current = sessions.session(chat)?.effort
-            let effort = agents.effort(current, afterSwitchingTo: info.value)
+            let effort = catalog.effort(current, afterSwitchingTo: info.value)
             run("Could not change the model") {
                 try await self.sessions.setModel(
                     chat, info.value, effort: effort == current ? nil : effort)
@@ -1451,6 +1477,28 @@ final class Shell {
                 try await self.sessions.setPermissionMode(chat, mode)
             }
         }
+    }
+
+    // MARK: Engines (B91)
+
+    /// The chat's engine: a new chat's choice, else the session's; nil is Claude.
+    func provider(forChat chat: String) -> String? {
+        isDraft(chat) ? draft(for: chat).provider : sessions.session(chat)?.provider
+    }
+
+    /// The models the chat's menus offer: its engine's.
+    func catalog(forChat chat: String) -> ModelCatalog {
+        providers.catalog(for: provider(forChat: chat), claude: agents.catalog)
+    }
+
+    /// The chat's running agent in its words, such as "Codex keeps planning".
+    func agentName(forChat chat: String) -> String {
+        providers.displayName(provider(forChat: chat))
+    }
+
+    /// Whether the chat's engine can do it; the views hide what it cannot.
+    func supports(_ feature: ProviderFeature, chat: String) -> Bool {
+        providers.supports(feature, on: provider(forChat: chat))
     }
 
     // MARK: Chat actions
@@ -1600,7 +1648,9 @@ final class Shell {
         palette.search(text)
         Task {
             if let results = await model.search.results(for: text) {
-                palette.show(results, for: text)
+                palette.show(results, for: text) {
+                    self.providers.agentName(in: self.sessions.session($0))
+                }
             }
         }
     }
@@ -1678,7 +1728,8 @@ final class Shell {
     func deny(_ approval: Approval) {
         run("Could not reject") {
             try await self.approvals.deny(approval)
-            self.show("Rejected. Claude continues without it", kind: .failed)
+            let agent = self.agentName(forChat: approval.sessionID)
+            self.show("Rejected. \(agent) continues without it", kind: .failed)
         }
     }
 
@@ -1696,14 +1747,15 @@ final class Shell {
     func approvePlan(_ approval: Approval) {
         run("Could not approve the plan") {
             let mode = try await self.approvals.approvePlan(approval)
-            self.show("Plan approved. Claude continues with \(mode.label)", kind: .done)
+            let agent = self.agentName(forChat: approval.sessionID)
+            self.show("Plan approved. \(agent) continues with \(mode.label)", kind: .done)
         }
     }
 
     func keepPlanning(_ approval: Approval) {
         run("Could not send the plan back") {
             try await self.approvals.keepPlanning(approval)
-            self.show("Claude keeps planning", kind: .info)
+            self.show("\(self.agentName(forChat: approval.sessionID)) keeps planning", kind: .info)
         }
     }
 
@@ -1771,7 +1823,7 @@ final class Shell {
 
     /// Esc Esc in an idle chat: Rewind on its latest message of the user.
     func rewindLast(_ chat: String) {
-        guard RewindFlow.isAvailable(for: sessions.session(chat)),
+        guard RewindFlow.isAvailable(for: sessions.session(chat)), supports(.rewind, chat: chat),
             let message = model.transcripts.existing(chat)?.lastUserMessage
         else { return }
         startRewind(chat, message: message)
@@ -1874,6 +1926,10 @@ final class Shell {
 
     func show(_ error: any Error, doing action: String) {
         show("\(action): \(Self.describe(error))", kind: .failed)
+        // The engines' lists were out of date; the next read hides the control.
+        if case APIError.unsupportedFeature = error {
+            Task { await providers.load() }
+        }
     }
 
     static func describe(_ error: any Error) -> String {
@@ -1920,7 +1976,8 @@ final class ComposerDraft {
     var sending = false
     /// A short note under the field, such as dictation being unavailable.
     var hint: String?
-    /// New chats only: the choices sent with the first message.
+    /// New chats only: the choices sent with the first message. A nil engine is Claude.
+    var provider: String?
     var model: String?
     var effort: Effort?
     /// Nil leaves it to Claude Code's own setting.

@@ -287,7 +287,7 @@ struct StopTaskButton: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        if shell.activity.canStop(session: chat) {
+        if shell.activity.canStop(session: chat), shell.supports(.stopTask, chat: chat) {
             let stopping = shell.activity.isStopping(task, session: chat)
             Button {
                 shell.stopTask(task, in: chat)

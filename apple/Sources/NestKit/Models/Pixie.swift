@@ -41,6 +41,9 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var mascot: Mascot
     /// `#RRGGBB`.
     public var color: String
+    /// The engine it runs on (B91); nil from a daemon before it, which runs every pixie on
+    /// Claude. `engine` reads it.
+    public var provider: String?
     public var model: String?
     public var effort: Effort?
     public var permissionMode: PermissionMode
@@ -63,7 +66,7 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
     public var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, slug, name, mascot, color, model, effort, autonomy, skills
+        case id, slug, name, mascot, color, provider, model, effort, autonomy, skills
         case hidden, position
         case permissionMode = "permission_mode"
         case projectAccess = "project_access"
@@ -76,6 +79,11 @@ public struct Pixie: Codable, Sendable, Hashable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+}
+
+extension Pixie {
+    /// The engine it runs on; Claude unless set otherwise.
+    public var engine: String { provider ?? ProviderInfo.claude }
 }
 
 /// Pixies called together with one `@handle`: the leader plans who does what (B40).
@@ -109,8 +117,11 @@ extension Pixie {
         pixie.slug = change.slug ?? slug
         pixie.mascot = change.mascot ?? mascot
         pixie.color = change.color ?? color
-        pixie.model = change.model ?? (change.clearsModel ? nil : model)
-        pixie.effort = change.effort ?? (change.clearsEffort ? nil : effort)
+        // Another engine starts from its own default model and thinking (B91).
+        let moved = change.provider.map { $0 != engine } ?? false
+        pixie.provider = change.provider ?? provider
+        pixie.model = change.model ?? (change.clearsModel || moved ? nil : model)
+        pixie.effort = change.effort ?? (change.clearsEffort || moved ? nil : effort)
         pixie.permissionMode = change.permissionMode ?? permissionMode
         pixie.autonomy = change.autonomy ?? autonomy
         pixie.projectAccess = change.projectAccess ?? projectAccess

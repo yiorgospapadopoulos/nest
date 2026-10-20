@@ -8,8 +8,8 @@ from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from typing import Protocol
 
-from nestd.providers.base import AgentTask, CallRules, MessageBlock, Subagent
-from nestd.sessions.models import NewSession
+from nestd.providers.base import AgentTask, AgentTool, CallRules, MessageBlock, Subagent
+from nestd.sessions.models import NewSession, Session
 
 
 def mention(name: str) -> re.Pattern[str]:
@@ -56,6 +56,10 @@ class ChatAgents:
     pixies: Mapping[str, OfferedPixie] = field(default_factory=dict[str, OfferedPixie])
     # Which agents may call which of the pixies (B70).
     rules: CallRules | None = None
+    # The pixies among the subagents the run calls with the call_pixie tool, by slug, to
+    # their ids: each runs as its own session, since it or the run is on an engine that
+    # takes no Nest-defined subagents (Codex, B91). The rest are the engine's subagents.
+    tool_calls: Mapping[str, str] = field(default_factory=dict[str, str])
 
     @cached_property
     def fingerprint(self) -> str:
@@ -64,8 +68,14 @@ class ChatAgents:
             "subagents": {name: asdict(sub) for name, sub in sorted(self.subagents.items())},
             "teams": [asdict(team) for team in self.teams],
             "rules": None if self.rules is None else _rules(self.rules),
+            "tool_calls": dict(sorted(self.tool_calls.items())),
         }
         return _digest(data)
+
+    @cached_property
+    def engine_subagents(self) -> Mapping[str, Subagent]:
+        """The subagents the run's engine runs itself: all but the called ones."""
+        return {name: sub for name, sub in self.subagents.items() if name not in self.tool_calls}
 
     def pixie_fingerprint(self, slug: str) -> str:
         """Changes with the pixie's definition: its soul, memory or settings (B46)."""
@@ -116,6 +126,12 @@ type ChatAgentsSource = Callable[[NewSession], Awaitable[ChatAgents]]
 """The pixies a project chat can call with `@slug`, as Claude Code subagents, and the
 teams it can call with `@handle` (B40); in a pixie's own chat, every other pixie (B41).
 A chat not created yet is asked for with what it will be.
+"""
+
+
+type CallToolsSource = Callable[[Session, "ChatAgents"], tuple[AgentTool, ...]]
+"""The tools a run calls its `ChatAgents.tool_calls` pixies with (B91): none when it has
+none to call. The session is the calling chat.
 """
 
 

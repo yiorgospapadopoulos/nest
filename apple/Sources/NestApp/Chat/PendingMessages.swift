@@ -14,13 +14,17 @@ struct PendingMessages: View {
     var body: some View {
         let list = shell.activity.queued(session: chat)
         if !list.isEmpty {
-            let working = shell.sessions.session(chat)?.state.isInFlight ?? false
+            let session = shell.sessions.session(chat)
+            let working = session?.state.isInFlight ?? false
             VStack(spacing: 4) {
                 ForEach(list) { message in
                     PendingRow(
                         message: message,
-                        note: shell.activity.note(for: message, session: chat, working: working),
+                        note: shell.activity.note(
+                            for: message, session: chat, working: working,
+                            agent: shell.providers.agentName(in: session)),
                         taken: shell.activity.isTaken(message.id, session: chat),
+                        canTakeBack: shell.providers.canTakeBack(message, in: session),
                         sendingNow: shell.activity.isSendingNow(message.id, session: chat),
                         edit: { shell.editPending(message, in: chat, draftKey: draftKey) },
                         sendNow: { shell.sendPendingNow(message, in: chat) },
@@ -37,6 +41,9 @@ private struct PendingRow: View {
     let note: String
     /// Claude read it before Remove reached it.
     let taken: Bool
+    /// Edit and Remove: false for one written into a turn its engine cannot take back
+    /// from (Codex, B91).
+    let canTakeBack: Bool
     let sendingNow: Bool
     let edit: () -> Void
     let sendNow: () -> Void
@@ -65,22 +72,26 @@ private struct PendingRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             if !taken {
                 HStack(spacing: 2) {
-                    Button(action: edit) {
-                        Image(systemName: Icon.edit).font(.system(size: 10))
+                    if canTakeBack {
+                        Button(action: edit) {
+                            Image(systemName: Icon.edit).font(.system(size: 10))
+                        }
+                        .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
+                        .help("Edit: take the message back into the composer")
+                        .accessibilityLabel("Edit pending message")
                     }
-                    .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
-                    .help("Edit: take the message back into the composer")
-                    .accessibilityLabel("Edit pending message")
                     Button("Send now", action: sendNow)
                         .buttonStyle(.nest(.soft, height: 22))
                         .disabled(sendingNow)
                         .help("Stop the turn and send this message now")
-                    Button(action: remove) {
-                        Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))
+                    if canTakeBack {
+                        Button(action: remove) {
+                            Image(systemName: Icon.close).font(.system(size: 9, weight: .bold))
+                        }
+                        .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
+                        .help("Remove this message")
+                        .accessibilityLabel("Remove pending message")
                     }
-                    .buttonStyle(.nest(.plain, height: 22, iconOnly: true))
-                    .help("Remove this message")
-                    .accessibilityLabel("Remove pending message")
                 }
                 .fixedSize()
             }

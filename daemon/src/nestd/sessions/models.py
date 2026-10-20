@@ -81,6 +81,7 @@ class NewSession(BaseModel):
     # reported it yet: `permission_mode` holds "default" until then and runs open without
     # a mode (IMP-06).
     follows_claude_code_mode: bool = False
+    # The engine the chat runs on, such as "claude" or "codex" (B91).
     provider: str
     # The commit the session's work is compared with: the worktree's base, or HEAD when an
     # in-place session started.
@@ -93,6 +94,9 @@ class NewSession(BaseModel):
     pixie_batch: str | None = None
     # Set for a habit run's session (B42): it has the pixie's `pixie_id` but is not its chat.
     habit_run_id: str | None = None
+    # Set for a pixie called from the chat `called_by` (B91): it has the called pixie's
+    # `pixie_id`, runs in the caller's folder and ends with its first turn, its report.
+    called_by: str | None = None
 
 
 class Session(NewSession):
@@ -144,6 +148,9 @@ class CreateSession(BaseModel):
     model: str | None = None
     effort: Effort | None = None
     permission_mode: PermissionMode | None = None
+    # The engine the chat runs on: "claude" (the default) or "codex" (B91). A Codex chat
+    # takes Codex's models and no Claude model default.
+    provider: Text | None = None
     attachment_ids: list[str] = Field(default_factory=list[str])
     # Only for a worktree chat (B55): its new branch's name instead of a generated one, and
     # the local branch it starts from instead of the default branch.

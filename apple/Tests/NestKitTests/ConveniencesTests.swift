@@ -299,6 +299,18 @@ import Testing
         #expect(fresh?.items.map(\.label) == ["/resume"])
     }
 
+    /// An engine without slash commands (Codex, B91) gets no list for `/`; `@` still works.
+    @Test func noListForAnEngineWithoutSlashCommands() async {
+        await store.loadCommands(session: "s1", repo: "cv")
+        #expect(
+            store.suggestions(
+                text: "/m", caret: 2, session: "s1", repo: "cv", localCommands: true,
+                commands: false) == nil)
+        #expect(
+            store.suggestions(
+                text: "@", caret: 1, session: "s1", repo: "cv", commands: false) != nil)
+    }
+
     @Test func aNewChatTakesItsProjectsCommands() async {
         api.set {
             $0.commands["repo:cv"] = CommandList(

@@ -59,12 +59,13 @@ public final class CompletionStore {
     /// as in a pixie's composer, which sends through the pixie.
     public func suggestions(
         text: String, caret: Int, session: String?, repo: String,
-        mentions: [PixieMention]? = nil, localCommands: Bool = false, filesOnly: Bool = false
+        mentions: [PixieMention]? = nil, localCommands: Bool = false, filesOnly: Bool = false,
+        commands showsCommands: Bool = true
     ) -> CompletionList? {
         guard let trigger = CompletionTrigger.at(text, caret: caret) else { return nil }
         switch trigger.kind {
         case .command:
-            guard !filesOnly else { return nil }
+            guard !filesOnly, showsCommands else { return nil }
             let known = commands[Self.source(session: session, repo: repo)] ?? []
             return .commands(
                 localCommands ? LocalCommand.merged(known) : known, for: trigger, in: text)

@@ -35,6 +35,7 @@ from nestd.composer.service import ComposerActions
 from nestd.config.loader import load_settings
 from nestd.config.models import ArtifactSettings, Settings
 from nestd.connectors.registry import ConnectorRegistry
+from nestd.engine.codex import STORE_PREFIX, CodexEngine
 from nestd.engine.fetch import InfoClientFactory, fetch_details
 from nestd.engine.service import EngineInfo
 from nestd.engine.store import EngineInfoStore
@@ -49,6 +50,7 @@ from nestd.notifications.vapid import VapidKeys
 from nestd.paths import AppPaths
 from nestd.pixies.activity import ActivityStore
 from nestd.pixies.agents import PixieAgents
+from nestd.pixies.call_runs import PixieCallRuns
 from nestd.pixies.call_store import CallStore
 from nestd.pixies.calls import PixieCallLog
 from nestd.pixies.files import PixieFiles
@@ -69,6 +71,15 @@ from nestd.pixies.teams import TeamService
 from nestd.pixies.triggers import HabitTriggers
 from nestd.providers.base import AgentProvider
 from nestd.providers.claude import ClaudeProvider
+from nestd.providers.codex import CodexProvider
+from nestd.providers.codex_engine import fetch_codex, fetch_codex_usage
+from nestd.providers.codex_process import (
+    TransportFactory,
+    app_server_launch,
+    bundled_binary,
+    spawn,
+)
+from nestd.providers.codex_trust import forget_trust
 from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
@@ -79,6 +90,7 @@ from nestd.review.publish import GitPublisher
 from nestd.review.watch import ReviewWatcher
 from nestd.search.index import SearchIndex
 from nestd.sessions.commands import CommandStore
+from nestd.sessions.engines import Engine
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
@@ -123,6 +135,8 @@ class AppContext:
     search: SearchIndex
     stuck: StuckWatcher
     engine: EngineInfo
+    # Codex's models and login (B91).
+    codex: CodexEngine
     pixies: PixieService
     pixie_calls: PixieCallLog
     teams: TeamService
@@ -159,6 +173,7 @@ class AppContext:
         shell_env: ShellEnvSource | None = None,
         claude_runner: CommandRunner | None = None,
         claude_locations: ClaudeLocations | None = None,
+        codex_transport: TransportFactory = spawn,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -171,7 +186,8 @@ class AppContext:
         that reads the model list and account. `shell_env` replaces the login shell's
         environment read for the agent and `!` commands. `claude_runner` runs the `claude`
         command line and Claude Code's installer (D104), and `claude_locations` says where
-        a standalone Claude Code may be.
+        a standalone Claude Code may be. `codex_transport` starts Codex's app-server
+        (tests use an in-memory one).
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -212,6 +228,17 @@ class AppContext:
             account_file=paths.claude_account_file,
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
         )
+        codex_home = paths.codex_home
+        codex = CodexEngine(
+            EngineInfoStore(db, clock, STORE_PREFIX),
+            fetch=lambda: fetch_codex(
+                codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
+            ),
+            clock=clock,
+            fetch_usage=lambda: fetch_codex_usage(
+                codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
+            ),
+        )
         pixie_files = PixieFiles(paths.pixies_dir)
         team_store = TeamStore(db, clock)
         activity = ActivityStore(db, clock)
@@ -229,13 +256,27 @@ class AppContext:
             busy=lambda session_id: sessions.busy(session_id),
         )
         pixie_calls = PixieCallLog(CallStore(db, clock), pixie_store, team_store, bus)
-        # The habit scheduler joins once it exists: it needs the sessions (B42).
+        # The habit scheduler and the pixie calls across engines join once they exist:
+        # they need the sessions (B42, B91).
         followers: list[StateFollower] = [report_back, pixie_calls]
+        pixie_agents = PixieAgents(
+            pixie_store,
+            pixie_files,
+            team_store,
+            # Only the default engine (Claude) runs pixies as its own subagents (B91).
+            inline=lambda provider: sessions.engines.by_name(provider) is sessions.engines.default,
+        )
         sessions = SessionManager(
             store=store,
             bus=bus,
             repos=repos,
-            worktrees=WorktreeManager(paths),
+            worktrees=WorktreeManager(
+                paths,
+                # Codex trusted each folder it worked in; a removed worktree's entry goes.
+                on_removed=None
+                if codex_home is None
+                else lambda path: forget_trust(codex_home, path),
+            ),
             attachments=attachments,
             provider=provider
             or ClaudeProvider(
@@ -263,10 +304,30 @@ class AppContext:
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
             extras=lambda session: pixie_runtime.extras(session),
-            agents=PixieAgents(pixie_store, pixie_files, team_store).for_session,
+            agents=pixie_agents.for_session,
             calls=pixie_calls,
             nest_tools=lambda session: artifact_tools(artifacts, session),
+            call_tools=lambda session, agents: call_runs.tools(session, agents),
+            engines=[
+                Engine(
+                    CodexProvider(
+                        paths.agent_gh_dir,
+                        codex_home=codex_home,
+                        transport=codex_transport,
+                        shell_env=shell_env,
+                    ),
+                    models=codex.find,
+                    ready=codex.require_signed_in,
+                )
+            ],
         )
+        call_runs: PixieCallRuns = PixieCallRuns(
+            pixies=pixie_store,
+            sessions=sessions,
+            bus=bus,
+            defaults=lambda: context.settings.agents,
+        )
+        followers.append(call_runs)
         pixie_nest = PixieNest(
             pixies=pixie_store,
             sessions=sessions,
@@ -338,6 +399,7 @@ class AppContext:
                 pixie_nest.tools(pixie_id, session.id, habit_run=session.habit_run_id is not None)
                 + habit_tools.tools(pixie_id, session)
             ),
+            called_prompt=pixie_agents.called_prompt,
         )
         monitor = PrMonitor(
             store=store,
@@ -410,6 +472,7 @@ class AppContext:
                 visibility=ClientVisibility(clock),
                 # Read at each check, so a new interval from the API applies at once.
                 interval=lambda: context.usage_interval(),
+                codex=codex.usage,
             ),
             commands=commands,
             prs=PullRequests(
@@ -431,6 +494,7 @@ class AppContext:
                 settings=lambda: context.settings.stuck,
             ),
             engine=engine,
+            codex=codex,
             pixies=pixies,
             pixie_calls=pixie_calls,
             teams=teams,
@@ -443,6 +507,7 @@ class AppContext:
             reports=reports,
             composer=ComposerActions(
                 sessions=store.get,
+                engine_of=sessions.engines.of,
                 project_folder=lambda name: repos.get(name).path,
                 user_memory=None if paths.claude_dir is None else paths.claude_dir / "CLAUDE.md",
                 shell_env=shell_env,

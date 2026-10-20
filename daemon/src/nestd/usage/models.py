@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
-from nestd.providers.base import TokenUsage
+from nestd.providers.base import TokenUsage, window_label
 
 type PeriodUnit = Literal["day", "week", "month", "year"]
 
@@ -18,6 +18,8 @@ class Turn:
     repo: str
     subagent: bool
     tokens: TokenUsage
+    # The engine the chat ran on (B91).
+    provider: str = "claude"
 
 
 class TokenTotals(TokenUsage):
@@ -37,6 +39,14 @@ class ProjectUsage(BaseModel):
     tokens: int
     # Every pixie chat together, under the name "Pixies".
     pixies: bool
+
+
+class EngineUsage(BaseModel):
+    """One engine's part of a period's tokens (B91)."""
+
+    provider: str
+    tokens: int
+    sessions: int
 
 
 class ProbeTotals(BaseModel):
@@ -65,6 +75,8 @@ class PeriodUsage(BaseModel):
     probes: ProbeTotals = Field(default_factory=ProbeTotals)
     # The Claude calls artifact pages made (B88), Nest overhead like the probes.
     asks: ProbeTotals = Field(default_factory=ProbeTotals)
+    # By engine, Claude first, then by name; none without tokens (B91).
+    engines: list[EngineUsage] = Field(default_factory=list[EngineUsage])
 
 
 class LimitWindow(BaseModel):
@@ -77,3 +89,27 @@ class LimitWindow(BaseModel):
 class UsageLimits(BaseModel):
     five_hour: LimitWindow | None
     seven_day: LimitWindow | None
+
+
+class EngineLimitWindow(LimitWindow):
+    """One of another engine's windows, by its length (B91)."""
+
+    # None when the engine left the length out.
+    minutes: int | None
+
+    @computed_field
+    @property
+    def label(self) -> str:
+        """ "5 hour", "Weekly", "30 day": what clients call the window."""
+        return window_label(self.minutes)
+
+
+class EngineLimits(BaseModel):
+    """Another engine's windows, whichever its plan has, shortest first (B91: Codex)."""
+
+    windows: list[EngineLimitWindow]
+
+
+CLAUDE = "claude"
+# The engines whose usage windows Nest keeps (B91).
+type UsageProvider = Literal["claude", "codex"]

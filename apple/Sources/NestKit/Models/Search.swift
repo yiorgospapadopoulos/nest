@@ -11,12 +11,16 @@ public enum SearchHitKind: String, UnknownSafeEnum {
     case claudeChat = "claude_chat"
     case unknown
 
-    /// The palette's words for where the match is.
-    public var label: String {
+    /// The palette's words for where the match is, in a chat on Claude.
+    public var label: String { label(agent: "Claude") }
+
+    /// The palette's words for where the match is; an answer is `agent`'s, the chat's
+    /// engine (B91).
+    public func label(agent: String) -> String {
         switch self {
         case .title: "Title"
         case .user: "You"
-        case .assistant: "Claude"
+        case .assistant: agent
         case .tool: "Tool call"
         case .toolResult: "Tool output"
         case .claudeChat: "Claude Code chat"
