@@ -29,7 +29,9 @@ async def remove_repo(
             "delete them first or set purge_sessions=true"
         )
         raise RepoInUseError(msg)
+    # Deleted together: a worktree they share goes with the last of them (B96).
+    ids = {session.id for session in owned}
     for session in owned:
-        await sessions.purge(session.id)
+        await sessions.purge(session.id, along_with=ids)
     repos.unregister(repo.name)
     await bus.publish(types.REPO_REMOVED, {"name": repo.name})
