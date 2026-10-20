@@ -146,6 +146,24 @@ import Testing
         #expect(model.pixies.pixies.isEmpty)
     }
 
+    /// B96: a connect reads the shown project's branch map again, and a branches event
+    /// reads it and the repos (the folder's branch may have changed).
+    @Test func branchMapsLoadOnConnectAndFollowEvents() async throws {
+        api.set { $0.branchMaps = ["cv-page": BranchMapFixture.map] }
+        await model.branchMaps.show("cv-page")
+        await model.live.refresh()
+        #expect(api.calls.filter { $0 == "repoBranchMap cv-page" }.count == 2)
+
+        let repos = api.calls.filter { $0 == "repos" }.count
+        model.live.route(
+            Fixture.event(
+                EventType.repoBranchesChanged, #"{"name": "cv-page"}"#, id: nil, session: nil))
+        await model.branchMaps.refreshing?.value
+        await model.app.reloadingRepos?.value
+        #expect(api.calls.filter { $0 == "repoBranchMap cv-page" }.count == 3)
+        #expect(api.calls.filter { $0 == "repos" }.count == repos + 1)
+    }
+
     @Test func aFailedRefreshIsReported() async {
         api.fail("approvals", with: APIError.unauthorized("not authenticated"))
         await model.live.refresh()

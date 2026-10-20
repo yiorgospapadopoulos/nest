@@ -250,10 +250,12 @@ public enum ProjectRemoval {
         let folder = "Nest forgets this project. Its folder stays as it is."
         switch chats {
         case 0: return folder
-        case 1: return "\(folder) Its chat is deleted for good, with its worktree and branch."
+        case 1:
+            return
+                "\(folder) Its chat is deleted for good, with its worktree and history; its branch stays."
         default:
             return
-                "\(folder) Its \(chats) chats are deleted for good, with their worktrees and branches."
+                "\(folder) Its \(chats) chats are deleted for good, with their worktrees and history; their branches stay."
         }
     }
 }
