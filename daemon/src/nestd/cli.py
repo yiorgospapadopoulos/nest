@@ -1,6 +1,7 @@
 """Command line entry point.
 
-`nestd serve | service install|uninstall|status | pair | design generate|check|icon`.
+`nestd serve | service install|uninstall|status | pair | design generate|check|icon |
+gates changed`.
 """
 
 import argparse
@@ -26,6 +27,9 @@ from nestd.folder_move import (
     legacy_moves,
     move_folder,
 )
+from nestd.gates.changes import changed_paths, merge_base, repository_root
+from nestd.gates.errors import GatesError
+from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
 from nestd.paths import AppPaths
 from nestd.runtime import Runtime, default_runtime
@@ -43,7 +47,14 @@ def main(argv: list[str] | None = None, runtime: Runtime | None = None) -> int:
     handler: Handler = args.handler
     try:
         return handler(args, AppPaths.from_env(rt.env, rt.home), rt)
-    except (ConfigError, DatabaseError, DesignError, FolderMoveError, ServiceError) as error:
+    except (
+        ConfigError,
+        DatabaseError,
+        DesignError,
+        FolderMoveError,
+        GatesError,
+        ServiceError,
+    ) as error:
         print(f"nestd: {error}", file=rt.err)
         return 1
 
@@ -78,6 +89,16 @@ def _parser() -> argparse.ArgumentParser:
         action = design_actions.add_parser(name, help=help_text)
         action.add_argument("--root", type=Path, help="repository root (default: found upward)")
         action.set_defaults(handler=handler)
+
+    gates = commands.add_parser("gates", help="pick the quality gates a change needs")
+    gates_actions = gates.add_subparsers(required=True, metavar="action")
+    changed = gates_actions.add_parser(
+        "changed",
+        help="print the parts (daemon web apple) changed since the merge base with --base",
+    )
+    changed.add_argument("--base", default="main", help="base ref (default: main)")
+    changed.add_argument("--root", type=Path, help="repository root (default: from git)")
+    changed.set_defaults(handler=_gates_changed)
     return parser
 
 
@@ -196,3 +217,40 @@ def _design_check(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> in
         print(f"nestd: {problem}", file=rt.err)
     print("nestd: run `nestd design generate` to update them", file=rt.err)
     return 1
+
+
+# How many changed paths to name per part before summarising the rest.
+_NAMED_PATHS = 3
+
+
+def _gates_changed(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> int:
+    root: Path = args.root if args.root is not None else repository_root(Path.cwd())
+    since = merge_base(root, args.base)
+    selection = select(changed_paths(root, since))
+    if selection.choices:
+        count = len(selection.choices)
+        print(
+            f"{count} changed {'file' if count == 1 else 'files'} since {args.base} "
+            f"(merge base {since[:7]})",
+            file=rt.err,
+        )
+    else:
+        print(f"no changes since {args.base} (merge base {since[:7]})", file=rt.err)
+    for line in _explain(selection):
+        print(line, file=rt.err)
+    print(" ".join(selection.parts), file=rt.out)
+    return 0
+
+
+def _explain(selection: Selection) -> list[str]:
+    lines = [f"{c.path}: {c.reason}, no gate" for c in selection.choices if not c.parts]
+    for part in ALL_PARTS:
+        choices = selection.because(part)
+        if not choices:
+            lines.append(f"{part}: skipped (no changes)")
+            continue
+        named = [c.path if c.reason == part else f"{c.path} [{c.reason}]" for c in choices]
+        shown = ", ".join(named[:_NAMED_PATHS])
+        rest = len(named) - _NAMED_PATHS
+        lines.append(f"{part}: runs ({shown}{f' and {rest} more' if rest > 0 else ''})")
+    return lines

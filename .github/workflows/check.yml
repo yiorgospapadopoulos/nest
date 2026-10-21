@@ -1,4 +1,6 @@
 # The daemon and web quality gates on Linux. The Swift gates (`make check-apple`) run locally.
+# Off main, a job runs only when its part or a shared input changed (B100), picked by the same
+# rules as `make check-changed`; on main every job runs.
 
 name: check
 
@@ -14,8 +16,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: changed parts (nestd gates changed)
+    runs-on: ubuntu-latest
+    outputs:
+      daemon: ${{ steps.pick.outputs.daemon }}
+      web: ${{ steps.pick.outputs.web }}
+    steps:
+      # The full history, so the merge base with main can be found.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.11.6"
+          enable-cache: true
+          cache-dependency-glob: daemon/uv.lock
+
+      - name: Install dependencies
+        working-directory: daemon
+        run: uv sync --locked
+
+      - name: Pick the parts
+        id: pick
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            parts="daemon web apple"
+          else
+            parts="$(cd daemon && uv run nestd gates changed --base "$BASE")" || parts="daemon web apple"
+          fi
+          for part in daemon web; do
+            case " $parts " in
+              *" $part "*) echo "$part=true" >> "$GITHUB_OUTPUT" ;;
+              *) echo "$part=false" >> "$GITHUB_OUTPUT" ;;
+            esac
+          done
+
   daemon:
     name: daemon (make check-daemon)
+    needs: changes
+    if: needs.changes.outputs.daemon == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -38,6 +82,8 @@ jobs:
 
   web:
     name: web (make check-web)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
