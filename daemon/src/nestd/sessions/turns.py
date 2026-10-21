@@ -607,12 +607,15 @@ class TurnRunner:
         # new state can send the next message straight away; it starts once the hooks,
         # which make the turn's review, are done.
         duration = live.turn_ms(self._clock.now())
-        live.end_turn(self._idle_close, held=state is SessionState.IDLE)
+        live.end_turn(held=state is SessionState.IDLE)
         live.settled.clear()
         try:
             await self._states.set(live.session_id, state, error, turn={"duration_ms": duration})
         finally:
             live.settled.set()
+            # Only once the end is announced: closing the run cancels its reader, which this
+            # may run in, and a slow store would lose the announcement (B99).
+            live.schedule_idle_close(self._idle_close)
 
     async def _report_connectors(self, session_id: str, run: AgentRun) -> None:
         """MCP connections have settled by the end of a turn, unlike at the run's start."""

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
@@ -51,11 +52,13 @@ async def test_stuck_settings_can_be_read_and_replaced(api: Api) -> None:
 async def test_a_silent_session_is_flagged_and_a_nudge_gets_it_going(
     api: Api, clock: FakeClock
 ) -> None:
-    api.provider.script(until_interrupted(), reply("Trying something else."))
+    working = asyncio.Event()
+    api.provider.script(until_interrupted(working), reply("Trying something else."))
     session = await create(api, prompt="Long job")
     session_id = str(session["id"])
     await reach(api, session_id, "running")
-    await until(lambda: bool(api.provider.runs) and bool(api.provider.runs[0].inputs))
+    # Its output must be out before the clock moves, or that output counts as new (B99).
+    await asyncio.wait_for(working.wait(), 5)
 
     clock.advance(timedelta(minutes=10))
 
