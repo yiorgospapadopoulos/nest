@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Approving a review: the commit message and, for a worktree chat without one, the pull
 /// request choice, then each git step's progress; a failed step shows its error output and
-/// can be tried again. Only opening a pull request pushes (B56).
+/// can be tried again. Opening a pull request pushes (B56), and so does Approve for a chat
+/// whose pull request is open, beside Approve and commit, which only commits (B101).
 struct PublishSheet: View {
     let approvalID: String
     @Environment(Shell.self) private var shell
@@ -30,8 +31,10 @@ struct PublishSheet: View {
         }
         .onAppear {
             if let approval {
-                form = shell.approvals.publishForm(
+                var opened = shell.approvals.publishForm(
                     for: approval, session: shell.sessions.session(approval.sessionID))
+                opened.pushToPR = !shell.commitsOnly.contains(approval.id)
+                form = opened
             }
         }
         // Approve sends the HEAD and fingerprint of the diff it shows, so it is read again
@@ -100,6 +103,13 @@ struct PublishSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)
             }
+            if let reply = form.wrappedValue.replyNote {
+                Text(reply)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
             if form.wrappedValue.steps.contains(.pr) {
                 FieldLabel(text: "Pull request title (optional)")
                 SheetTextField(
@@ -116,19 +126,52 @@ struct PublishSheet: View {
                 Spacer()
                 Button("Cancel") { shell.close() }
                     .buttonStyle(.nest(.soft))
-                Button {
-                    shell.publish(approval, form.wrappedValue)
-                } label: {
-                    let icon = form.wrappedValue.pushes ? Icon.pullRequest : Icon.check
-                    if running {
-                        Label("Publishing…", systemImage: icon)
-                    } else {
-                        Label(progress?.failure == nil ? title : "Try again", systemImage: icon)
+                if let number = form.wrappedValue.pullRequest {
+                    // Beside Approve and push, a commit only; each button runs its own way,
+                    // and the one that ran last offers Try again (B101).
+                    let commitOnly = !form.wrappedValue.pushToPR
+                    Button {
+                        form.wrappedValue.pushToPR = false
+                        shell.publish(approval, form.wrappedValue)
+                    } label: {
+                        Text(
+                            commitOnly && progress?.failure != nil
+                                ? "Try again" : PublishForm.commitTitle)
                     }
+                    .buttonStyle(.nest(.plain))
+                    .disabled(running || !loaded || !form.wrappedValue.canSubmit)
+                    .help("Commit without pushing; the pull request stays as it is")
+                    Button {
+                        form.wrappedValue.pushToPR = true
+                        shell.publish(approval, form.wrappedValue)
+                    } label: {
+                        if running && !commitOnly {
+                            Label("Publishing…", systemImage: Icon.pullRequest)
+                        } else {
+                            Label(
+                                !commitOnly && progress?.failure != nil
+                                    ? "Try again" : PublishForm.pushTitle(number),
+                                systemImage: Icon.pullRequest)
+                        }
+                    }
+                    .buttonStyle(.nest(.primary))
+                    .disabled(running || !loaded || !form.wrappedValue.canSubmit)
+                    .keyboardShortcut(.defaultAction)
+                } else {
+                    Button {
+                        shell.publish(approval, form.wrappedValue)
+                    } label: {
+                        let icon = form.wrappedValue.pushes ? Icon.pullRequest : Icon.check
+                        if running {
+                            Label("Publishing…", systemImage: icon)
+                        } else {
+                            Label(progress?.failure == nil ? title : "Try again", systemImage: icon)
+                        }
+                    }
+                    .buttonStyle(.nest(.primary))
+                    .disabled(running || !loaded || !form.wrappedValue.canSubmit)
+                    .keyboardShortcut(.defaultAction)
                 }
-                .buttonStyle(.nest(.primary))
-                .disabled(running || !loaded || !form.wrappedValue.canSubmit)
-                .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 16)
         }
