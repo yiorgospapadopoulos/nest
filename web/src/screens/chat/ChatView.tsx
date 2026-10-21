@@ -5,7 +5,6 @@ import { chatStatus, exchangeBackground, pendingFor } from "../../store/selector
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "../projects/ChatActions.tsx";
 import { NO_BACKGROUND } from "../../store/state.ts";
-import { AgentsSheet } from "./AgentsSheet.tsx";
 import { BackgroundBar } from "./BackgroundBar.tsx";
 import { ClaudeChatView } from "./ClaudeChatView.tsx";
 import type { ChatNav } from "./CommandSheets.tsx";
@@ -97,6 +96,7 @@ export function ChatView({
       onCreated={(session) => {
         onOpen(session.id);
       }}
+      onOpen={onOpen}
       nav={nav}
     />
   ) : (
@@ -131,7 +131,7 @@ function SessionChat({
 }) {
   const { state, actions } = useStore();
   const session = state.sessions[id];
-  const [sheet, setSheet] = useState<"agents" | "actions" | null>(null);
+  const [menu, setMenu] = useState(false);
   const history = state.history[id];
   const stopper = useStopTask(id);
   // Whether the first fetch is over: the history itself goes when the chat is deleted.
@@ -154,7 +154,6 @@ function SessionChat({
 
   if (session === undefined) return null;
   const tracking = state.tracking[id] ?? { tasks: [], agents: [], background: NO_BACKGROUND };
-  const active = tracking.agents.filter((a) => a.status === "running").length;
   const status = chatStatus(session, pendingFor(state, id));
 
   return (
@@ -165,31 +164,27 @@ function SessionChat({
       onBack={onBack}
       tools={
         <>
+          <PrChip session={session} />
           <ArtifactsButton scopes={chatScopes(session)} />
-          <button
-            className="ib"
-            aria-haspopup="dialog"
-            aria-label={`Agents, ${String(active)} active`}
-            onClick={() => {
-              setSheet("agents");
-            }}
-          >
-            <Icon name="bot" />
-            {active > 0 && <span className="cnt">{active}</span>}
-          </button>
           <button
             className="ib"
             aria-haspopup="dialog"
             aria-label="Chat actions"
             onClick={() => {
-              setSheet("actions");
+              setMenu(true);
             }}
           >
             <Icon name="dots" />
           </button>
         </>
       }
-      details={<Details session={session} />}
+      details={
+        session.started_by_pixie !== null && (
+          <div className="ch-r2">
+            <StartedBy id={session.started_by_pixie} className="chip" />
+          </div>
+        )
+      }
     >
       <GoalsStrip tasks={tracking.tasks} />
       <Transcript
@@ -220,24 +215,16 @@ function SessionChat({
         <>
           <LimitBar session={session} />
           <ReviewBar session={session} />
-          <Composer session={session} nav={nav} />
+          <Composer session={session} nav={nav} place={<ChatPlaceMark session={session} />} />
         </>
       ) : (
         <p className="note pxrun">A habit run. Its chat is read only.</p>
       )}
-      {sheet === "agents" && (
-        <AgentsSheet
-          agents={tracking.agents}
-          onClose={() => {
-            setSheet(null);
-          }}
-        />
-      )}
-      {sheet === "actions" && (
+      {menu && (
         <ChatActions
           session={session}
           onClose={() => {
-            setSheet(null);
+            setMenu(false);
           }}
           onGone={onBack}
         />
@@ -251,19 +238,15 @@ function runBack(pixies: Record<string, Pixie>, session: Session): string {
   return Object.values(pixies).find((p) => p.id === session.pixie_id)?.name ?? "Pixie";
 }
 
-function Details({ session }: { session: Session }) {
+/** Where the chat works, in the composer's row next to the mic (B102). */
+function ChatPlaceMark({ session }: { session: Session }) {
   const { state } = useStore();
-  const place = sessionPlace(
-    session,
-    state.repos.find((r) => r.name === session.repo),
-  );
   return (
-    <div className="ch-r2">
-      <PlaceChip place={place} />
-      <PrChip session={session} />
-      {session.started_by_pixie !== null && (
-        <StartedBy id={session.started_by_pixie} className="chip" />
+    <PlaceChip
+      place={sessionPlace(
+        session,
+        state.repos.find((r) => r.name === session.repo),
       )}
-    </div>
+    />
   );
 }

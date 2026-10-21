@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { NestEvent, JsonObject } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { detail, event, habit, pixie, report, session, NOW } from "../../test/fixtures.ts";
-import { openPixie } from "../../test/pixies.ts";
+import { openPixie, showPixies } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
 const tester = pixie({ id: "p1", name: "Tester", mascot: "moth", chat_session_id: "pc" });
@@ -108,7 +108,7 @@ describe("cards outside a pixie's chat (B42)", () => {
       event({ id: 2, type: "session.user_message", payload: { text: "Hello" } }),
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Check the form,/ }));
 
     expect(await screen.findByText("Hello")).toBeInTheDocument();
@@ -224,12 +224,14 @@ describe("reports in the inbox and the pixie list (B42)", () => {
 
     expect(api.pixieReports).toHaveBeenCalledWith(false);
     const action = await screen.findByRole("article", { name: "Report: CI is failing on main" });
-    expect(action).toHaveTextContent("Needs action");
+    // A closed row: its pixie, then the severity and title; Dismiss once opened (B102).
+    await user.click(within(action).getByRole("button", { name: "Show details" }));
+    expect(action).toHaveTextContent("Needs action · CI is failing on main");
     expect(action).toHaveTextContent("Tester");
     expect(screen.getByRole("article", { name: "Report: Disk almost full" })).toBeInTheDocument();
     expect(screen.queryByText("All quiet")).not.toBeInTheDocument();
     expect(screen.queryByText("Old one")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Inbox/ })).toHaveTextContent("3");
+    expect(screen.getByRole("tab", { name: /^Needs you/ })).toHaveTextContent("3");
 
     await user.click(within(action).getByRole("button", { name: "Dismiss" }));
     expect(api.readReport).toHaveBeenCalledWith("a");
@@ -246,6 +248,7 @@ describe("reports in the inbox and the pixie list (B42)", () => {
     const { user } = await renderApp({ api });
 
     const action = await screen.findByRole("article", { name: "Report: CI is failing on main" });
+    await user.click(within(action).getByRole("button", { name: "Show details" }));
     await user.click(within(action).getByRole("button", { name: "Dismiss" }));
     expect(await screen.findByText("Mac asleep")).toBeInTheDocument();
     expect(action).toBeInTheDocument();
@@ -256,6 +259,7 @@ describe("reports in the inbox and the pixie list (B42)", () => {
     const { user, push } = await renderApp({ api });
 
     const action = await screen.findByRole("article", { name: "Report: CI is failing on main" });
+    await user.click(within(action).getByRole("button", { name: "Show details" }));
     await user.click(within(action).getByRole("button", { name: "Open" }));
     expect(await screen.findByRole("tab", { name: "Chat" })).toBeInTheDocument();
     await waitFor(() => {
@@ -269,17 +273,19 @@ describe("reports in the inbox and the pixie list (B42)", () => {
       expect(api.readPixieReports).toHaveBeenCalledTimes(2);
     });
 
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
-    await user.click(screen.getByRole("tab", { name: "Inbox" }));
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
+    await user.click(screen.getByRole("tab", { name: "Needs you" }));
     expect(screen.queryByRole("article", { name: /^Report/ })).not.toBeInTheDocument();
   });
 
-  it("counts unread action reports on the Pixies section and the pixie's row", async () => {
+  it("counts unread reports in the Pixies view and action reports on each pixie's row", async () => {
     const api = withReports();
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
-    expect(await screen.findByLabelText("2 reports need action")).toBeInTheDocument();
+    // The unread warn and action reports, listed above the pixies (B102).
+    const reports = await screen.findByRole("region", { name: "Reports" });
+    expect(within(reports).getByRole("heading")).toHaveTextContent("Reports3");
     const row = screen.getByRole("button", { name: /^Tester,/ });
     expect(row).toHaveAccessibleName("Tester, @tester, 1 report needs action");
     expect(screen.getByRole("button", { name: /^Quiet,/ })).toHaveAccessibleName(
@@ -302,6 +308,7 @@ describe("reports in the inbox and the pixie list (B42)", () => {
     const { user } = await renderApp({ api });
 
     const card = await screen.findByRole("article", { name: "Report: CI is failing on main" });
+    await user.click(within(card).getByRole("button", { name: "Show details" }));
     expect(card).toHaveTextContent("A pixie");
     await user.click(within(card).getByRole("button", { name: "Dismiss" }));
     await waitFor(() => {
@@ -322,12 +329,15 @@ describe("reports in the inbox and the pixie list (B42)", () => {
     const api = withReports();
     api.readPixieReports.mockRejectedValue(new Error("Mac asleep"));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
     await user.click(await screen.findByRole("button", { name: /^Tester,/ }));
     await waitFor(() => {
       expect(api.readPixieReports).toHaveBeenCalled();
     });
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
-    expect(screen.getByLabelText("2 reports need action")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
+    expect(screen.getByRole("button", { name: /^Tester,/ })).toHaveAccessibleName(
+      "Tester, @tester, 1 report needs action",
+    );
+    expect(screen.getByRole("article", { name: "Report: CI is failing on main" })).toBeVisible();
   });
 });

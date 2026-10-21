@@ -51,7 +51,7 @@ async function openChat({
     Promise.resolve({ ...defined(approvals.find((a) => a.id === id)), status: "resolved" }),
   );
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;
@@ -125,7 +125,15 @@ describe("chat view", () => {
     expect(dot).toHaveClass("ff");
     expect(heading.nextElementSibling).toBe(dot);
     expect(chat.queryByText("Running")).not.toBeInTheDocument();
-    expect(chat.getByTitle("Worktree agent/contact in /w/s1")).toBeInTheDocument();
+    // A flat bar (B102): the back chevron with no label, and no Agents button (the chat's
+    // tree in the list shows its agents).
+    const back = chat.getByRole("button", { name: "Back to cv-page" });
+    expect(back).toHaveTextContent("");
+    expect(back.closest("header")).toContainElement(heading);
+    expect(chat.queryByRole("button", { name: /^Agents/ })).not.toBeInTheDocument();
+    // Where it works sits in the composer's row, next to the mic (B102).
+    const place = chat.getByTitle("Worktree agent/contact in /w/s1");
+    expect(place.closest(".crow")).toContainElement(chat.getByRole("button", { name: "Dictate" }));
     expect(screen.getByText("Fix it")).toBeInTheDocument();
     expect(screen.getByText("a.png")).toBeInTheDocument();
     expect(screen.getByText("Looking.")).toBeInTheDocument();
@@ -135,7 +143,6 @@ describe("chat view", () => {
     expect(screen.queryByText("Hidden task")).not.toBeInTheDocument();
     expect(screen.getByText("Interrupted")).toBeInTheDocument();
     expect(screen.getByText("Reading 1 file, searching 1 pattern, fetching 1 page")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Agents, 1 active" })).toHaveTextContent("1");
 
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "Hel" } });
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "lo" } });
@@ -159,6 +166,27 @@ describe("chat view", () => {
     expect(screen.queryByText(/^Working/)).not.toBeInTheDocument();
   });
 
+  it("renders replies, finished and streaming, as Markdown (B102 item 32)", async () => {
+    const reply = "Done: **all green** with `npm test`.\n\n- one\n- two";
+    const { push } = await openChat({
+      chat: session({ state: "running" }),
+      events: [message(1, [{ type: "text", text: reply }])],
+    });
+
+    const done = defined(screen.getByText("all green").closest<HTMLElement>(".m-a"));
+    expect(screen.getByText("all green").tagName).toBe("STRONG");
+    expect(within(done).getByText("npm test").tagName).toBe("CODE");
+    expect(
+      within(done)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["•one", "•two"]);
+    expect(done).not.toHaveTextContent("**");
+
+    push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "So *far*" } });
+    expect(screen.getByText("far").tagName).toBe("EM");
+  });
+
   it("says it is loading until the chat's history arrives", async () => {
     const api = fakeApi();
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
@@ -169,7 +197,7 @@ describe("chat view", () => {
       }),
     );
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     await screen.findByRole("region", { name: "Validate contact form" });
 
@@ -196,7 +224,7 @@ describe("chat view", () => {
     expect(screen.getByText("Working...")).toBeInTheDocument();
   });
 
-  it("follows new content only at the bottom, with a way back to it", async () => {
+  it("stops following on any move up and resumes only back at the bottom (D099)", async () => {
     const { user, push, api } = await openChat({
       events: [message(1, [{ type: "text", text: "First" }])],
     });
@@ -212,13 +240,17 @@ describe("chat view", () => {
         payload: { blocks: [{ type: "text", text }] },
       });
     };
+    const scrollTo = (top: number) => {
+      box.scrollTop = top;
+      fireEvent.scroll(box);
+    };
+    scrollTo(700);
     expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
 
-    // 50 px above the bottom is reading, not following.
-    box.scrollTop = 650;
-    fireEvent.scroll(box);
+    // 10 px up, still inside the bottom zone, is reading: nothing moves the view.
+    scrollTo(690);
     said(2, "Second");
-    expect(box.scrollTop).toBe(650);
+    expect(box.scrollTop).toBe(690);
     await user.type(screen.getByLabelText("Message"), "Go on{Enter}");
     push({
       id: 3,
@@ -226,21 +258,42 @@ describe("chat view", () => {
       type: "session.user_message",
       payload: { text: "Go on", attachments: [] },
     });
-    expect(box.scrollTop).toBe(650);
+    expect(box.scrollTop).toBe(690);
+    expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
 
+    // A move down into the bottom zone follows again.
+    scrollTo(695);
+    expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
+    said(4, "Third");
+    expect(box.scrollTop).toBe(1000);
+
+    // So does Jump to latest, from anywhere.
+    scrollTo(1000);
+    scrollTo(200);
+    said(5, "Fourth");
+    expect(box.scrollTop).toBe(200);
     await user.click(screen.getByRole("button", { name: "Jump to latest" }));
     expect(box.scrollTop).toBe(1000);
     fireEvent.scroll(box);
     expect(screen.queryByRole("button", { name: "Jump to latest" })).not.toBeInTheDocument();
-
-    // Within 40 px of the bottom keeps following.
-    box.scrollTop = 670;
-    fireEvent.scroll(box);
-    said(4, "Third");
+    said(6, "Fifth");
     expect(box.scrollTop).toBe(1000);
   });
 
-  it("shows running and completed agents and background tasks above the composer", async () => {
+  it("scrolls down when the view gets shorter while it follows", async () => {
+    await openChat({ events: [message(1, [{ type: "text", text: "First" }])] });
+    const box = defined(screen.getByText("First").closest<HTMLElement>(".ch-tx"));
+    Object.defineProperty(box, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 300 });
+    box.scrollTop = 700;
+    fireEvent.scroll(box);
+    // The keyboard opens: the same offset is no longer the bottom.
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 200 });
+    fireEvent.scroll(box);
+    expect(box.scrollTop).toBe(1000);
+  });
+
+  it("shows the running agents and background tasks above the composer", async () => {
     const item = (overrides: Partial<BackgroundItem>): BackgroundItem => ({
       id: "a1",
       kind: "agent",
@@ -278,34 +331,31 @@ describe("chat view", () => {
         } as never,
       },
     });
-    const bar = screen.getByRole("button", { name: "2 running · 2 completed" });
+    // Running tasks only, as on the Mac (B76).
+    const bar = screen.getByRole("button", { name: "2 running tasks" });
     expect(bar).toHaveAttribute("aria-expanded", "false");
     expect(bar.querySelector(".ff")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Agents, 0 active" })).toBeInTheDocument();
     // Between the transcript and the composer.
     const composer = defined(screen.getByLabelText("Message").closest(".comp"));
     expect(composer.previousElementSibling).toContainElement(bar);
 
     await user.click(bar);
     const running = screen.getByRole("list", { name: "Running" });
-    const completed = screen.getByRole("list", { name: "Completed" });
+    expect(screen.queryByRole("list", { name: "Completed" })).not.toBeInTheDocument();
     expect(
       within(running)
         .getAllByRole("listitem")
         .map((li) => li.textContent),
-    ).toEqual([expect.stringContaining("ExploreFind DOIs"), "npm run devRunning"]);
-    // Running tasks show fireflies, finished ones their dot (B80).
+    ).toEqual([expect.stringContaining("ExploreFind DOIs"), "npm run dev"]);
+    // Running tasks show fireflies (B80), each with Stop.
     for (const li of within(running).getAllByRole("listitem")) {
       expect(li.firstElementChild).toHaveClass("ff");
     }
-    for (const li of within(completed).getAllByRole("listitem")) {
-      expect(li.firstElementChild).toHaveClass("dot");
-    }
-    expect(within(completed).getByText("Done")).toBeInTheDocument();
-    expect(within(completed).getByText("Failed")).toBeInTheDocument();
+    expect(within(running).getByRole("button", { name: "Stop npm run dev" })).toBeVisible();
     await user.click(bar);
     expect(screen.queryByRole("list", { name: "Running" })).not.toBeInTheDocument();
 
+    // Once nothing runs the bar goes.
     push({
       id: 3,
       session_id: "s1",
@@ -315,12 +365,7 @@ describe("chat view", () => {
         background: { running: 0, completed: 1, items: [item({ status: "done" })] } as never,
       },
     });
-    const idle = screen.getByRole("button", { name: "0 running · 1 completed" });
-    expect(idle.querySelector(".ff")).toBeNull();
-    expect(idle.querySelector(".dot.s-done")).not.toBeNull();
-    await user.click(idle);
-    expect(screen.queryByRole("list", { name: "Running" })).not.toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Completed" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
   });
 
   it("brings the background bar and the goals back collapsed", async () => {
@@ -441,68 +486,18 @@ describe("chat view", () => {
     expect(screen.getByRole("button", { name: /All done/ })).toBeInTheDocument();
   });
 
-  it("lists agents with their last steps", async () => {
-    const steps = Array.from({ length: 6 }, (_, i) => ({
-      id: `x${String(i)}`,
-      tool: i === 0 ? "Bash" : "Read",
-      arg: `file${String(i)}`,
-      result: i === 5 ? null : "ok",
-    }));
-    const { user } = await openChat({
-      agents: [
-        agent({ steps }),
-        agent({
-          id: "e",
-          name: "Explore",
-          status: "done",
-          activity: null,
-          description: "Find DOIs",
-        }),
-        agent({ id: "f", name: "Broken", status: "failed", activity: null, started_at: null }),
-        agent({ id: "g", name: "Fresh", started_at: null, activity: null }),
-      ],
-    });
-
-    await user.click(screen.getByRole("button", { name: "Agents, 2 active" }));
-    const sheet = screen.getByRole("dialog", { name: "Agents" });
-    expect(within(sheet).getByText("Find DOIs")).toBeInTheDocument();
-    // A running agent shows fireflies, any other its dot (B80).
-    expect(within(sheet).getByRole("button", { name: /main/ }).firstElementChild).toHaveClass("ff");
-    expect(within(sheet).getByRole("button", { name: /Broken/ }).firstElementChild).toHaveClass(
-      "dot s-fail",
-    );
-    expect(within(sheet).getByText("failed")).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: /main/ }));
-    const log = within(sheet).getByRole("list", { name: "Last steps" });
-    expect(within(log).getAllByRole("listitem")).toHaveLength(5);
-    expect(within(log).queryByText("file0")).not.toBeInTheDocument();
-    expect(within(log).getByText("running").closest("li")?.querySelector(".ff")).not.toBeNull();
-    await user.click(within(sheet).getByRole("button", { name: /main/ }));
-    expect(within(sheet).queryByRole("list")).not.toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: /Fresh/ }));
-    expect(within(sheet).getByText("No steps yet")).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "Done" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  it("says when no agent has run", async () => {
-    const { user } = await openChat();
-    await user.click(screen.getByRole("button", { name: "Agents, 0 active" }));
-    expect(screen.getByText("No agents have run yet.")).toBeInTheDocument();
-  });
-
   it("goes back when the chat is archived from its actions, or deleted elsewhere", async () => {
     const { user, push } = await openChat();
 
     await user.click(screen.getByRole("button", { name: "Chat actions" }));
     await user.click(screen.getByRole("menuitem", { name: "Archive" }));
-    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Chats" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Archived/ }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     await screen.findByRole("region", { name: "Validate contact form" });
     push({ id: 9, type: "session.deleted", session_id: null, payload: { session_id: "s1" } });
-    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Chats" })).toBeInTheDocument();
   });
 
   it("goes back with Escape", async () => {
@@ -516,7 +511,7 @@ describe("chat view", () => {
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
     api.session.mockRejectedValue(new ApiError(404, "unknown session"));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
 
     expect(await screen.findByText("unknown session")).toBeInTheDocument();
@@ -798,7 +793,24 @@ describe("pull request", () => {
     expect(within(box).getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", url);
     await user.click(within(box).getByRole("button", { name: "Merge (squash)" }));
 
-    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash" });
+    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash", delete_branch: false });
+  });
+
+  it("deletes the branch on merge only when asked (B96)", async () => {
+    const m = mergeApproval();
+    const { user, api } = await openChat({
+      chat: session({ pr_url: url, pr: prStatus() }),
+      approvals: [m],
+      events: [event({ id: 1, type: "approval.created", payload: { approval: { ...m } } })],
+    });
+    const box = screen.getByRole("group", { name: "Ready to merge" });
+    const remove = within(box).getByRole("checkbox", { name: "Also delete the branch" });
+
+    expect(remove).not.toBeChecked();
+    await user.click(remove);
+    await user.click(within(box).getByRole("button", { name: "Merge (squash)" }));
+
+    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash", delete_branch: true });
   });
 });
 
@@ -1004,7 +1016,7 @@ describe("composer", () => {
     api.createSession.mockResolvedValueOnce(session({ id: "new", title: "Add tests" }));
     api.session.mockResolvedValue(detail({ id: "new", title: "Add tests" }));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
     const pick = async (selector: string, option: RegExp) => {
       await user.click(screen.getByRole("button", { name: selector }));
@@ -1013,10 +1025,9 @@ describe("composer", () => {
 
     expect(screen.getByRole("button", { name: "Back to cv-page" })).toHaveFocus();
     await pick("Model: Model", /^Opus 5.5/);
-    await pick("Thinking: Thinking", /Extra high/);
-    await pick("Permission mode: Mode", /Accept edits/);
-    await pick("Permission mode: Accept edits", /Default/);
-    await pick("Permission mode: Mode", /Accept edits/);
+    await pick("Thinking: Medium", /Extra high/);
+    await pick("Permission mode: Ask", /Plan/);
+    await pick("Permission mode: Plan", /Accept edits/);
     await user.click(screen.getByRole("button", { name: "Thinking: Extra high" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     const field = screen.getByLabelText("Message");
@@ -1029,6 +1040,7 @@ describe("composer", () => {
       repo: "cv-page",
       prompt: "Add tests",
       attachment_ids: [],
+      provider: "claude",
       model: "opus",
       effort: "xhigh",
       permission_mode: "acceptEdits",
@@ -1050,7 +1062,7 @@ describe("composer", () => {
     );
     api.session.mockResolvedValue(detail({ id: "new", title: "Add tests" }));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     await user.type(screen.getByLabelText("Message"), "Add tests{Enter}");
@@ -1071,15 +1083,21 @@ describe("composer", () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
+    await screen.findByRole("button", { name: "Thinking: Medium" });
     await user.type(screen.getByLabelText("Message"), "Go{Enter}");
 
+    // The concrete choices (B102): the engine, Medium for a model with no level set, the
+    // agent default's mode. A model is sent once the agent defaults or the engine name one.
     expect(api.createSession).toHaveBeenCalledWith({
       repo: "cv-page",
       prompt: "Go",
       attachment_ids: [],
+      provider: "claude",
+      effort: "medium",
+      permission_mode: "default",
       mode: "worktree",
       base: "main",
     });

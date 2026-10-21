@@ -29,7 +29,7 @@ async function openChat(chat: Session, queued: QueuedMessage[] = []) {
   api.session.mockResolvedValue(detail({ ...chat, queued }));
   api.sessionEvents.mockResolvedValue([]);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   // Only the clock and the ticker: testing-library polls its waits with setInterval too.
   vi.useFakeTimers({ now: OPENED, toFake: ["Date", "setInterval", "clearInterval"] });
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));

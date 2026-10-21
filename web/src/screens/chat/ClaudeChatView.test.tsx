@@ -40,12 +40,12 @@ async function setup(chats: ClaudeChat[] = [claudeChat()], sessions: Session[] =
   api.claudeChats.mockResolvedValue(chats);
   api.claudeChatEvents.mockResolvedValue(HISTORY);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   return rendered;
 }
 
 describe("Claude Code chats", () => {
-  it("are listed among the idle chats", async () => {
+  it("are listed among the chats, by their latest activity", async () => {
     await setup(
       [
         claudeChat(),
@@ -55,18 +55,19 @@ describe("Claude Code chats", () => {
       [session({ updated_at: "2026-10-06T09:00:00Z" })],
     );
 
-    const idle = screen.getByRole("heading", { name: /Idle/ });
-    expect(idle).toHaveTextContent("Idle3");
-    const rows = within(screen.getByRole("region", { name: /Idle/ })).getAllByRole("button", {
+    const chats = screen.getByRole("heading", { level: 2, name: /^Chats/ });
+    expect(chats).toHaveTextContent("Chats3");
+    const rows = within(screen.getByRole("region", { name: /^Chats/ })).getAllByRole("button", {
       name: /, (Idle|Claude Code chat)/,
     });
+    // Latest activity first, a later id first at the same moment (B102 item 9).
     expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual([
-      "Tune the hero section, Claude Code chat, on main",
       "Open one, Claude Code chat, open in Claude Code, on main",
+      "Tune the hero section, Claude Code chat, on main",
       "Validate contact form, Idle, worktree agent/contact",
     ]);
     // Open in Claude Code is not work in Nest: a plain dot, no fireflies or glow (B80).
-    const open = defined(rows[1]);
+    const open = defined(rows[0]);
     expect(open.firstElementChild).toHaveClass("dot s-run");
     expect(open.querySelector(".ff")).toBeNull();
     expect(open).not.toHaveClass("rglow");
@@ -174,7 +175,7 @@ describe("Claude Code chats", () => {
       Promise.resolve(all === true ? [claudeChat(), review] : [claudeChat()]),
     );
     const first = await renderApp({ api, storage });
-    await first.user.click(screen.getByRole("tab", { name: "Projects" }));
+    await first.user.click(screen.getByRole("tab", { name: "Chats" }));
 
     const toggle = screen.getByRole("switch", { name: "Show automated chats" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -188,7 +189,7 @@ describe("Claude Code chats", () => {
     first.unmount();
 
     const again = await renderApp({ api, storage });
-    await again.user.click(screen.getByRole("tab", { name: "Projects" }));
+    await again.user.click(screen.getByRole("tab", { name: "Chats" }));
     expect(screen.getByRole("switch", { name: "Show automated chats" })).toHaveAttribute(
       "aria-checked",
       "true",
@@ -212,7 +213,7 @@ describe("Claude Code chats", () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api, storage: broken });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
 
     await user.click(screen.getByRole("switch", { name: "Show automated chats" }));
 
@@ -258,7 +259,7 @@ describe("Claude Code chats", () => {
     expect(api.setClaudeChatArchived).toHaveBeenLastCalledWith("c1", true);
     expect(await screen.findByText("Archived Tune the hero section")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /Idle/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2, name: /^Chats/ })).not.toBeInTheDocument();
     expect(folder).toHaveTextContent("Archived2");
 
     await user.click(folder);
@@ -267,7 +268,7 @@ describe("Claude Code chats", () => {
 
     expect(api.setClaudeChatArchived).toHaveBeenLastCalledWith("c2", false);
     expect(await screen.findByText("Unarchived Old idea")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Idle/ })).toHaveTextContent("Idle1");
+    expect(screen.getByRole("heading", { level: 2, name: /^Chats/ })).toHaveTextContent("Chats1");
   });
 
   it("keep the actions open when archiving fails", async () => {

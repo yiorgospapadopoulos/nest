@@ -43,7 +43,7 @@ async function openChat(api: FakeApi) {
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.session.mockResolvedValue(detail(chat));
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return { ...rendered, field: screen.getByLabelText("Message") };
@@ -118,7 +118,7 @@ describe("pixie mentions", () => {
     const api = withPixies(fakeApi());
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     await user.type(screen.getByLabelText("Message"), "@rev");
@@ -165,7 +165,7 @@ describe("pixie mentions", () => {
     const api = withPixies(fakeApi());
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     await user.type(screen.getByLabelText("Message"), "@qa-lead go");

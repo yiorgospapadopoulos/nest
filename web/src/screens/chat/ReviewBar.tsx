@@ -25,7 +25,7 @@ function Bar({ approval, session }: { approval: Approval; session: Session }) {
   const { files, additions, deletions } = reviewOf(approval);
   return (
     <div className="rvbw">
-      <div className="rvbar gl" role="group" aria-label="Changes to review">
+      <div className="rvbar" role="group" aria-label="Changes to review">
         <Icon name="file" />
         <span className="rvn">
           {files} {files === 1 ? "file" : "files"} changed

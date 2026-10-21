@@ -15,13 +15,12 @@
     opacity: 0;
   }
 }
-.push > .wall {
-  position: absolute;
-}
+/* The flat bar of a pushed screen, as the Mac's pane header (B102): a back chevron, the
+   name on one line with its dot right after it, then the tools; a divider under it. */
 .ch-h {
-  padding: calc(var(--sat) - 2px) 6px 10px;
-  border-radius: 0 0 var(--r-card) var(--r-card);
-  border-top: 0;
+  padding: var(--sat) 4px 0;
+  border-bottom: 1px solid var(--div);
+  background: var(--bg);
   flex: none;
   z-index: 2;
 }
@@ -29,7 +28,9 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  min-height: var(--row);
 }
+/* Back with its label, as a settings page's bar has it. */
 .back {
   height: 44px;
   min-width: 44px;
@@ -54,36 +55,51 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A chat's back is the chevron alone, in grey. */
+.ch-h .back {
+  width: 44px;
+  justify-content: center;
+  color: var(--t2);
+  padding: 0;
+  flex: none;
+}
+.ch-h .back .ic {
+  stroke-width: 1.8;
+}
 /* The name, then its status dot right after it; a long name truncates, the dot stays. */
 .ch-t {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 12px;
+  flex: 1;
   min-width: 0;
+  margin-right: 4px;
 }
 .ch-t h2 {
-  /* Room above the line for a working sprite's hop (B48), without moving the header. */
+  /* Room above the line for a working sprite's hop (B48), without moving the bar. */
   margin: -3px 0;
   padding: 3px 0;
   min-width: 0;
-  font-size: 1.0588rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: var(--fs-body);
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.ch-h .prchip {
+  flex: none;
 }
 .ch-r2 {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 6px 12px 0;
+  margin: 0 12px 8px;
   min-width: 0;
 }
 .gs {
-  margin: 8px 10px 0;
-  border-radius: var(--r-pane);
+  margin: 8px 12px 0;
+  border-radius: var(--r-item);
+  background: var(--soft);
   flex: none;
   z-index: 1;
   overflow: hidden;
@@ -188,8 +204,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--glass-spacing-transcript-padding-top) var(--glass-spacing-transcript-padding-x)
-    var(--glass-spacing-transcript-padding-bottom);
+  padding: var(--tr-pad-top) var(--tr-pad-x) var(--tr-pad-bottom);
   scrollbar-width: none;
 }
 .ch-tx.from-end {
@@ -202,7 +217,7 @@
 .tx {
   display: flex;
   flex-direction: column;
-  gap: var(--glass-spacing-transcript-gap);
+  gap: var(--tr-gap);
 }
 /* An answer to a question Claude asked: the question, quiet, over the user's bubble (B60). */
 .m-ans {
@@ -226,12 +241,10 @@
   max-width: 82%;
   background: var(--bubble);
   color: var(--on-bubble);
-  box-shadow: inset 0 0 0 1px var(--hair);
   padding: 8px 12px;
-  border-radius: calc(var(--r-inner) + 2px) calc(var(--r-inner) + 2px) 6px
-    calc(var(--r-inner) + 2px);
-  font-size: 0.8824rem;
-  line-height: 1.45;
+  border-radius: var(--radius-mac-bubble);
+  font-size: var(--fs-body);
+  line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -249,9 +262,8 @@
 }
 .m-a {
   max-width: 96%;
-  font-size: 0.8824rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
+  font-size: var(--fs-body);
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .m-sys {
@@ -349,11 +361,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A tool line, flat and grey as the Mac's: its name, then its argument in the link colour. */
 .tool {
   max-width: 100%;
-  border-radius: calc(var(--r-item) + 1px);
-  background: var(--fill);
-  font-size: 0.7647rem;
+  border-radius: var(--r-item);
+  color: var(--t2);
+  font-size: var(--fs-meta);
   overflow: hidden;
 }
 .tool summary,
@@ -361,8 +374,8 @@
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 6px 0;
   min-height: 40px;
   min-width: 0;
   cursor: pointer;
@@ -379,14 +392,15 @@
   color: var(--t2);
 }
 .tn {
-  font-weight: 650;
+  font-weight: 600;
+  color: var(--t1);
   flex: none;
 }
 .ta {
   flex: 1;
   min-width: 0;
-  font: 0.6471rem var(--mono);
-  color: var(--t2);
+  font: var(--fs-label) var(--mono);
+  color: var(--link);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -426,7 +440,6 @@
 }
 .tgl .tool {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--hair);
 }
 .tgl .think {
   padding: 0 4px;
@@ -606,105 +619,125 @@
   max-height: 320px;
   overflow: auto;
 }
+/* A question, permission, plan or merge in the transcript, as the Mac's card (B102): a
+   faint flat card, its kind in the waiting colour, grey buttons and one primary. */
 .ask {
-  border-radius: var(--r-inner);
-  padding: 11px 12px;
-  background: var(--wait-soft);
+  border-radius: var(--r-phone);
+  padding: 12px;
+  background: var(--soft);
   max-width: 100%;
-}
-.ask.rv {
-  background: var(--rev-soft);
 }
 .ask-h {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.6471rem;
-  font-weight: 700;
-  color: var(--wait-t);
-}
-.ask.rv .ask-h {
-  color: var(--rev-t);
-}
-.ask-h .ic {
-  width: 14px;
-  height: 14px;
+  font-size: var(--fs-meta);
+  color: var(--wait);
 }
 .ask .cmdbox {
-  font-size: 0.7059rem;
-  margin: 6px 0;
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  margin: 8px 0 6px;
+  background: var(--raised);
+  box-shadow: none;
+}
+.ask .ask-q {
+  font-size: var(--fs-body);
+}
+.ask .ropt {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--r-item);
+  background: var(--soft);
+  margin-top: 6px;
+  font-size: var(--fs-body);
+}
+.ask .ropt[aria-checked="true"] {
+  background: var(--raised);
+}
+.ask .ropt[aria-checked="true"] .rdo {
+  box-shadow: inset 0 0 0 5px var(--t1);
+}
+.ask .ropt b {
+  font-weight: 500;
+}
+.ask .ropt small {
+  font-size: var(--fs-meta);
+}
+.ask .rec {
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--ok);
+  background: none;
+  padding: 0;
+}
+.ask .acts {
+  align-items: center;
 }
 .ask .acts .b {
-  height: 40px;
-  font-size: 0.8235rem;
-  border-radius: var(--r-tab);
-}
-/* A new chat's place, chosen above the composer before its first message (B55). */
-.ncp {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 14px 8px;
-  min-width: 0;
   flex: none;
+  height: 34px;
+  padding: 0 14px;
+  font-size: var(--fs-meta);
+  border-radius: var(--r-item);
 }
-/* A capsule selector: a 32 point pill in a 44 point tap target. */
-.ncp-b {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0 10px 0 11px;
-  border: 1px solid var(--hair);
-  border-radius: 999px;
-  background: var(--fill);
+.ask .acts .b:not(.b-pri) {
+  background: var(--raised);
   color: var(--t1);
-  font-size: 0.7647rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  flex: none;
 }
-.ncp-b::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 44px;
-  transform: translateY(-50%);
-}
-.ncp-b > span {
+.ask .acts .b.plain {
+  background: none;
+  color: var(--t2);
+  padding: 0 6px;
+  min-width: 0;
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ncp-b .ic {
-  width: 14px;
-  height: 14px;
-  flex: none;
+/* "Also delete the branch" under Merge, unchecked by default (B96). */
+.ask-ck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--fs-meta);
   color: var(--t2);
+  cursor: pointer;
+}
+.ask-ck input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+/* A new chat's place, quiet text next to the mic with a 44 point target (B55, B102). */
+.crow .ncp-b {
+  gap: 4px;
+  flex: none;
+}
+.ncp-b > span {
+  max-width: 21ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ncp-b .ncp-c {
-  width: 12px;
-  height: 12px;
-  color: var(--t3);
+  width: 11px;
+  height: 11px;
+  flex: none;
 }
-.ncp-b[aria-expanded="true"] {
-  background: var(--fill2);
+.nc-n {
+  margin: 0 12px 6px;
+  flex: none;
 }
 .ncp-n {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
+  width: 100%;
+  height: 36px;
   padding: 0 12px;
-  border: 1px solid var(--hair);
-  border-radius: 999px;
-  background: transparent;
+  border: 1px solid var(--div);
+  border-radius: var(--r-item);
+  background: var(--composer);
   color: var(--t1);
-  font-size: 0.8235rem;
+  font: var(--fs-meta) var(--mono);
 }
 .ncp-n::placeholder {
   color: var(--t3);
@@ -715,50 +748,63 @@
   gap: 6px;
   text-align: center;
   color: var(--t3);
-  font-size: 0.7647rem;
+  font-size: var(--fs-meta);
   padding: 60px 10px;
 }
 .tx-empty .ic {
   width: 26px;
   height: 26px;
-  color: var(--accent);
+  color: var(--t3);
 }
+/* The composer, as the Mac's pane composer (B102): an oval field with the round send
+   inside it, and under it +, the mic and the place, then the quiet selectors. */
 .comp {
-  margin: 0 10px calc(var(--sab) + 2px);
-  border-radius: min(calc(var(--r-pane) + 6px), var(--r-ctl-lg));
-  padding: 4px 6px 2px 14px;
+  margin: 0;
+  padding: 8px 12px var(--sab);
   flex: none;
+  background: var(--bg);
 }
-.comp:focus-within {
-  box-shadow:
-    var(--gl-sh),
-    0 0 0 2px var(--accent);
+.cfield {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 0 0 16px;
+  border: 1px solid var(--div);
+  border-radius: 22px;
+  background: var(--composer);
 }
-.comp textarea {
+.cfield:focus-within {
+  border-color: var(--t3);
+}
+.cfield textarea {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: 0;
   background: transparent;
   resize: none;
-  font-size: 0.9412rem;
+  font-size: var(--fs-body);
   color: var(--t1);
   outline: none;
-  padding: 9px 2px 4px;
-  min-height: 40px;
+  padding: 11px 0;
+  min-height: 42px;
   max-height: 160px;
   field-sizing: content;
+}
+.cfield textarea::placeholder {
+  color: var(--t3);
 }
 .atts {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 6px 0 2px;
+  padding: 0 4px 6px;
 }
 .atts .chip {
   max-width: 100%;
   padding-right: 2px;
 }
-/* A 44 point target that takes the 22 point place of the icon. */
 /* A pasted or chosen image shows as its thumbnail (B59). */
 .atts .chip.thumb {
   padding-left: 3px;
@@ -770,6 +816,7 @@
   object-fit: cover;
   flex: none;
 }
+/* A 44 point target that takes the 22 point place of the icon. */
 .atts .chip button {
   border: 0;
   background: transparent;
@@ -785,7 +832,9 @@
 .crow {
   display: flex;
   align-items: center;
+  gap: 2px;
   min-width: 0;
+  margin-top: 2px;
 }
 .qb {
   width: 36px;
@@ -793,7 +842,7 @@
   border: 0;
   border-radius: var(--r-tab);
   background: transparent;
-  color: var(--t3);
+  color: var(--t2);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -801,18 +850,21 @@
   flex: none;
 }
 .qb .ic {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
 }
+/* Plain grey text that opens its menu, as the Mac's QuietMenu. */
 .qt {
+  display: inline-flex;
+  align-items: center;
   height: 44px;
   border: 0;
   border-radius: var(--r-tab);
   background: transparent;
   color: var(--t2);
-  font-size: 0.7647rem;
-  font-weight: 500;
-  padding: 0 6px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  padding: 0 5px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -825,38 +877,58 @@
   opacity: 0.6;
 }
 .qt[aria-expanded="true"] {
-  background: var(--fill);
+  background: var(--soft);
   color: var(--t1);
 }
-/* A 36 point button in a 44 point target: the color fills the content box only, and the
-   negative margins keep its 36 point place in the row. */
+/* Where the chat works, next to the mic: its branch in mono, the folder on hover. */
+/* It keeps its room first: up to about 12 characters before it truncates, while the
+   selectors on the right give way (B102). */
+.crow .chip {
+  min-width: 0;
+  flex: none;
+  min-height: 44px;
+  padding: 0 4px;
+  font: var(--fs-label) var(--mono);
+  color: var(--t2);
+}
+.crow .chip > span {
+  max-width: 13ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The round send inside the field: a 32 point circle in a 44 point target. */
 .send {
   width: 44px;
   height: 44px;
-  padding: 4px;
+  padding: 6px;
+  margin: -1px -1px -1px 0;
   background-clip: content-box;
-  border-radius: calc(var(--r-ctl) + 4px);
+  border-radius: 50%;
   border: 0;
-  background-color: var(--accent);
-  color: var(--on-accent);
+  background-color: var(--raised);
+  color: var(--t1);
   display: grid;
   place-items: center;
   cursor: pointer;
   flex: none;
-  margin: -4px -4px -4px 0;
 }
 .send:disabled {
-  opacity: 0.35;
+  opacity: 0.5;
   cursor: default;
 }
-.send.stop {
-  background-color: var(--fail-soft);
-  color: var(--fail-t);
-}
 .send .ic {
-  width: 17px;
-  height: 17px;
-  stroke-width: 2.3;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+.send.stop .ic {
+  width: 11px;
+  height: 11px;
+}
+/* A new chat's engine is not signed in (B91): its hint, quiet, above the field. */
+.cnote.sign {
+  margin: 0 4px 6px;
 }
 
 /* sheets */
@@ -1065,82 +1137,12 @@
   font-weight: 650;
   color: var(--accent);
 }
-.agl {
-  display: grid;
-  gap: 8px;
-}
-.agc {
-  border-radius: calc(var(--r-inner) + 2px);
-  background: var(--fill);
-}
-.agr {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
-  gap: 2px 10px;
-  align-items: center;
-  width: 100%;
-  min-height: 56px;
-  padding: 10px 14px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: var(--t1);
-}
 /* A plain dot sits centred in the column a running agent's, task's or goal's fireflies take. */
-.agr > .dot,
-.agr > .ff,
 .bgg li > .dot,
 .bgg li > .ff,
 .gs-h > .dot,
 .gs-h > .ff {
   justify-self: center;
-}
-.agr b {
-  font-size: 0.8824rem;
-  font-weight: 650;
-}
-.agr .mono {
-  grid-column: 2/4;
-  font: 0.7059rem var(--mono);
-  color: var(--t2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.agr .mt2 {
-  font-size: 0.7353rem;
-  color: var(--t3);
-}
-.aglog {
-  list-style: none;
-  margin: 0;
-  padding: 4px 14px 12px 34px;
-  display: grid;
-  gap: 6px;
-  border-top: 1px solid var(--hair);
-}
-.aglog li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: center;
-  font-size: 0.7059rem;
-}
-.aglog .la {
-  font: 0.6765rem var(--mono);
-  color: var(--t2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.aglog .lr {
-  color: var(--t3);
-  font-size: 0.6765rem;
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .rin2 {
   display: block;
@@ -1252,12 +1254,19 @@
 }
 
 /* The transcript and its floating "Jump to latest" button. */
+/* Faint scanlines behind the transcript, as behind the Mac's panes; they stay put while
+   the messages scroll over them (B102). */
 .ch-txw {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--spacing-mac-scanline-period) - 1px),
+    var(--scan) calc(var(--spacing-mac-scanline-period) - 1px) var(--spacing-mac-scanline-period)
+  );
 }
 .jump {
   position: absolute;
@@ -1267,11 +1276,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px 7px 10px;
+  min-height: 36px;
+  padding: 0 14px 0 10px;
+  border: 1px solid var(--div);
   border-radius: var(--r-ctl);
-  background: var(--g2);
-  font-size: 0.7647rem;
-  font-weight: 600;
+  background: var(--sheet);
+  font-size: var(--fs-meta);
+  font-weight: 500;
   color: var(--t1);
   cursor: pointer;
   animation: fade 0.2s ease-out;
@@ -1281,13 +1292,14 @@
   height: 14px;
 }
 
-/* "N running · M completed" just above the composer; the list opens upwards. */
+/* "N running tasks" just above the composer; the list of them opens upwards (B76). */
 .bgw {
   flex: none;
-  margin: 0 10px 6px;
+  margin: 4px 12px 0;
 }
 .bgbar {
-  border-radius: var(--r-pane);
+  border-radius: var(--r-item);
+  background: var(--soft);
   overflow: hidden;
 }
 .bgsum {
@@ -1296,10 +1308,10 @@
   gap: 8px;
   width: 100%;
   min-height: 44px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   border: 0;
   background: transparent;
-  font-size: 0.7647rem;
+  font-size: var(--fs-meta);
   color: var(--t2);
   text-align: left;
   cursor: pointer;
@@ -1321,21 +1333,17 @@
 .bgsum[aria-expanded="true"] .cv {
   transform: none;
 }
-.bgl {
+.bgbar .bgg {
   max-height: 40vh;
   overflow: auto;
-  padding: 8px 14px 4px;
-  border-bottom: 1px solid var(--hair);
-  display: grid;
-  gap: 8px;
+  padding: 8px 10px 4px;
+  border-bottom: 1px solid var(--div);
 }
 .bgh {
   margin: 0 0 4px;
-  font-size: 0.6765rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--t3);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--t2);
 }
 .bgg ul {
   list-style: none;
@@ -1379,16 +1387,17 @@
 /* "3 files changed +48 -19 · Review" just above the composer while changes wait (B56). */
 .rvbw {
   flex: none;
-  margin: 0 10px 6px;
+  margin: 4px 12px 0;
 }
 .rvbar {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 6px 8px 6px 14px;
-  border-radius: var(--r-pane);
-  font-size: 0.7647rem;
+  padding: 6px 4px 6px 10px;
+  border-radius: var(--r-item);
+  background: var(--soft);
+  font-size: var(--fs-meta);
   color: var(--t2);
 }
 .rvbar .ic {
@@ -1407,16 +1416,17 @@
 /* "Paused at the 5-hour usage limit" just above the composer, with Resume now (B78). */
 .lmw {
   flex: none;
-  margin: 0 10px 6px;
+  margin: 4px 12px 0;
 }
 .lmbar {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  padding: 8px 8px 8px 14px;
-  border-radius: var(--r-pane);
-  font-size: 0.7647rem;
+  padding: 8px 4px 8px 10px;
+  border-radius: var(--r-item);
+  background: var(--soft);
+  font-size: var(--fs-meta);
   color: var(--t2);
 }
 .lmbar .dot {
@@ -1442,8 +1452,10 @@
 /* Completions for a "/command" or "@path", in the column just above the composer. */
 .sug {
   flex: none;
-  margin: 0 10px 6px;
+  margin: 0 12px 6px;
+  border: 1px solid var(--div);
   border-radius: var(--r-pane);
+  background: var(--sheet);
   max-height: 352px;
   overflow: auto;
   scrollbar-width: none;
@@ -1505,10 +1517,10 @@
   white-space: nowrap;
 }
 
-/* "context 41%" among the composer's selectors. */
+/* "41%" of the context used, after the composer's selectors. */
 .qt.ctx {
   flex: none;
-  font-size: 0.7059rem;
+  font-size: var(--fs-meta);
   color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
@@ -1517,7 +1529,7 @@
 /* Messages Claude has not read yet (B59), just above the composer, oldest first. */
 .pend {
   list-style: none;
-  margin: 0 10px 6px;
+  margin: 4px 12px 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -1531,7 +1543,8 @@
   align-items: center;
   gap: 2px;
   padding: 2px 2px 2px 12px;
-  border-radius: var(--r-inner);
+  border-radius: var(--r-item);
+  background: var(--soft);
 }
 .pmt {
   flex: 1;
@@ -1649,8 +1662,8 @@
 .md code,
 .md pre {
   font-family: var(--mono);
-  font-size: 0.7059rem;
-  background: var(--fill);
+  font-size: 0.9em;
+  background: var(--raised);
   border-radius: 6px;
 }
 .md code {
@@ -1666,7 +1679,15 @@
   border-top: 1px solid var(--hair);
 }
 .md a {
-  color: var(--accent);
+  color: var(--link);
+}
+/* A reply as Markdown (B102), flat as the Mac's: at the reading size, its lines kept. */
+.m-a .md {
+  font-size: inherit;
+  line-height: inherit;
+}
+.m-a .md p {
+  white-space: pre-wrap;
 }
 
 /* An item opened from a search hit glows briefly (D035). */
@@ -1754,7 +1775,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: calc(4px - var(--glass-spacing-transcript-gap));
+  margin-bottom: calc(4px - var(--tr-gap));
   font-size: 0.6471rem;
   color: var(--t3);
 }
@@ -1968,7 +1989,7 @@
 .wk {
   display: flex;
   flex-direction: column;
-  gap: var(--glass-spacing-transcript-gap);
+  gap: var(--tr-gap);
 }
 .wk-sec {
   padding: 10px 12px;
@@ -2197,4 +2218,112 @@
   border-radius: var(--r-inner);
   background: Canvas;
   box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+/* A new chat (B90 design I fitted to the phone, B102): Waiting on you and Recent, then the
+   project and the question in large type, all set at the bottom over the docked composer. */
+.nc .ch-h {
+  border-bottom: 0;
+}
+.nc-b {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 6px;
+}
+/* Pushes the content to the bottom while it fits, and scrolls from the top once it doesn't. */
+.nc-b > :first-child {
+  margin-top: auto;
+}
+.nc-l .lbl {
+  margin: 0;
+  padding: 10px 0 2px;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--t2);
+}
+.nc-w,
+.nc-r {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.nc-r {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.nc-t {
+  font-size: var(--fs-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nc-m {
+  grid-column: 2;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nc-a {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.nc-more {
+  min-height: 44px;
+  padding: 0 0 0 22px;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  cursor: pointer;
+}
+.nc-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.nc-q {
+  margin: 4px 0 6px;
+  font-size: 1.6471rem;
+  line-height: 1.12;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* The model menu's engine sections, each under its name with its plan (B91). */
+.asec + .asec {
+  border-top: 1px solid var(--div);
+}
+.ash {
+  padding: 10px 18px 4px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.ash b {
+  display: block;
+  font-weight: 600;
+}
+.ash small {
+  display: block;
+  color: var(--t3);
+}
+.ash + .asi {
+  border-top: 0;
 }
