@@ -177,6 +177,16 @@ public enum DesignTokens {
             public static let button = ThemedColor(light: RGBA(red: 0.109804, green: 0.109804, blue: 0.113725, alpha: 1), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.88))
             public static let buttonText = ThemedColor(light: RGBA(red: 1, green: 1, blue: 1, alpha: 1), dark: RGBA(red: 0.105882, green: 0.105882, blue: 0.109804, alpha: 1))
         }
+        public enum Lane {
+            public static let root = ThemedColor(light: RGBA(red: 0.431373, green: 0.431373, blue: 0.470588, alpha: 1), dark: RGBA(red: 0.631373, green: 0.631373, blue: 0.678431, alpha: 1))
+            public static let violet = ThemedColor(light: RGBA(red: 0.486275, green: 0.360784, blue: 0.839216, alpha: 1), dark: RGBA(red: 0.717647, green: 0.611765, blue: 1, alpha: 1))
+            public static let teal = ThemedColor(light: RGBA(red: 0.05098, green: 0.541176, blue: 0.486275, alpha: 1), dark: RGBA(red: 0.176471, green: 0.831373, blue: 0.74902, alpha: 1))
+            public static let blue = ThemedColor(light: RGBA(red: 0.184314, green: 0.435294, blue: 0.815686, alpha: 1), dark: RGBA(red: 0.376471, green: 0.647059, blue: 0.980392, alpha: 1))
+            public static let pink = ThemedColor(light: RGBA(red: 0.760784, green: 0.211765, blue: 0.498039, alpha: 1), dark: RGBA(red: 0.956863, green: 0.447059, blue: 0.713725, alpha: 1))
+            public static let lime = ThemedColor(light: RGBA(red: 0.309804, green: 0.541176, blue: 0.062745, alpha: 1), dark: RGBA(red: 0.639216, green: 0.901961, blue: 0.207843, alpha: 1))
+            public static let orange = ThemedColor(light: RGBA(red: 0.760784, green: 0.341176, blue: 0.047059, alpha: 1), dark: RGBA(red: 0.984314, green: 0.572549, blue: 0.235294, alpha: 1))
+            public static let yellow = ThemedColor(light: RGBA(red: 0.592157, green: 0.45098, blue: 0, alpha: 1), dark: RGBA(red: 0.980392, green: 0.8, blue: 0.082353, alpha: 1))
+        }
         public enum Diff {
             public static let addedFill = ThemedColor(light: RGBA(red: 0.133333, green: 0.647059, blue: 0.34902, alpha: 0.13), dark: RGBA(red: 0.207843, green: 0.815686, blue: 0.478431, alpha: 0.15))
             public static let addedText = ThemedColor(light: RGBA(red: 0.078431, green: 0.447059, blue: 0.227451, alpha: 1), dark: RGBA(red: 0.419608, green: 0.890196, blue: 0.627451, alpha: 1))

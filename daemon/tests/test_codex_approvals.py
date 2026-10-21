@@ -107,7 +107,7 @@ async def test_a_guarded_runs_wrapped_git_write_is_declined_without_asking() -> 
     handler = Handler()
 
     answer = await approvals(handler, guarded=True).handle(
-        "item/commandExecution/requestApproval", command("/bin/zsh -lc 'git commit -m x'")
+        "item/commandExecution/requestApproval", command("/bin/zsh -lc 'git push origin x'")
     )
 
     assert answer == {"decision": "decline"}
@@ -297,7 +297,7 @@ async def test_a_denied_mcp_tool_call_is_declined() -> None:
     [
         ("github", "create_pull_request", {}),
         ("github", "merge_pull_request", {"number": 3}),
-        ("git", "git_commit", {"message": "x"}),
+        ("git", "git_push", {}),
         ("serena", "execute_shell_command", {"command": "git push origin main"}),
         ("shell", "run", {"args": ["gh", "pr", "create"]}),
     ],

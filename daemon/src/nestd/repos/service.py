@@ -136,12 +136,17 @@ class RepoService:
         branch = await current_branch(repo.path) if repo.git else None
         return RepoView(**repo.model_dump(), current_branch=branch)
 
-    async def branches(self, name: str) -> list[str]:
-        """The repo's local branches, sorted."""
+    async def git_repo(self, name: str) -> RepoConfig:
+        """The repo, which must be a git repository whose folder exists."""
         repo = await self.current(name)
         require_folder(repo)
         if not repo.git:
             raise NotAGitRepositoryError(name)
+        return repo
+
+    async def branches(self, name: str) -> list[str]:
+        """The repo's local branches, sorted."""
+        repo = await self.git_repo(name)
         output = await run_hardened_git(
             ["for-each-ref", "--format=%(refname)", BRANCH_REF], repo.path
         )
@@ -226,10 +231,7 @@ class RepoService:
         delete_repo(self._paths, self.get(name).name)
 
     async def suggest_links(self, name: str) -> list[str]:
-        repo = await self.current(name)
-        require_folder(repo)
-        if not repo.git:
-            raise NotAGitRepositoryError(name)
+        repo = await self.git_repo(name)
         # --directory lists wholly ignored directories (node_modules/) as one entry.
         output = await run_hardened_git(
             ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],

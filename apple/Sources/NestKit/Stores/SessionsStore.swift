@@ -347,7 +347,7 @@ public final class SessionsStore {
         try await update(id, UpdateSessionRequest(permissionMode: mode))
     }
 
-    /// Deletes the session for good, with its worktree, branch and history.
+    /// Deletes the session for good, with its worktree and history; its branch stays.
     public func delete(_ id: String) async throws {
         try await api.deleteSession(id)
         sessions[id] = nil

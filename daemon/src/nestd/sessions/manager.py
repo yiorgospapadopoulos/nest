@@ -41,6 +41,7 @@ from nestd.sessions.errors import (
 from nestd.sessions.extras import NestToolsSource, RunExtrasSource
 from nestd.sessions.files import FileIndex
 from nestd.sessions.hooks import SessionHooks
+from nestd.sessions.joining import Place, join_place, place_on_branch
 from nestd.sessions.limits import ClearReason, LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession
 from nestd.sessions.models import (
@@ -75,7 +76,9 @@ from nestd.sessions.subagents import CallToolsSource, ChatAgentsSource, PixieCal
 from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
-from nestd.worktrees.manager import WorktreeManager
+from nestd.sessions.workspace import publish_workspace
+from nestd.worktrees.manager import Worktree, WorktreeManager
+from nestd.worktrees.setup import LinkResult
 
 # Ask: a chat's mode when none is chosen or fits (B94); before B94 also what a session
 # following Claude Code's own mode showed until the engine reported it.
@@ -188,6 +191,9 @@ class SessionManager:
     async def list_sessions(self, repo: str | None = None, archived: bool = False) -> list[Session]:
         return await self._store.list_sessions(repo, archived)
 
+    async def worktree_bases(self, repo: str) -> dict[Path, str]:
+        return await self._store.worktree_bases(repo)
+
     async def get(self, session_id: str) -> Session:
         return await self._store.get(session_id)
 
@@ -244,17 +250,25 @@ class SessionManager:
             engine, model, defaults.permission_mode
         ):
             permission_mode = defaults.permission_mode
+        place = await self._place(repo, request)
+        joined = None if place is None else place.worktree
         # A plain folder has no worktrees or branches: its chats always work in place (D041).
-        mode = (
-            (request.mode or _repo_mode(repo) or defaults.default_mode) if repo.git else "in_place"
+        mode: SessionMode = (
+            place.mode
+            if place is not None
+            else (request.mode or _repo_mode(repo) or defaults.default_mode)
+            if repo.git
+            else "in_place"
         )
-        base_ref = await self._worktree_start(repo, mode, request)
+        base_ref = (
+            place.base_ref if place is not None else await self._worktree_start(repo, mode, request)
+        )
         new = NewSession(
             repo=repo.name,
             title=request.title or short_title(request.prompt),
             prompt=request.prompt,
             mode=mode,
-            cwd=repo.path if mode == "in_place" else None,
+            cwd=joined.path if joined is not None else repo.path if mode == "in_place" else None,
             model=model,
             effort=effort,
             # Nest always passes the mode; Ask when none fits (B94).
@@ -267,7 +281,11 @@ class SessionManager:
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
-        session = await self._store.create(new, branch=request.branch)
+        session = await self._store.create(
+            new,
+            branch=request.branch if place is None else place.branch,
+            worktree_path=None if joined is None else joined.path,
+        )
         sender = Sender(from_pixie=started_by_pixie)
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
@@ -275,6 +293,9 @@ class SessionManager:
         await self._bus.publish(
             types.SESSION_STATE, {"state": session.state, "error": None}, session.id
         )
+        if joined is not None:
+            # Nothing is linked or set up: the worktree's first chat had that done.
+            await publish_workspace(self._bus, session.id, joined, LinkResult())
         live = self._live.setdefault(session.id, LiveSession(session.id))
         live.start(
             lambda: self._turns.guard(
@@ -282,6 +303,41 @@ class SessionManager:
             )
         )
         return session
+
+    async def _place(self, repo: RepoConfig, request: CreateSession) -> Place | None:
+        """Where a new chat on an existing branch or worktree works (B96); None for any
+        other chat.
+        """
+        if request.on_branch is None and request.worktree_path is None:
+            return None
+        if request.on_branch is not None:
+            if not repo.git:
+                msg = f"{repo.name} is not a git repository, so it has no branches"
+                raise InvalidInputError(msg)
+            if (
+                request.branch is not None
+                or request.base is not None
+                or request.worktree_path is not None
+                or request.mode == "in_place"
+            ):
+                msg = "a chat on a branch takes no branch, base, worktree_path or in-place mode"
+                raise InvalidInputError(msg)
+            return await place_on_branch(
+                repo, request.on_branch, await self._bases(repo), self._worktrees
+            )
+        assert request.worktree_path is not None  # noqa: S101 (checked above)
+        if not repo.git:
+            msg = f"{repo.name} is not a git repository, so it has no worktrees to join"
+            raise InvalidInputError(msg)
+        if request.branch is not None or request.base is not None or request.mode == "in_place":
+            msg = "a chat joining a worktree takes no branch, base or in-place mode"
+            raise InvalidInputError(msg)
+        return await join_place(
+            repo, request.worktree_path, await self._bases(repo), self._worktrees
+        )
+
+    async def _bases(self, repo: RepoConfig) -> dict[Path, str]:
+        return await self._store.worktree_bases(repo.name)
 
     async def _worktree_start(
         self, repo: RepoConfig, mode: SessionMode, request: CreateSession
@@ -723,15 +779,13 @@ class SessionManager:
             await self._queue.clear(session_id)
             worktree = worktree_of(session)
             if remove_worktree and worktree is not None:
-                await self._worktrees.remove(
-                    self._repos.get(session.repo), worktree, delete_branch=True
-                )
+                await self._remove_worktree(self._repos.get(session.repo), session, worktree)
             return await self._states.set(session_id, SessionState.CLOSED)
 
     async def close_keeping_work(self, session_id: str) -> bool:
-        """Close the session; its worktree and branch are removed only when the worktree
-        holds no work (B41). Returns whether a worktree with work was kept. Checked after
-        the agent stopped, so it cannot add work meanwhile.
+        """Close the session; its worktree is removed only when it holds no work (B41), as
+        `_remove_worktree` allows. Returns whether its worktree was kept. Checked after the
+        agent stopped, so it cannot add work meanwhile.
         """
         session = await self.close(session_id, remove_worktree=False)
         worktree = worktree_of(session)
@@ -739,11 +793,13 @@ class SessionManager:
             return False
         if await self._worktrees.has_work(worktree):
             return True
-        await self._worktrees.remove(self._repos.get(session.repo), worktree, delete_branch=True)
-        return False
+        return not await self._remove_worktree(self._repos.get(session.repo), session, worktree)
 
-    async def purge(self, session_id: str) -> None:
-        """Delete the session for good: its run, worktree and branch, and all it stored."""
+    async def purge(self, session_id: str, along_with: Collection[str] = ()) -> None:
+        """Delete the session for good: its run, worktree and all it stored; its branch stays.
+        `along_with` are the other sessions deleted in the same operation: they do not keep
+        a worktree they share with this one.
+        """
         await self._store.get(session_id)
         self._limits.forget(session_id)
         async with self._stopped(session_id, "the session was deleted") as session:
@@ -752,12 +808,28 @@ class SessionManager:
                 # Without the repo's config git cannot clean up; the rest is deleted anyway.
                 with suppress(RepoNotFoundError):
                     repo = self._repos.get(session.repo)
-                    await self._worktrees.remove(repo, worktree, delete_branch=True)
+                    await self._remove_worktree(repo, session, worktree, along_with)
             await self._attachments.delete_files(session_id)
             await self._store.delete(session_id)
         await self._hooks.purged(session_id)
         # Not a session event: the session's events are gone with it.
         await self._bus.publish(types.SESSION_DELETED, {"session_id": session_id})
+
+    async def _remove_worktree(
+        self,
+        repo: RepoConfig,
+        session: Session,
+        worktree: Worktree,
+        along_with: Collection[str] = (),
+    ) -> bool:
+        """Remove the session's worktree unless another chat that is not closed (and not in
+        `along_with`) works in it, or Nest did not make it (B96). Returns whether it was
+        removed. Its branch always stays: Nest deletes no branch.
+        """
+        users = await self._store.worktree_users({session.id, *along_with})
+        if await asyncio.to_thread(_among, worktree.path, users):
+            return False
+        return await self._worktrees.remove(repo, worktree)
 
     @asynccontextmanager
     async def publishing(self, session_id: str) -> AsyncGenerator[None]:
@@ -1060,6 +1132,11 @@ class SessionManager:
             target = SessionState.WAITING if waiting else SessionState.RUNNING
             if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
                 await self._states.set(session_id, target)
+
+
+def _among(path: Path, paths: list[Path]) -> bool:
+    target = path.resolve()
+    return any(other.resolve() == target for other in paths)
 
 
 def _forked_worktree(session: Session) -> bool:

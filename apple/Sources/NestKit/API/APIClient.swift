@@ -86,7 +86,7 @@ public struct APIClient: NestAPI {
         try await call("PATCH", ["sessions", id], body: request)
     }
 
-    /// Deletes the session for good, with its worktree, branch and history.
+    /// Deletes the session for good, with its worktree and history; its branch stays.
     public func deleteSession(_ id: String) async throws {
         try await perform(
             "DELETE", ["sessions", id], query: [URLQueryItem(name: "purge", value: "true")])
@@ -372,6 +372,10 @@ public struct APIClient: NestAPI {
     public func repoBranches(_ name: String) async throws -> [String] {
         let list: BranchList = try await get("repos", name, "branches")
         return list.branches
+    }
+
+    public func repoBranchMap(_ name: String) async throws -> BranchMap {
+        try await get("repos", name, "branch-map")
     }
 
     public func storage() async throws -> StorageUsage {

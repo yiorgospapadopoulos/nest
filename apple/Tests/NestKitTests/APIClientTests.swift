@@ -120,6 +120,24 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase(
             "POST", "/api/sessions",
+            body:
+                #"{"attachment_ids":[],"mode":"worktree","prompt":"Go","repo":"cv-page","worktree_path":"/r/wt/a"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(
+                    repo: "cv-page", prompt: "Go", mode: .worktree, worktreePath: "/r/wt/a"))
+        },
+        RouteCase(
+            "POST", "/api/sessions",
+            body: #"{"attachment_ids":[],"on_branch":"main","prompt":"Go","repo":"cv-page"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(repo: "cv-page", prompt: "Go", onBranch: "main"))
+        },
+        RouteCase(
+            "POST", "/api/sessions",
             body: #"{"attachment_ids":[],"prompt":"Go","repo":"cv-page"}"#,
             response: sessionJSON
         ) {
@@ -420,7 +438,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             response: sessionJSON
         ) { _ = try await $0.feedback("s1", text: "Use a DAG") },
         RouteCase(
-            "POST", "/api/sessions/s1/merge", body: #"{"delete_branch":true,"method":"rebase"}"#,
+            "POST", "/api/sessions/s1/merge", body: #"{"delete_branch":false,"method":"rebase"}"#,
             response: sessionJSON
         ) { _ = try await $0.merge("s1", MergeRequest(method: .rebase)) },
         RouteCase("POST", "/api/sessions/s1/pr/refresh", response: sessionJSON) {
@@ -499,6 +517,9 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("GET", "/api/repos/cv-page/branches", response: #"{"branches": ["main"]}"#) {
             _ = try await $0.repoBranches("cv-page")
+        },
+        RouteCase("GET", "/api/repos/cv-page/branch-map", response: BranchMapFixture.json) {
+            _ = try await $0.repoBranchMap("cv-page")
         },
         RouteCase("GET", "/api/storage", response: storageJSON) { _ = try await $0.storage() },
         RouteCase("GET", "/api/storage/settings", response: #"{"archive_after_days": null}"#) {

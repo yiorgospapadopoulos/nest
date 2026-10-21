@@ -94,6 +94,8 @@ public enum EventType {
     public static let repoRemoved = "repo.removed"
     /// The projects were reordered on some device (D090).
     public static let reposReordered = "repos.reordered"
+    /// A project's branches or worktrees changed, made or removed anywhere (B96).
+    public static let repoBranchesChanged = "repo.branches_changed"
     public static let pixieUpdated = "pixie.updated"
     public static let pixieDeleted = "pixie.deleted"
     public static let pixieTeamUpdated = "pixie_team.updated"
@@ -183,6 +185,8 @@ public enum EventBody: Sendable, Hashable {
     /// A repo was registered, changed or removed, or the repos were reordered; the list is
     /// read again, whatever the payload holds.
     case reposChanged
+    /// The repo's branches or worktrees changed; its branch map is read again (B96).
+    case branchesChanged(repo: String)
     /// A muted line for the transcript.
     case sessionNotice(text: String)
     case workspace(SessionWorkspace)
@@ -283,6 +287,8 @@ public enum EventBody: Sendable, Hashable {
         case EventType.repoAdded, EventType.repoUpdated, EventType.repoRemoved,
             EventType.reposReordered:
             self = .reposChanged
+        case EventType.repoBranchesChanged:
+            self = .branchesChanged(repo: try field("name", as: String.self))
         case EventType.sessionNotice:
             self = .sessionNotice(text: try field("text", as: String.self))
         case EventType.sessionWorkspace:

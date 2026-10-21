@@ -22,6 +22,7 @@ public final class LiveSync {
     let accounts: AccountsStore
     let extensions: ExtensionsStore
     let configuration: ConfigurationStore
+    let branchMaps: BranchMapStore
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -39,7 +40,7 @@ public final class LiveSync {
         providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
         habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
-        configuration: ConfigurationStore, artifacts: ArtifactsStore
+        configuration: ConfigurationStore, artifacts: ArtifactsStore, branchMaps: BranchMapStore
     ) {
         self.source = source
         self.app = app
@@ -60,6 +61,7 @@ public final class LiveSync {
         self.extensions = extensions
         self.configuration = configuration
         self.artifacts = artifacts
+        self.branchMaps = branchMaps
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -91,8 +93,8 @@ public final class LiveSync {
 
     /// Reloads repos, sessions, approvals, connectors, the usage chart, Claude Code chats,
     /// pixies and their reports, and the artifacts, then the models, agent defaults and
-    /// account, the engines, their accounts with their limits (B98) and each chat's pixies,
-    /// which never fail the sync.
+    /// account, the engines, their accounts with their limits (B98), each chat's pixies and
+    /// the branch maps, which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
@@ -112,6 +114,7 @@ public final class LiveSync {
         await providers.load()
         try? await accounts.load()
         await chatPixies.load()
+        await branchMaps.reload()
     }
 
     /// The engines' logins and models, and the defaults the daemon may now resolve.
@@ -138,6 +141,7 @@ public final class LiveSync {
         extensions.apply(event)
         configuration.apply(event)
         artifacts.apply(event)
+        branchMaps.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -145,7 +149,8 @@ public final class LiveSync {
             app.forgetChat(id)
         case .notify(let notice):
             onNotice?(notice)
-        case .reposChanged:
+        case .reposChanged, .branchesChanged:
+            // A branch change may be the project folder's own, which its label shows.
             app.reloadRepos()
         case .codexAccount:
             // Signed in or out: the engines' lists and the defaults may change (B94).
@@ -205,6 +210,8 @@ public final class AppModel {
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
+    /// The projects' branch maps (B96).
+    public let branchMaps: BranchMapStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -247,13 +254,14 @@ public final class AppModel {
         configuration = ConfigurationStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
+        branchMaps = BranchMapStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
-            configuration: configuration, artifacts: artifacts)
+            configuration: configuration, artifacts: artifacts, branchMaps: branchMaps)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [visibility] in visibility.resend() }
     }

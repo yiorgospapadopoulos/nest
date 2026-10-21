@@ -737,22 +737,25 @@ private struct ComposerActions {
 }
 
 /// Where a new chat works, over its field (B55): a capsule selector with the branch icon,
-/// "Work on <branch>" (the project folder's current branch) or "New worktree", which
-/// always starts from that branch; a new worktree also takes an optional branch name.
+/// "Work on <branch>" (the project folder's current branch), "New worktree from <branch>"
+/// or a worktree's branch in its lane colour, chosen in the "Work on" picker of the
+/// project's branch map (B96); a new worktree also takes an optional branch name. Before
+/// the map loads, a menu offers the folder or a new worktree from its branch.
 struct WorkingCopyRow: View {
     @Bindable var draft: ComposerDraft
     let repo: Repo?
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        // No mode chosen works in place, the default (D038).
-        let worktree = draft.mode == .worktree
-        let inPlace = NewChatPlace.inPlaceTitle(repo)
         HStack(spacing: 8) {
-            PlaceSelector(title: worktree ? NewChatPlace.worktreeTitle : inPlace) {
-                PlaceItems(draft: draft, repo: repo)
+            if let repo, let picker = shell.branchMaps.picker(repo.name) {
+                WorkOnButton(draft: draft, repo: repo, picker: picker, quiet: false)
+            } else {
+                PlaceSelector(title: PlaceItems.title(draft, repo)) {
+                    PlaceItems(draft: draft, repo: repo)
+                }
             }
-            if worktree {
+            if case .newWorktree = draft.place {
                 BranchNameField(text: $draft.branchName)
             }
             Spacer(minLength: 0)
@@ -761,23 +764,26 @@ struct WorkingCopyRow: View {
     }
 }
 
-/// The empty workspace's place, in the row under its field (B90): "Work on <branch>" or
-/// "New worktree" as quiet text with its menu, and a new worktree's optional branch name.
+/// The empty workspace's place, in the row under its field (B90): the same choice as quiet
+/// text, and a new worktree's optional branch name.
 private struct StartPlace: View {
     @Bindable var draft: ComposerDraft
     let repo: Repo?
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let worktree = draft.mode == .worktree
         HStack(spacing: 6) {
-            QuietMenu(
-                title: worktree ? NewChatPlace.worktreeTitle : NewChatPlace.inPlaceTitle(repo),
-                help: "Where the chat works", chevron: true
-            ) {
-                PlaceItems(draft: draft, repo: repo)
+            if let repo, let picker = shell.branchMaps.picker(repo.name) {
+                WorkOnButton(draft: draft, repo: repo, picker: picker, quiet: true)
+            } else {
+                QuietMenu(
+                    title: PlaceItems.title(draft, repo), help: "Where the chat works",
+                    chevron: true
+                ) {
+                    PlaceItems(draft: draft, repo: repo)
+                }
             }
-            if worktree {
+            if case .newWorktree = draft.place {
                 BranchNameField(text: $draft.branchName)
             }
         }
@@ -785,30 +791,38 @@ private struct StartPlace: View {
     }
 }
 
-/// Work in the project folder (no mode chosen, the default, D038) or in a new worktree.
+/// Without the branch map: work in the project folder (the default, D038) or in a new
+/// worktree from its branch.
 private struct PlaceItems: View {
     let draft: ComposerDraft
     let repo: Repo?
 
+    static func title(_ draft: ComposerDraft, _ repo: Repo?) -> String {
+        draft.place == .inPlace ? NewChatPlace.inPlaceTitle(repo) : NewChatPlace.worktreeTitle
+    }
+
     var body: some View {
-        let worktree = draft.mode == .worktree
+        let inPlace = draft.place == .inPlace
         OptionItem(
             title: NewChatPlace.inPlaceTitle(repo), detail: NewChatPlace.inPlaceDetail(repo),
-            checked: !worktree
-        ) { draft.mode = .inPlace }
+            checked: inPlace
+        ) { draft.place = .inPlace }
         OptionItem(
             title: NewChatPlace.worktreeTitle, detail: NewChatPlace.worktreeDetail,
-            checked: worktree
-        ) { draft.mode = .worktree }
+            checked: !inPlace
+        ) { draft.place = .newWorktree(from: nil) }
     }
 }
 
 extension View {
-    /// The folder's branch may have changed in a terminal since the list was read.
+    /// The folder's branch may have changed in a terminal since the list was read; the
+    /// picker needs the project's branch map.
     fileprivate func reloadsBranch(of repo: Repo?, shell: Shell) -> some View {
         task(id: repo?.name) {
-            if repo != nil {
-                shell.app.reloadRepos()
+            guard let repo else { return }
+            shell.app.reloadRepos()
+            if repo.git {
+                await shell.branchMaps.load(repo.name)
             }
         }
     }

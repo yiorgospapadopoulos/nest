@@ -11,6 +11,8 @@ from secrets import token_hex
 
 from nestd.config.models import RepoConfig
 from nestd.errors import ConflictError, InvalidInputError
+from nestd.events import types
+from nestd.events.bus import EventBus
 from nestd.gitops.hardened import run_checkout_git, run_hardened_git
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
@@ -61,9 +63,21 @@ type RemovedHook = Callable[[Path], object]
 
 
 class WorktreeManager:
-    def __init__(self, paths: AppPaths, on_removed: RemovedHook | None = None) -> None:
+    def __init__(
+        self,
+        paths: AppPaths,
+        on_removed: RemovedHook | None = None,
+        bus: EventBus | None = None,
+    ) -> None:
+        """With `bus`, each worktree added or removed is announced as the repo's branches
+        changing (B96).
+        """
         self._paths = paths
         self._on_removed = on_removed
+        self._bus = bus
+        # One checkout of an existing branch at a time: of two for the same branch, the
+        # second sees the first's worktree and fails (B96).
+        self._checking_out = asyncio.Lock()
 
     async def create(
         self,
@@ -87,7 +101,27 @@ class WorktreeManager:
         base = base or await _base_commit(repo)
         branch = branch or branch_name(title)
         await run_checkout_git(["worktree", "add", "-q", "-b", branch, str(path), base], repo.path)
+        await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
+
+    async def check_out(
+        self, repo: RepoConfig, session_id: str, branch: str, base: str
+    ) -> Worktree:
+        """The existing local branch `branch` checked out in a new worktree at the same
+        place as `create`'s (B96); its work is compared with commit `base`. git refuses a
+        branch checked out elsewhere already.
+        """
+        await _exclude_worktrees(repo)
+        path = claude_worktrees_dir(repo.path) / f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        async with self._checking_out:
+            await run_checkout_git(["worktree", "add", "-q", str(path), branch], repo.path)
+        await self._branches_changed(repo)
+        return Worktree(path=path, branch=branch, base_ref=base)
+
+    async def has_branch(self, repo: RepoConfig, name: str) -> bool:
+        """Whether `repo` has the local branch `name`."""
+        return await _has_branch(repo, name)
 
     async def check_new_branch(self, repo: RepoConfig, name: str) -> None:
         """Refuse a name git would not take for a new branch, one an option could be read
@@ -131,22 +165,29 @@ class WorktreeManager:
             repo.worktree.setup_timeout_seconds,
         )
 
-    async def remove(self, repo: RepoConfig, worktree: Worktree, delete_branch: bool) -> None:
+    async def remove(self, repo: RepoConfig, worktree: Worktree) -> bool:
         """Remove the worktree; close its agent first, so exit hooks cannot recreate files.
+        Returns whether it was Nest's own: other worktrees are never touched (B96), such as
+        Claude Code's that a chat joined. Its branch always stays: Nest deletes no branch.
 
-        What is already gone (the directory, the branch) is skipped, so removing twice is fine.
+        What is already gone (the directory) is skipped, so removing twice is fine.
         Without the repo folder git cannot run; only the leftover directory is deleted.
         """
+        if not await asyncio.to_thread(self._owns, repo, worktree.path):
+            return False
         has_repo = await asyncio.to_thread(repo.path.is_dir)
         if has_repo and await asyncio.to_thread(_is_worktree, worktree.path):
             await run_hardened_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
-        await asyncio.to_thread(self._delete_leftovers, repo, worktree.path)
+        await asyncio.to_thread(self._delete_leftovers, worktree.path)
         await self._removed(worktree.path)
-        if not has_repo:
-            return
-        await run_hardened_git(["worktree", "prune"], repo.path)
-        if delete_branch and await _has_branch(repo, worktree.branch):
-            await run_hardened_git(["branch", "-D", worktree.branch], repo.path)
+        if has_repo:
+            await run_hardened_git(["worktree", "prune"], repo.path)
+        await self._branches_changed(repo)
+        return True
+
+    async def _branches_changed(self, repo: RepoConfig) -> None:
+        if self._bus is not None:
+            await self._bus.publish_ephemeral(types.REPO_BRANCHES_CHANGED, {"name": repo.name})
 
     async def _removed(self, path: Path) -> None:
         """Bookkeeping: its failure never keeps the worktree from being removed."""
@@ -157,19 +198,23 @@ class WorktreeManager:
         except Exception as error:
             logger.warning("cleaning up after the worktree %s failed (%s)", path, error)
 
-    def _delete_leftovers(self, repo: RepoConfig, path: Path) -> None:
-        """Delete what remains at a removed worktree's path, only where Nest puts them:
-        `<repo>/.claude/worktrees/nest-*` (`harness-*` before B43), or the data dir's
-        worktrees of earlier versions.
-        Claude Code's own worktrees next to them are never touched.
+    def _owns(self, repo: RepoConfig, path: Path) -> bool:
+        """Whether the worktree is where Nest puts its own: `<repo>/.claude/worktrees/nest-*`
+        (`harness-*` before B43), or the data dir's worktrees of earlier versions.
+        Claude Code's own worktrees next to them are not.
         """
         target = path.resolve()
         legacy = self._paths.worktrees_dir.resolve()
-        owned = (target.is_relative_to(legacy) and target != legacy) or (
+        return (target.is_relative_to(legacy) and target != legacy) or (
             target.parent == claude_worktrees_dir(repo.path.resolve())
             and target.name.startswith(OWNED_WORKTREE_PREFIXES)
         )
-        if owned and target.exists():
+
+    @staticmethod
+    def _delete_leftovers(path: Path) -> None:
+        """Delete what remains at a removed worktree's path (one of Nest's own)."""
+        target = path.resolve()
+        if target.exists():
             shutil.rmtree(target)
 
     async def head(self, repo: RepoConfig) -> str | None:

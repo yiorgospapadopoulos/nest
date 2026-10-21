@@ -240,6 +240,10 @@
                 try await renderAccounts(model, shell, controller, folder)
                 return
             }
+            if only == "b96" {
+                try await renderBranchMap(model, shell, controller, folder)
+                return
+            }
             if only == "b97" {
                 try await renderConfiguration(model, shell, controller, folder)
                 return
@@ -694,11 +698,11 @@
             }
             try await pair(controller, "b90-start", folder)
             let draft = shell.startDraft()
-            let mode = draft.mode
-            draft.mode = .worktree
+            let mode = draft.place
+            draft.place = .newWorktree(from: nil)
             draft.permission = .bypassPermissions
             try await snap(controller, "b90-start-worktree-dark", .darkAqua, folder)
-            draft.mode = mode
+            draft.place = mode
             draft.permission = model.agents.current.permissionMode
             try await pair(
                 controller, "b90-start-narrow", folder, size: CGSize(width: 1180, height: 820))
@@ -811,6 +815,65 @@
         /// header names its branch: the folder's current one in place, the worktree's
         /// otherwise (the icon only when narrow). New chats, in a pane and in the start
         /// box, offer "Work on <branch>" or "New worktree" with an optional branch name.
+        /// B96: the branch label closed and the branch map open, the chats' branches in their
+        /// lane colours; a hovered row's "New chat"; new chats started from the map in a
+        /// worktree and from a branch; the "Work on" picker, long enough to scroll.
+        private static func renderBranchMap(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            try await model.transcripts.transcript(for: "c1").load()
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c1", in: workspace)
+            }
+            await model.branchMaps.show("cv-page")
+            try await pair(controller, "b96-closed", folder)
+            model.branchMaps.toggle("cv-page")
+            try await pair(controller, "b96-open-all", folder)
+            if let lanes = model.branchMaps.lanes("cv-page") {
+                try await pairView(
+                    BranchMapPanel(project: "cv-page", lanes: lanes, hovered: "agent/dark-polish")
+                        .frame(width: 280).environment(shell), "b96-map-hover", folder)
+            }
+            // A click on a worktree's row: a new chat there, its branch in its lane colour.
+            if let polish = model.branchMaps.map("cv-page")?.branch("agent/dark-polish") {
+                shell.newChat(at: polish.newChatChoice)
+            }
+            try await pair(controller, "b96-new-chat-in-worktree", folder)
+            shell.closeFocused()
+            shell.newChat(at: .newWorktree(from: "release"))
+            try await pair(controller, "b96-new-chat-from-release", folder)
+            shell.closeFocused()
+            // A click on a branch row without a worktree: a new chat on that branch itself.
+            if let release = model.branchMaps.map("cv-page")?.branch("release") {
+                shell.newChat(at: release.newChatChoice)
+            }
+            try await pair(controller, "b96-new-chat-on-release", folder)
+            shell.closeFocused()
+            model.branchMaps.toggle("cv-page")
+            if let picker = model.branchMaps.picker("cv-page") {
+                try await pairView(
+                    PlacePickerList(
+                        project: "cv-page", picker: picker, selected: .inPlace, choose: { _ in }
+                    ).environment(shell), "b96-picker", folder)
+                try await pairView(
+                    PlacePickerList(
+                        project: "cv-page", picker: picker,
+                        selected: .newWorktree(from: "main"), choose: { _ in }
+                    ).environment(shell), "b96-picker-new-worktree", folder)
+                try await pairView(
+                    PlacePickerList(
+                        project: "cv-page", picker: picker, selected: .onBranch("main"),
+                        choose: { _ in }
+                    ).environment(shell), "b96-picker-on-branch", folder)
+            }
+        }
+
         private static func renderWorkingCopies(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -862,9 +925,9 @@
                 state.openChat("c1", in: workspace)
             }
             let draft = shell.newChat()
-            draft.mode = nil
+            draft.place = .inPlace
             try await pair(controller, "b55-pane-draft-branch", folder)
-            draft.mode = .worktree
+            draft.place = .newWorktree(from: nil)
             draft.branchName = "fix/contact-copy"
             try await pair(controller, "b55-pane-draft-worktree", folder)
 
@@ -873,12 +936,12 @@
                 state.rightCollapsed = false
             }
             let start = shell.startDraft()
-            let mode = start.mode
-            start.mode = .inPlace
+            let mode = start.place
+            start.place = .inPlace
             try await snap(controller, "b55-start-branch-light", .aqua, folder)
-            start.mode = .worktree
+            start.place = .newWorktree(from: nil)
             try await snap(controller, "b55-start-worktree-dark", .darkAqua, folder)
-            start.mode = mode
+            start.place = mode
         }
 
         /// B33: Always allow with Claude Code's rule, how a plan goes on, project settings,
@@ -2164,10 +2227,10 @@
             try await pair(controller, "b39-start-composer-typed", folder)
             draft.text = ""
             draft.attachments = []
-            let mode = draft.mode
-            draft.mode = .worktree
+            let mode = draft.place
+            draft.place = .newWorktree(from: nil)
             try await pair(controller, "b39-start-composer-worktree", folder)
-            draft.mode = mode
+            draft.place = mode
             for (percent, name) in [(0.85, "amber"), (0.95, "red")] {
                 let now = Date()
                 model.usage.apply(
