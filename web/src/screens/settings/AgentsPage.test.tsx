@@ -1,17 +1,64 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
+import type { PermissionMode } from "../../api/types.ts";
+import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { agentDefaults, stuckSettings } from "../../test/fixtures.ts";
+import {
+  agentDefaults,
+  claudeProvider,
+  codexProvider,
+  modelList,
+  stuckSettings,
+} from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openAccount = (api = fakeApi()) => openSettings("Agents", { api });
 
 const section = (name: string) => screen.getByRole("region", { name });
 
+// Codex's list, as the daemon serves it (B94): its own default model named.
+const codexModels = modelList({
+  default_model: "gpt-5.5",
+  models: [
+    {
+      value: "gpt-5.5",
+      display_name: "GPT-5.5",
+      description: "Codex's best",
+      effort_levels: ["low", "medium", "high"],
+      supports_effort: true,
+      supports_auto_mode: false,
+      claude_code_effort: null,
+    },
+    {
+      value: "gpt-5.5-mini",
+      display_name: "GPT-5.5 mini",
+      description: "Faster",
+      effort_levels: [],
+      supports_effort: false,
+      supports_auto_mode: false,
+      claude_code_effort: null,
+    },
+  ],
+});
+
+/** Claude's list names Opus 5.5 its default; with `codex`, Codex is signed in too. */
+function withEngines(codex = false, api = fakeApi()) {
+  api.models.mockImplementation((provider) =>
+    Promise.resolve(provider === "codex" ? codexModels : modelList({ default_model: "opus" })),
+  );
+  if (codex) api.providers.mockResolvedValue({ providers: [claudeProvider(), codexProvider()] });
+  return api;
+}
+
+const options = (select: HTMLElement) =>
+  within(select)
+    .getAllByRole("option")
+    .map((o) => o.textContent);
+
 describe("agent defaults", () => {
-  it("shows the current defaults with the engine's models", async () => {
-    const api = fakeApi();
+  it("shows the concrete defaults, with no default entries", async () => {
+    const api = withEngines();
     api.agentDefaults.mockResolvedValue(
       agentDefaults({ model: "opus", effort: "xhigh", permission_mode: "plan", mode: "worktree" }),
     );
@@ -19,22 +66,28 @@ describe("agent defaults", () => {
 
     const card = await screen.findByRole("region", { name: "New chats" });
     await waitFor(() => {
-      expect(within(card).getByLabelText("Model")).toHaveValue("opus");
+      expect(within(card).getByLabelText("Model")).toHaveDisplayValue("Opus 5.5");
     });
     const model = within(card).getByLabelText("Model");
-    expect(
-      within(model)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Default (recommended)", "Opus 5.5", "Haiku 4.5", "Opus 4.6"]);
+    // One engine: no sections.
+    expect(within(model).queryByRole("group")).toBeNull();
+    expect(options(model)).toEqual(["Opus 5.5", "Haiku 4.5", "Opus 4.6"]);
     expect(within(card).getByLabelText("Thinking")).toHaveValue("xhigh");
-    const thinking = within(card).getByLabelText("Thinking");
-    expect(
-      within(thinking)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Model default", "Low", "Medium", "High", "Extra high", "Max"]);
+    expect(options(within(card).getByLabelText("Thinking"))).toEqual([
+      "Low",
+      "Medium",
+      "High",
+      "Extra high",
+      "Max",
+    ]);
     expect(within(card).getByLabelText("Permissions")).toHaveValue("plan");
+    expect(options(within(card).getByLabelText("Permissions"))).toEqual([
+      "Ask",
+      "Accept edits",
+      "Plan",
+      "Bypass",
+      "Auto",
+    ]);
     expect(within(card).getByRole("button", { name: "New worktree" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -44,160 +97,175 @@ describe("agent defaults", () => {
         .getAllByRole("button")
         .map((b) => b.textContent),
     ).toEqual(["Current branch", "New worktree"]);
+    expect(card).not.toHaveTextContent(/default/i);
   });
 
-  it("saves each change, dropping a thinking level the new model does not take", async () => {
-    const api = fakeApi();
-    api.agentDefaults.mockResolvedValue(agentDefaults({ effort: "xhigh" }));
+  it("reads a default without a model, thinking or mode as what new chats get", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(agentDefaults({ permission_mode: null }));
+    await openAccount(api);
+
+    const card = await screen.findByRole("region", { name: "New chats" });
+    await waitFor(() => {
+      expect(within(card).getByLabelText("Model")).toHaveDisplayValue("Opus 5.5");
+    });
+    expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue("Medium");
+    expect(within(card).getByLabelText("Permissions")).toHaveDisplayValue("Ask");
+  });
+
+  it("offers a section per engine; a model sets the engine, thinking and mode follow it", async () => {
+    const api = withEngines(true);
+    api.agentDefaults.mockResolvedValue(
+      agentDefaults({ model: "opus", effort: "max", permission_mode: "auto" }),
+    );
+    const { user } = await openAccount(api);
+    const card = await screen.findByRole("region", { name: "New chats" });
+    const model = () => within(card).getByLabelText("Model");
+    await waitFor(() => {
+      expect(within(model()).getAllByRole("group")).toHaveLength(2);
+    });
+    expect(
+      within(model())
+        .getAllByRole("group")
+        .map((g) => g.getAttribute("label")),
+    ).toEqual(["Claude · Claude Max", "Codex · ChatGPT Plus"]);
+    expect(options(defined(within(model()).getAllByRole("group")[1]))).toEqual([
+      "GPT-5.5",
+      "GPT-5.5 mini",
+    ]);
+
+    await user.selectOptions(model(), "codex gpt-5.5");
+    expect(model()).toHaveDisplayValue("GPT-5.5");
+    // Max falls to High, the highest GPT-5.5 takes; Auto to Ask.
+    expect(within(card).getByLabelText("Thinking")).toHaveValue("high");
+    expect(options(within(card).getByLabelText("Permissions"))).not.toContain("Auto");
+    await user.selectOptions(model(), "codex gpt-5.5-mini");
+    expect(within(card).getByLabelText("Thinking")).toBeDisabled();
+    expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue("Not available");
+    await user.selectOptions(model(), "claude haiku");
+
+    expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
+      agentDefaults({
+        provider: "codex",
+        model: "gpt-5.5",
+        effort: "high",
+        permission_mode: "default",
+      }),
+      agentDefaults({
+        provider: "codex",
+        model: "gpt-5.5-mini",
+        effort: null,
+        permission_mode: "default",
+      }),
+      agentDefaults({
+        provider: "claude",
+        model: "haiku",
+        effort: null,
+        permission_mode: "default",
+      }),
+    ]);
+  });
+
+  it("names a signed out engine in its section", async () => {
+    const api = withEngines();
+    api.providers.mockResolvedValue({
+      providers: [claudeProvider({ account: null }), codexProvider({ signed_in: false })],
+    });
+    await openAccount(api);
+    const card = await screen.findByRole("region", { name: "New chats" });
+
+    await waitFor(() => {
+      expect(
+        within(within(card).getByLabelText("Model"))
+          .getAllByRole("group")
+          .map((g) => g.getAttribute("label")),
+      ).toEqual(["Claude", "Codex · Not signed in"]);
+    });
+  });
+
+  it("saves thinking, mode and where chats work", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "opus" }));
     const { user } = await openAccount(api);
     const card = await screen.findByRole("region", { name: "New chats" });
     await waitFor(() => {
-      expect(within(card).getByLabelText("Thinking")).toHaveValue("xhigh");
+      expect(within(card).getByLabelText("Model")).toHaveDisplayValue("Opus 5.5");
     });
 
-    await user.selectOptions(within(card).getByLabelText("Model"), "claude-opus-4-6");
     await user.selectOptions(within(card).getByLabelText("Thinking"), "max");
     await user.selectOptions(within(card).getByLabelText("Permissions"), "acceptEdits");
     await user.click(within(card).getByRole("button", { name: "New worktree" }));
-    await user.selectOptions(within(card).getByLabelText("Thinking"), "");
 
     expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
-      agentDefaults({ model: "claude-opus-4-6" }),
-      agentDefaults({ model: "claude-opus-4-6", effort: "max" }),
-      agentDefaults({ model: "claude-opus-4-6", effort: "max", permission_mode: "acceptEdits" }),
+      agentDefaults({ model: "opus", effort: "max" }),
+      agentDefaults({ model: "opus", effort: "max", permission_mode: "acceptEdits" }),
       agentDefaults({
-        model: "claude-opus-4-6",
+        model: "opus",
         effort: "max",
         permission_mode: "acceptEdits",
         mode: "worktree",
       }),
-      agentDefaults({ model: "claude-opus-4-6", permission_mode: "acceptEdits", mode: "worktree" }),
     ]);
   });
 
-  it("leaves the permission mode to Claude Code, and offers Auto where the model takes it", async () => {
-    const api = fakeApi();
-    api.agentDefaults.mockResolvedValue(agentDefaults({ permission_mode: null }));
-    const { user } = await openAccount(api);
-    const card = await screen.findByRole("region", { name: "New chats" });
-    const permission = () => within(card).getByLabelText("Permissions");
-    await waitFor(() => {
-      expect(permission()).toHaveDisplayValue("Claude Code default");
-    });
-    expect(
-      within(permission())
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["Claude Code default", "Ask", "Accept edits", "Plan", "Bypass", "Auto"]);
-
-    await user.selectOptions(permission(), "auto");
-    await user.selectOptions(within(card).getByLabelText("Model"), "haiku");
-    expect(within(permission()).queryByRole("option", { name: "Auto" })).toBeNull();
-    await user.selectOptions(permission(), "plan");
-    await user.selectOptions(permission(), "");
-
-    expect(api.saveAgentDefaults.mock.calls.map(([body]) => body)).toEqual([
-      agentDefaults({ permission_mode: "auto" }),
-      // Haiku does not take Auto, so the mode goes back to Claude Code's.
-      agentDefaults({ model: "haiku", permission_mode: null }),
-      agentDefaults({ model: "haiku", permission_mode: "plan" }),
-      agentDefaults({ model: "haiku", permission_mode: null }),
-    ]);
-  });
-
-  it("names the thinking level Claude Code gives the model by default", async () => {
-    const api = fakeApi();
-    const { user } = await openAccount(api);
-    const card = await screen.findByRole("region", { name: "New chats" });
-    const thinking = () => within(card).getByLabelText("Thinking");
-    await waitFor(() => {
-      expect(thinking()).toHaveDisplayValue("Model default (High, from Claude Code)");
-    });
-
-    await user.selectOptions(within(card).getByLabelText("Model"), "opus");
-    expect(thinking()).toHaveDisplayValue("Model default");
-    await user.selectOptions(within(card).getByLabelText("Model"), "claude-opus-4-6");
-    expect(thinking()).toHaveDisplayValue("Model default (Medium, from Claude Code)");
-  });
-
-  it("has no thinking for Haiku", async () => {
-    const api = fakeApi();
-    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "haiku" }));
-    await openAccount(api);
-
-    const card = await screen.findByRole("region", { name: "New chats" });
-    await waitFor(() => {
-      expect(within(card).getByLabelText("Thinking")).toBeDisabled();
-    });
-    expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue(
-      "Not available for this model",
+  it("keeps a model, a level and a mode the list does not offer", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(
+      agentDefaults({ model: "claude-x", effort: "low", permission_mode: "auto" }),
     );
-  });
-
-  it("keeps a model the list does not know", async () => {
-    const api = fakeApi();
-    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "claude-x", effort: "low" }));
     await openAccount(api);
 
     const card = await screen.findByRole("region", { name: "New chats" });
     await waitFor(() => {
-      expect(within(card).getByLabelText("Model")).toHaveValue("claude-x");
+      expect(within(card).getByLabelText("Model")).toHaveDisplayValue("claude-x");
     });
     expect(within(card).getByLabelText("Thinking")).toHaveValue("low");
+    // The list does not say claude-x takes Auto; the saved mode still shows.
+    expect(within(card).getByLabelText("Permissions")).toHaveDisplayValue("Auto");
+  });
+
+  it("shows a mode this app does not know as it is", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(
+      agentDefaults({ model: "opus", permission_mode: "dontAsk" as PermissionMode }),
+    );
+    await openAccount(api);
+
+    const card = await screen.findByRole("region", { name: "New chats" });
+    await waitFor(() => {
+      expect(within(card).getByLabelText("Permissions")).toHaveDisplayValue("dontAsk");
+    });
+  });
+
+  it("keeps a thinking level the model does not list", async () => {
+    const api = withEngines();
+    api.agentDefaults.mockResolvedValue(
+      agentDefaults({ model: "claude-opus-4-6", effort: "xhigh" }),
+    );
+    await openAccount(api);
+
+    const card = await screen.findByRole("region", { name: "New chats" });
+    await waitFor(() => {
+      expect(within(card).getByLabelText("Thinking")).toHaveDisplayValue("Extra high");
+    });
   });
 
   it("keeps working without the model list", async () => {
     const api = fakeApi();
     api.models.mockRejectedValue(new Error("offline"));
-    await openAccount(api);
-
-    const card = await screen.findByRole("region", { name: "New chats" });
-    await waitFor(() => {
-      expect(within(card).getByLabelText("Model")).toHaveValue("default");
-    });
-    const model = within(card).getByLabelText("Model");
-    expect(
-      within(model)
-        .getAllByRole("option")
-        .map((o) => o.textContent),
-    ).toEqual(["default"]);
-    expect(within(within(card).getByLabelText("Thinking")).getAllByRole("option")).toHaveLength(6);
-  });
-
-  it("keeps Auto while the model list is unknown", async () => {
-    const api = fakeApi();
-    api.models.mockRejectedValue(new Error("offline"));
-    api.agentDefaults.mockResolvedValue(agentDefaults({ permission_mode: "auto" }));
-    await openAccount(api);
-
-    const card = await screen.findByRole("region", { name: "New chats" });
-    await waitFor(() => {
-      expect(within(card).getByLabelText("Permissions")).toHaveValue("auto");
-    });
-    expect(within(card).getByLabelText("Permissions")).toHaveDisplayValue("Auto");
-  });
-
-  it("keeps Auto when another default changes while the model list is unknown", async () => {
-    const api = fakeApi();
-    api.models.mockRejectedValue(new Error("offline"));
-    api.agentDefaults.mockResolvedValue(
-      agentDefaults({ permission_mode: "auto", mode: "in_place" }),
-    );
     const { user } = await openAccount(api);
+
     const card = await screen.findByRole("region", { name: "New chats" });
     await waitFor(() => {
-      expect(within(card).getByLabelText("Permissions")).toHaveValue("auto");
+      expect(within(card).getByLabelText("Model")).toHaveDisplayValue("Model");
     });
-
+    expect(options(within(card).getByLabelText("Thinking"))).toHaveLength(5);
     await user.click(within(card).getByRole("button", { name: "New worktree" }));
-
-    expect(api.saveAgentDefaults).toHaveBeenCalledWith(
-      agentDefaults({ permission_mode: "auto", mode: "worktree" }),
-    );
+    expect(api.saveAgentDefaults).toHaveBeenCalledWith(agentDefaults({ mode: "worktree" }));
   });
 
   it("puts the previous defaults back when the Mac refuses", async () => {
-    const api = fakeApi();
+    const api = withEngines();
     api.saveAgentDefaults.mockRejectedValue(
       new ApiError(422, "Haiku 4.5 does not take a thinking level"),
     );

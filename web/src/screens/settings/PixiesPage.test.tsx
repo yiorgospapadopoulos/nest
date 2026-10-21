@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { pixie, pixieDefaults } from "../../test/fixtures.ts";
+import { modelList, pixie, pixieDefaults } from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openPixies = (api = fakeApi()) => openSettings("Pixies", { api });
@@ -67,12 +67,15 @@ describe("pixie list", () => {
 describe("new pixie defaults", () => {
   it("shows and saves what new pixies start with", async () => {
     const api = fakeApi();
+    api.models.mockResolvedValue(modelList({ default_model: "haiku" }));
     const { user } = await openPixies(api);
     const start = await screen.findByRole("region", { name: "New pixies start with" });
 
+    // Claude's real models (B94): no "Same as Agents"; none reads as Claude's default model.
     await waitFor(() => {
-      expect(options("Model")).toEqual(["Same as Agents", "Opus 5.5", "Haiku 4.5", "Opus 4.6"]);
+      expect(options("Model")).toEqual(["Opus 5.5", "Haiku 4.5", "Opus 4.6"]);
     });
+    expect(screen.getByLabelText("Model")).toHaveDisplayValue("Haiku 4.5");
     expect(options("Autonomy")).toEqual(["Observe", "Message", "Start", "Answer"]);
     expect(options("Chats running at once")).toEqual(["1", "2", "3", "5"]);
     expect(options("Chats started per day")).toEqual(["3", "5", "10", "20"]);
@@ -127,7 +130,7 @@ describe("new pixie defaults", () => {
     const { user } = await openPixies(api);
 
     await screen.findByRole("region", { name: "Habits" });
-    expect(options("Model")).toEqual(["Same as Agents"]);
+    expect(options("Model")).toEqual(["Model"]);
     await user.click(screen.getByRole("switch", { name: "Pause all habits" }));
 
     expect(await screen.findByText("settings.toml broke")).toBeInTheDocument();

@@ -8,6 +8,7 @@ import { registerServiceWorker } from "./pwa/register.ts";
 import "./styles/base.css";
 import "./styles/chat.css";
 import "./styles/screens.css";
+import "./styles/settings.css";
 
 const rootElement = document.getElementById("root");
 if (rootElement === null) {

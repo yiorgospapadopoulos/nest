@@ -1,17 +1,25 @@
-import type { AgentDefaults, Effort, PermissionMode, SessionMode } from "../../api/types.ts";
+import { Fragment } from "react";
+import type {
+  AgentDefaults,
+  Effort,
+  ModelOption,
+  PermissionMode,
+  SessionMode,
+} from "../../api/types.ts";
+import {
+  CLAUDE,
+  effortAfterSwitching,
+  modelLabel,
+  standardEffort,
+  supportsAuto,
+  thinkingLevels,
+  type ModelCatalog,
+} from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
+import { catalogFor, modelSections } from "../../store/selectors.ts";
+import { effortLabel, PERMISSIONS } from "../chat/options.ts";
 import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
 import { StuckChats } from "./StuckChats.tsx";
-import {
-  CLAUDE_CODE_MODE,
-  CLAUDE_DEFAULT,
-  effortLabel,
-  labelOf,
-  modelDefaultEffort,
-  permissionOptions,
-  takesAuto,
-  thinkingLevels,
-} from "../chat/options.ts";
 
 const MODES: Choice<SessionMode>[] = [
   { value: "in_place", label: "Current branch" },
@@ -30,33 +38,48 @@ export function AgentsPage() {
   );
 }
 
+// A model's choice in the menu: its engine and its value, which has no spaces.
+const choiceOf = (provider: string, model: string) => `${provider} ${model}`;
+
+/**
+ * What new chats start with (B94, B102 items 27, 28): real choices only. The model menu has
+ * a section per engine, and the model chosen picks the engine new chats run on; Thinking
+ * and Permissions follow that model.
+ */
 function Choices({ defaults }: { defaults: AgentDefaults }) {
   const { state, actions } = useStore();
-  const models = state.models ?? [];
-  const model = defaults.model ?? CLAUDE_DEFAULT;
-  const levels = thinkingLevels(state.models, model);
+  const provider = defaults.provider ?? CLAUDE;
+  const catalog = catalogFor(state, provider);
+  const model = defaults.model ?? catalog.defaultModel;
+  const sections = modelSections(state, provider, true);
+  const levels = thinkingLevels(catalog, model);
+  const effort = defaults.effort ?? standardEffort(levels);
+  const permission = defaults.permission_mode ?? "default";
+  const modes = PERMISSIONS.filter((o) => o.value !== "auto" || supportsAuto(catalog, model));
+  const listed = sections.some(
+    (section) => section.provider === provider && isListed(section.catalog, model),
+  );
   const save = (change: Partial<AgentDefaults>) => {
-    const next = { ...defaults, ...change };
-    // A thinking level the newly chosen model does not take is dropped.
-    if (next.effort !== null && !thinkingLevels(state.models, next.model).includes(next.effort)) {
-      next.effort = null;
-    }
-    // So is Auto, which goes back to Claude Code's own mode; only a known model list says
-    // the model does not take it.
-    if (
-      next.permission_mode === "auto" &&
-      state.models !== null &&
-      !takesAuto(state.models, next.model)
-    ) {
-      next.permission_mode = null;
-    }
-    void actions.saveAgentDefaults(next, defaults);
+    void actions.saveAgentDefaults({ ...defaults, ...change }, defaults);
   };
-  const listed = models.some((m) => m.value === model);
-  // A saved mode the model list does not offer (yet) still shows as it is.
-  const modes = permissionOptions(state.models, model);
-  const modeListed =
-    defaults.permission_mode === null || modes.some((o) => o.value === defaults.permission_mode);
+  const choose = (value: string) => {
+    const at = value.indexOf(" ");
+    const engine = value.slice(0, at);
+    const chosen = value.slice(at + 1);
+    const own = catalogFor(state, engine);
+    save({
+      provider: engine,
+      model: chosen,
+      effort: effortAfterSwitching(own, defaults.effort, chosen),
+      permission_mode: permission === "auto" && !supportsAuto(own, chosen) ? "default" : permission,
+    });
+  };
+  const items = (models: ModelOption[], engine: string) =>
+    models.map((m) => (
+      <option key={m.value} value={choiceOf(engine, m.value)}>
+        {m.display_name}
+      </option>
+    ));
   return (
     <Section title="New chats">
       <div className="srow">
@@ -64,41 +87,55 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         <select
           id="default-model"
           className="ssel"
-          value={model}
+          value={choiceOf(provider, model ?? "")}
           onChange={(event) => {
-            save({ model: event.target.value });
+            choose(event.target.value);
           }}
         >
-          {models.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.display_name}
-            </option>
-          ))}
-          {!listed && <option value={model}>{model}</option>}
+          {sections.map((section) =>
+            sections.length === 1 ? (
+              <Fragment key={section.provider}>
+                {items(section.catalog.models, section.provider)}
+              </Fragment>
+            ) : (
+              <optgroup
+                key={section.provider}
+                label={
+                  section.detail === "" ? section.title : `${section.title} · ${section.detail}`
+                }
+              >
+                {items(section.catalog.models, section.provider)}
+              </optgroup>
+            ),
+          )}
+          {!listed && (
+            <option value={choiceOf(provider, model ?? "")}>{modelLabel(catalog, model)}</option>
+          )}
         </select>
       </div>
       <div className="srow">
         <label htmlFor="default-effort">Thinking</label>
         {levels.length === 0 ? (
           <select id="default-effort" className="ssel" disabled value="">
-            <option value="">Not available for this model</option>
+            <option value="">Not available</option>
           </select>
         ) : (
           <select
             id="default-effort"
             className="ssel"
-            value={defaults.effort ?? ""}
+            value={String(effort)}
             onChange={(event) => {
-              const value = event.target.value;
-              save({ effort: value === "" ? null : (value as Effort) });
+              save({ effort: event.target.value as Effort });
             }}
           >
-            <option value="">{modelDefaultEffort(state.models, model)}</option>
             {levels.map((level) => (
               <option key={level} value={level}>
                 {effortLabel(level)}
               </option>
             ))}
+            {effort !== null && !levels.includes(effort) && (
+              <option value={effort}>{effortLabel(effort)}</option>
+            )}
           </select>
         )}
       </div>
@@ -107,21 +144,19 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         <select
           id="default-permission"
           className="ssel"
-          value={defaults.permission_mode ?? ""}
+          value={permission}
           onChange={(event) => {
-            const value = event.target.value;
-            save({ permission_mode: value === "" ? null : (value as PermissionMode) });
+            save({ permission_mode: event.target.value as PermissionMode });
           }}
         >
-          <option value="">{CLAUDE_CODE_MODE}</option>
           {modes.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-          {!modeListed && (
-            <option value={String(defaults.permission_mode)}>
-              {labelOf("permission", defaults.permission_mode, state.models)}
+          {!modes.some((o) => o.value === permission) && (
+            <option value={permission}>
+              {PERMISSIONS.find((o) => o.value === permission)?.label ?? permission}
             </option>
           )}
         </select>
@@ -136,4 +171,8 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
       />
     </Section>
   );
+}
+
+function isListed(catalog: ModelCatalog, model: string | null): boolean {
+  return catalog.models.some((m) => m.value === model);
 }

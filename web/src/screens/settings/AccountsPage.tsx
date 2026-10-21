@@ -1,26 +1,89 @@
 import { useState } from "react";
-import type { ClaudeAccount, GithubAccount, GithubState } from "../../api/types.ts";
+import type { ClaudeAccount, CodexAccount, GithubAccount, GithubState } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import type { Tone } from "../../store/selectors.ts";
-import { Pill } from "../../ui/bits.tsx";
 import { Confirm } from "../pixies/Confirm.tsx";
-import { Loading, Row, Section } from "./rows.tsx";
+import { Loading, Row, Section, Status, type StatusTone } from "./rows.tsx";
 
-const GITHUB: Record<GithubState, { tone: Tone; label: string }> = {
-  signed_in: { tone: "rev", label: "Signed in" },
+const GITHUB: Record<GithubState, { tone: StatusTone; label: string }> = {
+  signed_in: { tone: "ok", label: "Signed in" },
   signed_out: { tone: "wait", label: "Signed out" },
-  unavailable: { tone: "fail", label: "gh not installed" },
+  unavailable: { tone: "bad", label: "gh not installed" },
 };
 
-/** Claude Code's login and the GitHub login, as the Mac has them; Nest stores neither. */
+/**
+ * Claude Code's login, Codex's (B94) and the GitHub login, as the Mac has them; Nest stores
+ * none of them.
+ */
 export function AccountsPage() {
   const { state } = useStore();
-  const { claude, github } = state.settings;
+  const { claude, codex, github } = state.settings;
   return (
     <>
       {claude === null ? <Loading title="Claude" /> : <Claude account={claude} />}
+      {codex === null ? <Loading title="Codex" /> : <Codex account={codex} />}
       {github === null ? <Loading title="GitHub" /> : <GitHub account={github} />}
     </>
+  );
+}
+
+const CODEX_STATE = {
+  true: { tone: "ok", label: "Signed in" },
+  false: { tone: "wait", label: "Signed out" },
+  null: { tone: "idle", label: "Not checked" },
+} as const;
+
+/**
+ * Codex's ChatGPT sign-in (B102 item 26): its callback is local to the Mac, so the phone
+ * shows the status, signs out, and says where to sign in.
+ */
+function Codex({ account }: { account: CodexAccount }) {
+  const { actions } = useStore();
+  const [asking, setAsking] = useState(false);
+  const status = CODEX_STATE[String(account.signed_in) as keyof typeof CODEX_STATE];
+  const email = account.email === null || account.email === "" ? null : account.email;
+  return (
+    <Section title="Codex">
+      <Row
+        label={
+          <>
+            <span>{email ?? "Codex"}</span>
+            {account.plan !== null && <span className="hint">{account.plan}</span>}
+          </>
+        }
+      >
+        <Status tone={status.tone} label={status.label} />
+        {account.signed_in === true && (
+          <button
+            className="b"
+            aria-label="Sign out of Codex"
+            onClick={() => {
+              setAsking(true);
+            }}
+          >
+            Sign out
+          </button>
+        )}
+      </Row>
+      {account.signed_in === false && (
+        <p className="srow note">Sign in to Codex on the Mac, in Settings &gt; Accounts.</p>
+      )}
+      {typeof account.error === "string" && (
+        <p className="srow note" role="alert">
+          {account.error}
+        </p>
+      )}
+      {asking && (
+        <Confirm
+          title="Sign out of Codex?"
+          about="Codex on this Mac signs out too. Codex chats cannot run until you sign in again."
+          action="Sign out"
+          onConfirm={() => void actions.codexLogout()}
+          onClose={() => {
+            setAsking(false);
+          }}
+        />
+      )}
+    </Section>
   );
 }
 
@@ -34,7 +97,7 @@ function Claude({ account }: { account: ClaudeAccount }) {
       {account.signed_in ? (
         <>
           <Row label={name}>
-            <Pill tone="rev" label="Signed in" />
+            <Status tone="ok" label="Signed in" />
             <button
               className="b"
               onClick={() => {
@@ -101,7 +164,7 @@ function GitHub({ account }: { account: GithubAccount }) {
   return (
     <Section title="GitHub">
       <Row label={account.login ?? "GitHub"}>
-        <Pill tone={status.tone} label={status.label} />
+        <Status tone={status.tone} label={status.label} />
         <button
           className="b"
           disabled={checking}

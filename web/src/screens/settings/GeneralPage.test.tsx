@@ -26,8 +26,8 @@ describe("settings list", () => {
       "Storage",
       "Pixies",
       "Accounts",
-      "Extensions",
       "Devices",
+      "Configuration",
     ]);
     const projects = screen.getByRole("region", { name: "Projects" });
     expect(

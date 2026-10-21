@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { Autonomy, PixieDefaults, ProjectAccess } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { pixieList } from "../../store/selectors.ts";
+import { CLAUDE, modelLabel } from "../../store/catalog.ts";
+import { catalogFor, pixieList } from "../../store/selectors.ts";
 import { AUTONOMY, PROJECT_ACCESS } from "../pixies/options.ts";
 import type { PixieTab } from "../pixies/PixieView.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
-import { CLAUDE_DEFAULT } from "../chat/options.ts";
 import { Loading, Section, SegRow, SelectRow, SwitchRow, type Choice } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
 
@@ -94,24 +94,20 @@ function Defaults({ settings }: { settings: PixieDefaults }) {
   const { state, actions } = useStore();
   const save = (change: Partial<PixieDefaults>) =>
     void actions.saveSection("pixies", { ...settings, ...change }, settings);
-  const models = state.models ?? [];
-  const listed = settings.model === null || models.some((m) => m.value === settings.model);
+  // Claude's real models: new pixies run on Claude, and none reads as its default (B94).
+  const catalog = catalogFor(state, CLAUDE);
+  const model = settings.model ?? catalog.defaultModel;
+  const listed = catalog.models.some((m) => m.value === model);
   const modelChoices: Choice<string | null>[] = [
-    { value: null, label: "Same as Agents" },
-    ...models
-      .filter((m) => m.value !== CLAUDE_DEFAULT)
-      .map((m) => ({
-        value: m.value,
-        label: m.display_name,
-      })),
-    ...(listed ? [] : [{ value: settings.model, label: String(settings.model) }]),
+    ...catalog.models.map((m) => ({ value: m.value, label: m.display_name })),
+    ...(listed ? [] : [{ value: model, label: modelLabel(catalog, model) }]),
   ];
   return (
     <>
       <Section title="New pixies start with">
         <SelectRow
           label="Model"
-          value={settings.model}
+          value={model}
           choices={modelChoices}
           onChange={(model) => {
             save({ model });

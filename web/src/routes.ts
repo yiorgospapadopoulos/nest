@@ -1,13 +1,14 @@
 // App paths, so notifications can open an item and a reload lands where the user was:
 // /inbox, /projects, /settings, /settings/<page>, /settings/projects/<project>,
 // /settings/usage/details (the usage breakdown, B84; its old /settings/agents/usage still
-// opens it, B86),
+// opens it, B86; /settings/extensions opens Configuration, B102),
 // /chat/<session id> and /pixie/<pixie id>. /account, the Settings tab's old name, still
 // opens Settings (B81).
 
 export type Tab = "inbox" | "projects" | "settings";
 
-// The Settings pages, in the order the list shows them (B81).
+// The Settings pages, in the order the list shows them (B81), as the Mac's: Configuration
+// replaced Extensions (B102).
 export const SETTINGS_PAGES = [
   "general",
   "appearance",
@@ -17,8 +18,8 @@ export const SETTINGS_PAGES = [
   "storage",
   "pixies",
   "accounts",
-  "extensions",
   "devices",
+  "configuration",
 ] as const;
 
 export type SettingsPageId = (typeof SETTINGS_PAGES)[number];
@@ -59,7 +60,7 @@ function settingsRoute(rest: string[]): Route {
   if (details && more.length === 0) {
     return { tab: "settings", chat: null, settings: { detail: "usage" } };
   }
-  const page = SETTINGS_PAGES.find((id) => id === first);
+  const page = first === "extensions" ? "configuration" : SETTINGS_PAGES.find((id) => id === first);
   return page !== undefined && second === undefined
     ? { tab: "settings", chat: null, settings: { page } }
     : INBOX;
