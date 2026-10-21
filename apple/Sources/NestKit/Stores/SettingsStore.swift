@@ -24,7 +24,10 @@ public final class SettingsStore {
         static let backgroundGrain = "appearance.background.grain"
         static let backgroundProjects = "appearance.background.projects"
         static let sidebarWidth = "sidebar.width"
+        /// The engines unchecked before B98, read once to seed the accounts' checks.
         static let usageMeterHidden = "usage.meter.hidden"
+        static let usageMeterOrder = "usage.meter.order"
+        static let usageMeterShown = "usage.meter.shown"
     }
 
     public var theme: ThemeMode {
@@ -49,26 +52,29 @@ public final class SettingsStore {
         didSet { save(String(sidebarWidth), Key.sidebarWidth) }
     }
 
-    /// The engines unchecked for the usage meter at the top right (B94), on this Mac only.
-    /// Kept as the engines left out, so an engine added later starts shown.
-    public private(set) var usageMeterHidden: Set<String> {
-        didSet {
-            save(
-                usageMeterHidden.isEmpty ? nil : usageMeterHidden.sorted().joined(separator: ","),
-                Key.usageMeterHidden)
-        }
-    }
+    /// The accounts the usage meter at the top right shows, in their order (B98), on this
+    /// Mac only.
+    public private(set) var usageMeter: UsageMeterChoice
 
-    public func showsInUsageMeter(_ engine: String) -> Bool {
-        !usageMeterHidden.contains(engine)
-    }
-
-    public func setUsageMeter(_ engine: String, shown: Bool) {
+    /// Checks or unchecks an account of `entries`, the list as shown. The first check made
+    /// keeps the others as they were shown, and from then on the default no longer applies.
+    public func setUsageMeter(_ id: String, shown: Bool, entries: [MeterAccount]) {
+        var checked = usageMeter.shown ?? Set(entries.filter(\.shown).map(\.id))
         if shown {
-            usageMeterHidden.remove(engine)
+            checked.insert(id)
         } else {
-            usageMeterHidden.insert(engine)
+            checked.remove(id)
         }
+        usageMeter.shown = checked
+        usageMeter.hiddenEngines = []
+        save(checked.sorted().joined(separator: ","), Key.usageMeterShown)
+        save(nil, Key.usageMeterHidden)
+    }
+
+    /// The accounts' ids in the order the user put them.
+    public func orderUsageMeter(_ ids: [String]) {
+        usageMeter.order = ids
+        save(ids.joined(separator: ","), Key.usageMeterOrder)
     }
 
     /// Which notices reach macOS notifications.
@@ -92,9 +98,13 @@ public final class SettingsStore {
         showAutomatedChats = store.string(forKey: Key.automatedChats) == "on"
         chatBackground = Self.loadChatBackground(from: store)
         sidebarWidth = SidebarWidth.stored(store.string(forKey: Key.sidebarWidth))
-        usageMeterHidden = Set(
-            (store.string(forKey: Key.usageMeterHidden) ?? "")
-                .split(separator: ",").map(String.init))
+        func list(_ key: String) -> [String]? {
+            store.string(forKey: key).map { $0.split(separator: ",").map(String.init) }
+        }
+        usageMeter = UsageMeterChoice(
+            order: list(Key.usageMeterOrder) ?? [],
+            shown: list(Key.usageMeterShown).map(Set.init),
+            hiddenEngines: Set(list(Key.usageMeterHidden) ?? []))
         var notifications = NotificationPreferences()
         for (name, path) in NotificationPreferences.fields {
             if let stored = store.string(forKey: Key.notifications + name) {

@@ -6,15 +6,14 @@ starts `claude auth login`, which opens the browser on the Mac.
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from nestd.claude_code.cli import ClaudeCli, ClaudeCliError
 from nestd.clock import Clock
 from nestd.errors import ConflictError
-from nestd.events import types
-from nestd.events.bus import EventBus
 from nestd.providers.claude_engine import plan_label
 
 
@@ -43,15 +42,34 @@ class _AuthStatus(BaseModel):
     authMethod: str | None = None  # noqa: N815
 
 
+# Hears each sign in's outcome and each sign out, with the error a sign in ended with.
+type Announce = Callable[[ClaudeAccountStatus, str | None], Awaitable[None]]
+
+
 class ClaudeAccount:
-    def __init__(self, cli: ClaudeCli, bus: EventBus, clock: Clock) -> None:
+    """One Claude account (B98): the first one with Claude Code's own environment, an
+    added one with `env` pointing Claude Code at its profile folder, on every command.
+    """
+
+    def __init__(
+        self,
+        cli: ClaudeCli,
+        clock: Clock,
+        announce: Announce,
+        env: Mapping[str, str] | None = None,
+    ) -> None:
         self._cli = cli
-        self._bus = bus
         self._clock = clock
+        self._announce = announce
+        self._env = dict(env or {})
         self._login: asyncio.Task[None] | None = None
 
+    @property
+    def signing_in(self) -> bool:
+        return self._login is not None
+
     async def status(self) -> ClaudeAccountStatus:
-        output = await self._cli.run(["auth", "status", "--json"])
+        output = await self._cli.run(["auth", "status", "--json"], env=self._env)
         try:
             raw = _AuthStatus.model_validate(json.loads(output))
         except (ValueError, ValidationError) as error:
@@ -67,16 +85,25 @@ class ClaudeAccount:
         )
 
     async def login(self) -> None:
-        """Start `claude auth login --claudeai`; 409 while one runs. The outcome comes as
-        `account.claude`.
+        """Start `claude auth login --claudeai`; 409 while one runs. The outcome is
+        announced.
         """
         if self._login is not None:
             msg = "a sign in is already in progress"
             raise SignInRunningError(msg)
         self._login = asyncio.create_task(self._signing_in())
 
+    async def cancel(self) -> None:
+        """Stop the sign in that runs, if one does; announced without an error."""
+        task = self._login
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await self._announce(await self._status_or_signed_out(), None)
+
     async def logout(self) -> ClaudeAccountStatus:
-        await self._cli.run(["auth", "logout"])
+        await self._cli.run(["auth", "logout"], env=self._env)
         status = await self.status()
         await self._announce(status, None)
         return status
@@ -91,25 +118,31 @@ class ClaudeAccount:
         try:
             error: str | None = None
             try:
-                await self._cli.run(["auth", "login", "--claudeai"], long=True)
+                await self._cli.sign_in(["auth", "login", "--claudeai"], self._env)
             except ClaudeCliError as failure:
                 error = str(failure)
             try:
                 status = await self.status()
             except ClaudeCliError as failure:
                 error = error or str(failure)
-                status = ClaudeAccountStatus(
-                    signed_in=False,
-                    email=None,
-                    organization=None,
-                    plan=None,
-                    method=None,
-                    checked_at=self._clock.now(),
-                )
-            await self._announce(status, error)
+                status = self._signed_out()
         finally:
             self._login = None
+        # Once it no longer runs: hearing the outcome may remove the account.
+        await self._announce(status, error)
 
-    async def _announce(self, status: ClaudeAccountStatus, error: str | None) -> None:
-        payload: dict[str, JsonValue] = {**status.model_dump(mode="json"), "error": error}
-        await self._bus.publish(types.ACCOUNT_CLAUDE, payload)
+    async def _status_or_signed_out(self) -> ClaudeAccountStatus:
+        try:
+            return await self.status()
+        except ClaudeCliError:
+            return self._signed_out()
+
+    def _signed_out(self) -> ClaudeAccountStatus:
+        return ClaudeAccountStatus(
+            signed_in=False,
+            email=None,
+            organization=None,
+            plan=None,
+            method=None,
+            checked_at=self._clock.now(),
+        )

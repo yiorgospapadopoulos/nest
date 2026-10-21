@@ -1,9 +1,17 @@
 # Quality gates for every part of Nest. `make check` is the single entry point.
 
-.PHONY: install-app check check-daemon check-web check-apple fmt test install tokens icon app run-app
+.PHONY: install-app check check-changed check-daemon check-web check-apple fmt test install tokens icon app run-app
 
 # Swift sources to format and lint; the generated tokens follow the generator's layout.
 APPLE_SWIFT = $$(find apple/Sources apple/Tests -name '*.swift' -not -path '*/Generated/*') apple/Package.swift
+
+# Daemon test worker processes for the gates (B99). Four are as fast as one per core on the
+# M4 Air's 4 performance cores and leave room for other gates; `PYTEST_WORKERS=auto` uses
+# every core and `PYTEST_WORKERS=0` one process. Targeted pytest runs stay single-process.
+PYTEST_WORKERS ?= 4
+
+# What `make check-changed` compares against (B100): the merge base of this ref and HEAD.
+BASE ?= main
 
 install:
 	cd daemon && uv sync
@@ -11,11 +19,21 @@ install:
 
 check: check-daemon check-web check-apple
 
+# The gates of only the parts changed since the merge base with BASE, uncommitted and
+# untracked files included (`nestd gates changed` prints why). If the parts cannot be worked
+# out, every gate runs.
+check-changed:
+	@parts="$$(cd daemon && uv run nestd gates changed --base '$(BASE)')" || { \
+	  echo "check-changed: could not work out the changed parts, running every gate"; \
+	  parts="daemon web apple"; \
+	}; \
+	for part in $$parts; do $(MAKE) --no-print-directory check-$$part || exit 1; done
+
 check-daemon:
 	cd daemon && uv run ruff format --check .
 	cd daemon && uv run ruff check .
 	cd daemon && uv run pyright
-	cd daemon && uv run pytest
+	cd daemon && uv run pytest -n $(PYTEST_WORKERS)
 	cd daemon && uv run pip-audit --skip-editable
 
 check-web:
@@ -37,7 +55,7 @@ fmt:
 	swift format --in-place --parallel $(APPLE_SWIFT)
 
 test:
-	cd daemon && uv run pytest
+	cd daemon && uv run pytest -n $(PYTEST_WORKERS)
 	cd web && npm run test:coverage
 	cd apple && swift test
 

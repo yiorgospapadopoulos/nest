@@ -16,6 +16,7 @@ import Testing
         api.set {
             $0.sessions = [session, Fixture.session(review.sessionID, title: "Dark mode contrast")]
             $0.approvals = [review]
+            $0.accounts = Fixture.accounts
         }
         model = AppModel(api: api, events: source, preferences: MemoryStore())
     }
@@ -25,7 +26,7 @@ import Testing
         #expect(model.app.connection == .disconnected || model.app.connection == .connecting)
 
         source.continuation.yield(.connected(resumed: false))
-        try await waitFor { model.usage.limits != nil }
+        try await waitFor { model.accounts.accounts.count == 3 }
         #expect(model.app.connection == .connected)
         #expect(model.app.openProjects == ["cv-page"])
         #expect(model.sessions.session("s1")?.state == .running)
@@ -51,9 +52,8 @@ import Testing
                 "{\"approval\": \(Fixture.json(Fixture.approval("ap-review")))}", id: 3),
             Fixture.event(EventType.connectorsUpdated, #"{"connectors": []}"#, id: 4, session: nil),
             Fixture.event(
-                EventType.usageUpdated,
-                #"{"five_hour": {"utilization": 0.9, "resets_at": null}, "seven_day": null}"#,
-                id: 5, session: nil),
+                EventType.accountsChanged,
+                Fixture.json(AccountList(accounts: [Fixture.accounts[0]])), id: 5, session: nil),
             Fixture.event(
                 EventType.notify,
                 #"{"kind": "finished", "session_id": "s1", "repo": "cv-page", "title": "A chat", "text": "Done"}"#,
@@ -67,7 +67,7 @@ import Testing
 
         #expect(model.approvals.pending.isEmpty)
         #expect(model.connectors.connectors.isEmpty)
-        #expect(model.usage.limits?.fiveHour?.utilization == 0.9)
+        #expect(model.accounts.accounts.map(\.id) == ["claude-main"])
         #expect(notices.map(\.kind) == [.finished])
         #expect(model.activity.goals(session: "s1").tasks.isEmpty)
         #expect(model.app.state(of: "cv-page").layout.leaves.isEmpty)

@@ -6,7 +6,7 @@ message on Haiku, without tools, settings, MCP servers or thinking: about 450 in
 """
 
 import asyncio
-from collections.abc import AsyncIterable, AsyncIterator, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
@@ -15,7 +15,7 @@ from typing import Any, Protocol
 
 from claude_agent_sdk import ClaudeAgentOptions, Message, RateLimitEvent, ResultMessage
 
-from nestd.providers.base import TokenUsage, UsageInfo
+from nestd.providers.base import RunAccount, TokenUsage, UsageInfo
 from nestd.providers.claude_messages import token_usage, usage_info
 
 PROBE_MODEL = "haiku"
@@ -54,9 +54,11 @@ class ProbeOutcome:
     tokens: TokenUsage
 
 
-def probe_options(cwd: Path) -> ClaudeAgentOptions:
+def probe_options(cwd: Path, env: Mapping[str, str] | None = None) -> ClaudeAgentOptions:
+    """`env` points Claude Code at an added account's profile (B98)."""
     return ClaudeAgentOptions(
         cwd=cwd,
+        env=dict(env or {}),
         model=PROBE_MODEL,
         system_prompt=PROBE_SYSTEM_PROMPT,
         tools=[],
@@ -78,17 +80,22 @@ class UsageProbe:
         self._cwd = cwd
         self._timeout = timeout
         self._client: ProbeClient | None = None
+        # The account the open client runs on (B98).
+        self._account: RunAccount | None = None
         self._probes = 0
 
-    async def run(self) -> ProbeOutcome:
-        """One exchange on the long-lived client, which opens on demand.
+    async def run(self, account: RunAccount | None = None) -> ProbeOutcome:
+        """One exchange on the long-lived client, which opens on demand on `account`
+        (None: Claude Code's own environment); a client on another account is closed first.
 
         Raises ProbeError on any failure, after closing the client so the next probe
         starts a new process.
         """
+        if self._client is not None and self._account != account:
+            await self.close()
         try:
             async with asyncio.timeout(self._timeout.total_seconds()):
-                outcome = await self._exchange()
+                outcome = await self._exchange(account)
         except Exception as error:
             await self.close()
             raise ProbeError(_reason(error)) from error
@@ -104,10 +111,13 @@ class UsageProbe:
             with suppress(Exception):
                 await client.disconnect()
 
-    async def _exchange(self) -> ProbeOutcome:
+    async def _exchange(self, account: RunAccount | None) -> ProbeOutcome:
         if self._client is None:
-            client = self._factory(probe_options(self._cwd))
+            client = self._factory(
+                probe_options(self._cwd, None if account is None else account.env)
+            )
             self._client = client
+            self._account = account
             await client.connect()
         await self._client.query(PROBE_PROMPT)
         limits: UsageInfo | None = None

@@ -1,5 +1,6 @@
 """A crashed run leaves no stale state, and failing bookkeeping never ends a healthy run."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -53,6 +54,30 @@ async def test_a_crash_clears_the_background_count_so_the_next_run_idles_out(env
     await until_results(env, created.id, 1)
 
     await until(lambda: env.provider.runs[1].closed)
+
+
+async def test_a_run_closing_while_the_turns_end_is_stored_still_announces_it(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Storing the idle state took longer than the idle close on a busy machine; the close
+    cancelled the run's reader, which was still announcing the turn's end (B99).
+    """
+    env.manager = env.build(timedelta(milliseconds=10))
+    env.provider.script(reply("done"))
+    store_update = env.store.update
+
+    async def slow_idle(session_id: str, **changes: object) -> Session:
+        if changes.get("state") is SessionState.IDLE:
+            await asyncio.sleep(0.2)
+        return await store_update(session_id, **changes)
+
+    monkeypatch.setattr(env.store, "update", slow_idle)
+    created = await env.create()
+    await until_results(env, created.id, 1)
+
+    await until(lambda: env.provider.runs[0].closed)
+    assert (await env.states(created.id))[-1] == SessionState.IDLE
+    assert (created.id, SessionState.IDLE) in env.hooks.states
 
 
 class FailingHooks(RecordingHooks):

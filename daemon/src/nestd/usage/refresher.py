@@ -1,5 +1,7 @@
 """Keeps the usage windows fresh while a client is visible: Claude's with a probe (D031),
 Codex's by asking its app-server for the account's rate limits, without a model call (B91).
+The schedule asks for the active accounts' windows and every other signed-in Codex
+account's; another Claude account is probed only when asked (B98).
 """
 
 import asyncio
@@ -14,7 +16,7 @@ from pydantic import JsonValue
 from nestd.clock import Clock
 from nestd.errors import NestError
 from nestd.events.bus import EventBus
-from nestd.providers.base import UsageInfo
+from nestd.providers.base import RunAccount, UsageInfo
 from nestd.providers.codex_limits import CODEX
 from nestd.usage.models import CLAUDE, EngineLimits, UsageLimits, UsageProvider
 from nestd.usage.probe import ProbeError, UsageProbe
@@ -34,6 +36,8 @@ FORCED_SPACING = timedelta(seconds=20)
 type Interval = Callable[[], timedelta | None]
 # Codex's windows now; None while it is not signed in or could not say.
 type CodexUsage = Callable[[], Awaitable[UsageInfo | None]]
+# The active Claude account, ready for a probe (B98).
+type ActiveAccount = Callable[[], Awaitable[RunAccount]]
 
 
 class RefreshTooSoonError(NestError):
@@ -68,8 +72,16 @@ class UsageRefresher:
         interval: Interval,
         codex: CodexUsage,
         tick: timedelta = TICK,
+        account: ActiveAccount | None = None,
+        other_codex: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
-        """`interval` reads the refresh setting each time; None turns the schedule off."""
+        """`interval` reads the refresh setting each time; None turns the schedule off.
+        `account` is the Claude account probes run on (None: Claude Code's own), and
+        `other_codex` reads the inactive Codex accounts' windows with the active one's
+        (B98).
+        """
+        self._account = account
+        self._other_codex = other_codex
         self._store = store
         self._bus = bus
         self._clock = clock
@@ -116,6 +128,8 @@ class UsageRefresher:
         if await self._due(CODEX, self._codex_attempt, now, interval):
             self._codex_attempt = now
             await self._run_codex()
+            if self._other_codex is not None:
+                await self._other_codex()
 
     async def refresh(self) -> UsageLimits:
         """An ask the user made for Claude's windows, at most once per FORCED_SPACING."""
@@ -132,6 +146,13 @@ class UsageRefresher:
         if not await self._run_codex():
             raise ProbeFailedError("Codex")
         return await self._store.engine_limits(provider)
+
+    async def probe(self, account: RunAccount, announce: bool) -> bool:
+        """Probe one Claude account, such as one just signed in to (B98); its windows are
+        announced as Claude's only when `announce` (the active account's). Whether the
+        probe brought new windows.
+        """
+        return await self._run_probe(account, announce)
 
     def _spaced(self, last: datetime | None) -> datetime:
         """Now, unless it is within FORCED_SPACING of the engine's last ask."""
@@ -156,11 +177,13 @@ class UsageRefresher:
         await publish_usage(self._bus, info)
         return True
 
-    async def _run_probe(self) -> bool:
+    async def _run_probe(self, account: RunAccount | None = None, announce: bool = True) -> bool:
         """Whether the probe brought new windows. Failures are logged, never raised."""
+        if account is None and self._account is not None:
+            account = await self._account()
         async with self._lock:
             try:
-                outcome = await self._probe.run()
+                outcome = await self._probe.run(account)
             except ProbeError as error:
                 logger.warning("usage probe failed: %s", error)
                 return False
@@ -168,8 +191,9 @@ class UsageRefresher:
         if outcome.limits is None:
             logger.warning("usage probe: Claude reported no usage windows")
             return False
-        await self._store.update_limits(outcome.limits)
-        await publish_usage(self._bus, outcome.limits)
+        await self._store.update_limits(outcome.limits, None if account is None else account.id)
+        if announce:
+            await publish_usage(self._bus, outcome.limits)
         return True
 
     async def _loop(self) -> None:
