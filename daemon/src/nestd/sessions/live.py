@@ -179,7 +179,7 @@ class LiveSession:
             return None
         return round((now - self.turn_started).total_seconds() * 1000)
 
-    def end_turn(self, idle_close: timedelta, held: bool) -> None:
+    def end_turn(self, held: bool) -> None:
         """`held` after a turn that ended normally: a message stored only now still starts
         (BUG-85). After a Stop or a failure the queue waits (BUG-61).
         """
@@ -189,7 +189,6 @@ class LiveSession:
         self.resume_queue = False
         self.engine_next = False
         self.held = held
-        self.schedule_idle_close(idle_close)
 
     def schedule_idle_close(self, idle_close: timedelta) -> None:
         """Close an idle run later, but never while the agent has background tasks running."""
