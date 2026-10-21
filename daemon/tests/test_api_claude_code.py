@@ -320,7 +320,7 @@ async def test_a_sign_in_or_install_in_progress_is_stopped_with_the_daemon(api: 
     await api.http.post("/api/claude-code/install")
     await until(lambda: len(api.claude.calls) == 2)
 
-    await api.ctx.claude_account.stop()
+    await api.ctx.accounts.stop()
     await api.ctx.claude_code.stop()
 
     assert await published(api, types.ACCOUNT_CLAUDE) == []

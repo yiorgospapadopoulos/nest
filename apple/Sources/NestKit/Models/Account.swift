@@ -192,16 +192,19 @@ public struct LimitWindow: Codable, Sendable, Hashable {
     public var minutes: Int?
     /// Another engine's window (B91): its name from its length, "30 day".
     public var label: String?
+    /// An account's window past its reset time (B98); never sent by the daemon here.
+    public var reset = false
 
     public init(
         utilization: Double, resetsAt: Date? = nil, updatedAt: Date? = nil, minutes: Int? = nil,
-        label: String? = nil
+        label: String? = nil, reset: Bool = false
     ) {
         self.utilization = utilization
         self.resetsAt = resetsAt
         self.updatedAt = updatedAt
         self.minutes = minutes
         self.label = label
+        self.reset = reset
     }
 
     enum CodingKeys: String, CodingKey {

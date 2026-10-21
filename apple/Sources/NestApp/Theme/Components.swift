@@ -38,6 +38,8 @@ enum Icon {
     static let pullRequest = "arrow.triangle.pull"
     static let gear = "gearshape"
     static let more = "ellipsis"
+    /// A row's handle for dragging it into another place.
+    static let grip = "line.3.horizontal"
     static let pin = "pin"
     static let archive = "archivebox"
     static let trash = "trash"
