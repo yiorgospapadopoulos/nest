@@ -236,6 +236,10 @@
                 try await renderConcreteDefaults(model, shell, controller, folder)
                 return
             }
+            if only == "b98" {
+                try await renderAccounts(model, shell, controller, folder)
+                return
+            }
             if only == "b97" {
                 try await renderConfiguration(model, shell, controller, folder)
                 return
@@ -371,13 +375,13 @@
             try await renderStartScreen(model, shell, controller, folder)
             try await renderCodex(model, shell, controller, folder)
             try await renderConfiguration(model, shell, controller, folder)
+            try await renderAccounts(model, shell, controller, folder)
         }
 
-        /// B94: Settings > Accounts with Codex signed out, signing in and signed in; Settings
-        /// > Agents' New chats with the default model menu's engine sections (a static list,
-        /// as menus do not render offscreen) and its thinking and permissions, on Claude and
-        /// then on a Codex model; the start composer on each; Settings > Usage with the top
-        /// bar choice, and the top bar showing Codex only.
+        /// B94: Settings > Agents' New chats with the default model menu's engine sections (a
+        /// static list, as menus do not render offscreen) and its thinking and permissions, on
+        /// Claude and then on a Codex model; the start composer on each; and the top bar
+        /// showing Codex only.
         private static func renderConcreteDefaults(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
@@ -390,26 +394,9 @@
                 state.leftCollapsed = false
                 state.rightCollapsed = false
             }
-            let accounts = model.accounts
-            sample.setCodexSignedIn(false)
-            await model.providers.load()
-            try await accounts.loadCodex()
-            try await pairSettings(controller, .accounts, "b94-accounts-codex-signed-out", folder)
-            _ = try await accounts.signInCodex()
-            try await pairSettings(controller, .accounts, "b94-accounts-codex-signing-in", folder)
             sample.setCodexSignedIn(true)
             await model.providers.load()
-            let signedIn = try await model.api.codexLogin()
-            let payload = String(decoding: try NestJSON.encoder.encode(signedIn), as: UTF8.self)
-            let event = try NestJSON.decoder.decode(
-                Event.self,
-                from: Data(
-                    """
-                    {"id": 1, "type": "\(EventType.accountCodex)", "ts": "2026-10-20T10:00:00Z",
-                     "session_id": null, "payload": \(payload)}
-                    """.utf8))
-            accounts.apply(event)
-            try await pairSettings(controller, .accounts, "b94-accounts-codex-signed-in", folder)
+            try await model.accounts.load()
 
             try await model.agents.setDefaultModel("opus")
             try await model.agents.setDefaultPermissionMode(.default)
@@ -425,19 +412,74 @@
             try await pairView(defaultModelMenu(shell), "b94-new-chats-model-menu-codex", folder)
             try await pair(controller, "b94-composer-codex", folder)
 
-            try await model.usage.load()
-            shell.settings.setUsageMeter("codex", shown: false)
-            try await pairSettings(controller, .usage, "b94-usage", folder)
-            shell.settings.setUsageMeter("codex", shown: true)
-            shell.settings.setUsageMeter("claude", shown: false)
+            try await model.usage.loadPeriod()
+            let entries = UsageMeter.entries(
+                model.accounts.accounts, choice: shell.settings.usageMeter)
+            shell.settings.setUsageMeter("claude-main", shown: false, entries: entries)
             try await pair(controller, "b94-top-bar-codex", folder)
 
-            shell.settings.setUsageMeter("claude", shown: true)
+            shell.settings.setUsageMeter("claude-main", shown: true, entries: entries)
             try await model.agents.setDefaultModel("opus")
             shell.startDefaultsLoaded()
             sample.setCodexSignedIn(false)
             await model.providers.load()
-            try await accounts.loadCodex()
+            try await model.accounts.load()
+        }
+
+        /// B98: Settings > Accounts with two Claude accounts (a long weekly reset time) and
+        /// Codex signed in with two banked resets, their list as the button opens it, then with
+        /// Codex signed out, an added Claude account waiting on its browser sign-in and a
+        /// failed sign-in; Settings > Usage's "Top bar shows" by default and reordered; the
+        /// chip and popover with both Claude accounts checked (titles on the chip), and with
+        /// Codex first and Claude's work account.
+        private static func renderAccounts(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            sample.setCodexSignedIn(true)
+            await model.providers.load()
+            let accounts = model.accounts
+            try await accounts.load()
+            try await accounts.loadGitHub()
+            try await pairSettings(controller, .accounts, "b98-accounts", folder)
+            await accounts.loadBankedResets(EngineMark.codex)
+            try await pairView(
+                BankedResetsList(provider: EngineMark.codex) { _, _ in }.environment(shell),
+                "b98-banked-resets", folder)
+
+            sample.setCodexSignedIn(false)
+            _ = try await accounts.add(ProviderInfo.claude)
+            sample.setSignInError("codex-main", "Access denied")
+            try await accounts.load()
+            try await pairSettings(controller, .accounts, "b98-accounts-signing-in", folder)
+            sample.setSignInError("codex-main", nil)
+            if let added = accounts.accounts.first(where: { $0.signingIn }) {
+                try await accounts.cancelSignIn(added.id)
+                try await accounts.remove(added.id)
+            }
+            sample.setCodexSignedIn(true)
+            try await accounts.load()
+
+            try await model.usage.loadPeriod()
+            try await pairSettings(controller, .usage, "b98-usage-top-bar", folder)
+            let entries = UsageMeter.entries(accounts.accounts, choice: shell.settings.usageMeter)
+            shell.settings.setUsageMeter("5f3a9c1e7b20", shown: true, entries: entries)
+            shell.settings.setUsageMeter("codex-main", shown: false, entries: entries)
+            try await pair(controller, "b98-chip-two-claude", folder)
+            shell.show(.usage)
+            try await pair(controller, "b98-popover-two-claude", folder)
+            shell.close()
+
+            shell.settings.setUsageMeter("claude-main", shown: false, entries: entries)
+            shell.settings.setUsageMeter("codex-main", shown: true, entries: entries)
+            shell.settings.orderUsageMeter(["codex-main", "5f3a9c1e7b20", "claude-main"])
+            try await pairSettings(controller, .usage, "b98-usage-top-bar-reordered", folder)
+            try await pair(controller, "b98-chip-codex-first", folder)
+
+            sample.setCodexSignedIn(false)
+            await model.providers.load()
+            try await accounts.load()
         }
 
         /// B97: Settings > Configuration with Claude open, Codex open, every skill shown,
@@ -574,11 +616,11 @@
             shell.setModel(codexModel, on: "codex", for: shell.startDraftID)
             try await pair(controller, "b91-start-codex-signed-out", folder)
             try await pairView(modelMenu(shell), "b91-model-menu-signed-out", folder)
-            try await model.usage.load()
+            try await model.usage.loadPeriod()
             try await pair(controller, "b91-usage-codex-signed-out", folder)
             sample.setCodexSignedIn(true)
             await model.providers.load()
-            try await model.usage.load()
+            try await model.usage.loadPeriod()
             try await pair(controller, "b91-start-codex", folder)
             try await pairView(modelMenu(shell), "b91-model-menu", folder)
             shell.show(.usage)
@@ -599,7 +641,7 @@
             }
             sample.setCodexSignedIn(false)
             await model.providers.load()
-            try await model.usage.load()
+            try await model.usage.loadPeriod()
 
             sample.runOnCodex(["c2", "c3"])
             sample.setQueue(
@@ -2144,7 +2186,7 @@
                     ]))
                 try await pair(controller, "b39-usage-\(name)", folder)
             }
-            try await model.usage.load()
+            try await model.usage.loadPeriod()
 
             let image = try sampleBackgroundImage()
             model.settings.chatBackground.image = image.path
@@ -3051,8 +3093,8 @@
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
-            try await model.usage.load()
-            await model.usage.refresh()
+            try await model.usage.loadPeriod()
+            await model.accounts.refresh()
             shell.show(.usage)
             for unit in UsageUnit.allCases {
                 try await model.usage.choose(unit)
@@ -3080,8 +3122,8 @@
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
-            try await model.usage.load()
-            await model.usage.refresh()
+            try await model.usage.loadPeriod()
+            await model.accounts.refresh()
             try await model.storage.load()
             let tall = 1_000.0
             try await pairSettings(controller, .general, "b86-general", folder)
@@ -3104,14 +3146,14 @@
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {
             shell.close()
-            try await model.usage.load()
+            try await model.usage.loadPeriod()
             shell.show(.usage)
             try await pair(controller, "usage-stale", folder)
-            await model.usage.refresh()
+            await model.accounts.refresh()
             try await pair(controller, "usage-fresh", folder)
             // Each snapshot takes seconds; refuse a refresh right before each one.
             for appearance in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                await model.usage.refresh()
+                await model.accounts.refresh()
                 try await snap(controller, "usage-retry-\(appearance.0)", appearance.1, folder)
             }
             model.devices.clearPairingCode()
@@ -3571,7 +3613,7 @@
                 "connectors: \(model.connectors.connectors.count), devices: \(model.devices.devices.map(\.name))"
             )
             print(
-                "limits: \(String(describing: model.usage.limits)), period tokens: \(model.usage.totalText)"
+                "accounts: \(model.accounts.accounts.map(\.title)), period tokens: \(model.usage.totalText)"
             )
             let shell = Shell(model: model)
             let controller = AppController(shell: shell, service: sampleService())

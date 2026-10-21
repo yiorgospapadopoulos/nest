@@ -40,14 +40,12 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let githubJSON = """
         {"state": "signed_in", "login": "octo", "checked_at": "2026-10-17T09:00:00Z"}
         """
-    static let codexJSON = """
-        {"signed_in": true, "email": "me@example.com", "plan": "ChatGPT Plus",
-         "checked_at": "2026-10-17T09:00:00Z", "error": null}
-        """
-    static let claudeJSON = """
-        {"signed_in": true, "email": "me@example.com", "organization": null, "plan": "max",
-         "method": "claude.ai", "checked_at": "2026-10-17T09:00:00Z"}
-        """
+    static let accountJSON = Fixture.json(Fixture.accounts[0])
+    static let accountsJSON = Fixture.json(AccountList(accounts: Fixture.accounts))
+    static let signInJSON = Fixture.json(
+        AccountSignIn(
+            account: Fixture.account("codex-main", "codex", title: "Codex", signingIn: true),
+            authURL: URL(string: "https://auth.openai.com/oauth/authorize?state=x")))
     static let pluginsJSON = """
         [{"id": "pdf@official", "name": "pdf", "marketplace": "official", "version": null,
           "enabled": true, "scope": "user", "description": "PDFs"}]
@@ -488,19 +486,6 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("GET", "/api/usage/limits", response: Fixture.text("usage_limits")) {
             _ = try await $0.usageLimits()
         },
-        RouteCase("POST", "/api/usage/refresh", response: Fixture.text("usage_limits")) {
-            _ = try await $0.refreshUsage()
-        },
-        RouteCase(
-            "GET", "/api/usage/limits?provider=codex", response: Fixture.text("usage_limits")
-        ) {
-            _ = try await $0.usageLimits(provider: "codex")
-        },
-        RouteCase(
-            "POST", "/api/usage/refresh?provider=codex", response: Fixture.text("usage_limits")
-        ) {
-            _ = try await $0.refreshUsage(provider: "codex")
-        },
         RouteCase("GET", "/api/usage/settings", response: #"{"refresh_minutes": 3}"#) {
             _ = try await $0.usageSettings()
         },
@@ -556,30 +541,62 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/accounts/github/check", response: githubJSON) {
             _ = try await $0.checkGitHubAccount()
         },
-        RouteCase("GET", "/api/accounts/claude", response: claudeJSON) {
-            _ = try await $0.claudeLogin()
+        RouteCase("GET", "/api/accounts", response: accountsJSON) {
+            let accounts = try await $0.engineAccounts()
+            #expect(accounts.count == 3)
         },
-        RouteCase("POST", "/api/accounts/claude/login", response: "") {
-            try await $0.signInClaude()
-        },
-        RouteCase("POST", "/api/accounts/claude/logout", response: claudeJSON) {
-            _ = try await $0.signOutClaude()
-        },
-        RouteCase("GET", "/api/accounts/codex", response: codexJSON) {
-            _ = try await $0.codexLogin()
+        RouteCase("POST", "/api/accounts/codex", response: signInJSON) {
+            let started = try await $0.addAccount(provider: "codex")
+            #expect(started.authURL?.host() == "auth.openai.com")
+            #expect(started.account.signingIn)
         },
         RouteCase(
-            "POST", "/api/accounts/codex/login",
-            response: #"{"auth_url": "https://auth.openai.com/oauth/authorize?state=x"}"#
+            "POST", "/api/accounts/claude",
+            response: #"{"account": \#(accountJSON), "auth_url": null}"#
         ) {
-            let started = try await $0.signInCodex()
-            #expect(started.authURL.absoluteString.hasPrefix("https://auth.openai.com/"))
+            let started = try await $0.addAccount(provider: "claude")
+            #expect(started.authURL == nil)
         },
-        RouteCase("POST", "/api/accounts/codex/login/cancel", response: "") {
-            try await $0.cancelCodexSignIn()
+        RouteCase("POST", "/api/accounts/codex-main/login", response: signInJSON) {
+            _ = try await $0.signInAccount("codex-main")
         },
-        RouteCase("POST", "/api/accounts/codex/logout", response: codexJSON) {
-            _ = try await $0.signOutCodex()
+        RouteCase("POST", "/api/accounts/codex-main/login/cancel", response: "") {
+            try await $0.cancelAccountSignIn("codex-main")
+        },
+        RouteCase("POST", "/api/accounts/claude-main/logout", response: accountJSON) {
+            _ = try await $0.signOutAccount("claude-main")
+        },
+        RouteCase(
+            "PUT", "/api/accounts/claude-main/name", body: #"{"name":"Work"}"#,
+            response: accountJSON
+        ) { _ = try await $0.renameAccount("claude-main", name: "Work") },
+        RouteCase(
+            "PUT", "/api/accounts/claude-main/name", body: #"{"name":null}"#,
+            response: accountJSON
+        ) { _ = try await $0.renameAccount("claude-main", name: nil) },
+        RouteCase("PUT", "/api/accounts/a1b2c3d4e5f6/active", response: accountsJSON) {
+            _ = try await $0.activateAccount("a1b2c3d4e5f6")
+        },
+        RouteCase("DELETE", "/api/accounts/a1b2c3d4e5f6", response: accountsJSON) {
+            _ = try await $0.removeAccount("a1b2c3d4e5f6")
+        },
+        RouteCase(
+            "GET", "/api/accounts/codex-main/banked-resets",
+            response:
+                #"{"available": 1, "credits": [{"id": "r1", "title": null, "description": null, "expires_at": null}]}"#
+        ) {
+            let banked = try await $0.bankedResets("codex-main")
+            #expect(banked.credits?.map(\.id) == ["r1"])
+        },
+        RouteCase(
+            "POST", "/api/accounts/codex-main/banked-resets/use", body: #"{"credit_id":"r1"}"#,
+            response: #"{"outcome": "reset", "accounts": []}"#
+        ) {
+            let used = try await $0.useBankedReset("codex-main", creditID: "r1")
+            #expect(used.outcome == .reset)
+        },
+        RouteCase("POST", "/api/accounts/refresh", response: accountsJSON) {
+            _ = try await $0.refreshAccounts()
         },
         RouteCase(
             "GET", "/api/claude-code",

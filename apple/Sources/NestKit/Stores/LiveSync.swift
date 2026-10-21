@@ -89,16 +89,17 @@ public final class LiveSync {
         }
     }
 
-    /// Reloads repos, sessions, approvals, connectors, usage limits, Claude Code chats, pixies
-    /// and their reports, and the artifacts, then the models, agent defaults and account,
-    /// the engines and each chat's pixies, which never fail the sync.
+    /// Reloads repos, sessions, approvals, connectors, the usage chart, Claude Code chats,
+    /// pixies and their reports, and the artifacts, then the models, agent defaults and
+    /// account, the engines, their accounts with their limits (B98) and each chat's pixies,
+    /// which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
             try await approvals.load()
             try await sessions.load()
             try await connectors.load()
-            try await usage.load()
+            try await usage.loadPeriod()
             try await claudeChats.load()
             try await pixies.load()
             try await reports.load()
@@ -109,6 +110,7 @@ public final class LiveSync {
         }
         await agents.load()
         await providers.load()
+        try? await accounts.load()
         await chatPixies.load()
     }
 

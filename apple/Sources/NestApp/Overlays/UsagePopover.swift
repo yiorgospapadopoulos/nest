@@ -14,8 +14,8 @@ struct UsagePopover: View {
     }
 }
 
-/// Claude's 5 hour and weekly limits, and since B91 those of each other engine signed in
-/// under its name, with a Refresh that says when they were reported,
+/// The limits of each account the top bar shows (B98), under "<Engine> · <title>", with a
+/// Refresh that says when they were reported,
 /// then a day, week, month or year of tokens as bars with hover detail, its chats and
 /// subagents, and Details, which swaps in the period's breakdown (B84). Shared by the
 /// popover and Settings > Usage (B86), at their widths.
@@ -47,22 +47,31 @@ private struct UsageChart: View {
 
     var body: some View {
         let usage = shell.model.usage
+        let groups = UsageMeter.groups(
+            shell.model.accounts.accounts, choice: shell.settings.usageMeter)
         HStack(spacing: 8) {
             Text(title).font(.ui(TypeSize.ui, .semibold))
             Spacer(minLength: 0)
-            RefreshControl()
+            RefreshControl(groups: groups)
         }
         .frame(height: Metrics.buttonHeight)
         .padding(.bottom, 12)
-        ForEach(usage.limitGroups(providers: shell.providers)) { group in
-            if let title = group.title {
-                // The engine heads its rows, so it reads above them rather than like them.
-                Text(title)
+        ForEach(groups) { group in
+            // The account heads its rows, so it reads above them rather than like them.
+            HStack(spacing: 6) {
+                EngineMark(provider: group.provider, size: 12)
+                Text(group.title)
                     .font(.ui(TypeSize.callout, .semibold))
-                    .foregroundStyle(Palette.t1)
-                    .padding(.top, 2)
-                    .padding(.bottom, 8)
+                    .lineLimit(1)
+                if group.active {
+                    Text("in use")
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                }
             }
+            .foregroundStyle(Palette.t1)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
             // Claude's 5 hour and weekly windows; another engine's, whichever it has (B91).
             let rows = group.rows
             ForEach(rows) { row in
@@ -96,13 +105,14 @@ private struct UsageChart: View {
     }
 }
 
-/// Refresh asks Claude at once and says when the limits were last reported; too soon
-/// after the last ask, it says when to try again.
+/// Refresh asks every signed-in account at once and says when the shown limits were last
+/// reported; too soon after the last ask, it says when to try again.
 private struct RefreshControl: View {
+    let groups: [UsageLimitGroup]
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let usage = shell.model.usage
+        let usage = shell.model.accounts
         HStack(spacing: 6) {
             // Ticks each second only while counting down to the next allowed refresh.
             if usage.retryAt.map({ $0 > .now }) ?? false {
@@ -117,8 +127,8 @@ private struct RefreshControl: View {
                     Task { await usage.refresh() }
                 } label: {
                     Label {
-                        Text(usage.refreshTitle)
-                            .opacity(usage.limitsAreStale(at: context.date) ? 0.6 : 1)
+                        Text(usage.refreshTitle(groups))
+                            .opacity(usage.limitsAreStale(groups, at: context.date) ? 0.6 : 1)
                     } icon: {
                         if usage.isRefreshing {
                             Fireflies(height: 9)
@@ -131,7 +141,7 @@ private struct RefreshControl: View {
                 .buttonStyle(.nest(.plain))
                 .disabled(usage.isRefreshing)
                 .help(
-                    usage.limitsAreStale(at: context.date)
+                    usage.limitsAreStale(groups, at: context.date)
                         ? "More than 10 minutes old. Ask for the limits now"
                         : "Ask for the limits now")
             }
