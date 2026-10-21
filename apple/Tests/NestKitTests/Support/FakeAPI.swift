@@ -35,6 +35,10 @@ final class FakeAPI: NestAPI {
         var queueSends = false
         /// What GitHub answers when a session's pull request is read, by session id.
         var githubPRs: [String: PullRequest] = [:]
+        /// Each repo's open issues (B101); a repo without any lists none. Mine answers
+        /// `mineIssues`, else none assigned.
+        var issues: [String: IssueList] = [:]
+        var mineIssues: [String: IssueList] = [:]
         /// Search answers by query.
         var searches: [String: SearchResults] = [:]
         var stuckSettings = StuckSettings(
@@ -430,6 +434,29 @@ final class FakeAPI: NestAPI {
 
     func ciFeedback(_ id: String) async throws {
         try call("ciFeedback", id) { _ in }
+    }
+
+    func issues(repo: String, refresh: Bool, show: IssueShow?) async throws -> IssueList {
+        let detail =
+            repo + (show.map { " show=\($0.rawValue)" } ?? "") + (refresh ? " refresh" : "")
+        return try call("issues", detail) { state in
+            if show == .mine {
+                return state.mineIssues[repo]
+                    ?? IssueList(available: true, show: .mine, issues: [])
+            }
+            return state.issues[repo] ?? IssueList(available: false, show: .all, issues: [])
+        }
+    }
+
+    func reviewFeedback(_ id: String, ids: [String]?) async throws {
+        try call("reviewFeedback", ids.map { "\(id) \($0.joined(separator: ","))" } ?? id) { _ in }
+        await pass("reviewFeedback")
+    }
+
+    func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session {
+        try call("setReviewAutoSend", "\(id) \(on)") { state in
+            session(id, in: &state) { $0.review?.autoSend = on }
+        }
     }
 
     func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {

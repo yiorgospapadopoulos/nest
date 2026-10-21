@@ -15,7 +15,7 @@ from nestd.gitops.runner import CommandError
 from nestd.notifications.notifier import Notifier
 from nestd.prs.errors import PrReadError
 from nestd.prs.monitor import FAST, SLOW, SLOW_AFTER, PrMonitor
-from nestd.sessions.models import Session
+from nestd.sessions.models import Sender, SendResult, Session
 from nestd.sessions.store import SessionStore
 from nestd.storage.db import Database
 from tests.async_support import until
@@ -35,6 +35,9 @@ class Env:
         self.store = SessionStore(db, clock)
         self.approvals = ApprovalQueue(ApprovalStore(db, clock), self.bus, Notifier(self.bus))
         self.runner = FakeRunner()
+        # Messages the monitor sent to agents, and a failure for the next send.
+        self.sent: list[tuple[str, str, Sender]] = []
+        self.send_failure: Exception | None = None
         self.monitor = PrMonitor(
             store=self.store,
             bus=self.bus,
@@ -43,8 +46,16 @@ class Env:
             run=self.runner,
             clock=clock,
             cwd=tmp_path,
+            send=self.send,
             tick=timedelta(milliseconds=10),
         )
+
+    async def send(self, session_id: str, text: str, sender: Sender) -> SendResult:
+        failure, self.send_failure = self.send_failure, None
+        if failure is not None:
+            raise failure
+        self.sent.append((session_id, text, sender))
+        return SendResult(**(await self.store.get(session_id)).model_dump())
 
     async def session(self, pr_url: str | None = PR_URL) -> Session:
         session = await self.store.create(new_session())

@@ -57,6 +57,8 @@ public enum EventType {
     /// The conversation was rewound: its events in a range were deleted (B59).
     public static let sessionRewound = "session.rewound"
     public static let sessionPR = "session.pr"
+    /// The pull request's review feedback changed (B101).
+    public static let sessionPRReview = "session.pr_review"
     public static let sessionStuck = "session.stuck"
     public static let sessionUnstuck = "session.unstuck"
     /// A worktree chat's folder, branch and base, once the worktree exists.
@@ -156,6 +158,8 @@ public enum EventBody: Sendable, Hashable {
     case rewound(SessionRewind)
     /// The pull request's status changed on GitHub.
     case pullRequest(PullRequest)
+    /// The pull request's review feedback changed; nil once there is none (B101).
+    case prReview(PRReview?)
     /// The chat looks stuck, or stuck for another reason now.
     case stuck(StuckFlag)
     /// The chat no longer looks stuck.
@@ -252,6 +256,7 @@ public enum EventBody: Sendable, Hashable {
         case EventType.sessionQueued: self = .queued(try field("queued", as: [QueuedMessage].self))
         case EventType.sessionRewound: self = .rewound(try payload.decode(SessionRewind.self))
         case EventType.sessionPR: self = .pullRequest(try field("pr", as: PullRequest.self))
+        case EventType.sessionPRReview: self = .prReview(try field("review", as: PRReview?.self))
         case EventType.sessionStuck: self = .stuck(try payload.decode(StuckFlag.self))
         case EventType.sessionUnstuck:
             self = .unstuck(reason: try field("reason", as: StuckReason.self))
@@ -378,10 +383,15 @@ public struct UserMessage: Decodable, Sendable, Hashable {
     /// The pixie that sent it into this chat with its tools (B41).
     public var fromPixie: String?
     public var origin: MessageOrigin?
+    /// The GitHub issue Nest wrote the message from (B101).
+    public var issue: IssueMessageInfo?
+    /// The review comments Nest sent in it (B101).
+    public var reviewFeedback: ReviewFeedbackInfo?
 
     enum CodingKeys: String, CodingKey {
-        case text, attachments, origin
+        case text, attachments, origin, issue
         case fromPixie = "from_pixie"
+        case reviewFeedback = "review_feedback"
     }
 }
 
@@ -552,6 +562,8 @@ public enum NoticeKind: String, UnknownSafeEnum {
     case ciFailed = "ci_failed"
     /// A chat's pull request is green and mergeable.
     case readyToMerge = "ready_to_merge"
+    /// Review comments wait on a chat's pull request (B101).
+    case reviewComments = "review_comments"
     case stuck
     /// A pixie's report (B42); the Mac posts these from `pixie.report` events.
     case pixieReport = "pixie_report"

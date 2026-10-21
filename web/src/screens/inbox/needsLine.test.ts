@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approval, mergeApproval, question, review } from "../../test/fixtures.ts";
+import { approval, mergeApproval, question, review, reviewComments } from "../../test/fixtures.ts";
 import { approvalLine, checksFailedLine, lineText, stuckLine } from "./needsLine.ts";
 
 // The grey line under each Needs you row, worded as NestKit's NeedsYouLine (B77).
@@ -26,6 +26,14 @@ describe("the Needs you line", () => {
     expect(lineText(approvalLine(mergeApproval(), null))).toBe(
       "Ready to merge · #7 Validate contact form",
     );
+  });
+
+  it("counts review comments on their pull request, saying when changes are requested", () => {
+    expect(lineText(approvalLine(reviewComments(), null))).toBe(
+      "Review comments · 4 on #7, changes requested",
+    );
+    const plain = reviewComments({ payload: { number: 9, comments: [{}] } });
+    expect(lineText(approvalLine(plain, null))).toBe("Review comments · 1 on #9");
   });
 
   it("gives a plan's first line with text, without its heading marks", () => {

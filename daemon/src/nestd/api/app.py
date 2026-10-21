@@ -24,6 +24,7 @@ from nestd.api.routes import (
     extensions,
     goals,
     health,
+    issues,
     local_apps,
     notifications,
     pairing,
@@ -100,6 +101,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
             await ctx.branch_watch.stop()
             await ctx.claude_chats.stop()
             await ctx.sessions.shutdown()
+            await ctx.pr_adopter.settled()
             await ctx.notifications.stop()
             await ctx.modules.stop_all()
 
@@ -136,6 +138,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         search,
         review,
         prs,
+        issues,
         approvals,
         connectors,
         usage,

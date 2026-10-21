@@ -168,6 +168,59 @@ export function mergeOf(approval: Approval): MergeView {
   };
 }
 
+export interface ReviewCommentView {
+  id: string;
+  path: string | null;
+  line: number | null;
+  outdated: boolean;
+  body: string;
+}
+
+export interface ReviewCommentsView {
+  number: number;
+  url: string;
+  changesRequested: boolean;
+  comments: ReviewCommentView[];
+}
+
+export function reviewCommentsOf(approval: Approval): ReviewCommentsView {
+  const p = approval.payload;
+  return {
+    number: num(p.number),
+    url: str(p.url) ?? "",
+    changesRequested: p.changes_requested === true,
+    comments: list(p.comments).map((value, i) => {
+      const c = obj(value);
+      return {
+        id: str(c.id) ?? String(i),
+        path: str(c.path),
+        line: typeof c.line === "number" ? c.line : null,
+        outdated: c.outdated === true,
+        body: str(c.body) ?? "",
+      };
+    }),
+  };
+}
+
+/** The Needs you detail of review comments, as NestKit's NeedsYouLine words it. */
+export function reviewCommentsDetail(approval: Approval): string {
+  const { number, comments, changesRequested } = reviewCommentsOf(approval);
+  const detail = `${String(comments.length)} on #${String(number)}`;
+  return changesRequested ? `${detail}, changes requested` : detail;
+}
+
+/**
+ * Where a comment is, as NestKit's ReviewComment.location: "src/a.ts:12",
+ * "src/a.ts (outdated, was line 12)" or "General review comment"; `short` keeps the file's name.
+ */
+export function commentPlace(comment: ReviewCommentView, short = false): string {
+  if (comment.path === null) return "General review comment";
+  const file = short ? comment.path.slice(comment.path.lastIndexOf("/") + 1) : comment.path;
+  if (comment.line === null) return file;
+  const line = String(comment.line);
+  return comment.outdated ? `${file} (outdated, was line ${line})` : `${file}:${line}`;
+}
+
 /** The pending messages of a `session.queued` event, oldest first. */
 export function queuedOf(value: JsonValue | undefined): QueuedMessage[] {
   return list(value).flatMap((value) => {

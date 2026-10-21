@@ -51,11 +51,21 @@ class Worktree:
 
 def branch_name(title: str) -> str:
     """`agent/<slug>-<6 hex>`, the slug cut at a word boundary to at most 40 characters."""
+    return f"{BRANCH_PREFIX}{_slug(title) or 'task'}-{token_hex(3)}"
+
+
+def issue_branch_name(number: int, title: str) -> str:
+    """GitHub's own name for an issue's branch, `<number>-<slug>` (B101)."""
+    slug = _slug(title)
+    return f"{number}-{slug}" if slug else str(number)
+
+
+def _slug(title: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     if len(slug) > MAX_SLUG_LENGTH:
         cut = slug[: MAX_SLUG_LENGTH + 1]
         slug = cut.rsplit("-", 1)[0] if "-" in cut else cut[:MAX_SLUG_LENGTH]
-    return f"{BRANCH_PREFIX}{slug or 'task'}-{token_hex(3)}"
+    return slug
 
 
 # Told each worktree path Nest removed, such as to drop its Codex trust entry (B91).
@@ -122,6 +132,17 @@ class WorktreeManager:
     async def has_branch(self, repo: RepoConfig, name: str) -> bool:
         """Whether `repo` has the local branch `name`."""
         return await _has_branch(repo, name)
+
+    async def free_branch(self, repo: RepoConfig, name: str) -> str:
+        """`name`, or with `-2`, `-3` and so on when a branch has it already, here or on
+        origin, as a teammate may have pushed one (B101).
+        """
+        taken = await _origin_branches(repo)
+        candidate, number = name, 1
+        while candidate in taken or await _has_branch(repo, candidate):
+            number += 1
+            candidate = f"{name}-{number}"
+        return candidate
 
     async def check_new_branch(self, repo: RepoConfig, name: str) -> None:
         """Refuse a name git would not take for a new branch, one an option could be read
@@ -262,6 +283,19 @@ def _add_exclude_line(exclude: Path) -> None:
 
 def _is_worktree(path: Path) -> bool:
     return (path / ".git").exists()
+
+
+async def _origin_branches(repo: RepoConfig) -> set[str]:
+    """The branch names on origin; none when it cannot be reached, such as offline."""
+    try:
+        listing = await run_hardened_git(["ls-remote", "--heads", "origin"], repo.path)
+    except GitError as error:
+        logger.warning(
+            "could not list origin's branches of %s (%s)", repo.name, type(error).__name__
+        )
+        return set()
+    # Lines of `<sha><tab>refs/heads/<name>`.
+    return {line.split("\t", 1)[-1].removeprefix("refs/heads/") for line in listing.splitlines()}
 
 
 async def _has_branch(repo: RepoConfig, branch: str) -> bool:

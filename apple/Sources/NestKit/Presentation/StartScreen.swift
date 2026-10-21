@@ -1,8 +1,8 @@
 import Foundation
 
 /// What the empty workspace's start screen shows (B90, design I): the question over the
-/// docked composer, and beside it a column with what waits on the user in this project
-/// and its latest chats.
+/// docked composer, and beside it a column with what waits on the user in this project,
+/// its open GitHub issues (B101) and its latest chats.
 public struct StartScreen: Sendable, Equatable {
     /// One row of "Waiting on you": a chat, the right panel's tone and its Needs you line.
     public struct Waiting: Sendable, Hashable, Identifiable {
@@ -24,17 +24,25 @@ public struct StartScreen: Sendable, Equatable {
 
     /// As many recent chats as sit beside the composer without pushing the column up.
     public static let recentLimit = 4
+    /// The open issues list shows this many rows and scrolls past them.
+    public static let issueRows = 5
     public static let columnWidth = 250.0
     /// Below this workspace width the column leaves the room to the composer.
     public static let columnMinWidth = 760.0
 
     public let waiting: [Waiting]
     public let recent: [Recent]
+    /// The open issues, newest updated first; none while the repo has no GitHub.
+    public let issues: [IssueSummary]
+    public let issueCount: Int
+    /// The section shows with issues, and with Mine even without, so its switch stays.
+    public let showsIssues: Bool
 
     /// `approvals`, `checksFailed` and `stuck` as the right panel's Needs you card reads
-    /// them; `sessions` the project's chats.
+    /// them; `sessions` the project's chats; `issues` its open issues, once read.
     public init(
-        approvals: [Approval], checksFailed: [Session], stuck: [Session], sessions: [Session]
+        approvals: [Approval], checksFailed: [Session], stuck: [Session], sessions: [Session],
+        issues: IssueList? = nil
     ) {
         let pending = approvals.filter { Pixie.id(ofRepo: $0.repo) == nil }.map { approval in
             Waiting(
@@ -60,11 +68,26 @@ public struct StartScreen: Sendable, Equatable {
             .sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
             .prefix(Self.recentLimit)
             .map { Recent(chat: $0.id, title: $0.title, date: $0.updatedAt) }
+        let open = issues.flatMap { $0.available ? $0.issues : nil } ?? []
+        self.issues = open
+        issueCount = open.count
+        showsIssues = !open.isEmpty || (issues.map { $0.available && $0.show == .mine } ?? false)
     }
+
+    /// More issues than rows: the list scrolls.
+    public var issuesScroll: Bool { issues.count > Self.issueRows }
+
+    /// The quiet line of Mine with nothing assigned.
+    public var issuesEmptyLine: String? {
+        showsIssues && issues.isEmpty ? "No open issues assigned to you" : nil
+    }
+
+    /// "Open issues · 7".
+    public var issuesLabel: String { "Open issues \u{00B7} \(issueCount)" }
 
     /// The column shows while it has something to list and the workspace has room for it.
     public func showsColumn(width: Double) -> Bool {
-        width >= Self.columnMinWidth && !(waiting.isEmpty && recent.isEmpty)
+        width >= Self.columnMinWidth && !(waiting.isEmpty && recent.isEmpty && !showsIssues)
     }
 
     /// The ways to ask, as the words before and after the project: "in <project>" or "for

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import re
 import shutil
@@ -10,10 +11,10 @@ from nestd.config.models import RepoConfig, WorktreeConfig
 from nestd.gitops.runner import GitError
 from nestd.paths import AppPaths
 from nestd.providers.codex_trust import forget_trust
-from nestd.worktrees.manager import Worktree, WorktreeManager, branch_name
+from nestd.worktrees.manager import Worktree, WorktreeManager, branch_name, issue_branch_name
 from nestd.worktrees.setup import run_commands
 from tests.async_support import until
-from tests.git_support import commit_file, git, init_repo
+from tests.git_support import commit_file, git, init_repo, with_origin
 
 
 @pytest.fixture
@@ -130,6 +131,49 @@ async def test_create_reports_git_failures(manager: WorktreeManager, tmp_path: P
 )
 def test_branch_names(title: str, slug: str) -> None:
     assert re.fullmatch(rf"agent/{re.escape(slug)}-[0-9a-f]{{6}}", branch_name(title))
+
+
+@pytest.mark.parametrize(
+    ("title", "name"),
+    [
+        ("Usage meter shows the wrong reset", "118-usage-meter-shows-the-wrong-reset"),
+        (
+            "Fix the login redirect after the token expires",
+            "118-fix-the-login-redirect-after-the-token",
+        ),
+        ("!!!", "118"),
+    ],
+)
+def test_issue_branch_names_follow_github(title: str, name: str) -> None:
+    assert issue_branch_name(118, title) == name
+
+
+async def test_a_free_branch_name_avoids_local_branches_and_those_on_origin(
+    manager: WorktreeManager, tmp_path: Path
+) -> None:
+    repo = make_repo(tmp_path)
+    origin = with_origin(repo.path, tmp_path / "origin.git")
+    # Someone else pushed 118-fix; this checkout has 118-fix-2 only locally.
+    git(repo.path, "push", "-q", "origin", "main:refs/heads/118-fix")
+    git(repo.path, "branch", "118-fix-2")
+
+    name = await manager.free_branch(repo, "118-fix")
+
+    assert name == "118-fix-3"
+    assert "118-fix-2" not in git(origin, "branch", "--format=%(refname:short)").split()
+
+
+async def test_without_origin_a_free_branch_name_avoids_local_branches_only(
+    manager: WorktreeManager, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    repo = make_repo(tmp_path)
+    git(repo.path, "branch", "118-fix")
+
+    with caplog.at_level(logging.WARNING):
+        name = await manager.free_branch(repo, "118-fix")
+
+    assert name == "118-fix-2"
+    assert "could not list origin's branches of repo (GitError)" in caplog.text
 
 
 async def test_link_symlinks_existing_sources_and_reports_the_rest(

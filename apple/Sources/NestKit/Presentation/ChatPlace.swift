@@ -52,6 +52,17 @@ public enum ChatPlace: Sendable, Hashable {
         }
     }
 
+    /// What a chat from a GitHub issue adds after its place in the sidebar row: "#118"
+    /// (B101).
+    public static func issueMark(of session: Session) -> String? {
+        session.issue.map { "#\($0.number)" }
+    }
+
+    /// The same for the row's accessibility label, after a comma.
+    public static func issueAccessibility(of session: Session) -> String? {
+        session.issue.map { "issue \($0.number)" }
+    }
+
     /// The tooltip, naming the folder.
     public var help: String {
         switch self {
