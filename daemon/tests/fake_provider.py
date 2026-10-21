@@ -360,9 +360,15 @@ def edit(files: dict[str, str], then: Turn) -> Turn:
     return turn
 
 
-def until_interrupted() -> Turn:
+def until_interrupted(working: asyncio.Event | None = None) -> Turn:
+    """Streams a little text, then waits for an interrupt; `working` is set once the text
+    is out, for tests that move the clock after the agent's last output.
+    """
+
     async def turn(run: FakeRun) -> None:
         await run.sink.text_delta("working")
+        if working is not None:
+            working.set()
         await run.interrupted.wait()
         await run.sink.result(RESULT.model_copy(update={"subtype": "interrupted"}))
 
