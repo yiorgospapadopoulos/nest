@@ -634,7 +634,9 @@ class TurnRunner:
         dirs = await self._attachments.file_dirs(session.id)
         agents = await self.chat_agents(session)
         engine = self._engines.of(session)
-        while (run := live.run) is None or not _fits(live, session, dirs, agents):
+        while (run := live.run) is None or not _fits(
+            live, session, dirs, agents, engine.active_account()
+        ):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
             # sets it again, and the loop opens another run with that change.
@@ -642,6 +644,7 @@ class TurnRunner:
             extras = await self._pixie_extras(session)
             # Following Claude Code's own mode, the run opens without one (IMP-06).
             mode = None if session.follows_claude_code_mode else session.permission_mode
+            account = await engine.prepare_account()
             spec = SessionSpec(
                 cwd=cwd,
                 permission_mode=mode,
@@ -663,6 +666,7 @@ class TurnRunner:
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
+                account=account,
             )
             sink = SessionSink(
                 live,
@@ -674,8 +678,10 @@ class TurnRunner:
                 forking=session.fork_from,
                 attachments=self._attachments,
                 calls=self._calls,
+                active_account=engine.active_account,
             )
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
+            live.run_account = None if account is None else account.id
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
@@ -700,7 +706,10 @@ class TurnRunner:
         self, live: LiveSession, session: Session, folders: tuple[Path, ...]
     ) -> bool:
         """Whether the live run takes a message with files in `folders` as it is (B59)."""
-        return _fits(live, session, folders, await self.chat_agents(session))
+        engine = self._engines.of(session)
+        return _fits(
+            live, session, folders, await self.chat_agents(session), engine.active_account()
+        )
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
         """The pixies the chat may call (B40); a pixie's own chat gets the others (B41).
@@ -745,17 +754,24 @@ def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
         live.unsent = unsent
 
 
-def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...], agents: ChatAgents) -> bool:
+def _fits(
+    live: LiveSession,
+    session: Session,
+    dirs: tuple[Path, ...],
+    agents: ChatAgents,
+    account: str | None,
+) -> bool:
     """Whether the live run can take the session's next message as it is."""
-    # A new attachment folder, a new effort, another set of subagents (B40), or bypass for
-    # a run that did not open in it needs a new run (D046), but waits while background
-    # tasks run: closing would stop them. Until then the agent asks before reading a new
-    # folder's files.
+    # A new attachment folder, a new effort, another set of subagents (B40), another
+    # active account (B98), or bypass for a run that did not open in it needs a new run
+    # (D046), but waits while background tasks run: closing would stop them. Until then
+    # the agent asks before reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
         set(dirs) <= set(live.run_dirs)
         and live.run_effort == session.effort
         and live.run_agents.fingerprint == agents.fingerprint
+        and live.run_account == account
     )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 

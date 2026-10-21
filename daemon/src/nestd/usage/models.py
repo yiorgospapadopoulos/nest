@@ -110,6 +110,19 @@ class EngineLimits(BaseModel):
     windows: list[EngineLimitWindow]
 
 
+class AccountWindow(BaseModel):
+    """One of an account's windows as `GET /api/accounts` lists them (B98)."""
+
+    label: str
+    # Claude's five-hour window is 300, its weekly one 10080; None when not known.
+    minutes: int | None
+    utilization: float
+    resets_at: datetime | None
+    updated_at: datetime
+    # Its reset time passed since the last report: it reads as 0 until the next one.
+    reset: bool
+
+
 CLAUDE = "claude"
 # The engines whose usage windows Nest keeps (B91).
 type UsageProvider = Literal["claude", "codex"]

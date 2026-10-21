@@ -6,24 +6,25 @@ opened on the Mac, Codex takes the browser's answer on its own local callback, k
 login in the Codex home and says `account/login/completed`. That app-server runs until
 then, until the user cancels (`account/login/cancel`), or for at most
 `LOGIN_TIME_LIMIT`. Sign out is `account/logout` on another short-lived one. Each outcome
-is announced as `account.codex` after Codex is asked again, so the provider list has it
-too.
+is announced after Codex is asked again, so the provider list has it too.
+
+Each account has its own (B98): the first one on the user's Codex home, an added one on its
+profile folder.
 """
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from pydantic import BaseModel, JsonValue
 
-from nestd.engine.codex import CodexEngine, CodexStatus
+from nestd.clock import Clock
+from nestd.engine.codex import CodexStatus
 from nestd.errors import ConflictError, NestError
-from nestd.events import types
-from nestd.events.bus import EventBus
-from nestd.providers.codex_engine import CodexFetchError, ask_codex, initialize
+from nestd.providers.codex_engine import CodexFetchError, ask_codex, initialize, read_login
 from nestd.providers.codex_items import text
 from nestd.providers.codex_process import CodexLaunch, TransportFactory
 from nestd.providers.codex_rpc import CodexClosedError, CodexRpc, CodexRpcError, JsonObject
@@ -67,6 +68,12 @@ class CodexAccountError(NestError):
     status_code = 502
 
 
+# Asks Codex about the account now.
+type StatusSource = Callable[[], Awaitable[CodexAccountStatus]]
+# Hears each sign in's outcome and each sign out, with the error a sign in ended with.
+type Announce = Callable[[CodexAccountStatus, str | None], Awaitable[None]]
+
+
 @dataclass
 class _Login:
     rpc: CodexRpc
@@ -79,23 +86,27 @@ class _Login:
 class CodexAccount:
     def __init__(
         self,
-        engine: CodexEngine,
+        status: StatusSource,
         transport: TransportFactory,
         launch: Callable[[], CodexLaunch],
-        bus: EventBus,
+        announce: Announce,
         time_limit: timedelta = LOGIN_TIME_LIMIT,
     ) -> None:
-        """`launch` starts the app-server against the user's Codex home."""
-        self._engine = engine
+        """`launch` starts the app-server against the account's Codex home."""
+        self._status = status
         self._transport = transport
         self._launch = launch
-        self._bus = bus
+        self._announce = announce
         self._time_limit = time_limit
         self._lock = asyncio.Lock()
         self._login: _Login | None = None
 
+    @property
+    def signing_in(self) -> bool:
+        return self._login is not None
+
     async def status(self) -> CodexAccountStatus:
-        return _status(await self._engine.status(refresh=True))
+        return await self._status()
 
     async def login(self) -> CodexSignIn:
         """Start the ChatGPT browser sign in; 409 while one runs, 502 when Codex cannot
@@ -183,14 +194,15 @@ class CodexAccount:
                     await rpc.request("account/login/cancel", {"loginId": login_id})
             await rpc.close()
             status = await self.status()
-            await self._announce(status, None if error == _CANCELLED else error)
         finally:
-            if self._login is not None and self._login.outcome is outcome:
-                self._login = None
+            self._release(outcome)
+        # Once it no longer runs: hearing the outcome may remove the account.
+        await self._announce(status, None if error == _CANCELLED else error)
 
-    async def _announce(self, status: CodexAccountStatus, error: str | None) -> None:
-        payload: dict[str, JsonValue] = {**status.model_dump(mode="json"), "error": error}
-        await self._bus.publish(types.ACCOUNT_CODEX, payload)
+    def _release(self, outcome: asyncio.Future[str | None]) -> None:
+        """The sign in ended; one stopped meanwhile was already let go."""
+        if self._login is not None and self._login.outcome is outcome:
+            self._login = None
 
 
 def _end(outcome: asyncio.Future[str | None], value: str | None) -> None:
@@ -216,7 +228,26 @@ async def _start(rpc: CodexRpc) -> tuple[str, str]:
     return login_id, auth_url
 
 
-def _status(status: CodexStatus) -> CodexAccountStatus:
+async def read_status(
+    transport: TransportFactory, launch: CodexLaunch, clock: Clock
+) -> CodexAccountStatus:
+    """Ask a short-lived app-server on the account's home who is signed in (B98)."""
+    try:
+        login = await ask_codex(transport, launch, read_login)
+    except CodexFetchError as error:
+        return CodexAccountStatus(
+            signed_in=None, email=None, plan=None, checked_at=clock.now(), error=str(error)
+        )
+    return CodexAccountStatus(
+        signed_in=login.signed_in,
+        email=login.account.email,
+        plan=login.account.plan,
+        checked_at=clock.now(),
+    )
+
+
+def account_status(status: CodexStatus) -> CodexAccountStatus:
+    """The engine's answer about the account it runs on."""
     account = status.account
     return CodexAccountStatus(
         signed_in=status.signed_in,

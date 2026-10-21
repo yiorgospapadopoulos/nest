@@ -7,7 +7,7 @@ can take it (B59), else it is queued and starts the next turn once this one ends
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Collection, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
@@ -26,7 +26,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.providers.base import AgentProvider, ApprovalHandler
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
-from nestd.sessions.engines import DefaultModel, Engine, Engines, ModelLookup
+from nestd.sessions.engines import AccountSource, DefaultModel, Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
     CannotRewindError,
     NoAgentRunError,
@@ -117,15 +117,19 @@ class SessionManager:
         nest_tools: NestToolsSource | None = None,
         call_tools: CallToolsSource | None = None,
         engines: Sequence[Engine] = (),
+        accounts: AccountSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
         a project chat calls (B46); `nest_tools` are the tools of every run (B79);
         `call_tools` call the pixies a run calls as sessions of their own (B91).
         `provider` and `models` are the default engine's; `engines` the others a chat
-        can ask for, such as Codex (B91).
+        can ask for, such as Codex (B91). `accounts` is the default engine's active
+        account (B98).
         """
-        self._engines = Engines(Engine(provider, models, default=default_model), engines)
+        self._engines = Engines(
+            Engine(provider, models, default=default_model, accounts=accounts), engines
+        )
         self._queue = queue
         self._files = files or FileIndex(clock)
         self._clock = clock
@@ -601,6 +605,14 @@ class SessionManager:
             return
         live.cancel_idle_close()
         await live.close_run()
+
+    async def close_idle_runs(self, accounts: Collection[str]) -> None:
+        """Close the idle runs opened on any of `accounts`, as idle close does, once the
+        user chose another (B98); a busy one waits for its next turn to switch.
+        """
+        for live in list(self._live.values()):
+            if live.run_account in accounts:
+                await self.close_idle_run(live.session_id)
 
     async def update(self, session_id: str, request: UpdateSession) -> Session:
         """Rename, pin or archive; persist new controls and apply them to the live run.

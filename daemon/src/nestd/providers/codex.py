@@ -271,6 +271,8 @@ class CodexProvider:
             extra_env = {
                 **(agent_env(self._gh_config_dir) if spec.guard_git else {}),
                 **(tools.env() if tools is not None else {}),
+                # The account's profile folder (B98) wins over the first account's home.
+                **(spec.account.env if spec.account is not None else {}),
             }
             launch = app_server_launch(
                 self._binary or bundled_binary(),
