@@ -306,7 +306,7 @@ async def test_update_without_a_live_run_only_persists(env: Env) -> None:
     assert env.provider.runs[0].calls == []
 
 
-async def test_close_removes_the_worktree_and_branch(env: Env) -> None:
+async def test_close_removes_the_worktree_and_keeps_the_branch(env: Env) -> None:
     env.provider.script(reply("ok"))
     created = await env.create()
     session = await env.reach(created.id, SessionState.IDLE)
@@ -316,7 +316,7 @@ async def test_close_removes_the_worktree_and_branch(env: Env) -> None:
 
     assert closed.state is SessionState.CLOSED
     assert not session.worktree_path.exists()
-    assert str(session.branch) not in git(env.repo_path, "branch")
+    assert str(session.branch) in git(env.repo_path, "branch")
     assert env.provider.runs[0].closed is True
     with pytest.raises(SessionClosedError):
         await env.manager.close(created.id, remove_worktree=False)

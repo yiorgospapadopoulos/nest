@@ -82,12 +82,12 @@ PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
     f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
-# A chat a pixie started, whose git writes stay blocked (D072, B58); a pixie's own runs
-# have their own prompt.
+# A chat a pixie started, which may commit but whose pushes and pull requests stay blocked
+# (D072, B58, D123); a pixie's own runs have their own prompt.
 GUARDED_PROMPT = (
-    "You are running inside Nest. Do not run git commit, git push, gh pr create or "
-    "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
+    "You are running inside Nest. You may commit your work. Do not run git push, "
+    "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
+    f"{_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
 # The same for Codex chats, which have no task list but Nest's artifact tools (B91).
@@ -101,9 +101,9 @@ CODEX_PLAIN_FOLDER_PROMPT = (
     f"{ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
-    "You are running inside Nest. Do not run git commit, git push, gh pr create or "
-    "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
+    "You are running inside Nest. You may commit your work. Do not run git push, "
+    "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
+    f"{_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
 )
 
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it
@@ -207,7 +207,8 @@ class TurnRunner:
         `text`, else the chat's first prompt.
         """
         prompt = session.prompt if text is None else text
-        if session.mode == "worktree":
+        # A chat that joined an existing worktree has it already (B96).
+        if session.mode == "worktree" and session.worktree_path is None:
             assert repo is not None  # noqa: S101 (a worktree session always has a project)
             live.preparing = True
             try:
@@ -219,7 +220,7 @@ class TurnRunner:
                 raise
             finally:
                 live.preparing = False
-            if not setup.ok:
+            if setup is not None and not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
         return await self.submit(live, prompt, attachments, sender=sender)
 
@@ -742,8 +743,9 @@ class TurnRunner:
 
 
 def _guarded(session: Session) -> bool:
-    """A pixie may never commit or push (D072, D078): its chats, habit runs (which carry its
-    `pixie_id`) and the chats it starts keep git writes blocked (B58).
+    """A pixie may commit but never push, open or merge a pull request (D072, D078, D123): its
+    chats, habit runs (which carry its `pixie_id`) and the chats it starts keep those blocked
+    (B58).
     """
     return session.pixie_id is not None or session.started_by_pixie is not None
 

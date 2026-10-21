@@ -131,7 +131,7 @@ async def test_interrupting_while_the_worktree_is_created_keeps_the_chat_usable(
     assert env.provider.runs[0].spec.cwd == session.worktree_path
 
 
-async def test_closing_while_the_worktree_is_created_removes_it_and_its_branch(
+async def test_closing_while_the_worktree_is_created_removes_it_and_keeps_its_branch(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     started, release = gate_worktree_add(monkeypatch)
@@ -149,7 +149,7 @@ async def test_closing_while_the_worktree_is_created_removes_it_and_its_branch(
     assert closed.worktree_path is not None
     assert not closed.worktree_path.exists()
     assert str(closed.worktree_path) not in git(env.repo_path, "worktree", "list")
-    assert str(closed.branch) not in git(env.repo_path, "branch")
+    assert str(closed.branch) in git(env.repo_path, "branch")
     assert env.provider.runs == []
 
 

@@ -9,6 +9,7 @@ enum Icon {
     static let attach = "paperclip"
     static let send = "arrow.up"
     static let chevron = "chevron.down"
+    static let chevronUp = "chevron.up"
     static let chevronLeft = "chevron.left"
     static let chevronRight = "chevron.right"
     static let close = "xmark"

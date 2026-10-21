@@ -203,21 +203,20 @@ async def test_setup_times_out_and_kills_the_command(
     assert not (worktree.path / "never").exists()
 
 
-async def test_remove_deletes_the_worktree_and_optionally_the_branch(
+async def test_remove_deletes_the_worktree_and_never_its_branch(
     manager: WorktreeManager, tmp_path: Path
 ) -> None:
+    """Nest never deletes a branch, not even the `agent/...` ones it makes (B96)."""
     repo = make_repo(tmp_path)
-    kept = await manager.create(repo, "aaaaaaaa", "keep")
-    dropped = await manager.create(repo, "bbbbbbbb", "drop")
-    (kept.path / "untracked.txt").write_text("x", encoding="utf-8")
+    worktree = await manager.create(repo, "aaaaaaaa", "keep")
+    (worktree.path / "untracked.txt").write_text("x", encoding="utf-8")
+    tip = git(repo.path, "rev-parse", worktree.branch).strip()
 
-    await manager.remove(repo, kept, delete_branch=False)
-    await manager.remove(repo, dropped, delete_branch=True)
+    await manager.remove(repo, worktree)
 
-    assert not kept.path.exists()
-    assert not dropped.path.exists()
-    assert kept.branch in branches(repo)
-    assert dropped.branch not in branches(repo)
+    assert not worktree.path.exists()
+    assert worktree.branch in branches(repo)
+    assert git(repo.path, "rev-parse", worktree.branch).strip() == tip
 
 
 async def test_remove_prunes_a_worktree_whose_directory_is_gone(
@@ -227,20 +226,20 @@ async def test_remove_prunes_a_worktree_whose_directory_is_gone(
     worktree = await manager.create(repo, "session-1", "gone")
     shutil.rmtree(worktree.path)
 
-    await manager.remove(repo, Worktree(worktree.path, worktree.branch, ""), delete_branch=True)
+    await manager.remove(repo, Worktree(worktree.path, worktree.branch, ""))
 
     assert "gone" not in git(repo.path, "worktree", "list")
-    assert worktree.branch not in branches(repo)
+    assert worktree.branch in branches(repo)
 
 
 async def test_removing_twice_is_harmless(manager: WorktreeManager, tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     worktree = await manager.create(repo, "session-2", "twice")
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
-    assert worktree.branch not in branches(repo)
+    assert worktree.branch in branches(repo)
 
 
 async def test_head_is_the_current_commit_or_none(manager: WorktreeManager, tmp_path: Path) -> None:
@@ -286,10 +285,10 @@ async def test_remove_deletes_files_written_after_git_removed_the_worktree(
     (worktree.path / ".remember").mkdir(parents=True)
     (worktree.path / ".remember" / "notes.md").write_text("x", encoding="utf-8")
 
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
     assert not worktree.path.exists()
-    assert worktree.branch not in branches(repo)
+    assert worktree.branch in branches(repo)
 
 
 async def test_remove_deletes_leftovers_of_a_worktree_made_before_the_rename(
@@ -302,10 +301,10 @@ async def test_remove_deletes_leftovers_of_a_worktree_made_before_the_rename(
     git(repo.path, "worktree", "remove", "--force", str(old))
     (old / ".remember").mkdir(parents=True)
 
-    await manager.remove(repo, Worktree(old, "agent/old", ""), delete_branch=True)
+    await manager.remove(repo, Worktree(old, "agent/old", ""))
 
     assert not old.exists()
-    assert "agent/old" not in branches(repo)
+    assert "agent/old" in branches(repo)
 
 
 @pytest.mark.parametrize(
@@ -328,7 +327,7 @@ async def test_remove_never_deletes_directories_outside_nest_worktrees(
     outside.mkdir(parents=True)
     (outside / "keep.txt").write_text("x", encoding="utf-8")
 
-    await manager.remove(repo, Worktree(outside, "agent/none", ""), delete_branch=False)
+    await manager.remove(repo, Worktree(outside, "agent/none", ""))
 
     assert (outside / "keep.txt").exists()
 
@@ -340,10 +339,10 @@ async def test_remove_still_deletes_a_worktree_in_the_data_dir(
     legacy = paths.worktrees_dir / "repo" / "0123abcd"
     git(repo.path, "worktree", "add", "-q", "-b", "agent/legacy", str(legacy))
 
-    await manager.remove(repo, Worktree(legacy, "agent/legacy", ""), delete_branch=True)
+    await manager.remove(repo, Worktree(legacy, "agent/legacy", ""))
 
     assert not legacy.exists()
-    assert "agent/legacy" not in branches(repo)
+    assert "agent/legacy" in branches(repo)
 
 
 async def test_remove_without_the_repo_folder_only_deletes_the_leftover_directory(
@@ -357,9 +356,9 @@ async def test_remove_without_the_repo_folder_only_deletes_the_leftover_director
     outside.mkdir()
     shutil.rmtree(repo.path)
 
-    await manager.remove(repo, Worktree(leftover, "agent/orphan", ""), delete_branch=True)
-    await manager.remove(repo, worktree, delete_branch=True)
-    await manager.remove(repo, Worktree(outside, "agent/none", ""), delete_branch=True)
+    await manager.remove(repo, Worktree(leftover, "agent/orphan", ""))
+    await manager.remove(repo, worktree)
+    await manager.remove(repo, Worktree(outside, "agent/none", ""))
 
     assert not leftover.exists()
     assert not worktree.path.exists()
@@ -402,7 +401,7 @@ async def test_removing_a_worktree_drops_its_codex_trust_entry(
         encoding="utf-8",
     )
 
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
     assert (codex_home / "config.toml").read_text(encoding="utf-8") == "[other]\nx = 1\n"
 
@@ -418,7 +417,7 @@ async def test_a_failing_removal_hook_still_removes_the_worktree(
     manager = WorktreeManager(paths, on_removed=broken)
     worktree = await manager.create(repo, "dddddddd", "hook")
 
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
     assert not worktree.path.exists()
-    assert worktree.branch not in branches(repo)
+    assert worktree.branch in branches(repo)

@@ -219,6 +219,8 @@ public protocol NestAPI: Sendable {
 
     /// The repo's local branches, for its default branch.
     func repoBranches(_ name: String) async throws -> [String]
+    /// The repo's branches and worktrees, each with the branch it comes from (B96).
+    func repoBranchMap(_ name: String) async throws -> BranchMap
     func storage() async throws -> StorageUsage
     func storageSettings() async throws -> StorageSettings
     func updateStorageSettings(_ settings: StorageSettings) async throws -> StorageSettings
