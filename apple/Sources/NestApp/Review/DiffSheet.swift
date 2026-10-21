@@ -103,8 +103,15 @@ struct DiffSheet: View {
         let session = shell.sessions.session(approval.sessionID)
         return HStack(spacing: 6) {
             Spacer()
+            // With an open pull request, Approve pushes to it; this only commits (B101).
+            if PublishForm.offersCommitOnly(for: session) {
+                Button(PublishForm.commitTitle) { shell.showPublish(approval, commitOnly: true) }
+                    .buttonStyle(.nest(.plain))
+                    .disabled(!shell.approvals.isReviewLoaded(approval))
+                    .help("Commit without pushing; the pull request stays as it is")
+            }
             Button {
-                shell.show(.publish(approval.id))
+                shell.showPublish(approval)
             } label: {
                 Label(
                     PublishForm.approveTitle(for: session),

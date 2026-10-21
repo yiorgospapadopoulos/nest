@@ -896,6 +896,38 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/sessions/s1/ci-feedback", response: "") {
             try await $0.ciFeedback("s1")
         },
+        RouteCase("GET", "/api/repos/nest/issues", response: Fixture.text("issues")) {
+            _ = try await $0.issues(repo: "nest", refresh: false, show: nil)
+        },
+        RouteCase("GET", "/api/repos/nest/issues?refresh=true", response: Fixture.text("issues")) {
+            _ = try await $0.issues(repo: "nest", refresh: true, show: nil)
+        },
+        RouteCase(
+            "GET", "/api/repos/nest/issues?refresh=true&show=mine",
+            response: Fixture.text("issues")
+        ) { _ = try await $0.issues(repo: "nest", refresh: true, show: .mine) },
+        RouteCase("GET", "/api/repos/nest/issues?show=all", response: Fixture.text("issues")) {
+            _ = try await $0.issues(repo: "nest", refresh: false, show: .all)
+        },
+        RouteCase(
+            "POST", "/api/sessions",
+            body: #"{"attachment_ids":[],"issue":118,"prompt":"","repo":"nest"}"#,
+            response: sessionJSON
+        ) {
+            _ = try await $0.createSession(
+                CreateSessionRequest(repo: "nest", prompt: "", issue: 118))
+        },
+        RouteCase("POST", "/api/sessions/s1/pr/review-feedback", response: "") {
+            try await $0.reviewFeedback("s1", ids: nil)
+        },
+        RouteCase(
+            "POST", "/api/sessions/s1/pr/review-feedback", body: #"{"ids":["t1:c2"]}"#,
+            response: ""
+        ) { try await $0.reviewFeedback("s1", ids: ["t1:c2"]) },
+        RouteCase(
+            "PATCH", "/api/sessions/s1/pr/review", body: #"{"auto_send":true}"#,
+            response: sessionJSON
+        ) { _ = try await $0.setReviewAutoSend("s1", true) },
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:

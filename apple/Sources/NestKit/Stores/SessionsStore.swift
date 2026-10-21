@@ -271,6 +271,12 @@ public final class SessionsStore {
         return true
     }
 
+    /// Whether new review comments on the chat's pull request go to the agent as they
+    /// arrive, rather than waiting in Needs you (B101).
+    public func setReviewAutoSend(_ id: String, _ on: Bool) async throws {
+        try await fetch { try await self.api.setReviewAutoSend(id, on) }
+    }
+
     /// Reads the pull request from GitHub now.
     public func refreshPR(_ id: String) async throws {
         refreshingPR.insert(id)
@@ -379,6 +385,9 @@ public final class SessionsStore {
         case .pullRequest(let pr):
             guard let id = event.sessionID else { return }
             sessions[id]?.pr = pr
+        case .prReview(let review):
+            guard let id = event.sessionID else { return }
+            sessions[id]?.review = review
         case .stuck(let flag):
             guard let id = event.sessionID else { return }
             sessions[id]?.stuck = flag

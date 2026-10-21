@@ -21,6 +21,7 @@ from nestd.approvals.models import ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.errors import ConflictError, InvalidInputError
 from nestd.gitops.remotes import scrub_url
+from nestd.issues.message import closing_body
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.summary import pr_summary
 from nestd.repos.service import FALLBACK_BRANCH, RepoService
@@ -93,7 +94,12 @@ class ReviewActions:
             await self._require_committable(cwd, diff, plan)
             if plan.push:
                 plan = replace(plan, remote_url=await self._remote_url(session, request))
+            had_pr = session.pr_url is not None
             session = await self._publisher.publish(session, plan)
+            if plan.push and had_pr and session.commit_sha is not None:
+                # The agent's work for the review comments it was sent is on the pull
+                # request now (B101).
+                await self._prs.reply_addressed(session_id, session.commit_sha)
             if plan.push and session.pr_url is not None:
                 # A new pull request, or new commits on one: read it without waiting.
                 self._prs.check_soon(session_id)
@@ -150,10 +156,14 @@ class ReviewActions:
             raise InvalidInputError(msg)
         pull_request = None
         if request.open_pr:
+            body = request.pr_body or await self._default_body(session)
+            if session.issue is not None:
+                # Merging closes the issue the chat started from (B101).
+                body = closing_body(body, session.issue.number)
             pull_request = PullRequest(
                 base=self._repos.get(session.repo).default_branch or FALLBACK_BRANCH,
                 title=request.pr_title or session.title,
-                body=request.pr_body or await self._default_body(session),
+                body=body,
                 summary=await self._pr_summary(session, diff),
             )
         return PublishPlan(

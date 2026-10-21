@@ -571,6 +571,32 @@ a.b {
   background: var(--soft);
   font-size: var(--fs-meta);
 }
+/* Review comments (B101): each one's place in mono over its text. */
+.rclist {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rclist li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rcp {
+  font: 600 0.7647rem/1.4 var(--mono);
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rcb {
+  color: var(--t1);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .nexp .cmdbox,
 .nexp .cq {
   margin: 0;

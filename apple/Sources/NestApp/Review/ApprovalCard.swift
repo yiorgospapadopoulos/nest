@@ -28,6 +28,7 @@ struct ApprovalCard: View {
                 case .review: ReviewBody(approval: approval, style: style)
                 case .plan: PlanBody(approval: approval, style: style)
                 case .merge: MergeBody(approval: approval, style: style)
+                case .reviewComments: ReviewCommentsBody(approval: approval, style: style)
                 case .permission, .unknown: PermissionBody(approval: approval, style: style)
                 }
             }
@@ -58,6 +59,7 @@ struct ApprovalCard: View {
         case .review: "Ready for review"
         case .plan: "Plan ready for review"
         case .merge: "Ready to merge"
+        case .reviewComments: "Review comments"
         case .permission, .unknown: "Permission needed"
         }
     }
@@ -419,13 +421,29 @@ private struct ReviewBody: View {
             }
             ActionRow {
                 Button {
-                    shell.show(.publish(approval.id))
+                    shell.showPublish(approval)
                 } label: {
                     Text(PublishForm.approveTitle(for: session)).grows(style)
                 }
                 .buttonStyle(.nest(.primary))
                 .disabled(!git)
                 .help(git ? "" : "Not a git repository: nothing to commit")
+                // With an open pull request, Approve pushes to it; this only commits (B101).
+                if PublishForm.offersCommitOnly(for: session) {
+                    Button(PublishForm.commitTitle) {
+                        shell.showPublish(approval, commitOnly: true)
+                    }
+                    .buttonStyle(.nest(.plain))
+                    .fixedSize()
+                    .help("Commit without pushing; the pull request stays as it is")
+                }
+            }
+            if let reply = PublishForm.replyNote(for: session) {
+                Text(reply)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
         }
     }

@@ -181,6 +181,9 @@ private struct PaneHeader: View {
                     .layoutPriority(0.2)
             }
             Spacer(minLength: 0)
+            if let issue = session?.issue, fit.showsPullRequest {
+                IssueChip(issue: issue)
+            }
             if let pr = session?.pr, fit.showsPullRequest {
                 PRChip(session: chat, pr: pr)
             }

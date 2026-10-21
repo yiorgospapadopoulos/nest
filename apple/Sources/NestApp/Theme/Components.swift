@@ -36,6 +36,8 @@ enum Icon {
     static let question = "questionmark.circle"
     static let plan = "list.bullet.clipboard"
     static let pullRequest = "arrow.triangle.pull"
+    /// An open GitHub issue (B101).
+    static let issue = "smallcircle.filled.circle"
     static let gear = "gearshape"
     static let more = "ellipsis"
     /// A row's handle for dragging it into another place.
@@ -411,10 +413,11 @@ struct ProgressRing: View {
 }
 
 /// The look's buttons, flat and small: `primary` filled in the accent, `soft` on a soft
-/// fill, `plain` text only; `danger` is soft with red text and `destructive` filled red.
+/// fill, `plain` text only, `link` plain in the link colour; `danger` is soft with red text
+/// and `destructive` filled red.
 struct NestButtonStyle: ButtonStyle {
     enum Kind {
-        case primary, soft, plain, danger, destructive
+        case primary, soft, plain, link, danger, destructive
     }
 
     var kind = Kind.soft
@@ -429,7 +432,7 @@ struct NestButtonStyle: ButtonStyle {
                 .font(.ui(height > 26 ? TypeSize.ui : TypeSize.button, weight))
                 .labelStyle(TightLabelStyle())
                 .foregroundStyle(foreground)
-                .padding(.horizontal, iconOnly ? 0 : (kind == .plain ? 6 : 9))
+                .padding(.horizontal, iconOnly ? 0 : (kind == .plain || kind == .link ? 6 : 9))
                 .frame(width: iconOnly ? height : nil, height: height)
                 .background(background(hovering: hovering), in: .rounded(Radius.button))
                 .contentShape(.rounded(Radius.button))
@@ -447,6 +450,7 @@ struct NestButtonStyle: ButtonStyle {
         case .primary: accent.onAccent
         case .soft: Palette.t1
         case .plain: Palette.t2
+        case .link: Palette.link
         case .danger: StatusTone.failed.color
         case .destructive: .white
         }
@@ -456,7 +460,7 @@ struct NestButtonStyle: ButtonStyle {
         switch kind {
         case .primary: hovering ? accent.accent.opacity(0.85) : accent.accent
         case .soft: hovering ? Palette.selection : Palette.soft
-        case .plain: hovering ? Palette.hover : .clear
+        case .plain, .link: hovering ? Palette.hover : .clear
         case .danger: hovering ? StatusTone.failed.soft : Palette.soft
         case .destructive:
             hovering ? StatusTone.failed.color.opacity(0.85) : StatusTone.failed.color

@@ -16,6 +16,7 @@ import {
   trackedAgent,
   pixie,
   mergeApproval,
+  reviewComments,
   plan,
   prStatus,
   question,
@@ -186,17 +187,18 @@ describe("inbox", () => {
       approval({ id: "c", repo: "cv-page", created_at: "2026-10-06T10:00:01Z" }),
       approval({ id: "d", repo: "zeta" }),
       approval({ id: "e", repo: "alpha" }),
+      reviewComments({ id: "f", repo: "cv-page", created_at: "2026-10-06T10:00:03Z" }),
     ];
     const s = state([], items);
 
     expect(inboxGroups(s).map((g) => [g.repo, g.items.map((a) => a.id)])).toEqual([
       ["narrative", ["b"]],
-      ["cv-page", ["c", "a"]],
+      ["cv-page", ["c", "a", "f"]],
       ["alpha", ["e"]],
       ["zeta", ["d"]],
     ]);
-    expect(needsCount(s)).toBe(5);
-    expect(needsCount(s, "cv-page")).toBe(2);
+    expect(needsCount(s)).toBe(6);
+    expect(needsCount(s, "cv-page")).toBe(3);
   });
 
   it("adds unread warn and action reports under their pixie, newest first (B42)", () => {

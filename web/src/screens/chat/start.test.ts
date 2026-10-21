@@ -10,6 +10,7 @@ import {
   question,
   repo,
   review,
+  reviewComments,
   session,
 } from "../../test/fixtures.ts";
 import {
@@ -86,6 +87,8 @@ describe("needs you line", () => {
     expect(needsYouLine(plan({ payload: { plan: "\n" } }))).toBe("Plan");
     expect(needsYouLine(mergeApproval())).toBe("Ready to merge · #7 Validate contact form");
     expect(needsYouLine(question({ payload: { questions: [] } }))).toBe("Question");
+    expect(needsYouLine(reviewComments())).toBe("Review comments · 4 on #7, changes requested");
+    expect(needsYouLine(reviewComments({ payload: {} }))).toBe("Review comments · 0 on #0");
   });
 });
 
@@ -110,6 +113,7 @@ describe("start screen lists", () => {
         [
           approval(),
           review({ id: "q9" }),
+          reviewComments({ created_at: "2026-10-06T10:00:01Z" }),
           approval({ id: "q8", session_id: "s4", repo: "narrative" }),
         ],
       ),
@@ -119,10 +123,11 @@ describe("start screen lists", () => {
     expect(lists.waiting.map((w) => [w.chat, w.title, w.tone, w.line])).toEqual([
       ["s1", "Validate contact form", "wait", "Permission · Bash npm install zod"],
       ["s1", "Validate contact form", "rev", "Ready for review · +48 -19 in 3 files"],
+      ["s1", "Validate contact form", "wait", "Review comments · 4 on #7, changes requested"],
       ["s2", "Add RSS", "fail", "Checks failed · test, e2e"],
       ["s3", "Bump Next", "wait", "Stuck · No new output for 12 minutes"],
     ]);
-    expect(new Set(lists.waiting.map((w) => w.id)).size).toBe(4);
+    expect(new Set(lists.waiting.map((w) => w.id)).size).toBe(5);
     // Each chat waiting on the user is listed there, not again under Recent.
     expect(lists.recent).toEqual([]);
   });

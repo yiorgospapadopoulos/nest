@@ -248,6 +248,10 @@
                 try await renderConfiguration(model, shell, controller, folder)
                 return
             }
+            if only == "b101" {
+                try await renderIssues(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -380,6 +384,107 @@
             try await renderCodex(model, shell, controller, folder)
             try await renderConfiguration(model, shell, controller, folder)
             try await renderAccounts(model, shell, controller, folder)
+            try await renderIssues(model, shell, controller, folder)
+        }
+
+        /// B101: the start screen's open issues, and its draft once one is clicked; a chat
+        /// started from an issue, with the issue chip beside its pull request's, the issue
+        /// and review feedback bubbles, the waiting review line, the sidebar row's issue and
+        /// the review comments open in Needs you; the pull request's popover with what
+        /// merging closes and the auto send switch.
+        private static func renderIssues(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            // Earlier sections resolve approvals for their own cards.
+            try await model.approvals.load()
+            shell.selectProject("cv-page")
+            await model.issues.load("cv-page")
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = false
+            }
+            try await pair(controller, "b101-start", folder)
+            let issues = model.issues.list("cv-page")?.issues ?? []
+            shell.startFromIssue(issues[0])
+            try await pair(controller, "b101-start-issue-draft", folder)
+            shell.startDraft().issue = nil
+            // Mine with nothing assigned keeps the section and its switch.
+            await model.issues.setShow(.mine, for: "cv-page")
+            try await pair(controller, "b101-start-mine", folder)
+            await model.issues.setShow(.all, for: "cv-page")
+
+            let chat = try await model.api.session("c10")
+            model.sessions.insert(chat)
+            model.approvals.apply(.approvalCreated(SampleData.reviewCommentsApproval(now: Date())))
+            try await model.transcripts.transcript(for: "c10").load()
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.openChat("c10", in: workspace)
+                state.focusPane("c10")
+                state.openCards = [.needsYou]
+            }
+            let comments = SampleData.reviewCommentsApproval(now: Date())
+            shell.foldedRows[comments.foldKey] = true
+            try await pair(controller, "b101-issue-chat", folder)
+            shell.foldedRows[comments.foldKey] = nil
+            try await pairView(
+                PRDetails(session: "c10", pr: chat.pr!).environment(shell), "b101-pr-popover",
+                folder)
+            var autoSend = chat
+            autoSend.review?.autoSend = true
+            model.sessions.insert(autoSend)
+            try await pairView(
+                PRDetails(session: "c10", pr: chat.pr!).environment(shell),
+                "b101-pr-popover-auto-send", folder)
+            model.sessions.insert(chat)
+            let plain = try await model.api.session("c9")
+            try await pairView(
+                PRDetails(session: "c9", pr: plain.pr!).environment(shell),
+                "b101-pr-popover-no-issue", folder)
+
+            // A review in a worktree chat whose pull request #8 is open: Approve pushes to
+            // it, with Approve and commit beside it, on the card, the changes and the sheet.
+            let original = model.sessions.session("c3")!
+            var withPR = original
+            var pr = chat.pr!
+            pr.number = 8
+            pr.url = "https://github.com/me/cv-page/pull/8"
+            pr.title = original.title
+            withPR.pr = pr
+            withPR.prURL = pr.url
+            // Two threads went to the agent and wait for Nest's reply with the commit.
+            withPR.review = chat.review
+            withPR.review?.sent = ["t1:c1", "t2:c3"]
+            model.sessions.insert(withPR)
+            let review = model.approvals.pending.first {
+                $0.sessionID == "c3" && $0.kind == .review
+            }!
+            try await model.approvals.loadDiff(for: review)
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+                state.openCards = [.needsYou]
+            }
+            shell.foldedRows["approval-\(review.id)"] = true
+            try await pair(controller, "b101-review-card-pr", folder)
+            shell.foldedRows["approval-\(review.id)"] = nil
+            shell.showPublish(review)
+            try await model.approvals.loadDiff(for: review)
+            try await pair(controller, "b101-approve-sheet-pr", folder)
+            shell.close()
+            shell.showPublish(review, commitOnly: true)
+            try await model.approvals.loadDiff(for: review)
+            try await snap(controller, "b101-approve-sheet-pr-commit-light", .aqua, folder)
+            shell.close()
+            shell.show(.diff(review.id))
+            try await model.approvals.loadDiff(for: review)
+            try await snap(controller, "b101-changes-sheet-pr-light", .aqua, folder)
+            shell.close()
+            model.sessions.insert(original)
         }
 
         /// B94: Settings > Agents' New chats with the default model menu's engine sections (a

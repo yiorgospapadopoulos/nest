@@ -19,7 +19,9 @@ from nestd.events.bus import EventBus
 from nestd.sessions.models import USER, AttachmentSummary, QueuedMessage, Sender
 from nestd.storage.db import Database
 
-_SELECT = "SELECT id, text, attachments, created_at, from_pixie, origin, sent FROM queued_messages"
+_SELECT = (
+    "SELECT id, text, attachments, created_at, from_pixie, origin, extra, sent FROM queued_messages"
+)
 # Urgent messages (they interrupted the turn) first, then oldest first.
 _ORDER = " ORDER BY urgent DESC, created_at, rowid"
 
@@ -59,12 +61,12 @@ class MessageQueue:
             created_at=self._clock.now(),
             from_pixie=sender.from_pixie,
             origin=sender.origin,
+            extra=sender.extra,
             sent=sent,
         )
         await self._db.execute(
-            "INSERT INTO queued_messages"
-            " (id, session_id, text, attachments, created_at, urgent, from_pixie, origin, sent)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO queued_messages (id, session_id, text, attachments, created_at, urgent,"
+            " from_pixie, origin, extra, sent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message.id,
                 session_id,
@@ -74,6 +76,7 @@ class MessageQueue:
                 urgent,
                 sender.from_pixie,
                 sender.origin,
+                None if sender.extra is None else json.dumps(sender.extra),
                 sent,
             ),
         )
@@ -188,4 +191,5 @@ def _not_found(session_id: str, message_id: str) -> QueuedMessageNotFoundError:
 def _message(row: sqlite3.Row) -> QueuedMessage:
     data = dict(row)
     data["attachments"] = json.loads(data["attachments"])
+    data["extra"] = None if data["extra"] is None else json.loads(data["extra"])
     return QueuedMessage.model_validate(data)

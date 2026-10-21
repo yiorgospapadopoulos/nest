@@ -11,6 +11,8 @@ public enum ApprovalKind: String, UnknownSafeEnum {
     case plan
     /// A green, mergeable pull request: Merge or Dismiss.
     case merge
+    /// Review comments on the chat's pull request, waiting to go to the agent (B101).
+    case reviewComments = "review_comments"
     case unknown
 }
 
@@ -58,6 +60,16 @@ public struct Approval: Codable, Sendable, Hashable, Identifiable {
 
     public var merge: MergeProposal? {
         kind == .merge ? try? payload.decode(MergeProposal.self) : nil
+    }
+
+    public var reviewComments: ReviewCommentsRequest? {
+        kind == .reviewComments ? try? payload.decode(ReviewCommentsRequest.self) : nil
+    }
+
+    /// Its Needs you row's key for staying open: a chat's review comments keep one row
+    /// while the daemon supersedes them with the rest after each send (B101).
+    public var foldKey: String {
+        kind == .reviewComments ? "\(kind.rawValue)-\(sessionID)" : "approval-\(id)"
     }
 
     /// An answered question's questions, each with the answer the user gave (an option

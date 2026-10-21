@@ -65,6 +65,10 @@ struct Composer: View {
                 SignInNote(text: hint)
                     .transition(.opacity)
             }
+            if shell.isDraft(chat), let issue = draft.issue {
+                IssueNote(issue: issue) { withAnimation { draft.issue = nil } }
+                    .transition(.opacity)
+            }
             if let picker = draft.picker, pixie == nil {
                 CommandPicker(chat: chat, picker: picker, draft: draft)
                     .transition(.opacity)
@@ -444,6 +448,35 @@ extension MessageField {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .allowsHitTesting(false)
             .accessibilityLabel("Dictating: \(draft.volatile)")
+    }
+}
+
+/// A new chat from a GitHub issue (B101): in quiet grey above the field, the issue goes
+/// first; the cross takes it off the draft.
+private struct IssueNote: View {
+    let issue: IssueRef
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: Icon.issue)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Palette.t3)
+            Text(IssueDraft.note(issue))
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(issue.title)
+            Button(action: remove) {
+                Image(systemName: Icon.close).font(.system(size: 8, weight: .bold))
+            }
+            .buttonStyle(SmallSquareStyle())
+            .help("Start without the issue")
+            .accessibilityLabel("Remove the issue")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
     }
 }
 
@@ -943,7 +976,9 @@ private struct SendControl: View {
 
     var body: some View {
         let working = live.flatMap(shell.sessions.session)?.state.isInFlight ?? false
-        let hasText = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // A new chat from an issue may go without text (B101).
+        let hasText = IssueDraft.canSend(
+            text: draft.text, issue: shell.isDraft(chat) ? draft.issue : nil)
         SendButton(
             mode: SendButtonMode.of(working: working, hasText: hasText), hasText: hasText,
             sending: draft.sending

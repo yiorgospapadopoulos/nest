@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from nestd.issues.models import IssueRef
 from nestd.sessions.errors import SessionNotFoundError
 from nestd.sessions.models import NewSession, SessionState
 from nestd.sessions.store import SessionStore
@@ -30,6 +31,27 @@ def new_session(**overrides: object) -> NewSession:
 @pytest.fixture
 def store(db: Database, clock: FakeClock) -> SessionStore:
     return SessionStore(db, clock)
+
+
+async def test_the_chat_of_each_issue_is_the_newest_open_one(
+    store: SessionStore, clock: FakeClock
+) -> None:
+    def ref(number: int) -> IssueRef:
+        return IssueRef(number=number, title="t", url=f"https://github.com/me/repo/issues/{number}")
+
+    older = await store.create(new_session(issue=ref(118)))
+    clock.advance(timedelta(minutes=1))
+    newer = await store.create(new_session(issue=ref(118)))
+    clock.advance(timedelta(minutes=1))
+    closed = await store.create(new_session(issue=ref(117)))
+    await store.update(closed.id, state=SessionState.CLOSED)
+    archived = await store.create(new_session(issue=ref(116)))
+    await store.update(archived.id, archived_at=clock.now())
+    await store.create(new_session(repo="other", issue=ref(115)))
+    await store.create(new_session())
+
+    assert await store.issue_chats("repo") == {118: newer.id}
+    assert older.id != newer.id
 
 
 async def test_create_and_get(store: SessionStore, clock: FakeClock) -> None:

@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from nestd.gitops.runner import CommandError, run_command
+from tests.github_support import NO_REVIEWS
 
 PR_URL = "https://github.com/me/repo/pull/7"
 
@@ -62,6 +63,13 @@ class FakeRunner:
         self.pr_view: str | None = None
         # What `gh run view --job <id> --log-failed` prints, by job id; others fail.
         self.job_logs: dict[str, str] = {}
+        # What `gh issue list`, `gh issue view` and the review query of `gh api graphql`
+        # print; None fails them, as if GitHub were unreachable.
+        self.issue_list: str | None = None
+        self.issue_view: str | None = None
+        self.pr_reviews: str | None = NO_REVIEWS
+        # What `gh pr list --head <branch>` prints: no pull request by default.
+        self.pr_list: str | None = "[]"
 
     async def __call__(self, argv: Sequence[str], cwd: Path) -> str:
         self.calls.append(tuple(argv))
@@ -82,6 +90,16 @@ class FakeRunner:
             if self.pr_view is None:
                 raise CommandError(argv, 1, "could not reach GitHub\n")
             return self.pr_view
+        if tuple(argv[:3]) in _READS:
+            read = {
+                ("gh", "issue", "list"): self.issue_list,
+                ("gh", "issue", "view"): self.issue_view,
+                ("gh", "api", "graphql"): self.pr_reviews,
+                ("gh", "pr", "list"): self.pr_list,
+            }[(argv[0], argv[1], argv[2])]
+            if read is None:
+                raise CommandError(argv, 1, "could not reach GitHub\n")
+            return read
         if tuple(argv[:3]) == ("gh", "pr", "merge"):
             return ""
         if tuple(argv[:3]) == ("gh", "run", "view"):
@@ -100,6 +118,14 @@ class FakeRunner:
             for call in self.calls
             if call[0] == "gh" and (subcommand is None or call[1:3] == ("pr", subcommand))
         ]
+
+
+_READS = {
+    ("gh", "issue", "list"),
+    ("gh", "issue", "view"),
+    ("gh", "api", "graphql"),
+    ("gh", "pr", "list"),
+}
 
 
 def _without_overrides(argv: Sequence[str]) -> list[str]:

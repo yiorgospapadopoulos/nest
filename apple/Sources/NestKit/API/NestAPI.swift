@@ -17,6 +17,9 @@ public protocol NestAPI: Sendable {
     func linkSuggestions(_ name: String) async throws -> [String]
     /// Saves the project order every device shows (D090); answers the repos in that order.
     func reorderRepos(_ order: [String]) async throws -> [Repo]
+    /// The repo's open GitHub issues, newest updated first: all, or the user's; nil leaves
+    /// it to the repo's setting. `refresh` skips the daemon's short cache (B101).
+    func issues(repo: String, refresh: Bool, show: IssueShow?) async throws -> IssueList
 
     func sessions(repo: String?, archived: Bool) async throws -> [Session]
     func session(_ id: String) async throws -> Session
@@ -68,6 +71,11 @@ public protocol NestAPI: Sendable {
     /// The daemon reads the failing checks' logs with its own GitHub login and sends them
     /// to the chat.
     func ciFeedback(_ id: String) async throws
+    /// The daemon sends the pull request's pending review comments to the chat, or only
+    /// those `ids`, and marks them sent (B101).
+    func reviewFeedback(_ id: String, ids: [String]?) async throws
+    /// Whether new review comments go to the agent as they arrive; answers the session.
+    func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session
 
     /// Claude Code chats Nest does not own, newest first; automated ones only when asked.
     func claudeChats(repo: String?, includeAutomated: Bool) async throws -> [ClaudeChat]

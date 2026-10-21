@@ -91,6 +91,28 @@ class PullRequests:
         text = await feedback(self._run, self._cwd, failing, repo_of(url))
         return await self._sessions.send(session_id, text, [])
 
+    async def send_review_feedback(
+        self, session_id: str, ids: list[str] | None = None
+    ) -> SendResult:
+        """Read the pull request now and send the review comments that wait (those in
+        `ids` only, when given) to the agent as a message, which starts a turn or is queued
+        like any other (B101).
+        """
+        session = await self._sessions.get(session_id)
+        _require_pr(session)
+        await self.monitor.refresh(session)
+        return await self.monitor.send_review(session_id, ids)
+
+    async def set_review_auto_send(self, session_id: str, auto_send: bool) -> Session:
+        """Whether new review comments go to the agent on their own; switched on, those
+        that wait go at the next read, which comes at once (B101).
+        """
+        _require_pr(await self._sessions.get(session_id))
+        session = await self.monitor.set_auto_send(session_id, auto_send)
+        if auto_send:
+            self.monitor.check_soon(session_id)
+        return session
+
     async def merge(self, session_id: str, request: MergeRequest) -> Session:
         """Merge with gh, then close the session and remove its worktree; its branch stays
         (on GitHub too, unless the request asks gh to delete it).

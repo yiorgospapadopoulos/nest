@@ -7,7 +7,7 @@ can take it (B59), else it is queued and starts the next turn once this one ends
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Callable, Collection, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Collection, Sequence
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
@@ -24,7 +24,10 @@ from nestd.engine.service import effort_problem, mode_problem
 from nestd.errors import InvalidInputError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.issues.message import issue_message, issue_meta
+from nestd.issues.models import Issue
 from nestd.providers.base import AgentProvider, ApprovalHandler
+from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
 from nestd.sessions.engines import AccountSource, DefaultModel, Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
@@ -77,7 +80,7 @@ from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
 from nestd.sessions.workspace import publish_workspace
-from nestd.worktrees.manager import Worktree, WorktreeManager
+from nestd.worktrees.manager import Worktree, WorktreeManager, issue_branch_name
 from nestd.worktrees.setup import LinkResult
 
 # Ask: a chat's mode when none is chosen or fits (B94); before B94 also what a session
@@ -92,6 +95,9 @@ CONTINUE_TEXT = "Continue where you left off."
 LIMIT_RESUME = Sender(origin="limit_resume")
 
 logger = logging.getLogger(__name__)
+
+# Reads an open issue of a project (B101).
+type IssueFetch = Callable[[RepoConfig, int], Awaitable[Issue]]
 
 
 class SessionManager:
@@ -121,6 +127,7 @@ class SessionManager:
         call_tools: CallToolsSource | None = None,
         engines: Sequence[Engine] = (),
         accounts: AccountSource | None = None,
+        issues: IssueFetch | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -128,8 +135,9 @@ class SessionManager:
         `call_tools` call the pixies a run calls as sessions of their own (B91).
         `provider` and `models` are the default engine's; `engines` the others a chat
         can ask for, such as Codex (B91). `accounts` is the default engine's active
-        account (B98).
+        account (B98). `issues` reads the issue a chat starts from (B101).
         """
+        self._issues = issues
         self._engines = Engines(
             Engine(provider, models, default=default_model, accounts=accounts), engines
         )
@@ -251,6 +259,7 @@ class SessionManager:
         ):
             permission_mode = defaults.permission_mode
         place = await self._place(repo, request)
+        issue = await self._issue(repo, request)
         joined = None if place is None else place.worktree
         # A plain folder has no worktrees or branches: its chats always work in place (D041).
         mode: SessionMode = (
@@ -265,8 +274,9 @@ class SessionManager:
         )
         new = NewSession(
             repo=repo.name,
-            title=request.title or short_title(request.prompt),
-            prompt=request.prompt,
+            title=request.title
+            or (short_title(request.prompt) if issue is None else one_line(issue.title)[:200]),
+            prompt=request.prompt if issue is None else issue_message(issue, request.prompt),
             mode=mode,
             cwd=joined.path if joined is not None else repo.path if mode == "in_place" else None,
             model=model,
@@ -278,15 +288,23 @@ class SessionManager:
             base_ref=base_ref,
             started_by_pixie=started_by_pixie,
             pixie_batch=pixie_batch,
+            issue=None if issue is None else issue.ref(),
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
+        branch = request.branch if place is None else place.branch
+        if issue is not None and mode == "worktree" and branch is None:
+            # GitHub's own branch name for the issue (B101).
+            branch = await self._worktrees.free_branch(
+                repo, issue_branch_name(issue.number, issue.title)
+            )
         session = await self._store.create(
-            new,
-            branch=request.branch if place is None else place.branch,
-            worktree_path=None if joined is None else joined.path,
+            new, branch=branch, worktree_path=None if joined is None else joined.path
         )
-        sender = Sender(from_pixie=started_by_pixie)
+        sender = Sender(
+            from_pixie=started_by_pixie,
+            extra=None if issue is None else {"issue": issue_meta(issue, request.prompt)},
+        )
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
         )
@@ -335,6 +353,15 @@ class SessionManager:
         return await join_place(
             repo, request.worktree_path, await self._bases(repo), self._worktrees
         )
+
+    async def _issue(self, repo: RepoConfig, request: CreateSession) -> Issue | None:
+        """The open issue the chat starts from, read now; a failed read creates no chat."""
+        if request.issue is None:
+            return None
+        if self._issues is None:
+            msg = "this daemon cannot read GitHub issues"
+            raise InvalidInputError(msg)
+        return await self._issues(repo, request.issue)
 
     async def _bases(self, repo: RepoConfig) -> dict[Path, str]:
         return await self._store.worktree_bases(repo.name)

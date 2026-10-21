@@ -16,6 +16,7 @@ import {
   report,
   repo,
   review,
+  reviewComments,
   session,
 } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
@@ -146,6 +147,46 @@ describe("Needs you rows (B102 item 10)", () => {
       await screen.findByRole("region", { name: "Validate contact form" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+
+  it("open review comments in place, each with its place and text, and the chat from its name", async () => {
+    const { user } = await renderApp({ api: withItems([reviewComments()]) });
+    const item = card(/^Review comments: Validate contact form/);
+
+    expect(line(item)).toBe("Review comments · 4 on #7, changes requested");
+    expect(mark(item)?.className).toBe("dot s-wait");
+    await user.click(within(item).getByRole("button", { name: "Show details" }));
+    const comments = within(item).getAllByRole("listitem");
+    expect(
+      comments.map((c) => [c.querySelector(".rcp")?.textContent, c.lastChild?.textContent]),
+    ).toEqual([
+      ["validate.ts:12", "Trim the email first."],
+      ["old.ts (outdated, was line 4)", "Still needed?"],
+      ["README.md", "Mention the form."],
+      ["General review comment", "Looks close, a few nits."],
+    ]);
+    expect(within(item).getByText("validate.ts:12")).toHaveAttribute(
+      "title",
+      "src/form/validate.ts:12",
+    );
+    expect(within(item).getByRole("link", { name: "Open on GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/me/cv-page/pull/7",
+    );
+    expect(within(item).queryByRole("button", { name: /Send/ })).not.toBeInTheDocument();
+
+    await user.click(within(item).getByRole("button", { name: "Validate contact form" }));
+    expect(
+      await screen.findByRole("region", { name: "Validate contact form" }),
+    ).toBeInTheDocument();
+  });
+
+  it("open review comments without a link when the pull request has none", async () => {
+    await renderInbox({ api: withItems([reviewComments({ payload: { comments: [] } })]) });
+
+    const item = card(/^Review comments/);
+    expect(line(item)).toBe("Review comments · 0 on #0");
+    expect(within(item).queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("open a plan in place, named by its first line", async () => {

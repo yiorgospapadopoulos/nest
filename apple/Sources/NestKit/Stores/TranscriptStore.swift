@@ -135,6 +135,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
     public var eventID: Int?
     /// The pixie that sent a user message into this chat (B41).
     public var fromPixie: String?
+    /// A user message Nest wrote from GitHub, shown as its own bubble (B101).
+    public var github: GitHubMessage?
 }
 
 /// A request to show an event of the transcript, such as a search hit's.
@@ -512,6 +514,10 @@ public final class TranscriptStore {
                 append(key, .habitReport(message.text), eventID)
             } else if message.origin == .limitResume {
                 append(key, .limitResume(message.text), eventID)
+            } else if let github = GitHubMessage.of(message) {
+                append(
+                    key, .user(text: github.own, attachments: message.attachments), eventID,
+                    github: github)
             } else {
                 let split = BashBlocks.split(message.text)
                 for (index, block) in split.blocks.enumerated() {
@@ -767,6 +773,9 @@ public final class TranscriptStore {
     }
 
     private func mark(_ approval: Approval, _ eventID: Int?) {
+        // Waiting review comments show as one line below the latest reply, not where they
+        // arrived (B101).
+        guard approval.kind != .reviewComments else { return }
         let content = TranscriptItem.Content.approval(
             id: approval.id, kind: approval.kind, status: approval.status,
             rejected: approval.kind == .review
@@ -781,10 +790,11 @@ public final class TranscriptStore {
 
     private func append(
         _ id: String, _ content: TranscriptItem.Content, _ eventID: Int?,
-        fromPixie: String? = nil
+        fromPixie: String? = nil, github: GitHubMessage? = nil
     ) {
         items.append(
-            TranscriptItem(id: id, content: content, eventID: eventID, fromPixie: fromPixie))
+            TranscriptItem(
+                id: id, content: content, eventID: eventID, fromPixie: fromPixie, github: github))
     }
 }
 

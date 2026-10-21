@@ -58,7 +58,9 @@ public struct NotificationPreferences: Sendable, Hashable {
     /// Whether this kind of notice is switched on.
     public func wants(_ kind: NoticeKind) -> Bool {
         switch kind {
-        case .needsApproval: approvals
+        // Review comments wait in Needs you like an approval; the toggles follow the
+        // shared list in design/ui-rules.json, which has no kind of their own (B101).
+        case .needsApproval, .reviewComments: approvals
         case .question: questions
         case .reviewReady: reviews
         case .failed: errors

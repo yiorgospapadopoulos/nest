@@ -41,10 +41,18 @@ struct ChatRow: View {
                         finished && rowState != .focused ? Palette.t2 : rowState.titleColor
                     )
                     .lineLimit(1)
-                if place != nil || session.pinned || session.stuck != nil || startedBy != nil {
+                if place != nil || session.issue != nil || session.pinned || session.stuck != nil
+                    || startedBy != nil
+                {
                     HStack(spacing: 4) {
                         if let place {
                             PlaceMark(place: place, project: session.repo)
+                        }
+                        if let issue = ChatPlace.issueMark(of: session) {
+                            if place != nil {
+                                Text("\u{00B7}")
+                            }
+                            Text(issue).monospacedDigit()
                         }
                         if session.pinned {
                             Image(systemName: Icon.pin).font(.system(size: 8))
@@ -93,7 +101,7 @@ struct ChatRow: View {
         .opacity(shell.dragging == .chat(session.id) ? 0.45 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
+            "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(ChatPlace.issueAccessibility(of: session).map { ", \($0)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { shell.openChat(session.id) }

@@ -1,6 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, status
+from pydantic import BaseModel, ConfigDict
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.prs.models import MergeRequest, PrListItem
@@ -32,6 +33,37 @@ async def ci_feedback(session_id: str, ctx: Context) -> SendResult:
     when none fails now; 502 when GitHub cannot be read.
     """
     return await ctx.prs.send_ci_feedback(session_id)
+
+
+class ReviewFeedback(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The review comments to send, by id; null sends every one that waits.
+    ids: list[str] | None = None
+
+
+@router.post("/sessions/{session_id}/pr/review-feedback", status_code=status.HTTP_202_ACCEPTED)
+async def review_feedback(
+    session_id: str, ctx: Context, body: ReviewFeedback | None = None
+) -> SendResult:
+    """Send the pull request's review comments that wait (read with the daemon's gh login)
+    to the agent as a message, and mark them sent: all of them, or those whose id is in
+    `ids` (others are ignored). 409 `no_review_comments` when none of them waits; 502 when
+    GitHub cannot be read.
+    """
+    return await ctx.prs.send_review_feedback(session_id, None if body is None else body.ids)
+
+
+class ReviewSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # New review comments go to the agent as they arrive, instead of waiting in Needs you.
+    auto_send: bool
+
+
+@router.patch("/sessions/{session_id}/pr/review")
+async def review_settings(session_id: str, body: ReviewSettings, ctx: Context) -> Session:
+    return await ctx.prs.set_review_auto_send(session_id, body.auto_send)
 
 
 @router.post("/sessions/{session_id}/merge")
