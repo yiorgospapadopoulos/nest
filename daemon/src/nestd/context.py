@@ -61,6 +61,7 @@ from nestd.engine.sign_ins import CLAUDE, CODEX, SignInStore
 from nestd.engine.store import EngineInfoStore
 from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandRunner, run_command
+from nestd.issues.service import IssueService
 from nestd.local_apps.apps import LocalApps
 from nestd.modules.registry import Module, ModuleRegistry
 from nestd.notifications.delivery import NotificationDelivery
@@ -102,6 +103,7 @@ from nestd.providers.codex_process import (
 )
 from nestd.providers.codex_trust import forget_trust
 from nestd.providers.shell_env import LoginShellEnv, ShellEnvSource, login_shell
+from nestd.prs.adopt import PrAdopter
 from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
@@ -159,6 +161,9 @@ class AppContext:
     usage_refresher: UsageRefresher
     commands: CommandStore
     prs: PullRequests
+    pr_adopter: PrAdopter
+    # Open GitHub issues for new chats (B101).
+    issues: IssueService
     search: SearchIndex
     stuck: StuckWatcher
     engine: EngineInfo
@@ -320,6 +325,9 @@ class AppContext:
             # Only the default engine (Claude) runs pixies as its own subagents (B91).
             inline=lambda provider: sessions.engines.by_name(provider) is sessions.engines.default,
         )
+        issues = IssueService(
+            repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
+        )
         sessions = SessionManager(
             store=store,
             bus=bus,
@@ -361,6 +369,7 @@ class AppContext:
             default_model=engine.default_model,
             extras=lambda session: pixie_runtime.extras(session),
             agents=pixie_agents.for_session,
+            issues=issues.fetch,
             calls=pixie_calls,
             nest_tools=lambda session: artifact_tools(artifacts, session),
             call_tools=lambda session, agents: call_runs.tools(session, agents),
@@ -466,7 +475,20 @@ class AppContext:
             run=runner,
             clock=clock,
             cwd=paths.data_dir,
+            send=lambda session_id, text, sender: sessions.send(
+                session_id, text, [], sender=sender
+            ),
         )
+        # Pull requests an agent opened itself are followed too (B101).
+        pr_adopter = PrAdopter(
+            store=store,
+            bus=bus,
+            repo=repos.get,
+            run=runner,
+            cwd=paths.data_dir,
+            check_soon=monitor.check_soon,
+        )
+        followers.append(pr_adopter)
         reviews = ReviewActions(
             sessions=sessions,
             repos=repos,
@@ -570,6 +592,8 @@ class AppContext:
                 cwd=paths.data_dir,
             ),
             search=search,
+            issues=issues,
+            pr_adopter=pr_adopter,
             stuck=StuckWatcher(
                 store=store,
                 bus=bus,

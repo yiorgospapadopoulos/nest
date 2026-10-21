@@ -1,0 +1,179 @@
+{
+  "data": {
+    "viewer": {
+      "login": "giorgos"
+    },
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "id": "PRRT_kwDOK1a2b85Aaaa1",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "src/usage/meter.py",
+              "line": 42,
+              "originalLine": 40,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb1",
+                    "author": {
+                      "login": "sam",
+                      "__typename": "User"
+                    },
+                    "body": "This should use the window's own reset time.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000001",
+                    "createdAt": "2026-10-20T11:00:00Z"
+                  },
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb2",
+                    "author": {
+                      "login": "giorgos",
+                      "__typename": "User"
+                    },
+                    "body": "And round it to the minute.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000002",
+                    "createdAt": "2026-10-20T11:05:00Z"
+                  },
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb3",
+                    "author": {
+                      "login": "coderabbitai",
+                      "__typename": "Bot"
+                    },
+                    "body": "Nitpick: consider a helper.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000003",
+                    "createdAt": "2026-10-20T11:06:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOK1a2b85Aaaa2",
+              "isResolved": true,
+              "isOutdated": false,
+              "path": "src/usage/popover.py",
+              "line": 10,
+              "originalLine": 10,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb4",
+                    "author": {
+                      "login": "sam",
+                      "__typename": "User"
+                    },
+                    "body": "Typo.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000004",
+                    "createdAt": "2026-10-20T11:10:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOK1a2b85Aaaa3",
+              "isResolved": false,
+              "isOutdated": true,
+              "path": "src/usage/old.py",
+              "line": null,
+              "originalLine": 7,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb5",
+                    "author": null,
+                    "body": "Drop this \u001b[1mfile\u001b[0m.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000005",
+                    "createdAt": "2026-10-20T11:20:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOK1a2b85Aaaa4",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "src/usage/meter.py",
+              "line": 3,
+              "originalLine": 3,
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOK1a2b86Bbbb6",
+                    "author": {
+                      "login": "github-actions",
+                      "__typename": "Bot"
+                    },
+                    "body": "Coverage dropped.",
+                    "url": "https://github.com/me/repo/pull/7#discussion_r1800000006",
+                    "createdAt": "2026-10-20T11:30:00Z"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "reviews": {
+          "nodes": [
+            {
+              "id": "PRR_kwDOK1a2b86Cccc1",
+              "state": "CHANGES_REQUESTED",
+              "body": "Please fix the reset first.",
+              "author": {
+                "login": "sam",
+                "__typename": "User"
+              },
+              "url": "https://github.com/me/repo/pull/7#pullrequestreview-2300000001",
+              "submittedAt": "2026-10-20T11:01:00Z"
+            },
+            {
+              "id": "PRR_kwDOK1a2b86Cccc2",
+              "state": "COMMENTED",
+              "body": "",
+              "author": {
+                "login": "sam",
+                "__typename": "User"
+              },
+              "url": "https://github.com/me/repo/pull/7#pullrequestreview-2300000002",
+              "submittedAt": "2026-10-20T11:21:00Z"
+            },
+            {
+              "id": "PRR_kwDOK1a2b86Cccc3",
+              "state": "COMMENTED",
+              "body": "## Walkthrough\nThis PR changes the meter.",
+              "author": {
+                "login": "coderabbitai",
+                "__typename": "Bot"
+              },
+              "url": "https://github.com/me/repo/pull/7#pullrequestreview-2300000003",
+              "submittedAt": "2026-10-20T11:06:30Z"
+            },
+            {
+              "id": "PRR_kwDOK1a2b86Cccc4",
+              "state": "COMMENTED",
+              "body": "  \n ",
+              "author": {
+                "login": "giorgos",
+                "__typename": "User"
+              },
+              "url": "https://github.com/me/repo/pull/7#pullrequestreview-2300000004",
+              "submittedAt": "2026-10-20T11:05:00Z"
+            },
+            {
+              "id": "PRR_kwDOK1a2b86Cccc5",
+              "state": "APPROVED",
+              "body": "Looks good otherwise.",
+              "author": {
+                "login": "ana",
+                "__typename": "User"
+              },
+              "url": "https://github.com/me/repo/pull/7#pullrequestreview-2300000005",
+              "submittedAt": "2026-10-20T11:40:00Z"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

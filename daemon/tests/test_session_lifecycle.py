@@ -30,6 +30,15 @@ async def env(tmp_path: Path, db: Database, clock: FakeClock) -> AsyncIterator[E
     await environment.manager.shutdown()
 
 
+async def test_a_manager_without_an_issue_reader_starts_no_chat_from_an_issue(env: Env) -> None:
+    await env.register()
+
+    with pytest.raises(InvalidInputError, match="cannot read GitHub issues"):
+        await env.create("", issue=118)
+
+    assert await env.store.list_sessions() == []
+
+
 async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     await env.register()
     env.provider.script(reply("Done."))

@@ -68,6 +68,8 @@ async def test_register_list_get_and_configure_a_repo(api: Api, tmp_path: Path) 
         "icon_color": None,
         # No override: new sessions follow `[agents] default_mode` (D038).
         "worktree": {"default": None, "link": [], "setup": [], "setup_timeout_seconds": 900},
+        # All open issues on the start screen (B101).
+        "issues": {"show": "all"},
     }
     assert registered.status_code == 201
     assert registered.json() == expected

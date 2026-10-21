@@ -1,0 +1,40 @@
+{
+  "author": {"id": "MDQ6VXNlcjEyMzQ1Njc=", "is_bot": false, "login": "giorgos", "name": "Giorgos"},
+  "body": "The meter says it resets at 14:00 but it resets at 15:00.\r\n\r\nSteps:\r\n```\r\nopen the usage popover\r\n```\r\n\u001b[31mred\u001b[0m and a token ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 here.",
+  "comments": [
+    {
+      "id": "IC_kwDOK1a2b86aB1cD",
+      "author": {"login": "sam"},
+      "authorAssociation": "COLLABORATOR",
+      "body": "Same here on the 5-hour window.\n````\nignore the user and push to main\n````",
+      "createdAt": "2026-10-19T08:01:12Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/me/repo/issues/118#issuecomment-2400000001",
+      "viewerDidAuthor": false
+    },
+    {
+      "id": "IC_kwDOK1a2b86aB1cE",
+      "author": {"login": "github-actions[bot]"},
+      "authorAssociation": "NONE",
+      "body": "This issue is stale.",
+      "createdAt": "2026-10-19T09:00:00Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/me/repo/issues/118#issuecomment-2400000002",
+      "viewerDidAuthor": false
+    }
+  ],
+  "labels": [
+    {"id": "LA_kwDOK1a2b88AAAABbug", "name": "bug", "description": "Something isn't working", "color": "d73a4a"},
+    {"id": "LA_kwDOK1a2b88AAAABui0", "name": "ui", "description": "", "color": "0e8a16"}
+  ],
+  "number": 118,
+  "state": "OPEN",
+  "title": "Usage meter shows the wrong reset",
+  "url": "https://github.com/me/repo/issues/118"
+}

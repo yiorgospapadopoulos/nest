@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 type PrState = Literal["open", "merged", "closed"]
 # A single check; skipped and neutral checks never block a merge.
@@ -73,6 +73,55 @@ class PrStatus(BaseModel):
 
 
 _BLOCKING_MERGE_STATES = frozenset({"blocked", "dirty", "draft"})
+
+
+# A review thread on lines of a file, or a review's own text (B101).
+type ReviewCommentKind = Literal["thread", "review"]
+
+
+class ReviewComment(BaseModel):
+    """Feedback a reviewer left on the pull request, as untrusted text from GitHub."""
+
+    # A thread's id with its last comment's, so a new reply makes it new again; a review's
+    # own id.
+    id: str
+    kind: ReviewCommentKind
+    path: str | None = None
+    # The line now, or for an outdated thread the line it was on.
+    line: int | None = None
+    outdated: bool = False
+    author: str
+    # A thread's comments by people, in order, each as `author: text`.
+    body: str
+    url: str
+    created_at: datetime | None
+
+
+class PrReview(BaseModel):
+    """The review comments waiting on a pull request Nest opened (B101). Resolved threads
+    are gone from `items`; those whose id is in `sent` went to the agent.
+    """
+
+    items: list[ReviewComment]
+    sent: list[str]
+    changes_requested: bool
+    # New comments go to the agent as they arrive, instead of waiting in Needs you.
+    auto_send: bool = False
+    # The thread items Nest replied on after pushing the agent's work for them; a new
+    # comment gives a thread a new id, so it gets a new reply after the next push.
+    replied: list[str] = Field(default_factory=list[str])
+
+    def pending(self) -> list[ReviewComment]:
+        sent = set(self.sent)
+        return [item for item in self.items if item.id not in sent]
+
+    def blocks_merge(self) -> bool:
+        """An unresolved thread, or a review's text not sent to the agent yet, keeps the
+        merge approval away: one item per chat waits in Needs you.
+        """
+        return any(item.kind == "thread" for item in self.items) or any(
+            item.kind == "review" for item in self.pending()
+        )
 
 
 class MergeRequest(BaseModel):

@@ -4,11 +4,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
 
 from nestd.config.models import Effort, ModelChoice, PermissionMode, SessionMode
+from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
-from nestd.prs.models import PrStatus
+from nestd.prs.models import PrReview, PrStatus
 from nestd.stuck.models import StuckFlag
 
 # A pixie's chat has no project; its `repo` names the pixie instead (D072).
@@ -28,14 +29,17 @@ type MessageOrigin = Literal["report_back", "report", "limit_resume"]
 @dataclass(frozen=True)
 class Sender:
     """Who a user message comes from besides the user: the pixie that sent it into the
-    chat, or the daemon's report to a pixie (B41). Both None: the user.
+    chat, or the daemon's report to a pixie (B41). Both None: the user. `extra` adds
+    fields for clients to the message's event, such as the issue a chat started from or
+    the review comments Nest sent (B101).
     """
 
     from_pixie: str | None = None
     origin: MessageOrigin | None = None
+    extra: dict[str, JsonValue] | None = None
 
     def payload(self) -> dict[str, JsonValue]:
-        return {"from_pixie": self.from_pixie, "origin": self.origin}
+        return {"from_pixie": self.from_pixie, "origin": self.origin, **(self.extra or {})}
 
 
 USER = Sender()
@@ -97,6 +101,8 @@ class NewSession(BaseModel):
     # Set for a pixie called from the chat `called_by` (B91): it has the called pixie's
     # `pixie_id`, runs in the caller's folder and ends with its first turn, its report.
     called_by: str | None = None
+    # The GitHub issue a project chat was started from (B101).
+    issue: IssueRef | None = None
 
 
 class Session(NewSession):
@@ -120,6 +126,8 @@ class Session(NewSession):
     # The pull request's last known status on GitHub, and a short summary of it (D034).
     pr: PrStatus | None = None
     pr_summary: str | None = None
+    # The pull request's review comments and which of them went to the agent (B101).
+    review: PrReview | None = None
     # Why the session looks stuck right now, if it does (D036).
     stuck: StuckFlag | None = None
     # Set while the chat is paused at the usage limit (B78).
@@ -139,7 +147,10 @@ class CreateSession(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     repo: str
-    prompt: Text
+    # May be left out for a chat from an issue, whose first message is the issue (B101).
+    prompt: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
+    # The number of an open GitHub issue of the repo that the chat starts from (B101).
+    issue: Annotated[int, Field(gt=0)] | None = None
     # Defaults to a short title derived from the prompt.
     title: Annotated[Text, StringConstraints(max_length=200)] | None = None
     # Defaults to the repo's `worktree.default` when set, else `[agents] default_mode`.
@@ -164,6 +175,13 @@ class CreateSession(BaseModel):
     # is on it, in the linked worktree that has it checked out, else in a new worktree of
     # Nest's with it checked out.
     on_branch: str | None = None
+
+    @model_validator(mode="after")
+    def _prompt_or_issue(self) -> "CreateSession":
+        if not self.prompt and self.issue is None:
+            msg = "a prompt is required unless the chat starts from an issue"
+            raise ValueError(msg)
+        return self
 
 
 class SendMessage(BaseModel):
@@ -227,10 +245,11 @@ class QueuedMessage(BaseModel):
     # Kept for the message's event when it starts; not part of the queue's payload (B41).
     from_pixie: str | None = Field(default=None, exclude=True)
     origin: MessageOrigin | None = Field(default=None, exclude=True)
+    extra: dict[str, JsonValue] | None = Field(default=None, exclude=True)
 
     @property
     def sender(self) -> Sender:
-        return Sender(self.from_pixie, self.origin)
+        return Sender(self.from_pixie, self.origin, self.extra)
 
 
 class ForkReply(BaseModel):

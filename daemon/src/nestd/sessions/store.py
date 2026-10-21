@@ -10,7 +10,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from nestd.clock import Clock
-from nestd.prs.models import PrStatus
+from nestd.prs.models import PrReview, PrStatus
 from nestd.sessions.errors import SessionNotFoundError
 from nestd.sessions.models import IN_FLIGHT, LimitPause, NewSession, Session, SessionState
 from nestd.storage.db import Database
@@ -132,6 +132,13 @@ class SessionStore:
         )
         return await self.get(session_id)
 
+    async def set_review(self, session_id: str, review: PrReview) -> Session:
+        """Store the pull request's review comments without moving the session up the list."""
+        await self._db.execute(
+            "UPDATE sessions SET review = ? WHERE id = ?", (review.model_dump_json(), session_id)
+        )
+        return await self.get(session_id)
+
     async def set_stuck(self, session_id: str, flag: StuckFlag | None) -> Session:
         """Store why the session looks stuck (None: it does not) without reordering it."""
         await self._db.execute(
@@ -162,6 +169,18 @@ class SessionStore:
             (repo, repo),
         )
         return [_session(row) for row in rows]
+
+    async def issue_chats(self, repo: str) -> dict[int, str]:
+        """The newest chat of the repo started from each issue, by issue number; closed
+        and archived chats do not count (B101).
+        """
+        rows = await self._db.fetch_all(
+            "SELECT id, json_extract(issue, '$.number') AS number FROM sessions"
+            " WHERE repo = ? AND issue IS NOT NULL AND archived_at IS NULL AND state != ?"
+            " ORDER BY created_at, rowid",
+            (repo, SessionState.CLOSED.value),
+        )
+        return {row["number"]: row["id"] for row in rows}
 
     async def started_by(self, pixie_id: str) -> list[Session]:
         """Every chat the pixie started with its tools, oldest first (B41)."""
@@ -260,7 +279,7 @@ def _column(value: object) -> object:
         return str(value)
     if isinstance(value, datetime):
         return value.isoformat()
-    if isinstance(value, list):
+    if isinstance(value, list | dict):
         return json.dumps(value)
     if isinstance(value, BaseModel):
         return value.model_dump_json()
@@ -270,6 +289,6 @@ def _column(value: object) -> object:
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
-    for column in ("context", "pr", "stuck", "limit_pause"):
+    for column in ("context", "pr", "stuck", "limit_pause", "issue", "review"):
         data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)

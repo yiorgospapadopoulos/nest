@@ -65,6 +65,9 @@ SESSION_REWOUND: Final = "session.rewound"
 SESSION_CONTEXT: Final = "session.context"
 # The session's pull request status on GitHub changed (D034): `{pr}`.
 SESSION_PR: Final = "session.pr"
+# The review comments on the session's pull request changed, or which of them went to
+# the agent (B101): `{review}` as in the session's `review`.
+SESSION_PR_REVIEW: Final = "session.pr_review"
 # The session looks stuck, `{reason, since, details}` as in the session's `stuck`, or no
 # longer does, `{reason}` of the flag that cleared (D036).
 SESSION_STUCK: Final = "session.stuck"

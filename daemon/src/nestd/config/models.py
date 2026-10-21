@@ -382,6 +382,19 @@ class WorktreeConfig(_Strict):
         return links
 
 
+# Which open issues the start screen lists: all of them, or those assigned to the user (B101).
+type IssueShow = Literal["all", "mine"]
+
+
+def _mine(value: object) -> object:
+    """`assigned` is the setting's earlier name for `mine`."""
+    return "mine" if value == "assigned" else value
+
+
+class IssuesConfig(_Strict):
+    show: Annotated[IssueShow, BeforeValidator(_mine)] = "all"
+
+
 class RepoConfig(_Strict):
     # The name doubles as the config file name, so it must be a safe file name.
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -398,6 +411,7 @@ class RepoConfig(_Strict):
     # None is the default colour.
     icon_color: Color | None = None
     worktree: WorktreeConfig = Field(default_factory=WorktreeConfig)
+    issues: IssuesConfig = Field(default_factory=IssuesConfig)
 
     @model_validator(mode="after")
     def _plain_folders_have_no_branch(self) -> "RepoConfig":

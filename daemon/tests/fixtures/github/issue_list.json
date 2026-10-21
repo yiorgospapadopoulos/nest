@@ -1,0 +1,154 @@
+[
+  {
+    "author": {
+      "id": "MDQ6VXNlcjEyMzQ1Njc=",
+      "is_bot": false,
+      "login": "giorgos",
+      "name": "Giorgos"
+    },
+    "closedByPullRequestsReferences": [
+      {
+        "id": "PR_kwDOK1a2b860131",
+        "number": 131,
+        "repository": {
+          "id": "R_kgDOK1a2bw",
+          "name": "repo",
+          "owner": {
+            "id": "MDQ6VXNlcjEyMzQ1Njc=",
+            "login": "me"
+          }
+        },
+        "url": "https://github.com/me/repo/pull/131"
+      },
+      {
+        "id": "PR_kwDOK1a2b860012",
+        "number": 12,
+        "repository": {
+          "id": "R_kgDOK1a2bw",
+          "name": "fork-tools",
+          "owner": {
+            "id": "MDQ6VXNlcjEyMzQ1Njc=",
+            "login": "someone"
+          }
+        },
+        "url": "https://github.com/someone/fork-tools/pull/12"
+      },
+      {
+        "id": "PR_kwDOK1a2b860129",
+        "number": 129,
+        "repository": {
+          "id": "R_kgDOK1a2bw",
+          "name": "Repo",
+          "owner": {
+            "id": "MDQ6VXNlcjEyMzQ1Njc=",
+            "login": "Me"
+          }
+        },
+        "url": "https://github.com/Me/Repo/pull/129"
+      }
+    ],
+    "comments": [
+      {
+        "id": "IC_kwDOK1a2b86aB1cD",
+        "author": {
+          "login": "sam"
+        },
+        "authorAssociation": "COLLABORATOR",
+        "body": "Same here on the 5-hour window.",
+        "createdAt": "2026-10-19T08:01:12Z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/me/repo/issues/118#issuecomment-2400000001",
+        "viewerDidAuthor": false
+      },
+      {
+        "id": "IC_kwDOK1a2b86aB1cE",
+        "author": {
+          "login": "github-actions[bot]"
+        },
+        "authorAssociation": "NONE",
+        "body": "This issue is stale.",
+        "createdAt": "2026-10-19T09:00:00Z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/me/repo/issues/118#issuecomment-2400000002",
+        "viewerDidAuthor": false
+      }
+    ],
+    "labels": [
+      {
+        "id": "LA_kwDOK1a2b88AAAABbug",
+        "name": "bug",
+        "description": "Something isn't working",
+        "color": "d73a4a"
+      },
+      {
+        "id": "LA_kwDOK1a2b88AAAABui0",
+        "name": "ui",
+        "description": "",
+        "color": "0e8a16"
+      }
+    ],
+    "number": 118,
+    "title": "Usage meter shows the wrong reset",
+    "updatedAt": "2026-10-19T09:00:00Z",
+    "url": "https://github.com/me/repo/issues/118"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjEyMzQ1Njc=",
+      "is_bot": false,
+      "login": "giorgos",
+      "name": "Giorgos"
+    },
+    "closedByPullRequestsReferences": [],
+    "comments": [],
+    "labels": [],
+    "number": 117,
+    "title": "Sidebar flickers on resize",
+    "updatedAt": "2026-10-12T17:30:00Z",
+    "url": "https://github.com/me/repo/issues/117"
+  },
+  {
+    "author": {
+      "id": "BOT_kgDOBz1x2w",
+      "is_bot": true,
+      "login": "app/renovate",
+      "name": ""
+    },
+    "closedByPullRequestsReferences": [],
+    "comments": [
+      {
+        "id": "IC_kwDOK1a2b86aB1cF",
+        "author": {
+          "login": "giorgos"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Later.",
+        "createdAt": "2026-10-20T10:00:00Z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/me/repo/issues/120#issuecomment-2400000003",
+        "viewerDidAuthor": true
+      }
+    ],
+    "labels": [
+      {
+        "id": "LA_kwDOK1a2b88AAAABdep",
+        "name": "dependencies",
+        "description": "",
+        "color": "0366d6"
+      }
+    ],
+    "number": 120,
+    "title": "Dependency Dashboard",
+    "updatedAt": "2026-10-20T10:00:00Z",
+    "url": "https://github.com/me/repo/issues/120"
+  }
+]

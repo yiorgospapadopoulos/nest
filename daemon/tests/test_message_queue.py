@@ -1,8 +1,10 @@
 """The queue's record of messages written into a running turn (B59)."""
 
 import pytest
+from pydantic import JsonValue
 
 from nestd.events.bus import EventBus
+from nestd.sessions.models import Sender
 from nestd.sessions.queue import MessageQueue, QueuedMessageNotFoundError
 from nestd.sessions.store import SessionStore
 from nestd.storage.db import Database
@@ -48,6 +50,21 @@ async def test_marking_messages_announces_only_a_change(db: Database, clock: Fak
     announced = [e for e in await bus.session_events(session.id) if e.type == "session.queued"]
     assert len(announced) == 2
     assert (await queue.get(session.id, message.id)).sent is True
+
+
+async def test_what_a_message_adds_to_its_event_waits_with_it(
+    db: Database, clock: FakeClock
+) -> None:
+    queue, one, _ = await queue_with_sessions(db, clock)
+    extra: dict[str, JsonValue] = {"review_feedback": {"number": 7, "count": 2}}
+    await queue.add(one, "a", [], sender=Sender(extra=extra))
+
+    popped = await queue.pop(one)
+
+    assert popped is not None
+    assert popped.sender == Sender(extra=extra)
+    # Clients see the queue without it.
+    assert "extra" not in popped.model_dump()
 
 
 async def test_unknown_messages(db: Database, clock: FakeClock) -> None:
