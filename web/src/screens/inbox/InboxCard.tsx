@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { commentPlace, reviewCommentsOf } from "../../api/payloads.ts";
 import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
@@ -23,6 +24,7 @@ const KIND_LABELS: Record<Approval["kind"], string> = {
   review: "Ready for review",
   plan: "Plan",
   merge: "Ready to merge",
+  review_comments: "Review comments",
 };
 
 /** A pending approval's row: the chat and what it asks, opening to the full item (B102). */
@@ -62,7 +64,35 @@ function ApprovalDetail({ approval, session }: DetailProps): ReactNode {
       return <PlanForm approval={approval} />;
     case "merge":
       return <MergeDetail approval={approval} session={session} />;
+    case "review_comments":
+      return <ReviewCommentsDetail approval={approval} />;
   }
+}
+
+/** Each comment's place over its text, and the pull request; sending comes later (B101). */
+function ReviewCommentsDetail({ approval }: { approval: Approval }) {
+  const view = reviewCommentsOf(approval);
+  return (
+    <>
+      <ul className="rclist">
+        {view.comments.map((comment) => (
+          <li key={comment.id}>
+            <span className="rcp" title={commentPlace(comment)}>
+              {commentPlace(comment, true)}
+            </span>
+            <span className="rcb">{comment.body}</span>
+          </li>
+        ))}
+      </ul>
+      {view.url !== "" && (
+        <div className="acts">
+          <a className="b qb2" href={view.url} target="_blank" rel="noreferrer">
+            Open on GitHub
+          </a>
+        </div>
+      )}
+    </>
+  );
 }
 
 function PermissionDetail({ approval, session }: DetailProps) {

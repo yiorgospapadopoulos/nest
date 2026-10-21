@@ -9,6 +9,7 @@ import {
   plan,
   question,
   review,
+  reviewComments,
 } from "../test/fixtures.ts";
 import { buildTranscript, resultSummary, turnStart } from "./build.ts";
 
@@ -205,6 +206,38 @@ describe("buildTranscript", () => {
     );
 
     expect(items).toEqual([]);
+  });
+
+  it("leaves pending review comments to Needs you and notes them sent or dismissed", () => {
+    const decided = (id: string, resolution: JsonObject, at: number) => [
+      event({
+        id: at,
+        type: "approval.created",
+        payload: { approval: json(reviewComments({ id })) },
+      }),
+      event({
+        id: at + 1,
+        type: "approval.resolved",
+        payload: { approval: json({ ...reviewComments({ id }), status: "resolved", resolution }) },
+      }),
+    ];
+    const pending = reviewComments({ id: "c0" });
+
+    const items = buildTranscript(
+      [
+        event({ id: 1, type: "approval.created", payload: { approval: json(pending) } }),
+        ...decided("c1", { action: "sent" }, 2),
+        ...decided("c2", { dismissed: true }, 4),
+        ...decided("c3", {}, 6),
+      ],
+      { [pending.id]: pending },
+      null,
+    );
+
+    expect(items).toEqual([
+      { kind: "system", key: "2", text: "Review comments sent to the agent" },
+      { kind: "system", key: "4", text: "Review comments dismissed" },
+    ]);
   });
 
   it("leaves a merge to its own line and notes a dismissed one", () => {

@@ -137,10 +137,16 @@ export type TranscriptItem =
   // "Worked for 1m 12s" or, `stopped`, "Stopped after 40s" at the end of a turn.
   | { kind: "turn"; key: string; text: string; stopped: boolean };
 
-/** A pending approval answered in the transcript; a review shows above the composer. */
-export type InlineAsk = Approval & { kind: Exclude<Approval["kind"], "review"> };
+/**
+ * A pending approval answered in the transcript; a review shows above the composer, and
+ * review comments in Needs you only, as the Mac keeps them out of the transcript (B101).
+ */
+export type InlineAsk = Approval & {
+  kind: Exclude<Approval["kind"], "review" | "review_comments">;
+};
 
-const isInline = (approval: Approval): approval is InlineAsk => approval.kind !== "review";
+const isInline = (approval: Approval): approval is InlineAsk =>
+  approval.kind !== "review" && approval.kind !== "review_comments";
 
 // States that end a turn; the others continue it or have nothing to do with turns.
 const TURN_ENDS = new Set<JsonValue | undefined>(["idle", "interrupted", "failed"]);
@@ -701,6 +707,9 @@ function resolvedText(approval: Approval | undefined, root: string | null): stri
     case "merge":
       // A merge shows as the "Pull request merged" line of its own event.
       return r.dismissed === true ? "Merge dismissed" : null;
+    case "review_comments":
+      if (r.action === "sent") return "Review comments sent to the agent";
+      return r.dismissed === true ? "Review comments dismissed" : null;
   }
 }
 

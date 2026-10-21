@@ -1,4 +1,13 @@
-import { mergeOf, obj, planOf, questionsOf, reviewOf, str, toolArg } from "../../api/payloads.ts";
+import {
+  mergeOf,
+  obj,
+  planOf,
+  questionsOf,
+  reviewCommentsDetail,
+  reviewOf,
+  str,
+  toolArg,
+} from "../../api/payloads.ts";
 import type { Approval, StuckFlag, StuckReason } from "../../api/types.ts";
 
 /** What needs the user, in the one grey line under a Needs you row (B77, NestKit's NeedsYouLine). */
@@ -40,6 +49,8 @@ export function approvalLine(approval: Approval, root: string | null): NeedsLine
       const { number, title } = mergeOf(approval);
       return { kind: "Ready to merge", detail: `#${String(number)} ${title}` };
     }
+    case "review_comments":
+      return { kind: "Review comments", detail: reviewCommentsDetail(approval) };
     case "permission": {
       const tool = str(approval.payload.tool) ?? "Tool";
       const arg = toolArg(obj(approval.payload.input), root);
