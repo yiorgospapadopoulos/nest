@@ -29,7 +29,7 @@ describe("a snapshot that loads while live events arrive", () => {
     const history = deferred<NestEvent[]>();
     api.sessionEvents.mockReturnValue(history.promise);
     const { user, push } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     const region = await screen.findByRole("region", { name: chat.title });
 
@@ -84,9 +84,9 @@ describe("a snapshot that loads while live events arrive", () => {
       expect(api.claudeChats).toHaveBeenCalledTimes(2);
     });
 
-    expect(await screen.findByText("npm install zod")).toBeInTheDocument();
+    expect(await screen.findByText("Permission · Bash npm install zod")).toBeInTheDocument();
     expect(screen.queryByText("ls")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 1" })).toBeInTheDocument();
   });
 });
 

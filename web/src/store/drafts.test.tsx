@@ -25,7 +25,7 @@ function chatApi() {
 
 async function openChat(storage: Storage) {
   const rendered = await renderApp({ api: chatApi(), storage });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
   await screen.findByRole("region", { name: "Validate contact form" });
   return rendered;

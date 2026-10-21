@@ -26,13 +26,7 @@ export function saveShowAutomated(storage: () => Storage, on: boolean): void {
 export const FOLDED_TEAMS_KEY = "nest.foldedTeams";
 
 export function loadFoldedTeams(storage: () => Storage): string[] {
-  let saved: unknown;
-  try {
-    saved = JSON.parse(storage().getItem(FOLDED_TEAMS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+  return loadNames(storage, FOLDED_TEAMS_KEY);
 }
 
 export function saveFoldedTeams(storage: () => Storage, ids: string[]): void {
@@ -41,6 +35,33 @@ export function saveFoldedTeams(storage: () => Storage, ids: string[]): void {
   } catch {
     // Not remembered.
   }
+}
+
+// The engines the usage bar leaves out (B102), by name: the unchecked ones, so an engine
+// added later starts shown.
+export const USAGE_BAR_HIDDEN_KEY = "nest.usageBarHidden";
+
+export function loadUsageBarHidden(storage: () => Storage): string[] {
+  return loadNames(storage, USAGE_BAR_HIDDEN_KEY);
+}
+
+export function saveUsageBarHidden(storage: () => Storage, names: string[]): void {
+  try {
+    storage().setItem(USAGE_BAR_HIDDEN_KEY, JSON.stringify(names));
+  } catch {
+    // Not remembered.
+  }
+}
+
+/** A saved list of names; anything malformed or unreadable is left out. */
+function loadNames(storage: () => Storage, key: string): string[] {
+  let saved: unknown;
+  try {
+    saved = JSON.parse(storage().getItem(key) ?? "[]");
+  } catch {
+    return [];
+  }
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
 }
 
 // Unsent messages, per chat (see draftKey), so a reload or a closed app keeps them.

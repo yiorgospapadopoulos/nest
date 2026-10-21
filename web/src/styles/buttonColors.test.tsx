@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
 import { detail, event, pixie, report, session } from "../test/fixtures.ts";
@@ -68,7 +68,8 @@ describe("primary buttons of pixie habits and reports (B42)", () => {
     const api = fakeApi();
     api.pixieReports.mockResolvedValue([report()]);
     await renderApp({ api });
-    await screen.findByRole("article", { name: /^Report/ });
+    const row = await screen.findByRole("article", { name: /^Report/ });
+    fireEvent.click(within(row).getByRole("button", { name: "Show details" }));
     expectReadablePrimaries();
   });
 });

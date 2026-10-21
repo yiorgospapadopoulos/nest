@@ -2,7 +2,7 @@
 // saved appearance before the first paint, as applyAppearance does once the app runs.
 // Free of DOM types: the build (vite.config.ts) imports it.
 
-import { ACCENTS, DEFAULT_APPEARANCE, GLASSES, STORAGE_KEY } from "./choices.ts";
+import { ACCENTS, DEFAULT_APPEARANCE, STORAGE_KEY } from "./choices.ts";
 
 // Where the appearance was saved before the rename to Nest (B43), until the app moves it.
 const LEGACY_STORAGE_KEY = "harness.appearance";
@@ -43,14 +43,9 @@ export function appearanceBootScript(): string {
       ACCENTS.map((a) => a.id),
       d.accent,
     )}, saved.accent);
-    var glass = pick(${others(
-      GLASSES.map((g) => g.id),
-      d.glass,
-    )}, saved.glass);
     if (theme) root.setAttribute("data-theme", theme);
     if (accent) root.setAttribute("data-accent", accent);
     if (saved.bubble === "neutral") root.setAttribute("data-bubble", "neutral");
-    if (glass) root.setAttribute("data-glass", glass);
     var metas = document.querySelectorAll('meta[name="theme-color"][data-scheme]');
     for (var i = 0; theme && i < metas.length; i++) {
       metas[i].setAttribute("content", metas[i].getAttribute("data-" + theme));

@@ -28,15 +28,19 @@ import type {
   UsagePeriod,
   PeriodUnit,
   ClaudeAccount,
-  ClaudeCodeInfo,
   GithubAccount,
   InstalledPlugin,
   Marketplace,
   PixieDefaults,
-  StandaloneSkill,
   StorageSettings,
   StuckSettings,
   UsageSettings,
+  CodexAccount,
+  ConfigurationPage,
+  EngineLimits,
+  ModelList,
+  ProjectConfiguration,
+  ProviderInfo,
 } from "../api/types.ts";
 
 /**
@@ -110,12 +114,15 @@ export interface SettingsState {
   pixies: PixieDefaults | null;
   github: GithubAccount | null;
   claude: ClaudeAccount | null;
-  claudeCode: ClaudeCodeInfo | null;
   install: InstallProgress | null;
-  // Claude Code's plugins, standalone skills and marketplaces, once Extensions asked.
+  // Claude Code's plugins and marketplaces, once Configuration asked.
   plugins: InstalledPlugin[] | null;
-  skills: StandaloneSkill[] | null;
   marketplaces: Marketplace[] | null;
+  // Codex's login (B94).
+  codex: CodexAccount | null;
+  // Settings > Configuration (B97), once the page asked; each project's part by its name.
+  configuration: ConfigurationPage | null;
+  projectConfiguration: Record<string, ProjectConfiguration>;
 }
 
 export const NO_SETTINGS: SettingsState = {
@@ -125,11 +132,12 @@ export const NO_SETTINGS: SettingsState = {
   pixies: null,
   github: null,
   claude: null,
-  claudeCode: null,
   install: null,
   plugins: null,
-  skills: null,
   marketplaces: null,
+  codex: null,
+  configuration: null,
+  projectConfiguration: {},
 };
 
 export interface State {
@@ -180,8 +188,18 @@ export interface State {
   usage: UsageView;
   // The daemon's notification rules, once the Account tab asked for them.
   notifications: NotificationSettings | null;
-  // Claude Code's models in its order, once asked for.
+  // Claude Code's models in its order, once asked for. Kept for the screens before B102;
+  // `modelLists.claude` has the same list with its default model.
   models: ModelOption[] | null;
+  // The engines chats run on, the default one first (B91); null until asked for.
+  providers: ProviderInfo[] | null;
+  // Each engine's model list with its default model (B94), by engine name.
+  modelLists: Record<string, ModelList>;
+  // Other engines' usage windows (B91), by engine name; Claude's are `limits`.
+  engineLimits: Record<string, EngineLimits>;
+  // The engines the usage bar leaves out on this device (B102), so a new engine starts
+  // shown; remembered on this device.
+  usageBarHidden: string[];
   account: AccountInfo | null;
   agentDefaults: AgentDefaults | null;
   settings: SettingsState;
@@ -226,6 +244,10 @@ export const initialState: State = {
   usage: { unit: "month", date: null, period: null },
   notifications: null,
   models: null,
+  providers: null,
+  modelLists: {},
+  engineLimits: {},
+  usageBarHidden: [],
   account: null,
   agentDefaults: null,
   settings: NO_SETTINGS,
@@ -297,7 +319,11 @@ export type Action =
   | { type: "usageView"; unit: PeriodUnit; date: string | null }
   | { type: "usagePeriod"; period: UsagePeriod }
   | { type: "notifications"; notifications: NotificationSettings }
-  | { type: "models"; models: ModelOption[] }
+  | { type: "providers"; providers: ProviderInfo[] }
+  | { type: "modelList"; provider: string; list: ModelList }
+  | { type: "engineLimits"; provider: string; limits: EngineLimits }
+  | { type: "usageBarEngine"; provider: string; shown: boolean }
+  | { type: "projectConfiguration"; repo: string; configuration: ProjectConfiguration }
   | { type: "account"; account: AccountInfo }
   | { type: "agentDefaults"; defaults: AgentDefaults }
   | { type: "settings"; change: Partial<SettingsState> }

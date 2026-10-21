@@ -15,7 +15,7 @@ async function openChat(chat: Session, events: NestEvent[]) {
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   // A daemon restart, or a phone waking up: the socket drops and opens again.
@@ -106,7 +106,7 @@ describe("a chat whose history failed to load", () => {
     api.sessionEvents.mockRejectedValueOnce(new Error("Request failed (502)"));
     api.sessionEvents.mockResolvedValue([said(1, "First")]);
     const { user, sockets, push } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
 
     expect(await screen.findByText("The messages could not be loaded.")).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe("a chat whose history failed to load", () => {
     api.sessionEvents.mockRejectedValueOnce(new Error("Request failed (502)"));
     api.sessionEvents.mockResolvedValue([said(1, "First")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
 
     await user.click(await screen.findByRole("button", { name: "Retry" }));

@@ -78,11 +78,12 @@ describe("Toast", () => {
         connect={socketFactory().connect}
         location={{ protocol: "http:", host: "x" }}
       >
-        <Inbox onOpenChat={() => undefined} onOpenPixie={() => undefined} />
+        <Inbox project={null} onOpenChat={() => undefined} onOpenPixie={() => undefined} />
         <Toast />
       </StoreProvider>,
     );
     await act(() => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole("status")).toHaveTextContent("Approved: npm install zod");
@@ -106,11 +107,12 @@ describe("an error toast", () => {
         connect={socketFactory().connect}
         location={{ protocol: "http:", host: "x" }}
       >
-        <Inbox onOpenChat={() => undefined} onOpenPixie={() => undefined} />
+        <Inbox project={null} onOpenChat={() => undefined} onOpenPixie={() => undefined} />
         <Toast />
       </StoreProvider>,
     );
     await act(() => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     // The error shows first, then time passes well beyond when other toasts go away.
     await act(() => vi.advanceTimersByTimeAsync(0));
