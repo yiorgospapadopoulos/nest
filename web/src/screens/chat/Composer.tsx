@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type DragEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import type {
   Attachment,
@@ -14,10 +15,23 @@ import type {
   MemoryScope,
   PermissionMode,
   Session,
-  UpdateSessionBody,
 } from "../../api/types.ts";
+import {
+  choosingModel,
+  CLAUDE,
+  modelLabel,
+  supportsAuto,
+  thinkingLevels,
+  type NewChatChoices,
+} from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { memberCall } from "../../store/selectors.ts";
+import {
+  catalogFor,
+  chatModel,
+  memberCall,
+  newChatDefaults,
+  signInHint,
+} from "../../store/selectors.ts";
 import { draftKey, NO_DRAFT } from "../../store/state.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
@@ -25,20 +39,8 @@ import { ConnectorsSheet, ResumeSheet, type ChatNav } from "./CommandSheets.tsx"
 import { ContextMeter } from "./ContextMeter.tsx";
 import { prepareImage } from "./images.ts";
 import { localCommand, namedModel, type LocalCommand } from "./localCommands.ts";
-import {
-  AGENT_DEFAULT,
-  CLAUDE_DEFAULT,
-  effortOptions,
-  labelOf,
-  modelOptions,
-  NO_THINKING,
-  permissionOptions,
-  PICKER_TITLES,
-  takesAuto,
-  thinkingLevels,
-  type Option,
-  type PickerKind,
-} from "./options.ts";
+import { ModelSheet } from "./ModelSheet.tsx";
+import { effortLabel, effortOptions, PERMISSIONS, PICKER_TITLES } from "./options.ts";
 import { Pending } from "./Pending.tsx";
 import { PickerSheet } from "./PickerSheet.tsx";
 import { Suggestions, type Suggestion } from "./Suggestions.tsx";
@@ -57,11 +59,15 @@ function returnAddsLine(): boolean {
   return matchMedia?.("(any-pointer: fine), (any-hover: hover)").matches === false;
 }
 
+// The model, thinking and mode a chat runs, or a new chat will.
 interface Choices {
+  provider: string;
   model: string | null;
   effort: Effort | null;
-  permission: PermissionMode | null;
+  permission: PermissionMode;
 }
+
+type Picker = "model" | "effort" | "permission";
 
 /**
  * What text starting with `!` or `#` is (B59), as in Claude Code: a shell command, a
@@ -80,9 +86,12 @@ type Props =
       session: Session;
       // Where `/resume` opens a chat (B59).
       nav: ChatNav;
+      // Where the chat works, next to the mic (B102).
+      place?: ReactNode;
       repo?: undefined;
       onCreated?: undefined;
-      place?: undefined;
+      workIn?: undefined;
+      placeholder?: undefined;
       pixie?: undefined;
       chat?: undefined;
     }
@@ -91,8 +100,10 @@ type Props =
       nav: ChatNav;
       repo: string;
       onCreated: (session: Session) => void;
-      // Where the new chat works, as its place choice says (B55).
-      place?: NewChatPlace;
+      // The choice of where the new chat works, next to the mic, and what it chose (B55).
+      place?: ReactNode;
+      workIn?: NewChatPlace;
+      placeholder?: string;
       pixie?: undefined;
       chat?: undefined;
     }
@@ -106,6 +117,8 @@ type Props =
       repo?: undefined;
       onCreated?: undefined;
       place?: undefined;
+      workIn?: undefined;
+      placeholder?: undefined;
     };
 
 /**
@@ -116,7 +129,17 @@ type Props =
  * interactive commands (`/model`, `/permissions`, `/mcp`, `/resume`) open Nest's own
  * pickers and sheets instead of being sent (B59).
  */
-export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: Props) {
+export function Composer({
+  session,
+  nav,
+  repo,
+  onCreated,
+  place,
+  workIn,
+  placeholder,
+  pixie,
+  chat,
+}: Props) {
   const { state, actions } = useStore();
   // The message lives in the store, per chat, so it waits there while another chat is open.
   const key = draftKey(
@@ -133,13 +156,14 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   };
   const [uploads, setUploads] = useState(0);
   const [sending, setSending] = useState(false);
-  const [picker, setPicker] = useState<PickerKind | null>(null);
+  const [picker, setPicker] = useState<Picker | null>(null);
   const [sheet, setSheet] = useState<
     { kind: "mcp" } | { kind: "resume"; query: string } | { kind: "memory" } | null
   >(null);
   // Set when the last send was refused because Claude Code has the chat open.
   const [elsewhere, setElsewhere] = useState(false);
-  const [draft, setDraft] = useState<Choices>({ model: null, effort: null, permission: null });
+  // A new chat's choices once the user changed one; until then the agent defaults (B102).
+  const [draft, setDraft] = useState<NewChatChoices | null>(null);
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -165,24 +189,32 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
     el.setSelectionRange(at, at);
   }, [text]);
 
-  const models = state.models;
-  const unknownModels = models === null;
+  // The engines' models and the agent defaults, loaded once.
+  const unknownChoices = state.modelLists[CLAUDE] === undefined || state.agentDefaults === null;
   useEffect(() => {
-    if (unknownModels) void actions.loadChoices();
-  }, [unknownModels, actions]);
+    if (unknownChoices) void actions.loadChoices();
+  }, [unknownChoices, actions]);
 
   const busy = live !== undefined && BUSY.has(live.state);
   const closed = session?.state === "closed";
-  const choices: Choices =
+  // Null for a new chat until the agent defaults are known.
+  const choices: Choices | null =
     session === undefined
-      ? draft
-      : { model: session.model, effort: session.effort, permission: session.permission_mode };
-  // The model the chat runs (or a new chat will run), for its thinking levels.
-  const runModel = choices.model ?? (session === undefined ? state.agentDefaults?.model : null);
-  const levels = thinkingLevels(models, runModel ?? null);
+      ? (draft ?? newChatDefaults(state))
+      : {
+          provider: session.provider,
+          model: chatModel(state, session),
+          effort: session.effort,
+          permission: session.permission_mode,
+        };
+  const catalog = catalogFor(state, choices?.provider);
+  const levels = thinkingLevels(catalog, choices?.model ?? null);
   // A project chat calls a team's pixie only with its team (B46).
   const member = pixie === undefined ? memberCall(state, text) : null;
   const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed && member === null;
+  // A new chat's engine that said it is not signed in (B91).
+  const hint =
+    session === undefined && choices !== null ? signInHint(state, choices.provider) : null;
   // A pixie's messages carry text only.
   const takesFiles = pixie === undefined && !closed;
   const context = session?.context ?? null;
@@ -205,9 +237,9 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
   const runLocal = (command: LocalCommand) => {
     switch (command.name) {
       case "model": {
-        const model = command.arg === "" ? null : namedModel(models ?? [], command.arg);
+        const model = command.arg === "" ? null : namedModel(catalog.models, command.arg);
         if (model === null) setPicker("model");
-        else pick("model", model);
+        else pickModel(model, choices?.provider ?? CLAUDE);
         break;
       }
       case "permissions":
@@ -276,10 +308,16 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
         repo,
         prompt,
         attachment_ids: ids,
-        ...(draft.model === null ? {} : { model: draft.model }),
-        ...(draft.effort === null ? {} : { effort: draft.effort }),
-        ...(draft.permission === null ? {} : { permission_mode: draft.permission }),
-        ...place,
+        // The concrete choices shown; before the defaults load, the Mac's own (B102).
+        ...(choices === null
+          ? {}
+          : {
+              provider: choices.provider,
+              ...(choices.model === null ? {} : { model: choices.model }),
+              ...(choices.effort === null ? {} : { effort: choices.effort }),
+              permission_mode: choices.permission,
+            }),
+        ...workIn,
       });
       setSending(false);
       if (created === null) return;
@@ -336,41 +374,32 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
     void addFiles(Array.from(event.dataTransfer.files));
   };
 
-  const optionsOf = (kind: PickerKind): Option<string>[] => {
-    const listed: Record<PickerKind, Option<string>[]> = {
-      model: modelOptions(models),
-      effort: effortOptions(levels),
-      permission: permissionOptions(models, runModel ?? null),
-    };
-    // An open chat offers no default option.
-    return session === undefined ? [AGENT_DEFAULT, ...listed[kind]] : listed[kind];
-  };
-
-  // An open chat without a model runs Claude Code's default, so that entry is checked.
-  const checked = (kind: PickerKind) =>
-    kind === "model" && session !== undefined ? (choices.model ?? CLAUDE_DEFAULT) : choices[kind];
-
-  const pick = (kind: PickerKind, value: string | null) => {
-    if (session === undefined) {
-      const next = { ...draft, [kind]: value };
-      // A thinking level the newly chosen model does not take is dropped.
-      const model = next.model ?? state.agentDefaults?.model ?? null;
-      if (next.effort !== null && !thinkingLevels(models, model).includes(next.effort)) {
-        next.effort = null;
-      }
-      // So is Auto, for a model that does not take it.
-      if (next.permission === "auto" && !takesAuto(models, model)) next.permission = null;
-      setDraft(next);
+  /** A model from `provider`'s section: a new chat's engine, thinking and mode follow it. */
+  const pickModel = (model: string, provider: string) => {
+    if (session !== undefined) {
+      void actions.update(session.id, { model });
       return;
     }
-    // New thinking applies from the next message.
-    const body: Record<PickerKind, UpdateSessionBody> = {
-      model: { model: String(value) },
-      effort: { effort: value as Effort },
-      permission: { permission_mode: value as PermissionMode },
-    };
-    void actions.update(session.id, body[kind]);
+    const defaults = state.agentDefaults;
+    if (choices === null || defaults === null) return;
+    setDraft(choosingModel(choices, model, provider, catalogFor(state, provider), defaults));
   };
+
+  // New thinking and modes apply from an open chat's next message.
+  const pickEffort = (current: Choices, effort: Effort) => {
+    if (session !== undefined) void actions.update(session.id, { effort });
+    else setDraft({ ...current, effort });
+  };
+
+  const pickPermission = (current: Choices, permission: PermissionMode) => {
+    if (session !== undefined) void actions.update(session.id, { permission_mode: permission });
+    else setDraft({ ...current, permission });
+  };
+
+  // Auto only for the models that take it.
+  const permissions = PERMISSIONS.filter(
+    (option) => option.value !== "auto" || supportsAuto(catalog, choices?.model ?? null),
+  );
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter picks a suggestion, and sends unless Return adds a line here.
@@ -389,9 +418,8 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
     }
   };
 
-  const selector = (kind: PickerKind) => {
-    const unavailable = kind === "effort" && levels.length === 0;
-    const label = unavailable ? NO_THINKING : labelOf(kind, choices[kind], models);
+  /** Plain grey text that opens its menu, as the Mac's QuietMenu. */
+  const selector = (kind: Picker, label: string, unavailable = false) => {
     return (
       <button
         className="qt"
@@ -420,11 +448,7 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
           onPick={choose}
         />
       )}
-      <div
-        className={mode === null ? "comp gl" : `comp gl ${mode}`}
-        onDragOver={dragOver}
-        onDrop={drop}
-      >
+      <div className={mode === null ? "comp" : `comp ${mode}`} onDragOver={dragOver} onDrop={drop}>
         {mode === "bash" && (
           <p className="cmode">
             <b>Bash mode</b> Runs in the chat&apos;s folder
@@ -458,82 +482,46 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
             ))}
           </ul>
         )}
-        <label className="sr" htmlFor="composer">
-          Message
-        </label>
-        <textarea
-          id="composer"
-          ref={field}
-          rows={1}
-          placeholder={closed ? "This chat is closed" : uploads > 0 ? "Uploading..." : "Message"}
-          value={text}
-          disabled={closed}
-          onChange={(event) => {
-            setText(event.target.value);
-            setCaret(event.target.selectionStart);
-          }}
-          onSelect={(event) => {
-            setCaret(event.currentTarget.selectionStart);
-          }}
-          onFocus={() => {
-            setFocused(true);
-          }}
-          onBlur={() => {
-            setFocused(false);
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={(event) => {
-            const pasted = pastedFiles(event.clipboardData);
-            if (!takesFiles || pasted.length === 0) return;
-            event.preventDefault();
-            void addFiles(pasted);
-          }}
-        />
-        <div className="crow">
-          {pixie === undefined && (
-            <>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                hidden
-                aria-label="Attach files"
-                onChange={(event) => void attach(event)}
-              />
-              <button
-                className="qb"
-                aria-label="Attach"
-                disabled={closed}
-                onClick={() => fileInput.current?.click()}
-              >
-                <Icon name="clip" />
-              </button>
-            </>
-          )}
-          <button
-            className="qb"
-            aria-label="Dictate"
-            title="Use the keyboard's microphone to dictate"
+        {hint !== null && <p className="cnote sign">{hint}</p>}
+        {/* An oval field with the round send inside it, as the Mac's pane composer (B102). */}
+        <div className="cfield">
+          <label className="sr" htmlFor="composer">
+            Message
+          </label>
+          <textarea
+            id="composer"
+            ref={field}
+            rows={1}
+            placeholder={
+              closed
+                ? "This chat is closed"
+                : uploads > 0
+                  ? "Uploading..."
+                  : (placeholder ?? "Message")
+            }
+            value={text}
             disabled={closed}
-            onClick={() => field.current?.focus()}
-          >
-            <Icon name="mic" />
-          </button>
-          {pixie === undefined && (
-            <>
-              {selector("model")}
-              {selector("effort")}
-              {selector("permission")}
-            </>
-          )}
-          {session !== undefined && context !== null && (
-            <ContextMeter
-              context={context}
-              disabled={closed}
-              onCompact={() => void deliver(session.id, "/compact", [])}
-            />
-          )}
-          <span className="flex" />
+            onChange={(event) => {
+              setText(event.target.value);
+              setCaret(event.target.selectionStart);
+            }}
+            onSelect={(event) => {
+              setCaret(event.currentTarget.selectionStart);
+            }}
+            onFocus={() => {
+              setFocused(true);
+            }}
+            onBlur={() => {
+              setFocused(false);
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={(event) => {
+              const pasted = pastedFiles(event.clipboardData);
+              if (!takesFiles || pasted.length === 0) return;
+              event.preventDefault();
+              void addFiles(pasted);
+            }}
+          />
           {busy && text.trim() === "" ? (
             <button
               className="send stop"
@@ -551,6 +539,63 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
             >
               <Icon name="send" />
             </button>
+          )}
+        </div>
+        {/* +, the mic and where the chat works; then the model, thinking and mode. */}
+        <div className="crow">
+          {pixie === undefined && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                aria-label="Attach files"
+                onChange={(event) => void attach(event)}
+              />
+              <button
+                className="qb"
+                aria-label="Attach"
+                disabled={closed}
+                onClick={() => fileInput.current?.click()}
+              >
+                <Icon name="plus" />
+              </button>
+            </>
+          )}
+          <button
+            className="qb"
+            aria-label="Dictate"
+            title="Use the keyboard's microphone to dictate"
+            disabled={closed}
+            onClick={() => field.current?.focus()}
+          >
+            <Icon name="mic" />
+          </button>
+          {place}
+          <span className="flex" />
+          {pixie === undefined && choices !== null && (
+            <>
+              {selector("model", modelLabel(catalog, choices.model))}
+              {levels.length === 0
+                ? selector("effort", "No thinking", true)
+                : selector(
+                    "effort",
+                    choices.effort === null ? "Thinking" : effortLabel(choices.effort),
+                  )}
+              {selector(
+                "permission",
+                PERMISSIONS.find((o) => o.value === choices.permission)?.label ??
+                  choices.permission,
+              )}
+            </>
+          )}
+          {session !== undefined && context !== null && (
+            <ContextMeter
+              context={context}
+              disabled={closed}
+              onCompact={() => void deliver(session.id, "/compact", [])}
+            />
           )}
         </div>
         {sheet?.kind === "memory" && live !== undefined && (
@@ -594,13 +639,37 @@ export function Composer({ session, nav, repo, onCreated, place, pixie, chat }: 
             }}
           />
         )}
-        {picker !== null && (
+        {picker === "model" && choices !== null && (
+          <ModelSheet
+            provider={choices.provider}
+            model={choices.model}
+            isDraft={session === undefined}
+            onPick={pickModel}
+            onClose={() => {
+              setPicker(null);
+            }}
+          />
+        )}
+        {picker === "effort" && choices !== null && (
           <PickerSheet
-            title={PICKER_TITLES[picker]}
-            options={optionsOf(picker)}
-            value={checked(picker)}
+            title={PICKER_TITLES.effort}
+            options={effortOptions(levels)}
+            value={choices.effort}
             onPick={(value) => {
-              pick(picker, value);
+              pickEffort(choices, value as Effort);
+            }}
+            onClose={() => {
+              setPicker(null);
+            }}
+          />
+        )}
+        {picker === "permission" && choices !== null && (
+          <PickerSheet
+            title={PICKER_TITLES.permission}
+            options={permissions}
+            value={choices.permission}
+            onPick={(value) => {
+              pickPermission(choices, value as PermissionMode);
             }}
             onClose={() => {
               setPicker(null);

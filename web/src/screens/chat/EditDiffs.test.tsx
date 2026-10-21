@@ -14,7 +14,7 @@ async function openChat(events: NestEvent[]) {
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;

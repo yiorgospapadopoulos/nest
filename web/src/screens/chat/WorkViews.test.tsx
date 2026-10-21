@@ -60,7 +60,7 @@ function setup(groups: Record<string, GroupEntry[]> = {}): FakeApi {
 
 async function openList(api: FakeApi) {
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await screen.findByRole("list", { name: "Working in Validate contact form" });
   return rendered;
 }
