@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { BackgroundItem, Session } from "../api/types.ts";
+import type { BackgroundItem, ModelOption, Session } from "../api/types.ts";
 import {
+  account,
+  agentDefaults,
+  claudeProvider,
+  codexProvider,
+  modelList,
+  models,
   approval,
   check,
   event,
@@ -24,15 +30,31 @@ import {
 } from "../test/fixtures.ts";
 import {
   type ChatEntry,
-  chatLists,
+  CLAUDE_CHAT_STATUS,
+  catalogFor,
+  chatGroup,
+  chatList,
+  chatModel,
+  engineDetail,
+  engineList,
+  engineName,
+  lastActivity,
+  modelSections,
+  modelTitle,
+  newChatDefaults,
+  offersEngineChoice,
+  signInHint,
+  supportsFeature,
+  usageBarChoices,
+  usageBarLines,
   chatStatus,
   ciFailure,
   exchangeBackground,
   inboxGroups,
-  isRunning,
   needsCount,
   nudgeText,
   unreadActions,
+  unreadReports,
   pendingFor,
   availablePixies,
   availableTeams,
@@ -87,65 +109,6 @@ describe("chatStatus", () => {
     [session({ limit_pause: PAUSE }), [question()], "wait", "Question"],
   ])("%#: %s", (s, pending, tone, label) => {
     expect(chatStatus(s, pending)).toEqual({ tone, label });
-  });
-});
-
-describe("chatLists", () => {
-  it("groups a project's chats and keeps archived ones apart", () => {
-    const sessions = [
-      session({ id: "pin", pinned: true, updated_at: "2026-10-01T00:00:00Z" }),
-      session({ id: "need" }),
-      session({ id: "run", state: "running" }),
-      session({ id: "idle", state: "failed", updated_at: "2026-10-05T00:00:00Z" }),
-      session({ id: "idle2", updated_at: "2026-10-06T11:00:00Z" }),
-      session({ id: "done", state: "closed" }),
-      session({ id: "arch", archived_at: "2026-10-01T00:00:00Z" }),
-      session({ id: "other", repo: "narrative" }),
-    ];
-    const lists = chatLists(state(sessions, [approval({ session_id: "need" })]), "cv-page");
-
-    expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([
-      ["pinned", ["pin"]],
-      ["need", ["need"]],
-      ["run", ["run"]],
-      ["idle", ["idle2", "idle"]],
-      ["done", ["done"]],
-    ]);
-    expect(lists.archived.map(idOf)).toEqual(["arch"]);
-    expect(chatLists(state([]), "cv-page")).toEqual({ groups: [], archived: [] });
-  });
-
-  it("puts the project's Claude Code chats among the idle chats by time", () => {
-    const s: State = {
-      ...state([session({ id: "s1", updated_at: "2026-10-05T00:00:00Z" })], []),
-      claudeChats: {
-        new: claudeChat({ id: "new", last_activity_at: "2026-10-06T00:00:00Z" }),
-        old: claudeChat({ id: "old", last_activity_at: "2026-10-04T00:00:00Z" }),
-        else: claudeChat({ id: "else", repo: "narrative" }),
-      },
-    };
-
-    const lists = chatLists(s, "cv-page");
-
-    expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([
-      ["idle", ["cc:new", "s1", "cc:old"]],
-    ]);
-    expect(lists.groups[0]?.chats[0]?.status).toEqual({ tone: "idle", label: "Claude Code" });
-  });
-
-  it("files archived Claude Code chats with the archived chats", () => {
-    const s: State = {
-      ...state([session({ id: "s1", updated_at: "2026-10-05T00:00:00Z", archived_at: "x" })], []),
-      claudeChats: {
-        done: claudeChat({ id: "done", archived: true, last_activity_at: "2026-10-06T00:00:00Z" }),
-        live: claudeChat({ id: "live" }),
-      },
-    };
-
-    const lists = chatLists(s, "cv-page");
-
-    expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([["idle", ["cc:live"]]]);
-    expect(lists.archived.map(idOf)).toEqual(["cc:done", "s1"]);
   });
 });
 
@@ -262,6 +225,8 @@ describe("inbox", () => {
     expect(unreadActions(s, "p1")).toBe(1);
     expect(unreadActions(s, "p3")).toBe(0);
     expect(unreadActions(s)).toBe(2);
+    // The Pixies view lists the same reports, newest first (B102).
+    expect(unreadReports(s).map((r) => r.id)).toEqual(["new", "other", "old"]);
   });
 
   it("adds open pull requests whose checks failed, oldest change first", () => {
@@ -309,15 +274,6 @@ describe("inbox", () => {
   });
 });
 
-describe("isRunning", () => {
-  it("is true while a chat of the project runs or starts", () => {
-    expect(isRunning(state([session({ state: "starting" })]), "cv-page")).toBe(true);
-    expect(isRunning(state([session({ state: "running" })]), "cv-page")).toBe(true);
-    expect(isRunning(state([session({ state: "running" })]), "narrative")).toBe(false);
-    expect(isRunning(state([session()]), "cv-page")).toBe(false);
-  });
-});
-
 describe("ciFailure", () => {
   const failing = prStatus({
     checks: [check("unit", "failure"), check("lint"), check("e2e", "failure")],
@@ -358,12 +314,10 @@ describe("stuck chats", () => {
 
   it("group a stuck chat with the ones that need the user", () => {
     const stuck = session({ id: "a", state: "running", stuck: flag(NOW) });
-    const lists = chatLists(state([stuck, session({ id: "b", state: "running" })], []), "cv-page");
+    const running = session({ id: "b", state: "running" });
 
-    expect(lists.groups.map((g) => [g.group, g.chats.map(idOf)])).toEqual([
-      ["need", ["a"]],
-      ["run", ["b"]],
-    ]);
+    expect(chatGroup(stuck, chatStatus(stuck, []))).toBe("need");
+    expect(chatGroup(running, chatStatus(running, []))).toBe("run");
   });
 
   it("list unarchived stuck chats, longest stuck first, in the inbox and its counts", () => {
@@ -523,12 +477,9 @@ describe("pixies", () => {
 
   it("keeps pixie chats out of project lists, counts and the inbox", () => {
     const s = withPixies();
-    const ids = chatLists(s, "narrative")
-      .groups.flatMap((g) => g.chats)
-      .map((e) => e.session?.id);
+    const ids = chatList(s, "narrative").chats.map((e) => e.session?.id);
     expect(ids).toEqual(["s1"]);
     expect(stuckChats(s)).toEqual([]);
-    expect(isRunning(s, "narrative")).toBe(false);
     expect(inboxGroups(s).flatMap((g) => g.stuck)).toEqual([]);
   });
 
@@ -536,7 +487,7 @@ describe("pixies", () => {
     const old = { ...session({ id: "o", repo: "narrative" }) } as Partial<Session>;
     delete old.pixie_id;
     const s = state([old as Session]);
-    expect(chatLists(s, "narrative").groups).toHaveLength(1);
+    expect(chatList(s, "narrative").chats).toHaveLength(1);
   });
 });
 
@@ -706,5 +657,223 @@ describe("whether a pixie is at work (B48)", () => {
       false,
     );
     expect(pixieWorking(base({ pixieGroups: { s1: [crew("running")] } }), scribe)).toBe(true);
+  });
+});
+
+describe("chatList (B102 item 9, as the Mac's SidebarGroup.list)", () => {
+  it("lists every chat by its latest activity, pinned ones above, archived apart", () => {
+    const sessions = [
+      session({ id: "pin-old", pinned: true, updated_at: "2026-10-01T00:00:00Z" }),
+      session({ id: "pin-new", pinned: true, updated_at: "2026-10-03T00:00:00Z" }),
+      session({ id: "waiting", state: "waiting", updated_at: "2026-10-02T00:00:00Z" }),
+      session({ id: "running", state: "running", updated_at: "2026-10-05T00:00:00Z" }),
+      session({ id: "done", state: "closed", updated_at: "2026-10-06T00:00:00Z" }),
+      session({
+        id: "arch",
+        archived_at: "2026-10-01T00:00:00Z",
+        pinned: true,
+        updated_at: "2026-10-01T00:00:00Z",
+      }),
+      session({ id: "other", repo: "narrative" }),
+      session({ id: "pixie", pixie_id: "p1" }),
+    ];
+    const s: State = {
+      ...state(sessions, [approval({ session_id: "waiting" })]),
+      claudeChats: {
+        cc: claudeChat({ id: "cc", last_activity_at: "2026-10-04T00:00:00Z" }),
+        gone: claudeChat({ id: "gone", archived: true, last_activity_at: "2026-10-05T00:00:00Z" }),
+      },
+    };
+
+    const lists = chatList(s, "cv-page");
+
+    expect(lists.pinned.map(idOf)).toEqual(["pin-new", "pin-old"]);
+    expect(lists.chats.map(idOf)).toEqual(["done", "running", "cc:cc", "waiting"]);
+    expect(lists.archived.map(idOf)).toEqual(["cc:gone", "arch"]);
+    expect(lists.chats[3]?.status).toEqual({ tone: "wait", label: "Needs approval" });
+    expect(lists.chats[2]?.status).toEqual(CLAUDE_CHAT_STATUS);
+  });
+
+  it("orders chats of the same moment by id, newest id first, as the Mac does", () => {
+    const s = state([session({ id: "a" }), session({ id: "b" })], []);
+    expect(chatList(s, "cv-page").chats.map(idOf)).toEqual(["b", "a"]);
+  });
+
+  it("is empty for a project without chats", () => {
+    expect(chatList(state([]), "cv-page")).toEqual({ pinned: [], chats: [], archived: [] });
+  });
+
+  it("gives each row the time of its latest activity", () => {
+    const chat = session({ updated_at: "2026-10-06T09:55:00Z" });
+    const cc = claudeChat({ last_activity_at: "2026-10-05T09:00:00Z" });
+    expect(lastActivity({ session: chat, status: CLAUDE_CHAT_STATUS })).toBe(chat.updated_at);
+    expect(lastActivity({ chat: cc, status: CLAUDE_CHAT_STATUS })).toBe(cc.last_activity_at);
+  });
+});
+
+describe("engines (B102 items 22, 25, 27, 28, as NestKit ProvidersStore)", () => {
+  const gpt: ModelOption = {
+    value: "gpt-5.5",
+    display_name: "GPT-5.5",
+    description: "Codex's best",
+    effort_levels: ["low", "medium", "high"],
+    supports_effort: true,
+    supports_auto_mode: false,
+    claude_code_effort: null,
+  };
+
+  function engines(overrides: Partial<State> = {}): State {
+    return {
+      ...initialState,
+      providers: [claudeProvider(), codexProvider()],
+      modelLists: {
+        claude: modelList({ default_model: "opus" }),
+        codex: modelList({ models: [gpt], default_model: "gpt-5.5" }),
+      },
+      ...overrides,
+    };
+  }
+
+  it("lists the engines, Claude alone before the list loads", () => {
+    expect(engineList(engines()).map((p) => p.name)).toEqual(["claude", "codex"]);
+    const before = { ...initialState, account: account() };
+    expect(engineList(before)).toEqual([
+      {
+        name: "claude",
+        display_name: "Claude",
+        signed_in: null,
+        sign_in_hint: null,
+        account: account(),
+        unsupported: [],
+      },
+    ]);
+    expect(offersEngineChoice(engines())).toBe(true);
+    expect(offersEngineChoice(before)).toBe(false);
+  });
+
+  it("names an engine, an unknown one after itself, and none as Claude", () => {
+    expect(engineName(engines(), "codex")).toBe("Codex");
+    expect(engineName(engines(), null)).toBe("Claude");
+    expect(engineName(initialState, "gemini")).toBe("Gemini");
+  });
+
+  it("says under an engine that it is not signed in, else its plan", () => {
+    expect(engineDetail(codexProvider({ signed_in: false }))).toBe("Not signed in");
+    expect(engineDetail(codexProvider())).toBe("ChatGPT Plus");
+    expect(engineDetail(claudeProvider({ account: null }))).toBe("");
+  });
+
+  it("gives each engine's real models with its default model", () => {
+    const claude = catalogFor(engines(), "claude");
+    expect(claude.models.map((m) => m.value)).toEqual(["opus", "haiku", "claude-opus-4-6"]);
+    expect(claude.defaultModel).toBe("opus");
+    expect(catalogFor(engines(), null)).toEqual(claude);
+    expect(catalogFor(engines(), "codex")).toEqual({ models: [gpt], defaultModel: "gpt-5.5" });
+    expect(catalogFor(initialState, "codex")).toEqual({ models: [], defaultModel: null });
+    // Before B102's lists loaded, Claude's old list stands in, without a default.
+    const old = { ...initialState, models: models() };
+    expect(catalogFor(old, "claude").models).toHaveLength(3);
+    expect(catalogFor(old, "claude").defaultModel).toBeNull();
+    expect(catalogFor(initialState, "claude")).toEqual({ models: [], defaultModel: null });
+  });
+
+  it("offers a new chat every engine, an open chat its own, one Model section alone", () => {
+    const draft = modelSections(engines(), null, true);
+    expect(draft.map((s) => [s.provider, s.title, s.detail])).toEqual([
+      ["claude", "Claude", "Claude Max"],
+      ["codex", "Codex", "ChatGPT Plus"],
+    ]);
+    expect(draft[1]?.catalog.models).toEqual([gpt]);
+    const open = modelSections(engines(), "codex", false);
+    expect(open.map((s) => s.provider)).toEqual(["codex"]);
+    expect(modelSections(engines(), null, false).map((s) => s.provider)).toEqual(["claude"]);
+    const alone = modelSections({ ...engines(), providers: [claudeProvider()] }, null, true);
+    expect(alone.map((s) => [s.provider, s.title, s.detail])).toEqual([["claude", "Model", ""]]);
+  });
+
+  it("titles a model after its engine off Claude", () => {
+    expect(modelTitle(engines(), "gpt-5.5", "codex")).toBe("Codex · GPT-5.5");
+    expect(modelTitle(engines(), null, "codex")).toBe("Codex · GPT-5.5");
+    expect(modelTitle(engines(), "haiku", "claude")).toBe("Haiku 4.5");
+    expect(modelTitle(engines(), null, null)).toBe("Opus 5.5");
+  });
+
+  it("reads a chat without a model as its engine's default", () => {
+    expect(chatModel(engines(), session({ model: "haiku" }))).toBe("haiku");
+    expect(chatModel(engines(), session({ model: null }))).toBe("opus");
+    expect(chatModel(engines(), session({ model: null, provider: "codex" }))).toBe("gpt-5.5");
+  });
+
+  it("knows what an engine's chats cannot do, offering everything when not listed", () => {
+    expect(supportsFeature(engines(), "rewind", "codex")).toBe(false);
+    expect(supportsFeature(engines(), "rewind", "claude")).toBe(true);
+    expect(supportsFeature(engines(), "rewind", null)).toBe(true);
+    expect(supportsFeature(initialState, "rewind", "codex")).toBe(true);
+  });
+
+  it("gives the sign-in hint only for an engine that said it is signed out", () => {
+    const out = engines({
+      providers: [
+        claudeProvider(),
+        codexProvider({ signed_in: false, sign_in_hint: "Sign in to Codex on the Mac" }),
+      ],
+    });
+    expect(signInHint(out, "codex")).toBe("Sign in to Codex on the Mac");
+    expect(signInHint(engines(), "codex")).toBeNull();
+    expect(signInHint(out, "claude")).toBeNull();
+    expect(signInHint(out, null)).toBeNull();
+    const bare = engines({ providers: [claudeProvider(), codexProvider({ signed_in: false })] });
+    expect(signInHint(bare, "codex")).toBe("Codex isn't signed in.");
+  });
+
+  it("starts a new chat's draft from the concrete agent defaults", () => {
+    expect(newChatDefaults(engines())).toBeNull();
+    const withDefaults = engines({
+      agentDefaults: agentDefaults({ provider: "codex", model: null, effort: null }),
+    });
+    expect(newChatDefaults(withDefaults)).toEqual({
+      provider: "codex",
+      model: "gpt-5.5",
+      effort: "medium",
+      permission: "default",
+    });
+  });
+});
+
+describe("the usage bar's engines (B102 items 23, 29)", () => {
+  function engines(overrides: Partial<State> = {}): State {
+    return { ...initialState, providers: [claudeProvider(), codexProvider()], ...overrides };
+  }
+
+  it("shows Claude and every other engine signed in, in the list's order", () => {
+    expect(usageBarLines(engines())).toEqual([
+      { provider: "claude", name: "Claude" },
+      { provider: "codex", name: "Codex" },
+    ]);
+    const out = engines({ providers: [claudeProvider(), codexProvider({ signed_in: null })] });
+    expect(usageBarLines(out).map((l) => l.provider)).toEqual(["claude"]);
+    expect(usageBarLines(initialState).map((l) => l.provider)).toEqual(["claude"]);
+  });
+
+  it("leaves out the engines unchecked on this device, keeping Claude when none is left", () => {
+    expect(usageBarLines(engines({ usageBarHidden: ["claude"] })).map((l) => l.provider)).toEqual([
+      "codex",
+    ]);
+    const none = engines({ usageBarHidden: ["claude", "codex"] });
+    expect(usageBarLines(none).map((l) => l.provider)).toEqual(["claude"]);
+  });
+
+  it("lists a checkmark per engine, saying which are not signed in", () => {
+    const out = engines({
+      providers: [claudeProvider(), codexProvider({ signed_in: false })],
+      usageBarHidden: ["claude"],
+    });
+    expect(usageBarChoices(out)).toEqual([
+      { provider: "claude", name: "Claude", detail: "", shown: false },
+      { provider: "codex", name: "Codex", detail: "Not signed in", shown: true },
+    ]);
+    expect(usageBarChoices(initialState)).toEqual([
+      { provider: "claude", name: "Claude", detail: "", shown: true },
+    ]);
   });
 });

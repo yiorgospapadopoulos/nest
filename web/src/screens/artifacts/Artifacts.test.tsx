@@ -57,7 +57,7 @@ async function openChat({
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api, storage });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   const reconnect = async () => {
@@ -1647,7 +1647,7 @@ describe("an artifact card in the transcript", () => {
       }),
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     expect(await screen.findByRole("heading", { name: "Pair this iPhone" })).toBeInTheDocument();
   });

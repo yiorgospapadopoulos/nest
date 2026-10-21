@@ -4,7 +4,6 @@ import {
   account,
   agentDefaults,
   claudeAccount,
-  claudeCode,
   artifact,
   artifactContent,
   artifactDetail,
@@ -31,6 +30,13 @@ import {
   repo,
   session,
   team,
+  claudeProvider,
+  codexAccount,
+  codexPlugins,
+  configurationPage,
+  copyPreview,
+  engineLimits,
+  projectConfiguration,
 } from "./fixtures.ts";
 import { defined } from "./defined.ts";
 
@@ -127,6 +133,14 @@ export function fakeApi(): FakeApi {
       .fn<Api["saveNotificationSettings"]>()
       .mockImplementation((settings) => Promise.resolve(settings)),
     models: vi.fn<Api["models"]>().mockResolvedValue(modelList()),
+    // Claude only, as before Codex: tests that need Codex list it.
+    providers: vi.fn<Api["providers"]>().mockResolvedValue({ providers: [claudeProvider()] }),
+    engineLimits: vi.fn<Api["engineLimits"]>().mockResolvedValue(engineLimits()),
+    refreshEngineUsage: vi.fn<Api["refreshEngineUsage"]>().mockResolvedValue(engineLimits()),
+    codexAccount: vi.fn<Api["codexAccount"]>().mockResolvedValue(codexAccount()),
+    codexLogout: vi
+      .fn<Api["codexLogout"]>()
+      .mockResolvedValue(codexAccount({ signed_in: false, email: null, plan: null })),
     account: vi.fn<Api["account"]>().mockResolvedValue(account()),
     agentDefaults: vi.fn<Api["agentDefaults"]>().mockResolvedValue(agentDefaults()),
     saveAgentDefaults: vi
@@ -206,7 +220,6 @@ export function fakeApi(): FakeApi {
     claudeLogout: vi
       .fn<Api["claudeLogout"]>()
       .mockResolvedValue(claudeAccount({ signed_in: false, email: null, plan: null })),
-    claudeCode: vi.fn<Api["claudeCode"]>().mockResolvedValue(claudeCode()),
     installClaudeCode: vi.fn<Api["installClaudeCode"]>().mockResolvedValue(null),
     devices: vi
       .fn<Api["devices"]>()
@@ -219,7 +232,6 @@ export function fakeApi(): FakeApi {
       .fn<Api["pairingCode"]>()
       .mockResolvedValue({ code: "ABCD2345", expires_at: "2026-10-06T10:10:00Z" }),
     plugins: vi.fn<Api["plugins"]>().mockResolvedValue([installedPlugin()]),
-    skills: vi.fn<Api["skills"]>().mockResolvedValue([]),
     marketplaces: vi.fn<Api["marketplaces"]>().mockResolvedValue([marketplace()]),
     addMarketplace: vi.fn<Api["addMarketplace"]>().mockResolvedValue(null),
     removeMarketplace: vi.fn<Api["removeMarketplace"]>().mockResolvedValue(null),
@@ -264,6 +276,54 @@ export function fakeApi(): FakeApi {
           author: "user",
         }),
       ),
+    configuration: vi.fn<Api["configuration"]>().mockResolvedValue(configurationPage()),
+    configurationFile: vi
+      .fn<Api["configurationFile"]>()
+      .mockImplementation((path) =>
+        Promise.resolve({ path, text: "# Instructions", version: "v1" }),
+      ),
+    writeConfigurationFile: vi
+      .fn<Api["writeConfigurationFile"]>()
+      .mockResolvedValue({ version: "v2" }),
+    setUsesShared: vi.fn<Api["setUsesShared"]>().mockResolvedValue(configurationPage()),
+    createSkill: vi.fn<Api["createSkill"]>().mockResolvedValue(configurationPage()),
+    deleteSkill: vi.fn<Api["deleteSkill"]>().mockResolvedValue(configurationPage()),
+    makeSkillShared: vi.fn<Api["makeSkillShared"]>().mockResolvedValue(configurationPage()),
+    setCodexSkill: vi.fn<Api["setCodexSkill"]>().mockResolvedValue(configurationPage()),
+    mcpServer: vi
+      .fn<Api["mcpServer"]>()
+      .mockResolvedValue({ transport: "http", url: "https://docs.example.com/mcp", headers: {} }),
+    putMcpServer: vi.fn<Api["putMcpServer"]>().mockResolvedValue(configurationPage()),
+    deleteMcpServer: vi.fn<Api["deleteMcpServer"]>().mockResolvedValue(configurationPage()),
+    copyPreview: vi.fn<Api["copyPreview"]>().mockResolvedValue(copyPreview()),
+    copyToShared: vi.fn<Api["copyToShared"]>().mockResolvedValue({
+      summary: "Copied 1 skill to Shared",
+      undo_id: "u1",
+      page: configurationPage(),
+    }),
+    undoCopy: vi.fn<Api["undoCopy"]>().mockResolvedValue(configurationPage()),
+    codexPlugins: vi.fn<Api["codexPlugins"]>().mockResolvedValue(codexPlugins()),
+    installCodexPlugin: vi.fn<Api["installCodexPlugin"]>().mockResolvedValue(codexPlugins()),
+    uninstallCodexPlugin: vi.fn<Api["uninstallCodexPlugin"]>().mockResolvedValue(codexPlugins()),
+    codexMarketplaces: vi
+      .fn<Api["codexMarketplaces"]>()
+      .mockResolvedValue([{ name: "openai", path: null }]),
+    addCodexMarketplace: vi
+      .fn<Api["addCodexMarketplace"]>()
+      .mockResolvedValue([{ name: "openai", path: null }]),
+    removeCodexMarketplace: vi.fn<Api["removeCodexMarketplace"]>().mockResolvedValue([]),
+    projectConfiguration: vi
+      .fn<Api["projectConfiguration"]>()
+      .mockResolvedValue(projectConfiguration()),
+    putProjectMcpServer: vi
+      .fn<Api["putProjectMcpServer"]>()
+      .mockResolvedValue(projectConfiguration()),
+    deleteProjectMcpServer: vi
+      .fn<Api["deleteProjectMcpServer"]>()
+      .mockResolvedValue(projectConfiguration()),
+    createProjectSkill: vi
+      .fn<Api["createProjectSkill"]>()
+      .mockResolvedValue(projectConfiguration()),
   };
   return fake;
 }

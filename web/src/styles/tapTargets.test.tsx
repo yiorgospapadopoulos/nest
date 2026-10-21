@@ -13,7 +13,7 @@ import {
   session,
   team,
 } from "../test/fixtures.ts";
-import { openPixie } from "../test/pixies.ts";
+import { openPixie, showPixies } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
 
 // The app's own stylesheets: jsdom has no layout, but it applies their declared sizes.
@@ -103,7 +103,7 @@ describe("tap targets", () => {
       created_at: "x",
     });
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     await user.upload(screen.getByLabelText("Attach files"), new File(["x"], "shot.png"));
     await user.type(screen.getByLabelText("Message"), "Next");
@@ -128,7 +128,7 @@ describe("tap targets", () => {
 
   it("are at least 44 points in the search field", async () => {
     const { user } = await renderApp();
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.type(screen.getByRole("searchbox"), "form");
 
     expect(box(screen.getByRole("button", { name: "Clear search" }))).toEqual({
@@ -161,7 +161,7 @@ describe("tap targets", () => {
       },
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     const controls = [
       screen.getByRole("button", { name: "New team" }),
@@ -175,6 +175,8 @@ describe("tap targets", () => {
     // The header spans the column; its height is what counts.
     expect(box(screen.getByRole("button", { name: /^QA/ })).height).toBeGreaterThanOrEqual(TAP);
 
+    await user.click(screen.getByRole("button", { name: "Project: Pixies" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /cv-page/ }));
     await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
     for (const control of [
       // Tester leads the team, so its call is the team's (B70).
@@ -191,7 +193,7 @@ describe("tap targets", () => {
     api.pixieGroups.mockResolvedValue({ s1: [groupEntry()] });
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
 
     const tree = await screen.findByRole("list", { name: "Working in Validate contact form" });
     for (const control of within(tree).getAllByRole("button")) {
@@ -243,10 +245,17 @@ describe("tap targets", () => {
       expect(hit.height, name).toBeGreaterThanOrEqual(TAP);
       if (sides === "both") expect(hit.width, name).toBeGreaterThanOrEqual(TAP);
     };
-    // A plain card button.
+    // A Needs you row's chevron and name (B102), then a plain button of the open item.
+    const chevron = await screen.findByRole("button", { name: "Show details" });
+    reach(chevron);
+    reach(screen.getByRole("button", { name: "Validate contact form" }), "height");
+    await user.click(chevron);
     reach(await screen.findByRole("button", { name: "Feedback" }), "height");
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     reach(screen.getByRole("switch", { name: "Show automated chats" }));
+    // The Chats header's project menu and New chat (B102).
+    reach(screen.getByRole("button", { name: "Project: cv-page" }), "height");
+    reach(screen.getByRole("button", { name: "New chat in cv-page" }));
     await user.click(screen.getByRole("tab", { name: "Settings" }));
     // The Settings list's rows.
     reach(await screen.findByRole("button", { name: "Appearance" }), "height");
@@ -285,7 +294,7 @@ describe("tap targets", () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     const place = screen.getByRole("button", { name: /^Where the chat works: / });

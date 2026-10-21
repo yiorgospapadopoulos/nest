@@ -184,8 +184,10 @@ describe("the shared UI rules", () => {
       "Checks failed": "checks_failed",
       Stuck: "stuck",
     };
+    // Needs you's rows; the running chats' goals follow in their own section (B102).
     const cards = screen
       .getAllByRole("article")
+      .filter((card) => card.closest('[aria-label="Goals"]') === null)
       .map((card) => card.getAttribute("aria-label") ?? "");
     expect([...new Set(cards.map((label) => sections[label.split(":")[0] ?? ""]))]).toEqual(
       rules.needs_you.order,

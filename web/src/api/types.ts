@@ -387,6 +387,15 @@ export interface UsagePeriod {
   projects: ProjectUsage[];
   // The Mac's own usage checks, not counted in `tokens`.
   probes: { count: number; tokens: number };
+  // By engine, Claude first, then by name; none without tokens (B91). Older daemons send none.
+  engines?: EngineUsage[];
+}
+
+/** One engine's part of a period's tokens (B91). */
+export interface EngineUsage {
+  provider: string;
+  tokens: number;
+  sessions: number;
 }
 
 export interface LimitWindow {
@@ -399,6 +408,19 @@ export interface LimitWindow {
 export interface UsageLimits {
   five_hour: LimitWindow | null;
   seven_day: LimitWindow | null;
+}
+
+/** One of another engine's windows, by its length (B91: Codex). */
+export interface EngineLimitWindow extends LimitWindow {
+  // Null when the engine left the length out.
+  minutes: number | null;
+  // What clients call it: "5 hour", "Weekly", "30 day", or "Usage" without a length.
+  label: string;
+}
+
+/** Another engine's windows, whichever its plan has, shortest first (B91). */
+export interface EngineLimits {
+  windows: EngineLimitWindow[];
 }
 
 export interface Connector {
@@ -451,6 +473,8 @@ export interface NestEvent {
 export interface CreateSessionBody {
   repo: string;
   prompt: string;
+  // The engine (B91); left out, the agent defaults' engine.
+  provider?: string;
   model?: string;
   effort?: Effort;
   permission_mode?: PermissionMode;
@@ -644,14 +668,54 @@ export interface ModelOption {
   supports_effort: boolean;
   // Whether the model takes the "auto" permission mode.
   supports_auto_mode: boolean;
+  // The model id the engine resolves `value` to, such as "claude-sonnet-5-5".
+  resolved_model?: string | null;
   // The thinking level Claude Code's own settings give it, when they set one.
   claude_code_effort: string | null;
 }
 
 export interface ModelList {
+  // Real models only: the engine's "default" entry is never offered (B94).
   models: ModelOption[];
   // Null while the Mac has only Claude Code's aliases to offer.
   updated_at: string | null;
+  // The model the engine runs when none is named, as a value of `models`; null while the
+  // engine has not said (B94). A chat without a model reads as this one.
+  default_model: string | null;
+}
+
+/** What an engine's chats cannot do (B91); clients hide it, the daemon refuses it. */
+export type ProviderFeature =
+  | "rewind"
+  | "fork"
+  | "slash_commands"
+  | "stop_task"
+  | "withdraw"
+  | "plan_review"
+  | "questions"
+  | "subagents"
+  | "nest_tools"
+  | "task_list"
+  | "pixies"
+  | "memory"
+  | "pixie_skills";
+
+/** An engine a new chat can run on (`GET /api/providers`, B91), the default one first. */
+export interface ProviderInfo {
+  // What a chat's `provider` is set to: "claude" or "codex".
+  name: string;
+  display_name: string;
+  // Null when Nest does not check (Claude) or Codex could not be asked; Codex stays
+  // offered when false, and its chats fail until the user signs in.
+  signed_in: boolean | null;
+  // What to tell the user when `signed_in` is false.
+  sign_in_hint: string | null;
+  account: AccountInfo | null;
+  unsupported: ProviderFeature[];
+}
+
+export interface ProviderList {
+  providers: ProviderInfo[];
 }
 
 /** Who Claude Code is signed in as; every field may be unknown. */
@@ -662,14 +726,31 @@ export interface AccountInfo {
   organization: string | null;
 }
 
-/** What new chats use unless the composer chooses otherwise (`/api/agents/defaults`). */
+/**
+ * What new chats use unless the composer chooses otherwise. Served concrete (B94): a null
+ * model only while no engine reported its list, a null effort only for a model without
+ * thinking levels. Nulls sent are what Nest picks: the first engine signed in, its default
+ * model, Medium (or the closest level), Ask.
+ */
 export interface AgentDefaults {
-  // Null leaves the choice to Claude Code.
+  // The engine, such as "claude" or "codex"; daemons before B94 send none.
+  provider?: string | null;
   model: string | null;
   effort: Effort | null;
-  // Null leaves it to Claude Code's own setting (its `defaultMode`).
   permission_mode: PermissionMode | null;
   mode: SessionMode;
+}
+
+/** Codex's own login on the Mac (`GET /api/accounts/codex`, B94); never a token. */
+export interface CodexAccount {
+  // Null when Codex could not be asked; `error` then says why, in a word.
+  signed_in: boolean | null;
+  email: string | null;
+  // Such as "ChatGPT Plus".
+  plan: string | null;
+  checked_at: string;
+  // On an `account.codex` event: why signing in failed, else null.
+  error?: string | null;
 }
 
 export type Mascot =
@@ -691,6 +772,10 @@ export interface PixieSettings {
   name: string;
   mascot: Mascot;
   color: string;
+  // The engine it runs on (B91): "claude" or "codex". Changing it starts the pixie's next
+  // chat afresh, and its model and effort go back to that engine's defaults unless sent.
+  provider: string;
+  // Null: the engine's default model (on Claude, the agent defaults' model).
   model: string | null;
   effort: Effort | null;
   permission_mode: PermissionMode;
@@ -986,14 +1071,6 @@ export interface ClaudeAccount {
   error?: string | null;
 }
 
-/** The standalone Claude Code on the Mac, and the one Nest's agents use. */
-export interface ClaudeCodeInfo {
-  installed: boolean;
-  path: string | null;
-  version: string | null;
-  bundled_version: string;
-}
-
 export interface PairingCode {
   code: string;
   expires_at: string;
@@ -1053,13 +1130,6 @@ export interface PixieSkill {
   name: string;
   description: string | null;
   plugin: string | null;
-}
-
-/** A standalone skill in ~/.claude/skills, read only. */
-export interface StandaloneSkill {
-  name: string;
-  description: string | null;
-  path: string;
 }
 
 export interface Marketplace {
@@ -1189,4 +1259,159 @@ export interface ArtifactFilter {
   repo?: string;
   session_id?: string;
   pixie_id?: string;
+}
+
+// Settings > Configuration (B97): what the engines share and each engine's own setup.
+
+export type EngineId = "claude" | "codex";
+export type SharedItem = "instructions" | "skills" | "mcp_servers";
+export type SkillSource = "yours" | "synced" | "plugin" | "engine_only" | "project";
+export type ConfigItemKind =
+  | "plugins"
+  | "connectors"
+  | "hooks"
+  | "subagents"
+  | "commands"
+  | "permissions"
+  | "settings"
+  | "rules";
+export type McpTransport = "stdio" | "http" | "sse";
+
+export interface InstructionsFile {
+  path: string;
+  exists: boolean;
+  version: string | null;
+}
+
+export interface SkillItem {
+  name: string;
+  description: string | null;
+  // Its SKILL.md.
+  path: string;
+  source: SkillSource;
+  plugin: string | null;
+  // The engine an `engine_only` skill is in.
+  engine: EngineId | null;
+  read_only: boolean;
+  // Whether Codex loads it; null when Codex is not shown or cannot see it at all.
+  codex_enabled: boolean | null;
+  // Why Codex cannot load it.
+  codex_error: string | null;
+}
+
+export interface SharedServer {
+  name: string;
+  summary: string;
+  transport: McpTransport;
+  engines: EngineId[];
+  convertible: boolean;
+  reason: string | null;
+}
+
+export interface ConfigSwitch {
+  on: boolean;
+  fixed: boolean;
+}
+
+export interface EngineItem {
+  kind: ConfigItemKind;
+  count: number | null;
+  detail: string | null;
+  path: string | null;
+  folder: boolean;
+}
+
+export interface EngineSection {
+  id: EngineId;
+  name: string;
+  // Such as "me@example.com · Claude Max"; null when unknown.
+  account: string | null;
+  bundled_version: string | null;
+  standalone: { path: string; version: string | null } | null;
+  config_folder: string;
+  uses_shared: Record<SharedItem, ConfigSwitch>;
+  missing_from_shared: { instructions: boolean; skills: string[]; mcp_servers: string[] };
+  items: EngineItem[];
+}
+
+/** `GET /api/configuration`; the writes answer with it too. */
+export interface ConfigurationPage {
+  shared: {
+    instructions: InstructionsFile;
+    skills: { folder: string; items: SkillItem[] };
+    mcp_servers: SharedServer[];
+  };
+  engines: EngineSection[];
+}
+
+/** A setup file's text; `version` (its hash) is null when there is no file yet. */
+export interface FileText {
+  path: string;
+  text: string;
+  version: string | null;
+}
+
+/** A server as Claude keeps it: the edit form and `PUT .../mcp-servers/{name}`. */
+export interface McpServer {
+  transport: McpTransport;
+  command?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string | null;
+  headers?: Record<string, string>;
+}
+
+export interface McpServerSummary {
+  name: string;
+  summary: string;
+  transport: McpTransport;
+}
+
+/** What "Copy <engine>'s setup to Shared" would do, for its popup. */
+export interface CopyPreview {
+  // Null when the shared instructions stay as they are.
+  instructions: { replace: boolean; engine_path: string; shared_path: string } | null;
+  skills: { add: string[]; already: string[]; same_name: { name: string; reason: string }[] };
+  mcp_servers: {
+    add: string[];
+    already: string[];
+    not_convertible: { name: string; reason: string }[];
+  };
+  // What stays with the engine, as lines.
+  stays: string[];
+}
+
+export interface CopyResult {
+  // The done line.
+  summary: string;
+  undo_id: string;
+  page: ConfigurationPage;
+}
+
+/** A project's own instructions, skills and MCP servers (Settings > Project). */
+export interface ProjectConfiguration {
+  instructions: { path: string; exists: boolean }[];
+  skills: SkillItem[];
+  mcp_servers: McpServerSummary[];
+}
+
+export interface CodexPlugin {
+  id: string;
+  name: string;
+  marketplace: string;
+  description: string | null;
+  version: string | null;
+  installed: boolean;
+  enabled: boolean;
+}
+
+export interface CodexMarketplace {
+  name: string;
+  path: string | null;
+}
+
+/** Every plugin of Codex's marketplaces, installed first. */
+export interface CodexPlugins {
+  plugins: CodexPlugin[];
+  marketplaces: CodexMarketplace[];
 }

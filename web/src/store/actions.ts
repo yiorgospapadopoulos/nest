@@ -56,13 +56,17 @@ import type {
   UpdateSessionBody,
   UpdateTeamBody,
   UsageLimits,
+  ProviderInfo,
 } from "../api/types.ts";
 import {
   loadFoldedTeams,
   loadShowAutomated,
+  loadUsageBarHidden,
   saveFoldedTeams,
   saveShowAutomated,
+  saveUsageBarHidden,
 } from "./devicePrefs.ts";
+import { CLAUDE } from "./catalog.ts";
 import { storageChangeOf } from "../api/payloads.ts";
 import { isoDay } from "../format.ts";
 import { filterKey } from "./artifacts.ts";
@@ -71,6 +75,9 @@ import { settingsActions } from "./settingsActions.ts";
 import { draftKey, type Action, type Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
+
+// The engines besides Claude whose usage windows the daemon keeps (B91).
+export const OTHER_ENGINES = ["codex"];
 
 /** The notice for a `usage.warning` event (D104): "5 hour limit 82% used". */
 export function warningText(payload: JsonObject): string {
@@ -170,6 +177,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let bashRuns = 0;
   let showAutomated = loadShowAutomated(storage);
   let foldedTeams = loadFoldedTeams(storage);
+  let usageBarHidden = loadUsageBarHidden(storage);
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
@@ -307,6 +315,22 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         },
       ),
     );
+  }
+
+  /** Each engine's models besides Claude's; one the Mac cannot give keeps its last list. */
+  async function loadOtherModels(providers: ProviderInfo[]): Promise<void> {
+    for (const { name } of providers.filter((p) => p.name !== CLAUDE)) {
+      const list = await quietly(() => api.models(name));
+      if (list !== null) dispatch({ type: "modelList", provider: name, list });
+    }
+  }
+
+  /** The engines and their models; `refresh` asks the engines for their login now. */
+  async function loadProviders(refresh = false): Promise<void> {
+    const found = await quietly(() => api.providers(refresh));
+    if (found === null) return;
+    dispatch({ type: "providers", providers: found.providers });
+    await loadOtherModels(found.providers);
   }
 
   async function loadUnseenArtifacts(): Promise<void> {
@@ -616,6 +640,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
       if (event.type === "usage.warning") toast(warningText(event.payload), "info");
       if (event.type === "extensions.updated") void settings.extensionsChanged();
+      // Whether Codex can run chats follows its login.
+      if (event.type === "account.codex") void loadProviders();
+      if (event.type === "configuration.changed") void settings.configurationChanged(event.payload);
     },
 
     retry: () => {
@@ -795,9 +822,14 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return forked;
     },
 
-    /** Squash-merges the pull request; the daemon then closes the chat and its worktree. */
-    async merge(approval: Approval, number: number): Promise<boolean> {
-      const updated = await attempt(() => api.merge(approval.session_id, { method: "squash" }));
+    /**
+     * Squash-merges the pull request; the daemon then closes the chat and its worktree. The
+     * branch stays unless `deleteBranch` (B96, B102).
+     */
+    async merge(approval: Approval, number: number, deleteBranch = false): Promise<boolean> {
+      const updated = await attempt(() =>
+        api.merge(approval.session_id, { method: "squash", delete_branch: deleteBranch }),
+      );
       if (updated === null) return false;
       dispatch({ type: "session", session: updated });
       dispatch({ type: "approval", approval: { ...approval, status: "resolved" } });
@@ -1258,10 +1290,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       else toast("The test notification could not be delivered", "error");
     },
 
-    /** Asks the Mac to check Claude's usage now; resolves when the numbers are in. */
-    async refreshUsage(): Promise<void> {
+    /** Asks the Mac to check an engine's usage now (Claude's by default); resolves when the numbers are in. */
+    async refreshUsage(provider: string = CLAUDE): Promise<void> {
       try {
-        dispatch({ type: "limits", limits: await api.refreshUsage() });
+        if (provider === CLAUDE) {
+          dispatch({ type: "limits", limits: await api.refreshUsage() });
+        } else {
+          const limits = await api.refreshEngineUsage(provider);
+          dispatch({ type: "engineLimits", provider, limits });
+        }
       } catch (error) {
         if (error instanceof ApiError && error.status === 429) {
           toast("Usage was refreshed moments ago", "info");
@@ -1310,16 +1347,38 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     },
 
     /**
-     * Claude Code's models and the agent defaults, for the composer's selectors and the
-     * Account tab. Quiet: without them the selectors keep working with fewer choices.
+     * The engines, Claude Code's models, the agent defaults, then the other engines' models,
+     * for the model menus and the Agents page. Quiet: without them the menus keep working
+     * with fewer choices, and a part the Mac cannot give keeps what it had.
      */
     async loadChoices(): Promise<void> {
-      const [list, defaults] = await Promise.all([
+      const [found, list, defaults] = await Promise.all([
+        quietly(() => api.providers(false)),
         quietly(() => api.models()),
         quietly(() => api.agentDefaults()),
       ]);
-      if (list !== null) dispatch({ type: "models", models: list.models });
+      if (found !== null) dispatch({ type: "providers", providers: found.providers });
+      if (list !== null) dispatch({ type: "modelList", provider: CLAUDE, list });
       if (defaults !== null) dispatch({ type: "agentDefaults", defaults });
+      if (found !== null) await loadOtherModels(found.providers);
+    },
+
+    loadProviders,
+
+    /** The other engines' usage windows (B91), quietly: one the Mac cannot give keeps its last. */
+    async loadEngineLimits(): Promise<void> {
+      for (const provider of OTHER_ENGINES) {
+        const limits = await quietly(() => api.engineLimits(provider));
+        if (limits !== null) dispatch({ type: "engineLimits", provider, limits });
+      }
+    },
+
+    /** Whether the usage bar shows the engine (B102); remembered on this device only. */
+    setUsageBarEngine(provider: string, shown: boolean): void {
+      const others = usageBarHidden.filter((name) => name !== provider);
+      usageBarHidden = shown ? others : [...others, provider];
+      saveUsageBarHidden(storage, usageBarHidden);
+      dispatch({ type: "usageBarEngine", provider, shown });
     },
 
     /** Shows the change at once and puts `previous` back if the Mac refuses it. */

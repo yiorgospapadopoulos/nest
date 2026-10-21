@@ -7,8 +7,8 @@ const NEXT: Record<Tab, Tab> = { inbox: "projects", projects: "settings", settin
 const PREVIOUS: Record<Tab, Tab> = { inbox: "settings", projects: "inbox", settings: "projects" };
 
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: "inbox", label: "Inbox", icon: "inbox" },
-  { id: "projects", label: "Projects", icon: "folder" },
+  { id: "inbox", label: "Needs you", icon: "inbox" },
+  { id: "projects", label: "Chats", icon: "lines" },
   { id: "settings", label: "Settings", icon: "gear" },
 ];
 
@@ -31,7 +31,7 @@ export function TabBar({
   };
 
   return (
-    <nav className="tabbar gl" role="tablist" aria-label="Sections" onKeyDown={onKeyDown}>
+    <nav className="tabbar" role="tablist" aria-label="Sections" onKeyDown={onKeyDown}>
       {TABS.map((t) => (
         <button
           key={t.id}
@@ -46,12 +46,15 @@ export function TabBar({
           }}
         >
           <Icon name={t.icon} />
-          <span>{t.label}</span>
-          {t.id === "inbox" && badge > 0 && (
-            <span className="badge" aria-label={`${String(badge)} need you`}>
-              {badge}
-            </span>
-          )}
+          <span>
+            {t.label}
+            {t.id === "inbox" && badge > 0 && (
+              <>
+                {" "}
+                <span className="cnt">{badge}</span>
+              </>
+            )}
+          </span>
         </button>
       ))}
     </nav>

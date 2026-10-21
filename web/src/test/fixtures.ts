@@ -33,7 +33,6 @@ import type {
   TrackedTask,
   UsageLimits,
   ClaudeAccount,
-  ClaudeCodeInfo,
   ListedDevice,
   GithubAccount,
   InstalledPlugin,
@@ -44,6 +43,15 @@ import type {
   StoredAttachment,
   StuckSettings,
   UsageSettings,
+  CodexAccount,
+  CodexPlugins,
+  ConfigurationPage,
+  CopyPreview,
+  EngineLimits,
+  EngineSection,
+  ProjectConfiguration,
+  ProviderInfo,
+  SkillItem,
 } from "../api/types.ts";
 
 import { NO_BACKGROUND } from "../store/state.ts";
@@ -121,6 +129,7 @@ export function pixie(overrides: Partial<Pixie> = {}): Pixie {
     name: "Tester",
     mascot: "bluebell",
     color: "#8B7CF6",
+    provider: "claude",
     model: null,
     effort: null,
     permission_mode: "default",
@@ -600,7 +609,7 @@ export function models(): ModelOption[] {
 }
 
 export function modelList(overrides: Partial<ModelList> = {}): ModelList {
-  return { models: models(), updated_at: NOW, ...overrides };
+  return { models: models(), updated_at: NOW, default_model: null, ...overrides };
 }
 
 export function account(overrides: Partial<AccountInfo> = {}): AccountInfo {
@@ -746,16 +755,6 @@ export function claudeAccount(overrides: Partial<ClaudeAccount> = {}): ClaudeAcc
   };
 }
 
-export function claudeCode(overrides: Partial<ClaudeCodeInfo> = {}): ClaudeCodeInfo {
-  return {
-    installed: true,
-    path: "/Users/me/.local/bin/claude",
-    version: "2.1.3",
-    bundled_version: "2.1.1",
-    ...overrides,
-  };
-}
-
 export function device(overrides: Partial<ListedDevice> = {}): ListedDevice {
   return {
     id: "d1",
@@ -802,6 +801,158 @@ export function pluginDetails(overrides: Partial<PluginDetails> = {}): PluginDet
       mcp_servers: { count: 1, names: ["pdf"] },
       lsp_servers: none,
     },
+    ...overrides,
+  };
+}
+
+// Codex beside Claude (B91, B94).
+
+/** Claude as `GET /api/providers` lists it: Nest does not check its login. */
+export function claudeProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo {
+  return {
+    name: "claude",
+    display_name: "Claude",
+    signed_in: null,
+    sign_in_hint: null,
+    account: account(),
+    unsupported: [],
+    ...overrides,
+  };
+}
+
+export function codexProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo {
+  return {
+    name: "codex",
+    display_name: "Codex",
+    signed_in: true,
+    sign_in_hint: null,
+    account: {
+      display_name: null,
+      email: "me@example.com",
+      plan: "ChatGPT Plus",
+      organization: null,
+    },
+    unsupported: ["rewind", "fork", "slash_commands", "pixies"],
+    ...overrides,
+  };
+}
+
+export function codexAccount(overrides: Partial<CodexAccount> = {}): CodexAccount {
+  return {
+    signed_in: true,
+    email: "me@example.com",
+    plan: "ChatGPT Plus",
+    checked_at: NOW,
+    ...overrides,
+  };
+}
+
+export function engineLimits(overrides: Partial<EngineLimits> = {}): EngineLimits {
+  return {
+    windows: [
+      { utilization: 0.2, resets_at: null, updated_at: NOW, minutes: 300, label: "5 hour" },
+      { utilization: 0.45, resets_at: null, updated_at: NOW, minutes: 10080, label: "Weekly" },
+    ],
+    ...overrides,
+  };
+}
+
+// Settings > Configuration (B97).
+
+export function skillItem(overrides: Partial<SkillItem> = {}): SkillItem {
+  return {
+    name: "review",
+    description: "Reviews a change",
+    path: "/Users/me/.agents/skills/review/SKILL.md",
+    source: "yours",
+    plugin: null,
+    engine: null,
+    read_only: false,
+    codex_enabled: true,
+    codex_error: null,
+    ...overrides,
+  };
+}
+
+export function engineSection(overrides: Partial<EngineSection> = {}): EngineSection {
+  const on = { on: true, fixed: false };
+  return {
+    id: "claude",
+    name: "Claude",
+    account: "me@example.com · Claude Max",
+    bundled_version: "2.1.1",
+    standalone: null,
+    config_folder: "/Users/me/.claude",
+    uses_shared: { instructions: on, skills: on, mcp_servers: on },
+    missing_from_shared: { instructions: false, skills: [], mcp_servers: [] },
+    items: [
+      { kind: "plugins", count: 1, detail: null, path: null, folder: false },
+      { kind: "hooks", count: 2, detail: null, path: null, folder: false },
+    ],
+    ...overrides,
+  };
+}
+
+export function configurationPage(overrides: Partial<ConfigurationPage> = {}): ConfigurationPage {
+  return {
+    shared: {
+      instructions: { path: "/Users/me/.agents/AGENTS.md", exists: true, version: "v1" },
+      skills: { folder: "/Users/me/.agents/skills", items: [skillItem()] },
+      mcp_servers: [
+        {
+          name: "docs",
+          summary: "https://docs.example.com/mcp",
+          transport: "http",
+          engines: ["claude", "codex"],
+          convertible: true,
+          reason: null,
+        },
+      ],
+    },
+    engines: [engineSection()],
+    ...overrides,
+  };
+}
+
+export function copyPreview(overrides: Partial<CopyPreview> = {}): CopyPreview {
+  return {
+    instructions: {
+      replace: true,
+      engine_path: "/Users/me/.claude/CLAUDE.md",
+      shared_path: "/Users/me/.agents/AGENTS.md",
+    },
+    skills: { add: ["lint"], already: ["review"], same_name: [] },
+    mcp_servers: { add: [], already: ["docs"], not_convertible: [] },
+    stays: ["Plugins stay with Claude"],
+    ...overrides,
+  };
+}
+
+export function projectConfiguration(
+  overrides: Partial<ProjectConfiguration> = {},
+): ProjectConfiguration {
+  return {
+    instructions: [{ path: "/Users/me/cv-page/CLAUDE.md", exists: true }],
+    skills: [],
+    mcp_servers: [],
+    ...overrides,
+  };
+}
+
+export function codexPlugins(overrides: Partial<CodexPlugins> = {}): CodexPlugins {
+  return {
+    plugins: [
+      {
+        id: "github@openai",
+        name: "github",
+        marketplace: "openai",
+        description: "GitHub tools",
+        version: "1.0.0",
+        installed: true,
+        enabled: true,
+      },
+    ],
+    marketplaces: [{ name: "openai", path: null }],
     ...overrides,
   };
 }
