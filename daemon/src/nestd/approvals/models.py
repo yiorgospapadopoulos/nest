@@ -10,6 +10,8 @@ class ApprovalKind(StrEnum):
     PLAN = "plan"  # a plan the agent finished in plan mode, waiting to be approved
     REVIEW = "review"  # finished work to approve or send feedback on
     MERGE = "merge"  # a pull request whose checks passed, waiting to be merged
+    # New review comments on a pull request Nest opened, to send to the agent (B101).
+    REVIEW_COMMENTS = "review_comments"
 
 
 class ApprovalStatus(StrEnum):

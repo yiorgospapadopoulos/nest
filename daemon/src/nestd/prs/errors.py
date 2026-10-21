@@ -28,3 +28,15 @@ class NoFailingChecksError(ConflictError):
 
     def payload(self) -> dict[str, JsonValue]:
         return {"detail": str(self), "code": self.code}
+
+
+class NoReviewCommentsError(ConflictError):
+    """Nothing to send to the agent: no review comment waits (B101)."""
+
+    code = "no_review_comments"
+
+    def __init__(self) -> None:
+        super().__init__("No review comments of this pull request wait to be sent.")
+
+    def payload(self) -> dict[str, JsonValue]:
+        return {"detail": str(self), "code": self.code}

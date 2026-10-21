@@ -104,6 +104,11 @@ def repo_of(url: str) -> str:
     return "/".join(parts[:2])
 
 
+def pr_number(url: str) -> int:
+    """The number of a pull request URL such as https://github.com/owner/name/pull/7."""
+    return int(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1])
+
+
 def _check(item: _GhCheck) -> PrCheck:
     if item.typename == "StatusContext":
         state = _STATUS_STATES.get(item.state, "failure")

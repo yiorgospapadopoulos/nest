@@ -11,10 +11,12 @@ from pydantic import TypeAdapter
 
 from nestd.events import types
 from nestd.gitops.runner import CommandError
+from nestd.issues.models import IssueRef
 from nestd.providers.base import AgentTask, MessageBlock
 from nestd.review import watch
 from nestd.review.models import SessionDiff
 from nestd.sessions.models import SendResult
+from nestd.sessions.store import SessionStore
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import (
@@ -165,6 +167,32 @@ async def test_the_pull_request_title_and_body_can_be_given(api: Api) -> None:
 
     (gh,) = api.runner.gh_calls("create")
     assert gh[-4:] == ("--title", "Better title", "--body", "Custom body")
+    # IMP-13: a session's lock lives only while it is held.
+    gc.collect()
+    assert len(api.ctx.reviews._locks) == 0  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    ("pr_body", "body"),
+    [
+        (None, "Usage meter\n\nFixed the bug.\n\nCloses #118"),
+        ("Custom body", "Custom body\n\nCloses #118"),
+        ("Fixes #118 for good", "Fixes #118 for good"),
+    ],
+)
+async def test_the_pull_request_of_a_chat_from_an_issue_closes_it(
+    api: Api, pr_body: str | None, body: str
+) -> None:
+    session_id = await finished_with_changes(api, title="Usage meter")
+    store = SessionStore(api.ctx.db, api.ctx.clock)
+    issue = IssueRef(number=118, title="Usage meter", url="https://github.com/me/repo/issues/118")
+    await store.update(session_id, issue=issue)
+
+    approved = await approve(api, session_id, {**APPROVE, "pr_body": pr_body})
+
+    assert approved.status_code == 200, approved.text
+    (gh,) = api.runner.gh_calls("create")
+    assert gh[gh.index("--body") + 1] == body
     # IMP-13: a session's lock lives only while it is held.
     gc.collect()
     assert len(api.ctx.reviews._locks) == 0  # pyright: ignore[reportPrivateUsage]

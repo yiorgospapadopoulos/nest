@@ -16,7 +16,8 @@ class ResolveApproval(BaseModel):
     `decision` (approve, or keep_planning with an optional `message` for the agent).
     An approved plan continues in `mode`: acceptEdits (the default), default, or auto with
     a model that supports it. Merge: `dismiss` only; merging goes through the session's
-    merge action.
+    merge action. Review comments: `dismiss` only; sending goes through the session's
+    review-feedback action (B101).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -39,6 +40,8 @@ def resolution_for(approval: Approval, body: ResolveApproval) -> dict[str, JsonV
         return _plan(body)
     if approval.kind is ApprovalKind.MERGE:
         return _merge(body)
+    if approval.kind is ApprovalKind.REVIEW_COMMENTS:
+        return _review_comments(body)
     msg = "reviews are resolved with the session's approve or feedback actions"
     raise InvalidInputError(msg)
 
@@ -59,6 +62,13 @@ def _permission(body: ResolveApproval) -> dict[str, JsonValue]:
 def _merge(body: ResolveApproval) -> dict[str, JsonValue]:
     if not body.dismiss or body.behavior or body.answers is not None or body.decision or body.mode:
         msg = "a merge is done with the session's merge action, or dismissed with dismiss"
+        raise InvalidInputError(msg)
+    return {"dismissed": True}
+
+
+def _review_comments(body: ResolveApproval) -> dict[str, JsonValue]:
+    if not body.dismiss or body.behavior or body.answers is not None or body.decision or body.mode:
+        msg = "review comments are sent with the session's review-feedback action, or dismissed"
         raise InvalidInputError(msg)
     return {"dismissed": True}
 
