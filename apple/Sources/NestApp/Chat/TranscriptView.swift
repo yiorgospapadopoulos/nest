@@ -96,6 +96,14 @@ struct TranscriptView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    // Review comments waiting in Needs you, under the latest reply (B101).
+                    if !hasNewer,
+                        let review = shell.approvals.pending(session: chat).lazy
+                            .compactMap(\.reviewComments).first
+                    {
+                        ReviewWaitingLine(text: review.chatLine)
+                            .frame(maxWidth: .infinity)
+                    }
                     if hasNewer {
                         PageButton(title: "Load newer messages") {
                             try await store?.loadNewer()
@@ -335,7 +343,7 @@ struct TranscriptRow: View {
                     FromPixieLabel(label: PixieLabels.from(from, pixies: shell.pixies.pixies))
                 }
                 UserBubble(
-                    text: text, attachments: attachments,
+                    text: text, attachments: attachments, github: item.github,
                     mentions: MentionHighlights.find(
                         in: text, pixies: shell.pixies.pixies, teams: shell.pixies.teams,
                         plain: shell.plainMentions(forChat: chat)),
@@ -388,6 +396,9 @@ struct TranscriptRow: View {
 private struct UserBubble: View {
     let text: String
     let attachments: [Attachment]
+    /// A message Nest wrote from GitHub: after the user's own text, the issue or the
+    /// review comments in the bubble's quieter styles (B101).
+    var github: GitHubMessage?
     /// Pixie and team mentions, semibold in the bubble's text colour: their own colours
     /// (B40) do not read on the accent fill.
     let mentions: [MentionHighlight]
@@ -399,10 +410,13 @@ private struct UserBubble: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            if !text.isEmpty {
+            if !text.isEmpty || github != nil {
                 // The solid accent bubble (B80): the accent's fill, its on colour for text.
                 let color = NSColor(accent.onFill)
-                SelectableText(key: "\(color)\n\(mentions)\n\(text)", hugsWidth: true) {
+                SelectableText(
+                    key: "\(color)\n\(mentions)\n\(text)\n\(String(describing: github))",
+                    hugsWidth: true
+                ) {
                     let styled = NSMutableAttributedString(
                         attributedString: TextStyling.plain(
                             text, font: TextStyling.ui(TypeSize.reading), color: color,
@@ -411,6 +425,10 @@ private struct UserBubble: View {
                         styled.addAttributes(
                             [.font: TextStyling.ui(TypeSize.reading, .semibold)],
                             range: mention.range)
+                    }
+                    if let github {
+                        styled.append(
+                            GitHubBubbleText.styled(github, color: color, after: !text.isEmpty))
                     }
                     return styled
                 }
@@ -432,6 +450,46 @@ private struct UserBubble: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.leading, 48)
         .onHover { hovering = $0 }
+    }
+}
+
+/// The part of a user bubble Nest wrote from GitHub (B101): a grey first line, then the
+/// issue's title in medium weight, a few lines of its body and its comment count, or each
+/// review comment's place in mono over its text.
+private enum GitHubBubbleText {
+    static func styled(_ message: GitHubMessage, color: NSColor, after own: Bool)
+        -> NSAttributedString
+    {
+        let result = NSMutableAttributedString()
+        let quiet = color.withAlphaComponent(0.72)
+        func add(_ text: String, _ font: NSFont, _ tint: NSColor) {
+            if result.length > 0 || own {
+                // A blank line between the user's own text and Nest's part.
+                let breaks = result.length == 0 ? "\n\n" : "\n"
+                result.append(TextStyling.plain(breaks, font: font, color: tint, lineSpacing: 3))
+            }
+            result.append(TextStyling.plain(text, font: font, color: tint, lineSpacing: 3))
+        }
+        switch message {
+        case .issue(let issue):
+            add(issue.header, TextStyling.ui(TypeSize.meta), quiet)
+            add(issue.title, TextStyling.ui(TypeSize.reading, .medium), color)
+            if !issue.excerpt.isEmpty {
+                add(issue.excerpt, TextStyling.ui(TypeSize.ui), color.withAlphaComponent(0.88))
+            }
+            if let comments = issue.comments {
+                add(comments, TextStyling.ui(TypeSize.meta), quiet)
+            }
+        case .reviewFeedback(let feedback):
+            add(feedback.header, TextStyling.ui(TypeSize.meta), quiet)
+            for item in feedback.items {
+                if !item.location.isEmpty {
+                    add(item.location, TextStyling.mono(TypeSize.meta), quiet)
+                }
+                add(item.text, TextStyling.ui(TypeSize.ui), color)
+            }
+        }
+        return result
     }
 }
 
@@ -1230,6 +1288,7 @@ private struct ApprovalPlaceholder: View {
             case .review: "Review"
             case .plan: "Plan"
             case .merge: "Merge"
+            case .reviewComments: "Review comments"
             }
         switch status {
         case .expired: return "\(what) expired"
@@ -1278,6 +1337,23 @@ struct DiffStat: View {
         }
         .font(.ui(TypeSize.meta))
         .monospacedDigit()
+    }
+}
+
+/// "Review on #131: 3 comments. See Needs you", grey with the waiting dot (B101).
+private struct ReviewWaitingLine: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            StatusDot(tone: .waiting)
+            Text(text)
+        }
+        .font(.ui(TypeSize.meta))
+        .foregroundStyle(Palette.t3)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

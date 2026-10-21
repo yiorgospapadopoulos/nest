@@ -64,7 +64,7 @@ private struct ApprovalRow: View {
 
     var body: some View {
         let green = approval.kind == .review || approval.kind == .merge
-        FoldRow(key: "approval-\(approval.id)", tone: green ? .review : .waiting) {
+        FoldRow(key: approval.foldKey, tone: green ? .review : .waiting) {
             if let pixieID = Pixie.id(ofRepo: approval.repo) {
                 // A pixie's chat belongs to no project: name the pixie and open its page.
                 PixieLink(id: pixieID)

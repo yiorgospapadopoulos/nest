@@ -1048,7 +1048,9 @@ final class Shell {
     func send(_ chat: String) {
         let draft = draft(for: chat)
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !draft.sending, !draft.isUploading else { return }
+        let issue = isDraft(chat) ? draft.issue : nil
+        guard IssueDraft.canSend(text: text, issue: issue), !draft.sending, !draft.isUploading
+        else { return }
         switch composerInput(for: chat, text: draft.text) {
         case .bash(let command):
             runShell(command, in: chat, draft: draft)
@@ -1084,7 +1086,10 @@ final class Shell {
                 if isDraft(chat) {
                     let session = try await create(
                         from: chat, draft: draft, prompt: text, attachments: attachments)
-                    sentMessages.record(text, chat: session)
+                    draft.issue = nil
+                    if !text.isEmpty {
+                        sentMessages.record(text, chat: session)
+                    }
                 } else {
                     // The `!` commands run since the last message go first, for Claude.
                     let outgoing = bash.outgoing(text, chat: chat)
@@ -1172,7 +1177,7 @@ final class Shell {
             // The engine is always named: the daemon's own default may be another (B94).
             base: place.base, branch: place.branch,
             provider: draft.provider ?? ProviderInfo.claude, worktreePath: place.worktreePath,
-            onBranch: place.onBranch)
+            onBranch: place.onBranch, issue: draft.issue?.number)
         let session = try await sessions.create(request)
         // What was typed or attached meanwhile stays in the chat's composer.
         drafts.move(draftID, to: session.id)
@@ -1795,6 +1800,20 @@ final class Shell {
         }
     }
 
+    /// Reviews whose approve sheet opened from "Approve and commit" beside "Approve and
+    /// push to #8": the sheet starts on commit only (B101).
+    var commitsOnly: Set<String> = []
+
+    /// Opens the approve sheet, on commit only or on Approve's own choice.
+    func showPublish(_ approval: Approval, commitOnly: Bool = false) {
+        if commitOnly {
+            commitsOnly.insert(approval.id)
+        } else {
+            commitsOnly.remove(approval.id)
+        }
+        show(.publish(approval.id))
+    }
+
     /// Approves again, pushing to the address origin pushes to now (I-008).
     func pushThere(_ approval: Approval, _ form: PublishForm, url: String) {
         var confirmed = form
@@ -1828,6 +1847,35 @@ final class Shell {
 
     func refreshPR(_ session: String) {
         run("Could not read the pull request") { try await self.sessions.refreshPR(session) }
+    }
+
+    /// Has the daemon send the pull request's waiting review comments into the chat (B101).
+    func sendReviewComments(_ approval: Approval) {
+        run("Could not send the review comments") {
+            try await self.approvals.sendReviewComments(approval)
+            self.show("Sent the review comments to \(approval.title)", kind: .done)
+        }
+    }
+
+    /// Sends one review comment; the row then lists the rest.
+    func sendReviewComment(_ comment: ReviewComment, of approval: Approval) {
+        run("Could not send the review comment") {
+            try await self.approvals.sendReviewComment(comment.id, of: approval)
+            self.show("Sent \(comment.shortLocation) to \(approval.title)", kind: .done)
+        }
+    }
+
+    func setReviewAutoSend(_ session: String, _ on: Bool) {
+        run("Could not change how review comments are sent") {
+            try await self.sessions.setReviewAutoSend(session, on)
+        }
+    }
+
+    /// A start screen issue row: the start draft gets the issue, its first message (B101).
+    func startFromIssue(_ issue: IssueSummary) {
+        let draft = startDraft()
+        draft.issue = issue.ref
+        draft.wantsFocus = true
     }
 
     /// Has the daemon send the failing checks and their logs into the chat.
@@ -2026,6 +2074,8 @@ final class ComposerDraft {
     var offered: RestoredMessage?
     /// A `#` memory waiting for the user to choose where it goes (B59).
     var memory: String?
+    /// New chats only: the GitHub issue that becomes the first message (B101).
+    var issue: IssueRef?
 
     /// The caret as a character offset; the end of the text when unknown.
     var caret: Int {
