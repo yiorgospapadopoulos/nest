@@ -58,6 +58,14 @@ public struct APIClient: NestAPI {
         try await call("PUT", ["repos", "order"], body: RepoOrderRequest(order: order))
     }
 
+    public func issues(repo: String, refresh: Bool, show: IssueShow?) async throws -> IssueList {
+        var query = refresh ? [URLQueryItem(name: "refresh", value: "true")] : []
+        if let show {
+            query.append(URLQueryItem(name: "show", value: show.rawValue))
+        }
+        return try await call("GET", ["repos", repo, "issues"], query: query)
+    }
+
     // MARK: Sessions
 
     public func sessions(repo: String?, archived: Bool) async throws -> [Session] {
@@ -187,6 +195,20 @@ public struct APIClient: NestAPI {
 
     public func ciFeedback(_ id: String) async throws {
         try await perform("POST", ["sessions", id, "ci-feedback"])
+    }
+
+    public func reviewFeedback(_ id: String, ids: [String]?) async throws {
+        let path = ["sessions", id, "pr", "review-feedback"]
+        if let ids {
+            try await perform("POST", path, body: ReviewFeedbackRequest(ids: ids))
+        } else {
+            try await perform("POST", path)
+        }
+    }
+
+    public func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session {
+        try await call(
+            "PATCH", ["sessions", id, "pr", "review"], body: ReviewAutoSendRequest(autoSend: on))
     }
 
     // MARK: Claude Code chats

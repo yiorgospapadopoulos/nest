@@ -154,6 +154,28 @@ public enum PRBadge {
         return parts.isEmpty ? "No checks" : parts.joined(separator: ", ")
     }
 
+    /// The popover's grey line under the pull request: "Open · 3 passed".
+    public static func statusLine(_ pr: PullRequest) -> String {
+        "\(stateLabel(pr.state)) \u{00B7} \(checksSummary(pr.checks))"
+    }
+
+    /// The popover's row for a chat from an issue: GitHub closes it with the merge, from
+    /// the pull request's "Closes #118" (B101).
+    public static func closes(_ issue: IssueRef) -> String {
+        "Closes #\(issue.number) on merge"
+    }
+
+    public static let autoSendTitle = "Send review comments on their own"
+
+    public static func autoSendDetail(_ on: Bool) -> String {
+        on ? "New comments go to the agent as they arrive" : "Off: they wait in Needs you"
+    }
+
+    /// Whether the chat sends new review comments itself; off until the user turns it on.
+    public static func autoSends(_ session: Session) -> Bool {
+        session.review?.autoSend ?? false
+    }
+
     public static func stateLabel(_ state: PRState) -> String {
         switch state {
         case .open: "Open"

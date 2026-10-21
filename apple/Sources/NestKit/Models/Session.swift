@@ -92,6 +92,10 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var prURL: String?
     /// The pull request's last known status; nil before Nest first reads it.
     public var pr: PullRequest?
+    /// The GitHub issue the chat was started from (B101).
+    public var issue: IssueRef?
+    /// The open pull request's review feedback, as Nest last read it (B101).
+    public var review: PRReview?
     public var allowedTools: [String]
     public var pinned: Bool
     public var archivedAt: Date?
@@ -121,7 +125,7 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
-        case pr
+        case pr, issue, review
         case tasks, agents, background, context, queued, stuck
         case pixieID = "pixie_id"
         case startedByPixie = "started_by_pixie"

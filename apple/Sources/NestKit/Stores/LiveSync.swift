@@ -210,6 +210,8 @@ public final class AppModel {
     public let artifacts: ArtifactsStore
     /// The projects' branch maps (B96).
     public let branchMaps: BranchMapStore
+    /// The projects' open GitHub issues (B101).
+    public let issues: IssuesStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -253,6 +255,7 @@ public final class AppModel {
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)
+        issues = IssuesStore(api: api, store: preferences)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
