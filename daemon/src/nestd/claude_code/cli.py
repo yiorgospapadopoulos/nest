@@ -22,6 +22,8 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandError, CommandRunner
 
+# Runs a command with variables set: an added account's commands carry its profile (B98).
+ENV_PROGRAM = "/usr/bin/env"
 # Anthropic's official installer; it puts Claude Code in ~/.local/bin.
 INSTALL_COMMAND = ("/bin/bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash")
 NOT_FOUND_AFTER_INSTALL = "the installer finished but Claude Code was not found"
@@ -89,13 +91,15 @@ class ClaudeCli:
         run_long: CommandRunner,
         cwd: Path,
         bus: EventBus,
+        run_sign_in: CommandRunner | None = None,
     ) -> None:
         """`run_long` runs commands that wait on the user or the network for longer, such
-        as signing in and installing.
+        as installing; `run_sign_in` signing in, which a cancel stops (default: `run_long`).
         """
         self.locations = locations
         self._run = run
         self._run_long = run_long
+        self._run_sign_in = run_sign_in or run_long
         self._cwd = cwd
         self._bus = bus
         self._install: asyncio.Task[None] | None = None
@@ -104,10 +108,23 @@ class ClaudeCli:
         """The standalone Claude Code when installed, else the bundled one."""
         return self.locations.standalone() or self.locations.bundled
 
-    async def run(self, args: Sequence[str], *, long: bool = False) -> str:
-        """Run `claude <args>`; a failure becomes a ClaudeCliError with the CLI's message."""
-        argv = [str(self.program()), *args]
-        run = self._run_long if long else self._run
+    async def run(
+        self, args: Sequence[str], *, env: Mapping[str, str] | None = None, long: bool = False
+    ) -> str:
+        """Run `claude <args>` with `env` set (B98); a failure becomes a ClaudeCliError with
+        the CLI's message.
+        """
+        return await self._call(self._run_long if long else self._run, args, env)
+
+    async def sign_in(self, args: Sequence[str], env: Mapping[str, str] | None = None) -> str:
+        """Run a sign-in command, which waits on the user in the browser."""
+        return await self._call(self._run_sign_in, args, env)
+
+    async def _call(
+        self, run: CommandRunner, args: Sequence[str], env: Mapping[str, str] | None
+    ) -> str:
+        variables = [f"{name}={value}" for name, value in sorted((env or {}).items())]
+        argv = [*([ENV_PROGRAM, *variables] if variables else []), str(self.program()), *args]
         try:
             return await run(argv, self._cwd)
         except FileNotFoundError as error:

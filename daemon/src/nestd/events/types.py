@@ -139,6 +139,10 @@ ACCOUNT_CLAUDE: Final = "account.claude"
 # The Codex account after a sign in, a cancelled or failed one, or a sign out (B94):
 # `GET /api/accounts/codex`'s body with `error` (null unless signing in failed).
 ACCOUNT_CODEX: Final = "account.codex"
+# Every engine account (B98) after any change: added, signed in or out, a sign in's
+# outcome, renamed, made active, removed, or new usage windows; `GET /api/accounts`'s body.
+# ACCOUNT_CLAUDE and ACCOUNT_CODEX keep coming for the active accounts.
+ACCOUNTS_CHANGED: Final = "accounts.changed"
 # Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
 # `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
 CLAUDE_CODE_INSTALL: Final = "claude_code.install"

@@ -15,6 +15,8 @@ class RecordingHooks:
         self.messages: list[str] = []
         self.results: list[tuple[str, ResultInfo]] = []
         self.usages: list[UsageInfo] = []
+        # The account each usage report was for (B98); None without accounts.
+        self.usage_accounts: list[str | None] = []
         self.subagent_usages: list[tuple[str, str, TokenUsage]] = []
         self.connectors: list[tuple[str, list[McpServer]]] = []
         self.commands: list[tuple[str, CommandCatalog]] = []
@@ -35,8 +37,9 @@ class RecordingHooks:
     async def turn_result(self, session_id: str, info: ResultInfo) -> None:
         self.results.append((session_id, info))
 
-    async def usage(self, info: UsageInfo) -> None:
+    async def usage(self, info: UsageInfo, account_id: str | None) -> None:
         self.usages.append(info)
+        self.usage_accounts.append(account_id)
 
     async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
         self.subagent_usages.append((session_id, message_id, tokens))

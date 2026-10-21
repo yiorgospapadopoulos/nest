@@ -43,6 +43,7 @@ from nestd.providers.base import (
     PlanRequest,
     QuestionAnswer,
     QuestionRequest,
+    RunAccount,
     SessionSpec,
     SlashCommand,
     Subagent,
@@ -196,6 +197,21 @@ async def test_a_normal_chat_uses_git_and_gh_as_in_the_terminal(tmp_path: Path) 
         "DISABLE_MICROCOMPACT": "1",
         "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
     }
+
+
+def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: Path) -> None:
+    """B98: the account's CLAUDE_CONFIG_DIR wins over the shell's."""
+    account = RunAccount("0123456789ab", {"CLAUDE_CONFIG_DIR": str(tmp_path / "profile")})
+    options = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode="default", account=account),
+        ScriptedHandler(PermissionDecision("allow")),
+        tmp_path / "agent-gh",
+        shell_env={"CLAUDE_CONFIG_DIR": "/elsewhere", "HOME": "/Users/me"},
+    )
+
+    assert options.env is not None
+    assert options.env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "profile")
+    assert options.env["HOME"] == "/Users/me"
 
 
 def test_a_run_is_guarded_unless_it_says_otherwise(tmp_path: Path) -> None:

@@ -75,6 +75,19 @@ def test_the_fetch_loads_only_user_settings_without_tools_hooks_or_a_transcript(
     assert json.loads(options.settings) == {"disableAllHooks": True}
 
 
+async def test_a_fetch_runs_on_the_account_it_is_given() -> None:
+    """B98: the active account's profile, when it is an added one."""
+    factory = FakeInfoFactory(info=server_info("opus", "haiku"))
+
+    await fetch_details(factory, env={"CLAUDE_CONFIG_DIR": "/profiles/work"})
+    await fetch_details(factory)
+
+    assert [client.options.env for client in factory.clients] == [
+        {"CLAUDE_CONFIG_DIR": "/profiles/work"},
+        {},
+    ]
+
+
 async def test_a_fetch_reads_the_initialize_response_in_a_temporary_folder() -> None:
     factory = FakeInfoFactory(info=server_info("opus", "haiku"))
 
