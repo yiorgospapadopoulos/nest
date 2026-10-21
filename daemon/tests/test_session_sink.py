@@ -455,7 +455,7 @@ class BrokenHooks:
     async def turn_result(self, session_id: str, info: ResultInfo) -> None:
         raise LookupError("result")
 
-    async def usage(self, info: UsageInfo) -> None:
+    async def usage(self, info: UsageInfo, account_id: str | None) -> None:
         raise LookupError("usage")
 
     async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:

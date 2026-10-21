@@ -14,8 +14,13 @@ from typing import Self
 import httpx
 from claude_agent_sdk import ClaudeSDKClient
 
-from nestd.accounts.codex import CodexAccount
+from nestd.accounts.active import ActiveAccounts
 from nestd.accounts.github import GithubAccount
+from nestd.accounts.profiles import CLAUDE as CLAUDE_ACCOUNTS
+from nestd.accounts.profiles import CODEX as CODEX_ACCOUNTS
+from nestd.accounts.profiles import FirstAccount, Profiles
+from nestd.accounts.service import Accounts
+from nestd.accounts.store import AccountStore
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
 from nestd.artifacts.ask import PageAsks
@@ -27,7 +32,6 @@ from nestd.attachments.store import AttachmentStore
 from nestd.auth.devices import DeviceService
 from nestd.auth.secrets import SecretStore
 from nestd.auth.token_socket import TokenSocket
-from nestd.claude_code.account import ClaudeAccount
 from nestd.claude_code.cli import ClaudeCli, ClaudeLocations
 from nestd.claude_code.extensions import Extensions
 from nestd.claude_sessions.archive import ChatArchive
@@ -89,10 +93,10 @@ from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.pixies.teams import TeamService
 from nestd.pixies.triggers import HabitTriggers
-from nestd.providers.base import AgentProvider
+from nestd.providers.base import AgentProvider, EngineDetails, UsageInfo
 from nestd.providers.claude import ClaudeProvider
 from nestd.providers.codex import CodexProvider
-from nestd.providers.codex_engine import fetch_codex, fetch_codex_usage
+from nestd.providers.codex_engine import CodexDetails, fetch_codex, fetch_codex_usage
 from nestd.providers.codex_process import (
     CodexLaunch,
     TransportFactory,
@@ -180,8 +184,8 @@ class AppContext:
     usage_warnings: UsageWarnings
     github: GithubAccount
     claude_code: ClaudeCli
-    claude_account: ClaudeAccount
-    codex_account: CodexAccount
+    # Every engine's accounts, and which one each uses (B98).
+    accounts: Accounts
     extensions: Extensions
     artifacts: Artifacts
     # Settings > Configuration (B97).
@@ -231,13 +235,19 @@ class AppContext:
         settings = load_settings(paths)
         db = await Database.open(paths.db_path)
         bus = EventBus(db, clock)
+        account_store = AccountStore(db, clock)
+        profiles = Profiles(
+            paths.data_dir / "profiles",
+            FirstAccount(paths.claude_dir, paths.claude_account_file, paths.codex_home),
+        )
+        active = await ActiveAccounts.load(account_store, profiles)
         pixie_store = PixieStore(db, clock)
         notifier = Notifier(bus, pixie_store.name)
         repos = RepoService(paths, bus)
         attachments = AttachmentStore(db, clock, paths.attachments_dir)
         approvals = ApprovalQueue(ApprovalStore(db, clock), bus, notifier)
         tracking = Tracking(bus)
-        usage = UsageStore(db, clock, zone)
+        usage = UsageStore(db, clock, zone, active=active.id)
 
         artifacts = Artifacts(
             ArtifactStore(db, clock, paths.artifacts_dir),
@@ -252,6 +262,7 @@ class AppContext:
                 cwd=paths.ask_dir,
                 settings=lambda: context.artifact_settings(),
                 zone=zone,
+                account=lambda: active.prepare(CLAUDE_ACCOUNTS),
             ),
         )
         connectors = ConnectorRegistry(db, clock, bus)
@@ -273,24 +284,46 @@ class AppContext:
                 except OSError as error:
                     logger.warning("could not prepare %s's files: %s", engine, error)
 
+        async def claude_details() -> EngineDetails:
+            """On the active account (B98)."""
+            account = await active.prepare(CLAUDE_ACCOUNTS)
+            return await fetch_details(engine_factory, env=account.env)
+
+        def claude_account_file() -> Path | None:
+            """The active account's `.claude.json`: an added one keeps its own (B98)."""
+            chosen = active.account(CLAUDE_ACCOUNTS)
+            if chosen is None or chosen.profile is None:
+                return paths.claude_account_file
+            return chosen.profile / ".claude.json"
+
         engine = EngineInfo(
             EngineInfoStore(db, clock),
-            fetch=lambda: fetch_details(engine_factory),
+            fetch=claude_details,
             clock=clock,
-            account_file=paths.claude_account_file,
+            account_file=claude_account_file,
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
             on_signed_in=lambda: signed_in(CLAUDE),
         )
         codex_home = paths.codex_home
+
+        def codex_launch(env: Mapping[str, str]) -> CodexLaunch:
+            """An app-server on an account's Codex home: `env` names an added one's."""
+            return app_server_launch(bundled_binary(), os.environ, codex_home, env)
+
+        async def active_codex() -> CodexLaunch:
+            return codex_launch((await active.prepare(CODEX_ACCOUNTS)).env)
+
+        async def codex_details() -> CodexDetails:
+            return await fetch_codex(codex_transport, await active_codex())
+
+        async def codex_usage() -> UsageInfo | None:
+            return await fetch_codex_usage(codex_transport, await active_codex())
+
         codex = CodexEngine(
             EngineInfoStore(db, clock, STORE_PREFIX),
-            fetch=lambda: fetch_codex(
-                codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
-            ),
+            fetch=codex_details,
             clock=clock,
-            fetch_usage=lambda: fetch_codex_usage(
-                codex_transport, app_server_launch(bundled_binary(), os.environ, codex_home)
-            ),
+            fetch_usage=codex_usage,
             on_signed_in=lambda: signed_in(CODEX),
         )
         pixie_files = PixieFiles(paths.pixies_dir)
@@ -375,8 +408,10 @@ class AppContext:
                     models=codex.find,
                     ready=codex.require_signed_in,
                     default=codex.default_model,
+                    accounts=active.source(CODEX_ACCOUNTS),
                 )
             ],
+            accounts=active.source(CLAUDE_ACCOUNTS),
         )
         call_runs: PixieCallRuns = PixieCallRuns(
             pixies=pixie_store,
@@ -493,21 +528,47 @@ class AppContext:
             run_long=claude_runner or partial(run_command, time_limit=LONG_COMMAND_SECONDS),
             cwd=paths.data_dir,
             bus=bus,
+            # A cancelled sign in stops (B98).
+            run_sign_in=claude_runner
+            or partial(run_command, time_limit=LONG_COMMAND_SECONDS, kill_on_cancel=True),
         )
-
-        def codex_launch() -> CodexLaunch:
-            return app_server_launch(bundled_binary(), os.environ, codex_home)
-
-        codex_setup = CodexSetup(codex_transport, codex_launch)
+        usage_refresher = UsageRefresher(
+            store=usage,
+            bus=bus,
+            clock=clock,
+            probe=UsageProbe(probe_factory, paths.probe_dir),
+            visibility=ClientVisibility(clock),
+            # Read at each check, so a new interval from the API applies at once.
+            interval=lambda: context.usage_interval(),
+            codex=codex.usage,
+            account=lambda: active.prepare(CLAUDE_ACCOUNTS),
+            other_codex=lambda: accounts.read_other_codex(),
+        )
+        accounts = Accounts(
+            store=account_store,
+            active=active,
+            profiles=profiles,
+            usage=usage,
+            refresher=usage_refresher,
+            bus=bus,
+            clock=clock,
+            claude_cli=claude_code,
+            codex=codex,
+            codex_transport=codex_transport,
+            codex_launch=codex_launch,
+            close_idle_runs=sessions.close_idle_runs,
+            claude_switched=engine.refresh,
+        )
+        # The shared setup is the first account's: every other one links to it (B98).
+        codex_setup = CodexSetup(codex_transport, lambda: codex_launch({}))
         backups = Backups(paths.data_dir / "config-backups", clock)
-        claude_account = ClaudeAccount(claude_code, bus, clock)
         extensions = Extensions(claude_code, bus, paths.claude_dir)
         configuration = Configuration(
             where,
             backups,
             codex_setup,
             build_sources(
-                claude_account=claude_account,
+                claude_account=accounts.claude_active,
                 claude_cli=claude_code,
                 codex=codex,
                 codex_locations=codex_locations
@@ -549,16 +610,7 @@ class AppContext:
                 on_refresh=search.sync_claude_chats,
             ),
             branch_watch=BranchWatch(repos=repos, bus=bus),
-            usage_refresher=UsageRefresher(
-                store=usage,
-                bus=bus,
-                clock=clock,
-                probe=UsageProbe(probe_factory, paths.probe_dir),
-                visibility=ClientVisibility(clock),
-                # Read at each check, so a new interval from the API applies at once.
-                interval=lambda: context.usage_interval(),
-                codex=codex.usage,
-            ),
+            usage_refresher=usage_refresher,
             commands=commands,
             prs=PullRequests(
                 sessions=sessions,
@@ -616,13 +668,7 @@ class AppContext:
             ),
             github=GithubAccount(runner, paths.data_dir, clock),
             claude_code=claude_code,
-            claude_account=claude_account,
-            codex_account=CodexAccount(
-                codex,
-                codex_transport,
-                lambda: app_server_launch(bundled_binary(), os.environ, codex_home),
-                bus,
-            ),
+            accounts=accounts,
             extensions=extensions,
             artifacts=artifacts,
             configuration=configuration,
@@ -689,8 +735,7 @@ class AppContext:
         return timedelta(minutes=minutes) if minutes else None
 
     async def close(self) -> None:
-        await self.claude_account.stop()
-        await self.codex_account.stop()
+        await self.accounts.stop()
         await self.claude_code.stop()
         await self.modules.stop_all()
         await self.notifications.close()

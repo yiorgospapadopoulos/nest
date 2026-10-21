@@ -7,9 +7,10 @@ which the API refuses with 409 `unsupported_feature` (`ProviderFeature`).
 
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from typing import Protocol
 
 from nestd.errors import InvalidInputError
-from nestd.providers.base import AgentProvider, ModelOption, ProviderFeature
+from nestd.providers.base import AgentProvider, ModelOption, ProviderFeature, RunAccount
 from nestd.sessions.errors import UnsupportedFeatureError
 from nestd.sessions.models import NewSession
 
@@ -21,12 +22,26 @@ type ReadyCheck = Callable[[], Awaitable[None]]
 type DefaultModel = Callable[[], Awaitable[str | None]]
 
 
+class AccountSource(Protocol):
+    """The engine's active account (B98): every turn starts on it."""
+
+    def active(self) -> str:
+        """Its id, known at once."""
+        ...
+
+    async def prepare(self) -> RunAccount:
+        """Its profile folder made ready for a new engine process."""
+        ...
+
+
 @dataclass(frozen=True)
 class Engine:
     provider: AgentProvider
     models: ModelLookup | None = None
     ready: ReadyCheck | None = None
     default: DefaultModel | None = None
+    # None: the engine has no accounts to choose from, as in tests.
+    accounts: AccountSource | None = None
 
     @property
     def name(self) -> str:
@@ -48,6 +63,12 @@ class Engine:
 
     async def default_model(self) -> str | None:
         return None if self.default is None else await self.default()
+
+    def active_account(self) -> str | None:
+        return None if self.accounts is None else self.accounts.active()
+
+    async def prepare_account(self) -> RunAccount | None:
+        return None if self.accounts is None else await self.accounts.prepare()
 
 
 class Engines:

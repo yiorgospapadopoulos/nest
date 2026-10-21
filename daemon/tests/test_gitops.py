@@ -5,6 +5,7 @@ import pytest
 
 from nestd.gitops import runner
 from nestd.gitops.runner import CommandError, GitError, run_command, run_git
+from tests.async_support import until
 from tests.git_support import init_repo
 
 
@@ -111,3 +112,19 @@ async def test_run_command_in_a_file_instead_of_a_directory(tmp_path: Path) -> N
     assert not isinstance(caught.value, GitError)
     assert caught.value.returncode is None
     assert caught.value.stderr == f"the working directory {file} is not a directory"
+
+
+async def test_a_command_run_to_be_killed_on_cancel_ends_with_its_caller(tmp_path: Path) -> None:
+    """B98: cancelling a sign-in stops `claude auth login` instead of waiting for it."""
+    marker = tmp_path / "started"
+    task = asyncio.create_task(
+        run_command(
+            ["/bin/sh", "-c", f"touch {marker}; exec sleep 30"], tmp_path, kill_on_cancel=True
+        )
+    )
+    await until(marker.exists)
+
+    task.cancel()
+    async with asyncio.timeout(5):
+        with pytest.raises(asyncio.CancelledError):
+            await task

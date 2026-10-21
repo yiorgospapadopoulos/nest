@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from nestd.providers.base import TokenUsage, UsageInfo, UsageWindow
+from nestd.providers.base import RunAccount, TokenUsage, UsageInfo, UsageWindow
 from nestd.usage.probe import (
     MAX_PROBES_PER_CLIENT,
     PROBE_PROMPT,
@@ -125,3 +125,22 @@ async def test_closing_survives_a_failing_disconnect(tmp_path: Path) -> None:
 
     # The failed close still let the client go: the second close has nothing to close.
     assert factory.clients[0].disconnects == 1
+
+
+async def test_a_probe_on_another_account_opens_its_own_client(tmp_path: Path) -> None:
+    """B98: the client runs on the account asked for, with its profile; one on another
+    account is closed first.
+    """
+    factory = FakeProbeFactory(replies=[answer(0.1), answer(0.2), answer(0.3)])
+    probe = UsageProbe(factory, tmp_path)
+    work = RunAccount("0123456789ab", {"CLAUDE_CONFIG_DIR": str(tmp_path / "work")})
+
+    await probe.run()
+    await probe.run(work)
+    await probe.run(work)
+
+    first, second = factory.clients
+    assert first.options.env == {}
+    assert first.disconnects == 1
+    assert second.options.env == {"CLAUDE_CONFIG_DIR": str(tmp_path / "work")}
+    assert second.prompts == [PROBE_PROMPT, PROBE_PROMPT]

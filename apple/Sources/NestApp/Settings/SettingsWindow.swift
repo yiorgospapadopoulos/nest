@@ -298,15 +298,25 @@ struct SettingsSection<Content: View>: View {
     let title: String
     /// Rows draw their own lines; other content, such as a list, goes in bare.
     var bare = false
+    /// A quiet note at the title's far end, with its symbol, such as "Drag to reorder".
+    var hint: (symbol: String, text: String)?
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !title.isEmpty {
-                Text(title)
-                    .font(.ui(11, .semibold))
-                    .foregroundStyle(Palette.t2)
-                    .padding(.bottom, 6)
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.ui(11, .semibold))
+                        .foregroundStyle(Palette.t2)
+                    if let hint {
+                        Spacer(minLength: 8)
+                        Image(systemName: hint.symbol).font(.system(size: 9))
+                        Text(hint.text).font(.ui(11))
+                    }
+                }
+                .foregroundStyle(Palette.t3)
+                .padding(.bottom, 6)
             }
             if bare {
                 content()
@@ -319,16 +329,21 @@ struct SettingsSection<Content: View>: View {
     }
 }
 
-/// A label on the left and its control on the right, over a thin line.
-struct SettingsRow<Control: View>: View {
+/// A label on the left, after an optional leading view such as a grip, and its control on
+/// the right, over a thin line.
+struct SettingsRow<Leading: View, Control: View>: View {
     let label: String
+    @ViewBuilder let leading: () -> Leading
     @ViewBuilder let control: () -> Control
 
     var body: some View {
         HStack(spacing: 16) {
-            Text(label)
-                .font(.ui(TypeSize.ui, .medium))
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                leading()
+                Text(label)
+                    .font(.ui(TypeSize.ui, .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer(minLength: 8)
             HStack(spacing: 6) { control() }
         }
@@ -338,11 +353,20 @@ struct SettingsRow<Control: View>: View {
     }
 }
 
+extension SettingsRow where Leading == EmptyView {
+    init(label: String, @ViewBuilder control: @escaping () -> Control) {
+        self.init(label: label, leading: { EmptyView() }, control: control)
+    }
+}
+
 /// A list row: an icon, a title with an optional line under it, and its controls.
 struct SettingsListRow<Leading: View, Trailing: View>: View {
     let title: String
     var detail: String?
     var mono = false
+    /// While set, the title is a field that edits it in place, starting from `initial`;
+    /// `done` gets the text, or nil when cancelled.
+    var rename: (initial: String, done: (String?) -> Void)?
     @ViewBuilder let leading: () -> Leading
     @ViewBuilder let trailing: () -> Trailing
 
@@ -350,7 +374,15 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
         HStack(spacing: 10) {
             leading()
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
+                if let rename {
+                    InlineField(
+                        label: "Name", initial: rename.initial, font: .ui(TypeSize.ui, .medium),
+                        center: false, done: rename.done
+                    )
+                    .frame(maxWidth: 220)
+                } else {
+                    Text(title).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
+                }
                 if let detail {
                     Text(detail)
                         .font(mono ? .mono(TypeSize.meta) : .ui(TypeSize.meta))
@@ -364,6 +396,26 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
         }
         .padding(.vertical, 8)
         .overlay(alignment: .bottom) { Separator() }
+    }
+}
+
+/// A boxed checkmark, filled while on: one of several choices, such as what the top bar
+/// shows or the account in use.
+struct SettingsCheckBox: View {
+    let on: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(on ? Palette.t1 : Color.clear)
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(on ? Palette.t1 : Palette.t3, lineWidth: 1.5)
+            Image(systemName: Icon.check)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Palette.windowOpaque)
+                .opacity(on ? 1 : 0)
+        }
+        .frame(width: 16, height: 16)
     }
 }
 
