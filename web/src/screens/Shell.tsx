@@ -17,6 +17,8 @@ export function Shell() {
   const [initial] = useState(() => parseRoute(window.location.pathname));
   const [tab, setTab] = useState<Tab>(initial.tab);
   const [project, setProject] = useState<string | null>(null);
+  // The Chats tab shows the pixies instead of a project (B102).
+  const [pixies, setPixies] = useState(false);
   // The Settings page open, and whether it was opened from the Projects tab (its gear),
   // where its back button returns.
   const [settings, setSettings] = useState<SettingsPage | null>(initial.settings ?? null);
@@ -106,26 +108,36 @@ export function Shell() {
     show({ workOf, who });
   };
 
-  // A pixie's page opens over the projects tab, where its row is.
+  // A pixie's page opens over the Chats tab's pixies, where its row is.
   const openPixie = (id: string, pixieTab: PixieTab = "chat") => {
     setTab("projects");
+    setPixies(true);
     show({ pixie: id, tab: pixieTab });
   };
 
   return (
     <>
       <div
-        className="view"
+        className={tab === "settings" ? "view" : "view flat"}
         id={`view-${tab}`}
         inert={chat !== null}
         role="tabpanel"
         aria-labelledby={`tab-${tab}`}
       >
-        {tab === "inbox" && <Inbox onOpenChat={openChat} onOpenPixie={openPixie} />}
+        {tab === "inbox" && (
+          <Inbox project={current} onOpenChat={openChat} onOpenPixie={openPixie} />
+        )}
         {tab === "projects" && (
           <Projects
             project={current}
-            onProject={setProject}
+            pixies={pixies}
+            onProject={(name) => {
+              setProject(name);
+              setPixies(false);
+            }}
+            onPixies={() => {
+              setPixies(true);
+            }}
             onOpenChat={openChat}
             onOpenClaudeChat={openClaudeChat}
             onNewChat={(repo) => {
@@ -147,7 +159,7 @@ export function Shell() {
           <Settings
             page={settings}
             onPage={openSettings}
-            back={fromProjects ? "Projects" : "Settings"}
+            back={fromProjects ? "Chats" : "Settings"}
             onBack={closeSettings}
             onOpenPixie={openPixie}
           />
