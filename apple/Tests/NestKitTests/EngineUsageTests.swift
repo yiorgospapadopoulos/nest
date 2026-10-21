@@ -118,71 +118,13 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
     let api = FakeAPI()
     let providers: ProvidersStore
 
-    /// Codex's free plan, as the live check found it: one 30-day window.
-    static let codexLimits = UsageLimits(windows: [
-        LimitWindow(
-            utilization: 0.04, resetsAt: tuesday.addingTimeInterval(29 * 86_400 + 3 * 3_600),
-            updatedAt: tuesday, minutes: 43_200, label: "30 day")
-    ])
-    /// A plan with a 5-hour and a weekly window.
-    static let plusLimits = UsageLimits(windows: [
-        LimitWindow(
-            utilization: 0.12, resetsAt: tuesday.addingTimeInterval(3_600), updatedAt: tuesday,
-            minutes: 300, label: "5 hour"),
-        LimitWindow(utilization: 0.45, updatedAt: tuesday, minutes: 10_080, label: "Weekly"),
-    ])
-
     init() {
         api.set {
             $0.providers =
                 Fixture.decode(ProviderList.self, json: ProviderDecodingTests.json)
                 .providers
-            $0.engineLimits = ["codex": Self.codexLimits]
         }
         providers = ProvidersStore(api: api)
-    }
-
-    func signIn(_ signedIn: Bool?) async {
-        api.set { $0.providers[1].signedIn = signedIn }
-        await providers.load()
-    }
-
-    @Test func loadsEachEnginesWindows() async throws {
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        #expect(usage.engineLimits["codex"] == Self.codexLimits)
-        #expect(api.calls.prefix(2) == ["usageLimits", "usageLimitsFor codex"])
-        // A daemon that cannot say keeps Claude's windows and the chart.
-        api.fail("usageLimitsFor")
-        let older = UsageStore(api: api, now: { tuesday })
-        try await older.load()
-        #expect(older.engineLimits.isEmpty)
-        #expect(older.limits != nil)
-    }
-
-    /// Claude's line always; Codex's only while it is signed in.
-    @Test func theMeterHasALinePerSignedInEngine() async throws {
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        await signIn(false)
-        #expect(usage.meter(providers: providers, now: tuesday).map(\.provider) == ["claude"])
-        await signIn(nil)
-        #expect(usage.meter(providers: providers, now: tuesday).map(\.provider) == ["claude"])
-        await signIn(true)
-        let lines = usage.meter(providers: providers, now: tuesday)
-        #expect(lines.map(\.id) == ["claude", "codex"])
-        #expect(lines.map(\.name) == ["Claude", "Codex"])
-        // One window is one value, named by its length.
-        #expect(lines[1].chip?.entries.map(\.text) == ["4% 29d 3h"])
-        #expect(lines[1].chip?.tooltip == "30 day: 4%, resets in 29d 3h")
-        #expect(lines[1].chip?.used == 0.04)
-        #expect(lines[0].chip?.entries.map(\.text) == ["30% 6h 30m"])
-        api.set { $0.engineLimits = ["codex": Self.plusLimits] }
-        try await usage.load()
-        let plus = usage.meter(providers: providers, now: tuesday)[1].chip
-        #expect(plus?.entries.map(\.text) == ["12% 1h", "45% wk"])
-        #expect(plus?.tooltip == "5 hour: 12%, resets in 1h. Weekly: 45%")
-        #expect(plus?.used == 0.12)
     }
 
     /// Codex's limits as the daemon serves them: its windows by length, each labelled.
@@ -211,92 +153,6 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(UsageChip.of(unsized, now: tuesday)?.entries.map(\.text) == ["20%"])
     }
 
-    /// A signed-in engine whose windows are not known yet shows its line without numbers.
-    @Test func aSignedInEngineWithoutWindowsHasAnEmptyLine() async throws {
-        api.set { $0.engineLimits = [:] }
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        await signIn(true)
-        let lines = usage.meter(providers: providers, now: tuesday)
-        #expect(lines.count == 2)
-        #expect(lines[1].chip == nil)
-        #expect(
-            usage.meterTooltip(lines)
-                == "Claude: 5-hour: 30%, resets in 6h 30m. Codex: not reported yet")
-    }
-
-    /// The popover's windows: Claude's alone without headings, then each signed-in engine
-    /// under its name.
-    @Test func thePopoverListsEachSignedInEnginesWindows() async throws {
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        await signIn(false)
-        let alone = usage.limitGroups(providers: providers)
-        #expect(alone.map(\.title) == [nil])
-        #expect(alone[0].limits == usage.limits)
-        await signIn(true)
-        let both = usage.limitGroups(providers: providers)
-        #expect(both.map(\.title) == ["Claude", "Codex"])
-        #expect(both.map(\.id) == ["claude", "codex"])
-        #expect(both[1].limits == Self.codexLimits)
-        #expect(both[0].rows.map(\.title) == ["5 hour", "Weekly"])
-        // Before Claude reported, its two rows without numbers.
-        let early = UsageLimitGroup(provider: "claude", title: nil, limits: nil).rows
-        #expect(early.map(\.title) == ["5 hour", "Weekly"])
-        #expect(early.allSatisfy { $0.window == nil })
-        // The popover lists the rows by their names.
-        #expect(both[0].rows.map(\.id) == ["5 hour", "Weekly"])
-        #expect(both[1].rows.map(\.title) == ["30 day"])
-        #expect(both[1].rows[0].window?.utilization == 0.04)
-        // An engine that has not reported yet shows one row without numbers.
-        api.set { $0.engineLimits = [:] }
-        let quiet = UsageStore(api: api, now: { tuesday })
-        try await quiet.load()
-        let rows = quiet.limitGroups(providers: providers)[1].rows
-        #expect(rows.map(\.title) == ["Usage"])
-        #expect(rows[0].window == nil)
-    }
-
-    @Test func anotherEnginesEventUpdatesOnlyItsWindows() async throws {
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        let claude = usage.limits
-        // As the daemon sends it: the engine's windows whole, each with its length and label.
-        let event = Fixture.event(
-            EventType.usageProviderUpdated,
-            """
-            {"provider": "codex", "windows": [
-              {"utilization": 0.1, "resets_at": null, "minutes": 300, "label": "5 hour"},
-              {"utilization": 0.5, "resets_at": null, "minutes": 10080, "label": "Weekly"}]}
-            """,
-            session: nil)
-        usage.apply(event)
-        #expect(usage.limits == claude)
-        let windows = try #require(usage.engineLimits["codex"]?.windows)
-        #expect(windows.map(\.label) == ["5 hour", "Weekly"])
-        #expect(windows.map(\.utilization) == [0.1, 0.5])
-        #expect(windows.map(\.updatedAt) == [event.ts, event.ts])
-        // A first report of an engine not loaded starts its windows.
-        let fresh = UsageStore(api: api, now: { tuesday })
-        fresh.apply(event)
-        #expect(fresh.engineLimits["codex"]?.windows?.count == 2)
-        #expect(fresh.limits == nil)
-    }
-
-    /// Refresh asks every engine; another engine failing changes nothing of Claude's.
-    @Test func refreshAsksEveryEngine() async throws {
-        let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
-        api.set { $0.refreshedEngineLimits = ["codex": UsageLimits(windows: [])] }
-        await usage.refresh()
-        #expect(api.calls.contains("refreshUsageFor codex"))
-        #expect(usage.engineLimits["codex"] == UsageLimits(windows: []))
-        api.fail("refreshUsageFor", with: APIError.badGateway("signed out"))
-        await usage.refresh()
-        #expect(usage.refreshFailure == nil)
-        #expect(usage.engineLimits["codex"] == UsageLimits(windows: []))
-    }
-
     /// The calendar's day counts every engine; its detail splits Claude and Codex.
     @Test func theBreakdownSplitsTheEngines() async throws {
         api.set {
@@ -306,7 +162,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             ]
         }
         let usage = UsageStore(api: api, now: { tuesday })
-        try await usage.load()
+        try await usage.loadPeriod()
         await providers.load()
         let breakdown = try #require(usage.breakdown(providers: providers))
         #expect(breakdown.engines.map(\.label) == ["Claude", "Codex"])

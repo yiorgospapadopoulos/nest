@@ -20,26 +20,19 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         UsageStore(api: api, calendar: utc, now: { now })
     }
 
-    @Test func liveUsageMergesWindows() async throws {
+    /// A usage warning waits for the in-app notice until dismissed.
+    @Test func keepsTheLatestWarning() {
         let usage = store()
         usage.apply(
             Fixture.event(
-                EventType.usageUpdated,
-                #"{"five_hour": null, "seven_day": {"utilization": 0.06, "resets_at": "2026-10-12T09:00:00Z"}}"#,
+                EventType.usageWarning,
+                #"{"window": "five_hour", "utilization": 0.82, "resets_at": null}"#,
                 session: nil))
-        #expect(usage.limits?.fiveHour == nil)
-        #expect(usage.limits?.sevenDay?.updatedAt == Fixture.event("x", "{}").ts)
-
-        usage.apply(
-            Fixture.event(
-                EventType.usageUpdated,
-                #"{"five_hour": {"utilization": 0.4, "resets_at": null}, "seven_day": null}"#,
-                session: nil))
-        #expect(usage.limits?.fiveHour?.utilization == 0.4)
-        #expect(usage.limits?.sevenDay?.utilization == 0.06)
-
+        #expect(usage.warning?.utilization == 0.82)
         usage.apply(Fixture.event("daemon.started", "{}"))
-        #expect(usage.limits?.fiveHour?.utilization == 0.4)
+        #expect(usage.warning != nil)
+        usage.dismissWarning()
+        #expect(usage.warning == nil)
     }
 
     @Test func usesTheSystemCalendarByDefault() {

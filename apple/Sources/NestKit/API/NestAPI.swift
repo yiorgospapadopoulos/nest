@@ -99,12 +99,6 @@ public protocol NestAPI: Sendable {
     func connectors() async throws -> [Connector]
     func usagePeriod(unit: UsageUnit, date: CalendarDay) async throws -> UsagePeriod
     func usageLimits() async throws -> UsageLimits
-    /// Another engine's windows, such as Codex's (B91).
-    func usageLimits(provider: String) async throws -> UsageLimits
-    /// Asks Claude for the limits now; rate limited within 20 s of the previous ask.
-    func refreshUsage() async throws -> UsageLimits
-    /// Asks another engine for its windows now, without a model call (B91).
-    func refreshUsage(provider: String) async throws -> UsageLimits
     func usageSettings() async throws -> UsageSettings
     func updateUsageSettings(_ settings: UsageSettings) async throws -> UsageSettings
     func stuckSettings() async throws -> StuckSettings
@@ -242,16 +236,27 @@ public protocol NestAPI: Sendable {
     func githubAccount() async throws -> GitHubAccount
     /// Asks `gh` again.
     func checkGitHubAccount() async throws -> GitHubAccount
-    func claudeLogin() async throws -> ClaudeLogin
-    /// Starts Claude Code's browser sign-in on the Mac; `account.claude` tells the outcome.
-    func signInClaude() async throws
-    func signOutClaude() async throws -> ClaudeLogin
-    func codexLogin() async throws -> CodexLogin
-    /// Starts Codex's ChatGPT sign-in; the app opens the page it answers with, and
-    /// `account.codex` tells the outcome (B94).
-    func signInCodex() async throws -> CodexSignIn
-    func cancelCodexSignIn() async throws
-    func signOutCodex() async throws -> CodexLogin
+    /// Every engine's accounts (B98), Claude's first, each engine's in the user's order.
+    func engineAccounts() async throws -> [EngineAccount]
+    /// Adds an account at the end and starts its sign-in: Claude's opens the browser on the
+    /// Mac, Codex's answers the page to open; `accounts.changed` tells the outcome.
+    func addAccount(provider: String) async throws -> AccountSignIn
+    /// Signs in to the account again.
+    func signInAccount(_ id: String) async throws -> AccountSignIn
+    func cancelAccountSignIn(_ id: String) async throws
+    func signOutAccount(_ id: String) async throws -> EngineAccount
+    /// Nil clears the user's name.
+    func renameAccount(_ id: String, name: String?) async throws -> EngineAccount
+    /// Turns from the next one run on this account; it must be signed in.
+    func activateAccount(_ id: String) async throws -> [EngineAccount]
+    /// Signs out of an added account and deletes it; the first account cannot be removed.
+    func removeAccount(_ id: String) async throws -> [EngineAccount]
+    /// Asks every signed-in account for its limits now.
+    func refreshAccounts() async throws -> [EngineAccount]
+    /// A Codex account's banked resets with their details.
+    func bankedResets(_ id: String) async throws -> BankedResets
+    /// Uses one of a signed-in Codex account's banked resets on its limits now.
+    func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse
     func claudeCode() async throws -> ClaudeCodeStatus
     /// Runs Anthropic's installer; `claude_code.install` events tell how it goes.
     func installClaudeCode() async throws

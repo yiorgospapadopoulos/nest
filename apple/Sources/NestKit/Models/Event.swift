@@ -73,13 +73,12 @@ public enum EventType {
     public static let connectorsUpdated = "connectors.updated"
     /// Claude's usage windows.
     public static let usageUpdated = "usage.updated"
-    /// Another engine's usage windows, such as Codex's (B91).
-    public static let usageProviderUpdated = "usage.provider_updated"
     /// A limit window reached the warning level (B81).
     public static let usageWarning = "usage.warning"
     /// The Claude Code login changed, or signing in ended (B81).
     public static let accountClaude = "account.claude"
     public static let accountCodex = "account.codex"
+    public static let accountsChanged = "accounts.changed"
     /// Installing Claude Code moved on.
     public static let claudeCodeInstall = "claude_code.install"
     /// Claude Code was installed: its new state.
@@ -168,11 +167,11 @@ public enum EventBody: Sendable, Hashable {
     case notify(Notice)
     case connectorsUpdated([Connector])
     case usageUpdated(UsageLimits)
-    /// Another engine's windows (B91).
-    case providerUsageUpdated(provider: String, UsageLimits)
     case usageWarning(UsageWarning)
     case claudeAccount(ClaudeLogin)
     case codexAccount(CodexLogin)
+    /// Every engine's accounts, after any change to one of them (B98).
+    case accountsChanged([EngineAccount])
     case claudeCodeInstall(ClaudeCodeInstallProgress)
     case claudeCodeUpdated(ClaudeCodeStatus)
     /// List the plugins, skills and marketplaces again.
@@ -267,13 +266,11 @@ public enum EventBody: Sendable, Hashable {
         case EventType.connectorsUpdated:
             self = .connectorsUpdated(try field("connectors", as: [Connector].self))
         case EventType.usageUpdated: self = .usageUpdated(try payload.decode(UsageLimits.self))
-        case EventType.usageProviderUpdated:
-            self = .providerUsageUpdated(
-                provider: try field("provider", as: String.self),
-                try payload.decode(UsageLimits.self))
         case EventType.usageWarning: self = .usageWarning(try payload.decode(UsageWarning.self))
         case EventType.accountClaude: self = .claudeAccount(try payload.decode(ClaudeLogin.self))
         case EventType.accountCodex: self = .codexAccount(try payload.decode(CodexLogin.self))
+        case EventType.accountsChanged:
+            self = .accountsChanged(try field("accounts", as: [EngineAccount].self))
         case EventType.claudeCodeInstall:
             self = .claudeCodeInstall(try payload.decode(ClaudeCodeInstallProgress.self))
         case EventType.claudeCodeUpdated:
