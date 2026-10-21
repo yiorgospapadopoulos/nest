@@ -253,7 +253,14 @@ export interface CommandList {
   updated_at: string | null;
 }
 
-export type ApprovalKind = "permission" | "question" | "review" | "plan" | "merge";
+export type ApprovalKind =
+  | "permission"
+  | "question"
+  | "review"
+  | "plan"
+  | "merge"
+  // Pull request review comments waiting to go to the agent (B101).
+  | "review_comments";
 export type ApprovalStatus = "pending" | "resolved" | "expired" | "superseded";
 
 export interface Approval {

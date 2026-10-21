@@ -8,6 +8,7 @@ import type {
   CallEntry,
   CallWork,
   GroupEntry,
+  JsonObject,
   ClaudeChat,
   CommandList,
   Connector,
@@ -401,6 +402,37 @@ export function mergeApproval(overrides: Partial<Approval> = {}): Approval {
       url: "https://github.com/me/cv-page/pull/7",
       head_sha: "abc123",
       checks: { state: "success", passed: 2, failed: 0, pending: 0 },
+    },
+    ...overrides,
+  });
+}
+
+export function reviewComments(overrides: Partial<Approval> = {}): Approval {
+  const comment = (id: string, rest: JsonObject) => ({
+    id,
+    kind: "thread",
+    path: null,
+    line: null,
+    outdated: false,
+    author: "octocat",
+    body: "",
+    url: `https://github.com/me/cv-page/pull/7#${id}`,
+    created_at: NOW,
+    ...rest,
+  });
+  return approval({
+    id: "q6",
+    kind: "review_comments",
+    payload: {
+      number: 7,
+      url: "https://github.com/me/cv-page/pull/7",
+      changes_requested: true,
+      comments: [
+        comment("c1", { path: "src/form/validate.ts", line: 12, body: "Trim the email first." }),
+        comment("c2", { path: "src/old.ts", line: 4, outdated: true, body: "Still needed?" }),
+        comment("c3", { path: "README.md", body: "Mention the form." }),
+        comment("c4", { kind: "review", body: "Looks close, a few nits." }),
+      ],
     },
     ...overrides,
   });

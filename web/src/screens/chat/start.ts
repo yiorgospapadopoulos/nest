@@ -1,4 +1,11 @@
-import { mergeOf, permissionOf, planOf, questionsOf, reviewOf } from "../../api/payloads.ts";
+import {
+  mergeOf,
+  permissionOf,
+  planOf,
+  questionsOf,
+  reviewCommentsDetail,
+  reviewOf,
+} from "../../api/payloads.ts";
 import type { Approval, Session } from "../../api/types.ts";
 import { ciFailure, pendingFor, stuckChats, type Tone } from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
@@ -70,6 +77,8 @@ export function needsYouLine(approval: Approval): string {
       const { number, title } = mergeOf(approval);
       return line("Ready to merge", `#${String(number)} ${title}`);
     }
+    case "review_comments":
+      return line("Review comments", reviewCommentsDetail(approval));
     default: {
       const { tool, command } = permissionOf(approval, null);
       // A command reads as the others do, after its tool's name.
