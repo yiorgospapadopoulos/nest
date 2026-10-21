@@ -64,11 +64,12 @@ class EngineInfo:
         interval: timedelta = INTERVAL,
         retry: timedelta = RETRY,
         tick: timedelta = TICK,
-        account_file: Path | None = None,
+        account_file: Path | Callable[[], Path | None] | None = None,
         settings_file: Path | None = None,
         on_signed_in: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
-        """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039),
+        """`account_file` is Claude Code's `~/.claude.json`, for the account name (D039), or
+        what names the active account's (B98),
         and `settings_file` its `~/.claude/settings.json`, for its default thinking levels
         (IMP-07); None reads no file. `on_signed_in` hears of every report naming an
         account, which only a signed-in Claude Code gives (B94).
@@ -125,7 +126,8 @@ class EngineInfo:
         account = await self._store.account() or AccountInfo()
         if account.display_name is not None:
             return account
-        name = await asyncio.to_thread(profile_name, self._account_file)
+        path = self._account_file() if callable(self._account_file) else self._account_file
+        name = await asyncio.to_thread(profile_name, path)
         return account.model_copy(update={"display_name": name})
 
     async def find(self, model: str | None) -> ModelOption | None:

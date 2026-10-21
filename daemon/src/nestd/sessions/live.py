@@ -52,6 +52,9 @@ class LiveSession:
     run_mode: PermissionMode | None = None
     # The subagents and teams the run opened with; another set needs a new run (B40).
     run_agents: ChatAgents = NO_AGENTS
+    # The account the run opened on; once another is active, the next turn opens a new
+    # run on it (B98). None without accounts.
+    run_account: str | None = None
     # Held while the saved model and mode are read and sent to the run, so the last saved win.
     controls: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Held while the state moves between running and waiting, so two prompts opening at

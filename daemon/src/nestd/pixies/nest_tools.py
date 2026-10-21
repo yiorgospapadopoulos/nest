@@ -458,7 +458,10 @@ class _Tools:
         kept = await self._h.sessions.close_keeping_work(session.id)
         if kept:
             await self._log(pixie, "close_session", session.id, "Closed; kept its worktree")
-            return "Closed the chat. Its worktree holds work, so it stays for the user."
+            return (
+                "Closed the chat. Its worktree stays for the user: it holds work, another chat"
+                " uses it, or Nest did not create it."
+            )
         await self._log(pixie, "close_session", session.id, "Closed and removed its worktree")
         return "Closed the chat and removed its worktree, which held no work."
 

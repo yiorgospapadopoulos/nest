@@ -480,10 +480,10 @@ async def test_a_send_while_the_worktree_is_removed_is_refused(
     removing, release = asyncio.Event(), asyncio.Event()
     original = env.worktrees.remove
 
-    async def slow_remove(repo: RepoConfig, worktree: Worktree, delete_branch: bool) -> None:
+    async def slow_remove(repo: RepoConfig, worktree: Worktree) -> None:
         removing.set()
         await release.wait()
-        await original(repo, worktree, delete_branch)
+        await original(repo, worktree)
 
     monkeypatch.setattr(env.worktrees, "remove", slow_remove)
     closing = asyncio.ensure_future(env.manager.close(created.id, remove_worktree=True))

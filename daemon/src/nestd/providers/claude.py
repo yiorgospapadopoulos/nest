@@ -275,6 +275,8 @@ def build_options(
             **(shell_env or {}),
             **(agent_env(gh_config_dir) if spec.guard_git else {}),
             **CLAUDE_APP_ENV,
+            # The account's profile folder (B98).
+            **(spec.account.env if spec.account is not None else {}),
         },
         stderr=stderr,
         max_buffer_size=MAX_MESSAGE_BYTES,

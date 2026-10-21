@@ -63,30 +63,79 @@ public enum ChatPlace: Sendable, Hashable {
     }
 }
 
-/// Where a new chat will work, as its composer offers and sends it (B55): on the project
-/// folder's current branch, or a new worktree that starts from that branch, with an
-/// optional name for its own branch.
-public struct NewChatPlace: Sendable, Hashable {
-    public let mode: SessionMode
-    /// Worktree chats only: the folder's current branch.
-    public let base: String?
-    /// Worktree chats only: the typed name, trimmed; nil when blank.
-    public let branch: String?
+/// Where a new chat works, as the user chose it: in the project folder (B55), in a new
+/// worktree from a branch (nil: the folder's branch), in an existing worktree, or on
+/// another local branch itself, in a worktree of its own (B96).
+public enum NewChatChoice: Sendable, Hashable {
+    case inPlace
+    case newWorktree(from: String?)
+    case worktree(path: String, branch: String)
+    case onBranch(String)
 
-    /// Only a chosen worktree makes one: a draft with no mode works in place, the
-    /// default (D038), and a plain folder always does.
-    public init(mode: SessionMode?, typed: String, repo: Repo?) {
-        let resolved = repo.map { $0.mode(for: mode) } ?? mode
-        guard resolved == .worktree else {
-            self.mode = .inPlace
-            base = nil
-            branch = nil
-            return
+    /// A mode's choice, as the defaults and the plain menu set it: no mode works in place
+    /// (D038); a worktree is a new one from the folder's branch.
+    public init(mode: SessionMode?) {
+        self = mode == .worktree ? .newWorktree(from: nil) : .inPlace
+    }
+
+    /// Nil on a branch: the daemon works in place when it is the folder's branch by then.
+    public var mode: SessionMode? {
+        switch self {
+        case .inPlace: .inPlace
+        case .newWorktree, .worktree: .worktree
+        case .onBranch: nil
         }
-        self.mode = .worktree
-        base = repo?.checkoutBranch
+    }
+
+    /// The branch a new worktree starts from named: the folder's when none was chosen, as
+    /// the picker marks it.
+    public func resolved(_ repo: Repo?) -> NewChatChoice {
+        if case .newWorktree(nil) = self, let branch = repo?.checkoutBranch {
+            return .newWorktree(from: branch)
+        }
+        return self
+    }
+}
+
+/// Where a new chat will work, as its composer sends it (B55, B96): on the project
+/// folder's current branch; a new worktree from a branch, with an optional name for its
+/// own branch; an existing worktree; or another branch itself.
+public struct NewChatPlace: Sendable, Hashable {
+    /// Nil leaves it to the daemon (on a branch).
+    public let mode: SessionMode?
+    /// New worktrees only: the branch it starts from.
+    public let base: String?
+    /// New worktrees only: the typed name, trimmed; nil when blank.
+    public let branch: String?
+    /// Existing worktrees only: its folder.
+    public let worktreePath: String?
+    /// On a branch only: that branch.
+    public let onBranch: String?
+
+    /// A plain folder always works in place.
+    public init(_ choice: NewChatChoice, typed: String, repo: Repo?) {
+        let choice = repo?.git == false ? .inPlace : choice
+        mode = choice.mode
         let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        branch = name.isEmpty ? nil : name
+        switch choice {
+        case .newWorktree(let from):
+            (base, branch) = (from ?? repo?.checkoutBranch, name.isEmpty ? nil : name)
+        case .inPlace, .worktree, .onBranch: (base, branch) = (nil, nil)
+        }
+        if case .worktree(let path, _) = choice { worktreePath = path } else { worktreePath = nil }
+        if case .onBranch(let name) = choice { onBranch = name } else { onBranch = nil }
+    }
+
+    /// The composer button: "Work on wip" (the folder's branch or another), "New worktree
+    /// from main", or the worktree's branch.
+    public static func title(_ choice: NewChatChoice, repo: Repo?) -> String {
+        switch choice {
+        case .inPlace: inPlaceTitle(repo)
+        case .newWorktree(let from):
+            (from ?? repo?.checkoutBranch).map { "New worktree from \($0)" } ?? worktreeTitle
+        case .worktree(_, let branch): branch
+        case .onBranch(let branch): "Work on \(branch)"
+        }
     }
 
     /// The selector's first choice: "Work on main", or "Work in this folder" when the

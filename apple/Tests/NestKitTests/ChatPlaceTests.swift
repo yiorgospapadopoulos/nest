@@ -142,7 +142,7 @@ import Testing
     // MARK: A new chat's place
 
     @Test func anInPlaceChatSendsNoBaseOrBranch() {
-        let place = NewChatPlace(mode: .inPlace, typed: "x", repo: repo)
+        let place = NewChatPlace(NewChatChoice(mode: .inPlace), typed: "x", repo: repo)
         #expect(place.mode == .inPlace)
         #expect(place.base == nil)
         #expect(place.branch == nil)
@@ -151,36 +151,38 @@ import Testing
     @Test func aNewWorktreeStartsFromTheFoldersCurrentBranch() {
         var current = repo
         current.currentBranch = "feature/nav"
-        let place = NewChatPlace(mode: .worktree, typed: "  ", repo: current)
+        let place = NewChatPlace(NewChatChoice(mode: .worktree), typed: "  ", repo: current)
         #expect(place.mode == .worktree)
         #expect(place.base == "feature/nav")
         #expect(place.branch == nil)
     }
 
     @Test func withoutACurrentBranchANewWorktreeStartsFromTheDefault() {
-        let place = NewChatPlace(mode: .worktree, typed: "  fix/login \n", repo: repo)
+        let place = NewChatPlace(
+            NewChatChoice(mode: .worktree), typed: "  fix/login \n", repo: repo)
         #expect(place.base == "main")
         #expect(place.branch == "fix/login")
     }
 
     @Test func noModeChosenWorksInPlace() {
         // In place is the default (D038): a draft with no mode shows and sends it.
-        let place = NewChatPlace(mode: nil, typed: "fix/a", repo: repo)
+        let place = NewChatPlace(NewChatChoice(mode: nil), typed: "fix/a", repo: repo)
         #expect(place.mode == .inPlace)
         #expect(place.base == nil)
         #expect(place.branch == nil)
-        #expect(NewChatPlace(mode: nil, typed: "", repo: nil).mode == .inPlace)
+        #expect(NewChatPlace(NewChatChoice(mode: nil), typed: "", repo: nil).mode == .inPlace)
     }
 
     @Test func aPlainFolderAlwaysWorksInPlace() {
-        let place = NewChatPlace(mode: .worktree, typed: "y", repo: Fixture.plainRepo)
+        let place = NewChatPlace(
+            NewChatChoice(mode: .worktree), typed: "y", repo: Fixture.plainRepo)
         #expect(place.mode == .inPlace)
         #expect(place.base == nil)
         #expect(place.branch == nil)
     }
 
     @Test func withoutTheProjectNoBaseIsGuessed() {
-        let place = NewChatPlace(mode: .worktree, typed: "", repo: nil)
+        let place = NewChatPlace(NewChatChoice(mode: .worktree), typed: "", repo: nil)
         #expect(place.mode == .worktree)
         #expect(place.base == nil)
     }
@@ -201,7 +203,7 @@ import Testing
     @Test func theRequestCarriesBaseAndBranchOnlyWhenSet() {
         var current = repo
         current.currentBranch = "dev"
-        let place = NewChatPlace(mode: .worktree, typed: "fix/a", repo: current)
+        let place = NewChatPlace(NewChatChoice(mode: .worktree), typed: "fix/a", repo: current)
         let request = CreateSessionRequest(
             repo: "cv-page", prompt: "Go", mode: place.mode, base: place.base,
             branch: place.branch)
@@ -211,5 +213,113 @@ import Testing
         let plain = Fixture.json(CreateSessionRequest(repo: "cv-page", prompt: "Go"))
         #expect(!plain.contains("base"))
         #expect(!plain.contains("branch"))
+    }
+
+    // MARK: B96: a new worktree from any branch, or an existing worktree
+
+    /// B96: a choice reads back the mode the defaults and the menus set.
+    @Test func aChoiceHasAMode() {
+        #expect(NewChatChoice(mode: .worktree) == .newWorktree(from: nil))
+        #expect(NewChatChoice(mode: .inPlace) == .inPlace)
+        #expect(NewChatChoice(mode: nil) == .inPlace)
+        #expect(NewChatChoice.inPlace.mode == .inPlace)
+        #expect(NewChatChoice.newWorktree(from: "main").mode == .worktree)
+        #expect(NewChatChoice.worktree(path: "/wt/a", branch: "a").mode == .worktree)
+        // The daemon decides: in place on the folder's branch, else a worktree on it.
+        #expect(NewChatChoice.onBranch("main").mode == nil)
+    }
+
+    /// B96: the picker marks a new worktree with no branch chosen as from the folder's.
+    @Test func aChoiceResolvesTheFoldersBranch() {
+        var current = repo
+        current.currentBranch = "wip"
+        #expect(NewChatChoice.newWorktree(from: nil).resolved(current) == .newWorktree(from: "wip"))
+        #expect(NewChatChoice.newWorktree(from: nil).resolved(nil) == .newWorktree(from: nil))
+        #expect(NewChatChoice.newWorktree(from: "a").resolved(current) == .newWorktree(from: "a"))
+        #expect(NewChatChoice.inPlace.resolved(current) == .inPlace)
+        #expect(NewChatChoice.onBranch("main").resolved(current) == .onBranch("main"))
+    }
+
+    /// B96: a new worktree from a chosen branch starts there, with the typed name.
+    @Test func aNewWorktreeStartsFromTheChosenBranch() {
+        var current = repo
+        current.currentBranch = "wip"
+        let place = NewChatPlace(.newWorktree(from: "main"), typed: " fix/a ", repo: current)
+        #expect(place.mode == .worktree)
+        #expect(place.base == "main")
+        #expect(place.branch == "fix/a")
+        #expect(place.worktreePath == nil)
+        #expect(place.onBranch == nil)
+    }
+
+    /// B96 round 3: working on a branch sends that branch only: no mode, base, branch name
+    /// or worktree; a plain folder has no branches and works in place.
+    @Test func workingOnABranchSendsTheBranchOnly() {
+        let place = NewChatPlace(.onBranch("main"), typed: "ignored", repo: repo)
+        #expect(place.onBranch == "main")
+        #expect(place.mode == nil)
+        #expect(place.base == nil)
+        #expect(place.branch == nil)
+        #expect(place.worktreePath == nil)
+        #expect(NewChatPlace(.inPlace, typed: "", repo: repo).onBranch == nil)
+        let plain = NewChatPlace(.onBranch("main"), typed: "", repo: Fixture.plainRepo)
+        #expect(plain.mode == .inPlace)
+        #expect(plain.onBranch == nil)
+    }
+
+    /// B96: joining a worktree sends its folder only: no base and no branch name.
+    @Test func joiningAWorktreeSendsItsFolderOnly() {
+        let place = NewChatPlace(
+            .worktree(path: "/r/.claude/worktrees/nest-1", branch: "agent/icons"),
+            typed: "ignored", repo: repo)
+        #expect(place.mode == .worktree)
+        #expect(place.worktreePath == "/r/.claude/worktrees/nest-1")
+        #expect(place.base == nil)
+        #expect(place.branch == nil)
+        #expect(place.onBranch == nil)
+        #expect(NewChatPlace(.inPlace, typed: "", repo: repo).worktreePath == nil)
+        // A plain folder has no worktrees to join.
+        let plain = NewChatPlace(
+            .worktree(path: "/w", branch: "w"), typed: "", repo: Fixture.plainRepo)
+        #expect(plain.mode == .inPlace)
+        #expect(plain.worktreePath == nil)
+    }
+
+    /// B96: the composer button says where the chat works: "Work on" the folder's branch,
+    /// "New worktree from" a branch, or the worktree's branch.
+    @Test func theButtonNamesTheChoice() {
+        var current = repo
+        current.currentBranch = "wip"
+        #expect(NewChatPlace.title(.inPlace, repo: current) == "Work on wip")
+        #expect(
+            NewChatPlace.title(.newWorktree(from: "main"), repo: current)
+                == "New worktree from main")
+        #expect(
+            NewChatPlace.title(.newWorktree(from: nil), repo: current)
+                == "New worktree from wip")
+        #expect(NewChatPlace.title(.newWorktree(from: nil), repo: nil) == "New worktree")
+        #expect(
+            NewChatPlace.title(.worktree(path: "/w", branch: "agent/x"), repo: current)
+                == "agent/x")
+        #expect(NewChatPlace.title(.onBranch("main"), repo: current) == "Work on main")
+    }
+
+    /// B96: the request names the worktree to join as `worktree_path`, only when set.
+    @Test func theRequestCarriesTheWorktreePathOnlyWhenSet() {
+        let request = CreateSessionRequest(
+            repo: "cv-page", prompt: "Go", mode: .worktree, worktreePath: "/wt/a")
+        #expect(Fixture.json(request).contains(#""worktree_path":"/wt/a""#))
+        #expect(
+            !Fixture.json(CreateSessionRequest(repo: "cv-page", prompt: "Go"))
+                .contains("worktree_path"))
+    }
+
+    /// B96 round 3: the request names the branch to work on as `on_branch`, only when set.
+    @Test func theRequestCarriesTheBranchOnlyWhenSet() {
+        let request = CreateSessionRequest(repo: "cv-page", prompt: "Go", onBranch: "main")
+        #expect(Fixture.json(request).contains(#""on_branch":"main""#))
+        #expect(
+            !Fixture.json(CreateSessionRequest(repo: "cv-page", prompt: "Go"))
+                .contains("on_branch"))
     }
 }

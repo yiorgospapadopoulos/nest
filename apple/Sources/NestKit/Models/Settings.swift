@@ -247,34 +247,10 @@ public struct CodexLogin: Codable, Sendable, Hashable {
     public var checkedAt: Date
     public var error: String?
 
-    public init(
-        signedIn: Bool?, email: String? = nil, plan: String? = nil, checkedAt: Date,
-        error: String? = nil
-    ) {
-        self.signedIn = signedIn
-        self.email = email
-        self.plan = plan
-        self.checkedAt = checkedAt
-        self.error = error
-    }
-
     enum CodingKeys: String, CodingKey {
         case email, plan, error
         case signedIn = "signed_in"
         case checkedAt = "checked_at"
-    }
-}
-
-/// `POST /api/accounts/codex/login`: the page to sign in on, opened in the browser.
-public struct CodexSignIn: Codable, Sendable, Hashable {
-    public var authURL: URL
-
-    public init(authURL: URL) {
-        self.authURL = authURL
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case authURL = "auth_url"
     }
 }
 

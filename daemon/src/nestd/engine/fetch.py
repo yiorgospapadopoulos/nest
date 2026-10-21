@@ -6,7 +6,7 @@ Connecting runs Claude Code's initialize handshake only: no prompt, no model cal
 import asyncio
 import json
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from datetime import timedelta
 from pathlib import Path
@@ -37,9 +37,11 @@ class FetchError(Exception):
     """The engine reported nothing usable; the message never quotes CLI output."""
 
 
-def info_options(cwd: Path) -> ClaudeAgentOptions:
+def info_options(cwd: Path, env: Mapping[str, str] | None = None) -> ClaudeAgentOptions:
+    """`env` points Claude Code at the active account's profile (B98)."""
     return ClaudeAgentOptions(
         cwd=cwd,
+        env=dict(env or {}),
         # The user's own settings, so the list matches their Claude Code; no project files.
         setting_sources=["user"],
         tools=[],
@@ -52,11 +54,13 @@ def info_options(cwd: Path) -> ClaudeAgentOptions:
 
 
 async def fetch_details(
-    factory: InfoClientFactory, time_limit: timedelta = FETCH_TIMEOUT
+    factory: InfoClientFactory,
+    time_limit: timedelta = FETCH_TIMEOUT,
+    env: Mapping[str, str] | None = None,
 ) -> EngineDetails:
     """Start Claude Code in an empty temporary folder, read its initialize response, stop it."""
     with tempfile.TemporaryDirectory(prefix="nest-engine-") as cwd:
-        client = factory(info_options(Path(cwd)))
+        client = factory(info_options(Path(cwd), env))
         try:
             async with asyncio.timeout(time_limit.total_seconds()):
                 await client.connect()

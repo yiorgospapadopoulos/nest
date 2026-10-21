@@ -9,6 +9,7 @@ enum Icon {
     static let attach = "paperclip"
     static let send = "arrow.up"
     static let chevron = "chevron.down"
+    static let chevronUp = "chevron.up"
     static let chevronLeft = "chevron.left"
     static let chevronRight = "chevron.right"
     static let close = "xmark"
@@ -37,6 +38,8 @@ enum Icon {
     static let pullRequest = "arrow.triangle.pull"
     static let gear = "gearshape"
     static let more = "ellipsis"
+    /// A row's handle for dragging it into another place.
+    static let grip = "line.3.horizontal"
     static let pin = "pin"
     static let archive = "archivebox"
     static let trash = "trash"

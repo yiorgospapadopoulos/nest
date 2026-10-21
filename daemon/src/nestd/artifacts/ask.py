@@ -6,7 +6,7 @@ starts and finishes.
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from pathlib import Path
@@ -19,7 +19,7 @@ from nestd.config.models import ArtifactSettings
 from nestd.errors import ConflictError, NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.providers.base import TokenUsage
+from nestd.providers.base import RunAccount, TokenUsage
 from nestd.providers.claude_messages import token_usage
 from nestd.storage.db import Database
 from nestd.usage.probe import ProbeClientFactory
@@ -81,7 +81,13 @@ class AskStatus(BaseModel):
     enabled: bool
 
 
-def ask_options(cwd: Path, settings: ArtifactSettings, system: str | None) -> ClaudeAgentOptions:
+def ask_options(
+    cwd: Path,
+    settings: ArtifactSettings,
+    system: str | None,
+    account: Mapping[str, str] | None = None,
+) -> ClaudeAgentOptions:
+    """`account` points Claude Code at the active account's profile (B98)."""
     prompt = ASK_PREAMBLE if not system else f"{ASK_PREAMBLE}\n\n{system}"
     return ClaudeAgentOptions(
         cwd=cwd,
@@ -95,7 +101,10 @@ def ask_options(cwd: Path, settings: ArtifactSettings, system: str | None) -> Cl
         max_turns=1,
         # No transcript in Claude Code's projects folder for every ask.
         extra_args={"no-session-persistence": None},
-        env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(settings.ask_max_output_tokens)},
+        env={
+            "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(settings.ask_max_output_tokens),
+            **(account or {}),
+        },
     )
 
 
@@ -113,8 +122,12 @@ class PageAsks:
         zone: tzinfo | None = None,
         timeout: timedelta = ASK_TIMEOUT,
         wait: timedelta = ASK_WAIT,
+        account: Callable[[], Awaitable[RunAccount]] | None = None,
     ) -> None:
-        """`zone` decides the local day a budget counts; None is the system's zone."""
+        """`zone` decides the local day a budget counts; None is the system's zone.
+        `account` is the Claude account asks run on (B98; None: Claude Code's own).
+        """
+        self._account = account
         self._db = db
         self._bus = bus
         self._clock = clock
@@ -191,7 +204,9 @@ class PageAsks:
         await self._announce(artifact_id, "started", remaining, limit)
         try:
             async with asyncio.timeout(self._timeout.total_seconds()):
-                text, tokens = await self._call(ask_options(self._cwd, settings, system), prompt)
+                env = None if self._account is None else (await self._account()).env
+                options = ask_options(self._cwd, settings, system, env)
+                text, tokens = await self._call(options, prompt)
         except Exception as error:
             await self._record(artifact_id, None)
             await self._announce(artifact_id, "finished", remaining, limit)

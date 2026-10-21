@@ -59,6 +59,11 @@
         private var codexChats: Set<String> = []
         private var codexSignedIn: Bool? = false
         private var configuration = SampleConfiguration()
+        /// Claude's first account and a work one, then Codex's (B98); Codex's sign-in
+        /// follows `setCodexSignedIn`.
+        private var accountList: [EngineAccount]
+        /// The banked resets used so far.
+        private var bankedUsed: Set<String> = []
 
         init(now: Date = Date()) {
             self.now = now
@@ -77,6 +82,7 @@
             groupList = SampleTree.groups(now: now)
             artifactList = SampleArtifacts.list(now: now)
             artifactTexts = SampleArtifacts.contents(now: now)
+            accountList = SampleData.accounts(now: now, updated: now - 25 * 60)
         }
 
         /// Four git repositories and a plain folder, "recipes". cv-page and llm-hunter show
@@ -155,7 +161,31 @@
         }
 
         func setCodexSignedIn(_ signedIn: Bool?) {
-            lock.withLock { codexSignedIn = signedIn }
+            lock.withLock {
+                codexSignedIn = signedIn
+                accountList = accountList.map { account in
+                    guard account.id == "codex-main" else { return account }
+                    var account = account
+                    account.signedIn = signedIn
+                    return account
+                }
+            }
+        }
+
+        /// Shows why an account's last sign-in failed.
+        func setSignInError(_ id: String, _ error: String?) {
+            change(id) { $0.error = error }
+        }
+
+        @discardableResult
+        private func change(_ id: String, _ edit: (inout EngineAccount) -> Void)
+            -> EngineAccount
+        {
+            lock.withLock {
+                let index = accountList.firstIndex { $0.id == id }!
+                edit(&accountList[index])
+                return accountList[index]
+            }
         }
 
         private func onEngine(_ session: Session) -> Session {
@@ -497,39 +527,6 @@
         /// Reported 25 minutes before the sample's now: stale.
         func usageLimits() async throws -> UsageLimits {
             try limits(asOf: now - 25 * 60)
-        }
-
-        /// Fresh limits the first time, then too soon.
-        func refreshUsage() async throws -> UsageLimits {
-            let count = lock.withLock {
-                refreshes += 1
-                return refreshes
-            }
-            guard count == 1 else {
-                throw APIError.rateLimited("usage was refreshed moments ago", retryAfter: 14)
-            }
-            return try limits(asOf: Date() - 60)
-        }
-
-        /// Codex's windows (B91), as its free plan has them: one of 30 days. Nothing while
-        /// it is not signed in, as the daemon has none.
-        func usageLimits(provider: String) async throws -> UsageLimits {
-            guard lock.withLock({ codexSignedIn }) == true else {
-                return UsageLimits(windows: [])
-            }
-            return try decode([
-                "windows": [
-                    [
-                        "utilization": 0.04, "resets_at": SampleData.iso(now + 29 * 86_400 + 3_600),
-                        "updated_at": SampleData.iso(now - 60), "minutes": 43_200,
-                        "label": "30 day",
-                    ]
-                ]
-            ])
-        }
-
-        func refreshUsage(provider: String) async throws -> UsageLimits {
-            try await usageLimits(provider: provider)
         }
 
         func usageSettings() async throws -> UsageSettings {
@@ -1225,6 +1222,40 @@
             ["main", "develop", "feat/contact-form"]
         }
 
+        /// cv-page as A7 draws it (B96): its folder on redesign with three Nest worktrees,
+        /// and two worktrees from main, one of them Claude Code's; the other projects are on
+        /// main alone.
+        func repoBranchMap(_ name: String) async throws -> BranchMap {
+            typealias Branch = BranchMap.Branch
+            guard name == "cv-page" else {
+                return BranchMap(
+                    defaultBranch: "main", currentBranch: "main",
+                    branches: [Branch(name: "main", parent: nil, worktree: nil, here: true)])
+            }
+            let folder = "/Users/me/Personal projects/cv-page/.claude/worktrees"
+            func worktree(_ name: String, from parent: String, _ path: String) -> Branch {
+                let owner: BranchMap.Owner = path.hasPrefix("nest-") ? .nest : .claude
+                return Branch(
+                    name: name, parent: parent,
+                    worktree: BranchMap.Worktree(path: "\(folder)/\(path)", owner: owner),
+                    here: false)
+            }
+            return BranchMap(
+                defaultBranch: "main", currentBranch: "redesign",
+                branches: [
+                    Branch(name: "main", parent: nil, worktree: nil, here: false),
+                    worktree("agent/mobile-nav", from: "main", "nest-c4"),
+                    Branch(name: "redesign", parent: "main", worktree: nil, here: true),
+                    worktree("agent/contact-zod", from: "redesign", "nest-c1"),
+                    worktree("agent/dark-polish", from: "redesign", "nest-c3"),
+                    worktree("agent/search", from: "redesign", "nest-c8"),
+                    worktree("agent/search-ui", from: "agent/search", "search-ui"),
+                    Branch(name: "release", parent: "main", worktree: nil, here: false),
+                    worktree("hotfix-login", from: "release", "nest-c9"),
+                    worktree("worktree-pipeline", from: "main", "pipeline"),
+                ])
+        }
+
         func storage() async throws -> StorageUsage {
             StorageUsage(
                 totalBytes: 1_420_000_000, chatsBytes: 820_000_000, attachmentsBytes: 540_000_000,
@@ -1283,37 +1314,104 @@
             try await githubAccount()
         }
 
-        func claudeLogin() async throws -> ClaudeLogin {
-            ClaudeLogin(
-                signedIn: true, email: "giorgos@example.com", plan: "Max", method: "claude.ai",
-                checkedAt: now)
+        func engineAccounts() async throws -> [EngineAccount] {
+            lock.withLock { accountList }
         }
 
-        func signInClaude() async throws {}
-
-        func signOutClaude() async throws -> ClaudeLogin {
-            ClaudeLogin(signedIn: false, checkedAt: now)
+        /// A new account waits on its browser sign-in, Codex's on the page it answers.
+        func addAccount(provider: String) async throws -> AccountSignIn {
+            let account = EngineAccount(
+                id: "added\(lock.withLock { accountList.count })", provider: provider,
+                title: provider == "codex" ? "Codex" : "Claude", signedIn: false, active: false,
+                first: false, signingIn: true)
+            lock.withLock {
+                let last =
+                    accountList.lastIndex { $0.provider == provider } ?? accountList.count - 1
+                accountList.insert(account, at: last + 1)
+            }
+            return AccountSignIn(account: account, authURL: authURL(provider))
         }
 
-        /// Codex's login, following the sample's sign-in switch.
-        func codexLogin() async throws -> CodexLogin {
-            let signedIn = lock.withLock { codexSignedIn }
-            return signedIn == true
-                ? CodexLogin(
-                    signedIn: true, email: "giorgos@example.com", plan: "ChatGPT Plus",
-                    checkedAt: now)
-                : CodexLogin(signedIn: signedIn, checkedAt: now)
+        func signInAccount(_ id: String) async throws -> AccountSignIn {
+            let account = change(id) { $0.signingIn = true }
+            return AccountSignIn(account: account, authURL: authURL(account.provider))
         }
 
-        func signInCodex() async throws -> CodexSignIn {
-            CodexSignIn(authURL: URL(string: "https://auth.openai.com/oauth/authorize")!)
+        func cancelAccountSignIn(_ id: String) async throws {
+            change(id) { $0.signingIn = false }
         }
 
-        func cancelCodexSignIn() async throws {}
+        func signOutAccount(_ id: String) async throws -> EngineAccount {
+            change(id) {
+                $0.signedIn = false
+                $0.limits = []
+            }
+        }
 
-        func signOutCodex() async throws -> CodexLogin {
-            lock.withLock { codexSignedIn = false }
-            return CodexLogin(signedIn: false, checkedAt: now)
+        func renameAccount(_ id: String, name: String?) async throws -> EngineAccount {
+            change(id) {
+                $0.name = name
+                $0.title = name ?? $0.email ?? ($0.provider == "codex" ? "Codex" : "Claude")
+            }
+        }
+
+        func activateAccount(_ id: String) async throws -> [EngineAccount] {
+            lock.withLock {
+                let provider = accountList.first { $0.id == id }!.provider
+                for index in accountList.indices where accountList[index].provider == provider {
+                    accountList[index].active = accountList[index].id == id
+                }
+                return accountList
+            }
+        }
+
+        func removeAccount(_ id: String) async throws -> [EngineAccount] {
+            lock.withLock {
+                accountList.removeAll { $0.id == id }
+                return accountList
+            }
+        }
+
+        /// Fresh limits the first time, then too soon.
+        func refreshAccounts() async throws -> [EngineAccount] {
+            try lock.withLock {
+                refreshes += 1
+                guard refreshes == 1 else {
+                    throw APIError.rateLimited("usage was refreshed moments ago", retryAfter: 14)
+                }
+                let fresh = SampleData.accounts(now: now, updated: Date() - 60)
+                accountList = accountList.map { account in
+                    var account = account
+                    account.limits = fresh.first { $0.id == account.id }?.limits ?? account.limits
+                    return account
+                }
+                return accountList
+            }
+        }
+
+        /// Codex's two banked resets, one with a title and an expiry; using one spends it.
+        func bankedResets(_ id: String) async throws -> BankedResets {
+            lock.withLock {
+                let used = bankedUsed
+                let credits = [
+                    BankedCredit(
+                        id: "rc1", title: "Weekly reset", description: nil,
+                        expiresAt: now + 18 * 86_400),
+                    BankedCredit(id: "rc2", title: nil, description: nil, expiresAt: nil),
+                ].filter { !used.contains($0.id) }
+                return BankedResets(available: credits.count, credits: credits)
+            }
+        }
+
+        func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse {
+            lock.withLock { bankedUsed.insert(creditID) }
+            let left = try await bankedResets(id).available
+            change(id) { $0.bankedResets = BankedResets(available: left, credits: nil) }
+            return BankedResetUse(outcome: .reset, accounts: lock.withLock { accountList })
+        }
+
+        private func authURL(_ provider: String) -> URL? {
+            provider == "codex" ? URL(string: "https://auth.openai.com/oauth/authorize") : nil
         }
 
         func claudeCode() async throws -> ClaudeCodeStatus {
@@ -1783,6 +1881,42 @@
             return regex.stringByReplacingMatches(
                 in: window, range: NSRange(window.startIndex..., in: window),
                 withTemplate: "[[$0]]")
+        }
+
+        /// Claude's first account, renamed Personal, and a work account past its 5 hour
+        /// reset; Codex's first account on ChatGPT Plus, signed out until the sample says.
+        static func accounts(now: Date, updated: Date) -> [EngineAccount] {
+            func limit(_ label: String, _ minutes: Int, _ used: Double, _ resets: Double?)
+                -> AccountLimit
+            {
+                AccountLimit(
+                    label: label, minutes: minutes, utilization: used,
+                    resetsAt: resets.map { now + $0 }, updatedAt: updated, reset: resets == nil)
+            }
+            return [
+                EngineAccount(
+                    id: "claude-main", provider: "claude", name: "Personal", title: "Personal",
+                    email: "giorgos@example.com", plan: "Max 20x", signedIn: true, active: true,
+                    first: true,
+                    limits: [
+                        limit("5 hour", 300, 0.3, 7_200),
+                        limit("Weekly", 10_080, 0.81, 5 * 86_400 + 12 * 3_600),
+                    ], checkedAt: now),
+                EngineAccount(
+                    id: "5f3a9c1e7b20", provider: "claude", name: "Work", title: "Work",
+                    email: "giorgos@work.example", plan: "Pro", signedIn: true, active: false,
+                    first: false,
+                    limits: [
+                        limit("5 hour", 300, 0, nil),
+                        limit("Weekly", 10_080, 0.42, 2 * 86_400 + 5_400),
+                    ], checkedAt: now),
+                EngineAccount(
+                    id: "codex-main", provider: "codex", title: "giorgos@example.com",
+                    email: "giorgos@example.com", plan: "ChatGPT Plus", signedIn: false,
+                    active: true, first: true,
+                    limits: [limit("30 day", 43_200, 0.04, 29 * 86_400 + 3_600)],
+                    bankedResets: BankedResets(available: 2, credits: nil), checkedAt: now),
+            ]
         }
 
         static func decode<T: Decodable>(_ object: Any) throws -> T {

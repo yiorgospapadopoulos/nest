@@ -19,12 +19,7 @@ final class FakeAPI: NestAPI {
         var diff = Fixture.diff
         var connectors = Fixture.connectors
         var limits = Fixture.usageLimits
-        /// What a manual refresh answers.
-        var refreshedLimits = Fixture.usageLimits
         var usageSettings = UsageSettings(refreshMinutes: 3)
-        /// Other engines' windows by engine name (B91), and what their refresh answers.
-        var engineLimits: [String: UsageLimits] = [:]
-        var refreshedEngineLimits: [String: UsageLimits] = [:]
         /// The period answer's split by engine.
         var periodEngines: [EngineTokens] = []
         var devices = Fixture.decode([Device].self, "devices")
@@ -89,6 +84,8 @@ final class FakeAPI: NestAPI {
         // Settings (B81)
         var pushDevices = 1
         var branches: [String: [String]] = [:]
+        /// Each repo's branch map (B96); a repo without one is not found.
+        var branchMaps: [String: BranchMap] = [:]
         var storage = StorageUsage(
             totalBytes: 1_400, chatsBytes: 800, attachmentsBytes: 500, artifactsBytes: 40,
             otherBytes: 60)
@@ -99,12 +96,14 @@ final class FakeAPI: NestAPI {
         var pixieSkills: [PixieSkillChoice] = []
         var github = GitHubAccount(
             state: .signedIn, login: "octo", checkedAt: Date(timeIntervalSince1970: 0))
-        var claudeLogin = ClaudeLogin(
-            signedIn: true, email: "me@example.com", plan: "Max",
-            checkedAt: Date(timeIntervalSince1970: 0))
-        var codexLogin = CodexLogin(
-            signedIn: false, checkedAt: Date(timeIntervalSince1970: 0))
-        var codexSignInURL = URL(string: "https://auth.openai.com/oauth/authorize?state=x")!
+        /// Every engine's accounts (B98), what a refresh answers, and the page a sign-in
+        /// answers with.
+        var accounts: [EngineAccount] = []
+        var refreshedAccounts: [EngineAccount]?
+        var signInURL: URL?
+        /// Each Codex account's banked resets with details, and what using one answers.
+        var banked: [String: BankedResets] = [:]
+        var useOutcome = BankedResetOutcome.reset
         var claudeCode = ClaudeCodeStatus(
             installed: false, path: nil, version: nil, bundledVersion: "2.1.0")
         var plugins = [InstalledPlugin(id: "pdf@official", name: "pdf", marketplace: "official")]
@@ -510,7 +509,8 @@ final class FakeAPI: NestAPI {
     }
 
     func merge(_ sessionID: String, _ request: MergeRequest) async throws -> Session {
-        try call("merge", "\(sessionID) \(request.method.rawValue)") { state in
+        let deleting = request.deleteBranch ? " delete-branch" : ""
+        return try call("merge", "\(sessionID) \(request.method.rawValue)\(deleting)") { state in
             session(sessionID, in: &state) {
                 $0.state = .closed
                 $0.pr?.state = .merged
@@ -574,29 +574,8 @@ final class FakeAPI: NestAPI {
         }
     }
 
-    func usageLimits(provider: String) async throws -> UsageLimits {
-        try call("usageLimitsFor", provider) {
-            $0.engineLimits[provider] ?? UsageLimits(fiveHour: nil, sevenDay: nil)
-        }
-    }
-
-    func refreshUsage(provider: String) async throws -> UsageLimits {
-        try call("refreshUsageFor", provider) { state in
-            state.engineLimits[provider] = state.refreshedEngineLimits[provider]
-            return state.engineLimits[provider] ?? UsageLimits(fiveHour: nil, sevenDay: nil)
-        }
-    }
-
     func usageLimits() async throws -> UsageLimits {
         try call("usageLimits") { $0.limits }
-    }
-
-    func refreshUsage() async throws -> UsageLimits {
-        await pass("refreshUsage")
-        return try call("refreshUsage") { state in
-            state.limits = state.refreshedLimits
-            return state.limits
-        }
     }
 
     func usageSettings() async throws -> UsageSettings {
@@ -1065,6 +1044,13 @@ final class FakeAPI: NestAPI {
         try call("repoBranches", name) { $0.branches[name] ?? [] }
     }
 
+    func repoBranchMap(_ name: String) async throws -> BranchMap {
+        guard let map = try call("repoBranchMap", name, { $0.branchMaps[name] }) else {
+            throw APIError.notFound("unknown repo")
+        }
+        return map
+    }
+
     func storage() async throws -> StorageUsage {
         try call("storage") { $0.storage }
     }
@@ -1128,39 +1114,91 @@ final class FakeAPI: NestAPI {
         return try call("checkGitHubAccount") { $0.github }
     }
 
-    func claudeLogin() async throws -> ClaudeLogin {
-        try call("claudeLogin") { $0.claudeLogin }
+    func engineAccounts() async throws -> [EngineAccount] {
+        try call("engineAccounts") { $0.accounts }
     }
 
-    func signInClaude() async throws {
-        try call("signInClaude") { _ in }
-    }
-
-    func signOutClaude() async throws -> ClaudeLogin {
-        await pass("signOutClaude")
-        return try call("signOutClaude") { state in
-            state.claudeLogin = ClaudeLogin(signedIn: false, checkedAt: state.claudeLogin.checkedAt)
-            return state.claudeLogin
+    func addAccount(provider: String) async throws -> AccountSignIn {
+        try call("addAccount", provider) { state in
+            let account = EngineAccount(
+                id: "new\(state.accounts.count)", provider: provider, title: provider.capitalized,
+                signedIn: false, active: false, first: false, signingIn: true)
+            state.accounts.append(account)
+            return AccountSignIn(account: account, authURL: state.signInURL)
         }
     }
 
-    func codexLogin() async throws -> CodexLogin {
-        try call("codexLogin") { $0.codexLogin }
+    func signInAccount(_ id: String) async throws -> AccountSignIn {
+        try call("signInAccount", id) { state in
+            let index = state.accounts.firstIndex { $0.id == id }!
+            state.accounts[index].signingIn = true
+            return AccountSignIn(account: state.accounts[index], authURL: state.signInURL)
+        }
     }
 
-    func signInCodex() async throws -> CodexSignIn {
-        try call("signInCodex") { CodexSignIn(authURL: $0.codexSignInURL) }
+    func cancelAccountSignIn(_ id: String) async throws {
+        try call("cancelAccountSignIn", id) { _ in }
     }
 
-    func cancelCodexSignIn() async throws {
-        try call("cancelCodexSignIn") { _ in }
+    func signOutAccount(_ id: String) async throws -> EngineAccount {
+        await pass("signOutAccount")
+        return try call("signOutAccount", id) { state in
+            let index = state.accounts.firstIndex { $0.id == id }!
+            state.accounts[index].signedIn = false
+            return state.accounts[index]
+        }
     }
 
-    func signOutCodex() async throws -> CodexLogin {
-        await pass("signOutCodex")
-        return try call("signOutCodex") { state in
-            state.codexLogin = CodexLogin(signedIn: false, checkedAt: state.codexLogin.checkedAt)
-            return state.codexLogin
+    func renameAccount(_ id: String, name: String?) async throws -> EngineAccount {
+        try call("renameAccount", "\(id) \(name ?? "-")") { state in
+            let index = state.accounts.firstIndex { $0.id == id }!
+            state.accounts[index].name = name
+            state.accounts[index].title = name ?? state.accounts[index].email ?? "Claude"
+            return state.accounts[index]
+        }
+    }
+
+    func activateAccount(_ id: String) async throws -> [EngineAccount] {
+        await pass("activateAccount")
+        return try call("activateAccount", id) { state in
+            let provider = state.accounts.first { $0.id == id }!.provider
+            for index in state.accounts.indices where state.accounts[index].provider == provider {
+                state.accounts[index].active = state.accounts[index].id == id
+            }
+            return state.accounts
+        }
+    }
+
+    func removeAccount(_ id: String) async throws -> [EngineAccount] {
+        try call("removeAccount", id) { state in
+            state.accounts.removeAll { $0.id == id }
+            return state.accounts
+        }
+    }
+
+    func bankedResets(_ id: String) async throws -> BankedResets {
+        try call("bankedResets", id) { $0.banked[id] ?? BankedResets(available: 0, credits: []) }
+    }
+
+    /// A reset uses the credit: one fewer available, and it leaves the details.
+    func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse {
+        try call("useBankedReset", "\(id) \(creditID)") { state in
+            if state.useOutcome == .reset, var banked = state.banked[id] {
+                banked.credits?.removeAll { $0.id == creditID }
+                banked.available -= 1
+                state.banked[id] = banked
+                let index = state.accounts.firstIndex { $0.id == id }!
+                state.accounts[index].bankedResets?.available = banked.available
+            }
+            return BankedResetUse(outcome: state.useOutcome, accounts: state.accounts)
+        }
+    }
+
+    func refreshAccounts() async throws -> [EngineAccount] {
+        await pass("refreshAccounts")
+        return try call("refreshAccounts") { state in
+            state.accounts = state.refreshedAccounts ?? state.accounts
+            return state.accounts
         }
     }
 

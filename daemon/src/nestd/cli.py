@@ -7,9 +7,11 @@ gates changed`.
 import argparse
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
 
+from nestd.accounts.profiles import drop_leaked_env
 from nestd.api.app import create_app
 from nestd.auth.models import PairingCode
 from nestd.config.errors import ConfigError
@@ -111,6 +113,8 @@ def _move_folders(paths: AppPaths, rt: Runtime) -> list[str]:
 
 def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
     configure_logging(rt.err)
+    # Engine processes inherit the daemon's environment (B98).
+    drop_leaked_env(os.environ)
     for note in _move_folders(paths, rt):
         logger.info(note)
     asyncio.run(_run_server(paths, rt, args.port))

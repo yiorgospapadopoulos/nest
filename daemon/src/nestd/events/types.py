@@ -14,6 +14,10 @@ REPO_UPDATED: Final = "repo.updated"
 # The user reordered the projects (D090); global, `{order}` with every repo's name in the
 # new order. Clients sort their list by it.
 REPOS_REORDERED: Final = "repos.reordered"
+# A git project's branch map may have changed (B96): Nest added or removed a worktree, or
+# the poller saw its worktrees or the project folder's branch change; ephemeral and
+# global, `{name}` of the repo. Clients read its branch map again.
+REPO_BRANCHES_CHANGED: Final = "repo.branches_changed"
 
 # Agent sessions; all carry the session id. SESSION_DELTA is ephemeral (never stored).
 SESSION_CREATED: Final = "session.created"
@@ -139,6 +143,10 @@ ACCOUNT_CLAUDE: Final = "account.claude"
 # The Codex account after a sign in, a cancelled or failed one, or a sign out (B94):
 # `GET /api/accounts/codex`'s body with `error` (null unless signing in failed).
 ACCOUNT_CODEX: Final = "account.codex"
+# Every engine account (B98) after any change: added, signed in or out, a sign in's
+# outcome, renamed, made active, removed, or new usage windows; `GET /api/accounts`'s body.
+# ACCOUNT_CLAUDE and ACCOUNT_CODEX keep coming for the active accounts.
+ACCOUNTS_CHANGED: Final = "accounts.changed"
 # Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
 # `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
 CLAUDE_CODE_INSTALL: Final = "claude_code.install"

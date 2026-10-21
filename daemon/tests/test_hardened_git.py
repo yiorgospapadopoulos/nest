@@ -84,11 +84,12 @@ async def test_every_git_command_on_an_agent_writable_repo_is_hardened(
     manager = WorktreeManager(paths)
     worktree = await manager.create(repo, "0123456789", "task")
     await manager.head(repo)
+    assert await manager.has_branch(repo, worktree.branch)
     await FileIndex(FakeClock(), ttl=timedelta(0)).search(worktree.path, "read")
     assert await repos.suggest_links(repo.name) == [".env"]
     (plain / ".git").mkdir()  # a stat says maybe; git says no
     await repos.current(plain_repo.name)
-    await manager.remove(repo, worktree, delete_branch=True)
+    await manager.remove(repo, worktree)
 
     git_commands = [argv for argv in commands if argv[0] == "git"]
     assert len(git_commands) > 10
