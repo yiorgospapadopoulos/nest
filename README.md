@@ -38,6 +38,7 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 ```bash
 make install   # install daemon and web dependencies
 make check     # every quality gate: format, lint, types, tests with 100% coverage, build, audit
+make check-changed  # the gates of only the parts changed since the merge base with main (BASE=origin/main to change it)
 make fmt       # auto-format and auto-fix lint
 make test      # tests only
 make check-apple  # Swift lint, build, tests with 100% NestKit coverage
@@ -48,7 +49,11 @@ make tokens    # regenerate design token outputs
 make icon      # render the app icon PNGs from the icon pixie's sprite and build AppIcon.icns (D120)
 ```
 
-CI: `.github/workflows/check.yml` is set to run `make check-daemon` and `make check-web` on GitHub Actions (`ubuntu-latest`) for every push and pull request; nothing has been pushed since it was added, so it has not run yet. The Swift gates run only locally (`make check-apple`). See D066 and D071.
+The daemon tests in `make check`, `make check-daemon` and `make test` run in 4 parallel worker processes (pytest-xdist) by default; `PYTEST_WORKERS=auto make check` uses one per core and `PYTEST_WORKERS=0` runs one process. Coverage from the workers is merged, so the 100% line and branch check is unchanged. A targeted run such as `cd daemon && uv run pytest tests/test_cli.py` stays single-process unless `-n` is given. See D125.
+
+`make check-changed` asks `nestd gates changed` which parts the work touched since the merge base with `BASE` (default `main`), counting committed, staged, unstaged and untracked files, prints why, and runs only those gates in `make check`'s order. A file in `daemon/`, `web/` or `apple/` runs that part; `design/` and the generator in `daemon/src/nestd/design/` run all three; the generated token and icon files run their part and the daemon, whose tests check them; `README.md`, `LICENSE` and `docs/` run nothing; anything else (the `Makefile`, `.github/`, a new top-level folder) runs everything, as does a failure to work the parts out. It is the gate for work in a worktree; the full `make check` runs before merging into `main` and after cross-cutting changes. See D125.
+
+CI: `.github/workflows/check.yml` is set to run `make check-daemon` and `make check-web` on GitHub Actions (`ubuntu-latest`) for every push and pull request. Off `main`, a first job runs `nestd gates changed` against `origin/main` (or the pull request's base) and each job runs only when its part changed, by the same rules; on `main` both always run. The Swift gates run only locally (`make check-apple`). See D066 and D071.
 
 ## Mac app
 
