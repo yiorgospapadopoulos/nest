@@ -1,45 +1,52 @@
-import type { ReactNode } from "react";
+import { useState } from "react";
 import type { Approval, Session } from "../../api/types.ts";
 import type { CiFailure } from "../../store/selectors.ts";
-import { Icon } from "../../ui/Icon.tsx";
 import { useCiFailure, useMerge } from "../approvals/hooks.ts";
-import { Card } from "../approvals/SwipeCard.tsx";
+import { FoldRow } from "./FoldRow.tsx";
+import { checksFailedLine, lineText } from "./needsLine.ts";
 
 function checksText(passed: number): string {
   if (passed === 0) return "No checks";
   return passed === 1 ? "1 check passed" : `${String(passed)} checks passed`;
 }
 
-/** A pull request whose checks passed; merging squashes it and closes the chat. */
-export function MergeCard({
+/**
+ * A pull request whose checks passed; merging squashes it and closes the chat. The branch
+ * stays unless "Also delete the branch" is checked, off by default (B96).
+ */
+export function MergeDetail({
   approval,
   session,
-  head,
 }: {
   approval: Approval;
   session: Session | undefined;
-  head: ReactNode;
 }) {
   const { view, busy, merge } = useMerge(approval);
+  const [deleteBranch, setDeleteBranch] = useState(false);
   const summary = session?.pr_summary ?? null;
   return (
-    <Card label={`Ready to merge: ${approval.title}`}>
-      {head}
-      <div className="cq">
-        #{view.number} {view.title}
-      </div>
+    <>
       {summary !== null && <div className="why prsum">{summary}</div>}
       <div className="why">{checksText(view.passed)}</div>
       <div className="acts">
-        <button className="b b-ok" disabled={busy} onClick={() => void merge()}>
-          <Icon name="check" />
+        <button className="b b-pri" disabled={busy} onClick={() => void merge(deleteBranch)}>
           Merge (squash)
         </button>
         <a className="b qb2" href={view.url} target="_blank" rel="noreferrer">
           Open on GitHub
         </a>
       </div>
-    </Card>
+      <label className="ask-ck">
+        <input
+          type="checkbox"
+          checked={deleteBranch}
+          onChange={(event) => {
+            setDeleteBranch(event.target.checked);
+          }}
+        />
+        Also delete the branch
+      </label>
+    </>
   );
 }
 
@@ -54,19 +61,15 @@ export function CiFailureCard({
   const { session, pr, names } = failure;
   const { busy, send } = useCiFailure(session);
   return (
-    <Card label={`Checks failed: ${session.title}`}>
-      <div className="ck-k fl">
-        <Icon name="x" />
-        Checks failed
-        <button
-          className="lnk"
-          onClick={() => {
-            onOpenChat(session.id);
-          }}
-        >
-          {session.title}
-        </button>
-      </div>
+    <FoldRow
+      label={`Checks failed: ${session.title}`}
+      tone="fail"
+      name={session.title}
+      onOpen={() => {
+        onOpenChat(session.id);
+      }}
+      line={lineText(checksFailedLine(names))}
+    >
       <div className="cq">
         #{pr.number} {pr.title}
       </div>
@@ -83,6 +86,6 @@ export function CiFailureCard({
           Open on GitHub
         </a>
       </div>
-    </Card>
+    </FoldRow>
   );
 }

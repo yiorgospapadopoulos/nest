@@ -1,8 +1,8 @@
 import { useStore } from "../../store/context.ts";
-import { inboxGroups } from "../../store/selectors.ts";
-import { ProjectIcon } from "../../ui/bits.tsx";
+import { inboxGroups, needsCount } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
+import { GoalsSection } from "./GoalsSection.tsx";
 import { InboxCard } from "./InboxCard.tsx";
 import { CiFailureCard } from "./PrCards.tsx";
 import { ReportCard } from "./ReportCard.tsx";
@@ -12,31 +12,27 @@ import { StuckCard } from "./StuckCard.tsx";
 const PIXIE_REPO = "pixie:";
 
 interface Props {
+  // The project the Chats tab shows, whose goals show under Needs you.
+  project: string | null;
   onOpenChat: (sessionId: string) => void;
   onOpenPixie: (id: string) => void;
 }
 
 /**
- * Every approval, question, review, merge, failed check and stuck chat by project, and
- * pixies' unread warn and action reports under the pixie.
+ * The Needs you tab, as the Mac's right panel (B102 items 10, 11): every approval,
+ * question, review, merge, failed check and stuck chat by project, and pixies' unread warn
+ * and action reports under the pixie, one short row each; then the project's goals.
  */
-export function Inbox({ onOpenChat, onOpenPixie }: Props) {
+export function Inbox({ project, onOpenChat, onOpenPixie }: Props) {
   const { state } = useStore();
   const heading = (repo: string) => {
-    if (!repo.startsWith(PIXIE_REPO)) {
-      return (
-        <>
-          <ProjectIcon name={repo} />
-          <span>{repo}</span>
-        </>
-      );
-    }
+    if (!repo.startsWith(PIXIE_REPO)) return <span>{repo}</span>;
     const pixie = state.pixies[repo.slice(PIXIE_REPO.length)];
     // A pixie deleted meanwhile.
     if (pixie === undefined) return <span>Pixie</span>;
     return (
       <>
-        <Sprite mascot={pixie.mascot} color={pixie.color} size={20} />
+        <Sprite mascot={pixie.mascot} color={pixie.color} size={14} />
         <span>{pixie.name}</span>
         <button
           className="pxopen"
@@ -51,22 +47,24 @@ export function Inbox({ onOpenChat, onOpenPixie }: Props) {
     );
   };
   const groups = inboxGroups(state);
+  const count = needsCount(state);
   return (
     <>
-      <div className="navr" />
-      <h1 className="lt">Inbox</h1>
+      <header className="bar">
+        <h1 className="bar-t">Needs you</h1>
+        {count > 0 && <span className="bar-n">{count}</span>}
+      </header>
       {groups.length === 0 && (
-        <div className="allclear gl">
+        <p className="allclear">
           <Icon name="check" />
-          <b>All clear</b>
-          <span>Nothing needs you.</span>
-        </div>
+          Nothing needs you.
+        </p>
       )}
       {groups.map((group) => (
         <section key={group.repo} aria-labelledby={`inbox-${group.repo}`}>
-          <h2 className="pg-h" id={`inbox-${group.repo}`}>
+          <h2 className="lbl" id={`inbox-${group.repo}`}>
             {heading(group.repo)}
-            <span className="gc">
+            <span className="c">
               {group.items.length +
                 group.failures.length +
                 group.stuck.length +
@@ -92,6 +90,7 @@ export function Inbox({ onOpenChat, onOpenPixie }: Props) {
           ))}
         </section>
       ))}
+      {project !== null && <GoalsSection project={project} onOpenChat={onOpenChat} />}
     </>
   );
 }

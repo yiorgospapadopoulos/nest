@@ -1,21 +1,24 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Pixie } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { groupEntry, pixie, session } from "../../test/fixtures.ts";
+import { groupEntry, pixie, report, session } from "../../test/fixtures.ts";
 import { reduceMotion } from "../../test/motion.ts";
+import { showPixies } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
 describe("Pixies section", () => {
-  it("lists pixies above projects and opens one", async () => {
+  it("lists pixies in their own view, with no count on its header, and opens one", async () => {
     const api = fakeApi();
     api.pixies.mockResolvedValue([pixie({ id: "p1", name: "Tester", slug: "tester" })]);
     api.sessions.mockResolvedValue([session({ id: "c1", repo: "pixie:p1", pixie_id: "p1" })]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
-    expect(screen.getByRole("heading", { name: /Pixies/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pixies" })).toBeInTheDocument();
+    // No count on the Pixies header (B102 item 12).
+    expect(screen.getByRole("button", { name: "Project: Pixies" })).toHaveTextContent(/^Pixies$/);
     expect(screen.queryByText("pixie:p1")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Tester,/ }));
     expect(screen.getByRole("tab", { name: "Chat" })).toBeInTheDocument();
@@ -24,7 +27,7 @@ describe("Pixies section", () => {
   it("offers templates when there are no pixies and creates only on tap", async () => {
     const api = fakeApi();
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     expect(api.createPixie).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Reviewer" }));
@@ -38,7 +41,7 @@ describe("Pixies section", () => {
       pixie({ id: "p2", name: "Secret", slug: "secret", hidden: true, position: 1 }),
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     expect(screen.queryByRole("button", { name: /^Secret,/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
@@ -51,22 +54,46 @@ describe("Pixies section", () => {
     const api = fakeApi();
     api.pixies.mockResolvedValue([pixie({ hidden: true })]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     expect(screen.queryByText("Or start from a template")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
     expect(screen.getByRole("button", { name: /^Tester,/ })).toBeInTheDocument();
   });
 
-  it("New pixie creates one and opens its details", async () => {
+  it("lists unread reports above the pixies, each opening its pixie (B102)", async () => {
     const api = fakeApi();
-    api.createPixie.mockResolvedValue(pixie({ id: "p9", name: "New pixie", slug: "new-pixie" }));
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieReports.mockResolvedValue([
+      report(),
+      report({ id: "r2", severity: "info", title: "All quiet" }),
+    ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
-    await user.click(screen.getByRole("button", { name: "New pixie" }));
+    await showPixies(user);
 
-    expect(api.createPixie).toHaveBeenCalledWith({ name: "New pixie" });
-    expect(screen.getByRole("tab", { name: "Details", selected: true })).toBeInTheDocument();
+    const reports = screen.getByRole("region", { name: "Reports" });
+    expect(within(reports).getByRole("heading", { level: 2 })).toHaveTextContent("Reports1");
+    expect(
+      within(reports)
+        .getAllByRole("article")
+        .map((a) => a.getAttribute("aria-label")),
+    ).toEqual(["Report: CI is failing on main"]);
+    // An unread action report: a quiet coloured number at the row's end, not a badge.
+    const row = screen.getByRole("button", { name: "Tester, @tester, 1 report needs action" });
+    expect(row.querySelector(".pxw")).toHaveTextContent("1");
+    await user.click(within(reports).getByRole("button", { name: "Tester" }));
+    expect(screen.getByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+  });
+
+  it("counts several unread action reports on the pixie's row", async () => {
+    const api = fakeApi();
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieReports.mockResolvedValue([report(), report({ id: "r2", title: "Lint broke" })]);
+    const { user } = await renderApp({ api });
+    await showPixies(user);
+
+    const row = screen.getByRole("button", { name: "Tester, @tester, 2 reports need action" });
+    expect(row.querySelector(".pxw")).toHaveTextContent("2");
   });
 
   it("opens a template on its chat, and stays put when creating fails", async () => {
@@ -75,7 +102,7 @@ describe("Pixies section", () => {
       .mockRejectedValueOnce(new Error("Disk full"))
       .mockResolvedValueOnce(pixie({ id: "p2", name: "Tester", mascot: "star" }));
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     await user.click(screen.getByRole("button", { name: "Tester" }));
     expect(await screen.findByText("Disk full")).toBeInTheDocument();
@@ -104,7 +131,7 @@ describe("Pixies section", () => {
       ),
     );
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
 
     expect(screen.getByRole("button", { name: "Tester, @tester, running" })).toBeInTheDocument();
     expect(screen.queryByText("Shy")).not.toBeInTheDocument();
@@ -115,9 +142,9 @@ describe("Pixies section", () => {
     const api = fakeApi();
     api.pixies.mockResolvedValue([pixie()]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
     await user.click(screen.getByRole("button", { name: /^Tester/ }));
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
 
     expect(screen.getByRole("button", { name: /^Tester/ })).toHaveFocus();
   });
@@ -141,7 +168,7 @@ describe("Pixies section", () => {
     async function editOrder(api = fakeApi()) {
       api.pixies.mockResolvedValue(three());
       const rendered = await renderApp({ api });
-      await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+      await showPixies(rendered.user);
       await rendered.user.click(screen.getByRole("button", { name: "Edit order" }));
       return rendered;
     }
@@ -222,7 +249,7 @@ describe("Pixies section", () => {
       const api = fakeApi();
       api.pixies.mockResolvedValue([pixie(), pixie({ id: "p2", hidden: true, position: 1 })]);
       const { user } = await renderApp({ api });
-      await user.click(screen.getByRole("tab", { name: "Projects" }));
+      await showPixies(user);
 
       expect(screen.queryByRole("button", { name: "Edit order" })).not.toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "Show hidden (1)" }));
@@ -257,7 +284,7 @@ describe("a pixie at work in the list (B48)", () => {
     );
     api.pixieGroups.mockResolvedValue({ s1: [groupEntry({ pixie_id: "p2", state: "running" })] });
     const rendered = await renderApp({ api });
-    await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(rendered.user);
     const row = (name: string) => screen.getByRole("button", { name });
     await waitFor(() => row("Helper, @helper, running"));
     return { ...rendered, row };

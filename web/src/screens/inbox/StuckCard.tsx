@@ -1,7 +1,7 @@
 import type { Session, StuckFlag } from "../../api/types.ts";
-import { Icon } from "../../ui/Icon.tsx";
 import { useStuck } from "../approvals/hooks.ts";
-import { Card } from "../approvals/SwipeCard.tsx";
+import { FoldRow } from "./FoldRow.tsx";
+import { lineText, stuckLine } from "./needsLine.ts";
 
 /** A chat that looks stuck: stop it, or stop it and send a nudge to change course. */
 export function StuckCard({
@@ -15,28 +15,24 @@ export function StuckCard({
 }) {
   const { busy, interrupt, nudge } = useStuck(session.id, stuck.details);
   return (
-    <Card label={`Stuck: ${session.title}`}>
-      <div className="ck-k st">
-        <Icon name="stop" />
-        Stuck
-        <button
-          className="lnk"
-          onClick={() => {
-            onOpenChat(session.id);
-          }}
-        >
-          {session.title}
-        </button>
-      </div>
+    <FoldRow
+      label={`Stuck: ${session.title}`}
+      tone="wait"
+      name={session.title}
+      onOpen={() => {
+        onOpenChat(session.id);
+      }}
+      line={lineText(stuckLine(stuck))}
+    >
       <div className="cq">{stuck.details}</div>
       <div className="acts">
-        <button className="b qb2" disabled={busy} onClick={() => void interrupt()}>
-          Interrupt
-        </button>
         <button className="b b-pri" disabled={busy} onClick={() => void nudge()}>
           Send a nudge
         </button>
+        <button className="b qb2" disabled={busy} onClick={() => void interrupt()}>
+          Interrupt
+        </button>
       </div>
-    </Card>
+    </FoldRow>
   );
 }
