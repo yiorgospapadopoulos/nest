@@ -2,7 +2,7 @@
 accounts and versions from Nest's engine services, Claude's plugins and connectors.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from nestd.claude_code.account import ClaudeAccount
@@ -27,7 +27,7 @@ from nestd.repos.service import RepoService
 
 def build_sources(
     *,
-    claude_account: ClaudeAccount,
+    claude_account: Callable[[], Awaitable[ClaudeAccount]],
     claude_cli: ClaudeCli,
     codex: CodexEngine,
     codex_locations: CodexLocations,
@@ -41,7 +41,7 @@ def build_sources(
 ) -> Sources:
     async def claude() -> EngineAccount:
         try:
-            status = await claude_account.status()
+            status = await (await claude_account()).status()
         except ClaudeCliError:
             return EngineAccount(signed_in=None)
         return EngineAccount(status.signed_in, account_label(status.email, status.plan))

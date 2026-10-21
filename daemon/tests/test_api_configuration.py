@@ -48,7 +48,7 @@ async def test_the_page_with_claude_only(api: Api, where: Locations, tmp_path: P
     skill(where.synced_skills, "chrome-browser")
     plugin_folder = tmp_path / "plugins" / "superpowers"
     skill(plugin_folder / "skills", "brainstorming", "Ideas first")
-    api.claude.replies[PLUGINS] = [
+    api.claude.replies[None, PLUGINS] = [
         json.dumps(
             [
                 {"id": "superpowers@market", "enabled": True, "installPath": str(plugin_folder)},
@@ -147,7 +147,7 @@ async def test_claude_without_a_readable_setup(api: Api, where: Locations) -> No
 
 async def test_claude_signed_out_is_not_shown(api: Api) -> None:
     await sign_out_codex(api)
-    api.claude.replies[STATUS] = ['{"loggedIn": false}']
+    api.claude.replies[None, STATUS] = ['{"loggedIn": false}']
 
     assert (await page(api))["engines"] == []
 
@@ -634,7 +634,7 @@ async def test_a_codex_skill_claude_has_from_a_plugin_is_not_missing(
 ) -> None:
     plugin_folder = tmp_path / "plugins" / "superpowers"
     skill(plugin_folder / "skills", "brainstorming")
-    api.claude.replies[PLUGINS] = [
+    api.claude.replies[None, PLUGINS] = [
         json.dumps(
             [{"id": "superpowers@market", "enabled": True, "installPath": str(plugin_folder)}]
         )

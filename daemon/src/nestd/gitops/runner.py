@@ -67,15 +67,23 @@ class GitError(CommandError):
         return "not a git repository" in self.stderr
 
 
-async def run_command(argv: Sequence[str], cwd: Path, time_limit: float = TIMEOUT_SECONDS) -> str:
-    """Run `argv` in `cwd` and return its stdout; after `time_limit` seconds it is killed."""
+async def run_command(
+    argv: Sequence[str],
+    cwd: Path,
+    time_limit: float = TIMEOUT_SECONDS,
+    kill_on_cancel: bool = False,
+) -> str:
+    """Run `argv` in `cwd` and return its stdout; after `time_limit` seconds it is killed.
+    A cancelled caller waits for it to finish, unless `kill_on_cancel` (a sign-in the user
+    cancelled, B98).
+    """
     # Otherwise the subprocess fails with a bare OSError that callers do not expect.
     problem = await asyncio.to_thread(_cwd_problem, cwd)
     if problem is not None:
         raise CommandError(argv, None, f"the working directory {cwd} {problem}")
     running = asyncio.ensure_future(_run(argv, cwd, time_limit, _tail.get()))
     try:
-        returncode, stdout, stderr = await asyncio.shield(running)
+        returncode, stdout, stderr = await (running if kill_on_cancel else asyncio.shield(running))
     except asyncio.CancelledError:
         # Stopping one midway could leave a lock file behind; the timeout bounds the wait.
         await asyncio.gather(running, return_exceptions=True)
@@ -114,6 +122,11 @@ async def _run(
         process.kill()
         await process.wait()
         raise CommandError(argv, None, f"timed out after {time_limit:g} seconds") from None
+    except asyncio.CancelledError:
+        # Only an unshielded run is cancelled: its caller asked for it to stop.
+        process.kill()
+        await process.wait()
+        raise
     return process.returncode, stdout, stderr
 
 

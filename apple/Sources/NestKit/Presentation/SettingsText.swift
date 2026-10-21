@@ -104,26 +104,66 @@ public enum PixieSettingsText {
     }
 }
 
-/// The words of Settings > Accounts (B81).
+/// The words of Settings > Accounts (B81, B98).
 public enum AccountText {
-    /// "Max plan, Team org", or what Claude Code reported of the two.
-    public static func claudeDetail(_ login: ClaudeLogin) -> String? {
-        let parts = [login.plan.map { "\($0) plan" }, login.organization].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    /// "Claude", "Codex", else the engine's name capitalized.
+    public static func engine(_ provider: String) -> String {
+        switch provider {
+        case ProviderInfo.claude: "Claude"
+        case "codex": "Codex"
+        default: provider.capitalized
+        }
     }
 
-    /// Codex's login in a word (B94); "Not checked" while Codex could not be asked.
-    public static func codexState(_ login: CodexLogin) -> String {
-        switch login.signedIn {
+    /// The row's line under the title: the plan, then the email unless it is the title.
+    public static func detail(_ account: EngineAccount) -> String? {
+        let email = account.email.flatMap { $0.isEmpty || $0 == account.title ? nil : $0 }
+        let parts = [account.plan, email].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The login in a word; "Not checked" while the engine could not be asked.
+    public static func state(_ account: EngineAccount) -> String {
+        switch account.signedIn {
         case true: "Signed in"
         case false: "Signed out"
         case nil: "Not checked"
         }
     }
 
-    /// The Codex row's title: the ChatGPT account's email, else the engine's name.
-    public static func codexTitle(_ login: CodexLogin?) -> String {
-        login?.email.flatMap { $0.isEmpty ? nil : $0 } ?? "Codex"
+    /// "5 hour 64% · 23:40"; a window past its reset, or without a reset time, has no time.
+    public static func limitLine(_ limit: AccountLimit, now: Date, calendar: Calendar) -> String {
+        let window = limit.window
+        let line = "\(limit.label) \(UsageText.percent(window))"
+        guard let date = window.resetsAt else { return line }
+        return "\(line) · \(UsageText.resetTime(date, now: now, calendar: calendar))"
+    }
+
+    /// "Banked resets", with the count available when there are any.
+    public static func bankedResetsTitle(_ available: Int) -> String {
+        available > 0 ? "Banked resets \(available)" : "Banked resets"
+    }
+
+    public static func creditTitle(_ credit: BankedCredit) -> String {
+        credit.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Reset"
+    }
+
+    /// "expires 9 Nov"; nil when Codex gives no date.
+    public static func creditExpiry(_ credit: BankedCredit, calendar: Calendar) -> String? {
+        guard let date = credit.expiresAt else { return nil }
+        let parts = calendar.dateComponents([.day, .month], from: date)
+        return "expires \(parts.day!) \(UsageText.shortMonths[parts.month! - 1])"
+    }
+
+    /// What using a banked reset did, in plain words.
+    public static func useOutcome(_ outcome: BankedResetOutcome) -> String {
+        switch outcome {
+        case .reset: "Limits reset"
+        case .nothingToReset: "Nothing to reset yet"
+        case .noCredit: "No banked resets left"
+        case .alreadyRedeemed: "That reset was already used"
+        case .unknown: "Could not use the reset"
+        }
     }
 
     public static func githubState(_ state: GitHubLoginState) -> String {

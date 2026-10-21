@@ -32,8 +32,10 @@ class SessionHooks(Protocol):
         """A turn ended with this result; called before the session's state changes."""
         ...
 
-    async def usage(self, info: UsageInfo) -> None:
-        """The engine reported the subscription's usage windows."""
+    async def usage(self, info: UsageInfo, account_id: str | None) -> None:
+        """The engine reported the subscription's usage windows, of the account the run
+        opened on (B98; None: the engine's active one).
+        """
         ...
 
     async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:

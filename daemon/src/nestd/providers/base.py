@@ -145,6 +145,24 @@ class EngineWindow(UsageWindow):
         return window_label(self.minutes)
 
 
+class BankedCredit(BaseModel):
+    """One of Codex's banked resets (B98): it resets the account's limits when used."""
+
+    id: str
+    title: str | None
+    description: str | None
+    # None when it does not expire.
+    expires_at: datetime | None
+
+
+class BankedResets(BaseModel):
+    """The resets a Codex account has banked (B98)."""
+
+    available: int
+    # None until the details were read; only the ones still available.
+    credits: list[BankedCredit] | None = None
+
+
 class UsageInfo(BaseModel):
     """Subscription usage: Claude's five-hour and seven-day windows, when reported; another
     engine's windows by length in `windows` (B91).
@@ -156,6 +174,8 @@ class UsageInfo(BaseModel):
     provider: str = "claude"
     # Every window of an engine that does not name them as Claude does, shortest first.
     windows: list[EngineWindow] = Field(default_factory=list[EngineWindow])
+    # Codex's banked resets, read with its windows (B98); never in the usage events.
+    banked: BankedResets | None = Field(default=None, exclude=True)
 
 
 # The usage window whose limit was reached (B78), as the engine names it.
@@ -350,6 +370,16 @@ class CallRules:
 
 
 @dataclass(frozen=True)
+class RunAccount:
+    """The account an engine process starts on (B98)."""
+
+    id: str
+    # What points the engine at the account's profile folder (CLAUDE_CONFIG_DIR, or
+    # CODEX_HOME and CODEX_SQLITE_HOME); empty for the first account, run as without Nest.
+    env: Mapping[str, str] = field(default_factory=dict[str, str])
+
+
+@dataclass(frozen=True)
 class SessionSpec:
     cwd: Path
     # None passes no mode, so Claude Code's own setting (`defaultMode`) applies (IMP-06).
@@ -383,6 +413,8 @@ class SessionSpec:
     # With `resume_at`: the user message whose turn the cut drops. The engine refuses the
     # resume when anything after `resume_at` is not that turn's (B59).
     drops_turn: str | None = None
+    # The engine's active account when the run opens (B98); None runs as without accounts.
+    account: RunAccount | None = None
 
 
 @dataclass(frozen=True)

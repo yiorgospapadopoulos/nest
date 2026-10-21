@@ -15,6 +15,7 @@ from nestd.providers.base import (
     QuestionAnswer,
     QuestionRequest,
     ResultInfo,
+    RunAccount,
     SessionSpec,
     TextBlock,
     UserInput,
@@ -115,6 +116,21 @@ async def test_opening_starts_app_server_and_a_thread_in_the_chats_folder(
     assert run.steers
     await run.close()
     assert server.transport.closed
+
+
+async def test_a_run_on_an_added_account_starts_codex_on_its_profile(tmp_path: Path) -> None:
+    """B98: its own home for the login, the first account's for the SQLite state."""
+    account = RunAccount(
+        "0123456789ab",
+        {"CODEX_HOME": str(tmp_path / "profile"), "CODEX_SQLITE_HOME": str(tmp_path / "first")},
+    )
+
+    server, run, _, _ = await opened(tmp_path, account=account)
+
+    env = server.launches[0].env
+    assert env[CODEX_HOME_ENV] == str(tmp_path / "profile")
+    assert env["CODEX_SQLITE_HOME"] == str(tmp_path / "first")
+    await run.close()
 
 
 async def test_a_guarded_run_has_no_git_credentials_in_codex_or_its_commands(
