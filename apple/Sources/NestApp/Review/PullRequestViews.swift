@@ -151,11 +151,13 @@ private struct CheckRow: View {
 }
 
 /// The merge approval's body: the pull request, its checks, Merge (squash) with the other
-/// methods in a menu, and Dismiss.
+/// methods in a menu, "Also delete the branch" (unticked for each card; Nest deletes no
+/// branch otherwise, B96), and Dismiss.
 struct MergeBody: View {
     let approval: Approval
     let style: ApprovalCard.Style
     @Environment(Shell.self) private var shell
+    @State private var deletesBranch = false
 
     var body: some View {
         let proposal = approval.merge
@@ -197,14 +199,16 @@ struct MergeBody: View {
             ActionRow {
                 HStack(spacing: 1) {
                     Button {
-                        shell.merge(approval)
+                        shell.merge(approval, deleteBranch: deletesBranch)
                     } label: {
                         Label("Merge (squash)", systemImage: Icon.merge).grows(style)
                     }
                     .buttonStyle(.nest(.primary))
                     Menu {
                         ForEach(MergeMethod.allCases, id: \.self) { method in
-                            Button(method.label) { shell.merge(approval, method: method) }
+                            Button(method.label) {
+                                shell.merge(approval, method: method, deleteBranch: deletesBranch)
+                            }
                         }
                     } label: {
                         Image(systemName: Icon.chevron).font(.system(size: 9, weight: .bold))
@@ -216,12 +220,19 @@ struct MergeBody: View {
                     .help("Merge method")
                     .accessibilityLabel("Merge method")
                 }
+                Toggle("Also delete the branch", isOn: $deletesBranch)
+                    .toggleStyle(.checkbox)
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t1)
+                    .fixedSize()
+                    .help("Delete the pull request's branch on GitHub after merging")
                 Button("Dismiss") { shell.dismiss(approval) }
                     .buttonStyle(.nest(.plain))
                     .fixedSize()
                     .help("Hide this until the pull request changes")
             }
         }
+        .onChange(of: approval.id) { deletesBranch = false }
     }
 }
 

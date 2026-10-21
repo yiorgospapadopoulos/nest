@@ -82,12 +82,12 @@ PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
     f"{_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
-# A chat a pixie started, whose git writes stay blocked (D072, B58); a pixie's own runs
-# have their own prompt.
+# A chat a pixie started, which may commit but whose pushes and pull requests stay blocked
+# (D072, B58, D123); a pixie's own runs have their own prompt.
 GUARDED_PROMPT = (
-    "You are running inside Nest. Do not run git commit, git push, gh pr create or "
-    "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
+    "You are running inside Nest. You may commit your work. Do not run git push, "
+    "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
+    f"{_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
 # The same for Codex chats, which have no task list but Nest's artifact tools (B91).
@@ -101,9 +101,9 @@ CODEX_PLAIN_FOLDER_PROMPT = (
     f"{ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
-    "You are running inside Nest. Do not run git commit, git push, gh pr create or "
-    "gh pr merge: Nest commits, pushes and opens pull requests after the user approves "
-    f"your work. {_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
+    "You are running inside Nest. You may commit your work. Do not run git push, "
+    "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
+    f"{_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
 )
 
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it
@@ -207,7 +207,8 @@ class TurnRunner:
         `text`, else the chat's first prompt.
         """
         prompt = session.prompt if text is None else text
-        if session.mode == "worktree":
+        # A chat that joined an existing worktree has it already (B96).
+        if session.mode == "worktree" and session.worktree_path is None:
             assert repo is not None  # noqa: S101 (a worktree session always has a project)
             live.preparing = True
             try:
@@ -219,7 +220,7 @@ class TurnRunner:
                 raise
             finally:
                 live.preparing = False
-            if not setup.ok:
+            if setup is not None and not setup.ok:
                 return SessionState.FAILED, f"setup command failed: {setup.command}"
         return await self.submit(live, prompt, attachments, sender=sender)
 
@@ -637,7 +638,9 @@ class TurnRunner:
         dirs = await self._attachments.file_dirs(session.id)
         agents = await self.chat_agents(session)
         engine = self._engines.of(session)
-        while (run := live.run) is None or not _fits(live, session, dirs, agents):
+        while (run := live.run) is None or not _fits(
+            live, session, dirs, agents, engine.active_account()
+        ):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
             # sets it again, and the loop opens another run with that change.
@@ -645,6 +648,7 @@ class TurnRunner:
             extras = await self._pixie_extras(session)
             # Following Claude Code's own mode, the run opens without one (IMP-06).
             mode = None if session.follows_claude_code_mode else session.permission_mode
+            account = await engine.prepare_account()
             spec = SessionSpec(
                 cwd=cwd,
                 permission_mode=mode,
@@ -666,6 +670,7 @@ class TurnRunner:
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
+                account=account,
             )
             sink = SessionSink(
                 live,
@@ -677,8 +682,10 @@ class TurnRunner:
                 forking=session.fork_from,
                 attachments=self._attachments,
                 calls=self._calls,
+                active_account=engine.active_account,
             )
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
+            live.run_account = None if account is None else account.id
             live.run_dirs = dirs
             live.run_effort = session.effort
             live.run_bypass = mode == BYPASS
@@ -703,7 +710,10 @@ class TurnRunner:
         self, live: LiveSession, session: Session, folders: tuple[Path, ...]
     ) -> bool:
         """Whether the live run takes a message with files in `folders` as it is (B59)."""
-        return _fits(live, session, folders, await self.chat_agents(session))
+        engine = self._engines.of(session)
+        return _fits(
+            live, session, folders, await self.chat_agents(session), engine.active_account()
+        )
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
         """The pixies the chat may call (B40); a pixie's own chat gets the others (B41).
@@ -736,8 +746,9 @@ class TurnRunner:
 
 
 def _guarded(session: Session) -> bool:
-    """A pixie may never commit or push (D072, D078): its chats, habit runs (which carry its
-    `pixie_id`) and the chats it starts keep git writes blocked (B58).
+    """A pixie may commit but never push, open or merge a pull request (D072, D078, D123): its
+    chats, habit runs (which carry its `pixie_id`) and the chats it starts keep those blocked
+    (B58).
     """
     return session.pixie_id is not None or session.started_by_pixie is not None
 
@@ -748,17 +759,24 @@ def _keep_unsent(live: LiveSession, unsent: Unsent) -> None:
         live.unsent = unsent
 
 
-def _fits(live: LiveSession, session: Session, dirs: tuple[Path, ...], agents: ChatAgents) -> bool:
+def _fits(
+    live: LiveSession,
+    session: Session,
+    dirs: tuple[Path, ...],
+    agents: ChatAgents,
+    account: str | None,
+) -> bool:
     """Whether the live run can take the session's next message as it is."""
-    # A new attachment folder, a new effort, another set of subagents (B40), or bypass for
-    # a run that did not open in it needs a new run (D046), but waits while background
-    # tasks run: closing would stop them. Until then the agent asks before reading a new
-    # folder's files.
+    # A new attachment folder, a new effort, another set of subagents (B40), another
+    # active account (B98), or bypass for a run that did not open in it needs a new run
+    # (D046), but waits while background tasks run: closing would stop them. Until then
+    # the agent asks before reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
         set(dirs) <= set(live.run_dirs)
         and live.run_effort == session.effort
         and live.run_agents.fingerprint == agents.fingerprint
+        and live.run_account == account
     )
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 

@@ -157,6 +157,13 @@ class CreateSession(BaseModel):
     # the local branch it starts from instead of the default branch.
     branch: str | None = None
     base: str | None = None
+    # An existing linked worktree of the repo to work in instead of a new one (B96): the
+    # chat takes its branch and shares it with the worktree's other chats.
+    worktree_path: Path | None = None
+    # An existing local branch to work on itself (B96): in place when the project folder
+    # is on it, in the linked worktree that has it checked out, else in a new worktree of
+    # Nest's with it checked out.
+    on_branch: str | None = None
 
 
 class SendMessage(BaseModel):

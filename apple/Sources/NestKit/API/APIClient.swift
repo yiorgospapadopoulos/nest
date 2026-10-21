@@ -86,7 +86,7 @@ public struct APIClient: NestAPI {
         try await call("PATCH", ["sessions", id], body: request)
     }
 
-    /// Deletes the session for good, with its worktree, branch and history.
+    /// Deletes the session for good, with its worktree and history; its branch stays.
     public func deleteSession(_ id: String) async throws {
         try await perform(
             "DELETE", ["sessions", id], query: [URLQueryItem(name: "purge", value: "true")])
@@ -304,20 +304,6 @@ public struct APIClient: NestAPI {
         try await get("usage", "limits")
     }
 
-    public func refreshUsage() async throws -> UsageLimits {
-        try await call("POST", ["usage", "refresh"])
-    }
-
-    public func usageLimits(provider: String) async throws -> UsageLimits {
-        try await call(
-            "GET", ["usage", "limits"], query: [URLQueryItem(name: "provider", value: provider)])
-    }
-
-    public func refreshUsage(provider: String) async throws -> UsageLimits {
-        try await call(
-            "POST", ["usage", "refresh"], query: [URLQueryItem(name: "provider", value: provider)])
-    }
-
     public func usageSettings() async throws -> UsageSettings {
         try await get("usage", "settings")
     }
@@ -388,6 +374,10 @@ public struct APIClient: NestAPI {
         return list.branches
     }
 
+    public func repoBranchMap(_ name: String) async throws -> BranchMap {
+        try await get("repos", name, "branch-map")
+    }
+
     public func storage() async throws -> StorageUsage {
         try await get("storage")
     }
@@ -442,32 +432,54 @@ public struct APIClient: NestAPI {
         try await call("POST", ["accounts", "github", "check"])
     }
 
-    public func claudeLogin() async throws -> ClaudeLogin {
-        try await get("accounts", "claude")
+    public func engineAccounts() async throws -> [EngineAccount] {
+        let list: AccountList = try await get("accounts")
+        return list.accounts
     }
 
-    public func signInClaude() async throws {
-        try await perform("POST", ["accounts", "claude", "login"])
+    public func addAccount(provider: String) async throws -> AccountSignIn {
+        try await call("POST", ["accounts", provider])
     }
 
-    public func signOutClaude() async throws -> ClaudeLogin {
-        try await call("POST", ["accounts", "claude", "logout"])
+    public func signInAccount(_ id: String) async throws -> AccountSignIn {
+        try await call("POST", ["accounts", id, "login"])
     }
 
-    public func codexLogin() async throws -> CodexLogin {
-        try await get("accounts", "codex")
+    public func cancelAccountSignIn(_ id: String) async throws {
+        try await perform("POST", ["accounts", id, "login", "cancel"])
     }
 
-    public func signInCodex() async throws -> CodexSignIn {
-        try await call("POST", ["accounts", "codex", "login"])
+    public func signOutAccount(_ id: String) async throws -> EngineAccount {
+        try await call("POST", ["accounts", id, "logout"])
     }
 
-    public func cancelCodexSignIn() async throws {
-        try await perform("POST", ["accounts", "codex", "login", "cancel"])
+    public func renameAccount(_ id: String, name: String?) async throws -> EngineAccount {
+        try await call("PUT", ["accounts", id, "name"], body: RenameAccountRequest(name: name))
     }
 
-    public func signOutCodex() async throws -> CodexLogin {
-        try await call("POST", ["accounts", "codex", "logout"])
+    public func activateAccount(_ id: String) async throws -> [EngineAccount] {
+        let list: AccountList = try await call("PUT", ["accounts", id, "active"])
+        return list.accounts
+    }
+
+    public func removeAccount(_ id: String) async throws -> [EngineAccount] {
+        let list: AccountList = try await call("DELETE", ["accounts", id])
+        return list.accounts
+    }
+
+    public func refreshAccounts() async throws -> [EngineAccount] {
+        let list: AccountList = try await call("POST", ["accounts", "refresh"])
+        return list.accounts
+    }
+
+    public func bankedResets(_ id: String) async throws -> BankedResets {
+        try await get("accounts", id, "banked-resets")
+    }
+
+    public func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse {
+        try await call(
+            "POST", ["accounts", id, "banked-resets", "use"],
+            body: UseBankedResetRequest(creditID: creditID))
     }
 
     public func claudeCode() async throws -> ClaudeCodeStatus {

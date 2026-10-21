@@ -44,7 +44,7 @@ struct ChatRow: View {
                 if place != nil || session.pinned || session.stuck != nil || startedBy != nil {
                     HStack(spacing: 4) {
                         if let place {
-                            PlaceMark(place: place)
+                            PlaceMark(place: place, project: session.repo)
                         }
                         if session.pinned {
                             Image(systemName: Icon.pin).font(.system(size: 8))
@@ -121,9 +121,12 @@ struct ChatRow: View {
 }
 
 /// Where a chat works, in its sidebar row's second line: the branch icon and the branch or
-/// worktree name in mono, shortened in the middle.
+/// worktree name in mono, shortened in the middle, the name in its branch map lane colour
+/// once the map has it (B96).
 struct PlaceMark: View {
     let place: ChatPlace
+    let project: String
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         HStack(spacing: 3) {
@@ -132,6 +135,9 @@ struct PlaceMark: View {
                 .font(.mono(TypeSize.meta))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .foregroundStyle(
+                    shell.branchMaps.color(of: place, in: project).map(Color.init)
+                        ?? Palette.t3)
         }
         .help(place.help)
         .accessibilityHidden(true)

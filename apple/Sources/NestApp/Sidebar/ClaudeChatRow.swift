@@ -29,7 +29,7 @@ struct ClaudeChatRow: View {
                 if place != nil || chat.openInClaudeCode {
                     HStack(spacing: 4) {
                         if let place {
-                            PlaceMark(place: place)
+                            PlaceMark(place: place, project: chat.repo)
                         }
                         if chat.openInClaudeCode {
                             if place != nil {

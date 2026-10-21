@@ -276,7 +276,10 @@ async def test_close_session_closes_only_its_own_chats(
 
     assert not_mine == "You can only do that in chats you started."
     assert removed == "Closed the chat and removed its worktree, which held no work."
-    assert kept == "Closed the chat. Its worktree holds work, so it stays for the user."
+    assert kept == (
+        "Closed the chat. Its worktree stays for the user: it holds work, another chat uses it,"
+        " or Nest did not create it."
+    )
     assert clean.worktree_path is not None
     assert not clean.worktree_path.exists()
     assert worked.worktree_path is not None

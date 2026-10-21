@@ -66,6 +66,10 @@ class CodexEngine:
             self._status = await self._ask(now)
             return self._status
 
+    def forget(self) -> None:
+        """Ask Codex again next time: the active account changed (B98)."""
+        self._status = None
+
     async def require_signed_in(self) -> None:
         """409 `codex_not_signed_in` when Codex said it has no login; a Codex that could
         not be asked is left to fail on its own when the chat starts.

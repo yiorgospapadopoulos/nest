@@ -22,6 +22,8 @@ struct Sidebar: View {
             }
         }
         .frame(maxHeight: .infinity)
+        // The shown project's branch map, which colours its chats' branches (B96).
+        .task(id: branchMapProject) { await shell.branchMaps.show(branchMapProject) }
         .sideSurface()
         // The resize handle's outer half reaches past the bar; the mask keeps it.
         .mask { Rectangle().padding(.trailing, -ResizableSidebar.handleWidth / 2) }
@@ -41,6 +43,11 @@ struct Sidebar: View {
         }
     }
 
+    /// The project whose branch map loads: a git one.
+    private var branchMapProject: String? {
+        shell.repo?.git == true ? shell.project : nil
+    }
+
     private var deleteBinding: Binding<Bool> {
         Binding(
             get: { shell.deleting != nil },
@@ -56,6 +63,10 @@ private struct SidebarFull: View {
         let groups = shell.sidebarGroups(in: project)
         VStack(spacing: 0) {
             ProjectHeader()
+            if shell.branchMaps.isOpen(project), let lanes = shell.branchMaps.lanes(project) {
+                BranchMapPanel(project: project, lanes: lanes)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             Button {
                 shell.newChat()

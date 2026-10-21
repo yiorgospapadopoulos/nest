@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import shutil
 import tempfile
 from collections.abc import Awaitable, Callable, Iterator, Sequence
@@ -9,6 +10,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from nestd.accounts.profiles import LEAKED_ENV
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.auth.secrets import KeychainSecretStore
 from nestd.cli import main
@@ -123,6 +125,18 @@ def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:
     assert cli.recorder.served == [8765]
     assert cli.secrets.get(LOCAL_DEVICE_ACCOUNT)
     assert cli.paths.db_path.is_file()
+
+
+def test_serve_drops_the_account_variables_a_claude_shell_leaks(
+    cli: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B98: inherited by every engine process, they make an added account show another."""
+    for name in LEAKED_ENV:
+        monkeypatch.setenv(name, "leaked")
+
+    assert cli.run("serve") == 0
+
+    assert [name for name in LEAKED_ENV if name in os.environ] == []
 
 
 def test_served_app_restarts_through_the_runtime(cli: Rig) -> None:
