@@ -59,6 +59,13 @@ export function Row({
   );
 }
 
+export type StatusTone = "ok" | "wait" | "run" | "bad" | "idle";
+
+/** A status as a quiet coloured word, as the Mac's settings show it: no pill. */
+export function Status({ tone, label }: { tone: StatusTone; label: string }) {
+  return <span className={`sst ${tone}`}>{label}</span>;
+}
+
 export function SwitchRow({
   label,
   on,

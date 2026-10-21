@@ -1,0 +1,521 @@
+/* Settings on the phone, as the Mac's (B102 items 16, 17, 31): a flat bar, small grey
+   section labels, rows edge to edge with a label left and its value or control right, split
+   by 1 px dividers, status as quiet coloured words, and the user's accent on switches and
+   the one primary button. Loaded after screens.css, whose shared rules it overrides here. */
+
+.set {
+  margin: 0 -16px;
+  font-size: var(--fs-body);
+  color: var(--t1);
+}
+
+/* The page's bar: back, then its title, flat over a divider. */
+.set .snav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--row);
+  margin: 0;
+  padding: 0 16px 0 4px;
+  border-bottom: 1px solid var(--div);
+  background: var(--bg);
+}
+.set .snav > .snt:first-child {
+  padding-left: 12px;
+}
+.set .snav .back {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 0;
+}
+.set .snav .back span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.set .snt {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: left;
+}
+.set .snav .stot {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+
+/* Small grey section labels, no large titles. */
+.set .pg-h {
+  margin: 14px 16px 4px;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--t2);
+}
+.set .pg-h + .lgrp,
+.set section > .lgrp {
+  border-top: 1px solid var(--div);
+}
+
+.set .lgrp,
+.set .lgrp.gl {
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* A row: label left, value or control right, a divider under it. */
+.set .srow {
+  min-height: var(--row);
+  padding: 6px 16px;
+  font-size: var(--fs-body);
+  border-bottom: 1px solid var(--div);
+}
+.set .srow::before {
+  content: none;
+}
+.set .srow.sub {
+  padding-left: 28px;
+  font-size: var(--fs-meta);
+}
+.set .srow.note {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.set .slab {
+  gap: 1px;
+  min-width: 0;
+}
+.set .slab .hint,
+.set .hint {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  overflow-wrap: anywhere;
+}
+.set .sval {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.set .ssel {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  background: transparent;
+  text-align: right;
+  min-height: 44px;
+}
+.set .mono,
+.set .hint.mono {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+}
+.set .slink {
+  font-size: var(--fs-body);
+}
+.set .ptabs {
+  padding: 0 12px;
+  border-bottom-color: var(--div);
+}
+.set .ptabs button {
+  font-size: var(--fs-meta);
+}
+.set .note {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+
+/* Switches in the user's accent. */
+.set .sw[aria-checked="true"] {
+  background: var(--accent);
+}
+.set .sw[aria-checked="true"]::after {
+  background: var(--on-accent);
+}
+
+/* Status as a quiet coloured word. */
+.sst {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  white-space: nowrap;
+}
+.sst.ok {
+  color: var(--ok);
+}
+.sst.wait {
+  color: var(--wait);
+}
+.sst.run {
+  color: var(--run);
+}
+.sst.bad {
+  color: var(--bad);
+}
+
+/* Usage: an engine's name over its windows, and the Top bar checkmarks. */
+.set .ueng {
+  margin: 10px 0 6px;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--t2);
+}
+.set .ueng:first-child {
+  margin-top: 0;
+}
+.ucheck {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid var(--t3);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.ucheck::before {
+  content: "";
+  position: absolute;
+  inset: -13px;
+}
+.ucheck[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.ucheck[aria-checked="true"]::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Configuration (B102 item 31). */
+.cfg-intro {
+  margin: 10px 16px 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.cfg-foot {
+  margin: 12px 16px 16px;
+}
+.cfg-file,
+.cfg-n {
+  color: var(--t3);
+}
+.cfg-n {
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+.cfg-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cfg-tags span + span::before {
+  content: " · ";
+}
+.cfg-warn {
+  color: var(--wait);
+}
+.cfg-dim {
+  color: var(--t3);
+}
+.cfg-bad {
+  color: var(--bad);
+}
+.cfg-ok {
+  font-size: var(--fs-meta);
+  color: var(--ok);
+}
+.cfg-tools {
+  justify-content: flex-end;
+  gap: 12px;
+}
+.cfg-tools .lnk {
+  margin-right: auto;
+  margin-left: 0;
+  min-height: 44px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+
+/* A row that folds open the rows under it. */
+.cfg-foldrow {
+  padding-left: 4px;
+}
+.cfg-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  padding: 0 0 0 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cfg-fold .cv,
+.eng-h .cv {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--t3);
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+}
+.cfg-fold[aria-expanded="true"] .cv,
+.eng-h[aria-expanded="true"] .cv {
+  transform: none;
+}
+.cfg-fold .slab {
+  max-width: none;
+  flex: 1;
+}
+
+/* An engine: a bordered box whose header folds it open, one at a time. */
+.eng {
+  margin: 0 16px 10px;
+  border: 1px solid var(--div);
+  border-radius: var(--r-phone);
+  overflow: hidden;
+}
+.eng-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--row);
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  font: inherit;
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.eng-n {
+  font-weight: 500;
+}
+.eng-h small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.eng-copy {
+  display: grid;
+  gap: 4px;
+  padding: 0 12px 10px;
+}
+.eng-copy .b {
+  min-height: 44px;
+  width: 100%;
+  font-size: var(--fs-meta);
+}
+.eng .srow {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.eng .srow.sub {
+  padding-left: 24px;
+}
+.eng > .srow:last-child,
+.eng > .note:last-child {
+  border-bottom: 0;
+}
+.cfg-cap {
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--div);
+}
+.cfg-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 6px 10px;
+  border-radius: var(--r-ctl);
+  background: var(--soft);
+  font-size: var(--fs-meta);
+}
+.cfg-done span {
+  flex: 1;
+}
+.cfg-ck {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  flex: none;
+}
+.cfg-conn {
+  padding: 0 12px 8px 24px;
+}
+
+/* The editor sheet, the forms and the copy popup. */
+.cfg-ed {
+  display: grid;
+  gap: 10px;
+  height: 100%;
+  grid-template-rows: auto auto 1fr;
+}
+.cfg-path {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  overflow-wrap: anywhere;
+}
+.cfg-disk {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--div);
+  border-radius: var(--r-ctl);
+  font-size: var(--fs-meta);
+}
+.cfg-disk-t {
+  flex: 1 1 60%;
+}
+.cfg-text {
+  min-height: 50vh;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--div);
+  border-radius: var(--r-phone);
+  background: var(--bg);
+  color: var(--t1);
+  font: var(--fs-meta) / 1.5 var(--mono);
+  resize: none;
+}
+.cfg-save:disabled {
+  color: var(--t3);
+}
+.cfg-form,
+.cfg-copy {
+  display: grid;
+  gap: 12px;
+  font-size: var(--fs-body);
+}
+.cfg-about {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.cfg-field {
+  display: grid;
+  gap: 4px;
+}
+.cfg-field label {
+  font-size: var(--fs-label);
+  color: var(--t2);
+}
+.cfg-field input,
+.cfg-field textarea,
+.cfg-search {
+  min-height: 44px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--div);
+  border-radius: var(--r-ctl);
+  background: var(--soft);
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+.cfg-field textarea {
+  font: var(--fs-meta) / 1.4 var(--mono);
+  resize: vertical;
+}
+.cfg-search {
+  margin-bottom: 10px;
+}
+.srow > .cfg-search {
+  margin: 0;
+  flex: 1;
+}
+.cfg-remove {
+  justify-self: start;
+}
+.cfg-part {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--div);
+}
+.cfg-part h3 {
+  margin: 0;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+.cfg-part p {
+  margin: 0;
+  font-size: var(--fs-meta);
+}
+.cfg-acts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+}
+.cfg-acts.start {
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+.cfg-acts .b {
+  min-height: 44px;
+}
+.cfg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--fs-meta);
+}
+.cfg-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.cfg-cmp {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cfg-pane h4 {
+  margin: 0 0 4px;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--t2);
+}
+.cfg-pane pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--div);
+  border-radius: var(--r-ctl);
+  background: var(--bg);
+  font: var(--fs-micro) / 1.45 var(--mono);
+  white-space: pre-wrap;
+}

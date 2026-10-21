@@ -1,23 +1,32 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { UsageLimits, UsagePeriod } from "../../api/types.ts";
+import type { EngineItem, UsageLimits, UsagePeriod } from "../../api/types.ts";
 import { STORAGE_KEY } from "../../appearance/appearance.ts";
 import { RESTART_POLL_MS, RESTART_POLLS } from "../../store/actions.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { connector, usagePeriod } from "../../test/fixtures.ts";
+import { configurationPage, connector, engineSection, usagePeriod } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
-// Each section's page; the usage meters are on Usage, the connectors under Extensions.
+// Each section's page; the usage meters are on Usage, the connectors in Claude's part of
+// Configuration.
 const openUsage = (api = fakeApi()) => openSettings("Usage", { api });
 const openGeneral = (api = fakeApi()) => openSettings("General", { api });
 const openAppearance = (storage = memoryStorage()) =>
   openSettings("Appearance", { api: fakeApi(), storage });
 
 async function openConnections(api = fakeApi()) {
-  const rendered = await openSettings("Extensions", { api });
-  await rendered.user.click(screen.getByRole("button", { name: "Connections" }));
+  const connectors = { kind: "connectors", count: 2, detail: null, path: null, folder: false };
+  api.configuration.mockResolvedValue(
+    configurationPage({ engines: [engineSection({ items: [connectors] as EngineItem[] })] }),
+  );
+  const rendered = await openSettings("Configuration", { api });
+  const claude = await screen.findByRole("region", { name: "Claude" });
+  const fold = within(claude).getByRole("button", { name: /^Connectors/ });
+  expect(fold).toHaveTextContent("claude.ai · 2");
+  expect(claude).toHaveTextContent("Claude only");
+  await rendered.user.click(fold);
   return rendered;
 }
 
@@ -564,12 +573,12 @@ describe("connectors", () => {
 
 describe("appearance", () => {
   afterEach(() => {
-    for (const name of ["data-theme", "data-accent", "data-bubble", "data-glass"]) {
+    for (const name of ["data-theme", "data-accent", "data-bubble"]) {
       document.documentElement.removeAttribute(name);
     }
   });
 
-  it("applies and remembers theme, accent, bubble and wallpaper", async () => {
+  it("applies and remembers theme, accent and bubble", async () => {
     const storage = memoryStorage();
     const { user } = await openAppearance(storage);
     const root = document.documentElement;
@@ -577,19 +586,15 @@ describe("appearance", () => {
     await user.click(screen.getByRole("button", { name: "Dark" }));
     await user.click(screen.getByRole("button", { name: "Ocean" }));
     await user.click(screen.getByRole("button", { name: "Neutral" }));
-    await user.click(screen.getByRole("button", { name: "Sky" }));
 
     expect(root).toHaveAttribute("data-theme", "dark");
     expect(root).toHaveAttribute("data-accent", "ocean");
     expect(root).toHaveAttribute("data-bubble", "neutral");
-    expect(document.querySelector(".wall")).toHaveClass("wallpaper-sky");
     expect(screen.getByRole("button", { name: "Ocean" })).toHaveAttribute("aria-pressed", "true");
     expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toEqual({
       theme: "dark",
       accent: "ocean",
       bubble: "neutral",
-      wallpaper: "sky",
-      glass: "clear",
     });
 
     await user.click(screen.getByRole("button", { name: "Auto" }));
@@ -600,49 +605,17 @@ describe("appearance", () => {
     expect(root).not.toHaveAttribute("data-bubble");
   });
 
-  it("switches the glass theme at once and previews every theme", async () => {
+  it("offers no glass theme or wallpaper, which no longer change the look (B102)", async () => {
     const storage = memoryStorage();
-    const { user } = await openAppearance(storage);
-    const root = document.documentElement;
-    const group = screen.getByRole("group", { name: "Glass" });
-    const choices = within(group).getAllByRole("button");
+    storage.setItem(STORAGE_KEY, JSON.stringify({ glass: "frosted", wallpaper: "sky" }));
+    await openAppearance(storage);
 
-    expect(choices.map((choice) => choice.textContent)).toEqual([
-      "Clear",
-      "Frosted",
-      "Smoke",
-      "Blue Grey",
-      "Deep",
-    ]);
-    expect(
-      choices.map((choice) => choice.querySelector("[data-glass]")?.getAttribute("data-glass")),
-    ).toEqual(["clear", "frosted", "smoke", "bluegrey", "deep"]);
-    expect(root).not.toHaveAttribute("data-glass");
-
-    await user.click(within(group).getByRole("button", { name: "Smoke" }));
-
-    expect(root).toHaveAttribute("data-glass", "smoke");
-    expect(within(group).getByRole("button", { name: "Smoke" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(within(group).getByRole("button", { name: "Clear" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    expect(JSON.parse(storage.getItem(STORAGE_KEY) ?? "")).toMatchObject({ glass: "smoke" });
-
-    await user.click(within(group).getByRole("button", { name: "Clear" }));
-    expect(root).not.toHaveAttribute("data-glass");
-  });
-
-  it("restores the saved glass theme on start", async () => {
-    const storage = memoryStorage();
-    storage.setItem(STORAGE_KEY, JSON.stringify({ glass: "frosted" }));
-
-    await renderApp({ storage });
-
-    expect(document.documentElement).toHaveAttribute("data-glass", "frosted");
+    expect(screen.queryByRole("group", { name: "Glass" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Wallpaper" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Chat background" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Your messages" })).toBeInTheDocument();
+    expect(document.documentElement.getAttributeNames().join(" ")).not.toMatch(/glass/);
+    expect(document.querySelector("[class*='wall']")).toBeNull();
   });
 });
 
