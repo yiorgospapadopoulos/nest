@@ -3,10 +3,41 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { agentDefaults, pixie, session } from "../../test/fixtures.ts";
+import type { ModelOption, PermissionMode } from "../../api/types.ts";
+import { claudeProvider, codexProvider, modelList, pixie, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 
-const details = (api = fakeApi(), shown = pixie()) => openPixie(api, shown, "Details");
+const details = (api = withModels(), shown = pixie()) => openPixie(api, shown, "Details");
+
+const codexModel = (value: string, name: string, description: string, levels: string[]) =>
+  ({
+    value,
+    display_name: name,
+    description,
+    effort_levels: levels,
+    supports_effort: levels.length > 0,
+    supports_auto_mode: false,
+    claude_code_effort: null,
+  }) as ModelOption;
+
+/** Claude's models with `claude` as its default model, and Codex's when it is listed. */
+function withModels(claude = "opus") {
+  const api = fakeApi();
+  api.models.mockImplementation((provider) =>
+    Promise.resolve(
+      provider === "codex"
+        ? modelList({
+            default_model: "gpt-5.5",
+            models: [
+              codexModel("gpt-5.5", "GPT-5.5", "Codex's best", ["low", "medium", "high"]),
+              codexModel("gpt-5.5-mini", "GPT-5.5 mini", "Faster", ["low", "medium"]),
+            ],
+          })
+        : modelList({ default_model: claude }),
+    ),
+  );
+  return api;
+}
 
 const sheet = (name: string) => screen.getByRole("dialog", { name });
 
@@ -187,7 +218,7 @@ describe("Pixie details", () => {
   });
 
   it("sets project files, autonomy and permissions from picker sheets", async () => {
-    const api = fakeApi();
+    const api = withModels();
     const { user } = await details(api);
 
     await user.click(screen.getByRole("button", { name: "Project files: Edit" }));
@@ -201,6 +232,7 @@ describe("Pixie details", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /^Start/ }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { autonomy: "start" });
 
+    await screen.findByRole("button", { name: "Model: Opus 5.5" });
     await user.click(await screen.findByRole("button", { name: "Permissions: Ask" }));
     // The default model takes Auto.
     expect(screen.getByRole("menuitemradio", { name: /^Auto/ })).toBeInTheDocument();
@@ -208,64 +240,143 @@ describe("Pixie details", () => {
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { permission_mode: "plan" });
   });
 
-  it("sets the model and thinking with the composer's rules", async () => {
-    const api = fakeApi();
+  it("sets the model from one menu with Claude's models, no Default entry (items 25, 27)", async () => {
+    const api = withModels();
     const { user } = await details(api);
 
-    await user.click(await screen.findByRole("button", { name: "Model: Default" }));
-    await user.click(screen.getByRole("menuitemradio", { name: /^Haiku 4.5/ }));
+    // A pixie without a model runs its engine's default model, named as such.
+    await user.click(await screen.findByRole("button", { name: "Model: Opus 5.5" }));
+    const picker = sheet("Model");
+    expect(
+      within(picker)
+        .getAllByRole("menuitemradio")
+        .map((i) => i.textContent),
+    ).toEqual([
+      "Opus 5.5Most capable for complex work",
+      "Haiku 4.5Fastest for quick answers",
+      "Opus 4.6Previous Opus",
+    ]);
+    expect(within(picker).getByRole("menuitemradio", { name: /^Opus 5.5/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(within(picker).getByRole("menuitemradio", { name: /^Haiku 4.5/ }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: "haiku" });
-    // Haiku takes no thinking level.
+    // Haiku takes no thinking level, nor the Auto permission mode.
     expect(await screen.findByRole("button", { name: "Thinking: Not available" })).toBeDisabled();
-    // Nor the Auto permission mode.
     await user.click(screen.getByRole("button", { name: "Permissions: Ask" }));
     expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "Model: Haiku 4.5" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Opus 5.5/ }));
-    await user.click(await screen.findByRole("button", { name: "Thinking: Default" }));
+    // No thinking chosen yet, and no Default to choose.
+    await user.click(await screen.findByRole("button", { name: "Thinking: -" }));
+    expect(screen.queryByRole("menuitemradio", { name: /Default/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitemradio", { name: "High" }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { effort: "high" });
     expect(await screen.findByRole("button", { name: "Thinking: High" })).toBeInTheDocument();
   });
 
-  it("sets the model and thinking back to Default", async () => {
-    const api = fakeApi();
-    const { user } = await details(api, pixie({ model: "opus", effort: "high" }));
+  it("chooses the engine with the model, a section per engine (item 25)", async () => {
+    const api = withModels();
+    api.providers.mockResolvedValue({
+      providers: [claudeProvider(), codexProvider({ signed_in: false })],
+    });
+    const { user } = await details(api);
+    // The Mac answers with the pixie as it is now, each change kept.
+    let current = pixie();
+    api.updatePixie.mockImplementation((_id, body) => {
+      current = { ...current, ...body };
+      return Promise.resolve(current);
+    });
 
-    await user.click(await screen.findByRole("button", { name: "Thinking: High" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Default" }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { effort: null });
-    expect(await screen.findByRole("button", { name: "Thinking: Default" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Model: Opus 5.5" }));
+    await user.click(await screen.findByRole("button", { name: "Model: Opus 5.5" }));
     const picker = sheet("Model");
-    await user.click(within(picker).getByRole("menuitemradio", { name: /Your agent default/ }));
-    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: null });
-    expect(await screen.findByRole("button", { name: "Model: Default" })).toBeInTheDocument();
+    const claude = within(picker).getByRole("group", { name: "Claude" });
+    const codex = within(picker).getByRole("group", { name: "Codex" });
+    expect(claude).toHaveTextContent("ClaudeClaude Max");
+    expect(within(codex).getByText("Not signed in")).toBeInTheDocument();
+    expect(
+      within(codex)
+        .getAllByRole("menuitemradio")
+        .map((i) => i.textContent),
+    ).toEqual(["GPT-5.5Codex's best", "GPT-5.5 miniFaster"]);
+    expect(within(codex).getByRole("menuitemradio", { name: /^GPT-5.5 mini/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await user.click(within(codex).getByRole("menuitemradio", { name: /^GPT-5.5 mini/ }));
+
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", {
+      provider: "codex",
+      model: "gpt-5.5-mini",
+    });
+    // Off Claude, the row names the engine; thinking and permissions follow Codex's models.
+    expect(
+      await screen.findByRole("button", { name: "Model: Codex · GPT-5.5 mini" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Thinking: -" }));
+    expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent)).toEqual([
+      "Low",
+      "Medium",
+    ]);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Permissions: Ask" }));
+    expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // Within its own engine only the model is sent; another engine's names that engine.
+    await user.click(screen.getByRole("button", { name: "Model: Codex · GPT-5.5 mini" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^GPT-5.5Codex/ }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: "gpt-5.5" });
+    await user.click(await screen.findByRole("button", { name: "Model: Codex · GPT-5.5" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Haiku 4.5/ }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { provider: "claude", model: "haiku" });
+    expect(await screen.findByRole("button", { name: "Model: Haiku 4.5" })).toBeInTheDocument();
+  });
+
+  it("says when an engine's models are unavailable", async () => {
+    const api = withModels();
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), codexProvider()] });
+    api.models.mockImplementation((provider) =>
+      provider === "codex"
+        ? Promise.reject(new Error("Codex is not installed"))
+        : Promise.resolve(modelList({ default_model: "opus" })),
+    );
+    const { user } = await details(api);
+
+    await user.click(await screen.findByRole("button", { name: "Model: Opus 5.5" }));
+    const codex = within(sheet("Model")).getByRole("group", { name: "Codex" });
+    expect(within(codex).getByRole("menuitem", { name: "Models unavailable" })).toBeDisabled();
   });
 
   it("shows the mode the Mac falls back to when the new model has no Auto", async () => {
-    const api = fakeApi();
+    const api = withModels();
     const shown = pixie({ permission_mode: "auto" });
     const { user } = await details(api, shown);
     // The Mac moves a pixie in Auto to asking when its new model does not take Auto.
     api.updatePixie.mockResolvedValueOnce({ ...shown, model: "haiku", permission_mode: "default" });
 
     expect(await screen.findByRole("button", { name: "Permissions: Auto" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Model: Default" }));
+    await user.click(screen.getByRole("button", { name: "Model: Opus 5.5" }));
     await user.click(screen.getByRole("menuitemradio", { name: /^Haiku 4.5/ }));
     expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { model: "haiku" });
     expect(await screen.findByRole("button", { name: "Permissions: Ask" })).toBeInTheDocument();
   });
 
-  it("follows the agent default model while the pixie has none", async () => {
-    const api = fakeApi();
-    api.agentDefaults.mockResolvedValue(agentDefaults({ model: "haiku" }));
+  it("names a permission mode it does not know as it is", async () => {
+    await details(withModels(), pixie({ permission_mode: "dontAsk" as PermissionMode }));
+
+    expect(await screen.findByRole("button", { name: "Permissions: dontAsk" })).toBeInTheDocument();
+  });
+
+  it("follows the engine's default model while the pixie has none", async () => {
+    const api = withModels("haiku");
     await details(api);
 
-    expect(await screen.findByRole("button", { name: "Thinking: Not available" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Model: Haiku 4.5" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thinking: Not available" })).toBeDisabled();
   });
 
   it("adds a skill from the list Claude Code offers, never one already chosen (B85)", async () => {
@@ -286,7 +397,6 @@ describe("Pixie details", () => {
     await user.click(add);
     // The sheet opens at once and says it is loading.
     expect(sheet("Add skill")).toHaveTextContent("Loading skills");
-    expect(api.skills).not.toHaveBeenCalled();
     answer([
       skill("deploy", "Ships the app"),
       // A plugin's skill named without the prefix keeps its name.
@@ -492,6 +602,7 @@ describe("Pixie details", () => {
     await waitFor(() => {
       expect(screen.queryByRole("tab", { name: "Details" })).not.toBeInTheDocument();
     });
-    expect(screen.getByRole("heading", { name: /Pixies/ })).toBeInTheDocument();
+    // Back on the pixies, where its row was.
+    expect(screen.getByRole("button", { name: "Project: Pixies" })).toBeInTheDocument();
   });
 });

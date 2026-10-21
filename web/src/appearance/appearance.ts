@@ -1,14 +1,13 @@
-// Theme, glass, accent, message bubble and wallpaper, applied through the data attributes
-// and classes of the generated token CSS, and remembered on this device only.
+// Theme, accent and message bubble, applied through the data attributes of the generated
+// token CSS, and remembered on this device only. Choices an older version saved that B102
+// removed are not read, and go at the next save.
 
 import {
   ACCENTS,
   BUBBLES,
   DEFAULT_APPEARANCE,
-  GLASSES,
   STORAGE_KEY,
   THEMES,
-  WALLPAPERS,
   type Appearance,
 } from "./choices.ts";
 
@@ -36,12 +35,6 @@ export function loadAppearance(storage: () => Storage): Appearance {
       d.accent,
     ),
     bubble: pick(BUBBLES, saved.bubble, d.bubble),
-    wallpaper: pick(WALLPAPERS, saved.wallpaper, d.wallpaper),
-    glass: pick(
-      GLASSES.map((g) => g.id),
-      saved.glass,
-      d.glass,
-    ),
   };
 }
 
@@ -61,8 +54,6 @@ export function applyAppearance(root: HTMLElement, appearance: Appearance): void
   set("data-theme", appearance.theme === "auto" ? null : appearance.theme);
   set("data-accent", appearance.accent === "graphite" ? null : appearance.accent);
   set("data-bubble", appearance.bubble === "neutral" ? "neutral" : null);
-  // Clear is also the generated tokens' default, so it needs no attribute.
-  set("data-glass", appearance.glass === "clear" ? null : appearance.glass);
   // The browser's theme color follows a chosen theme; Auto keeps each scheme's own.
   for (const meta of root.ownerDocument.querySelectorAll<HTMLMetaElement>(
     'meta[name="theme-color"][data-scheme]',

@@ -82,7 +82,7 @@ export function ChatActions({ session, onClose, onGone }: Props) {
         title={
           <>
             <b>Delete this chat?</b>
-            {session.title} is removed with its worktree, branch and history.
+            {session.title} is removed with its worktree and history; its branch stays.
           </>
         }
       >

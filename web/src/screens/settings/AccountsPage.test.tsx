@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { GithubAccount } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { account, claudeAccount, github } from "../../test/fixtures.ts";
+import { account, claudeAccount, codexAccount, github } from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openAccounts = (api = fakeApi()) => openSettings("Accounts", { api });
@@ -158,5 +158,68 @@ describe("github account", () => {
 
     expect(await screen.findByText("gh broke")).toBeInTheDocument();
     expect(screen.getByText("octocat")).toBeInTheDocument();
+  });
+});
+
+describe("codex account", () => {
+  it("shows the email, plan and status, between Claude and GitHub", async () => {
+    await openAccounts();
+
+    const codex = await screen.findByRole("region", { name: "Codex" });
+    expect(await within(codex).findByText("me@example.com")).toBeInTheDocument();
+    expect(within(codex).getByText("ChatGPT Plus")).toBeInTheDocument();
+    expect(within(codex).getByText("Signed in")).toHaveClass("sst", "ok");
+    const names = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(names).toEqual(["Claude", "Codex", "GitHub"]);
+  });
+
+  it("signs out after a confirmation and follows the account.codex event", async () => {
+    const api = fakeApi();
+    const { user, push } = await openAccounts(api);
+    const codex = await screen.findByRole("region", { name: "Codex" });
+
+    await user.click(await within(codex).findByRole("button", { name: "Sign out of Codex" }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(api.codexLogout).not.toHaveBeenCalled();
+    await user.click(within(codex).getByRole("button", { name: "Sign out of Codex" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Sign out of Codex?" });
+    expect(confirm).toHaveTextContent(
+      "Codex on this Mac signs out too. Codex chats cannot run until you sign in again.",
+    );
+    await user.click(within(confirm).getByRole("button", { name: "Sign out" }));
+
+    expect(api.codexLogout).toHaveBeenCalled();
+    expect(await within(codex).findByText("Signed out")).toHaveClass("sst", "wait");
+    expect(within(codex).getByText("Codex", { selector: ".slab > span" })).toBeInTheDocument();
+    expect(
+      within(codex).getByText("Sign in to Codex on the Mac, in Settings > Accounts."),
+    ).toBeVisible();
+    expect(within(codex).queryByRole("button", { name: "Sign out of Codex" })).toBeNull();
+
+    push({ type: "account.codex", payload: { ...codexAccount({ email: "" }) } });
+    expect(within(codex).getByText("Signed in")).toBeInTheDocument();
+    expect(within(codex).getByText("Codex", { selector: ".slab > span" })).toBeInTheDocument();
+  });
+
+  it("says when Codex could not be asked, and why", async () => {
+    const api = fakeApi();
+    api.codexAccount.mockResolvedValue(
+      codexAccount({ signed_in: null, email: null, plan: null, error: "codex is not installed" }),
+    );
+    await openAccounts(api);
+    const codex = await screen.findByRole("region", { name: "Codex" });
+
+    expect(await within(codex).findByText("Not checked")).toBeInTheDocument();
+    expect(within(codex).getByRole("alert")).toHaveTextContent("codex is not installed");
+  });
+
+  it("waits for the Mac", async () => {
+    const api = fakeApi();
+    api.codexAccount.mockReturnValue(new Promise(() => undefined));
+    await openAccounts(api);
+
+    expect(section("Codex")).toHaveTextContent("Loading...");
   });
 });

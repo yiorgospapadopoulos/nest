@@ -19,7 +19,7 @@ async function openChat(events: NestEvent[], api: FakeApi = fakeApi()) {
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
   await screen.findByRole("region", { name: "Validate contact form" });
   return rendered;

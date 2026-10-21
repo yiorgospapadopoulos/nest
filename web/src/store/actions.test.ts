@@ -13,8 +13,20 @@ import {
   session,
   team,
   usagePeriod,
+  agentDefaults,
+  claudeProvider,
+  codexAccount,
+  codexProvider,
+  engineLimits,
+  mergeApproval,
+  modelList,
 } from "../test/fixtures.ts";
-import { FOLDED_TEAMS_KEY, loadFoldedTeams } from "./devicePrefs.ts";
+import {
+  FOLDED_TEAMS_KEY,
+  loadFoldedTeams,
+  loadUsageBarHidden,
+  USAGE_BAR_HIDDEN_KEY,
+} from "./devicePrefs.ts";
 import { createActions } from "./actions.ts";
 import type { Action } from "./state.ts";
 
@@ -579,5 +591,111 @@ describe("usage actions", () => {
       type: "toast",
       toast: { id: 1, text: "bad date", tone: "error" },
     });
+  });
+});
+
+describe("engines (B102)", () => {
+  it("loads the engines, the agent defaults and every engine's models", async () => {
+    const { api, dispatched, actions } = setup();
+    api.providers.mockResolvedValueOnce({ providers: [claudeProvider(), codexProvider()] });
+    const codex = modelList({ models: [], default_model: "gpt-5.5" });
+    api.models.mockImplementation((provider) =>
+      Promise.resolve(provider === "codex" ? codex : modelList()),
+    );
+
+    await actions.loadChoices();
+
+    expect(api.models).toHaveBeenCalledWith();
+    expect(api.models).toHaveBeenCalledWith("codex");
+    expect(dispatched).toEqual([
+      { type: "providers", providers: [claudeProvider(), codexProvider()] },
+      { type: "modelList", provider: "claude", list: modelList() },
+      { type: "agentDefaults", defaults: agentDefaults() },
+      { type: "modelList", provider: "codex", list: codex },
+    ]);
+  });
+
+  it("keeps what it had of a part the Mac cannot give", async () => {
+    const { api, dispatched, actions } = setup();
+    api.providers.mockRejectedValueOnce(new Error("old daemon"));
+    api.models.mockRejectedValueOnce(new Error("down"));
+    api.agentDefaults.mockRejectedValueOnce(new Error("down"));
+    await actions.loadChoices();
+    expect(dispatched).toEqual([]);
+
+    api.providers.mockResolvedValueOnce({ providers: [claudeProvider(), codexProvider()] });
+    api.models.mockRejectedValueOnce(new Error("codex down"));
+    await actions.loadProviders(true);
+    expect(api.providers).toHaveBeenLastCalledWith(true);
+    expect(dispatched.map((a) => a.type)).toEqual(["providers"]);
+
+    api.providers.mockRejectedValueOnce(new Error("down"));
+    await actions.loadProviders();
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it("loads Codex's usage windows quietly", async () => {
+    const { api, dispatched, actions } = setup();
+    await actions.loadEngineLimits();
+    expect(api.engineLimits).toHaveBeenCalledWith("codex");
+    expect(dispatched).toEqual([
+      { type: "engineLimits", provider: "codex", limits: engineLimits() },
+    ]);
+    api.engineLimits.mockRejectedValueOnce(new Error("no codex"));
+    await actions.loadEngineLimits();
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it("refreshes another engine's usage, saying when it was refreshed moments ago", async () => {
+    const { api, dispatched, actions } = setup();
+    await actions.refreshUsage("codex");
+    expect(api.refreshEngineUsage).toHaveBeenCalledWith("codex");
+    expect(api.refreshUsage).not.toHaveBeenCalled();
+    expect(dispatched).toEqual([
+      { type: "engineLimits", provider: "codex", limits: engineLimits() },
+    ]);
+    api.refreshEngineUsage.mockRejectedValueOnce(new ApiError(429, "too soon"));
+    await actions.refreshUsage("codex");
+    expect(dispatched.at(-1)).toMatchObject({
+      type: "toast",
+      toast: { text: "Usage was refreshed moments ago", tone: "info" },
+    });
+    await actions.refreshUsage("claude");
+    expect(api.refreshUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("remembers the usage bar's engines on this device", () => {
+    localStorage.removeItem(USAGE_BAR_HIDDEN_KEY);
+    const { dispatched, actions } = setup();
+    actions.setUsageBarEngine("codex", false);
+    actions.setUsageBarEngine("claude", false);
+    actions.setUsageBarEngine("claude", true);
+    expect(loadUsageBarHidden(() => localStorage)).toEqual(["codex"]);
+    expect(dispatched).toEqual([
+      { type: "usageBarEngine", provider: "codex", shown: false },
+      { type: "usageBarEngine", provider: "claude", shown: false },
+      { type: "usageBarEngine", provider: "claude", shown: true },
+    ]);
+    localStorage.removeItem(USAGE_BAR_HIDDEN_KEY);
+  });
+
+  it("asks for the engines again when Codex's account changes", async () => {
+    const { api, actions } = setup();
+    actions.receive(
+      event({ type: "account.codex", session_id: null, payload: { ...codexAccount() } }),
+    );
+    await vi.waitFor(() => {
+      expect(api.providers).toHaveBeenCalledWith(false);
+    });
+  });
+});
+
+describe("merging (B102 item 30)", () => {
+  it("keeps the branch unless asked to delete it", async () => {
+    const { api, actions } = setup();
+    expect(await actions.merge(mergeApproval(), 7)).toBe(true);
+    expect(api.merge).toHaveBeenLastCalledWith("s1", { method: "squash", delete_branch: false });
+    expect(await actions.merge(mergeApproval(), 7, true)).toBe(true);
+    expect(api.merge).toHaveBeenLastCalledWith("s1", { method: "squash", delete_branch: true });
   });
 });

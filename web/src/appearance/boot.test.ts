@@ -65,6 +65,14 @@ describe("the appearance before first paint", () => {
     expect(booted).toEqual(applied);
   });
 
+  it("ignores the glass theme an older version saved (B102)", () => {
+    const booted = pageAfter(() => {
+      boot(JSON.stringify({ theme: "dark", glass: "smoke", wallpaper: "sky" }));
+    });
+
+    expect(booted.attributes).toEqual({ "data-theme": "dark" });
+  });
+
   it("uses the appearance saved before the rename until the app moves it (B43)", () => {
     const storage = memoryStorage();
     storage.setItem("harness.appearance", JSON.stringify({ theme: "dark", accent: "teal" }));

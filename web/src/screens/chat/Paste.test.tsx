@@ -15,7 +15,7 @@ async function openChat(chat: Session = session()) {
     Promise.resolve(uploaded(file.name === "image.png" ? "a1" : `id-${file.name}`, file)),
   );
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;

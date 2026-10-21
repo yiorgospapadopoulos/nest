@@ -4,7 +4,13 @@ import { EventStream, eventsUrl, type SocketFactory } from "../api/events.ts";
 import { browserPushEnv } from "../pwa/push.ts";
 import { reportVisibility } from "../pwa/visibility.ts";
 import { createActions } from "./actions.ts";
-import { loadDrafts, loadFoldedTeams, loadShowAutomated, saveDrafts } from "./devicePrefs.ts";
+import {
+  loadDrafts,
+  loadFoldedTeams,
+  loadShowAutomated,
+  loadUsageBarHidden,
+  saveDrafts,
+} from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
 import { deviceStorage } from "./legacyKeys.ts";
 import { reduce } from "./reducer.ts";
@@ -30,6 +36,7 @@ export function StoreProvider({
     ...initialState,
     showAutomated: loadShowAutomated(from),
     foldedTeams: loadFoldedTeams(from),
+    usageBarHidden: loadUsageBarHidden(from),
     drafts: loadDrafts(from),
   }));
   const actions = useMemo(() => createActions(api, dispatch, storage), [api, storage]);

@@ -1,15 +1,42 @@
-/* Short aliases for the generated design tokens, then primitives shared by every screen. */
+/* Short aliases for the generated design tokens, then primitives shared by every screen.
+   The phone follows the Mac's look (B102): the Mac's colours, flat surfaces split by 1 px
+   dividers, and the phone's own type sizes. */
 :root {
   --sf: var(--typography-family-system);
   --mono: var(--typography-family-mono);
-  --bg: var(--page-base);
-  --t1: var(--text-primary);
-  --t2: var(--text-secondary);
-  --t3: var(--text-tertiary);
-  --hair: var(--line-hairline);
-  --hair2: var(--line-strong);
-  --fill: var(--fill-subtle);
-  --fill2: var(--fill-strong);
+  --bg: var(--mac-window-opaque);
+  --t1: var(--mac-text-primary);
+  --t2: var(--mac-text-secondary);
+  --t3: var(--mac-text-tertiary);
+  --hair: var(--mac-divider);
+  --hair2: var(--mac-raised);
+  --fill: var(--mac-soft);
+  --fill2: var(--mac-raised);
+  /* The Mac's surfaces: the side columns a shade apart, faint fills for cards and fields,
+     the selected row, and sheets and menus over the content. */
+  --div: var(--mac-divider);
+  --side: var(--mac-side);
+  --soft: var(--mac-soft);
+  --raised: var(--mac-raised);
+  --composer: var(--mac-composer);
+  --sel: var(--mac-selection);
+  --sheet: var(--mac-sheet);
+  --scan: var(--mac-scanline);
+  --link: var(--mac-link);
+  /* Status as quiet colour: needs you, running, done well, failed. */
+  --wait: var(--mac-wait);
+  --run: var(--mac-run);
+  --ok: var(--mac-ok);
+  --bad: var(--mac-bad);
+  /* The phone's sizes (design/tokens.toml, phone_*), in rem of the 17 pt root so they
+     follow the iPhone's text size. */
+  --fs-title: 1rem;
+  --fs-body: 0.8824rem;
+  --fs-meta: 0.7647rem;
+  --fs-label: 0.7353rem;
+  --fs-micro: 0.6471rem;
+  --row: var(--spacing-phone-row);
+  --r-phone: var(--radius-phone-card);
   --code-bg: var(--surface-code);
   --add-bg: var(--diff-added-fill);
   --add-fg: var(--diff-added-text);
@@ -47,43 +74,36 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
 }
-/* The glass theme (data-glass on <html>, or on any element for a small preview). Declared on
-   [data-glass] too, so the aliases resolve again inside a preview. Phone radii follow the
-   theme's radii with the phone's larger sizes; Clear keeps the original phone values. */
-:root,
-[data-glass] {
-  --g1: var(--glass-tint);
-  --g2: var(--glass-surface);
-  --g3: var(--glass-surface-subtle);
-  --g-brd: var(--glass-stroke);
-  --g-edge: var(--glass-edge);
-  --spec: var(--glass-highlight);
-  --rim: var(--glass-rim);
-  --gsh: var(--glass-shadow-color);
-  --shell: var(--glass-shell);
-  --blur: var(--glass-backdrop-blur);
-  --gsat: var(--glass-backdrop-saturation);
-  --gfilter: blur(var(--blur)) saturate(var(--gsat));
-  --gl-sh:
-    inset 0 1px 0 var(--spec), inset 0 -1px 0 var(--rim),
-    0 var(--glass-shadow-panel-y) var(--glass-shadow-panel-blur) var(--glass-shadow-panel-spread)
-      var(--gsh);
-  --sheet-sh:
-    inset 0 1px 0 var(--spec), 0 0 0 0.5px var(--g-edge),
-    0 calc(var(--glass-shadow-window-near-y) * -1) var(--glass-shadow-window-near-blur)
-      var(--glass-shadow-window-near-spread) var(--gsh);
-  --r-sheet: calc(var(--glass-radius-window) + 6px);
-  --r-big: calc(var(--glass-radius-panel) + 6px);
-  --r-card: calc(var(--glass-radius-panel) + 2px);
-  --r-pane: var(--glass-radius-pane);
-  --r-inner: var(--glass-radius-card);
-  --r-tab: var(--glass-radius-tab);
-  --r-item: var(--glass-radius-item);
-  --r-sm: var(--glass-radius-small);
-  /* Pills in most themes, rounded rectangles in Smoke. */
-  --r-ctl: var(--glass-radius-control);
-  --r-ctl-lg: calc(var(--glass-radius-control) + 4px);
-  --gap: var(--glass-spacing-gap);
+/* Panels (D039) are flat since B102: they take the page, sheets the Mac's sheet colour,
+   edges a divider, with no blur or shadow, and the Mac's radii. The transcript keeps its
+   spacing. */
+:root {
+  --g1: var(--bg);
+  --g2: var(--mac-sheet);
+  --g3: var(--mac-soft);
+  --g-brd: var(--mac-divider);
+  --g-edge: var(--mac-divider);
+  --spec: transparent;
+  --rim: transparent;
+  --gsh: transparent;
+  --gfilter: none;
+  --gl-sh: none;
+  --sheet-sh: 0 0 0 1px var(--mac-divider);
+  --r-sheet: var(--radius-mac-sheet);
+  --r-big: var(--radius-phone-card);
+  --r-card: var(--radius-phone-card);
+  --r-pane: var(--radius-phone-card);
+  --r-inner: var(--radius-mac-row);
+  --r-tab: var(--radius-mac-row);
+  --r-item: var(--radius-mac-row);
+  --r-sm: var(--radius-mac-button);
+  --r-ctl: var(--radius-mac-row);
+  --r-ctl-lg: var(--radius-phone-card);
+  --gap: 8px;
+  --tr-pad-top: 14px;
+  --tr-pad-x: 16px;
+  --tr-pad-bottom: 10px;
+  --tr-gap: 11px;
 }
 :root[data-bubble="neutral"] {
   --bubble: var(--surface-neutral-bubble);
@@ -112,7 +132,7 @@ body {
   overflow: hidden;
   background-color: var(--bg);
   color: var(--t1);
-  font: 0.8824rem/1.35 var(--sf);
+  font: var(--fs-body)/1.35 var(--sf);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -145,18 +165,6 @@ code {
   white-space: nowrap;
 }
 
-.wall {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-}
-/* The theme's shell tint over the wallpaper, as the window body tints the Mac desktop. */
-.wall::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--shell);
-}
 .app {
   position: fixed;
   inset: 0;
@@ -167,17 +175,10 @@ code {
   left: 0;
   right: 0;
   top: 0;
-  height: calc(var(--sat) + 4px);
+  height: var(--sat);
   z-index: 31;
   pointer-events: none;
-  background: linear-gradient(
-    color-mix(in srgb, var(--bg) 80%, transparent),
-    color-mix(in srgb, var(--bg) 0%, transparent)
-  );
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  -webkit-mask: linear-gradient(#000 55%, transparent);
-  mask: linear-gradient(#000 55%, transparent);
+  background: var(--bg);
 }
 
 /* "Reconnecting..." at the top while the live connection comes back. */
@@ -197,11 +198,7 @@ code {
   pointer-events: none;
 }
 .gl {
-  background: var(--g1);
-  -webkit-backdrop-filter: var(--gfilter);
-  backdrop-filter: var(--gfilter);
-  border: 1px solid var(--g-brd);
-  box-shadow: var(--gl-sh);
+  background: var(--bg);
 }
 .gl2 {
   background: var(--g2);
@@ -220,8 +217,8 @@ code {
   flex: 1;
 }
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex: none;
   display: inline-block;
@@ -258,9 +255,10 @@ code {
   --ct: var(--int-t);
   --cs: var(--int-soft);
 }
+/* Idle is an outline, as the Mac's StatusDot (B102). */
 .dot.s-idle {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--st-done);
+  box-shadow: inset 0 0 0 1.3px var(--t3);
 }
 .dot.s-run {
   animation: pulse 1.8s ease-out infinite;
@@ -274,29 +272,24 @@ code {
     box-shadow: 0 0 0 6px transparent;
   }
 }
+/* A status as a quiet coloured word, never a tinted pill (B102). */
 .sp {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 22px;
-  padding: 0 9px 0 8px;
-  border-radius: var(--r-ctl);
-  font-size: 0.6765rem;
-  font-weight: 600;
+  font-size: var(--fs-meta);
   white-space: nowrap;
   color: var(--ct);
-  background: var(--cs);
   flex: none;
 }
+/* Plain grey text with its icon, not a box (B102). */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 22px;
-  padding: 0 8px;
-  border-radius: var(--r-sm);
-  background: var(--fill);
-  font-size: 0.6765rem;
+  font-size: var(--fs-meta);
   color: var(--t2);
   white-space: nowrap;
   min-width: 0;
@@ -508,7 +501,6 @@ a.chip {
   font-size: 0.6176rem;
   font-weight: 800;
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .pi-0 {
   background: #8c7b67;
@@ -585,9 +577,8 @@ a.chip {
   transform: translateY(-50%);
 }
 .mseg button[aria-pressed="true"] {
-  background: var(--g2);
+  background: var(--raised);
   color: var(--t1);
-  box-shadow: 0 1px 3px var(--gsh);
 }
 .toast {
   position: fixed;
@@ -596,6 +587,7 @@ a.chip {
   transform: translateX(-50%);
   z-index: 90;
   padding: 10px 16px;
+  border: 1px solid var(--div);
   border-radius: var(--r-ctl);
   font-size: 0.8235rem;
   font-weight: 600;

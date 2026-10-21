@@ -119,11 +119,13 @@
   --radius-mac-card: 8px;
   --radius-mac-bubble: 9px;
   --radius-mac-sheet: 12px;
+  --radius-phone-card: 8px;
   --spacing-mac-strip-height: 34px;
   --spacing-mac-header-height: 34px;
   --spacing-mac-row-height: 26px;
   --spacing-mac-button-height: 22px;
   --spacing-mac-scanline-period: 3px;
+  --spacing-phone-row: 44px;
   --typography-family-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --typography-family-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --typography-size-micro: 10px;
@@ -134,6 +136,11 @@
   --typography-size-body: 13px;
   --typography-size-subhead: 14px;
   --typography-size-headline: 17px;
+  --typography-size-phone-title: 17px;
+  --typography-size-phone-body: 15px;
+  --typography-size-phone-meta: 13px;
+  --typography-size-phone-label: 12.5px;
+  --typography-size-phone-micro: 11px;
   --motion-duration-pulse: 1800ms;
   --motion-duration-attention: 2600ms;
   --motion-easing-glide: cubic-bezier(0.2, 0.9, 0.25, 1);

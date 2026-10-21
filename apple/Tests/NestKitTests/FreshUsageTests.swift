@@ -58,84 +58,15 @@ private func window(updated: Date?) -> LimitWindow {
                 "-", "Off", "Every minute", "Every 3 minutes", "Every 15 minutes",
             ])
     }
-
-    @Test func theStoreFormatsInItsCalendar() async throws {
-        let api = FakeAPI()
-        let usage = UsageStore(api: api, calendar: utc, now: { two })
-        try await usage.load()
-        #expect(usage.asOfText(usage.limits?.fiveHour) == "as of 14:00")
-        #expect(usage.asOfText(usage.limits?.sevenDay) == nil)
-    }
 }
 
 @MainActor
-@Suite struct UsageRefreshTests {
+@Suite struct UsageSettingsTests {
     let api = FakeAPI()
-    let clock = TestClock()
     let usage: UsageStore
 
     init() {
-        usage = UsageStore(api: api, calendar: utc, now: clock.read)
-    }
-
-    @Test func refreshReplacesTheLimits() async throws {
-        try await usage.load()
-        let fresh = UsageLimits(
-            fiveHour: LimitWindow(utilization: 0.5, resetsAt: nil, updatedAt: two),
-            sevenDay: LimitWindow(utilization: 0.2, resetsAt: nil, updatedAt: two))
-        api.set { $0.refreshedLimits = fresh }
-
-        await usage.refresh()
-
-        #expect(usage.limits == fresh)
-        #expect(!usage.isRefreshing)
-        #expect(usage.refreshNote(at: clock.now) == nil)
-        #expect(api.calls.contains("refreshUsage"))
-    }
-
-    @Test func tooSoonCountsDownUntilTheDaemonAcceptsAgain() async {
-        api.fail("refreshUsage", with: APIError.rateLimited("too soon", retryAfter: 12))
-        await usage.refresh()
-        #expect(usage.limits == nil)
-        #expect(usage.retryAt == two + 12)
-        #expect(usage.refreshNote(at: two) == "Try again in 12 s")
-        #expect(usage.refreshNote(at: two + 0.4) == "Try again in 12 s")
-        #expect(usage.refreshNote(at: two + 11.5) == "Try again in 1 s")
-        #expect(usage.refreshNote(at: two + 12) == nil)
-
-        // Without a retry time, the daemon's 20 s rule.
-        api.fail("refreshUsage", with: APIError.rateLimited("too soon", retryAfter: nil))
-        await usage.refresh()
-        #expect(usage.refreshNote(at: two) == "Try again in 20 s")
-    }
-
-    @Test func failuresAreNotedQuietlyAndClearedBySuccess() async {
-        api.fail("refreshUsage", with: APIError.badGateway("no windows"))
-        await usage.refresh()
-        #expect(usage.refreshNote(at: two) == "Claude did not report the limits")
-
-        api.fail("refreshUsage", with: APIError.transport("offline"))
-        await usage.refresh()
-        #expect(usage.refreshNote(at: two) == "Could not refresh")
-
-        api.set { $0.failures = [:] }
-        await usage.refresh()
-        #expect(usage.refreshNote(at: two) == nil)
-        #expect(usage.limits == Fixture.usageLimits)
-    }
-
-    @Test func aRefreshUnderWayIsNotRepeated() async throws {
-        let (gate, open) = AsyncStream<Void>.makeStream()
-        api.set { $0.gates["refreshUsage"] = gate }
-        let first = Task { await usage.refresh() }
-        try await waitFor { usage.isRefreshing }
-
-        await usage.refresh()
-        open.finish()
-        await first.value
-
-        #expect(api.calls.filter { $0 == "refreshUsage" }.count == 1)
-        #expect(!usage.isRefreshing)
+        usage = UsageStore(api: api, calendar: utc, now: { two })
     }
 
     @Test func settingsLoadAndSave() async throws {

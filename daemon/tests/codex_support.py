@@ -126,6 +126,9 @@ class FakeAppServer:
 
     def __init__(self) -> None:
         self.answers = default_answers()
+        # Answers for the app-servers started on one Codex home (an account's, B98), by
+        # CODEX_HOME; any other method is answered as above.
+        self.home_answers: dict[str, dict[str, Answer]] = {}
         self.errors: dict[str, tuple[int, str]] = {}
         # The `data` of an error answer, by method.
         self.error_data: dict[str, JsonValue] = {}
@@ -156,6 +159,10 @@ class FakeAppServer:
 
     def requests(self, method: str) -> list[JsonObject]:
         return [cast("JsonObject", m["params"]) for m in self.sent if m.get("method") == method]
+
+    def homes(self) -> list[str | None]:
+        """The CODEX_HOME of each app-server started, in order."""
+        return [launch.env.get("CODEX_HOME") for launch in self.launches]
 
     def script(self, *notifications: JsonObject) -> None:
         self.turns.append(list(notifications))
@@ -188,7 +195,8 @@ class FakeAppServer:
                 error["data"] = self.error_data[method]
             transport.push({"id": request_id, "error": error})
             return
-        answer = self.answers.get(method, {})
+        home = self.home_answers.get(transport.launch.env.get("CODEX_HOME", ""), {})
+        answer = home.get(method, self.answers.get(method, {}))
         params = cast("JsonObject", message.get("params") or {})
         result = answer(params) if callable(answer) else answer
         transport.push({"id": request_id, "result": result})

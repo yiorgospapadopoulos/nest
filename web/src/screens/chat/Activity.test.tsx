@@ -35,7 +35,7 @@ async function openChat(
   api.session.mockResolvedValue(detail({ ...chat, ...(background ? { background } : {}) }));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   if (clock !== undefined) fakeClock(clock);
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
@@ -115,8 +115,8 @@ describe("a running turn", () => {
       payload: { state: "idle", duration_ms: 72_000 },
     });
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
-    // Also announced, in the chat's status region.
-    expect(screen.getByText("Worked for 1m 12s", { selector: ".tx *" })).toHaveClass("m-turn");
+    // Announced in the status region, but not shown: the Mac shows it on hover only (B102).
+    expect(screen.queryByText("Worked for 1m 12s", { selector: ".tx *" })).not.toBeInTheDocument();
   });
 
   it("works without a time until the agent gets the message", async () => {
@@ -273,7 +273,7 @@ describe("screen reader announcements", () => {
 });
 
 describe("a finished turn", () => {
-  it("shows thinking rows, plain calls and how long the turn worked", async () => {
+  it("shows thinking rows and plain calls, not how long the turn worked", async () => {
     const { user } = await openChat(session({ state: "idle" }), [
       ...turnStarted,
       blocks(3, [
@@ -298,7 +298,7 @@ describe("a finished turn", () => {
     expect(screen.getByText("Thought for 3s").closest("details")).toBeNull();
     expect(screen.getByText("Thought").closest("details")).not.toBeNull();
     expect(screen.getByText("Read").closest(".tool")).not.toHaveClass("tgroup");
-    expect(screen.getByText("Worked for 1m 12s")).toBeInTheDocument();
+    expect(screen.queryByText("Worked for 1m 12s", { selector: ".tx *" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
   });
 
@@ -485,14 +485,14 @@ describe("the background bar", () => {
       { background },
     );
 
-    const bar = screen.getByRole("button", { name: "3 running · 1 completed" });
+    // Running tasks only, as on the Mac (B76): finished ones are not counted or listed.
+    const bar = screen.getByRole("button", { name: "3 running tasks" });
     await user.click(bar);
-    const names = (list: string) =>
-      within(screen.getByRole("list", { name: list }))
-        .getAllByRole("listitem")
-        .map((li) => li.querySelector(".mono")?.textContent);
-    expect(names("Running")).toEqual(["Task bg", "Task n2", "Task n3"]);
-    expect(names("Completed")).toEqual(["Task n1"]);
+    const names = within(screen.getByRole("list", { name: "Running" }))
+      .getAllByRole("listitem")
+      .map((li) => li.querySelector(".mono")?.textContent);
+    expect(names).toEqual(["Task bg", "Task n2", "Task n3"]);
+    expect(screen.queryByRole("list", { name: "Completed" })).not.toBeInTheDocument();
 
     // The next message starts from zero; the bar hides until one of its tasks starts.
     act(() => {
@@ -563,7 +563,7 @@ describe("the background bar of a reopened chat", () => {
 });
 
 describe("background bar wording", () => {
-  it("names running tasks alone until one completes, as on the Mac", () => {
+  it("counts the running tasks only, and goes once none runs, as on the Mac", () => {
     const item = (id: string, status: "running" | "done") => ({
       id,
       kind: "agent" as const,
@@ -585,6 +585,9 @@ describe("background bar wording", () => {
         summary={{ running: 1, completed: 1, items: [item("a", "running"), item("b", "done")] }}
       />,
     );
-    expect(screen.getByRole("button", { name: "1 running · 1 completed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 running task" })).toBeInTheDocument();
+
+    rerender(<BackgroundBar summary={{ running: 0, completed: 1, items: [item("b", "done")] }} />);
+    expect(screen.queryByRole("button", { name: /running/ })).not.toBeInTheDocument();
   });
 });

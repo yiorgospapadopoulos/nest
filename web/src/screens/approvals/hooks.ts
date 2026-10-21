@@ -114,7 +114,7 @@ export function useReview(approval: Approval, session: Session | undefined) {
   // Approving sends what the user saw, so it waits for the diff, and for any reload of it.
   const ready = diff !== null && !loading;
   const publish = async (message: string, confirmUrl?: string) => {
-    // A swipe can come before the diff has loaded: nothing to publish yet.
+    // Every Approve is disabled until `ready`; the hook still never publishes unseen changes.
     if (diff === null || loading) return;
     await run(async () => {
       const result = await actions.approveReview(
@@ -177,7 +177,12 @@ export function useMerge(approval: Approval) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
   const view = mergeOf(approval);
-  return { view, busy, merge: () => run(() => actions.merge(approval, view.number)) };
+  return {
+    view,
+    busy,
+    // The branch stays unless `deleteBranch` (B96).
+    merge: (deleteBranch = false) => run(() => actions.merge(approval, view.number, deleteBranch)),
+  };
 }
 
 /** "Send to agent" for failed checks; the card goes away once the agent starts. */
