@@ -6,11 +6,10 @@ import type {
   PluginDetails,
 } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { Pill } from "../../ui/bits.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
 import { Confirm } from "../pixies/Confirm.tsx";
 import { NameSheet } from "../pixies/NameSheet.tsx";
-import { Loading, Row, Section } from "./rows.tsx";
+import { Row } from "./rows.tsx";
 
 // A plugin's parts, as `claude plugin details` counts them.
 const PARTS: { key: keyof NonNullable<PluginDetails["components"]>; label: string }[] = [
@@ -21,100 +20,92 @@ const PARTS: { key: keyof NonNullable<PluginDetails["components"]>; label: strin
   { key: "lsp_servers", label: "LSP servers" },
 ];
 
-type Ask = { remove: InstalledPlugin } | { drop: Marketplace };
-
 /**
- * Claude Code's plugins with on/off and Remove, the standalone skills (read only), Browse,
- * and the marketplaces. Everything goes through `claude plugin` on the Mac (D104).
+ * Claude's installed plugins in Settings > Configuration (B97, from B81's Extensions): each
+ * with its switch and Remove. Everything goes through `claude plugin` on the Mac (D104).
  */
-export function SkillsTab() {
+export function ClaudePluginRows() {
   const { state, actions } = useStore();
-  const { plugins, skills, marketplaces } = state.settings;
-  const [asking, setAsking] = useState<Ask | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [browsing, setBrowsing] = useState(false);
+  const { plugins } = state.settings;
+  const [removing, setRemoving] = useState<InstalledPlugin | null>(null);
 
   useEffect(() => {
     void actions.loadExtensions();
   }, [actions]);
 
-  if (plugins === null || skills === null || marketplaces === null) {
-    return <Loading title="Plugins" />;
-  }
+  if (plugins === null) return <div className="srow note">Loading...</div>;
   return (
     <>
-      <Section
-        title="Plugins"
-        tools={
-          <button
-            className="lnk"
-            onClick={() => {
-              setBrowsing(true);
-            }}
-          >
-            Browse
-          </button>
-        }
-      >
-        {plugins.length === 0 && <div className="srow note">None installed</div>}
-        {plugins.map((plugin) => (
-          <div key={plugin.id} className="srow item">
-            <span className="slab" id={`plugin-${plugin.id}`}>
-              {plugin.name}
-              <span className="hint">
-                {plugin.version === null
-                  ? plugin.marketplace
-                  : `${plugin.marketplace}, ${plugin.version}`}
-              </span>
+      {plugins.length === 0 && <div className="srow note">No plugins installed</div>}
+      {plugins.map((plugin) => (
+        <div key={plugin.id} className="srow item sub">
+          <span className="slab" id={`plugin-${plugin.id}`}>
+            {plugin.name}
+            <span className="hint">
+              {plugin.version === null
+                ? plugin.marketplace
+                : `${plugin.marketplace}, ${plugin.version}`}
             </span>
-            <div className="sctl">
-              <button
-                className="sw"
-                role="switch"
-                aria-checked={plugin.enabled}
-                aria-labelledby={`plugin-${plugin.id}`}
-                onClick={() => void actions.setPluginEnabled(plugins, plugin, !plugin.enabled)}
-              />
-              <button
-                className="b b-no"
-                aria-label={`Remove ${plugin.name}`}
-                onClick={() => {
-                  setAsking({ remove: plugin });
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        ))}
-      </Section>
-      {skills.length > 0 && (
-        <Section title="Skills">
-          {skills.map((skill) => (
-            <Row
-              key={skill.path}
-              label={
-                <>
-                  {skill.name}
-                  {skill.description !== null && <span className="hint">{skill.description}</span>}
-                </>
-              }
+          </span>
+          <div className="sctl">
+            <button
+              className="sw"
+              role="switch"
+              aria-checked={plugin.enabled}
+              aria-labelledby={`plugin-${plugin.id}`}
+              onClick={() => void actions.setPluginEnabled(plugins, plugin, !plugin.enabled)}
             />
-          ))}
-        </Section>
+            <button
+              className="b"
+              aria-label={`Remove ${plugin.name}`}
+              onClick={() => {
+                setRemoving(plugin);
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+      {removing !== null && (
+        <Confirm
+          title={`Remove ${removing.name}?`}
+          about="Claude Code uninstalls it. Agents stop using it when they next start."
+          action="Remove"
+          onConfirm={() => void actions.uninstallPlugin(removing)}
+          onClose={() => {
+            setRemoving(null);
+          }}
+        />
       )}
-      <Section title="Marketplaces">
-        {marketplaces.map((m) => (
+    </>
+  );
+}
+
+/** Claude Code's marketplaces, with Remove and Add marketplace. */
+export function ClaudeMarketplaces({ onClose }: { onClose: () => void }) {
+  const { state, actions } = useStore();
+  const marketplaces = state.settings.marketplaces;
+  const [removing, setRemoving] = useState<Marketplace | null>(null);
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    void actions.loadExtensions();
+  }, [actions]);
+  return (
+    <Sheet title="Marketplaces" onClose={onClose}>
+      <div className="lgrp gl">
+        {marketplaces === null && <div className="srow note">Loading...</div>}
+        {marketplaces?.map((m) => (
           <div key={m.name} className="srow item">
             <span className="slab">
               {m.name}
               {m.source !== null && <span className="hint">{m.source}</span>}
             </span>
             <button
-              className="b b-no"
+              className="b"
               aria-label={`Remove ${m.name}`}
               onClick={() => {
-                setAsking({ drop: m });
+                setRemoving(m);
               }}
             >
               Remove
@@ -131,26 +122,15 @@ export function SkillsTab() {
             Add marketplace
           </button>
         </div>
-      </Section>
-      {asking !== null && "remove" in asking && (
+      </div>
+      {removing !== null && (
         <Confirm
-          title={`Remove ${asking.remove.name}?`}
-          about="Claude Code uninstalls it on your Mac."
-          action="Remove"
-          onConfirm={() => void actions.uninstallPlugin(asking.remove)}
-          onClose={() => {
-            setAsking(null);
-          }}
-        />
-      )}
-      {asking !== null && "drop" in asking && (
-        <Confirm
-          title={`Remove ${asking.drop.name}?`}
+          title={`Remove ${removing.name}?`}
           about="Its plugins can no longer be installed from it."
           action="Remove"
-          onConfirm={() => void actions.removeMarketplace(asking.drop)}
+          onConfirm={() => void actions.removeMarketplace(removing)}
           onClose={() => {
-            setAsking(null);
+            setRemoving(null);
           }}
         />
       )}
@@ -172,19 +152,12 @@ export function SkillsTab() {
           }}
         />
       )}
-      {browsing && (
-        <Browse
-          onClose={() => {
-            setBrowsing(false);
-          }}
-        />
-      )}
-    </>
+    </Sheet>
   );
 }
 
 /** The plugins the marketplaces offer; one opens its details, with Install. */
-function Browse({ onClose }: { onClose: () => void }) {
+export function ClaudeBrowse({ onClose }: { onClose: () => void }) {
   const { actions } = useStore();
   const [available, setAvailable] = useState<AvailablePlugin[] | null>(null);
   const [open, setOpen] = useState<AvailablePlugin | null>(null);
@@ -229,7 +202,7 @@ function Browse({ onClose }: { onClose: () => void }) {
                 <span className="hint">{plugin.marketplace}</span>
               </span>
               <div className="sctl">
-                {plugin.installed && <Pill tone="rev" label="Installed" />}
+                {plugin.installed && <span className="cfg-ok">Installed</span>}
                 <button
                   className="b"
                   aria-label={`Details of ${plugin.name}`}
@@ -292,7 +265,7 @@ function Details({
           ))}
         <div className="srow">
           {plugin.installed ? (
-            <Pill tone="rev" label="Installed" />
+            <span className="cfg-ok">Installed</span>
           ) : (
             <button
               className="b b-pri"

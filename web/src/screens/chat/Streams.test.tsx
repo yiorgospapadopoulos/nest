@@ -25,7 +25,7 @@ async function openChat(
   api.session.mockResolvedValue(detail({ ...chat, ...(background ? { background } : {}) }));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;
@@ -250,7 +250,7 @@ describe("background tasks (B59)", () => {
       ],
       { api, background },
     );
-    await user.click(await screen.findByRole("button", { name: /1 running · 1 completed/ }));
+    await user.click(await screen.findByRole("button", { name: "1 running task" }));
     expect(screen.queryByRole("button", { name: "Stop npm test" })).not.toBeInTheDocument();
     const stop = screen.getByRole("button", { name: "Stop npm run dev" });
     await user.click(stop);

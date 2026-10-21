@@ -1,7 +1,10 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../../api/client.ts";
+import { USAGE_BAR_HIDDEN_KEY } from "../../store/devicePrefs.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { usageSettings } from "../../test/fixtures.ts";
+import { claudeProvider, codexProvider, usagePeriod, usageSettings } from "../../test/fixtures.ts";
+import { memoryStorage } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
 const openUsage = (api = fakeApi()) => openSettings("Usage", { api });
@@ -88,5 +91,125 @@ describe("usage limit settings", () => {
     expect(screen.getByText("5 hour limit 82% used")).toBeInTheDocument();
     push({ type: "usage.warning", payload: { window: "seven_day" } });
     expect(screen.getByText("Weekly limit 0% used")).toBeInTheDocument();
+  });
+});
+
+/** Codex signed in beside Claude (B94). */
+function withCodex(api = fakeApi(), signedIn = true) {
+  api.providers.mockResolvedValue({
+    providers: [claudeProvider(), codexProvider({ signed_in: signedIn })],
+  });
+  return api;
+}
+
+describe("usage per engine", () => {
+  it("shows Codex's windows under Claude's, and refreshes both", async () => {
+    const api = withCodex();
+    const { user } = await openUsage(api);
+
+    const limits = await screen.findByRole("region", { name: /^Limits/ });
+    expect(await within(limits).findByRole("meter", { name: "Codex 5 hour used" })).toHaveAttribute(
+      "aria-valuenow",
+      "20",
+    );
+    expect(within(limits).getByRole("meter", { name: "Codex Weekly used" })).toHaveAttribute(
+      "aria-valuenow",
+      "45",
+    );
+    expect(within(limits).getByRole("meter", { name: "5 hour used" })).toBeInTheDocument();
+    expect(within(limits).getByText("Claude")).toBeInTheDocument();
+    expect(within(limits).getByText("Codex")).toBeInTheDocument();
+    expect(api.engineLimits).toHaveBeenCalledWith("codex");
+
+    await user.click(within(limits).getByRole("button", { name: "Refresh usage" }));
+    expect(api.refreshUsage).toHaveBeenCalled();
+    expect(api.refreshEngineUsage).toHaveBeenCalledWith("codex");
+  });
+
+  it("follows Codex's windows live, and waits for a first report", async () => {
+    const api = withCodex();
+    api.engineLimits.mockRejectedValue(new ApiError(502, "codex is down"));
+    const { push } = await openUsage(api);
+    const limits = await screen.findByRole("region", { name: /^Limits/ });
+    await within(limits).findByText("Codex");
+    expect(within(limits).getByText("Usage").nextElementSibling).toHaveTextContent(
+      "Not reported yet",
+    );
+
+    push({
+      type: "usage.provider_updated",
+      payload: {
+        provider: "codex",
+        windows: [{ utilization: 0.6, resets_at: null, minutes: 43200, label: "30 day" }],
+      },
+    });
+    expect(within(limits).getByRole("meter", { name: "Codex 30 day used" })).toHaveAttribute(
+      "aria-valuenow",
+      "60",
+    );
+  });
+
+  it("leaves out an engine that is not signed in, and its refresh", async () => {
+    const api = withCodex(fakeApi(), false);
+    const { user } = await openUsage(api);
+    const limits = await screen.findByRole("region", { name: /^Limits/ });
+    await waitFor(() => {
+      expect(api.providers).toHaveBeenCalled();
+    });
+
+    expect(within(limits).queryByText("Codex")).toBeNull();
+    expect(within(limits).queryByText("Claude")).toBeNull();
+    await user.click(within(limits).getByRole("button", { name: "Refresh usage" }));
+    expect(api.refreshEngineUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("top bar shows", () => {
+  it("checks an engine per row, kept on this device", async () => {
+    const storage = memoryStorage();
+    const api = withCodex(fakeApi(), false);
+    const { user } = await openSettings("Usage", { api, storage });
+
+    const bar = await screen.findByRole("region", { name: "Top bar shows" });
+    const codex = await within(bar).findByRole("checkbox", { name: "Show Codex in the top bar" });
+    expect(codex).toBeChecked();
+    expect(within(bar).getByText("Not signed in")).toBeInTheDocument();
+    expect(within(bar).getByRole("checkbox", { name: "Show Claude in the top bar" })).toBeChecked();
+
+    await user.click(codex);
+    expect(codex).not.toBeChecked();
+    expect(storage.getItem(USAGE_BAR_HIDDEN_KEY)).toBe(JSON.stringify(["codex"]));
+    await user.click(codex);
+    expect(codex).toBeChecked();
+  });
+});
+
+describe("usage details by engine", () => {
+  it("splits the period's tokens by engine", async () => {
+    const api = withCodex();
+    api.usagePeriod.mockResolvedValue(
+      usagePeriod({
+        engines: [
+          { provider: "claude", tokens: 750, sessions: 3 },
+          { provider: "codex", tokens: 250, sessions: 1 },
+        ],
+      }),
+    );
+    const { user } = await openUsage(api);
+    await user.click(await screen.findByRole("button", { name: "Details" }));
+
+    const engines = await screen.findByRole("region", { name: "By engine" });
+    await within(engines).findByText("Codex");
+    expect(within(engines).getByText("Claude")).toBeInTheDocument();
+    expect(within(engines).getByText("75%")).toBeInTheDocument();
+    expect(within(engines).getByText("25%")).toBeInTheDocument();
+  });
+
+  it("leaves the split out for a period without engines", async () => {
+    const { user } = await openUsage();
+    await user.click(await screen.findByRole("button", { name: "Details" }));
+
+    await screen.findByRole("region", { name: "By who" });
+    expect(screen.queryByRole("region", { name: "By engine" })).toBeNull();
   });
 });

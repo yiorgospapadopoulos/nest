@@ -47,7 +47,7 @@ function withTree(chats: Session[], groups: Record<string, GroupEntry[]>): FakeA
 
 async function openList(api: FakeApi) {
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   return rendered;
 }
 

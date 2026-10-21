@@ -55,10 +55,8 @@ import { usePrefill } from "./usePrefill.tsx";
 import { StopTask } from "./StopTask.tsx";
 import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
-
-// Within this many pixels of the bottom, new output is followed. Anywhere else the
-// reading position never moves, not even when the user sends a message.
-const FOLLOW_DISTANCE = 40;
+import { Markdown } from "../../ui/Markdown.tsx";
+import { ScrollFollow } from "./scrollFollow.ts";
 
 const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
@@ -129,7 +127,8 @@ export function Transcript({
     [events, state.approvals, root, running, pixies],
   );
   const box = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
+  // Whether new output is followed: only the user's own scrolling changes it (D099).
+  const follow = useRef(new ScrollFollow());
   const [away, setAway] = useState(false);
   // Bumped by "Jump to latest" to scroll down once more.
   const [jumps, setJumps] = useState(0);
@@ -178,7 +177,7 @@ export function Transcript({
 
   useLayoutEffect(() => {
     const el = box.current;
-    if (el !== null && follow.current) el.scrollTop = el.scrollHeight;
+    if (el !== null && follow.current.contentArrived()) el.scrollTop = el.scrollHeight;
   }, [items.length, live, agentLive, working, jumps, runs]);
 
   // Once the focused event is on screen, stop following and show it highlighted.
@@ -188,7 +187,7 @@ export function Transcript({
     const target = nearestItem(el, focus);
     if (target === null) return;
     focused.current = focus;
-    follow.current = false;
+    follow.current.hold();
     target.scrollIntoView({ block: "center" });
     target.classList.add("hit");
     target.addEventListener(
@@ -203,7 +202,7 @@ export function Transcript({
   const calls: CallControls = { agentLive, running, stopper };
 
   const jump = () => {
-    follow.current = true;
+    follow.current.jumpToLatest();
     setAway(false);
     setJumps((n) => n + 1);
   };
@@ -215,8 +214,13 @@ export function Transcript({
         ref={box}
         onScroll={(event) => {
           const el = event.currentTarget;
-          follow.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_DISTANCE;
-          setAway(!follow.current);
+          const metrics = {
+            offset: el.scrollTop,
+            viewport: el.clientHeight,
+            content: el.scrollHeight,
+          };
+          if (follow.current.update(metrics)) el.scrollTop = el.scrollHeight;
+          setAway(follow.current.showsJump);
         }}
       >
         {history === "loading" && items.length === 0 && <p className="note">Loading...</p>}
@@ -250,7 +254,11 @@ export function Transcript({
               />
             ))}
           </CallContext>
-          {live && <div className="m-a">{live}</div>}
+          {live && (
+            <div className="m-a">
+              <Markdown text={live} />
+            </div>
+          )}
           {runs.map((run) => (
             <LocalBash key={run.id} run={run} />
           ))}
@@ -548,7 +556,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
     case "assistant":
       return (
         <div className="m-a" data-ev={ev}>
-          {item.text}
+          <Markdown text={item.text} />
         </div>
       );
     case "answer":
@@ -575,11 +583,13 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
         </Bash>
       );
     case "turn":
-      return (
+      // "Worked for 1m 12s" shows on the Mac on hover only, and a phone has no hover, so
+      // only a stopped turn says how long it ran (B102). The status region reads both out.
+      return item.stopped ? (
         <div className="m-turn" data-ev={ev}>
           {item.text}
         </div>
-      );
+      ) : null;
     case "thinking":
       return <Thinking item={item} ev={ev} />;
     case "tool":

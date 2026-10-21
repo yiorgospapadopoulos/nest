@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ACCENTS, GLASSES, THEMES, WALLPAPERS } from "../../appearance/appearance.ts";
+import { ACCENTS, THEMES } from "../../appearance/appearance.ts";
 import { useAppearance } from "../../appearance/context.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Section, SegRow } from "./rows.tsx";
@@ -14,10 +14,7 @@ export function AccentPreview() {
   return null;
 }
 
-/**
- * Mode and accent, then how chats look: the glass, your messages and the wallpaper, the
- * iPhone's chat background. Kept on this device.
- */
+/** Mode, accent and how your messages look. Kept on this device. */
 export function AppearancePage() {
   const { appearance, change } = useAppearance();
   return (
@@ -51,54 +48,6 @@ export function AppearancePage() {
             ))}
           </div>
         </div>
-      </Section>
-      <AccentPreview />
-      <Section title="Chat background">
-        <div className="srow col">
-          <span id="wallpaper-label">Wallpaper</span>
-          <div className="wpl" role="group" aria-labelledby="wallpaper-label">
-            {WALLPAPERS.map((wallpaper) => (
-              <button
-                key={wallpaper}
-                className="wpt"
-                aria-pressed={appearance.wallpaper === wallpaper}
-                onClick={() => {
-                  change({ wallpaper });
-                }}
-              >
-                <i className={`wallpaper-${wallpaper}`} aria-hidden="true" />
-                {title(wallpaper)}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="srow col">
-          <span id="glass-label">Glass</span>
-          <div className="gpl" role="group" aria-labelledby="glass-label">
-            {GLASSES.map((glass) => (
-              <button
-                key={glass.id}
-                className="wpt gpt"
-                aria-pressed={appearance.glass === glass.id}
-                onClick={() => {
-                  change({ glass: glass.id });
-                }}
-              >
-                {/* A small pane and control in this theme's own glass, over the wallpaper. */}
-                <i
-                  className={`wallpaper-${appearance.wallpaper}`}
-                  data-glass={glass.id}
-                  aria-hidden="true"
-                >
-                  <span>
-                    <b />
-                  </span>
-                </i>
-                {glass.label}
-              </button>
-            ))}
-          </div>
-        </div>
         <SegRow
           label="Your messages"
           value={appearance.bubble}
@@ -111,6 +60,7 @@ export function AppearancePage() {
           }}
         />
       </Section>
+      <AccentPreview />
     </>
   );
 }

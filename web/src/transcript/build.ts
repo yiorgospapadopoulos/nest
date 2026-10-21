@@ -134,8 +134,8 @@ export type TranscriptItem =
   | HookItem
   // The user's answer to a question Claude asked, shown as a message they sent (B60).
   | { kind: "answer"; key: string; question: string; text: string }
-  // "Worked for 1m 12s" or "Stopped after 40s" at the end of a turn.
-  | { kind: "turn"; key: string; text: string };
+  // "Worked for 1m 12s" or, `stopped`, "Stopped after 40s" at the end of a turn.
+  | { kind: "turn"; key: string; text: string; stopped: boolean };
 
 /** A pending approval answered in the transcript; a review shows above the composer. */
 export type InlineAsk = Approval & { kind: Exclude<Approval["kind"], "review"> };
@@ -209,7 +209,12 @@ export function buildTranscript(
     switch (e.type) {
       case "session.user_message":
         if (result !== null && result.ms !== null) {
-          items.push({ kind: "turn", key: `${result.key}.end`, text: turnLabel(result.ms, false) });
+          items.push({
+            kind: "turn",
+            key: `${result.key}.end`,
+            text: turnLabel(result.ms, false),
+            stopped: false,
+          });
         }
         result = null;
         settle();
@@ -479,7 +484,8 @@ function reportLines(text: string): string {
 function endTurn(items: TranscriptItem[], key: string, p: JsonObject, ms: number | null): void {
   if (p.state === "failed") note(items, key, failure(str(p.error)));
   if (ms !== null) {
-    items.push({ kind: "turn", key: `${key}.end`, text: turnLabel(ms, p.state !== "idle") });
+    const stopped = p.state !== "idle";
+    items.push({ kind: "turn", key: `${key}.end`, text: turnLabel(ms, stopped), stopped });
   } else if (p.state === "interrupted") {
     note(items, key, "Interrupted");
   }

@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LimitWindow, UsageSettings } from "../../api/types.ts";
 import { clockTime, percent, resetLabel } from "../../format.ts";
+import { CLAUDE } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
+import { engineList, usageBarChoices } from "../../store/selectors.ts";
 import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
 import { UsagePeriodCard } from "./UsagePeriodCard.tsx";
@@ -20,8 +22,9 @@ function refreshLabel(minutes: number): string {
 }
 
 /**
- * The subscription windows Claude reports, the periods Nest counted itself (B84), and when
- * the Mac checks the windows and warns (D104).
+ * The subscription windows Claude reports, then each other signed-in engine's (B102 item
+ * 23), the periods Nest counted itself (B84), which engines the top bar shows (item 29),
+ * and when the Mac checks the windows and warns (D104).
  */
 export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   const { state, actions } = useStore();
@@ -29,10 +32,19 @@ export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   const limits = state.limits;
   const settings = state.settings.usage;
   const now = new Date();
+  const others = engineList(state).filter((e) => e.name !== CLAUDE && e.signed_in === true);
 
+  useEffect(() => {
+    void actions.loadEngineLimits();
+  }, [actions]);
+
+  // Refresh asks every engine shown (item 7).
   const refresh = async () => {
     setRefreshing(true);
-    await actions.refreshUsage();
+    await Promise.all([
+      actions.refreshUsage(),
+      ...others.map((engine) => actions.refreshUsage(engine.name)),
+    ]);
     setRefreshing(false);
   };
 
@@ -69,11 +81,31 @@ export function UsageLimits({ onDetails }: { onDetails: () => void }) {
         }
       >
         <div className="pad">
+          {others.length > 0 && <h3 className="ueng">{engineList(state)[0]?.display_name}</h3>}
           <Meter label="5 hour" window={limits?.five_hour ?? null} now={now} />
           <Meter label="Weekly" window={limits?.seven_day ?? null} now={now} />
+          {others.map((engine) => {
+            const windows = state.engineLimits[engine.name]?.windows ?? [];
+            return (
+              <div key={engine.name}>
+                <h3 className="ueng">{engine.display_name}</h3>
+                {windows.length === 0 && <Meter label="Usage" window={null} now={now} />}
+                {windows.map((w) => (
+                  <Meter
+                    key={w.label}
+                    label={w.label}
+                    name={`${engine.display_name} ${w.label}`}
+                    window={w}
+                    now={now}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </div>
       </Section>
       <UsagePeriodCard onDetails={onDetails} />
+      <TopBar />
       {settings === null ? <Loading /> : <Checks settings={settings} />}
     </>
   );
@@ -123,7 +155,44 @@ function Checks({ settings }: { settings: UsageSettings }) {
   );
 }
 
-function Meter({ label, window, now }: { label: string; window: LimitWindow | null; now: Date }) {
+/** Which engines the usage bar shows, on this device only: a checkmark per engine. */
+function TopBar() {
+  const { state, actions } = useStore();
+  return (
+    <Section title="Top bar shows">
+      {usageBarChoices(state).map((engine) => (
+        <div key={engine.provider} className="srow">
+          <span className="slab">{engine.name}</span>
+          <div className="sctl">
+            {engine.detail !== "" && <span className="sval">{engine.detail}</span>}
+            <button
+              className="ucheck"
+              role="checkbox"
+              aria-checked={engine.shown}
+              aria-label={`Show ${engine.name} in the top bar`}
+              onClick={() => {
+                actions.setUsageBarEngine(engine.provider, !engine.shown);
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
+function Meter({
+  label,
+  name = label,
+  window,
+  now,
+}: {
+  label: string;
+  // The meter's accessible name before "used"; another engine's starts with its name.
+  name?: string;
+  window: LimitWindow | null;
+  now: Date;
+}) {
   if (window === null) {
     return (
       <div className="urow">
@@ -144,7 +213,7 @@ function Meter({ label, window, now }: { label: string; window: LimitWindow | nu
       <div
         className="meter sm ink"
         role="meter"
-        aria-label={`${label} used`}
+        aria-label={`${name} used`}
         aria-valuenow={used}
         aria-valuemin={0}
         aria-valuemax={100}

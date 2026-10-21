@@ -6,7 +6,7 @@ interface Props {
   title: string;
   options: Option<string>[];
   value: string | null;
-  onPick: (value: string | null) => void;
+  onPick: (value: string) => void;
   onClose: () => void;
 }
 
@@ -15,7 +15,7 @@ export function PickerSheet({ title, options, value, onPick, onClose }: Props) {
     <ActionSheet label={title} title={<b>{title}</b>} onClose={onClose}>
       {options.map((option) => (
         <button
-          key={option.value ?? ""}
+          key={option.value}
           className="asi"
           role="menuitemradio"
           aria-checked={option.value === value}

@@ -1,6 +1,19 @@
 import type {
   AccountInfo,
   AgentDefaults,
+  CodexAccount,
+  CodexMarketplace,
+  CodexPlugins,
+  ConfigurationPage,
+  CopyPreview,
+  CopyResult,
+  EngineId,
+  EngineLimits,
+  FileText,
+  McpServer,
+  ProjectConfiguration,
+  ProviderList,
+  SharedItem,
   AgentWork,
   Artifact,
   ArtifactAnswer,
@@ -68,9 +81,7 @@ import type {
   Marketplace,
   PluginDetails,
   PixieSkill,
-  StandaloneSkill,
   ClaudeAccount,
-  ClaudeCodeInfo,
   ListedDevice,
   GithubAccount,
   PairingCode,
@@ -177,6 +188,9 @@ export interface Api {
   usagePeriod(unit: PeriodUnit, date: string): Promise<UsagePeriod>;
   usageLimits(): Promise<UsageLimits>;
   refreshUsage(): Promise<UsageLimits>;
+  // Another engine's windows (B91); refreshing is refused with 429 within 20 s.
+  engineLimits(provider: string): Promise<EngineLimits>;
+  refreshEngineUsage(provider: string): Promise<EngineLimits>;
   // 202 at once; the daemon then exits and launchd starts it again.
   restartService(): Promise<{ restarting: boolean }>;
   health(): Promise<Health>;
@@ -187,7 +201,10 @@ export interface Api {
   testPush(): Promise<PushReport>;
   notificationSettings(): Promise<NotificationSettings>;
   saveNotificationSettings(settings: NotificationSettings): Promise<NotificationSettings>;
-  models(): Promise<ModelList>;
+  // Claude's models, or with `provider` that engine's (Codex's is empty until it answers).
+  models(provider?: string): Promise<ModelList>;
+  // The engines chats run on; `refresh` asks Codex for its login now.
+  providers(refresh?: boolean): Promise<ProviderList>;
   account(): Promise<AccountInfo>;
   agentDefaults(): Promise<AgentDefaults>;
   saveAgentDefaults(defaults: AgentDefaults): Promise<AgentDefaults>;
@@ -254,7 +271,9 @@ export interface Api {
   // 202 at once; the Mac opens the browser and `account.claude` follows.
   claudeLogin(): Promise<unknown>;
   claudeLogout(): Promise<ClaudeAccount>;
-  claudeCode(): Promise<ClaudeCodeInfo>;
+  // Codex's login (B94); signing in happens on the Mac only, its callback being local.
+  codexAccount(): Promise<CodexAccount>;
+  codexLogout(): Promise<CodexAccount>;
   // 202 at once; `claude_code.install` events follow.
   installClaudeCode(): Promise<unknown>;
   devices(): Promise<ListedDevice[]>;
@@ -262,7 +281,6 @@ export interface Api {
   pairingCode(): Promise<PairingCode>;
   // Claude Code's plugins, skills and marketplaces (D104); writes answer 204.
   plugins(): Promise<InstalledPlugin[]>;
-  skills(): Promise<StandaloneSkill[]>;
   marketplaces(): Promise<Marketplace[]>;
   addMarketplace(source: string): Promise<null>;
   removeMarketplace(name: string): Promise<null>;
@@ -291,6 +309,43 @@ export interface Api {
     id: string,
     body: { content: string; base_version: number },
   ): Promise<ArtifactVersion>;
+  // Settings > Configuration (B97). 403 for a path outside the allow-list, 404 for an
+  // unknown item, 409 for a conflict, 422 for invalid input.
+  configuration(): Promise<ConfigurationPage>;
+  configurationFile(path: string): Promise<FileText>;
+  // 409 with `current_version` when the file changed since it was read.
+  writeConfigurationFile(
+    path: string,
+    text: string,
+    expectedVersion: string | null,
+  ): Promise<{ version: string }>;
+  setUsesShared(engine: EngineId, item: SharedItem, on: boolean): Promise<ConfigurationPage>;
+  createSkill(name: string, description: string): Promise<ConfigurationPage>;
+  deleteSkill(name: string): Promise<ConfigurationPage>;
+  // Moves a Codex skill into the shared folder.
+  makeSkillShared(name: string): Promise<ConfigurationPage>;
+  setCodexSkill(name: string, enabled: boolean): Promise<ConfigurationPage>;
+  mcpServer(name: string): Promise<McpServer>;
+  putMcpServer(name: string, server: McpServer): Promise<ConfigurationPage>;
+  deleteMcpServer(name: string): Promise<ConfigurationPage>;
+  copyPreview(engine: EngineId): Promise<CopyPreview>;
+  // `instructions` false keeps the shared instructions as they are.
+  copyToShared(engine: EngineId, instructions: boolean): Promise<CopyResult>;
+  undoCopy(undoId: string): Promise<ConfigurationPage>;
+  codexPlugins(query: string): Promise<CodexPlugins>;
+  installCodexPlugin(id: string): Promise<CodexPlugins>;
+  uninstallCodexPlugin(id: string): Promise<CodexPlugins>;
+  codexMarketplaces(): Promise<CodexMarketplace[]>;
+  addCodexMarketplace(source: string): Promise<CodexMarketplace[]>;
+  removeCodexMarketplace(name: string): Promise<CodexMarketplace[]>;
+  projectConfiguration(repo: string): Promise<ProjectConfiguration>;
+  putProjectMcpServer(repo: string, server: string, body: McpServer): Promise<ProjectConfiguration>;
+  deleteProjectMcpServer(repo: string, server: string): Promise<ProjectConfiguration>;
+  createProjectSkill(
+    repo: string,
+    name: string,
+    description: string,
+  ): Promise<ProjectConfiguration>;
 }
 
 // Search results asked for at once; the daemon allows up to 100.
@@ -302,6 +357,12 @@ const EXTENSIONS = "/api/extensions";
 const plugin = (id: string) => `${EXTENSIONS}/plugins/${encodeURIComponent(id)}`;
 const claudeChat = (id: string) => `/api/claude-chats/${encodeURIComponent(id)}`;
 const artifact = (id: string) => `/api/artifacts/${encodeURIComponent(id)}`;
+const CONFIGURATION = "/api/configuration";
+const skill = (name: string) => `${CONFIGURATION}/skills/${encodeURIComponent(name)}`;
+const server = (name: string) => `${CONFIGURATION}/mcp-servers/${encodeURIComponent(name)}`;
+const codexPlugin = (id: string) => `${CONFIGURATION}/codex/plugins/${encodeURIComponent(id)}`;
+const CODEX_MARKETPLACES = `${CONFIGURATION}/codex/marketplaces`;
+const engineQuery = (provider: string) => `provider=${encodeURIComponent(provider)}`;
 
 /** The daemon's REST API; the device token travels in the same-origin cookie. */
 export class HttpApi implements Api {
@@ -512,6 +573,14 @@ export class HttpApi implements Api {
     return this.json<UsageLimits>("POST", "/api/usage/refresh");
   }
 
+  engineLimits(provider: string) {
+    return this.json<EngineLimits>("GET", `/api/usage/limits?${engineQuery(provider)}`);
+  }
+
+  refreshEngineUsage(provider: string) {
+    return this.json<EngineLimits>("POST", `/api/usage/refresh?${engineQuery(provider)}`);
+  }
+
   restartService() {
     return this.json<{ restarting: boolean }>("POST", "/api/service/restart");
   }
@@ -548,8 +617,13 @@ export class HttpApi implements Api {
     return this.json<NotificationSettings>("PUT", "/api/notifications/settings", settings);
   }
 
-  models() {
-    return this.json<ModelList>("GET", "/api/models");
+  models(provider?: string) {
+    const query = provider === undefined ? "" : `?${engineQuery(provider)}`;
+    return this.json<ModelList>("GET", `/api/models${query}`);
+  }
+
+  providers(refresh = false) {
+    return this.json<ProviderList>("GET", `/api/providers${refresh ? "?refresh=true" : ""}`);
   }
 
   account() {
@@ -780,10 +854,6 @@ export class HttpApi implements Api {
     return this.json<ClaudeAccount>("POST", "/api/accounts/claude/logout");
   }
 
-  claudeCode() {
-    return this.json<ClaudeCodeInfo>("GET", "/api/claude-code");
-  }
-
   installClaudeCode() {
     return this.json<unknown>("POST", "/api/claude-code/install");
   }
@@ -802,10 +872,6 @@ export class HttpApi implements Api {
 
   plugins() {
     return this.json<InstalledPlugin[]>("GET", `${EXTENSIONS}/plugins`);
-  }
-
-  skills() {
-    return this.json<StandaloneSkill[]>("GET", `${EXTENSIONS}/skills`);
   }
 
   marketplaces() {
@@ -887,6 +953,135 @@ export class HttpApi implements Api {
 
   saveArtifactVersion(id: string, body: { content: string; base_version: number }) {
     return this.json<ArtifactVersion>("POST", `${artifact(id)}/versions`, body);
+  }
+
+  codexAccount() {
+    return this.json<CodexAccount>("GET", "/api/accounts/codex");
+  }
+
+  codexLogout() {
+    return this.json<CodexAccount>("POST", "/api/accounts/codex/logout");
+  }
+
+  configuration() {
+    return this.json<ConfigurationPage>("GET", CONFIGURATION);
+  }
+
+  configurationFile(path: string) {
+    return this.json<FileText>("GET", `${CONFIGURATION}/file?path=${encodeURIComponent(path)}`);
+  }
+
+  writeConfigurationFile(path: string, text: string, expectedVersion: string | null) {
+    return this.json<{ version: string }>("PUT", `${CONFIGURATION}/file`, {
+      path,
+      text,
+      expected_version: expectedVersion,
+    });
+  }
+
+  setUsesShared(engine: EngineId, item: SharedItem, on: boolean) {
+    return this.json<ConfigurationPage>("PUT", `${CONFIGURATION}/uses-shared`, {
+      engine,
+      item,
+      on,
+    });
+  }
+
+  createSkill(name: string, description: string) {
+    return this.json<ConfigurationPage>("POST", `${CONFIGURATION}/skills`, { name, description });
+  }
+
+  deleteSkill(name: string) {
+    return this.json<ConfigurationPage>("DELETE", skill(name));
+  }
+
+  makeSkillShared(name: string) {
+    return this.json<ConfigurationPage>("POST", `${skill(name)}/make-shared`, { engine: "codex" });
+  }
+
+  setCodexSkill(name: string, enabled: boolean) {
+    return this.json<ConfigurationPage>("PUT", `${skill(name)}/engines/codex`, { enabled });
+  }
+
+  mcpServer(name: string) {
+    return this.json<McpServer>("GET", server(name));
+  }
+
+  putMcpServer(name: string, body: McpServer) {
+    return this.json<ConfigurationPage>("PUT", server(name), body);
+  }
+
+  deleteMcpServer(name: string) {
+    return this.json<ConfigurationPage>("DELETE", server(name));
+  }
+
+  copyPreview(engine: EngineId) {
+    return this.json<CopyPreview>("GET", `${CONFIGURATION}/copy/${engine}`);
+  }
+
+  copyToShared(engine: EngineId, instructions: boolean) {
+    return this.json<CopyResult>("POST", `${CONFIGURATION}/copy/${engine}`, { instructions });
+  }
+
+  undoCopy(undoId: string) {
+    return this.json<ConfigurationPage>(
+      "POST",
+      `${CONFIGURATION}/copy/undo/${encodeURIComponent(undoId)}`,
+    );
+  }
+
+  codexPlugins(query: string) {
+    const search = query === "" ? "" : `?query=${encodeURIComponent(query)}`;
+    return this.json<CodexPlugins>("GET", `${CONFIGURATION}/codex/plugins${search}`);
+  }
+
+  installCodexPlugin(id: string) {
+    return this.json<CodexPlugins>("POST", `${codexPlugin(id)}/install`);
+  }
+
+  uninstallCodexPlugin(id: string) {
+    return this.json<CodexPlugins>("POST", `${codexPlugin(id)}/uninstall`);
+  }
+
+  codexMarketplaces() {
+    return this.json<CodexMarketplace[]>("GET", CODEX_MARKETPLACES);
+  }
+
+  addCodexMarketplace(source: string) {
+    return this.json<CodexMarketplace[]>("POST", CODEX_MARKETPLACES, { source });
+  }
+
+  removeCodexMarketplace(name: string) {
+    return this.json<CodexMarketplace[]>(
+      "DELETE",
+      `${CODEX_MARKETPLACES}/${encodeURIComponent(name)}`,
+    );
+  }
+
+  projectConfiguration(name: string) {
+    return this.json<ProjectConfiguration>("GET", `${repo(name)}/configuration`);
+  }
+
+  putProjectMcpServer(name: string, serverName: string, body: McpServer) {
+    return this.json<ProjectConfiguration>(
+      "PUT",
+      `${repo(name)}/configuration/mcp-servers/${encodeURIComponent(serverName)}`,
+      body,
+    );
+  }
+
+  deleteProjectMcpServer(name: string, serverName: string) {
+    return this.json<ProjectConfiguration>(
+      "DELETE",
+      `${repo(name)}/configuration/mcp-servers/${encodeURIComponent(serverName)}`,
+    );
+  }
+
+  createProjectSkill(name: string, skillName: string, description: string) {
+    return this.json<ProjectConfiguration>("POST", `${repo(name)}/configuration/skills`, {
+      name: skillName,
+      description,
+    });
   }
 
   private json<T>(method: string, path: string, body?: unknown): Promise<T> {

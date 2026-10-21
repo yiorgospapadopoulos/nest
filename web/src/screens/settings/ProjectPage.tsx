@@ -10,10 +10,11 @@ import { Confirm } from "../pixies/Confirm.tsx";
 import { NameSheet } from "../pixies/NameSheet.tsx";
 import { MASCOTS } from "../pixies/options.ts";
 import { Sprite } from "../pixies/Sprite.tsx";
+import { ProjectConfiguration } from "./ProjectConfiguration.tsx";
 import { Row, Section, SegRow, SelectRow, type Choice } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
 
-type Tab = "General" | "Chats" | "Worktrees" | "Look" | "Artifacts";
+type Tab = "General" | "Configuration" | "Chats" | "Worktrees" | "Look" | "Artifacts";
 
 // Where the project's new chats work; null follows the agent default.
 const WORK_IN: Choice<boolean | null>[] = [
@@ -32,8 +33,8 @@ const SPRITE_COLOR = "#8B7CF6";
 export function ProjectPage({ repo }: { repo: RepoConfig }) {
   // Chats and Worktrees are about git; a plain folder's chats work in place.
   const tabs: Tab[] = repo.git
-    ? ["General", "Chats", "Worktrees", "Look", "Artifacts"]
-    : ["General", "Look", "Artifacts"];
+    ? ["General", "Configuration", "Chats", "Worktrees", "Look", "Artifacts"]
+    : ["General", "Configuration", "Look", "Artifacts"];
   const [tab, setTab] = useState<Tab>("General");
   return (
     <>
@@ -52,6 +53,7 @@ export function ProjectPage({ repo }: { repo: RepoConfig }) {
       </div>
       <div>
         {tab === "General" && <General repo={repo} />}
+        {tab === "Configuration" && <ProjectConfiguration repo={repo} />}
         {tab === "Chats" && <Chats repo={repo} />}
         {tab === "Worktrees" && <Worktrees repo={repo} />}
         {tab === "Look" && <Look repo={repo} />}
@@ -155,6 +157,15 @@ function Git({ repo }: { repo: RepoConfig }) {
   );
 }
 
+/** What removing the project does (B96: branches stay; only worktrees go), as the Mac says. */
+function removal(chats: number): string {
+  const folder = "Nest forgets this project. Its folder stays as it is.";
+  if (chats === 0) return folder;
+  return chats === 1
+    ? `${folder} Its chat is deleted for good, with its worktree and history; its branch stays.`
+    : `${folder} Its ${String(chats)} chats are deleted for good, with their worktrees and history; their branches stay.`;
+}
+
 function RemoveProject({ repo }: { repo: RepoConfig }) {
   const { state, actions } = useStore();
   const [asking, setAsking] = useState(false);
@@ -185,10 +196,7 @@ function RemoveProject({ repo }: { repo: RepoConfig }) {
           title={
             <>
               <b>{`Remove ${repo.name}?`}</b>
-              Nest forgets this project. Its folder stays on your Mac, untouched.
-              {count === 1 && " Its chat is deleted too, with its worktree and branch."}
-              {count > 1 &&
-                ` Its ${String(count)} chats are deleted too, with their worktrees and branches.`}
+              {removal(count)}
             </>
           }
         >

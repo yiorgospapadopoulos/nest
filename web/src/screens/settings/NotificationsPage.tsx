@@ -2,9 +2,8 @@ import { Fragment, useEffect, useState } from "react";
 import type { NotificationSettings, QuietHours, ReportSeverity } from "../../api/types.ts";
 import { browserPushEnv, pushStatus, type PushStatus } from "../../pwa/push.ts";
 import { useStore } from "../../store/context.ts";
-import { Pill } from "../../ui/bits.tsx";
 import { KINDS } from "./notifyKinds.ts";
-import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
+import { Loading, Section, SelectRow, Status, SwitchRow } from "./rows.tsx";
 
 const DEFAULT_QUIET: QuietHours = { start: "22:00", end: "07:00" };
 
@@ -60,7 +59,7 @@ export function NotificationsPage() {
               Enable notifications
             </button>
           )}
-          {status === "on" && <Pill tone="rev" label="On" />}
+          {status === "on" && <Status tone="ok" label="On" />}
         </div>
         {status === "on" && (
           <div className="srow">

@@ -40,7 +40,7 @@ async function openChat(
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   if (chat.archived_at !== null) {
     await rendered.user.click(screen.getByRole("button", { name: /^Archived/ }));
   }
@@ -370,7 +370,7 @@ describe("message actions", () => {
     api.claudeChats.mockResolvedValue([claudeChat()]);
     api.claudeChatEvents.mockResolvedValue([asked(3, "Add zod")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Tune the hero section/ }));
 
     await waitFor(() => {
