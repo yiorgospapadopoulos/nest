@@ -7,7 +7,7 @@ import pytest
 
 from nestd.events import types
 from nestd.events.bus import EventBus
-from nestd.providers.base import EngineWindow, UsageInfo, UsageWindow
+from nestd.providers.base import EngineWindow, RunAccount, UsageInfo, UsageWindow
 from nestd.storage.db import Database
 from nestd.usage.models import EngineLimits
 from nestd.usage.probe import UsageProbe
@@ -381,3 +381,57 @@ async def test_a_forced_codex_refresh_is_spaced_apart_from_claudes(h: Rig) -> No
 async def test_a_failed_codex_refresh_names_codex(h: Rig) -> None:
     with pytest.raises(ProbeFailedError, match=r"^Codex did not report"):
         await h.refresher.refresh_engine("codex")
+
+
+WORK = RunAccount("0123456789ab", {"CLAUDE_CONFIG_DIR": "/profiles/work"})
+
+
+async def test_the_schedule_probes_the_active_account_and_reads_the_other_codex_ones(
+    db: Database, clock: FakeClock, tmp_path: Path
+) -> None:
+    """B98: the probe runs on the active Claude account, kept as its windows; the other
+    Codex accounts are read with the active one.
+    """
+    h = Rig(db, clock, tmp_path)
+    others: list[str] = []
+
+    async def active() -> RunAccount:
+        return WORK
+
+    async def other_codex() -> None:
+        others.append("read")
+
+    h.refresher = UsageRefresher(
+        store=h.store,
+        bus=h.bus,
+        clock=clock,
+        probe=UsageProbe(h.factory, tmp_path),
+        visibility=h.visibility,
+        interval=h.setting,
+        codex=h.codex,
+        account=active,
+        other_codex=other_codex,
+    )
+    h.factory.replies.append(answer(0.42))
+    h.visibility.report("mac", visible=True)
+
+    await h.refresher.tick()
+
+    assert h.factory.clients[0].options.env == WORK.env
+    assert (await h.store.limits("0123456789ab")).five_hour is not None
+    assert (await h.store.limits("claude-main")).five_hour is None
+    assert others == ["read"]
+
+
+async def test_probing_another_account_keeps_its_windows_without_announcing_them(
+    h: Rig,
+) -> None:
+    h.factory.replies.extend([answer(0.42), answer(0.5)])
+
+    assert await h.refresher.probe(WORK, announce=False)
+    assert await h.refresher.probe(RunAccount("claude-main"), announce=True)
+
+    work = await h.store.limits("0123456789ab")
+    assert work.five_hour is not None
+    assert work.five_hour.utilization == 0.42
+    assert await h.usage_events() == 1

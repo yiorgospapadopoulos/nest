@@ -95,7 +95,7 @@ describe("Pixie page", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
-  it("draws no backdrop of its own over the wallpaper (B85)", async () => {
+  it("draws no backdrop of its own (B85)", async () => {
     const { container } = await openPixie(fakeApi(), pixie());
 
     expect(container.ownerDocument.querySelector("[class*='pxbg']")).toBeNull();
@@ -119,7 +119,7 @@ describe("Pixie page", () => {
     await waitFor(() => {
       expect(screen.queryByRole("tab", { name: "Chat" })).not.toBeInTheDocument();
     });
-    expect(screen.getByRole("heading", { name: /Pixies/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Project: Pixies" })).toBeInTheDocument();
   });
 });
 

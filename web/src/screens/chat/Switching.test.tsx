@@ -80,7 +80,7 @@ describe("switching chats", () => {
 
     // Going back and opening the chat again from the list restores its draft as well.
     await user.click(screen.getByRole("button", { name: /back/i }));
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Add tests,/ }));
     await screen.findByRole("region", { name: "Add tests" });
     expect(screen.getByLabelText("Message")).toHaveValue("For the tests");
@@ -145,6 +145,8 @@ describe("switching chats", () => {
     const box = defined(screen.getByText("Hello from s1").closest<HTMLElement>(".ch-tx"));
     Object.defineProperty(box, "scrollHeight", { configurable: true, value: 1000 });
     Object.defineProperty(box, "clientHeight", { configurable: true, value: 300 });
+    box.scrollTop = 700;
+    fireEvent.scroll(box);
     box.scrollTop = 100;
     fireEvent.scroll(box);
     expect(screen.getByRole("button", { name: "Jump to latest" })).toBeInTheDocument();
@@ -157,7 +159,7 @@ describe("switching chats", () => {
   it("keeps a new chat's draft for its project", async () => {
     const { user } = await twoChats();
 
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
     await user.type(screen.getByLabelText("Message"), "An idea");
     await user.click(screen.getByRole("button", { name: /back/i }));

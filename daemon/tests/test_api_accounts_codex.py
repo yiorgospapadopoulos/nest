@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from nestd.accounts.codex import CodexAccount
+from nestd.accounts.codex import CodexAccount, CodexAccountStatus, account_status
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
 from nestd.engine.store import EngineInfoStore
 from nestd.events import types
@@ -310,7 +310,14 @@ async def test_a_sign_in_that_takes_too_long_is_cancelled(db: Database, clock: F
         lambda: fetch_codex_usage(server, launch()),
     )
     bus = EventBus(db, clock)
-    account = CodexAccount(engine, server, launch, bus, time_limit=timedelta(milliseconds=20))
+
+    async def status() -> CodexAccountStatus:
+        return account_status(await engine.status(refresh=True))
+
+    async def announce(status: CodexAccountStatus, error: str | None) -> None:
+        await bus.publish(types.ACCOUNT_CODEX, {**status.model_dump(mode="json"), "error": error})
+
+    account = CodexAccount(status, server, launch, announce, time_limit=timedelta(milliseconds=20))
 
     await account.login()
     login = server.transport
@@ -339,7 +346,14 @@ async def test_stopping_the_daemon_ends_a_sign_in(db: Database, clock: FakeClock
         clock,
         lambda: fetch_codex_usage(server, launch()),
     )
-    account = CodexAccount(engine, server, launch, EventBus(db, clock))
+
+    async def status() -> CodexAccountStatus:
+        return account_status(await engine.status(refresh=True))
+
+    async def announce(_status: CodexAccountStatus, _error: str | None) -> None:
+        raise AssertionError
+
+    account = CodexAccount(status, server, launch, announce)
 
     await account.login()
     await account.stop()

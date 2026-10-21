@@ -8,12 +8,22 @@ import type {
   PixieReport,
   PixieTeam,
   PrStatus,
+  ProviderFeature,
+  ProviderInfo,
   Session,
   StuckFlag,
   TrackedAgent,
   TrackedTask,
 } from "../api/types.ts";
 import { list, obj, str } from "../api/payloads.ts";
+import {
+  CLAUDE,
+  type ModelCatalog,
+  modelLabel,
+  newChatChoices,
+  type NewChatChoices,
+  realModels,
+} from "./catalog.ts";
 import type { State } from "./state.ts";
 
 // A pixie chat's repo, under which its inbox items group (D072).
@@ -175,6 +185,8 @@ export function chatStatus(session: Session, pending: Approval[]): ChatStatus {
   }
 }
 
+// The groups of the shared UI rules (design/ui-rules.json). The lists show none since
+// B102, as the Mac since B77; both clients keep the groups' order and names for the rules.
 export type ChatGroup = "pinned" | "need" | "run" | "idle" | "done";
 
 // The order the groups are listed in.
@@ -204,39 +216,48 @@ export type ChatEntry =
 
 export const CLAUDE_CHAT_STATUS: ChatStatus = { tone: "idle", label: "Claude Code" };
 
-function entryTime(entry: ChatEntry): string {
+/** When the chat was last active, for its row's time and the list's order (B102). */
+export function lastActivity(entry: ChatEntry): string {
   return entry.session === undefined ? entry.chat.last_activity_at : entry.session.updated_at;
 }
+
+const entryId = (entry: ChatEntry) =>
+  entry.session === undefined ? entry.chat.id : entry.session.id;
 
 function archived(entry: ChatEntry): boolean {
   return entry.session === undefined ? entry.chat.archived : entry.session.archived_at !== null;
 }
 
-export interface ChatLists {
-  groups: { group: ChatGroup; chats: ChatEntry[] }[];
+/** A project's chats as the Mac's sidebar lists them (B77, B102). */
+export interface ChatList {
+  // Shown under a Pinned label only when there are any.
+  pinned: ChatEntry[];
+  // Every other chat whatever its state, under Chats.
+  chats: ChatEntry[];
+  // Folded at the bottom.
   archived: ChatEntry[];
 }
 
 /**
- * A project's chats: pinned first, then by what they need, newest first in each group.
- * Claude Code chats join the idle group; archived ones of both kinds are listed apart.
+ * A project's chats in one list, latest activity first whatever their state (the later id
+ * first at the same moment), pinned ones above and archived ones apart. Claude Code chats
+ * are never pinned.
  */
-export function chatLists(state: State, repo: string): ChatLists {
+export function chatList(state: State, repo: string): ChatList {
   const sessions: ChatEntry[] = projectChats(state)
     .filter((s) => s.repo === repo)
     .map((session) => ({ session, status: chatStatus(session, pendingFor(state, session.id)) }));
   const chats: ChatEntry[] = Object.values(state.claudeChats)
     .filter((c) => c.repo === repo)
     .map((chat) => ({ chat, status: CLAUDE_CHAT_STATUS }));
-  const entries = [...sessions, ...chats].sort((a, b) => entryTime(b).localeCompare(entryTime(a)));
-  const groupOf = (e: ChatEntry): ChatGroup =>
-    e.session === undefined ? "idle" : chatGroup(e.session, e.status);
+  const entries = [...sessions, ...chats].sort(
+    (a, b) =>
+      lastActivity(b).localeCompare(lastActivity(a)) || entryId(b).localeCompare(entryId(a)),
+  );
   const live = entries.filter((e) => !archived(e));
   return {
-    groups: GROUP_ORDER.map((group) => ({
-      group,
-      chats: live.filter((e) => groupOf(e) === group),
-    })).filter((g) => g.chats.length > 0),
+    pinned: live.filter((e) => e.session?.pinned === true),
+    chats: live.filter((e) => e.session?.pinned !== true),
     archived: entries.filter(archived),
   };
 }
@@ -356,12 +377,19 @@ export function inboxGroups(state: State): InboxGroup[] {
   }));
 }
 
-/** Unread warn and action reports, newest first, under their pixie's chat repo. */
-function inboxReports(state: State): { repo: string; report: PixieReport }[] {
+/** Unread warn and action reports, newest first, as Needs you and the Pixies view list them. */
+export function unreadReports(state: State): PixieReport[] {
   return Object.values(state.reports)
     .filter((r) => r.read_at === null && r.severity !== "info")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((report) => ({ repo: `${PIXIE_REPO}${report.pixie_id}`, report }));
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/** Unread warn and action reports, newest first, under their pixie's chat repo. */
+function inboxReports(state: State): { repo: string; report: PixieReport }[] {
+  return unreadReports(state).map((report) => ({
+    repo: `${PIXIE_REPO}${report.pixie_id}`,
+    report,
+  }));
 }
 
 /** Unread action reports, of one pixie or of all. */
@@ -381,12 +409,6 @@ export function needsCount(state: State, repo?: string): number {
     failures(state).filter(mine).length +
     stuckChats(state).filter(mine).length +
     inboxReports(state).filter(mine).length
-  );
-}
-
-export function isRunning(state: State, repo: string): boolean {
-  return projectChats(state).some(
-    (s) => s.repo === repo && (s.state === "running" || s.state === "starting"),
   );
 }
 
@@ -430,4 +452,173 @@ export function exchangeBackground(
   );
   const running = items.filter((item) => item.status === "running").length;
   return { running, completed: items.length - running, items };
+}
+
+// Engines (B91, B94), as NestKit's ProvidersStore: gating reads the daemon's lists, never an
+// engine's name, so an engine not listed offers everything and the daemon still refuses.
+
+/** The engines chats run on, the default first; Claude alone before the list loads. */
+export function engineList(state: State): ProviderInfo[] {
+  return (
+    state.providers ?? [
+      {
+        name: CLAUDE,
+        display_name: "Claude",
+        signed_in: null,
+        sign_in_hint: null,
+        account: state.account,
+        unsupported: [],
+      },
+    ]
+  );
+}
+
+/** A new chat can run on more than one engine, so the model menu offers the choice. */
+export function offersEngineChoice(state: State): boolean {
+  return (state.providers?.length ?? 0) > 1;
+}
+
+/** The engine's name; none is Claude, an engine not listed is named after itself. */
+export function engineName(state: State, name: string | null | undefined): string {
+  const engine = name ?? CLAUDE;
+  const listed = engineList(state).find((p) => p.name === engine);
+  return listed?.display_name ?? engine.charAt(0).toUpperCase() + engine.slice(1);
+}
+
+/** The grey line under an engine in a menu: not signed in, else its plan. */
+export function engineDetail(provider: ProviderInfo): string {
+  return provider.signed_in === false ? "Not signed in" : (provider.account?.plan ?? "");
+}
+
+/**
+ * The engine's real models and its default model; none is Claude, whose list from
+ * before B102's loads stands in until its own list with a default arrives.
+ */
+export function catalogFor(state: State, provider: string | null | undefined): ModelCatalog {
+  const engine = provider ?? CLAUDE;
+  const list = state.modelLists[engine];
+  if (list !== undefined) {
+    return { models: realModels(list.models), defaultModel: list.default_model };
+  }
+  const old = engine === CLAUDE ? (state.models ?? []) : [];
+  return { models: realModels(old), defaultModel: null };
+}
+
+/** One engine's part of the model menu. */
+export interface ModelSection {
+  provider: string;
+  // The engine's name, or "Model" when there is no choice of engines.
+  title: string;
+  // Its plan, or "Not signed in"; empty for none.
+  detail: string;
+  catalog: ModelCatalog;
+}
+
+/**
+ * The model menu's sections: a new chat's (`isDraft`) every engine, so choosing a model
+ * chooses the engine; a chat that exists only its own engine's (`provider`, none is
+ * Claude). With one engine, one Model section.
+ */
+export function modelSections(
+  state: State,
+  provider: string | null,
+  isDraft: boolean,
+): ModelSection[] {
+  if (!offersEngineChoice(state)) {
+    return [{ provider: CLAUDE, title: "Model", detail: "", catalog: catalogFor(state, CLAUDE) }];
+  }
+  const own = provider ?? CLAUDE;
+  return engineList(state)
+    .filter((p) => isDraft || p.name === own)
+    .map((p) => ({
+      provider: p.name,
+      title: p.display_name,
+      detail: engineDetail(p),
+      catalog: catalogFor(state, p.name),
+    }));
+}
+
+/** A model's name, after its engine's off Claude, such as "Codex · GPT-5.5". */
+export function modelTitle(
+  state: State,
+  model: string | null,
+  provider: string | null | undefined,
+): string {
+  const name = modelLabel(catalogFor(state, provider), model);
+  const engine = provider ?? CLAUDE;
+  return engine === CLAUDE ? name : `${engineName(state, engine)} · ${name}`;
+}
+
+/** The model a chat runs: its own, or its engine's default for a chat without one. */
+export function chatModel(state: State, session: Session): string | null {
+  return session.model ?? catalogFor(state, session.provider).defaultModel;
+}
+
+/** Whether chats on the engine (none is Claude) can do it. */
+export function supportsFeature(
+  state: State,
+  feature: ProviderFeature,
+  provider: string | null | undefined,
+): boolean {
+  const engine = provider ?? CLAUDE;
+  return state.providers?.find((p) => p.name === engine)?.unsupported.includes(feature) !== true;
+}
+
+/** What to tell the user before sending on an engine that said it is not signed in. */
+export function signInHint(state: State, provider: string | null | undefined): string | null {
+  const engine = provider ?? CLAUDE;
+  const listed = state.providers?.find((p) => p.name === engine);
+  if (listed?.signed_in !== false) return null;
+  return listed.sign_in_hint ?? `${listed.display_name} isn't signed in.`;
+}
+
+/** A new chat's draft from the concrete agent defaults; null until they loaded. */
+export function newChatDefaults(state: State): NewChatChoices | null {
+  const defaults = state.agentDefaults;
+  if (defaults === null) return null;
+  return newChatChoices(defaults, catalogFor(state, defaults.provider));
+}
+
+/** One engine's line in the usage bar. */
+export interface UsageBarLine {
+  provider: string;
+  name: string;
+}
+
+/** Claude, then the other engines that said they are signed in, in the list's order. */
+function meteredEngines(state: State): UsageBarLine[] {
+  const others = (state.providers ?? []).filter((p) => p.name !== CLAUDE && p.signed_in === true);
+  return [
+    { provider: CLAUDE, name: engineName(state, CLAUDE) },
+    ...others.map((p) => ({ provider: p.name, name: p.display_name })),
+  ];
+}
+
+/**
+ * The usage bar's lines (B102 item 23, 29): Claude and each other engine signed in, less
+ * those unchecked on this device; Claude's alone when none is left, so the bar stays.
+ */
+export function usageBarLines(state: State): UsageBarLine[] {
+  const engines = meteredEngines(state);
+  const chosen = engines.filter((e) => !state.usageBarHidden.includes(e.provider));
+  return chosen.length === 0 ? engines.slice(0, 1) : chosen;
+}
+
+/** A checkmark of Settings > Usage > "Top bar shows". */
+export interface UsageBarChoice {
+  provider: string;
+  name: string;
+  // "Not signed in" for an engine that said so: it shows only once signed in.
+  detail: string;
+  shown: boolean;
+}
+
+/** Every engine listed, in its order, checked unless unchecked on this device. */
+export function usageBarChoices(state: State): UsageBarChoice[] {
+  return engineList(state).map((p) => ({
+    provider: p.name,
+    name: p.display_name,
+    detail: p.signed_in === false ? engineDetail(p) : "",
+    shown: !state.usageBarHidden.includes(p.name),
+  }));
 }

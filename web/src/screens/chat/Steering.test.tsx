@@ -18,7 +18,7 @@ async function openChat({
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
   api.session.mockResolvedValue(detail({ ...chat, queued }));
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return { ...rendered, field: screen.getByLabelText("Message") };

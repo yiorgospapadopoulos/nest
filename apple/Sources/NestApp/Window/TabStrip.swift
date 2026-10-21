@@ -327,19 +327,18 @@ extension ProjectIcon {
 
 /// The usage chip, MonoCode's: an engine's mark, a 32 by 4 point bar for the 5-hour
 /// window (amber from 80 percent used, red from 90), each window as "30% 2h 5m" (used,
-/// then the time to its reset). With Codex signed in too (B91), a line per engine, one
-/// above the other in the same chip; Settings > Usage chooses which engines it shows
-/// (B94). Its tooltip names each window and its reset; a click opens the usage popover,
-/// which has the Refresh control (B72).
+/// then the time to its reset). With two accounts checked in Settings > Usage (B98), a line
+/// for each of the top two, one above the other in the same chip, the account's title on
+/// them when both are of one engine. Its tooltip names each window and its reset; a click
+/// opens the usage popover, which has the Refresh control (B72).
 private struct UsageButton: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
-        let usage = shell.model.usage
         TimelineView(.everyMinute) { context in
-            let lines = usage.meter(
-                providers: shell.providers, now: context.date,
-                hidden: shell.settings.usageMeterHidden)
+            let lines = UsageMeter.lines(
+                shell.model.accounts.accounts, choice: shell.settings.usageMeter,
+                now: context.date)
             let stacked = lines.count > 1
             let height = stacked ? UsageChipStyle.stackedHeight : UsageChipStyle.height
             Button {
@@ -352,10 +351,12 @@ private struct UsageButton: View {
                 }
             }
             .buttonStyle(UsageChipStyle(height: height))
-            .help(stacked ? usage.meterTooltip(lines) : lines[0].chip?.tooltip ?? "Usage details")
+            .help(
+                stacked ? UsageMeter.tooltip(lines) : lines[0].chip?.tooltip ?? "Usage details"
+            )
             .accessibilityLabel(
                 stacked
-                    ? "Usage: \(usage.meterTooltip(lines))"
+                    ? "Usage: \(UsageMeter.tooltip(lines))"
                     : lines[0].chip.map { "\(lines[0].name) usage: \($0.tooltip)" }
                         ?? "\(lines[0].name) usage details"
             )
@@ -390,8 +391,9 @@ private struct MeterLine: View {
     }
 }
 
-/// Two or more engines' lines one above the other (B91), their bars and windows in
-/// columns: mark, bar, short window, dot, weekly window.
+/// Two accounts' lines one above the other (B91, B98), their bars and windows in columns:
+/// mark, the account's title when both are of one engine, bar, short window, dot, weekly
+/// window.
 private struct StackedMeter: View {
     let lines: [UsageMeterLine]
 
@@ -400,6 +402,12 @@ private struct StackedMeter: View {
             ForEach(lines) { line in
                 GridRow {
                     EngineMark(provider: line.provider, size: 10)
+                    if let title = line.title {
+                        Text(title)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 52, alignment: .leading)
+                    }
                     if let chip = line.chip {
                         UsageBar(chip: chip, height: 3)
                         Text(chip.entries[0].text)

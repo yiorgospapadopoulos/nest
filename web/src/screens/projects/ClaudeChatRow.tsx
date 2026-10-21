@@ -39,10 +39,9 @@ export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
           <span className="rt">{chat.title}</span>
           <span className="rsub">
             <PlaceMark place={place} />
-            <span className="ago">{ago(chat.last_activity_at, new Date())}</span>
           </span>
         </span>
-        <Icon name="chevr" className="chv" />
+        <span className="rtime">{ago(chat.last_activity_at, new Date())}</span>
       </button>
       <button className="rmore" aria-label={`Actions for ${chat.title}`} onClick={onActions}>
         <Icon name="dots" />

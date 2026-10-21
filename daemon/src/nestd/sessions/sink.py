@@ -4,7 +4,7 @@ The agent's run calls the sink from its reader; an error raised back would end t
 if the agent had crashed, so each step is isolated and only logged (D048).
 """
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from typing import Literal, Protocol
 
 from nestd.attachments.store import AttachmentStore
@@ -85,12 +85,16 @@ class SessionSink:
         forking: str | None = None,
         attachments: AttachmentStore | None = None,
         calls: PixieCalls | None = None,
+        active_account: Callable[[], str | None] | None = None,
     ) -> None:
         """`forking` is the engine session the run cuts into a new one (B59): the cut is
         done once the run reports another session id. `attachments` keeps the images of
         tool results (B59); without it they are left out. `calls` records the pixies the
-        run's agents call (B46, B70).
+        run's agents call (B46, B70). `active_account` names the engine's account in use
+        now (B98): usage windows of a run on another one are not announced as the
+        engine's.
         """
+        self._active_account = active_account
         self._calls = calls
         self._forking = forking
         self._attachments = attachments
@@ -191,8 +195,10 @@ class SessionSink:
         )
 
     async def usage(self, info: UsageInfo) -> None:
-        await self._isolated("the usage event", publish_usage(self._bus, info))
-        await self._isolated("the usage hooks", self._hooks.usage(info))
+        account = self._live.run_account
+        if account is None or self._active_account is None or account == self._active_account():
+            await self._isolated("the usage event", publish_usage(self._bus, info))
+        await self._isolated("the usage hooks", self._hooks.usage(info, account))
 
     async def subagent_usage(self, message_id: str, tokens: TokenUsage) -> None:
         # Not a turn's start: a background subagent can report after the turn ended.

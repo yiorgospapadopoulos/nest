@@ -30,10 +30,5 @@ export function AppearanceProvider({
     [appearance, storage],
   );
 
-  return (
-    <AppearanceContext value={value}>
-      <div className={`wall wallpaper-${appearance.wallpaper}`} aria-hidden="true" />
-      {children}
-    </AppearanceContext>
-  );
+  return <AppearanceContext value={value}>{children}</AppearanceContext>;
 }

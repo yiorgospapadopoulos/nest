@@ -29,7 +29,7 @@ async function openChat({
     Promise.resolve({ ...defined(approvals.find((a) => a.id === id)), status: "resolved" }),
   );
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return { ...rendered, field: screen.getByLabelText("Message") };
@@ -157,7 +157,7 @@ describe("slash commands", () => {
       }),
     );
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     await user.type(screen.getByLabelText("Message"), "/");
@@ -223,7 +223,7 @@ describe("file mentions", () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
 
     await user.type(screen.getByLabelText("Message"), "@src");
@@ -340,6 +340,8 @@ describe("plan approval", () => {
     const { user } = await renderApp({ api });
 
     const card = screen.getByRole("article", { name: "Plan: Validate contact form" });
+    // Rows start closed (B102 item 10).
+    await user.click(within(card).getByRole("button", { name: "Show details" }));
     const more = within(card).getByRole("button", { name: "Show all" });
     expect(more).toHaveAttribute("aria-expanded", "false");
     expect(card.querySelector(".plan.clip")).not.toBeNull();
@@ -359,7 +361,7 @@ describe("plan approval", () => {
       decision: "keep_planning",
       message: null,
     });
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("approves from the Inbox, with a short plan shown whole", async () => {
@@ -371,6 +373,8 @@ describe("plan approval", () => {
     const { user } = await renderApp({ api });
 
     const card = screen.getByRole("article", { name: "Plan: Validate contact form" });
+    // Rows start closed (B102 item 10).
+    await user.click(within(card).getByRole("button", { name: "Show details" }));
     expect(within(card).queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "Approve plan" }));
     expect(api.resolveApproval).toHaveBeenCalledWith("q4", {
@@ -387,7 +391,8 @@ describe("context meter", () => {
     const { user, api, field, push } = await openChat({ chat: session({ context }) });
 
     const meter = screen.getByRole("button", { name: "Context: 41% used" });
-    expect(meter).toHaveTextContent("context 41%");
+    // Short, as the Mac's, so the place next to the mic keeps its room (B102).
+    expect(meter).toHaveTextContent(/^41%$/);
     await user.type(field, "Draft");
     await user.click(meter);
     const sheet = screen.getByRole("dialog", { name: "Context" });

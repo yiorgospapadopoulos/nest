@@ -20,6 +20,13 @@ import {
   task,
   team,
   usagePeriod,
+  claudeProvider,
+  codexAccount,
+  codexProvider,
+  configurationPage,
+  engineLimits,
+  modelList,
+  projectConfiguration,
 } from "../test/fixtures.ts";
 import { reduce } from "./reducer.ts";
 import { initialState, type State } from "./state.ts";
@@ -597,6 +604,13 @@ describe("live events", () => {
   it("ignore unknown event types", () => {
     const state = loaded();
     expect(apply(state, event({ type: "daemon.started", session_id: null }))).toBe(state);
+    // Claude Code's install details now come with the Configuration page (B102).
+    const updated = event({
+      type: "claude_code.updated",
+      session_id: null,
+      payload: { installed: true },
+    });
+    expect(apply(state, updated)).toBe(state);
   });
 
   it("keeps pixies from events", () => {
@@ -887,5 +901,123 @@ describe("live events", () => {
     state = reduce(state, { type: "usageView", unit: "week", date: "2026-09-30" });
     expect(state.usage.period).toBeNull();
     expect(reduce(state, { type: "usagePeriod", period: september }).usage.period).toBeNull();
+  });
+});
+
+describe("engines, their models and usage (B102)", () => {
+  it("keeps the engine list and each engine's models, Claude's also as the old list", () => {
+    let state = reduce(initialState, {
+      type: "providers",
+      providers: [claudeProvider(), codexProvider()],
+    });
+    expect(state.providers?.map((p) => p.name)).toEqual(["claude", "codex"]);
+
+    const codex = modelList({ models: [], default_model: "gpt-5.5" });
+    state = reduce(state, { type: "modelList", provider: "codex", list: codex });
+    expect(state.modelLists.codex).toEqual(codex);
+    expect(state.models).toBeNull();
+
+    const claude = modelList({ default_model: "opus" });
+    state = reduce(state, { type: "modelList", provider: "claude", list: claude });
+    expect(state.modelLists.claude).toEqual(claude);
+    expect(state.models).toEqual(claude.models);
+  });
+
+  it("keeps another engine's windows, from a load or a live event", () => {
+    let state = reduce(initialState, {
+      type: "engineLimits",
+      provider: "codex",
+      limits: engineLimits(),
+    });
+    expect(state.engineLimits.codex).toEqual(engineLimits());
+
+    state = apply(
+      state,
+      event({
+        type: "usage.provider_updated",
+        session_id: null,
+        ts: "2026-10-06T11:00:00Z",
+        payload: {
+          provider: "codex",
+          windows: [{ utilization: 0.6, resets_at: NOW, minutes: 300, label: "5 hour" }],
+        },
+      }),
+    );
+    expect(state.engineLimits.codex).toEqual({
+      windows: [
+        {
+          utilization: 0.6,
+          resets_at: NOW,
+          minutes: 300,
+          label: "5 hour",
+          updated_at: "2026-10-06T11:00:00Z",
+        },
+      ],
+    });
+    // Claude's windows stay where they were.
+    expect(state.limits).toBeNull();
+  });
+
+  it("ignores a usage event that names no engine, and windows it cannot read", () => {
+    const none = apply(
+      initialState,
+      event({ type: "usage.provider_updated", session_id: null, payload: { windows: [] } }),
+    );
+    expect(none.engineLimits).toEqual({});
+    const odd = apply(
+      initialState,
+      event({
+        type: "usage.provider_updated",
+        session_id: null,
+        payload: { provider: "codex", windows: [{ utilization: "high" }, 3] },
+      }),
+    );
+    expect(odd.engineLimits.codex).toEqual({ windows: [] });
+    const unlabelled = apply(
+      initialState,
+      event({
+        type: "usage.provider_updated",
+        session_id: null,
+        payload: { provider: "codex", windows: [{ utilization: 0.1 }] },
+      }),
+    );
+    expect(unlabelled.engineLimits.codex?.windows).toEqual([
+      { utilization: 0.1, resets_at: null, minutes: null, label: "Usage", updated_at: NOW },
+    ]);
+  });
+
+  it("keeps Codex's account from an account.codex event", () => {
+    const account = { ...codexAccount({ signed_in: false }), error: "cancelled" };
+    const state = apply(
+      initialState,
+      event({ type: "account.codex", session_id: null, payload: account }),
+    );
+    expect(state.settings.codex).toEqual(account);
+  });
+
+  it("remembers which engines the usage bar leaves out", () => {
+    let state = reduce(initialState, { type: "usageBarEngine", provider: "codex", shown: false });
+    expect(state.usageBarHidden).toEqual(["codex"]);
+    expect(reduce(state, { type: "usageBarEngine", provider: "codex", shown: false })).toBe(state);
+    state = reduce(state, { type: "usageBarEngine", provider: "claude", shown: false });
+    expect(state.usageBarHidden).toEqual(["codex", "claude"]);
+    state = reduce(state, { type: "usageBarEngine", provider: "codex", shown: true });
+    expect(state.usageBarHidden).toEqual(["claude"]);
+  });
+});
+
+describe("configuration (B102 item 31)", () => {
+  it("keeps the page and each project's part", () => {
+    let state = reduce(initialState, {
+      type: "settings",
+      change: { configuration: configurationPage() },
+    });
+    expect(state.settings.configuration).toEqual(configurationPage());
+    state = reduce(state, {
+      type: "projectConfiguration",
+      repo: "cv-page",
+      configuration: projectConfiguration(),
+    });
+    expect(state.settings.projectConfiguration).toEqual({ "cv-page": projectConfiguration() });
   });
 });

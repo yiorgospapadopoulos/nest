@@ -7,8 +7,8 @@ import type { PixieTab } from "../pixies/PixieView.tsx";
 import { AccountsPage } from "./AccountsPage.tsx";
 import { AgentsPage } from "./AgentsPage.tsx";
 import { AppearancePage } from "./AppearancePage.tsx";
+import { ConfigurationView } from "./Configuration.tsx";
 import { DevicesPage } from "./DevicesPage.tsx";
-import { ExtensionsPage } from "./ExtensionsPage.tsx";
 import { GeneralPage } from "./GeneralPage.tsx";
 import { NotificationsPage } from "./NotificationsPage.tsx";
 import { PixiesPage } from "./PixiesPage.tsx";
@@ -27,8 +27,8 @@ const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   storage: { title: "Storage", icon: "drive" },
   pixies: { title: "Pixies", icon: "pixie" },
   accounts: { title: "Accounts", icon: "user" },
-  extensions: { title: "Extensions", icon: "star" },
   devices: { title: "Devices", icon: "devices" },
+  configuration: { title: "Configuration", icon: "list" },
 };
 
 interface Props {
@@ -41,7 +41,16 @@ interface Props {
 }
 
 /** The Settings tab (B81): the categories and the projects, each opening its page. */
-export function Settings({ page, onPage, back, onBack, onOpenPixie }: Props) {
+export function Settings(props: Props) {
+  // Settings' own look (B102 items 16, 17): flat rows like the Mac's, in settings.css.
+  return (
+    <div className="set">
+      <SettingsBody {...props} />
+    </div>
+  );
+}
+
+function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
   const { state, actions } = useStore();
 
   useEffect(() => {
@@ -60,8 +69,9 @@ export function Settings({ page, onPage, back, onBack, onOpenPixie }: Props) {
   if (page === null) {
     return (
       <>
-        <div className="navr" />
-        <h1 className="lt">Settings</h1>
+        <div className="snav">
+          <h1 className="snt">Settings</h1>
+        </div>
         <nav className="lgrp gl" aria-label="Settings">
           {SETTINGS_PAGES.map((id) => (
             <LinkRow
@@ -132,8 +142,8 @@ export function Settings({ page, onPage, back, onBack, onOpenPixie }: Props) {
     storage: () => <StoragePage />,
     pixies: () => <PixiesPage onOpenPixie={onOpenPixie} />,
     accounts: () => <AccountsPage />,
-    extensions: () => <ExtensionsPage />,
     devices: () => <DevicesPage />,
+    configuration: () => <ConfigurationView />,
   };
   return (
     <PageFrame title={PAGES[page.page].title} back={back} onBack={onBack}>

@@ -18,7 +18,7 @@ from nestd.notifications.notifier import Notifier
 from nestd.paths import AppPaths
 from nestd.providers.base import ModelOption
 from nestd.repos.service import RepoService
-from nestd.sessions.engines import Engine
+from nestd.sessions.engines import AccountSource, Engine
 from nestd.sessions.extras import RunExtrasSource
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import CreateSession, Session, SessionState
@@ -74,6 +74,7 @@ class Env:
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
         engines: Sequence[Engine] = (),
+        accounts: AccountSource | None = None,
     ) -> SessionManager:
         return SessionManager(
             store=self.store,
@@ -94,6 +95,7 @@ class Env:
             agents=agents,
             calls=calls,
             engines=engines,
+            accounts=accounts,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

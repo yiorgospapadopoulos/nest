@@ -50,7 +50,7 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
     @Test func theStoreUsesItsCalendar() async throws {
         let api = FakeAPI()
         let usage = UsageStore(api: api, calendar: utc, now: { tuesday })
-        try await usage.load()
+        try await usage.loadPeriod()
         #expect(usage.periodTitle == "October")
         #expect(usage.resetText(nil) == "Not reported yet")
         #expect(usage.bars.first?.tip == "Thu 1 Oct: 0 tokens, 0 chats")

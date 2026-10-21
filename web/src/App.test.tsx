@@ -18,8 +18,8 @@ describe("App", () => {
   it("loads, opens the event socket and shows the inbox", async () => {
     const { sockets } = await renderApp();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
     expect(sockets.last().url).toBe("wss://mac.ts.net/api/events");
   });
 
@@ -50,7 +50,7 @@ describe("App", () => {
     act(() => {
       finish([]);
     });
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("asks to pair when the device is not paired, then loads", async () => {
@@ -67,7 +67,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Device name"), " Phone ");
     await user.click(pair);
 
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
     expect(api.redeem).toHaveBeenCalledWith("ABCDE2F3", "Phone");
   });
 
@@ -84,7 +84,7 @@ describe("App", () => {
       const { user } = await renderApp({ api, ready: false });
       await user.type(await screen.findByLabelText("Pairing code"), "ABCDE2F3");
       await user.click(screen.getByRole("button", { name: "Pair" }));
-      await screen.findByText("All clear");
+      await screen.findByText("Nothing needs you.");
 
       await waitFor(() => {
         expect(api.subscribePush).toHaveBeenCalledWith({
@@ -117,7 +117,7 @@ describe("App", () => {
     const sockets = socketFactory();
     render(<App api={fakeApi()} connect={sockets.connect} />);
 
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
     // The socket opens in an effect after the screen that shows the inbox, which can run
     // after the text is found.
     await waitFor(() => {
@@ -132,6 +132,7 @@ describe("App", () => {
     api.resolveApproval.mockRejectedValueOnce(new ApiError(401, "not authenticated"));
     const { user } = await renderApp({ api });
 
+    await user.click(screen.getByRole("button", { name: "Show details" }));
     await user.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByLabelText("Pairing code")).toBeInTheDocument();
@@ -143,6 +144,7 @@ describe("App", () => {
     api.resolveApproval.mockRejectedValueOnce("boom");
     const { user } = await renderApp({ api });
 
+    await user.click(screen.getByRole("button", { name: "Show details" }));
     await user.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
@@ -181,7 +183,7 @@ describe("App", () => {
 
     await user.click(await screen.findByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("goes back to pairing when the socket rejects the device", async () => {
@@ -300,24 +302,24 @@ describe("App", () => {
     expect(await screen.findByLabelText("Pairing code")).toBeInTheDocument();
   });
 
-  it("shows live approvals with a badge on the Inbox tab", async () => {
+  it("shows live approvals as a count on the Needs you tab", async () => {
     const api = fakeApi();
     api.repos.mockResolvedValue([repo("cv-page")]);
     const { push } = await renderApp({ api });
 
     push({ id: 1, type: "approval.created", payload: { approval: { ...approval() } } });
 
-    expect(await screen.findByText("npm install zod")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
+    expect(await screen.findByText("Permission · Bash npm install zod")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 1" })).toBeInTheDocument();
   });
 
   it("switches tabs with the arrow keys", async () => {
     const { user } = await renderApp();
 
-    screen.getByRole("tab", { name: "Inbox" }).focus();
+    screen.getByRole("tab", { name: "Needs you" }).focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "Projects" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Projects" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Chats" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Chats" })).toHaveFocus();
     await user.keyboard("{ArrowLeft}{ArrowLeft}");
     expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{Enter}");

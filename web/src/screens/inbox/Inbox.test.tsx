@@ -11,7 +11,9 @@ import {
   mergeApproval,
   pixie,
   prStatus,
+  plan,
   question,
+  report,
   repo,
   review,
   session,
@@ -46,12 +48,167 @@ async function reviewLoaded(name = "Approve and open PR") {
   return defined(button);
 }
 
-function swipe(element: HTMLElement, dx: number, dy = 0) {
-  fireEvent.pointerDown(element, { button: 0, clientX: 200, clientY: 100 });
-  fireEvent.pointerMove(element, { clientX: 203, clientY: 101 });
-  fireEvent.pointerMove(element, { clientX: 200 + dx, clientY: 100 + dy });
-  fireEvent.pointerUp(element);
+/** Opens every row that is closed, as rows start closed (B102 item 10). */
+function openAll() {
+  for (const button of screen.queryAllByRole("button", { name: "Show details" })) {
+    fireEvent.click(button);
+  }
 }
+
+/** The app on Needs you, the tab it opens on, with every row open to its full item. */
+async function renderInbox(options: Parameters<typeof renderApp>[0]) {
+  const rendered = await renderApp(options);
+  openAll();
+  return rendered;
+}
+
+describe("Needs you rows (B102 item 10)", () => {
+  const line = (item: HTMLElement) => item.querySelector(".nline")?.textContent;
+  const mark = (item: HTMLElement) => item.querySelector(".nrow")?.firstElementChild;
+
+  it("show one short line per item, closed, under a flat header with the count", async () => {
+    const failing = session({
+      id: "s2",
+      title: "Failing checks",
+      pr: prStatus({ checks: [check("unit", "failure"), check("e2e", "failure")] }),
+    });
+    const stuck = session({
+      id: "s3",
+      title: "Stuck one",
+      state: "running",
+      stuck: { reason: "repeating", since: "2026-10-06T09:48:00Z", details: "Same call." },
+    });
+    const api = withItems([approval(), review({ session_id: "s3" })], [session(), failing, stuck]);
+    await renderApp({ api });
+
+    expect(screen.getByRole("heading", { level: 1, name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getByRole("banner")).toHaveTextContent("Needs you4");
+    const items = screen.getAllByRole("article");
+    expect(items.map(line)).toEqual([
+      "Permission · Bash npm install zod",
+      "Ready for review · +48 -19 in 3 files",
+      "Checks failed · unit, e2e",
+      "Stuck · Repeating a call",
+    ]);
+    expect(items.map((item) => mark(item)?.className)).toEqual([
+      "dot s-wait",
+      "dot s-rev",
+      "dot s-fail",
+      "dot s-wait",
+    ]);
+    // Closed by default: no Approve until the row opens.
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    for (const chevron of screen.getAllByRole("button", { name: "Show details" })) {
+      expect(chevron).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
+  it("open in place from the chevron or a tap on the row, and close again", async () => {
+    const { user } = await renderApp({ api: withItems([approval()]) });
+    const item = card(/Permission/);
+
+    await user.click(within(item).getByRole("button", { name: "Show details" }));
+    expect(within(item).getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(within(item).getByText("npm install zod")).toHaveClass("cmdbox");
+    await user.click(within(item).getByRole("button", { name: "Hide details" }));
+    expect(within(item).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+
+    await user.click(defined(item.querySelector<HTMLElement>(".nline")));
+    expect(within(item).getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+
+  it("do not repeat the row's name or line inside the open item", async () => {
+    const api = withItems(
+      [review(), mergeApproval({ session_id: "s2" })],
+      [session(), session({ id: "s2", title: "Merge me" })],
+    );
+    await renderInbox({ api });
+
+    const open = (name: RegExp) => defined(card(name).querySelector(".nexp"));
+    expect(open(/Ready for review/)).not.toHaveTextContent("Validate contact form");
+    expect(open(/Ready to merge/)).not.toHaveTextContent("#7");
+  });
+
+  it("name a review whose chat is not loaded after the review, as its commit message", async () => {
+    await renderInbox({ api: withItems([review({ title: "Raise contrast" })], []) });
+
+    const item = card(/Ready for review/);
+    expect(within(item).getByRole("button", { name: "Raise contrast" })).toBeInTheDocument();
+    expect(within(item).getByLabelText("Commit message")).toHaveValue("Raise contrast");
+  });
+
+  it("open the chat from its name without opening the row", async () => {
+    const { user } = await renderApp({ api: withItems([approval()]) });
+
+    await user.click(screen.getByRole("button", { name: "Validate contact form" }));
+
+    expect(
+      await screen.findByRole("region", { name: "Validate contact form" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+
+  it("open a plan in place, named by its first line", async () => {
+    const { user } = await renderApp({ api: withItems([plan()]) });
+    const item = card(/^Plan/);
+
+    expect(item.querySelector(".nline")).toHaveTextContent("Plan · Plan");
+    await user.click(within(item).getByRole("button", { name: "Show details" }));
+    expect(within(item).getByText("zod")).toBeInTheDocument();
+  });
+
+  it("dismiss a report from its open row, and open its pixie", async () => {
+    const api = withItems([]);
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieReports.mockResolvedValue([report()]);
+    const { user } = await renderApp({ api });
+    const item = card(/^Report/);
+
+    await user.click(within(item).getByRole("button", { name: "Show details" }));
+    expect(within(item).getByText("Two runs failed on the lint step.")).toBeInTheDocument();
+    await user.click(within(item).getByRole("button", { name: "Dismiss" }));
+    expect(api.readReport).toHaveBeenCalledWith("rep1");
+    await waitFor(() => {
+      expect(item).not.toBeInTheDocument();
+    });
+  });
+
+  it("open a report's pixie from its open row", async () => {
+    const api = withItems([]);
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieReports.mockResolvedValue([report({ body: "" })]);
+    const { user } = await renderApp({ api });
+    const item = card(/^Report/);
+
+    await user.click(within(item).getByRole("button", { name: "Show details" }));
+    expect(item.querySelector(".pxrb")).toBeNull();
+    await user.click(within(item).getByRole("button", { name: "Open" }));
+    expect(screen.getByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+  });
+
+  it("name a report's pixie, with its severity and title, opening the pixie", async () => {
+    const api = withItems([]);
+    api.pixies.mockResolvedValue([pixie()]);
+    api.pixieReports.mockResolvedValue([
+      report(),
+      report({
+        id: "r2",
+        severity: "warn",
+        title: "Flaky tests",
+        created_at: "2026-10-14T08:00:00Z",
+      }),
+    ]);
+    const { user } = await renderApp({ api });
+
+    const [flaky, failing] = screen.getAllByRole("article");
+    expect(line(defined(failing))).toBe("Needs action · CI is failing on main");
+    expect(mark(defined(failing))).toHaveClass("s-fail");
+    expect(line(defined(flaky))).toBe("Warning · Flaky tests");
+    expect(mark(defined(flaky))).toHaveClass("s-wait");
+    await user.click(within(defined(flaky)).getByRole("button", { name: "Tester" }));
+    expect(screen.getByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
+  });
+});
 
 describe("Inbox", () => {
   it("groups pending items by project with counts", async () => {
@@ -59,11 +216,11 @@ describe("Inbox", () => {
       approval(),
       question({ repo: "narrative", session_id: "n1", title: "Parser" }),
     ]);
-    await renderApp({ api });
+    await renderInbox({ api });
 
     const groups = screen.getAllByRole("heading", { level: 2 });
-    expect(groups.map((h) => h.textContent)).toEqual(["Nnarrative1", "CPcv-page1"]);
-    expect(screen.getByLabelText("2 need you")).toBeInTheDocument();
+    expect(groups.map((h) => h.textContent)).toEqual(["narrative1", "cv-page1"]);
+    expect(screen.getByRole("tab", { name: "Needs you 2" })).toBeInTheDocument();
   });
 
   it("groups a pixie's items under the pixie and opens its page", async () => {
@@ -75,7 +232,7 @@ describe("Inbox", () => {
       [session({ id: "c1", repo: "pixie:p1", pixie_id: "p1" })],
     );
     api.pixies.mockResolvedValue([pixie()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     const groups = screen.getAllByRole("heading", { level: 2 });
     expect(groups.map((h) => h.textContent)).toEqual(["Pixie1", "Tester1"]);
@@ -89,7 +246,7 @@ describe("Inbox", () => {
 
   it("approves, rejects and always allows permissions with buttons", async () => {
     const api = withItems([approval(), approval({ id: "q8" }), approval({ id: "q9" })]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const [first, second, third] = screen.getAllByRole("article");
 
     await user.click(within(defined(first)).getByRole("button", { name: "Approve" }));
@@ -103,7 +260,7 @@ describe("Inbox", () => {
       ["q9", { behavior: "allow", always: true }],
     ]);
     await waitFor(() => {
-      expect(screen.getByText("All clear")).toBeInTheDocument();
+      expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
     });
     expect(screen.getByText("Always allowed: Bash")).toBeInTheDocument();
   });
@@ -114,7 +271,7 @@ describe("Inbox", () => {
         payload: { tool: "Bash", input: { command: "npm test" }, always_rule: "Bash(npm test:*)" },
       }),
     ]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Always allow Bash(npm test:*)" }));
 
@@ -130,7 +287,7 @@ describe("Inbox", () => {
       }),
       approval({ id: "q8", payload: { tool: "Bash", input: { command: "ls" }, reason: null } }),
     ]);
-    await renderApp({ api });
+    await renderInbox({ api });
     const [first, second] = screen.getAllByRole("article");
 
     expect(within(defined(first)).getByText(why)).toBeInTheDocument();
@@ -140,7 +297,7 @@ describe("Inbox", () => {
   it("keeps the card usable when resolving fails", async () => {
     const api = withItems([approval()]);
     api.resolveApproval.mockRejectedValueOnce(new ApiError(409, "approval q1 is expired"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
 
@@ -149,7 +306,7 @@ describe("Inbox", () => {
   });
 
   it("returns focus to what opened a chat after closing it", async () => {
-    const { user } = await renderApp({ api: withItems([approval()]) });
+    const { user } = await renderInbox({ api: withItems([approval()]) });
     const title = screen.getByRole("button", { name: "Validate contact form" });
 
     await user.click(title);
@@ -159,58 +316,9 @@ describe("Inbox", () => {
     expect(screen.getByRole("button", { name: "Validate contact form" })).toHaveFocus();
   });
 
-  it("swipes right to approve and left to reject", async () => {
-    const api = withItems([approval(), approval({ id: "q8" })]);
-    await renderApp({ api });
-
-    const [top] = screen.getAllByRole("article");
-    swipe(defined(top), 40);
-    swipe(defined(top), 0, 120);
-    expect(api.resolveApproval).not.toHaveBeenCalled();
-
-    const [first] = screen.getAllByRole("article");
-    swipe(defined(first), 140);
-    await waitFor(() => {
-      expect(screen.getAllByRole("article")).toHaveLength(1);
-    });
-    swipe(card(/Permission/), -140);
-
-    await waitFor(() => {
-      expect(api.resolveApproval.mock.calls).toEqual([
-        ["q1", { behavior: "allow", always: false }],
-        ["q8", { behavior: "deny", always: false }],
-      ]);
-    });
-  });
-
-  it("shows swipe hints while dragging and ignores gestures from buttons", () => {
-    return (async () => {
-      const api = withItems([approval()]);
-      await renderApp({ api });
-      const article = card(/Permission/);
-      const wrapper = defined(article.parentElement);
-
-      fireEvent.pointerDown(article, { button: 0, clientX: 100, clientY: 100 });
-      fireEvent.pointerMove(article, { clientX: 140, clientY: 100 });
-      expect(wrapper).toHaveClass("r");
-      expect(article).toHaveClass("drag");
-      fireEvent.pointerMove(article, { clientX: 60, clientY: 100 });
-      expect(wrapper).toHaveClass("l");
-      fireEvent.pointerCancel(article);
-      expect(wrapper).not.toHaveClass("l");
-
-      fireEvent.pointerDown(article, { button: 2, clientX: 100, clientY: 100 });
-      fireEvent.pointerMove(article, { clientX: 300, clientY: 100 });
-      fireEvent.pointerDown(screen.getByRole("button", { name: "Reject" }), { button: 0 });
-      fireEvent.pointerMove(article, { clientX: 300, clientY: 100 });
-      fireEvent.pointerUp(article);
-      expect(api.resolveApproval).not.toHaveBeenCalled();
-    })();
-  });
-
   it("opens the chat from the card", async () => {
     const api = withItems([approval()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Validate contact form" }));
 
@@ -231,18 +339,18 @@ describe("Inbox", () => {
       state: "running",
       stuck: { reason: "silent", since: "2026-10-06T09:48:00Z", details: "No new output." },
     });
-    await renderApp({ api: withItems([approval()], [session(), failing, stuck]) });
+    await renderInbox({ api: withItems([approval()], [session(), failing, stuck]) });
 
     expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual([
       "Permission: Validate contact form",
       "Checks failed: Failing checks",
       "Stuck: Stuck one",
     ]);
-    expect(screen.getByLabelText("3 need you")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 3" })).toBeInTheDocument();
   });
 
   it("falls back to the approval's title when the session is unknown", async () => {
-    await renderApp({ api: withItems([approval({ title: "Gone" })], []) });
+    await renderInbox({ api: withItems([approval({ title: "Gone" })], []) });
 
     expect(screen.getByRole("button", { name: "Gone" })).toBeInTheDocument();
   });
@@ -251,7 +359,7 @@ describe("Inbox", () => {
 describe("question cards", () => {
   it("preselect the recommended option and send the choice", async () => {
     const api = withItems([question()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     expect(screen.getByRole("radio", { name: /DAG/ })).toHaveAttribute("aria-checked", "true");
     await user.click(screen.getByRole("radio", { name: /Tree/ }));
@@ -264,7 +372,7 @@ describe("question cards", () => {
 
   it("send typed text through Other instead of a choice", async () => {
     const api = withItems([question()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const send = screen.getByRole("button", { name: "Send answer" });
 
     // No text box until Other is chosen.
@@ -310,7 +418,7 @@ describe("question cards", () => {
       },
     });
     const api = withItems([multi]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const send = screen.getByRole("button", { name: "Send answer" });
 
     await user.click(screen.getByRole("checkbox", { name: "Other" }));
@@ -335,7 +443,7 @@ describe("question cards", () => {
       },
     });
     const api = withItems([multi]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const send = screen.getByRole("button", { name: "Send answer" });
 
     const other = screen.getByRole("checkbox", { name: "Other" });
@@ -370,7 +478,7 @@ describe("question cards", () => {
     });
     const api = withItems([multi]);
     api.resolveApproval.mockRejectedValueOnce(new TypeError("offline"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const send = screen.getByRole("button", { name: "Send answer" });
 
     expect(screen.getAllByRole("checkbox", { checked: true })).toHaveLength(2);
@@ -394,7 +502,7 @@ describe("review cards", () => {
   it("approve with an editable commit message", async () => {
     const api = withItems([review()]);
     api.approve.mockResolvedValueOnce(session({ pr_url: "https://pr/1" }));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const message = screen.getByLabelText("Commit message");
 
     expect(message).toHaveValue("Validate contact form");
@@ -405,7 +513,7 @@ describe("review cards", () => {
 
     expect(api.approve).toHaveBeenCalledWith("s1", { commit_message: "Polish dark mode", ...SEEN });
     expect(await screen.findByText("Pull request opened")).toBeInTheDocument();
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("commit in-place work with only its changed files, without pushing", async () => {
@@ -413,7 +521,7 @@ describe("review cards", () => {
       [review({ payload: { paths: ["a.ts"] } })],
       [session({ mode: "in_place" })],
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
     expect(screen.queryByText(/Pushes to/)).not.toBeInTheDocument();
@@ -433,7 +541,7 @@ describe("review cards", () => {
   it("commit in-place work on a detached HEAD without naming a branch", async () => {
     const api = withItems([review()], [session({ mode: "in_place" })]);
     api.diff.mockResolvedValue({ ...diff(), head: { ...diff().head, branch: null } });
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded("Approve and commit"));
 
@@ -444,7 +552,7 @@ describe("review cards", () => {
     const url = "https://github.com/me/cv-page/pull/7";
     const api = withItems([review()], [session({ pr_url: url })]);
     api.approve.mockResolvedValueOnce(session({ pr_url: url }));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
     expect(screen.queryByText(/Pushes to/)).not.toBeInTheDocument();
@@ -464,7 +572,7 @@ describe("review cards", () => {
     const api = withItems([review()]);
     api.approve.mockRejectedValueOnce(new ApiError(409, "the agent changed git refs itself"));
     api.feedback.mockRejectedValueOnce(new ApiError(409, "session is working"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
     expect(await screen.findByText("the agent changed git refs itself")).toBeInTheDocument();
@@ -475,32 +583,8 @@ describe("review cards", () => {
     expect(screen.getByRole("button", { name: "Send feedback" })).toBeEnabled();
   });
 
-  it("swipe right to approve, while a swipe left does nothing", async () => {
-    const api = withItems([review(), review({ id: "q4", session_id: "s2" })]);
-    await renderApp({ api });
-
-    const [first, second] = screen.getAllByRole("article");
-    await reviewLoaded();
-    swipe(defined(first), 150);
-    await waitFor(() => {
-      expect(api.approve).toHaveBeenCalledWith("s1", {
-        commit_message: "Validate contact form",
-        ...SEEN,
-      });
-    });
-    // A review has no reject: nothing hints at it, and the card stays.
-    fireEvent.pointerDown(defined(second), { button: 0, clientX: 200, clientY: 10 });
-    fireEvent.pointerMove(defined(second), { clientX: 140, clientY: 10 });
-    expect(defined(second).parentElement?.querySelector(".swbg .sr2")).toBeNull();
-    fireEvent.pointerCancel(defined(second));
-    swipe(defined(second), -150);
-
-    expect(api.approve).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("article", { name: /Ready for review/ })).toBeInTheDocument();
-  });
-
   it("offer no reject for a review", async () => {
-    const { user } = await renderApp({ api: withItems([review()]) });
+    const { user } = await renderInbox({ api: withItems([review()]) });
 
     const article = card(/Ready for review/);
     expect(within(article).queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
@@ -510,27 +594,7 @@ describe("review cards", () => {
     expect(within(sheet).getByRole("button", { name: "Approve and open PR" })).toBeInTheDocument();
   });
 
-  it("name what a swipe to approve does", async () => {
-    const hint = (article: HTMLElement) => {
-      fireEvent.pointerDown(article, { button: 0, clientX: 100, clientY: 10 });
-      fireEvent.pointerMove(article, { clientX: 140, clientY: 10 });
-      const text = article.parentElement?.querySelector(".swbg .sl")?.textContent;
-      fireEvent.pointerCancel(article);
-      return text;
-    };
-    await renderApp({
-      api: withItems(
-        [review(), review({ id: "q4", session_id: "s2" })],
-        [session(), session({ id: "s2", mode: "in_place", worktree_path: null })],
-      ),
-    });
-
-    const [worktree, inPlace] = screen.getAllByRole("article");
-    expect(hint(defined(worktree))).toBe("Approve and open PR");
-    expect(hint(defined(inPlace))).toBe("Approve and commit");
-  });
-
-  it("send one approval for two quick swipes", async () => {
+  it("send one approval for two quick taps", async () => {
     const api = withItems([review(), approval()]);
     let finish: (value: ReturnType<typeof session>) => void = () => undefined;
     api.approve.mockReturnValueOnce(
@@ -544,29 +608,31 @@ describe("review cards", () => {
         allow = resolve;
       }),
     );
-    await renderApp({ api });
+    await renderInbox({ api });
     await reviewLoaded();
 
-    swipe(card(/Ready for review/), 150);
-    swipe(card(/Ready for review/), 150);
-    swipe(card(/Permission/), 150);
-    swipe(card(/Permission/), -150);
+    const approveReview = within(card(/Ready for review/)).getByRole("button", {
+      name: "Approve and open PR",
+    });
+    fireEvent.click(approveReview);
+    fireEvent.click(approveReview);
+    const allowIt = within(card(/Permission/)).getByRole("button", { name: "Approve" });
+    fireEvent.click(allowIt);
+    fireEvent.click(within(card(/Permission/)).getByRole("button", { name: "Reject" }));
 
     expect(api.approve).toHaveBeenCalledTimes(1);
     expect(api.resolveApproval).toHaveBeenCalledTimes(1);
     finish(session());
     allow({ ...approval(), status: "resolved" });
-    expect(await screen.findByText("All clear")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("refetch the session and the diff when approving is refused, then say why", async () => {
     const api = withItems([review()]);
     const why = "Large files need git-lfs.";
     api.approve.mockRejectedValueOnce(new ApiError(409, why, "lfs_unsupported"));
-    await renderApp({ api });
-    await reviewLoaded();
-
-    swipe(card(/Ready for review/), 150);
+    await renderInbox({ api });
+    fireEvent.click(await reviewLoaded());
 
     expect(await screen.findByText(why)).toBeInTheDocument();
     expect(api.session).toHaveBeenCalledWith("s1");
@@ -579,7 +645,7 @@ describe("review cards", () => {
 
   it("show where the work is pushed", async () => {
     const api = withItems([review()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     // On the card, before the diff is opened.
     const onCard = card(/Ready for review/);
@@ -601,7 +667,7 @@ describe("review cards", () => {
     });
   });
 
-  it("keep Approve and a swipe from publishing until the changes have loaded", async () => {
+  it("keep Approve from publishing until the changes have loaded", async () => {
     const api = withItems([review()]);
     let finish: (value: ReturnType<typeof diff>) => void = () => undefined;
     api.diff.mockReturnValueOnce(
@@ -609,11 +675,11 @@ describe("review cards", () => {
         finish = resolve;
       }),
     );
-    await renderApp({ api });
+    await renderInbox({ api });
     const approve = screen.getByRole("button", { name: "Approve and open PR" });
 
     expect(approve).toBeDisabled();
-    swipe(card(/Ready for review/), 150);
+    fireEvent.click(approve);
     expect(api.approve).not.toHaveBeenCalled();
     await act(async () => {
       finish(diff());
@@ -621,7 +687,7 @@ describe("review cards", () => {
     });
 
     expect(approve).toBeEnabled();
-    swipe(card(/Ready for review/), 150);
+    fireEvent.click(approve);
     expect(api.approve).toHaveBeenCalledWith("s1", {
       commit_message: "Validate contact form",
       ...SEEN,
@@ -639,7 +705,7 @@ describe("review cards", () => {
         finish = resolve;
       }),
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     await user.click(await reviewLoaded());
 
     // The daemon's reason, then the review it refused stays shown while the new one loads.
@@ -650,7 +716,6 @@ describe("review cards", () => {
     expect(screen.getByText("Pushes to agent/contact")).toBeInTheDocument();
     expect(approve).toBeDisabled();
     await user.click(approve);
-    swipe(card(/Ready for review/), 150);
     expect(api.approve).toHaveBeenCalledOnce();
 
     await act(async () => {
@@ -669,7 +734,7 @@ describe("review cards", () => {
 
   it("load the changes again when the chat changes", async () => {
     const api = withItems([review()]);
-    const { push } = await renderApp({ api });
+    const { push } = await renderInbox({ api });
     await reviewLoaded();
     expect(api.diff).toHaveBeenCalledOnce();
 
@@ -683,7 +748,7 @@ describe("review cards", () => {
   it("say on the card when the changes could not be loaded, and try again", async () => {
     const api = withItems([review()]);
     api.diff.mockRejectedValueOnce(new ApiError(500, "Request failed (500)"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const onCard = card(/Ready for review/);
 
     expect(
@@ -710,7 +775,7 @@ describe("review cards", () => {
         head: { commit: "beef", branch: "agent/moved" },
         fingerprint: "moved",
       });
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
@@ -748,7 +813,7 @@ describe("review cards", () => {
         }),
       )
       .mockResolvedValueOnce({ ...diff(), head: { commit: "new", branch: "agent/new" } });
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     await reviewLoaded();
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
@@ -768,7 +833,7 @@ describe("review cards", () => {
   it("leave out the branch and the expected HEAD when HEAD is detached", async () => {
     const api = withItems([review()]);
     api.diff.mockResolvedValue({ ...diff(), head: { commit: null, branch: null } });
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
@@ -792,7 +857,7 @@ describe("review cards", () => {
       .mockRejectedValueOnce(new ApiError(502, "push failed"))
       .mockRejectedValueOnce(new ApiError(409, "The branch is gone.", "conflict"));
     api.session.mockRejectedValue(new ApiError(500, "Request failed (500)"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const approve = await reviewLoaded();
 
     await user.click(approve);
@@ -810,7 +875,7 @@ describe("review cards", () => {
     const api = withItems([review()]);
     const why = "Background tasks are still running. Approve once they finish.";
     api.approve.mockRejectedValueOnce(new ApiError(409, why, "background_running"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
 
@@ -828,7 +893,7 @@ describe("review cards", () => {
     };
     api.approve.mockRejectedValueOnce(new ApiError(409, refusal.detail, "remote_changed", refusal));
     api.approve.mockResolvedValueOnce(session({ pr_url: "https://github.com/me/cv-page/pull/7" }));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
@@ -861,7 +926,7 @@ describe("review cards", () => {
         confirmed_url: null,
       }),
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
@@ -891,7 +956,7 @@ describe("review cards", () => {
         extra: 1,
       }),
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
     const confirm = await screen.findByRole("alertdialog", { name: "Confirm the push address" });
@@ -910,7 +975,7 @@ describe("review cards", () => {
         confirmed_url: 4,
       }),
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(await reviewLoaded());
 
@@ -921,7 +986,7 @@ describe("review cards", () => {
 
   it("send feedback instead", async () => {
     const api = withItems([review()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Feedback" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -940,7 +1005,7 @@ describe("review cards", () => {
 
   it("show the full diff with review actions", async () => {
     const api = withItems([review()]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
@@ -978,7 +1043,7 @@ describe("review cards", () => {
       defined(nested.files[0]),
     ];
     api.diff.mockResolvedValue(nested);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     const sheet = await screen.findByRole("dialog", { name: "Validate contact form" });
@@ -997,7 +1062,7 @@ describe("review cards", () => {
         finish = resolve;
       }),
     );
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "View changes" }));
     expect(screen.getByText("Loading changes...")).toBeInTheDocument();
@@ -1017,7 +1082,7 @@ describe("review cards", () => {
     api.diff.mockResolvedValueOnce(renamed);
     api.diff.mockResolvedValueOnce({ ...diff(), files: [] });
     api.diff.mockRejectedValueOnce(new ApiError(404, "gone"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const open = async () => {
       await user.click(screen.getByRole("button", { name: "View changes" }));
       return screen.findByRole("dialog");
@@ -1047,10 +1112,12 @@ describe("pull request cards", () => {
 
   it("merge a pull request whose checks passed", async () => {
     const api = withItems([mergeApproval()], [opened]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const merge = card(/Ready to merge/);
 
-    expect(within(merge).getByText("#7 Validate contact form")).toBeInTheDocument();
+    expect(
+      within(merge).getByText("Ready to merge · #7 Validate contact form"),
+    ).toBeInTheDocument();
     expect(within(merge).getByText(/Validated the form/)).toBeInTheDocument();
     expect(within(merge).getByText("2 checks passed")).toBeInTheDocument();
     expect(within(merge).getByRole("link", { name: "Open on GitHub" })).toHaveAttribute(
@@ -1059,9 +1126,22 @@ describe("pull request cards", () => {
     );
     await user.click(within(merge).getByRole("button", { name: "Merge (squash)" }));
 
-    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash" });
+    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash", delete_branch: false });
     expect(await screen.findByText("Merged #7")).toBeInTheDocument();
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
+  });
+
+  it("delete the branch with the merge only when asked (B102 item 30)", async () => {
+    const api = withItems([mergeApproval()], [opened]);
+    const { user } = await renderInbox({ api });
+    const merge = card(/Ready to merge/);
+    const box = within(merge).getByRole("checkbox", { name: "Also delete the branch" });
+
+    expect(box).not.toBeChecked();
+    await user.click(box);
+    await user.click(within(merge).getByRole("button", { name: "Merge (squash)" }));
+
+    expect(api.merge).toHaveBeenCalledWith("s1", { method: "squash", delete_branch: true });
   });
 
   it.each([
@@ -1070,7 +1150,7 @@ describe("pull request cards", () => {
   ])("say how many checks passed: %s", async (payload, text) => {
     const item = mergeApproval();
     const api = withItems([{ ...item, payload: { ...item.payload, ...payload } }], []);
-    await renderApp({ api });
+    await renderInbox({ api });
 
     expect(within(card(/Ready to merge/)).getByText(text)).toBeInTheDocument();
   });
@@ -1078,7 +1158,7 @@ describe("pull request cards", () => {
   it("stay up when the merge fails", async () => {
     const api = withItems([mergeApproval()], [opened]);
     api.merge.mockRejectedValueOnce(new ApiError(502, "git merge failed: not mergeable"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Merge (squash)" }));
 
@@ -1091,7 +1171,7 @@ describe("pull request cards", () => {
       pr: prStatus({ checks: [check("unit", "failure"), check("lint"), check("e2e", "failure")] }),
     });
     const api = withItems([], [failing]);
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
     const failed = card(/Checks failed/);
 
     expect(within(failed).getByText("#7 Validate contact form")).toBeInTheDocument();
@@ -1104,7 +1184,7 @@ describe("pull request cards", () => {
       "href",
       "https://github.com/me/cv-page/pull/7",
     );
-    expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 1" })).toBeInTheDocument();
     await user.click(within(failed).getByRole("button", { name: "Send to agent" }));
 
     // The Mac reads the failing checks' logs with its own GitHub login and sends them in.
@@ -1117,7 +1197,7 @@ describe("pull request cards", () => {
     const failing = session({ pr: prStatus({ checks: [check("unit", "failure")] }) });
     const api = withItems([], [failing]);
     api.ciFeedback.mockRejectedValueOnce(new ApiError(409, "session 's1' is closed"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Send to agent" }));
     expect(await screen.findByText("session 's1' is closed")).toBeInTheDocument();
@@ -1137,11 +1217,11 @@ describe("stuck cards", () => {
 
   it("show why the chat looks stuck and nudge it with an interrupting message", async () => {
     const api = withItems([], [stuck(), session({ id: "s2", title: "Calm one" })]);
-    const { user, push } = await renderApp({ api });
+    const { user, push } = await renderInbox({ api });
     const flagged = card(/Stuck: Validate contact form/);
 
     expect(within(flagged).getByText("No new output for 12 minutes.")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 need you")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you 1" })).toBeInTheDocument();
     await user.click(within(flagged).getByRole("button", { name: "Send a nudge" }));
 
     expect(api.sendMessage).toHaveBeenCalledWith(
@@ -1155,13 +1235,13 @@ describe("stuck cards", () => {
 
     push({ type: "session.unstuck", session_id: "s1", payload: { reason: "silent" } });
     expect(screen.queryByRole("article", { name: /Stuck/ })).not.toBeInTheDocument();
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
   });
 
   it("interrupt the chat, and stay usable when that fails", async () => {
     const api = withItems([], [stuck("Called Bash 5 times in a row with the same input")]);
     api.interrupt.mockRejectedValueOnce(new ApiError(409, "no turn in progress"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Interrupt" }));
     expect(await screen.findByText("no turn in progress")).toBeInTheDocument();
@@ -1175,7 +1255,7 @@ describe("stuck cards", () => {
   it("keep the card when the nudge fails, and open the chat from it", async () => {
     const api = withItems([], [stuck()]);
     api.sendMessage.mockRejectedValueOnce(new ApiError(409, "session 's1' is closed"));
-    const { user } = await renderApp({ api });
+    const { user } = await renderInbox({ api });
 
     await user.click(screen.getByRole("button", { name: "Send a nudge" }));
     expect(await screen.findByText("session 's1' is closed")).toBeInTheDocument();
@@ -1189,11 +1269,11 @@ describe("stuck cards", () => {
 
   it("appear when a chat gets stuck and ignore broken flags", async () => {
     const api = withItems([], [session({ state: "running" })]);
-    const { push } = await renderApp({ api });
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    const { push } = await renderInbox({ api });
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
 
     push({ type: "session.stuck", session_id: "s1", payload: { reason: "odd", since: "x" } });
-    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
     push({
       type: "session.stuck",
       session_id: "s1",

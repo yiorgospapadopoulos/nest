@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { Artifact, RepoConfig, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { repo, session } from "../../test/fixtures.ts";
+import { projectConfiguration, repo, session, skillItem } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
@@ -35,12 +35,13 @@ function withRepos(
   return api;
 }
 
-/** The project's page, reached from its gear on the Projects tab, as before B81. */
+/**
+ * The project's page, reached from the Settings list. Opening it from the Chats tab's
+ * project menu, and going back there, belongs to that tab's tests (B102 stage 2, Lists).
+ */
 async function openFromProjects(...args: Parameters<typeof withRepos>) {
   const api = withRepos(...args);
-  const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
-  await rendered.user.click(screen.getByRole("button", { name: "Settings for cv-page" }));
+  const rendered = await openSettings("cv-page", { api });
   await screen.findByRole("heading", { level: 1, name: "cv-page" });
   return rendered;
 }
@@ -55,27 +56,13 @@ const pressed = (group: HTMLElement) =>
     .map((b) => b.textContent);
 
 describe("project page", () => {
-  it("opens from the project's gear and goes back to Projects", async () => {
-    const { user } = await openFromProjects();
+  it("shows the project's folder and kind, in the address", async () => {
+    await openFromProjects();
 
     expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.pathname).toBe("/settings/projects/cv-page");
     expect(screen.getByText("/Users/me/cv-page")).toBeInTheDocument();
     expect(screen.getByText("Git repository")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
-
-    expect(screen.getByRole("tab", { name: "Projects" })).toHaveAttribute("aria-selected", "true");
-    await user.click(screen.getByRole("tab", { name: "Settings" }));
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
-  });
-
-  it("leaves the page for the list when another tab is chosen", async () => {
-    const { user } = await openFromProjects();
-
-    await user.click(screen.getByRole("tab", { name: "Inbox" }));
-    await user.click(screen.getByRole("tab", { name: "Settings" }));
-
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
   });
 
   it("opens from the Settings list and goes back to it", async () => {
@@ -356,7 +343,7 @@ describe("project page", () => {
       within(screen.getByRole("group", { name: "Project settings" }))
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["General", "Look", "Artifacts"]);
+    ).toEqual(["General", "Configuration", "Look", "Artifacts"]);
     expect(screen.getByText("Plain folder")).toBeInTheDocument();
     expect(screen.queryByLabelText("Default branch")).toBeNull();
   });
@@ -372,19 +359,15 @@ describe("project page", () => {
     expect(api.removeRepo).not.toHaveBeenCalled();
     await user.click(remove());
     const confirm = await screen.findByRole("alertdialog", { name: "Remove cv-page?" });
-    expect(confirm).toHaveTextContent(
-      "Nest forgets this project. Its folder stays on your Mac, untouched.",
-    );
+    expect(confirm).toHaveTextContent("Nest forgets this project. Its folder stays as it is.");
+    expect(confirm).not.toHaveTextContent("deleted");
     await user.click(within(confirm).getByRole("button", { name: "Remove" }));
 
     expect(api.removeRepo).toHaveBeenCalledWith("cv-page", false);
     expect(await screen.findByText("Removed cv-page")).toBeInTheDocument();
-    // Back on Projects, where it was opened from.
-    expect(await screen.findByRole("tab", { name: /narrative/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.queryByRole("tab", { name: /cv-page/ })).not.toBeInTheDocument();
+    // Back on the list, where it was opened from.
+    expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "cv-page" })).not.toBeInTheDocument();
   });
 
   it("say that removing deletes the project's chats, and delete them", async () => {
@@ -397,14 +380,14 @@ describe("project page", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove cv-page?" });
+    // B96: the branches stay; only the worktrees go (B102 item 30).
     expect(confirm).toHaveTextContent(
-      "Its 2 chats are deleted too, with their worktrees and branches.",
+      "Its 2 chats are deleted for good, with their worktrees and history; their branches stay.",
     );
     await user.click(within(confirm).getByRole("button", { name: "Remove" }));
 
     expect(api.removeRepo).toHaveBeenCalledWith("cv-page", true);
-    await user.click(await screen.findByRole("tab", { name: /narrative/ }));
-    expect(screen.getByRole("button", { name: /^Validate contact form,/ })).toBeInTheDocument();
+    expect(await screen.findByText("Removed cv-page")).toBeInTheDocument();
   });
 
   it("say one chat in the singular, and keep the project when removing fails", async () => {
@@ -416,7 +399,9 @@ describe("project page", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove" }));
     const confirm = await screen.findByRole("alertdialog", { name: "Remove cv-page?" });
-    expect(confirm).toHaveTextContent("Its chat is deleted too, with its worktree and branch.");
+    expect(confirm).toHaveTextContent(
+      "Its chat is deleted for good, with its worktree and history; its branch stays.",
+    );
     await user.click(within(confirm).getByRole("button", { name: "Remove" }));
 
     expect(await screen.findByText("repo 'cv-page' still has 2 session(s)")).toBeInTheDocument();
@@ -429,5 +414,143 @@ describe("project page", () => {
     push({ type: "repo.removed", payload: { name: "cv-page" } });
 
     expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  });
+});
+
+describe("project configuration", () => {
+  async function openConfiguration(api = fakeApi()) {
+    const rendered = await openSettings("cv-page", { api: withRepos(undefined, [], api) });
+    await rendered.user.click(tab("Configuration"));
+    return rendered;
+  }
+
+  it("shows the project's instructions, skills and MCP servers, Claude only", async () => {
+    const api = fakeApi();
+    api.projectConfiguration.mockResolvedValue(
+      projectConfiguration({
+        instructions: [
+          { path: "/Users/me/cv-page/AGENTS.md", exists: false },
+          { path: "/Users/me/cv-page/CLAUDE.md", exists: true },
+          { path: "/Users/me/cv-page/docs/AGENTS.md", exists: true },
+        ],
+        skills: [
+          skillItem({
+            name: "publish-cv",
+            description: "Builds the PDF",
+            source: "project",
+            path: "/Users/me/cv-page/.claude/skills/publish-cv/SKILL.md",
+          }),
+          skillItem({ name: "bare", description: null, source: "project" }),
+        ],
+        mcp_servers: [{ name: "lighthouse", summary: "npx lighthouse-mcp", transport: "stdio" }],
+      }),
+    );
+    const { user } = await openConfiguration(api);
+
+    expect(screen.getByText(/This project's own instructions/)).toBeInTheDocument();
+    expect(api.projectConfiguration).toHaveBeenCalledWith("cv-page");
+    const instructions = await screen.findByRole("region", { name: "Instructions" });
+    expect(within(instructions).getByText("Not made yet")).toBeInTheDocument();
+    expect(within(instructions).getByText("Read by Claude")).toBeInTheDocument();
+    expect(
+      within(instructions).getByText("Read by Codex; Claude reads it when CLAUDE.md imports it"),
+    ).toBeInTheDocument();
+    expect(within(instructions).getByRole("button", { name: "Create AGENTS.md" })).toBeVisible();
+    const skills = screen.getByRole("region", { name: "Skills" });
+    expect(within(skills).getByText(".claude/skills · Claude only")).toBeInTheDocument();
+    expect(within(skills).getByText("Builds the PDF")).toBeInTheDocument();
+    const servers = screen.getByRole("region", { name: "MCP servers" });
+    expect(within(servers).getByText(".mcp.json · Claude only")).toBeInTheDocument();
+    expect(within(servers).getByText("npx lighthouse-mcp")).toBeInTheDocument();
+    expect(screen.queryByText(/Open in VS Code|Open folder/)).toBeNull();
+
+    await user.click(within(instructions).getByRole("button", { name: "Edit CLAUDE.md" }));
+    const editor = await screen.findByRole("dialog", { name: "CLAUDE.md" });
+    expect(editor).toHaveTextContent("~/cv-page/CLAUDE.md · cv-page");
+    await user.click(within(editor).getByRole("button", { name: "Cancel" }));
+
+    await user.click(within(skills).getByRole("button", { name: "Edit publish-cv" }));
+    expect(await screen.findByRole("dialog", { name: "publish-cv" })).toHaveTextContent(
+      "project skill",
+    );
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await user.click(within(servers).getByRole("button", { name: "Edit .mcp.json" }));
+    expect(await screen.findByRole("dialog", { name: "MCP servers" })).toHaveTextContent(
+      "~/cv-page/.mcp.json · cv-page",
+    );
+  });
+
+  it("waits for the project's part, and follows changes on disk", async () => {
+    const api = fakeApi();
+    let first: (value: ReturnType<typeof projectConfiguration>) => void = () => undefined;
+    api.projectConfiguration
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          first = resolve;
+        }),
+      )
+      .mockResolvedValue(
+        projectConfiguration({
+          skills: [skillItem({ name: "fresh", source: "project" })],
+        }),
+      );
+    const { push } = await openConfiguration(api);
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    first(projectConfiguration());
+    expect(await screen.findByText("No project skills yet")).toBeInTheDocument();
+    expect(screen.getByText("No project servers yet")).toBeInTheDocument();
+
+    push({ type: "configuration.changed", payload: { scope: "repo", repo: "narrative" } });
+    push({ type: "configuration.changed", payload: { scope: "repo", repo: "cv-page" } });
+    expect(await screen.findByText("fresh")).toBeInTheDocument();
+    expect(api.projectConfiguration).toHaveBeenCalledTimes(2);
+  });
+
+  it("makes a project skill and opens it", async () => {
+    const api = fakeApi();
+    const { user } = await openConfiguration(api);
+    await user.click(await screen.findByRole("button", { name: "New skill" }));
+
+    const form = screen.getByRole("dialog", { name: "New skill" });
+    expect(form).toHaveTextContent(
+      "Made in the project's .claude/skills, which only Claude reads.",
+    );
+    await user.type(within(form).getByLabelText("Name"), "publish-cv");
+    await user.click(within(form).getByRole("button", { name: "Create" }));
+
+    expect(api.createProjectSkill).toHaveBeenCalledWith("cv-page", "publish-cv", "");
+    expect(await screen.findByRole("dialog", { name: "publish-cv" })).toHaveTextContent(
+      "~/cv-page/.claude/skills/publish-cv/SKILL.md · project skill",
+    );
+  });
+
+  it("adds a server to the project's .mcp.json, and removes one", async () => {
+    const api = fakeApi();
+    const withServer = projectConfiguration({
+      mcp_servers: [{ name: "lighthouse", summary: "npx lighthouse-mcp", transport: "stdio" }],
+    });
+    api.projectConfiguration.mockResolvedValue(withServer);
+    api.putProjectMcpServer.mockResolvedValue(withServer);
+    const { user } = await openConfiguration(api);
+
+    await user.click(await screen.findByRole("button", { name: "Add server" }));
+    const form = screen.getByRole("dialog", { name: "Add server" });
+    expect(form).toHaveTextContent("Saved in the project's .mcp.json, which only Claude reads.");
+    await user.type(within(form).getByLabelText("Name"), "docs");
+    await user.click(within(form).getByRole("button", { name: "HTTP" }));
+    await user.type(within(form).getByLabelText("URL"), "https://docs.example.com/mcp");
+    await user.click(within(form).getByRole("button", { name: "Add" }));
+    expect(api.putProjectMcpServer).toHaveBeenCalledWith("cv-page", "docs", {
+      transport: "http",
+      url: "https://docs.example.com/mcp",
+      headers: {},
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Add server" })).toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Remove lighthouse" }));
+    expect(api.deleteProjectMcpServer).toHaveBeenCalledWith("cv-page", "lighthouse");
   });
 });

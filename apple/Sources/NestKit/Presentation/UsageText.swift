@@ -14,19 +14,28 @@ public enum UsageText {
         window.map { "\(Int(($0.utilization * 100).rounded()))%" } ?? "-"
     }
 
-    /// "Resets 18:30" today, "Resets Mon 09:00" within a week, else "Resets 14 Oct".
+    /// "Resets 18:30" today, "Resets Mon 09:00" within a week, else "Resets 14 Oct";
+    /// "Reset" for an account's window past its reset time (B98).
     public static func reset(_ window: LimitWindow?, now: Date, calendar: Calendar) -> String {
         guard let window else { return "Not reported yet" }
+        if window.reset {
+            return "Reset"
+        }
         guard let date = window.resetsAt else { return "Reset time not reported" }
+        return "Resets \(resetTime(date, now: now, calendar: calendar))"
+    }
+
+    /// "18:30" today, "Mon 09:00" within a week, else "14 Oct".
+    public static func resetTime(_ date: Date, now: Date, calendar: Calendar) -> String {
         let parts = calendar.dateComponents([.month, .day, .weekday, .hour, .minute], from: date)
         let time = String(format: "%02d:%02d", parts.hour!, parts.minute!)
         if calendar.isDate(date, inSameDayAs: now) {
-            return "Resets \(time)"
+            return time
         }
         if date > now, date.timeIntervalSince(now) < 6 * 24 * 3600 {
-            return "Resets \(weekdays[parts.weekday! - 1]) \(time)"
+            return "\(weekdays[parts.weekday! - 1]) \(time)"
         }
-        return "Resets \(parts.day!) \(shortMonths[parts.month! - 1])"
+        return "\(parts.day!) \(shortMonths[parts.month! - 1])"
     }
 
     /// Limits reported longer ago than this are shown dimmed.

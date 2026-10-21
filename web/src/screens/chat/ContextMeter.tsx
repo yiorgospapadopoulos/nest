@@ -9,7 +9,7 @@ interface Props {
   onCompact: () => void;
 }
 
-/** A quiet "context 41%" next to the selectors; tapping it offers /compact. */
+/** A quiet "41%" of the context used, after the selectors; tapping it offers /compact. */
 export function ContextMeter({ context, disabled, onCompact }: Props) {
   const [open, setOpen] = useState(false);
   const percent = String(Math.round(context.percent));
@@ -25,7 +25,7 @@ export function ContextMeter({ context, disabled, onCompact }: Props) {
           setOpen(true);
         }}
       >
-        context {percent}%
+        {percent}%
       </button>
       {open && (
         <ActionSheet

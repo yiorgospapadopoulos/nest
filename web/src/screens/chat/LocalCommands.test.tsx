@@ -18,7 +18,7 @@ async function openChat(chats: Session[] = [session()], api: FakeApi = fakeApi()
   );
   api.updateSession.mockImplementation((_id, body) => Promise.resolve({ ...chat, ...body }));
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   await waitFor(() => {
@@ -30,7 +30,7 @@ async function openChat(chats: Session[] = [session()], api: FakeApi = fakeApi()
 async function newChat(api: FakeApi = fakeApi()) {
   api.repos.mockResolvedValue([repo("cv-page")]);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
   await waitFor(() => {
     expect(api.models).toHaveBeenCalled();

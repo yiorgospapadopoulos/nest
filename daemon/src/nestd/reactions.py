@@ -105,8 +105,8 @@ class SessionReactions:
     async def turn_result(self, session_id: str, info: ResultInfo) -> None:
         await self._usage.record_turn(session_id, info.tokens)
 
-    async def usage(self, info: UsageInfo) -> None:
-        await self._usage.update_limits(info)
+    async def usage(self, info: UsageInfo, account_id: str | None) -> None:
+        await self._usage.update_limits(info, account_id)
 
     async def subagent_usage(self, session_id: str, message_id: str, tokens: TokenUsage) -> None:
         await self._usage.record_subagent(session_id, message_id, tokens)

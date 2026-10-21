@@ -33,7 +33,7 @@ describe("chats a pixie started (B41)", () => {
       session({ id: "s3", title: "Mine" }),
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
 
     const started = screen.getByRole("button", { name: /^Check the form,/ });
     expect(started).toHaveAccessibleName(
@@ -72,7 +72,7 @@ describe("pixie messages in a transcript (B41)", () => {
       ],
     });
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Check the form,/ }));
 
     const from = await screen.findByText("from Tester");
@@ -91,7 +91,7 @@ describe("pixie messages in a transcript (B41)", () => {
       ],
     });
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: /^Check the form,/ }));
 
     const from = await screen.findByText("from Tester");

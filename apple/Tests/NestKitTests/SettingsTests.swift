@@ -216,12 +216,6 @@ import Testing
     }
 
     @Test func accountWords() {
-        let date = Date(timeIntervalSince1970: 0)
-        #expect(
-            AccountText.claudeDetail(
-                ClaudeLogin(signedIn: true, organization: "Acme", plan: "Max", checkedAt: date))
-                == "Max plan, Acme")
-        #expect(AccountText.claudeDetail(ClaudeLogin(signedIn: true, checkedAt: date)) == nil)
         #expect(AccountText.githubState(.signedIn) == "Signed in")
         #expect(AccountText.githubState(.signedOut) == "Signed out")
         #expect(AccountText.githubState(.unavailable) == "gh is not installed")
@@ -584,40 +578,6 @@ import Testing
         #expect(store.github?.state == .signedOut)
     }
 
-    @Test func claudeSignInWaitsForTheDaemonsWord() async throws {
-        let store = AccountsStore(api: api)
-        try await store.loadClaude()
-        #expect(store.claude?.signedIn == true)
-        try await store.signIn()
-        #expect(store.isSigningIn)
-        store.apply(Fixture.event(EventType.usageUpdated, "{}", session: nil))
-        #expect(store.isSigningIn)
-        store.apply(
-            Fixture.event(
-                EventType.accountClaude,
-                #"{"signed_in": false, "checked_at": "2026-10-17T09:00:00Z", "error": "Cancelled"}"#,
-                session: nil))
-        #expect(!store.isSigningIn)
-        #expect(store.signInError == "Cancelled")
-        #expect(store.claude?.signedIn == false)
-        api.fail("signInClaude", with: APIError.conflict("running"))
-        await #expect(throws: APIError.self) { try await store.signIn() }
-        #expect(!store.isSigningIn)
-        #expect(store.signInError == nil)
-    }
-
-    @Test func claudeSignOut() async throws {
-        let store = AccountsStore(api: api)
-        let gate = AsyncStream<Void>.makeStream()
-        api.set { $0.gates["signOutClaude"] = gate.stream }
-        let task = Task { try await store.signOut() }
-        try await waitFor { store.isSigningOut }
-        gate.continuation.finish()
-        try await task.value
-        #expect(!store.isSigningOut)
-        #expect(store.claude?.signedIn == false)
-    }
-
     @Test func claudeCodeInstallFollowsItsEvents() async throws {
         let store = ExtensionsStore(api: api)
         try await store.loadClaudeCode()
@@ -728,9 +688,9 @@ import Testing
         #expect(warnings.map(\.utilization) == [0.8])
         model.live.route(
             Fixture.event(
-                EventType.accountClaude,
-                #"{"signed_in": true, "checked_at": "2026-10-17T09:00:00Z"}"#, session: nil))
-        #expect(model.accounts.claude?.signedIn == true)
+                EventType.accountsChanged, Fixture.json(AccountList(accounts: Fixture.accounts)),
+                session: nil))
+        #expect(model.accounts.accounts == Fixture.accounts)
         model.live.route(
             Fixture.event(
                 EventType.claudeCodeInstall, #"{"state": "failed", "message": "no network"}"#,

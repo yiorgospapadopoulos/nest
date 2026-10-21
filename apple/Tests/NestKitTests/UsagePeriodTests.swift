@@ -204,7 +204,7 @@ private func date(_ text: String) -> Date {
         UsageStore(api: api, calendar: utc, now: { now })
     }
 
-    @Test func loadsLimitsAndTheCurrentMonth() async throws {
+    @Test func loadsTheCurrentMonth() async throws {
         let usage = store()
         #expect(usage.unit == .month)
         #expect(usage.period == nil)
@@ -217,10 +217,9 @@ private func date(_ text: String) -> Date {
         let providers = ProvidersStore(api: api)
         #expect(usage.breakdown(providers: providers) == nil)
 
-        try await usage.load()
+        try await usage.loadPeriod()
 
-        #expect(
-            api.calls == ["usageLimits", "usageLimitsFor codex", "usagePeriod month 2026-10-01"])
+        #expect(api.calls == ["usagePeriod month 2026-10-01"])
         #expect(usage.periodTitle == "October")
         #expect(usage.chatsText == "13.4M")
         #expect(usage.subagentsText == "1.6M")
@@ -323,34 +322,5 @@ private func date(_ text: String) -> Date {
         #expect(usage.showsDetails)
         usage.hideDetails()
         #expect(!usage.showsDetails)
-    }
-
-    @Test func refreshShowsTheLatestReport() async throws {
-        let usage = store()
-        #expect(usage.refreshTitle == "Refresh")
-        #expect(!usage.limitsAreStale(at: saturday))
-        usage.apply(
-            Fixture.event(
-                EventType.usageUpdated,
-                #"{"five_hour": {"utilization": 0.03, "resets_at": null}, "seven_day": null}"#,
-                session: nil))
-        let reported = try #require(usage.limits?.fiveHour?.updatedAt)
-        let parts = utc.dateComponents([.hour, .minute], from: reported)
-        #expect(usage.refreshTitle == String(format: "as of %02d:%02d", parts.hour!, parts.minute!))
-        #expect(!usage.limitsAreStale(at: reported.addingTimeInterval(60)))
-        #expect(usage.limitsAreStale(at: reported.addingTimeInterval(11 * 60)))
-
-        // The weekly window reported later wins.
-        var later = try #require(usage.limits)
-        later.sevenDay = LimitWindow(
-            utilization: 0.2, resetsAt: nil, updatedAt: reported.addingTimeInterval(3_600))
-        later.fiveHour?.updatedAt = reported
-        try await withLimits(later, usage)
-        #expect(!usage.limitsAreStale(at: reported.addingTimeInterval(3_660)))
-    }
-
-    private func withLimits(_ limits: UsageLimits, _ usage: UsageStore) async throws {
-        api.set { $0.limits = limits }
-        try await usage.load()
     }
 }

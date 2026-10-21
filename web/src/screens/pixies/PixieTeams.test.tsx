@@ -4,6 +4,7 @@ import { ApiError } from "../../api/client.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { pixie, team } from "../../test/fixtures.ts";
+import { showPixies } from "../../test/pixies.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
 import { LONG_PRESS_MS } from "../projects/rowGestures.ts";
 
@@ -35,7 +36,7 @@ async function openList(api: FakeApi = fakeApi(), storage = memoryStorage()) {
     ),
   );
   const rendered = await renderApp({ api, storage });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await showPixies(rendered.user);
   return rendered;
 }
 
@@ -69,15 +70,17 @@ describe("pixie teams in the list", () => {
     }
   });
 
-  it("keeps the handle apart from the name and the Leader tag, so it gives way first", async () => {
+  it("puts the handle right after the name, then the Leader tag, as the Mac", async () => {
     await openList();
     for (const name of ["Cy, @cy, leader", "Ada, @ada", "Bo, @bo"]) {
       const row = screen.getByRole("button", { name });
-      const handle = row.querySelector(".pxslug");
+      const handle = row.querySelector(".pxh");
       expect(handle?.textContent).toBe(`@${name.split("@")[1]?.split(",")[0] ?? ""}`);
-      // The handle comes after the name and any tag, on its own.
-      expect(row.querySelector(".rt + .rm + .pxslug, .rt + .pxslug")).toBe(handle);
+      expect(row.querySelector(".rt + .pxh")).toBe(handle);
     }
+    expect(
+      screen.getByRole("button", { name: "Cy, @cy, leader" }).querySelector(".pxh + .rm"),
+    ).toHaveTextContent("Leader");
     const tag = within(section("QA")).getByText("Leader");
     expect(tag.closest(".rm")?.textContent).toBe("Leader");
   });
@@ -117,6 +120,8 @@ describe("pixie teams in the list", () => {
     expect(header).toHaveAttribute("aria-expanded", "true");
     await user.click(header);
     expect(header).toHaveAttribute("aria-expanded", "false");
+    // Its name and @handle, with no count (B102 item 12).
+    expect(header).toHaveTextContent(/^QA@qa$/);
     expect(names(section("QA"))).toEqual([]);
     unmount();
 
@@ -182,7 +187,7 @@ describe("pixie row menu", () => {
     let menu = await rowMenu(user, "Ada");
     await user.click(within(menu).getByRole("menuitem", { name: "Open" }));
     expect(screen.getByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
 
     menu = await rowMenu(user, "Ada");
     await user.click(within(menu).getByRole("menuitem", { name: "Details" }));

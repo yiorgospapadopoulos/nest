@@ -4,6 +4,7 @@ import type { JsonObject } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { detail, event, groupEntry, pixie, repo, session, team } from "../../test/fixtures.ts";
+import { showPixies } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
 const tester = pixie({ id: "p1", slug: "tester", name: "Tester", mascot: "moth" });
@@ -29,7 +30,7 @@ async function openChat(
   api.session.mockResolvedValue(detail(chat));
   api.sessionEvents.mockResolvedValue(events);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
   return rendered;
@@ -261,7 +262,7 @@ describe("a team's call in a project chat (B70)", () => {
       { ...message(1, null, callLead("a1")), session_id: "c1" },
     ]);
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await showPixies(user);
     await user.click(screen.getByRole("button", { name: /^Scribe,/ }));
 
     expect(await screen.findByRole("button", { name: "Open Lead" })).toBeInTheDocument();

@@ -60,7 +60,7 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
 
   if (pixie === undefined) {
     return (
-      <Frame title="Pixie" back="Projects" onBack={onBack}>
+      <Frame title="Pixie" back="Pixies" onBack={onBack}>
         <div className="ch-tx" />
       </Frame>
     );
@@ -82,7 +82,7 @@ export function PixieView({ id, onBack, onOpenPixie, onOpenChat, tab: first = "c
           <WorkingDot working={working} />
         </>
       }
-      back="Projects"
+      back="Pixies"
       onBack={onBack}
       tools={<ArtifactsButton scopes={pixieScopes(pixie.id)} />}
       details={
