@@ -21,12 +21,16 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
     /// An existing local branch the chat works on itself (B96 round 3): in place when it
     /// is the folder's, else in that branch's worktree, made when it has none.
     public var onBranch: String?
+    /// The GitHub issue the chat starts from: the daemon makes it the first message, after
+    /// any prompt, and the issue's title the chat's (B101).
+    public var issue: Int?
 
     public init(
         repo: String, prompt: String, title: String? = nil, mode: SessionMode? = nil,
         model: String? = nil, effort: Effort? = nil, permissionMode: PermissionMode? = nil,
         attachmentIDs: [String] = [], base: String? = nil, branch: String? = nil,
-        provider: String? = nil, worktreePath: String? = nil, onBranch: String? = nil
+        provider: String? = nil, worktreePath: String? = nil, onBranch: String? = nil,
+        issue: Int? = nil
     ) {
         self.repo = repo
         self.prompt = prompt
@@ -41,10 +45,11 @@ public struct CreateSessionRequest: Encodable, Sendable, Hashable {
         self.provider = provider
         self.worktreePath = worktreePath
         self.onBranch = onBranch
+        self.issue = issue
     }
 
     enum CodingKeys: String, CodingKey {
-        case repo, prompt, title, mode, model, effort, base, branch, provider
+        case repo, prompt, title, mode, model, effort, base, branch, provider, issue
         case permissionMode = "permission_mode"
         case attachmentIDs = "attachment_ids"
         case worktreePath = "worktree_path"

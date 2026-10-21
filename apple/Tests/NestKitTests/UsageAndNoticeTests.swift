@@ -76,6 +76,11 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             #expect(!preferences.wants(kind), "\(toggle.title)")
         }
         #expect(preferences.sound == false)
+        // Review comments follow the Approvals toggle (B101).
+        var approvalsOnly = NotificationPreferences()
+        #expect(approvalsOnly.wants(.reviewComments))
+        approvalsOnly.approvals = false
+        #expect(!approvalsOnly.wants(.reviewComments))
     }
 
     @Test func togglesUseTheIPhonesNames() {
@@ -83,13 +88,16 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
             NotificationPreferences.toggles.map(\.title) == [
                 "Approvals", "Questions", "Work ready for review", "Agent errors",
                 "Finished turns", "Pull request checks failed", "Pull requests ready to merge",
-                "Chats that look stuck", "Pixie reports", "Usage limit pauses", "Sound",
+                "Chats that look stuck", "Pixie reports",
+                "Usage limit pauses", "Sound",
             ])
     }
 
     @Test func pullRequestNoticesAreRead() {
-        for (name, kind) in [("ci_failed", NoticeKind.ciFailed), ("ready_to_merge", .readyToMerge)]
-        {
+        for (name, kind) in [
+            ("ci_failed", NoticeKind.ciFailed), ("ready_to_merge", .readyToMerge),
+            ("review_comments", .reviewComments),
+        ] {
             let event = Fixture.event(
                 EventType.notify,
                 #"{"kind": "\#(name)", "session_id": "s1", "repo": "r", "title": "t", "text": "x"}"#

@@ -26,6 +26,13 @@ public struct NeedsYouLine: Sendable, Hashable {
         case .merge:
             NeedsYouLine(
                 kind: "Ready to merge", detail: approval.merge.map { "#\($0.number) \($0.title)" })
+        case .reviewComments:
+            NeedsYouLine(
+                kind: "Review comments",
+                detail: approval.reviewComments.map {
+                    "\($0.comments.count) on #\($0.number)"
+                        + ($0.changesRequested ? ", changes requested" : "")
+                })
         case .permission, .unknown:
             NeedsYouLine(
                 kind: "Permission",

@@ -1,0 +1,9 @@
+{
+  "available": true,
+  "show": "all",
+  "issues": [
+    {"number": 118, "title": "Usage meter shows the wrong reset", "url": "https://github.com/me/nest/issues/118", "labels": ["bug", "ui"], "comments": 3, "updated_at": "2026-10-20T08:12:00Z"},
+    {"number": 117, "title": "Dark mode for the board", "url": "https://github.com/me/nest/issues/117", "labels": [], "comments": 1, "updated_at": "2026-10-19T17:40:00Z", "prs": [{"number": 120, "url": "https://github.com/me/nest/pull/120"}], "chat": "s-dark"},
+    {"number": 112, "title": "Export a chat as Markdown", "url": "https://github.com/me/nest/issues/112", "labels": ["enhancement"], "comments": 0, "updated_at": "2026-10-18T11:05:00Z", "prs": [{"number": 113, "url": "https://github.com/me/nest/pull/113"}, {"number": 115, "url": "https://github.com/me/nest/pull/115"}], "chat": null}
+  ]
+}

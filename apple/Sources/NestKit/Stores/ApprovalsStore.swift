@@ -18,6 +18,8 @@ public final class ApprovalsStore {
     @ObservationIgnored private var diffReads: [String: Int] = [:]
     /// Approvals with a resolve, approve or feedback call in flight.
     public private(set) var busy: Set<String> = []
+    /// Review comments sent on their own, while that send is in flight (B101).
+    public private(set) var sendingComments: Set<String> = []
     /// The latest approve call per session.
     public private(set) var publishing: [String: PublishProgress] = [:]
     /// Chosen labels by approval id and question text; starts with the recommended options.
@@ -287,6 +289,25 @@ public final class ApprovalsStore {
         }
         remove(approval.id)
         return session
+    }
+
+    // MARK: Review comments (B101)
+
+    /// The daemon sends all pending review comments to the chat and resolves the approval;
+    /// a failed send leaves it pending.
+    public func sendReviewComments(_ approval: Approval) async throws {
+        try await track(approval) {
+            try await self.api.reviewFeedback(approval.sessionID, ids: nil)
+        }
+        remove(approval.id)
+    }
+
+    /// Sends one comment; the daemon then supersedes the approval with the rest, or
+    /// resolves it when none remain.
+    public func sendReviewComment(_ comment: String, of approval: Approval) async throws {
+        sendingComments.insert(comment)
+        defer { sendingComments.remove(comment) }
+        try await api.reviewFeedback(approval.sessionID, ids: [comment])
     }
 
     // MARK: Events
