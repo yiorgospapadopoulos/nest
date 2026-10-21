@@ -9,9 +9,9 @@ anything that looks like a credential (SEC-20), in a code block the log cannot c
 import re
 from pathlib import Path
 
-from nestd.gitops.remotes import scrub_credentials
 from nestd.gitops.runner import CommandError, CommandRunner, keeping_tail
 from nestd.prs.models import PrCheck
+from nestd.prs.untrusted import clean, fenced
 
 # The end of each failed job's log that goes to the agent.
 TAIL_LINES = 150
@@ -25,34 +25,6 @@ INTRO = (
 )
 # A check run of GitHub Actions: https://github.com/<owner>/<repo>/actions/runs/<run>/job/<job>
 _ACTIONS_JOB = re.compile(r"^https://github\.com/([^/]+/[^/]+)/actions/runs/\d+/jobs?/(\d+)")
-# Terminal escape sequences, in 7-bit (ESC) and 8-bit (C1) forms: control sequences (CSI),
-# strings such as titles and hyperlinks (OSC, DCS, PM, APC; one never ended runs to the end
-# of the line), then any other ESC sequence such as a charset choice.
-_ESCAPES = re.compile(
-    r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]"
-    r"|(?:\x1b[\]P^_X]|[\x90\x98\x9d\x9e\x9f])[^\x07\x1b\x9c\n]*(?:\x07|\x1b\\|\x9c)?"
-    r"|\x1b[ -/]*[0-~]?"
-)
-# What is left of the C0 and C1 control characters, except tab and newline.
-_CONTROLS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
-# Known token formats, matched anywhere, even glued to a name such as GH_TOKENghp_...:
-# GitHub (classic, OAuth, user-to-server, server-to-server, refresh, fine-grained), npm,
-# and AWS access key ids.
-_TOKENS = re.compile(
-    r"gh[opusr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|npm_[A-Za-z0-9]{30,}"
-    r"|(?:AKIA|ASIA)[A-Z0-9]{16}"
-)
-# Values of credential headers and assignments: `Authorization: Bearer <value>`,
-# `aws_secret_access_key = <value>`, `MY_API_TOKEN=<value>`, `password: '<value>'`.
-_ASSIGNED = re.compile(
-    r"""(?ix)
-    (
-        (?:proxy-)?authorization["']?\s*[:=]\s*["']?(?:(?:bearer|basic|token)\s+)?
-        | [a-z0-9_.-]*(?:token|secret|password|passwd|api_?key|access_key)["']?\s*[:=]\s*["']?
-    )
-    [^\s"',;]+
-    """
-)
 
 
 async def feedback(run: CommandRunner, cwd: Path, failing: list[PrCheck], repo: str) -> str:
@@ -81,19 +53,10 @@ async def _section(run: CommandRunner, cwd: Path, check: PrCheck, pr_repo: str) 
         with keeping_tail(MAX_LOG_BYTES):
             log = await run(argv, cwd)
     except CommandError as error:
-        reason = _clean(error.stderr.strip().splitlines()[-1] if error.stderr.strip() else "")
+        reason = clean(error.stderr.strip().splitlines()[-1] if error.stderr.strip() else "")
         return f"Nest could not read the log ({reason or 'gh failed'}). See {check.url}"
     except OSError:  # gh is not installed
         return f"Nest could not read the log (gh is not available). See {check.url}"
     # Cleaned whole before lines are cut, so no cut can leave part of a secret unscrubbed.
-    lines = [line[:MAX_LINE_CHARS] for line in _clean(log).splitlines()[-TAIL_LINES:]]
-    body = "\n".join(lines)
-    longest = max((len(ticks) for ticks in re.findall(r"`+", body)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}\n{body}\n{fence}"
-
-
-def _clean(text: str) -> str:
-    text = _CONTROLS.sub("", _ESCAPES.sub("", text))
-    text = _ASSIGNED.sub(r"\1***", scrub_credentials(text))
-    return _TOKENS.sub("***", text)
+    lines = [line[:MAX_LINE_CHARS] for line in clean(log).splitlines()[-TAIL_LINES:]]
+    return fenced("\n".join(lines))
