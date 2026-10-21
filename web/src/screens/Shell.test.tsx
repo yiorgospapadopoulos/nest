@@ -27,7 +27,7 @@ describe("deep links", () => {
     expect(window.location.pathname).toBe("/chat/s%2F1");
     await user.click(screen.getByRole("button", { name: /back/i }));
 
-    expect(screen.getByRole("tab", { name: "Projects" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Chats" })).toHaveAttribute("aria-selected", "true");
     expect(window.location.pathname).toBe("/projects");
   });
 
@@ -40,7 +40,7 @@ describe("deep links", () => {
 
     expect(await screen.findByRole("tab", { name: "Chat", selected: true })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/pixie/p1");
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
     expect(window.location.pathname).toBe("/projects");
 
     act(() => {
@@ -71,7 +71,7 @@ describe("deep links", () => {
     const { user } = await renderApp({ ready: false });
 
     expect(await screen.findByRole("region", { name: "Pixie" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to Projects" }));
+    await user.click(screen.getByRole("button", { name: "Back to Pixies" }));
     expect(window.location.pathname).toBe("/projects");
   });
 
@@ -81,7 +81,7 @@ describe("deep links", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/settings");
-    await user.click(screen.getByRole("tab", { name: "Inbox" }));
+    await user.click(screen.getByRole("tab", { name: "Needs you" }));
     expect(window.location.pathname).toBe("/inbox");
   });
 
@@ -102,7 +102,7 @@ describe("deep links", () => {
     expect(screen.getByRole("region", { name: "Fix login" })).toBeInTheDocument();
 
     send({ type: NAVIGATE, url: "/inbox" });
-    expect(screen.getByRole("heading", { level: 1, name: "Inbox" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Needs you" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inbox");
   });
 });

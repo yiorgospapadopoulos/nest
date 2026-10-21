@@ -4,9 +4,138 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: calc(var(--sat) + 4px) calc(16px + var(--sar)) calc(var(--sab) + 86px)
+  padding: calc(var(--sat) + 4px) calc(16px + var(--sar)) calc(var(--sab) + 64px)
     calc(16px + var(--sal));
   scrollbar-width: none;
+}
+/* Needs you and Chats: flat sections edge to edge, as the Mac's panels (B102). */
+.view.flat {
+  padding: var(--sat) var(--sar) calc(var(--sab) + 64px) var(--sal);
+}
+.flat .lgrp {
+  border-radius: 0;
+}
+
+/* A screen's flat header (B102 items 16, 19): a 44 point bar over a divider. */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px 0 16px;
+  border-bottom: 1px solid var(--div);
+  background: var(--bg);
+}
+.bar-t {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bar-n {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--wait);
+  font-variant-numeric: tabular-nums;
+}
+.bar-add {
+  margin-left: auto;
+  color: var(--t2);
+}
+.pmenu {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  cursor: pointer;
+}
+.pmenu .pico {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+.pmenu .pmi {
+  width: 20px;
+  height: 20px;
+  color: var(--t2);
+}
+.pmenu .pcv {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--t2);
+}
+.pbr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: 4px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  white-space: nowrap;
+}
+.pbr .ic {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+.pbr span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A small grey section label with its count, as the Mac sidebar's (B102 item 16). */
+.lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 14px 16px 4px;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--t2);
+}
+.lbl .c {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.lbl .c.wait {
+  margin-left: 0;
+  color: var(--wait);
+  font-weight: 600;
+}
+.lbl.folded {
+  width: 100%;
+  min-height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border: 0;
+  border-top: 1px solid var(--div);
+  margin-top: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.lbl.folded .cv {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
+}
+.lbl.folded[aria-expanded="true"] .cv {
+  transform: none;
 }
 .view::-webkit-scrollbar {
   display: none;
@@ -106,30 +235,28 @@
 
 .tabbar {
   position: fixed;
-  left: calc(14px + var(--sal));
-  right: calc(14px + var(--sar));
-  bottom: calc(var(--sab) - 8px);
-  height: 64px;
-  border-radius: calc(var(--r-ctl) + 6px);
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
-  padding: 6px;
+  padding: 6px var(--sar) var(--sab) var(--sal);
   z-index: 30;
-  background: var(--g2);
+  border-top: 1px solid var(--div);
+  /* The Mac's side tint over the page, opaque as content scrolls under it. */
+  background: linear-gradient(var(--side), var(--side)), var(--bg);
 }
 .tb {
   position: relative;
   flex: 1;
-  min-height: 52px;
+  min-height: 44px;
   border: 0;
   background: transparent;
-  border-radius: var(--r-ctl);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 0.6176rem;
-  font-weight: 600;
+  font-size: var(--fs-micro);
   color: var(--t2);
   cursor: pointer;
 }
@@ -138,70 +265,15 @@
   height: 22px;
 }
 .tb[aria-selected="true"] {
-  background: var(--fill2);
   color: var(--t1);
 }
-.tb .badge {
-  position: absolute;
-  top: 4px;
-  left: calc(50% + 6px);
-  min-width: 19px;
-  height: 19px;
-  border-radius: 10px;
-  background: var(--st-wait);
-  color: #2b1700;
-  font-size: 0.6471rem;
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-  padding: 0 5px;
+.tb .cnt {
+  color: var(--wait);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* inbox */
-.swr {
-  position: relative;
-  border-radius: var(--r-card);
-  margin-bottom: var(--gap);
-}
-.swbg {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--r-card);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 22px;
-  font-weight: 700;
-  font-size: 0.8824rem;
-  color: #fff;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.swbg span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  visibility: hidden;
-}
-.swbg .ic {
-  width: 18px;
-  height: 18px;
-  stroke-width: 2.4;
-}
-.swr.r .swbg {
-  background: var(--ok-bg);
-  opacity: 1;
-}
-.swr.r .swbg .sl {
-  visibility: visible;
-}
-.swr.l .swbg {
-  background: var(--st-fail);
-  opacity: 1;
-}
-.swr.l .swbg .sr2 {
-  visibility: visible;
-}
 .card {
   position: relative;
   border-radius: var(--r-card);
@@ -209,28 +281,6 @@
   touch-action: pan-y;
   transition: transform 0.28s var(--motion-easing-glide);
   background: var(--g2);
-}
-.card.drag {
-  transition: none;
-}
-.ck-k {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.7059rem;
-  font-weight: 700;
-  color: var(--wait-t);
-  min-width: 0;
-}
-.ck-k.rv {
-  color: var(--rev-t);
-}
-.ck-k.fl {
-  color: var(--fail-t);
-}
-.ck-k .ic {
-  width: 14px;
-  height: 14px;
 }
 .lnk {
   margin-left: auto;
@@ -420,120 +470,137 @@ a.b {
 .flbl + .fin {
   margin-top: 4px;
 }
+/* Needs you's rows (B102 item 10), as the Mac's FoldRow: a dot, the name over a grey
+   line, a chevron; the full item opens in place beneath. */
 .allclear {
-  border-radius: var(--r-big);
-  padding: 44px 20px;
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  text-align: center;
-  color: var(--t2);
-  margin-top: 12px;
-}
-.allclear .ic {
-  width: 40px;
-  height: 40px;
-  color: var(--rev-t);
-}
-.allclear b {
-  font-size: 1.1176rem;
-  color: var(--t1);
-}
-
-/* projects */
-.pchips {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  margin: 0 -16px 4px;
-  padding: 4px 16px 8px;
-  scrollbar-width: none;
-}
-.pchips::-webkit-scrollbar {
-  display: none;
-}
-.pchip {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 14px 0 10px;
-  border-radius: var(--r-ctl-lg);
-  border: 1px solid var(--g-brd);
-  background: var(--g1);
-  -webkit-backdrop-filter: var(--gfilter);
-  backdrop-filter: var(--gfilter);
-  font-size: 0.8235rem;
-  font-weight: 600;
+  gap: 6px;
+  margin: 0;
+  padding: 14px 16px;
+  font-size: var(--fs-meta);
   color: var(--t2);
+}
+.allclear .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--ok);
+}
+.nitem {
+  display: block;
+}
+.nrow {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 44px;
+  align-items: start;
+  gap: 0 8px;
+  min-height: 44px;
+  padding: 4px 0 4px 16px;
   cursor: pointer;
-  white-space: nowrap;
-  flex: none;
 }
-.pchip.on {
-  background: var(--g2);
+.nrow > .dot,
+.nrow > .ff {
+  justify-self: center;
+  margin-top: 9px;
+}
+.nbody {
+  display: grid;
+  min-width: 0;
+  padding-top: 4px;
+}
+/* The name is one line of text in a 44 point target. */
+.nname {
+  position: relative;
+  justify-self: start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-body);
+  font-weight: 500;
   color: var(--t1);
-  box-shadow:
-    inset 0 1px 0 var(--spec),
-    0 4px 14px -6px var(--gsh);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
-.pchip.attn {
-  background: var(--wait-soft);
-  box-shadow:
-    0 0 0 1px var(--wait-glow),
-    0 0 14px -2px var(--wait-glow);
-  animation: attn 2.6s ease-in-out infinite;
+.nname::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
-@keyframes attn {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px var(--wait-glow),
-      0 0 10px -4px var(--wait-glow);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px var(--st-wait),
-      0 0 20px 2px var(--wait-glow);
-  }
+.nline {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.pbadge {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--st-wait);
-  color: #2b1700;
-  font-size: 0.6176rem;
-  font-weight: 800;
-  display: inline-grid;
+.nchev {
+  width: 44px;
+  height: 44px;
+  margin-top: -4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t3);
+  display: grid;
   place-items: center;
-  flex: none;
+  cursor: pointer;
 }
+.nchev .ic {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
+}
+.nchev[aria-expanded="true"] .ic {
+  transform: none;
+}
+.nexp {
+  display: grid;
+  gap: 8px;
+  margin: 0 16px 8px 36px;
+  padding: 10px;
+  border-radius: var(--r-inner);
+  background: var(--soft);
+  font-size: var(--fs-meta);
+}
+.nexp .cmdbox,
+.nexp .cq {
+  margin: 0;
+}
+.nexp .acts {
+  margin-top: 0;
+}
+.nexp .acts .b {
+  flex: none;
+  height: 34px;
+}
+.lbl .pxopen {
+  margin: -12px -12px -12px -4px;
+}
+
+/* A list row, as the Mac sidebar's (B102): its mark, the title over a grey line of
+   marks, and the time since its latest message on the right. */
 .lrow {
   position: relative;
   display: flex;
   align-items: center;
-}
-.lrow + .lrow::before,
-.ctree + .lrow::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 38px;
-  right: 0;
-  height: 1px;
-  background: var(--hair);
 }
 .row {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 54px;
-  padding: 10px 4px 10px 16px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 16px;
   border: 0;
   background: transparent;
   text-align: left;
@@ -543,41 +610,49 @@ a.b {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  transition: transform 0.2s;
 }
 .row:active {
-  background: var(--fill);
+  background: var(--sel);
 }
 /* Centred in the 12 px slot a running row's fireflies take, so the titles line up (B80). */
 .row .dot {
-  width: 10px;
-  height: 10px;
-  margin: 0 1px;
+  width: 7px;
+  height: 7px;
+  margin: 0 2.5px;
+}
+/* A chat row's mark and time sit on its title's line. */
+.row:has(> .rbody) {
+  align-items: flex-start;
+}
+.row:has(> .rbody) > .dot {
+  margin-top: 7px;
+}
+.row:has(> .rbody) > .ff {
+  margin-top: 5px;
 }
 .rt {
   flex: 1;
   min-width: 0;
-  font-size: 0.9118rem;
+  font-size: var(--fs-body);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .rm {
-  font-size: 0.7647rem;
-  color: var(--t3);
+  font-size: var(--fs-meta);
+  color: var(--t2);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
   gap: 4px;
 }
-/* A chat row's body: its whole title, wrapping, over a line of marks (B55). */
 .rbody {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
 }
 .rbody .rt {
   white-space: normal;
@@ -590,25 +665,34 @@ a.b {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  font-size: 0.7647rem;
-  color: var(--t3);
+  font-size: var(--fs-meta);
+  color: var(--t2);
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+}
+.rsub:empty {
+  display: none;
 }
 .rsub .ic {
   width: 12px;
   height: 12px;
   flex: none;
 }
-/* "main · 12m": a dot before the text marks that follow another mark. */
+/* "main · Started by Tester": a dot before a mark that follows another. */
 .rsub > .rby:not(:first-child)::before,
-.rsub > .ago:not(:first-child)::before {
+.rsub > .rstuck:not(:first-child)::before {
   content: "\00b7";
   margin-right: 4px;
   color: var(--t3);
 }
-.rsub .ago {
+.rstuck {
+  color: var(--wait);
+}
+.rtime {
   flex: none;
+  padding-top: 1px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
 }
 .rm .ic {
   width: 12px;
@@ -619,9 +703,11 @@ a.b {
   height: 14px;
   color: var(--t3);
 }
+/* A row's actions: long-press or swipe on a touch screen; the button shows for the
+   keyboard and stays reachable for VoiceOver. */
 .rmore {
-  width: 40px;
-  height: 54px;
+  width: 44px;
+  height: 44px;
   border: 0;
   background: transparent;
   color: var(--t3);
@@ -630,6 +716,14 @@ a.b {
   cursor: pointer;
   padding: 0;
   flex: none;
+}
+.lrow > .rmore:not(:focus-visible) {
+  position: absolute;
+  right: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 .sempty {
   padding: 24px 10px;
@@ -951,17 +1045,12 @@ a.csign {
 .uprobe {
   margin: 10px 16px 0;
 }
-.swl,
-.wpl {
+.swl {
   display: flex;
   /* The swatches' 44 point tap targets meet without overlapping. */
   gap: 14px;
   flex-wrap: wrap;
   justify-content: flex-end;
-}
-.wpl {
-  gap: 6px;
-  justify-content: space-between;
 }
 .swc {
   position: relative;
@@ -1011,86 +1100,6 @@ a.csign {
   background: var(--d);
   color: #141416;
 }
-.wpt {
-  display: grid;
-  gap: 4px;
-  justify-items: center;
-  border: 0;
-  background: transparent;
-  padding: 2px;
-  min-height: 44px;
-  cursor: pointer;
-  font-size: 0.6471rem;
-  color: var(--t2);
-  border-radius: var(--r-item);
-}
-.wpt i {
-  display: block;
-  width: 70px;
-  height: 46px;
-  border-radius: calc(var(--r-item) - 1px);
-  box-shadow: inset 0 0 0 1px var(--hair);
-}
-.wpt[aria-pressed="true"] {
-  color: var(--t1);
-  font-weight: 650;
-}
-.wpt[aria-pressed="true"] i {
-  box-shadow:
-    0 0 0 2px var(--g2),
-    0 0 0 3.5px var(--t1);
-}
-
-/* The glass themes, each previewed in its own glass over the chosen wallpaper. */
-.gpl {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-}
-.gpt {
-  min-width: 0;
-  text-align: center;
-  line-height: 1.2;
-}
-.gpt i {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-}
-.gpt i::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--shell);
-}
-.gpt span {
-  position: absolute;
-  inset: 7px 7px 7px 9px;
-  border-radius: min(var(--r-pane), 9px);
-  background: var(--g1);
-  border: 1px solid var(--g-brd);
-  box-shadow:
-    inset 0 1px 0 var(--spec),
-    inset 0 -1px 0 var(--rim),
-    0 4px 9px -4px var(--gsh);
-  -webkit-backdrop-filter: var(--gfilter);
-  backdrop-filter: var(--gfilter);
-}
-.gpt b {
-  position: absolute;
-  left: 5px;
-  bottom: 5px;
-  width: 20px;
-  height: 10px;
-  /* A pill, or a rounded rectangle in Smoke, at a quarter of the phone size. */
-  border-radius: calc(min(var(--r-ctl), 20px) / 4);
-  background: var(--accent);
-}
-.gdesc {
-  margin: 0 2px;
-  min-height: 2.9em;
-}
-
 /* pairing and notices */
 .center {
   min-height: 100%;
@@ -1101,15 +1110,15 @@ a.csign {
 .pair {
   width: 100%;
   max-width: 380px;
-  border-radius: var(--r-big);
+  border-radius: var(--r-phone);
   padding: 24px 20px 20px;
   display: grid;
   gap: 6px;
 }
 .pair h1 {
   margin: 0;
-  font-size: 1.5294rem;
-  letter-spacing: -0.02em;
+  font-size: var(--fs-title);
+  font-weight: 600;
 }
 .pair p {
   margin: 0 0 8px;
@@ -1167,10 +1176,10 @@ a.csign {
 }
 /* The per-device "Show automated chats" switch under a project's chats. */
 .pauto {
-  margin-top: 18px;
-  border-radius: var(--r-inner);
-  min-height: 46px;
-  font-size: 0.8235rem;
+  margin-top: 10px;
+  border-top: 1px solid var(--div);
+  min-height: 44px;
+  font-size: var(--fs-meta);
   color: var(--t2);
 }
 
@@ -1184,6 +1193,10 @@ a.csign {
   margin: 0 0 12px;
   border-radius: var(--r-ctl-lg);
   color: var(--t3);
+}
+.flat .sfield {
+  margin: 8px 16px 4px;
+  background: var(--soft);
 }
 .sfield > .ic {
   width: 16px;
@@ -1292,22 +1305,24 @@ a.csign {
   padding: 0 1px;
 }
 
-/* stuck chats (D036) */
-.stk {
-  font-size: 0.6471rem;
-  font-weight: 700;
-  color: var(--wait-t);
-  background: var(--wait-soft);
-  border-radius: var(--r-sm);
-  padding: 2px 7px;
-}
-.ck-k.st {
-  color: var(--wait-t);
-}
-
-/* Pixies (D072): the section above the projects, the pixie page and its details panel. */
 .pxsec {
   margin-bottom: 14px;
+}
+/* The pixies view's tools: New team, Edit order, hidden pixies (B102). */
+.pxtools {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--div);
+}
+.pxtool {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  cursor: pointer;
 }
 .pxr .pxs {
   flex: none;
@@ -1351,32 +1366,24 @@ a.csign {
     opacity: 1;
   }
 }
-/* In a pixie row the name has priority: the @handle starts from no width and only grows
-   into the room the name and tags leave, so it truncates first, down to nothing, and only
-   then does the name truncate. */
+/* A pixie row, as the Mac's (B89): the name, its grey @handle right after it, then the
+   Leader tag; the handle truncates first, and an unread count sits at the row's end. */
 .pxr .rt {
   flex: 0 1 auto;
 }
-.pxr .pxslug {
-  display: block;
-  flex: 1 1 0;
+.pxr .pxh {
+  flex: 0 1 auto;
   min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: right;
 }
-.pxnew {
-  color: var(--accent);
+.pxr .pxw {
+  margin-left: auto;
 }
-.pxhid {
-  color: var(--t2);
-}
-/* Edit order: the heading's Edit order / Done, and each row's up and down buttons. */
-.pg-h .pxordb {
-  margin-left: 4px;
-  padding-right: 0;
-  color: var(--accent);
-}
+/* Edit order: each row's up and down buttons. */
 div.pxr {
   cursor: default;
 }
@@ -1408,19 +1415,19 @@ div.pxr:active {
   display: flex;
   align-items: center;
 }
-.pxth .pgb {
+.pxth .lbl {
   flex: 1;
   min-width: 0;
-  min-height: 44px;
-  margin-right: 0;
+  margin-top: 0;
+  border-top: 0;
 }
 .pxth .rmore {
   width: 44px;
   height: 44px;
 }
 .pxhandle {
-  font-weight: 500;
-  color: var(--t3);
+  font-weight: 400;
+  color: var(--t2);
 }
 /* A team's name in its leader's colour (B45), pulled toward the text colour as chat
    mentions are, so it reads in light and dark. */
@@ -1433,37 +1440,25 @@ div.pxr:active {
   font-size: 0.7647rem;
   color: var(--t3);
 }
-.pxteam + .lgrp,
-.pxteam + .pxteam {
+.pxtsec + .lgrp,
+.pxtsec + .pxtsec {
   margin-top: 6px;
 }
+/* "Leader" as small grey text, not a pill (B102 item 17). */
 .pxlead {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--fill);
+  font-size: var(--fs-micro);
   color: var(--t2);
-  font-weight: 600;
 }
-/* New team, beside New pixie in the same row. */
-.pxnewt {
+/* A pixie's unread action reports: a quiet coloured number at the row's end. */
+.pxw {
   flex: none;
-  min-width: 44px;
-  min-height: 54px;
-  padding: 0 16px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: 0.9118rem;
-  cursor: pointer;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--wait);
+  font-variant-numeric: tabular-nums;
 }
 .asi .ic.up {
   transform: rotate(180deg);
-}
-.pxplus {
-  width: 28px;
-  display: grid;
-  place-items: center;
-  flex: none;
 }
 .pxtpl {
   display: flex;
@@ -2482,30 +2477,6 @@ div.pxr:active {
   accent-color: var(--accent);
 }
 /* Unread reports that need action, on the Pixies heading and a pixie's row (B42). */
-.pxalert {
-  min-width: 19px;
-  height: 19px;
-  border-radius: 10px;
-  padding: 0 5px;
-  display: inline-grid;
-  place-items: center;
-  background: var(--st-fail);
-  color: var(--on-accent);
-  font-size: 0.6471rem;
-  font-weight: 800;
-}
-.pg-h .pxalert {
-  margin-left: 6px;
-}
-.ck-k.sev-warn {
-  --sev: var(--st-wait);
-}
-.ck-k.sev-action {
-  --sev: var(--st-fail);
-}
-.ck-k .pxsev {
-  margin-left: auto;
-}
 /* A pixie's activity log: tool and time, the summary, then the chat. */
 .pxact {
   list-style: none;
@@ -2623,14 +2594,12 @@ div.pxr:active {
   height: 14px;
   border-left: 1.5px solid var(--ct-line);
 }
+/* "Pixies" and "Subagents", small and grey in normal case, as the Mac's tree. */
 .ctg {
   display: block;
   line-height: 26px;
-  font-size: 0.6471rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--t3);
+  font-size: var(--fs-label);
+  color: var(--t2);
 }
 .ctr {
   display: flex;
@@ -2737,20 +2706,72 @@ div.pxr:active {
   height: 44px;
 }
 
-/* A project's goals (B47): each chat's title, then its steps always open beneath. */
-.goals h3 {
+/* Goals under Needs you (B47, B102 item 11): the same rows, a thin progress bar, and the
+   numbered steps open beneath. */
+.goals {
+  margin-top: 10px;
+  border-top: 1px solid var(--div);
+}
+.gbar {
+  display: inline-block;
+  width: 60px;
+  height: 3px;
+  margin-left: 8px;
+  border-radius: 2px;
+  vertical-align: middle;
+  background:
+    linear-gradient(var(--t1), var(--t1)) 0 0 / var(--done) 100% no-repeat,
+    var(--raised);
+}
+.goals .nexp {
+  margin-top: -2px;
+  padding: 0;
+  background: transparent;
+}
+.steps {
+  display: grid;
+  gap: 2px;
   margin: 0;
-  font: inherit;
+  padding: 0;
+  list-style: none;
 }
-.goal + .goal {
-  border-top: 1px solid var(--hair);
+.steps li {
+  display: grid;
+  grid-template-columns: 16px 16px minmax(0, 1fr);
+  gap: 4px;
+  align-items: start;
+  min-height: 24px;
+  color: var(--t2);
 }
-.goals .gs-b {
-  max-height: none;
+.steps li.cur {
+  color: var(--t1);
 }
-.goal-none {
-  margin: -4px 0 0;
-  padding: 0 14px 12px 38px;
-  font-size: 0.7647rem;
+.smark {
+  display: grid;
+  place-items: center;
+  height: 18px;
+}
+.smark .ic {
+  width: 12px;
+  height: 12px;
+  color: var(--ok);
+}
+.sopen {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.2px var(--t3);
+}
+.snum {
   color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.stext {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sdoing {
+  display: block;
+  font: 0.7059rem/1.4 var(--mono);
+  color: var(--lane-blue);
 }

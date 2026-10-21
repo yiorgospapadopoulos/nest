@@ -387,6 +387,7 @@ public enum DesignTokens {
         public static let macCard: Double = 8
         public static let macBubble: Double = 9
         public static let macSheet: Double = 12
+        public static let phoneCard: Double = 8
     }
     public enum Spacing {
         public static let macStripHeight: Double = 34
@@ -394,6 +395,7 @@ public enum DesignTokens {
         public static let macRowHeight: Double = 26
         public static let macButtonHeight: Double = 22
         public static let macScanlinePeriod: Double = 3
+        public static let phoneRow: Double = 44
     }
     public enum Typography {
         public enum Family {
@@ -409,6 +411,11 @@ public enum DesignTokens {
             public static let body: Double = 13
             public static let subhead: Double = 14
             public static let headline: Double = 17
+            public static let phoneTitle: Double = 17
+            public static let phoneBody: Double = 15
+            public static let phoneMeta: Double = 13
+            public static let phoneLabel: Double = 12.5
+            public static let phoneMicro: Double = 11
         }
         public enum Weight {
         }

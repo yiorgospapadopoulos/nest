@@ -23,7 +23,8 @@ import type {
   UsagePeriod,
   PeriodUnit,
   ClaudeAccount,
-  ClaudeCodeInfo,
+  CodexAccount,
+  EngineLimitWindow,
 } from "../api/types.ts";
 import {
   withArtifact,
@@ -255,8 +256,33 @@ export function reduce(state: State, action: Action): State {
     }
     case "notifications":
       return { ...state, notifications: action.notifications };
-    case "models":
-      return { ...state, models: action.models };
+    case "providers":
+      return { ...state, providers: action.providers };
+    case "modelList":
+      return {
+        ...state,
+        modelLists: { ...state.modelLists, [action.provider]: action.list },
+        ...(action.provider === "claude" ? { models: action.list.models } : {}),
+      };
+    case "engineLimits":
+      return {
+        ...state,
+        engineLimits: { ...state.engineLimits, [action.provider]: action.limits },
+      };
+    case "usageBarEngine": {
+      const others = state.usageBarHidden.filter((name) => name !== action.provider);
+      const hidden = action.shown ? others : [...others, action.provider];
+      return hidden.length === state.usageBarHidden.length
+        ? state
+        : { ...state, usageBarHidden: hidden };
+    }
+    case "projectConfiguration":
+      return withSettings(state, {
+        projectConfiguration: {
+          ...state.settings.projectConfiguration,
+          [action.repo]: action.configuration,
+        },
+      });
     case "account":
       return { ...state, account: action.account };
     case "agentDefaults":
@@ -403,10 +429,12 @@ export function applyEvent(state: State, event: NestEvent): State {
       return { ...next, connectors: list(p.connectors) as unknown as Connector[] };
     case "usage.updated":
       return { ...next, limits: limitsOf(p, event.ts, next.limits) };
+    case "usage.provider_updated":
+      return withEngineLimits(next, p, event.ts);
     case "account.claude":
       return withSettings(next, { claude: p as unknown as ClaudeAccount });
-    case "claude_code.updated":
-      return withSettings(next, { claudeCode: p as unknown as ClaudeCodeInfo });
+    case "account.codex":
+      return withSettings(next, { codex: p as unknown as CodexAccount });
     case "claude_code.install":
       return withSettings(next, { install: p as unknown as InstallProgress });
     case "artifact.saved":
@@ -418,6 +446,29 @@ export function applyEvent(state: State, event: NestEvent): State {
     default:
       return next;
   }
+}
+
+/**
+ * Another engine's windows from `usage.provider_updated` (B91), each as the engine reported
+ * it at the event's time; a window without a utilization is left out.
+ */
+function withEngineLimits(state: State, p: JsonObject, ts: string): State {
+  const provider = str(p.provider);
+  if (provider === null) return state;
+  const windows = list(p.windows).flatMap((value): EngineLimitWindow[] => {
+    const w = obj(value);
+    if (typeof w.utilization !== "number") return [];
+    return [
+      {
+        utilization: w.utilization,
+        resets_at: str(w.resets_at),
+        minutes: typeof w.minutes === "number" ? w.minutes : null,
+        label: str(w.label) ?? "Usage",
+        updated_at: ts,
+      },
+    ];
+  });
+  return { ...state, engineLimits: { ...state.engineLimits, [provider]: { windows } } };
 }
 
 /** The badge's count from an artifact event, which carries the new total. */

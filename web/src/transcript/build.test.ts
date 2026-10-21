@@ -1167,7 +1167,7 @@ describe("pixie hand-offs (B41)", () => {
 
     expect(items).toEqual([
       { kind: "user", key: "1", text: "Start two chats", attachments: [] },
-      { kind: "turn", key: "2.end", text: "Worked for 2s" },
+      { kind: "turn", key: "2.end", text: "Worked for 2s", stopped: false },
       { kind: "report", key: "3", text: "Chats you started have finished:\n- A" },
     ]);
   });

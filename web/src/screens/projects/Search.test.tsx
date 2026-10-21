@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { SearchHit } from "../../api/types.ts";
+import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { claudeChat, event, NOW, pixie, repo, session } from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
@@ -35,7 +36,7 @@ async function openProjects(hits: SearchHit[] = [], indexing = false) {
   api.claudeChats.mockResolvedValue([claudeChat()]);
   api.search.mockResolvedValue({ hits, indexing });
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   return rendered;
 }
 
@@ -85,11 +86,11 @@ describe("search", () => {
     expect(within(second).getByText("Login", { selector: "mark" })).toBeInTheDocument();
     expect(within(second).getByText("Output")).toBeInTheDocument();
     // The project lists are hidden while searching.
-    expect(screen.queryByRole("tablist", { name: "Projects" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Other chat, Idle/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear search" }));
     expect(field()).toHaveValue("");
-    expect(screen.getByRole("tablist", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Other chat, Idle/ })).toBeInTheDocument();
   });
 
   it("opens the chat at the hit, highlighted until its animation ends", async () => {
@@ -107,7 +108,8 @@ describe("search", () => {
     await user.type(field(), "login");
     await user.click(await screen.findByRole("button", { name: /^ClaudeThe login form/ }));
 
-    const target = await screen.findByText("The login form is fixed");
+    // A reply renders as Markdown: its row, around the paragraph, takes the highlight.
+    const target = defined((await screen.findByText("The login form is fixed")).closest(".m-a"));
     await waitFor(() => {
       expect(target).toHaveClass("hit");
     });
@@ -123,11 +125,11 @@ describe("search", () => {
     await user.type(field(), "login");
     await user.click(await screen.findByRole("button", { name: /^Output/ }));
 
-    const shown = await screen.findByText("Ran the tests");
+    const shown = defined((await screen.findByText("Ran the tests")).closest(".m-a"));
     await waitFor(() => {
       expect(shown).toHaveClass("hit");
     });
-    expect(screen.getByText("Later")).not.toHaveClass("hit");
+    expect(screen.getByText("Later").closest(".m-a")).not.toHaveClass("hit");
   });
 
   it("opens chats from title hits, and Claude Code chats read only", async () => {
@@ -148,7 +150,9 @@ describe("search", () => {
     await user.click(screen.getByRole("button", { name: /Back/ }));
 
     await user.click(await screen.findByRole("button", { name: /^Validate contact formcv-page$/ }));
-    expect(await screen.findByRole("button", { name: "Agents, 0 active" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/chat/s1");
+    });
     expect(document.querySelector(".hit")).toBeNull();
   });
 
@@ -163,7 +167,7 @@ describe("search", () => {
       indexing: false,
     });
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
 
     await user.type(field(), "login");
     const results = await screen.findByLabelText("Search results");
@@ -234,7 +238,7 @@ describe("stuck chats in the list", () => {
       ),
     );
     const { user } = await renderApp({ api });
-    await user.click(screen.getByRole("tab", { name: "Projects" }));
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
 
     const row = screen.getByRole("button", { name: /Validate contact form, Running, stuck/ });
     expect(within(row).getByText("Stuck")).toHaveAttribute("title", "Called Bash 5 times");

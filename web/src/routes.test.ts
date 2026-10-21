@@ -15,6 +15,13 @@ describe("routes", () => {
     ["/settings/agents/usage/x", { tab: "inbox", chat: null }],
     ["/settings/usage", { tab: "settings", chat: null, settings: { page: "usage" } }],
     ["/settings/storage", { tab: "settings", chat: null, settings: { page: "storage" } }],
+    [
+      "/settings/configuration",
+      { tab: "settings", chat: null, settings: { page: "configuration" } },
+    ],
+    // Extensions became Configuration (B102); an old address still opens it.
+    ["/settings/extensions", { tab: "settings", chat: null, settings: { page: "configuration" } }],
+    ["/settings/extensions/x", { tab: "inbox", chat: null }],
     ["/settings/usage/details", { tab: "settings", chat: null, settings: { detail: "usage" } }],
     ["/settings/usage/details/x", { tab: "inbox", chat: null }],
     ["/settings/usage/x", { tab: "inbox", chat: null }],

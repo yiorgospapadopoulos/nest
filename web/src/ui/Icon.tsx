@@ -90,6 +90,8 @@ const PATHS = {
   list: (
     <path d="M4 6.5l1.3 1.3 2.5-2.5M4 12.5l1.3 1.3 2.5-2.5M4.8 18h2M11 6.5h9M11 12.5h9M11 18h9" />
   ),
+  // The Chats tab (B102): a list of lines, as the Mac's sidebar.
+  lines: <path d="M5 6h14M5 12h14M5 18h9" />,
   q: (
     <>
       <circle cx="12" cy="12" r="8.5" />

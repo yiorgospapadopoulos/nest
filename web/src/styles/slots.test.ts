@@ -19,9 +19,9 @@ describe("the running mark's slot (B80)", () => {
     expect(rule(".row .ff")).toBe("");
   });
 
-  it("centres a row's 10 px dot in a 12 px slot", () => {
-    expect(rule(".row .dot")).toContain("width: 10px;");
-    expect(rule(".row .dot")).toContain("margin: 0 1px;");
+  it("centres a row's 7 px dot in a 12 px slot", () => {
+    expect(rule(".row .dot")).toContain("width: 7px;");
+    expect(rule(".row .dot")).toContain("margin: 0 2.5px;");
   });
 
   it("centres the background bar's 8 px summary dot in a 12 px slot", () => {
@@ -31,11 +31,10 @@ describe("the running mark's slot (B80)", () => {
     expect(rule(".bgsum span:not(.dot)")).toBe("");
   });
 
-  it("gives agent, background task and goal rows a mark column of 12 px or more, centred", () => {
-    expect(rule(".agr")).toContain("grid-template-columns: 12px minmax(0, 1fr) auto;");
+  it("gives background task and goal rows a mark column of 12 px or more, centred", () => {
     expect(rule(".bgg li")).toContain("grid-template-columns: 12px 14px");
     expect(rule(".gs-h")).toContain("grid-template-columns: 16px minmax(0, 1fr)");
-    const centred = [".agr", ".bgg li", ".gs-h"].flatMap((p) => [`${p} > .dot`, `${p} > .ff`]);
+    const centred = [".bgg li", ".gs-h"].flatMap((p) => [`${p} > .dot`, `${p} > .ff`]);
     expect(rule(centred.join(",\n"))).toContain("justify-self: center;");
   });
 

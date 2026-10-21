@@ -1,9 +1,16 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { Mascot, Pixie, PixieTeam } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { pixieList, pixieWorking, teamList, unreadActions } from "../../store/selectors.ts";
+import {
+  pixieList,
+  pixieWorking,
+  teamList,
+  unreadActions,
+  unreadReports,
+} from "../../store/selectors.ts";
 import { leaderColor } from "../../transcript/mentions.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import { ReportCard } from "../inbox/ReportCard.tsx";
 import { useRowGestures } from "../projects/rowGestures.ts";
 import { NameSheet } from "./NameSheet.tsx";
 import { usePending } from "./pending.ts";
@@ -69,8 +76,8 @@ export function PixieSection({ onOpen }: Props) {
     return p === undefined || (p.hidden && !showHidden) ? [] : [p];
   });
   const hidden = pixieList(state, true).length - pixieList(state).length;
-  // Unread action reports of the pixies (B42).
-  const alerts = unreadActions(state);
+  // Unread warn and action reports, as the Mac's Pixies tab lists them (B42, B102).
+  const reports = unreadReports(state);
   const teams = teamList(state);
   const groups: Group[] = [
     ...teams.map((team) => ({ team, pixies: pixies.filter((p) => p.team_id === team.id) })),
@@ -127,43 +134,43 @@ export function PixieSection({ onOpen }: Props) {
       : undefined;
 
   return (
-    <section className="pxsec" aria-labelledby="pixies-title">
-      <h2 className="pg-h" id="pixies-title">
-        Pixies
-        <span className="gc">{pixies.length}</span>
-        {alerts > 0 && (
-          <span className="pxalert" aria-label={actionText(alerts)}>
-            {alerts}
-          </span>
-        )}
-        {(ordering || pixies.length > 1) && (
-          <button
-            className="lnk pxordb"
-            onClick={() => {
-              setOrdering(!ordering);
-            }}
-          >
-            {ordering ? "Done" : "Edit order"}
-          </button>
-        )}
-      </h2>
+    <section className="pxsec" aria-label="Pixies">
+      {reports.length > 0 && (
+        <section aria-label="Reports">
+          <h2 className="lbl">
+            Reports
+            <span className="c wait">{reports.length}</span>
+          </h2>
+          {reports.map((report) => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              onOpenPixie={(id) => {
+                onOpen(id, "chat");
+              }}
+            />
+          ))}
+        </section>
+      )}
       {groups.map(({ team, pixies: members }) =>
         team === null ? (
-          <section key="none" className="lgrp gl" aria-label="No team">
-            {rows({ team, pixies: members })}
-            {!ordering && (
-              <div className="lrow">
+          <section key="none" aria-label="No team">
+            {teams.length > 0 && <h2 className="lbl">No team</h2>}
+            <div className="lgrp">{rows({ team, pixies: members })}</div>
+            {hidden > 0 && (
+              <button
+                className="pxtool"
+                onClick={() => {
+                  setShowHidden(!showHidden);
+                }}
+              >
+                {showHidden ? "Hide hidden" : `Show hidden (${String(hidden)})`}
+              </button>
+            )}
+            <div className="pxtools">
+              {!ordering && (
                 <button
-                  className="row pxr pxnew"
-                  onClick={() => void create({ name: "New pixie" }, "details")}
-                >
-                  <span className="pxplus" aria-hidden="true">
-                    <Icon name="plus" />
-                  </span>
-                  <span className="rt">New pixie</span>
-                </button>
-                <button
-                  className="pxnewt"
+                  className="pxtool"
                   aria-haspopup="dialog"
                   onClick={() => {
                     setMenu("newTeam");
@@ -171,29 +178,25 @@ export function PixieSection({ onOpen }: Props) {
                 >
                   New team
                 </button>
-              </div>
-            )}
-            {hidden > 0 && (
-              <div className="lrow">
+              )}
+              {(ordering || pixies.length > 1) && (
                 <button
-                  className="row pxr pxhid"
+                  className="pxtool"
                   onClick={() => {
-                    setShowHidden(!showHidden);
+                    setOrdering(!ordering);
                   }}
                 >
-                  <span className="rt">
-                    {showHidden ? "Hide hidden" : `Show hidden (${String(hidden)})`}
-                  </span>
+                  {ordering ? "Done" : "Edit order"}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </section>
         ) : (
           <TeamSection
             key={team.id}
             team={team}
             color={leaderColor(team, state.pixies)}
-            count={members.length}
+            empty={members.length === 0}
             folded={state.foldedTeams.includes(team.id)}
             onFold={(folded) => {
               actions.setTeamFolded(team.id, folded);
@@ -212,7 +215,7 @@ export function PixieSection({ onOpen }: Props) {
           {TEMPLATES.map((t) => (
             <button
               key={t.name}
-              className="pxtb gl"
+              className="pxtb"
               onClick={() => void create({ name: t.name, mascot: t.mascot, soul: t.soul }, "chat")}
             >
               <span aria-hidden="true">
@@ -281,19 +284,19 @@ interface TeamSectionProps {
   team: PixieTeam;
   // Its leader's colour, for its name.
   color: string | null;
-  // Its pixies shown.
-  count: number;
+  // No pixie of it is shown.
+  empty: boolean;
   folded: boolean;
   onFold: (folded: boolean) => void;
   onActions: () => void;
   children: ReactNode;
 }
 
-/** A team's header, folding its pixies away, with its menu; then its pixies. */
+/** A team's header, folding its pixies away, with its menu; then its pixies. No count. */
 function TeamSection({
   team,
   color,
-  count,
+  empty,
   folded,
   onFold,
   onActions,
@@ -301,10 +304,10 @@ function TeamSection({
 }: TeamSectionProps) {
   const id = `team-${team.id}`;
   return (
-    <section className="pxteam" aria-labelledby={id}>
+    <section className="pxtsec" aria-labelledby={id}>
       <div className="pxth">
         <button
-          className="pg-h pgb"
+          className="lbl folded"
           aria-expanded={!folded}
           onClick={() => {
             onFold(!folded);
@@ -319,16 +322,13 @@ function TeamSection({
             </span>
           )}
           <span className="pxhandle">@{team.handle}</span>
-          <span className="gc">{count}</span>
         </button>
         <button className="rmore" aria-label={`Actions for team ${team.name}`} onClick={onActions}>
           <Icon name="dots" />
         </button>
       </div>
       {!folded && (
-        <div className="lgrp gl">
-          {count === 0 ? <p className="pxnone">No pixies yet</p> : children}
-        </div>
+        <div className="lgrp">{empty ? <p className="pxnone">No pixies yet</p> : children}</div>
       )}
     </section>
   );
@@ -358,21 +358,20 @@ function PixieRow({ pixie: p, leader, running, alerts, onOpen, onActions }: RowP
         data-chat={`pixie:${p.id}`}
         {...gestures}
       >
-        <Sprite mascot={p.mascot} color={p.color} size={28} working={running} phaseKey={p.id} />
+        <Sprite mascot={p.mascot} color={p.color} size={20} working={running} phaseKey={p.id} />
         <span className="rt">{p.name}</span>
-        {(leader || running || alerts > 0) && (
+        <span className="pxh">@{p.slug}</span>
+        {(leader || running) && (
           <span className="rm">
             {leader && <span className="pxlead">Leader</span>}
             {running && <Fireflies size={9} />}
-            {alerts > 0 && (
-              <span className="pxalert" aria-hidden="true">
-                {alerts}
-              </span>
-            )}
           </span>
         )}
-        <span className="rm pxslug">@{p.slug}</span>
-        <Icon name="chevr" className="chv" />
+        {alerts > 0 && (
+          <span className="pxw" aria-hidden="true">
+            {alerts}
+          </span>
+        )}
       </button>
       <button className="rmore" aria-label={`Actions for ${p.name}`} onClick={onActions}>
         <Icon name="dots" />
@@ -394,7 +393,7 @@ function OrderRow({ pixie: p, before, after, place }: OrderRowProps) {
   return (
     <div className="lrow">
       <div className="row pxr">
-        <Sprite mascot={p.mascot} color={p.color} size={28} />
+        <Sprite mascot={p.mascot} color={p.color} size={20} />
         <span className="rt">{p.name}</span>
         <button
           className="pxmv"

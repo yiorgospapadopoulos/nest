@@ -115,7 +115,7 @@ describe("this device", () => {
     const { user } = await openAccount();
     expect(screen.getByText("Checking...")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "Inbox" }));
+    await user.click(screen.getByRole("tab", { name: "Needs you" }));
     await act(async () => {
       finish(undefined);
       await Promise.resolve();

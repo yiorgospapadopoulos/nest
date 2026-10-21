@@ -1,5 +1,7 @@
 import type { UsagePeriod } from "../../api/types.ts";
 import { tokens } from "../../format.ts";
+import { useStore } from "../../store/context.ts";
+import { engineName } from "../../store/selectors.ts";
 import { Loading, PageFrame, Row, Section } from "./rows.tsx";
 import { periodTitle, probesLine, projectRows, share } from "./usageText.ts";
 import { useUsage } from "./useUsage.ts";
@@ -21,7 +23,11 @@ export function UsageBreakdown({ onBack }: { onBack: () => void }) {
 }
 
 function Breakdown({ period }: { period: UsagePeriod }) {
+  const { state } = useStore();
   const { tokens: all, subagents } = period;
+  // Each engine's part (B102 item 24), against what the engines counted together.
+  const engines = period.engines ?? [];
+  const counted = engines.reduce((sum, e) => sum + e.tokens, 0);
   const total = all.total;
   const part = (label: string, value: number) => (
     <Row key={label} label={label}>
@@ -34,6 +40,16 @@ function Breakdown({ period }: { period: UsagePeriod }) {
   const probes = probesLine(period.probes);
   return (
     <>
+      {engines.length > 0 && (
+        <Section title="By engine">
+          {engines.map((e) => (
+            <Row key={e.provider} label={engineName(state, e.provider)}>
+              <span className="sval num">{tokens(e.tokens)}</span>
+              <span className="ushr">{share(e.tokens, counted)}</span>
+            </Row>
+          ))}
+        </Section>
+      )}
       <Section title="By who">
         {part("Chats", total - subagents.total)}
         {part("Subagents", subagents.total)}

@@ -30,7 +30,7 @@ async function projects(
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : sessions));
   api.claudeChats.mockResolvedValue(chats);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   return rendered;
 }
 
@@ -50,7 +50,7 @@ describe("where a chat works, in the list", () => {
     expect(checkout.querySelectorAll(".plm svg")).toHaveLength(1);
   });
 
-  it("puts the mark beneath the whole title, sharing its line with the time", async () => {
+  it("puts the mark beneath the whole title, with the time at the row's end", async () => {
     const sheet = document.createElement("style");
     sheet.textContent = readFileSync("src/styles/screens.css", "utf8");
     document.head.append(sheet);
@@ -79,7 +79,8 @@ describe("where a chat works, in the list", () => {
           .getByText(mark)
           .closest(".plm"),
       ).not.toBeNull();
-      expect(below.lastElementChild).toHaveClass("ago");
+      // The time of the last message ends the row, beside the title (B102 item 2).
+      expect(found.lastElementChild).toHaveClass("rtime");
       const style = getComputedStyle(title);
       expect(style.whiteSpace).toBe("normal");
       expect(style.textOverflow).not.toBe("ellipsis");
@@ -220,13 +221,16 @@ describe("where a chat works, in its header", () => {
 async function newChat(api: FakeApi = fakeApi(), repos: RepoConfig[] = [repo("cv-page")]) {
   api.repos.mockResolvedValue(repos);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: "New chat in cv-page" }));
   await waitFor(() => {
     expect(api.agentDefaults).toHaveBeenCalled();
   });
   return rendered;
 }
+
+// What a new chat sends from the agent defaults, which name no model (B102).
+const CHOICES = { provider: "claude", effort: "medium", permission_mode: "default" };
 
 const placeButton = () => screen.getByRole("button", { name: /^Where the chat works: / });
 
@@ -273,6 +277,7 @@ describe("where a new chat works", () => {
       repo: "cv-page",
       prompt: "Go",
       attachment_ids: [],
+      ...CHOICES,
       mode: "worktree",
       base: "dev",
       branch: "try/layout",
@@ -296,6 +301,7 @@ describe("where a new chat works", () => {
       repo: "cv-page",
       prompt: "Go",
       attachment_ids: [],
+      ...CHOICES,
       mode: "in_place",
     });
   });
@@ -349,6 +355,7 @@ describe("where a new chat works", () => {
       repo: "cv-page",
       prompt: "Go",
       attachment_ids: [],
+      ...CHOICES,
       mode: "worktree",
     });
   });
@@ -370,6 +377,7 @@ describe("where a new chat works", () => {
       repo: "cv-page",
       prompt: "Go",
       attachment_ids: [],
+      ...CHOICES,
     });
     expect(api.repo).not.toHaveBeenCalled();
   });

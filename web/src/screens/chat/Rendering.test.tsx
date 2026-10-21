@@ -34,7 +34,7 @@ async function openWorkingChat() {
     at(2, "session.state", { state: "running", error: null, turn_start: true }),
   ]);
   const rendered = await renderApp({ api });
-  await rendered.user.click(screen.getByRole("tab", { name: "Projects" }));
+  await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   vi.useFakeTimers({
     now: Date.parse(START) + 12_000,
     toFake: ["Date", "setInterval", "clearInterval"],
