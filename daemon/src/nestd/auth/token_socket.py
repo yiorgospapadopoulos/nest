@@ -2,7 +2,8 @@
 
 The socket sits in the daemon's data folder (folder 0700, socket 0600). For each
 connection the daemon checks that the peer runs as its own user, writes the token and a
-newline, and closes. It never reads what a client sends, and never logs the token.
+newline, and closes once the client has. It never uses what a client sends, and never
+logs the token.
 """
 
 import asyncio
@@ -29,6 +30,9 @@ _PEER_CREDENTIALS = {
     "darwin": (0, 0x001, 76, 4),
     "linux": (socket.SOL_SOCKET, 17, 12, 4),
 }
+
+# How long an answered client may keep the connection open before the daemon closes it.
+CLOSE_WAIT = 1.0
 
 type TokenSource = Callable[[], Awaitable[str]]
 
@@ -62,6 +66,7 @@ class TokenSocket:
         *,
         uid: int | None = None,
         peer_uid: PeerUid = read_peer_uid,
+        close_wait: float = CLOSE_WAIT,
     ) -> None:
         """`tokens` gives the current token for each connection; `uid` is who may ask
         (default: the daemon's own user)."""
@@ -69,6 +74,7 @@ class TokenSocket:
         self._tokens = tokens
         self._uid = os.geteuid() if uid is None else uid
         self._peer_uid = peer_uid
+        self._close_wait = close_wait
         self._server: asyncio.Server | None = None
         # The socket file this server made, so stop never removes another daemon's.
         self._identity: tuple[int, int] | None = None
@@ -110,12 +116,25 @@ class TokenSocket:
         await writer.wait_closed()
         raise TokenSocketError(f"another Nest daemon is already serving {self._path}")
 
-    async def _answer(self, _reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _answer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             await self._send_token(writer)
         finally:
-            writer.close()
-            await writer.wait_closed()
+            await self._close(reader, writer)
+
+    async def _close(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Ends the answer, then waits a moment for the client to close first. On Linux,
+        closing a Unix socket with unread input resets the connection, and the client loses
+        the answer; so what the client sent is read and dropped."""
+        writer.write_eof()
+        try:
+            async with asyncio.timeout(self._close_wait):
+                while await reader.read(4096):
+                    pass
+        except TimeoutError:
+            pass
+        writer.close()
+        await writer.wait_closed()
 
     async def _send_token(self, writer: asyncio.StreamWriter) -> None:
         try:
