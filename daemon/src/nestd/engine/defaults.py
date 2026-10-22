@@ -7,13 +7,14 @@ model takes, and Ask. Defaults stored before B94 that deferred to the engine (nu
 resolved to these once the engine's model list is known, and then stored.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from nestd.config.models import AgentChoices, AgentDefaults, Effort, PermissionMode
 from nestd.engine.models import closest_effort
 from nestd.engine.service import mode_problem
 from nestd.engine.sign_ins import SignInStore
+from nestd.local.models import is_local
 from nestd.providers.base import ModelOption
 from nestd.sessions.engines import Engine, Engines
 
@@ -42,10 +43,18 @@ def default_mode(option: ModelOption | None, mode: PermissionMode | None) -> Per
 
 
 class ChatDefaults:
-    def __init__(self, engines: Callable[[], Engines], sign_ins: SignInStore) -> None:
-        """`engines` are the session manager's, read when needed."""
+    def __init__(
+        self,
+        engines: Callable[[], Engines],
+        sign_ins: SignInStore,
+        local_engine: Callable[[], Awaitable[str]] | None = None,
+    ) -> None:
+        """`engines` are the session manager's, read when needed; `local_engine` names the
+        engine local chats run on (B106).
+        """
         self._engines = engines
         self._sign_ins = sign_ins
+        self._local_engine = local_engine
 
     async def first_engine(self) -> Engine:
         """The engine Nest saw signed in first; the default one before any was."""
@@ -68,6 +77,10 @@ class ChatDefaults:
         """The defaults with every null replaced by the value Nest picks."""
         engine = await self.engine_of(agents)
         model = agents.model or await engine.default_model()
+        if is_local(model) and agents.provider is None and self._local_engine is not None:
+            # With no engine signed in the default is a local model (B106), which runs
+            # on the engine chosen for local chats.
+            engine = self._engines().by_name(await self._local_engine())
         option = None if model is None else await engine.find(model)
         effort = agents.effort if agents.effort is not None else default_effort(option)
         mode = agents.mode if isinstance(agents, AgentChoices) else agents.default_mode

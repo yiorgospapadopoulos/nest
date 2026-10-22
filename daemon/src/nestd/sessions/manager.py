@@ -26,6 +26,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.issues.message import issue_message, issue_meta
 from nestd.issues.models import Issue
+from nestd.local.models import is_local
 from nestd.providers.base import AgentProvider, ApprovalHandler
 from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
@@ -47,6 +48,7 @@ from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.joining import Place, join_place, place_on_branch
 from nestd.sessions.limits import ClearReason, LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession
+from nestd.sessions.local import LocalSource, require, require_features
 from nestd.sessions.models import (
     USER,
     ChatImport,
@@ -128,6 +130,7 @@ class SessionManager:
         engines: Sequence[Engine] = (),
         accounts: AccountSource | None = None,
         issues: IssueFetch | None = None,
+        local: LocalSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -135,8 +138,10 @@ class SessionManager:
         `call_tools` call the pixies a run calls as sessions of their own (B91).
         `provider` and `models` are the default engine's; `engines` the others a chat
         can ask for, such as Codex (B91). `accounts` is the default engine's active
-        account (B98). `issues` reads the issue a chat starts from (B101).
+        account (B98). `issues` reads the issue a chat starts from (B101). `local` runs
+        chats on local models (B106).
         """
+        self._local = local
         self._issues = issues
         self._engines = Engines(
             Engine(provider, models, default=default_model, accounts=accounts), engines
@@ -176,6 +181,7 @@ class SessionManager:
             calls=calls,
             nest_tools=nest_tools,
             call_tools=call_tools,
+            local=local,
         )
         self._rewinds = Rewinds(
             store=store,
@@ -245,11 +251,23 @@ class SessionManager:
             if request.provider is not None
             else await self._engines.listing(request.model, self._defaults_engine(defaults))
         )
-        await engine.require_ready()
+        if not is_local(request.model):
+            # First: asking whether it is ready also brings its model list (Codex).
+            await engine.require_ready()
         # The defaults are their engine's; another engine starts on its own default model,
         # Medium (or the closest level) and Ask (B91, B94).
         own = engine is self._defaults_engine(defaults)
         model = request.model or (defaults.model if own else None) or await engine.default_model()
+        if (
+            is_local(model)
+            and request.provider is None
+            and model != (defaults.model if own else None)
+        ):
+            # A new local chat runs on the engine chosen for local chats (B106).
+            engine = self._engines.by_name(await self._require_local().engine())
+            own = engine is self._defaults_engine(defaults)
+        if is_local(model):
+            await self._require_local().require_running(model)
         effort = await self._effort(engine, model, request.effort, defaults.effort if own else None)
         permission_mode = request.permission_mode
         await self._require_mode(engine, model, permission_mode)
@@ -292,6 +310,7 @@ class SessionManager:
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
+        await require_features(self._local, model, attachments)
         branch = request.branch if place is None else place.branch
         if issue is not None and mode == "worktree" and branch is None:
             # GitHub's own branch name for the issue (B101).
@@ -407,9 +426,10 @@ class SessionManager:
         `provider` is the pixie's engine (None: the default), which must be ready (409).
         """
         engine = self._engines.default if provider is None else self._engines.by_name(provider)
-        await engine.require_ready()
+        await self._require_ready(engine, model)
         await self._require_mode(engine, model, permission_mode)
         attachments = await self._attachments.for_session(attachment_ids, None)
+        await require_features(self._local, model, attachments)
         session = await self._store.create(
             NewSession(
                 repo=pixie_repo(pixie_id),
@@ -534,11 +554,12 @@ class SessionManager:
         """
         session = await self._store.get(session_id)
         require_open(session)
-        await self._engines.of(session).require_ready()
+        await self._require_ready(self._engines.of(session), session.model)
         await self._refuse_member_calls(session, text)
         await self._require_not_open_elsewhere(session)
-        live = self._live.setdefault(session_id, LiveSession(session_id))
         attachments = await self._attachments.for_session(attachment_ids, session_id)
+        await require_features(self._local, session.model, attachments)
+        live = self._live.setdefault(session_id, LiveSession(session_id))
         await live.settled.wait()
         # Read again: the session may have been closed or deleted while this waited.
         session = await self._store.get(session_id)
@@ -1063,6 +1084,18 @@ class SessionManager:
         if default is not None and effort_problem(option, default) is None:
             return default
         return closest_effort(option.effort_levels)
+
+    async def _require_ready(self, engine: Engine, model: str | None) -> None:
+        """409 when the chat cannot run now: its engine is not signed in (Codex), or its
+        local model's server does not answer (B106), which needs no sign in.
+        """
+        if is_local(model):
+            await self._require_local().require_running(model)
+        else:
+            await engine.require_ready()
+
+    def _require_local(self) -> LocalSource:
+        return require(self._local)
 
     def _defaults_engine(self, defaults: AgentDefaults) -> Engine:
         """The agent defaults' engine; the default one when they name none (B94)."""

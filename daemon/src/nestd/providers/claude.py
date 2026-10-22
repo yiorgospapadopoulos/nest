@@ -29,6 +29,7 @@ from pydantic import JsonValue
 
 from nestd.config.models import PermissionMode
 from nestd.gitops.remotes import scrub_credentials
+from nestd.local.run import claude_env, claude_settings
 from nestd.logging_setup import ENGINE_STDERR_LOGGER
 from nestd.providers.base import (
     AGENT_TOOLS,
@@ -82,6 +83,7 @@ DEFAULT_DENY_MESSAGE = "The user denied this action."
 STDERR_PLACEHOLDER = "Check stderr output for details"
 STDERR_LINES = 20
 STDERR_CHARS = 300
+WEB_SEARCH = "WebSearch"
 # The tool Claude calls in plan mode to present its plan and ask to start working (D032).
 EXIT_PLAN_MODE = "ExitPlanMode"
 KEEP_PLANNING_MESSAGE = "Keep planning."
@@ -243,9 +245,14 @@ def build_options(
         pre_tool_use.append(
             HookMatcher(matcher="|".join(WRITE_TOOLS), hooks=[write_guard(spec.write_root)])
         )
+    local = spec.local
+    disallowed: list[str] = list(GIT_WRITE_RULES) if spec.guard_git else []
+    if local is not None:
+        # Anthropic's servers run web searches; a local model has none (B106).
+        disallowed.append(WEB_SEARCH)
     return ClaudeAgentOptions(
         cwd=spec.cwd,
-        model=spec.model,
+        model=spec.model if local is None else local.model,
         effort=spec.effort,
         permission_mode=spec.permission_mode,
         resume=spec.resume_id,
@@ -266,7 +273,7 @@ def build_options(
         mcp_servers=tool_servers(spec.tools, spec.nest_tools),
         # Also allowed by rule, so they never prompt in any mode or subagent (B79).
         allowed_tools=sorted(every_run_tools),
-        disallowed_tools=list(GIT_WRITE_RULES) if spec.guard_git else [],
+        disallowed_tools=disallowed,
         # None keeps Claude Code's default of every skill.
         skills=list(spec.skills) or None,
         agents={name: _agent(sub, own_tools) for name, sub in spec.subagents.items()} or None,
@@ -277,7 +284,10 @@ def build_options(
             **CLAUDE_APP_ENV,
             # The account's profile folder (B98).
             **(spec.account.env if spec.account is not None else {}),
+            # A local model's server (B106); the settings below make it beat the user's.
+            **(claude_env(local) if local is not None else {}),
         },
+        settings=None if local is None else claude_settings(local),
         stderr=stderr,
         max_buffer_size=MAX_MESSAGE_BYTES,
         # Files can be restored to before a user message; the echo of each message the
