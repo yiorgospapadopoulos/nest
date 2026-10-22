@@ -102,9 +102,15 @@ async def build_context(
         codex_transport=codex or FakeAppServer(),
         # Nor a standalone Codex on this Mac.
         codex_locations=codex_locations(tmp_path),
+        # Never the real machine's name.
+        machine=fake_machine_name,
         # Never a real model server, the user's model folders or a started app.
         local_setup=local_setup or LocalMac(tmp_path / "local").setup(),
     )
+
+
+async def fake_machine_name() -> str:
+    return "Test Mac"
 
 
 def codex_locations(tmp_path: Path) -> CodexLocations:

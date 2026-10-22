@@ -157,7 +157,13 @@ class RepoService:
             raise NotAGitRepositoryError(name)
 
     async def register(self, path: Path, name: str | None = None) -> RepoConfig:
-        """A git work tree's root, or a folder outside any work tree as a plain folder."""
+        """A git work tree's root, or a folder outside any work tree as a plain folder.
+        A leading `~` is this machine's home, also for a path typed on another one."""
+        try:
+            path = await asyncio.to_thread(path.expanduser)
+        except RuntimeError as error:
+            msg = f"{path}: no user {path.parts[0].removeprefix('~')} on this machine"
+            raise InvalidRepoError(msg) from error
         root = await _work_tree_root(path)
         plain = root is None
         if root is None:

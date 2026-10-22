@@ -207,12 +207,14 @@ struct ChatActions: View {
         } label: {
             Label("Continue in Claude Code", systemImage: Icon.terminal)
         }
+        .localOnly(shell, DaemonText.appsOff)
         if let folder = shell.folder(ofPane: session.id), session.state != .closed {
             Button {
                 shell.openTerminal(in: folder)
             } label: {
                 Label("Terminal here", systemImage: Icon.terminal)
             }
+            .localOnly(shell, DaemonText.terminalOff)
         }
         if !session.isArchived {
             Button {

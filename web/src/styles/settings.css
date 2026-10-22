@@ -131,6 +131,11 @@
   color: var(--t2);
 }
 
+/* The daemon this app is connected to (B105). */
+.set .conn-dot {
+  background: var(--ok);
+}
+
 /* Switches in the user's accent. */
 .set .sw[aria-checked="true"] {
   background: var(--accent);

@@ -23,6 +23,7 @@ final class FakeAPI: NestAPI {
         /// The period answer's split by engine.
         var periodEngines: [EngineTokens] = []
         var devices = Fixture.decode([Device].self, "devices")
+        var health = DaemonHealth(status: "ok", version: "0.1.0", machine: "Mac mini")
         var claudeChats = Fixture.claudeChats
         var claudeChatEvents: [String: [Event]] = [:]
         /// Calls named here wait until their stream finishes.
@@ -1072,6 +1073,14 @@ final class FakeAPI: NestAPI {
 
     func pushStatus() async throws -> PushStatus {
         try call("pushStatus") { PushStatus(devices: $0.pushDevices) }
+    }
+
+    func health() async throws -> DaemonHealth {
+        try call("health") { $0.health }
+    }
+
+    func restartService() async throws {
+        try call("restartService") { _ in }
     }
 
     func features() async throws -> FeaturesCatalog {

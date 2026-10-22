@@ -77,7 +77,9 @@ public struct SocketTokenStore: TokenStore {
         let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { throw TokenStoreError.noAnswer }
         // `token_urlsafe`: letters, digits, `-` and `_`.
-        guard token.unicodeScalars.allSatisfy(Self.tokenCharacters.contains) else {
+        // A closure, not `Self.tokenCharacters.contains`: the release build of B105 turned
+        // that method reference into a check that refused every token.
+        guard token.unicodeScalars.allSatisfy({ Self.tokenCharacters.contains($0) }) else {
             throw TokenStoreError.malformed
         }
         return token

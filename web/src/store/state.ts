@@ -148,6 +148,8 @@ export interface State {
   auth: AuthState;
   // The event socket dropped and is reconnecting.
   reconnecting: boolean;
+  // The name of the daemon's machine (B105), null until one is known.
+  machine: string | null;
   repos: RepoConfig[];
   sessions: Record<string, Session>;
   // The user's pixies by id; their chats are sessions with a pixie_id.
@@ -221,6 +223,7 @@ export interface State {
 export const initialState: State = {
   auth: "loading",
   reconnecting: false,
+  machine: null,
   repos: [],
   sessions: {},
   pixies: {},
@@ -265,6 +268,7 @@ export const initialState: State = {
 export type Action =
   | { type: "auth"; auth: AuthState }
   | { type: "reconnecting"; on: boolean }
+  | { type: "machine"; machine: string }
   | { type: "loaded"; repos: RepoConfig[]; sessions: Session[]; approvals: Approval[] }
   | { type: "repo"; repo: RepoConfig }
   | { type: "repoRemoved"; name: string }

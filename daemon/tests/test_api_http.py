@@ -59,7 +59,12 @@ async def test_health_needs_no_auth(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": nestd.__version__}
+    # The machine's name, read once when the daemon started, for clients on other ones.
+    assert response.json() == {
+        "status": "ok",
+        "version": nestd.__version__,
+        "machine": "Test Mac",
+    }
 
 
 async def test_startup_creates_local_token_and_stores_no_event(

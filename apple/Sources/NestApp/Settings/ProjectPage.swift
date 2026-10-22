@@ -472,12 +472,38 @@ private struct ProjectArtifactsTab: View {
 
 // MARK: Add project
 
-/// A folder to add as a project, chosen or typed.
+/// A folder to add as a project, chosen or typed. On a remote daemon (B105) it is typed
+/// only, as the daemon's machine knows it: a picker would browse this Mac.
 struct AddProjectPage: View {
     @Environment(Shell.self) private var shell
     @State private var path = NSHomeDirectory() + "/"
+    @State private var remotePath = "~/"
 
     var body: some View {
+        if shell.isRemote {
+            remoteFolder
+        } else {
+            localFolder
+        }
+    }
+
+    private var remoteFolder: some View {
+        SettingsSection(title: "") {
+            SettingsRow(label: DaemonText.folder(shell.machineName)) {
+                CardField(
+                    placeholder: "Folder", text: $remotePath,
+                    submit: { shell.addRemoteProject(path: remotePath) }
+                )
+                .font(.mono(TypeSize.meta))
+                .frame(width: 260)
+                Button("Add") { shell.addRemoteProject(path: remotePath) }
+                    .buttonStyle(.nest(.primary))
+                    .disabled(remotePath.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private var localFolder: some View {
         SettingsSection(title: "") {
             SettingsRow(label: "Folder") {
                 CardField(placeholder: "Folder", text: $path, submit: add)
@@ -574,6 +600,7 @@ private struct ProjectConfigurationTab: View {
                         LocalOpen.folder(repo.path + "/.claude/skills")
                     }
                     .buttonStyle(.nest())
+                    .localOnly(shell, DaemonText.appsOff)
                 }
                 ForEach(config.skills) { skill in
                     ConfigSubRow {

@@ -66,6 +66,7 @@ struct StatusBar: View {
                 .buttonStyle(FooterButtonStyle())
                 .help("Open a terminal where the focused chat works")
                 .accessibilityLabel("Terminal")
+                .localOnly(shell, DaemonText.terminalOff)
                 let squeezed = shell.projectState.rightCollapsed
                 SqueezeButton(
                     icon: squeezed ? Icon.triangleLeft : Icon.triangleRight,

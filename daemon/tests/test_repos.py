@@ -142,6 +142,21 @@ async def test_register_rejects_missing_dirs_and_subdirectories(
         await service.register(Path("relative/repo"))
 
 
+async def test_register_expands_a_leading_tilde_to_the_daemon_home(
+    service: RepoService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A path typed in a client on another machine means this machine's home (B105)."""
+    home = tmp_path / "home"
+    repo = init_repo(home / "code" / "app")
+    monkeypatch.setenv("HOME", str(home))
+
+    registered = await service.register(Path("~/code/app"))
+
+    assert registered.path == repo.resolve()
+    with pytest.raises(InvalidRepoError, match="no user nobody-here-b105"):
+        await service.register(Path("~nobody-here-b105/app"))
+
+
 async def test_register_a_folder_outside_git_as_a_plain_folder(
     service: RepoService, paths: AppPaths, tmp_path: Path
 ) -> None:

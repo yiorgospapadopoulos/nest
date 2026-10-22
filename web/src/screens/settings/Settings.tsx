@@ -81,6 +81,7 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
         <div className="snav">
           <h1 className="snt">Settings</h1>
         </div>
+        <ConnectedTo />
         <nav className="lgrp gl" aria-label="Settings">
           {SETTINGS_PAGES.map((id) => (
             <LinkRow
@@ -160,5 +161,32 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
     <PageFrame title={PAGES[page.page].title} back={back} onBack={onBack}>
       {body[page.page]()}
     </PageFrame>
+  );
+}
+
+/** The daemon this app belongs to (B105): each machine's Nest is its own Home Screen app. */
+function ConnectedTo() {
+  const { state, address } = useStore();
+  return (
+    <section aria-labelledby="settings-connected">
+      <h2 className="pg-h" id="settings-connected">
+        Connected to
+      </h2>
+      <div className="lgrp gl">
+        <div className="srow">
+          <span className="cn">
+            <span className="dot conn-dot" aria-hidden="true" />
+            <span className="slab">
+              {state.machine ?? "Your Mac"}
+              <span className="hint mono">{address}</span>
+            </span>
+          </span>
+        </div>
+        <p className="srow note">
+          This app is {state.machine ?? "your Mac"}&apos;s. For another machine, open its address in
+          Safari and add it to the Home Screen: each one is its own app with its own pairing.
+        </p>
+      </div>
+    </section>
   );
 }

@@ -67,13 +67,13 @@ struct NestCommands: Commands {
                 .shortcut(.palette, shell)
             Button("New Terminal") { shell?.newTerminal() }
                 .shortcut(.newTerminal, shell)
-                .disabled(shell?.project == nil)
+                .disabled(shell?.project == nil || shell?.isRemote == true)
             Button("New Browser") { shell?.newBrowser() }
                 .shortcut(.newBrowser, shell)
                 .disabled(shell?.project == nil)
             Button("Open Project in VS Code") { shell?.openProject(in: .vscode) }
                 .shortcut(.openInVSCode, shell)
-                .disabled(shell?.project == nil)
+                .disabled(shell?.project == nil || shell?.isRemote == true)
             Divider()
             Button("Send Message") { shell?.sendFocused() }
                 .shortcut(.sendMessage, shell)

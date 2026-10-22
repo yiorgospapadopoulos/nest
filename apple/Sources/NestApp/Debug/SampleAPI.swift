@@ -1283,6 +1283,12 @@
 
         func pushStatus() async throws -> PushStatus { PushStatus(devices: 1) }
 
+        func health() async throws -> DaemonHealth {
+            DaemonHealth(status: "ok", version: "0.1.0", machine: "MacBook Air")
+        }
+
+        func restartService() async throws {}
+
         func features() async throws -> FeaturesCatalog {
             lock.withLock { SampleFeatures.catalog(shown: shownFeatures) }
         }

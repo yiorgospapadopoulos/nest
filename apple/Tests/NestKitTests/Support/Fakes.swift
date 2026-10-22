@@ -17,6 +17,10 @@ final class MemoryStore: KeyValueStore {
     func set(_ value: String?, forKey key: String) {
         values[key] = value
     }
+
+    func removeAll(prefixed prefix: String) {
+        values = values.filter { !$0.key.hasPrefix(prefix) }
+    }
 }
 
 /// An event source the test feeds by hand.
