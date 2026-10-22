@@ -389,6 +389,20 @@ public struct APIClient: NestAPI {
         try await get("push", "status")
     }
 
+    public func health() async throws -> DaemonHealth {
+        try await get("health")
+    }
+
+    public func restartService() async throws {
+        try await perform("POST", ["service", "restart"])
+    }
+
+    /// Pairs this app as a new device with a one-time code; used without a token.
+    public func redeemPairing(code: String, deviceName: String) async throws -> RedeemedPairing {
+        try await call(
+            "POST", ["pairing", "redeem"], body: RedeemRequest(code: code, deviceName: deviceName))
+    }
+
     // MARK: Settings (B81)
 
     public func repoBranches(_ name: String) async throws -> [String] {
@@ -958,7 +972,10 @@ public struct APIClient: NestAPI {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Pairing and the health check go without one.
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
     }

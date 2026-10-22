@@ -787,6 +787,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("DELETE", "/api/devices/dev-phone", response: "") {
             try await $0.revokeDevice("dev-phone")
         },
+        RouteCase("GET", "/api/health", response: #"{"status": "ok", "version": "1"}"#) {
+            _ = try await $0.health()
+        },
+        RouteCase("POST", "/api/service/restart", response: #"{"restarting": true}"#) {
+            try await $0.restartService()
+        },
+        RouteCase(
+            "POST", "/api/pairing/redeem", body: #"{"code":"K7QMR4XP","device_name":"Air"}"#,
+            response: """
+                {"device": {"id": "d", "name": "Air", "is_local": false,
+                  "created_at": "2026-10-21T18:00:00Z"}, "token": "t"}
+                """
+        ) { _ = try await $0.redeemPairing(code: "K7QMR4XP", deviceName: "Air") },
         RouteCase("GET", "/api/repos/cv-page/commands", response: commandsJSON) {
             _ = try await $0.repoCommands("cv-page")
         },
@@ -1074,6 +1087,14 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
 
         transport.reply(200, #"{"launcher": "/tmp/x.command", "warning": "still running"}"#)
         #expect(try await client.openInClaudeCode("s1").warning == "still running")
+    }
+
+    /// Pairing and the health check have no token yet, so none is sent.
+    @Test func withoutATokenNoAuthorizationIsSent() async throws {
+        let client = APIClient(token: "", transport: transport)
+        transport.reply(200, #"{"status": "ok", "version": "1"}"#)
+        _ = try await client.health()
+        #expect(transport.last.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
     @Test func pathComponentsAreEscaped() async throws {
