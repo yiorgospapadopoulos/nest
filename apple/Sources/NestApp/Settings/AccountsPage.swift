@@ -32,17 +32,23 @@ private struct EngineAccounts: View {
             .overlay(alignment: .top) { Separator() }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("\(engine) account in use")
+            // The sign-in page would open on this Mac, not where the remote engine runs.
+            if shell.isRemote {
+                RemoteSignIn(provider: provider)
+            }
             HStack(spacing: 6) {
-                Button {
-                    shell.settingsChange("Could not add a \(engine) account") {
-                        if let page = try await store.add(provider) {
-                            NSWorkspace.shared.open(page)
+                if !shell.isRemote {
+                    Button {
+                        shell.settingsChange("Could not add a \(engine) account") {
+                            if let page = try await store.add(provider) {
+                                NSWorkspace.shared.open(page)
+                            }
                         }
+                    } label: {
+                        Label("Add \(engine) account", systemImage: Icon.plus)
                     }
-                } label: {
-                    Label("Add \(engine) account", systemImage: Icon.plus)
+                    .buttonStyle(.nest(.soft))
                 }
-                .buttonStyle(.nest(.soft))
                 // Claude Code keeps no banked resets.
                 if provider == EngineMark.codex {
                     BankedResetsButton(provider: provider)
@@ -250,7 +256,7 @@ private struct AccountControls: View {
             StatusLabel(
                 tone: signedIn ? .review : .done, label: AccountText.state(account),
                 hollow: !signedIn)
-            if !signedIn {
+            if !signedIn && !shell.isRemote {
                 Button("Sign in") { signIn() }
                     .buttonStyle(.nest(.primary))
             }
@@ -276,6 +282,40 @@ private struct AccountControls: View {
                 NSWorkspace.shared.open(page)
             }
         }
+    }
+}
+
+/// While connected to a remote daemon (B105): sign in on its machine, with the command to
+/// run there and Copy.
+private struct RemoteSignIn: View {
+    let provider: String
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let command = DaemonText.signInCommand(provider)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(DaemonText.signInNote(shell.machineName))
+                .font(.ui(TypeSize.meta))
+                .foregroundStyle(Palette.t2)
+            HStack(spacing: 8) {
+                Text(command)
+                    .font(.mono(TypeSize.meta))
+                    .foregroundStyle(Palette.t1)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.soft, in: .rounded(Radius.card))
+                Button {
+                    shell.copyText(command)
+                } label: {
+                    Label("Copy", systemImage: Icon.copy).labelStyle(TightLabelStyle())
+                }
+                .buttonStyle(.nest(height: 28))
+                .help("Copy the command")
+            }
+        }
+        .padding(.top, 10)
     }
 }
 

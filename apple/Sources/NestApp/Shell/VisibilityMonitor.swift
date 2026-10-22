@@ -40,6 +40,16 @@ final class VisibilityMonitor {
         heartbeat = Task { [reporter] in await reporter.run() }
     }
 
+    /// Stops watching and the heartbeat, as when the window switches to another daemon.
+    func stop() {
+        for (center, token) in observers {
+            center.removeObserver(token)
+        }
+        observers = []
+        heartbeat?.cancel()
+        heartbeat = nil
+    }
+
     private func observe(
         _ center: NotificationCenter, _ name: Notification.Name,
         change: @escaping @MainActor (VisibilityMonitor) -> Void
