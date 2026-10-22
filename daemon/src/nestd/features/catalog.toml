@@ -1,0 +1,451 @@
+# What Nest can do, shown in Settings > Features (B103). Only the features that make Nest
+# different; the README has every detail. Every block that adds or changes a user-visible
+# feature adds or updates its entry here in the same work.
+#
+# Groups show in this order, features in file order within their group.
+# A feature: a unique kebab-case `id`, its `group`, a short `name`, one or two plain sentences
+# of `text` (`backticks` show as code), `where` to find it, the date it was `added`, the
+# `block` that added it, and an optional `changed` date that shows it as new again.
+
+[[groups]]
+id = "around"
+name = "Getting around"
+
+[[groups]]
+id = "chats"
+name = "Chats"
+
+[[groups]]
+id = "git"
+name = "Worktrees and git"
+
+[[groups]]
+id = "pixies"
+name = "Pixies"
+
+[[groups]]
+id = "artifacts"
+name = "Artifacts"
+
+[[groups]]
+id = "engines"
+name = "Engines and devices"
+
+# Getting around
+
+[[features]]
+id = "needs-you"
+group = "around"
+name = "Needs you"
+text = "Everything waiting on you in one list: approvals, questions, reviews and merges."
+where = "Right panel"
+added = 2026-10-17
+block = "B77"
+
+[[features]]
+id = "split-workspace"
+group = "around"
+name = "Split workspace"
+text = "Up to four chats, terminals, browsers or pixies side by side."
+where = "Workspace"
+added = 2026-10-14
+block = "B36"
+
+[[features]]
+id = "focus-dim"
+group = "around"
+name = "Focus dim"
+text = "Panes you are not using go darker, so the one you work in stands out."
+where = "Workspace"
+added = 2026-10-18
+block = "B93"
+
+[[features]]
+id = "terminal-browser-panes"
+group = "around"
+name = "Terminal and browser panes"
+text = "A terminal in the chat's folder and a browser for your local servers, next to the chat."
+where = "Project menu"
+added = 2026-10-07
+block = "B25"
+
+[[features]]
+id = "run-in-terminal"
+group = "around"
+name = "Run in terminal"
+text = "A shell command in a chat runs in a terminal in that chat's folder with one click."
+where = "Code blocks"
+added = 2026-10-15
+block = "B60"
+
+[[features]]
+id = "board"
+group = "around"
+name = "Board"
+text = "Every chat in the project as a card, sorted by what it is doing."
+where = "Status bar"
+added = 2026-10-14
+block = "B39"
+
+[[features]]
+id = "goals"
+group = "around"
+name = "Goals"
+text = "The plan of each working chat as a live checklist."
+where = "Right panel"
+added = 2026-10-16
+block = "B47"
+
+[[features]]
+id = "chat-helpers"
+group = "around"
+name = "Each chat's helpers"
+text = "Under every chat, the pixies it called and the subagents running for it."
+where = "Sidebar"
+added = 2026-10-16
+block = "B46"
+
+[[features]]
+id = "outside-chats"
+group = "around"
+name = "Chats from outside Nest"
+text = "Agent chats started in a terminal or another app show up here, and you can continue them."
+where = "Sidebar"
+added = 2026-10-07
+block = "B21"
+
+[[features]]
+id = "folding-sidebars"
+group = "around"
+name = "Sidebars that fold"
+text = "Fold the sidebar and the right panel to thin strips that still show each chat's status."
+where = "Status bar"
+added = 2026-10-17
+block = "B83"
+
+[[features]]
+id = "project-tabs"
+group = "around"
+name = "Project tabs"
+text = "Every project in its own tab. Drag to reorder, jump with a shortcut."
+where = "⌘1 to ⌘9"
+added = 2026-10-16
+block = "B45"
+
+[[features]]
+id = "open-in-tools"
+group = "around"
+name = "Open in your tools"
+text = "Open a project in your editor, Finder or Terminal."
+where = "Project menu"
+added = 2026-10-06
+block = "B20"
+
+[[features]]
+id = "search-commands"
+group = "around"
+name = "Search and commands"
+text = "Find any chat or message, or run any command, from one box."
+where = "⌘K"
+added = 2026-10-07
+block = "B09"
+
+# Chats
+
+[[features]]
+id = "composer-shortcuts"
+group = "chats"
+name = "Composer shortcuts"
+text = "`/` for commands and skills, `@` for files and pixies, `!` to run a shell command, `#` to save a note to your instructions."
+where = "Composer"
+added = 2026-10-15
+block = "B59"
+
+[[features]]
+id = "talk-while-working"
+group = "chats"
+name = "Talk while it works"
+text = "A message you send while the agent is working reaches it at its next step."
+where = "Composer"
+added = 2026-10-15
+block = "B59"
+
+[[features]]
+id = "rewind-fork"
+group = "chats"
+name = "Rewind and fork"
+text = "Go back to before any of your messages, or start a new chat from that point."
+where = "Your message's menu"
+added = 2026-10-15
+block = "B59"
+
+[[features]]
+id = "limit-resume"
+group = "chats"
+name = "Picks up after the limit"
+text = "A chat stopped by a usage limit continues by itself once the limit resets."
+where = "Automatic"
+added = 2026-10-17
+block = "B78"
+
+[[features]]
+id = "stuck-chats"
+group = "chats"
+name = "Stuck chats"
+text = "A chat that stalls or repeats itself is flagged, with a nudge to get it moving."
+where = "Needs you"
+added = 2026-10-06
+block = "B20"
+
+# Worktrees and git
+
+[[features]]
+id = "worktree-per-chat"
+group = "git"
+name = "A worktree per chat"
+text = "A chat can work in its own copy of the project on its own branch, so several can run at once."
+where = "New chat"
+added = 2026-10-15
+block = "B55"
+
+[[features]]
+id = "branch-map"
+group = "git"
+name = "Branch map"
+text = "Your branches and worktrees drawn as a tree. Start a chat on any of them."
+where = "Sidebar"
+added = 2026-10-21
+block = "B96"
+
+[[features]]
+id = "review"
+group = "git"
+name = "Review before it lands"
+text = "Changes wait in a diff. Approve commits exactly what you saw and can open a pull request."
+where = "Above the composer"
+added = 2026-10-15
+block = "B57"
+
+[[features]]
+id = "issues-to-chats"
+group = "git"
+name = "Issues become chats"
+text = "Start a chat from an open issue, with its own branch and a pull request that closes it."
+where = "Start screen"
+added = 2026-10-21
+block = "B101"
+
+[[features]]
+id = "feedback-to-agent"
+group = "git"
+name = "Feedback back to the agent"
+text = "Failed checks and reviewers' comments go to the chat in one click."
+where = "Needs you"
+added = 2026-10-14
+changed = 2026-10-21
+block = "B101"
+
+# Pixies
+
+[[features]]
+id = "pixies"
+group = "pixies"
+name = "Pixies"
+text = "Agents you keep, each with its own instructions, model and look."
+where = "Pixies tab"
+added = 2026-10-14
+block = "B35"
+
+[[features]]
+id = "pixies-workspace"
+group = "pixies"
+name = "Pixies workspace"
+text = "Open up to four pixies side by side, with their details beside them."
+where = "Pixies tab"
+added = 2026-10-14
+block = "B37"
+
+[[features]]
+id = "pixie-memory"
+group = "pixies"
+name = "Memory"
+text = "A pixie remembers facts and notes between runs, and you can edit them."
+where = "Pixie details"
+added = 2026-10-14
+block = "B35"
+
+[[features]]
+id = "pixie-fresh-runs"
+group = "pixies"
+name = "Never runs out of room"
+text = "Each run starts fresh with the pixie's memory and recent messages, so a long chat never fills up."
+where = "Automatic"
+added = 2026-10-14
+block = "B35"
+
+[[features]]
+id = "pixie-calls"
+group = "pixies"
+name = "Call with @"
+text = "Hand part of any chat to a pixie. Calling it again picks up where it left off."
+where = "Composer"
+added = 2026-10-14
+block = "B40"
+
+[[features]]
+id = "pixie-teams"
+group = "pixies"
+name = "Teams"
+text = "Call a team and its leader splits the work among its pixies."
+where = "Pixies tab"
+added = 2026-10-14
+changed = 2026-10-16
+block = "B70"
+
+[[features]]
+id = "pixie-project-access"
+group = "pixies"
+name = "Project access"
+text = "Let a pixie edit your projects, only read them, or stay in its own folder."
+where = "Pixie details"
+added = 2026-10-15
+block = "B41"
+
+[[features]]
+id = "pixie-skills"
+group = "pixies"
+name = "Skills"
+text = "Give a pixie all your skills or only a chosen few."
+where = "Pixie details"
+added = 2026-10-17
+block = "B85"
+
+[[features]]
+id = "pixie-autonomy"
+group = "pixies"
+name = "Autonomy"
+text = "Let a pixie watch, message, start or answer chats, within limits you set."
+where = "Pixie details"
+added = 2026-10-15
+block = "B41"
+
+[[features]]
+id = "pixie-started-chats"
+group = "pixies"
+name = "Chats it starts"
+text = "A pixie can start chats in their own worktree, reviewed as usual, and tells you how they went."
+where = "Pixie chat"
+added = 2026-10-15
+block = "B41"
+
+[[features]]
+id = "pixie-activity"
+group = "pixies"
+name = "Activity"
+text = "Everything a pixie did in Nest, listed in one place."
+where = "Pixie details"
+added = 2026-10-15
+block = "B41"
+
+[[features]]
+id = "pixie-habits"
+group = "pixies"
+name = "Habits"
+text = "Pixies run checks on a schedule, or when a chat gets stuck, fails or is ready."
+where = "Pixie details"
+added = 2026-10-15
+block = "B42"
+
+[[features]]
+id = "pixie-reports"
+group = "pixies"
+name = "Reports"
+text = "A pixie reports what it found. The ones that need you reach Needs you and your phone."
+where = "Pixie chat"
+added = 2026-10-15
+block = "B42"
+
+[[features]]
+id = "pixie-replies"
+group = "pixies"
+name = "Reply buttons"
+text = "A pixie can offer answers to tap, or suggest a habit you start with one tap."
+where = "Pixie chat"
+added = 2026-10-15
+block = "B42"
+
+[[features]]
+id = "pixie-templates"
+group = "pixies"
+name = "Templates and copies"
+text = "Start from a ready-made pixie, or copy one with its memory."
+where = "Pixies tab"
+added = 2026-10-14
+block = "B40"
+
+[[features]]
+id = "pixie-sprites"
+group = "pixies"
+name = "Working sprites"
+text = "A pixie's sprite hops while it works, wherever it shows."
+where = "Everywhere"
+added = 2026-10-16
+block = "B48"
+
+# Artifacts
+
+[[features]]
+id = "artifacts"
+group = "artifacts"
+name = "Artifacts"
+text = "Reports, plans, slides and mockups saved as pages with versions, kept out of your repo."
+where = "Artifacts view"
+added = 2026-10-17
+block = "B82"
+
+[[features]]
+id = "living-pages"
+group = "artifacts"
+name = "Living pages"
+text = "Pages remember what you enter, on every device, and can ask the agent small questions."
+where = "Artifacts view"
+added = 2026-10-19
+block = "B88"
+
+# Engines and devices
+
+[[features]]
+id = "several-engines"
+group = "engines"
+name = "Several engines"
+text = "Pick any signed-in engine for a chat or a pixie, from one model menu."
+where = "Model menu"
+added = 2026-10-20
+block = "B91"
+
+[[features]]
+id = "several-accounts"
+group = "engines"
+name = "Several accounts"
+text = "Add more subscriptions for an engine and choose which one is used."
+where = "Settings › Accounts"
+added = 2026-10-21
+block = "B98"
+
+[[features]]
+id = "shared-setup"
+group = "engines"
+name = "One shared setup"
+text = "Instructions, skills and tool servers are shared by every engine."
+where = "Settings › Configuration"
+added = 2026-10-20
+block = "B97"
+
+[[features]]
+id = "iphone"
+group = "engines"
+name = "Your iPhone"
+text = "Nest on your phone over your private network, with push notifications."
+where = "Settings › Devices"
+added = 2026-10-07
+block = "B10"
