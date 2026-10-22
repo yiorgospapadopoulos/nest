@@ -19,6 +19,7 @@ from nestd.config.models import ArtifactSettings
 from nestd.errors import ConflictError, NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.local.run import LocalRun, claude_env, claude_settings
 from nestd.providers.base import RunAccount, TokenUsage
 from nestd.providers.claude_messages import token_usage
 from nestd.storage.db import Database
@@ -86,12 +87,15 @@ def ask_options(
     settings: ArtifactSettings,
     system: str | None,
     account: Mapping[str, str] | None = None,
+    local: LocalRun | None = None,
 ) -> ClaudeAgentOptions:
-    """`account` points Claude Code at the active account's profile (B98)."""
+    """`account` points Claude Code at the active account's profile (B98), `local` at a
+    local model's server instead (B106).
+    """
     prompt = ASK_PREAMBLE if not system else f"{ASK_PREAMBLE}\n\n{system}"
     return ClaudeAgentOptions(
         cwd=cwd,
-        model=settings.ask_model,
+        model=settings.ask_model if local is None else local.model,
         system_prompt=prompt,
         tools=[],
         # None of the user's settings: no CLAUDE.md, hooks, plugins or MCP servers load.
@@ -104,7 +108,9 @@ def ask_options(
         env={
             "CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(settings.ask_max_output_tokens),
             **(account or {}),
+            **(claude_env(local) if local is not None else {}),
         },
+        settings=None if local is None else claude_settings(local),
     )
 
 
@@ -123,11 +129,14 @@ class PageAsks:
         timeout: timedelta = ASK_TIMEOUT,
         wait: timedelta = ASK_WAIT,
         account: Callable[[], Awaitable[RunAccount]] | None = None,
+        local: Callable[[], Awaitable[LocalRun | None]] | None = None,
     ) -> None:
         """`zone` decides the local day a budget counts; None is the system's zone.
-        `account` is the Claude account asks run on (B98; None: Claude Code's own).
+        `account` is the Claude account asks run on (B98; None: Claude Code's own), and
+        `local` the local model they go to instead when Claude cannot take them (B106).
         """
         self._account = account
+        self._local = local
         self._db = db
         self._bus = bus
         self._clock = clock
@@ -204,8 +213,13 @@ class PageAsks:
         await self._announce(artifact_id, "started", remaining, limit)
         try:
             async with asyncio.timeout(self._timeout.total_seconds()):
-                env = None if self._account is None else (await self._account()).env
-                options = ask_options(self._cwd, settings, system, env)
+                local = None if self._local is None else await self._local()
+                env = (
+                    None
+                    if self._account is None or local is not None
+                    else (await self._account()).env
+                )
+                options = ask_options(self._cwd, settings, system, env, local)
                 text, tokens = await self._call(options, prompt)
         except Exception as error:
             await self._record(artifact_id, None)

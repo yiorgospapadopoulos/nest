@@ -27,11 +27,17 @@ class StateWriter:
         state: SessionState,
         error: str | None = None,
         turn: Mapping[str, JsonValue] | None = None,
+        details: Mapping[str, JsonValue] | None = None,
     ) -> Session:
-        """`turn` adds the turn boundary the change marks: `turn_start` or `duration_ms` (D045)."""
+        """`turn` adds the turn boundary the change marks: `turn_start` or `duration_ms`
+        (D045); `details` what clients show with the error, such as a local model's server
+        that went away (B106).
+        """
         session = await self._store.update(session_id, state=state, last_error=error)
         await self._bus.publish(
-            types.SESSION_STATE, {"state": state, "error": error, **(turn or {})}, session_id
+            types.SESSION_STATE,
+            {"state": state, "error": error, **(turn or {}), **(details or {})},
+            session_id,
         )
         await isolated("the state hooks", session_id, self._hooks.state_changed(session))
         return session

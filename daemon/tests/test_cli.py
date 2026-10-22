@@ -157,9 +157,31 @@ def test_served_app_restarts_through_the_runtime(cli: Rig) -> None:
 
 
 def test_serve_port_flag_overrides_settings(cli: Rig) -> None:
+    ports: list[int] = []
+
+    async def note_port(app: FastAPI) -> None:
+        ports.append(app.state.ctx.serving_port())
+
+    cli.recorder.while_serving.append(note_port)
+
     assert cli.run("serve", "--port", "9100") == 0
 
     assert cli.recorder.served == [9100]
+    # Local models' runs reach the daemon's proxy on the port it serves on (B106).
+    assert ports == [9100]
+
+
+def test_without_the_port_flag_the_daemon_serves_on_the_configured_port(cli: Rig) -> None:
+    ports: list[int] = []
+
+    async def note_port(app: FastAPI) -> None:
+        ports.append(app.state.ctx.serving_port())
+
+    cli.recorder.while_serving.append(note_port)
+
+    assert cli.run("serve") == 0
+
+    assert ports == cli.recorder.served
 
 
 def test_config_errors_are_reported_without_a_traceback(cli: Rig) -> None:

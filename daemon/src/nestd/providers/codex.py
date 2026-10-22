@@ -25,6 +25,7 @@ from pydantic import JsonValue
 
 from nestd.config.models import PermissionMode
 from nestd.errors import ConflictError
+from nestd.local.run import codex_config
 from nestd.providers.base import (
     AgentTool,
     ApprovalHandler,
@@ -107,7 +108,7 @@ class CodexRun:
         """`tools` serves the run's Nest tools while it is open; closing the run stops it."""
         self._spec = spec
         self._sink = sink
-        self._model = spec.model
+        self._model = spec.model if spec.local is None else spec.local.model
         self._mode: PermissionMode | None = spec.permission_mode
         self.stream = CodexStream(sink)
         self._rpc: CodexRpc | None = None
@@ -292,9 +293,12 @@ class CodexProvider:
         rpc = CodexRpc(transport, run.stream.handle, approvals.handle, run.closed)
         try:
             await initialize(rpc)
-            if not (await read_login(rpc)).signed_in:
+            # A local model's own provider needs no login (B106).
+            if spec.local is None and not (await read_login(rpc)).signed_in:
                 raise CodexNotSignedInError
             config = _thread_config(spec, self._gh_config_dir)
+            if spec.local is not None:
+                config |= codex_config(spec.local)
             if tools is not None:
                 config |= tools.config()
             if spec.guard_git:
@@ -322,8 +326,9 @@ class CodexProvider:
             "sandbox": permissions.sandbox,
             "config": config,
         }
-        if spec.model and spec.model != DEFAULT_MODEL:
-            params["model"] = spec.model
+        model = spec.model if spec.local is None else spec.local.model
+        if model and model != DEFAULT_MODEL:
+            params["model"] = model
         instructions = "\n\n".join(
             part for part in (spec.system_prompt_append, _tools_hint(spec)) if part
         )
