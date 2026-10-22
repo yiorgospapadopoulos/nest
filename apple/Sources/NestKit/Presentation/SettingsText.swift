@@ -122,11 +122,12 @@ public enum AccountText {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// The login in a word; "Not checked" while the engine could not be asked.
-    public static func state(_ account: EngineAccount) -> String {
+    /// The login in a word; "Not checked" while the engine could not be asked. Signed out
+    /// is optional while local models run chats (B106).
+    public static func state(_ account: EngineAccount, optional: Bool = false) -> String {
         switch account.signedIn {
         case true: "Signed in"
-        case false: "Signed out"
+        case false: optional ? LocalModelText.notSignedIn : "Signed out"
         case nil: "Not checked"
         }
     }

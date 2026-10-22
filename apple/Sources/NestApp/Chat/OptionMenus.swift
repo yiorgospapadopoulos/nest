@@ -44,20 +44,26 @@ struct QuietMenu<Items: View>: View {
     }
 }
 
-/// A checkmarked menu item with a one-line description.
+/// A checkmarked menu item with a one-line description; greyed while `disabled`, its
+/// description in the wait colour while it `warns` (B106).
 struct OptionItem: View {
     let title: String
     let detail: String
     let checked: Bool
+    var disabled = false
+    var warns = false
     let pick: () -> Void
 
     var body: some View {
         Toggle(isOn: Binding(get: { checked }, set: { _ in pick() })) {
             Text(title)
-            if !detail.isEmpty {
+            if warns {
+                Text(detail).foregroundStyle(StatusTone.waiting.color)
+            } else if !detail.isEmpty {
                 Text(detail)
             }
         }
+        .disabled(disabled)
     }
 }
 
@@ -77,7 +83,57 @@ struct ModelMenu: View {
             EngineModelItems(provider: provider, current: model, isDraft: shell.isDraft(chat)) {
                 shell.setModel($0, on: $1, for: chat)
             }
+            LocalMenuItems()
         }
+    }
+}
+
+/// The end of the model menu (B106): which engine local chats run on, once there are local
+/// models, and Add local model.
+struct LocalMenuItems: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let local = shell.model.local
+        Divider()
+        if local.hasModels {
+            Menu(LocalModelText.runsOn(local.engine)) {
+                ForEach(LocalModelText.engines, id: \.self) { engine in
+                    OptionItem(
+                        title: LocalModelText.engineName(engine),
+                        detail: LocalModelText.engineDetail(engine), checked: local.engine == engine
+                    ) {
+                        shell.settingsChange("Could not change the engine") {
+                            try await local.setEngine(engine)
+                        }
+                    }
+                }
+            }
+        }
+        Button("\(LocalModelText.addTitle)…") { shell.openAddLocal() }
+    }
+}
+
+/// "Change model" as a soft button that opens the chat's model list, for a local chat's
+/// warning bar and its server-down card (B106).
+struct ChangeModelMenu: View {
+    let chat: String
+    var kind = NestButtonStyle.Kind.soft
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let model =
+            shell.isDraft(chat) ? shell.draft(for: chat).model : shell.sessions.session(chat)?.model
+        Menu("Change model") {
+            EngineModelItems(
+                provider: shell.provider(forChat: chat), current: model,
+                isDraft: shell.isDraft(chat)
+            ) { shell.setModel($0, on: $1, for: chat) }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.nest(kind))
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 }
 
@@ -130,7 +186,8 @@ struct EngineModelItems: View {
                 ForEach(section.catalog.models) { info in
                     OptionItem(
                         title: info.displayName, detail: info.description,
-                        checked: section.isSelected(info, provider: provider, model: current)
+                        checked: section.isSelected(info, provider: provider, model: current),
+                        disabled: section.isDisabled(info), warns: section.warns(info)
                     ) { pick(info, section.provider) }
                 }
             }
@@ -151,7 +208,14 @@ struct EffortMenu: View {
         let label = fit.compact ? effort?.shortLabel : effort?.label
         let catalog = shell.catalog(forChat: chat)
         let levels = catalog.thinkingLevels(for: model)
-        QuietMenu(title: label ?? (levels.isEmpty ? "No thinking" : "Thinking"), help: "Thinking") {
+        // A local model without thinking says so, greyed (B106).
+        let localWithout = levels.isEmpty && shell.model.local.model(model) != nil
+        QuietMenu(
+            title: localWithout
+                ? LocalModelText.noThinking
+                : label ?? (levels.isEmpty ? "No thinking" : "Thinking"),
+            help: "Thinking", tint: localWithout ? Palette.t3 : nil
+        ) {
             ThinkingItems(model: model, effort: effort, catalog: catalog) { level in
                 shell.setEffort(level, for: chat)
             }

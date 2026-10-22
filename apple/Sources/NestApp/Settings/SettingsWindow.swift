@@ -41,6 +41,7 @@ struct SettingsView: View {
         .background(Palette.windowOpaque)
         .ignoresSafeArea()
         .overlay { ConfigurationModals() }
+        .overlay { AddLocalModal() }
         .overlay(alignment: .top) {
             if let toast = shell.toast {
                 ToastView(toast: toast)
@@ -395,6 +396,8 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
     let title: String
     var detail: String?
     var mono = false
+    /// A line under the detail in the wait colour, with the warning sign (B106).
+    var warning: String?
     /// While set, the title is a field that edits it in place, starting from `initial`;
     /// `done` gets the text, or nil when cancelled.
     var rename: (initial: String, done: (String?) -> Void)?
@@ -420,6 +423,9 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
                         .foregroundStyle(Palette.t3)
                         .lineLimit(2)
                         .truncationMode(.middle)
+                }
+                if let warning {
+                    WarningLine(text: warning)
                 }
             }
             Spacer(minLength: 8)

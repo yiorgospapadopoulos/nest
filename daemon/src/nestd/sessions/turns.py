@@ -7,6 +7,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from pydantic import JsonValue
+
 from nestd.artifacts.tools import ARTIFACT_NOTE
 from nestd.attachments.store import Attachment, AttachmentStore
 from nestd.clock import Clock
@@ -14,6 +16,8 @@ from nestd.config.models import PermissionMode, RepoConfig
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.events.models import Event
+from nestd.local.models import is_local
+from nestd.local.run import LocalRun
 from nestd.providers.base import (
     AgentRun,
     AgentTool,
@@ -21,15 +25,17 @@ from nestd.providers.base import (
     ResultInfo,
     RewindResult,
     SessionSpec,
+    TokenUsage,
 )
 from nestd.repos.service import RepoService
 from nestd.sessions.bookkeeping import isolated, isolated_or
-from nestd.sessions.engines import Engines
+from nestd.sessions.engines import Engine, Engines
 from nestd.sessions.errors import NoWorkspaceError
 from nestd.sessions.extras import NestToolsSource, RunExtras, RunExtrasSource
 from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
+from nestd.sessions.local import LocalSource, crosses_local, require
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
@@ -139,13 +145,16 @@ class TurnRunner:
         calls: PixieCalls | None = None,
         nest_tools: NestToolsSource | None = None,
         call_tools: CallToolsSource | None = None,
+        local: LocalSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
         holds the chats paused at the usage limit (B78); `agents` gives a project chat's
         run its subagents (B40), and `calls` follows the pixies it calls (B46).
         `nest_tools` gives every run the tools all chats and pixies have (B79), and
         `call_tools` the tool that calls the pixies its engine cannot run inside (B91).
+        `local` points runs on local models at their servers (B106).
         """
+        self._local = local
         self._nest_tools = nest_tools
         self._call_tools = call_tools
         self._limits = limits
@@ -606,16 +615,33 @@ class TurnRunner:
         # Free the session before announcing the outcome, so a client reacting to the
         # new state can send the next message straight away; it starts once the hooks,
         # which make the turn's review, are done.
+        details = None if error is None else await self._local_down(live)
         duration = live.turn_ms(self._clock.now())
         live.end_turn(held=state is SessionState.IDLE)
         live.settled.clear()
         try:
-            await self._states.set(live.session_id, state, error, turn={"duration_ms": duration})
+            await self._states.set(
+                live.session_id, state, error, turn={"duration_ms": duration}, details=details
+            )
         finally:
             live.settled.set()
             # Only once the end is announced: closing the run cancels its reader, which this
             # may run in, and a slow store would lose the announcement (B99).
             live.schedule_idle_close(self._idle_close)
+
+    async def _local_down(self, live: LiveSession) -> dict[str, JsonValue] | None:
+        """A turn on a local model failed: whether its server went away, asked now, so
+        clients offer to start it (B106).
+        """
+        local = self._local
+        if local is None:
+            return None
+
+        async def check() -> dict[str, JsonValue] | None:
+            model = (await self._store.get(live.session_id)).model
+            return await local.down(model) if is_local(model) else None
+
+        return await isolated_or("the local server check", live.session_id, check(), None)
 
     async def _report_connectors(self, session_id: str, run: AgentRun) -> None:
         """MCP connections have settled by the end of a turn, unlike at the run's start."""
@@ -639,7 +665,7 @@ class TurnRunner:
         agents = await self.chat_agents(session)
         engine = self._engines.of(session)
         while (run := live.run) is None or not _fits(
-            live, session, dirs, agents, engine.active_account()
+            live, session, dirs, agents, _account(engine, session)
         ):
             await live.close_run()
             # Cleared before the extras are read: a change saved while this run opens
@@ -648,12 +674,15 @@ class TurnRunner:
             extras = await self._pixie_extras(session)
             # Following Claude Code's own mode, the run opens without one (IMP-06).
             mode = None if session.follows_claude_code_mode else session.permission_mode
-            account = await engine.prepare_account()
+            local = await self._local_run(live, session)
+            # A local run signs in to nothing; the user's own setup still loads (B106).
+            account = None if local is not None else await engine.prepare_account()
             spec = SessionSpec(
                 cwd=cwd,
                 permission_mode=mode,
-                model=session.model,
-                effort=session.effort,
+                model=session.model if local is None else local.model,
+                # A local model without thinking takes no thinking level.
+                effort=session.effort if local is None or local.thinking else None,
                 # A pixie never resumes: each run starts fresh with its memory (D072). A
                 # rewound or forked conversation resumes cut (B59).
                 resume_id=None if extras else (session.fork_from or session.provider_session_id),
@@ -671,6 +700,7 @@ class TurnRunner:
                 call_rules=agents.rules,
                 guard_git=_guarded(session),
                 account=account,
+                local=local,
             )
             sink = SessionSink(
                 live,
@@ -683,6 +713,7 @@ class TurnRunner:
                 attachments=self._attachments,
                 calls=self._calls,
                 active_account=engine.active_account,
+                local_usage=None if local is None else self._usage_of(local),
             )
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
             live.run_account = None if account is None else account.id
@@ -696,6 +727,31 @@ class TurnRunner:
             session = await self._store.get(session.id)
         await self.apply_controls(live)
         return run
+
+    async def _local_run(self, live: LiveSession, session: Session) -> LocalRun | None:
+        """Where a run on a local model goes, once its server answers and its app loaded
+        it with enough context; the chat shows a load as it starts (B106).
+        """
+        if not is_local(session.model):
+            return None
+        local = require(self._local)
+        await local.require_running(session.model)
+
+        async def notice(text: str) -> None:
+            await self._bus.publish(
+                types.SESSION_NOTICE, {"kind": "loading_model", "text": text}, live.session_id
+            )
+
+        await local.load_model(session.model, notice)
+        return await local.run_for(session.model)
+
+    def _usage_of(self, run: LocalRun) -> Callable[[TokenUsage], Awaitable[None]]:
+        local = require(self._local)
+
+        async def record(tokens: TokenUsage) -> None:
+            await local.record_usage(run.model_id, tokens)
+
+        return record
 
     async def _pixie_extras(self, session: Session) -> RunExtras | None:
         if session.pixie_id is None:
@@ -712,7 +768,7 @@ class TurnRunner:
         """Whether the live run takes a message with files in `folders` as it is (B59)."""
         engine = self._engines.of(session)
         return _fits(
-            live, session, folders, await self.chat_agents(session), engine.active_account()
+            live, session, folders, await self.chat_agents(session), _account(engine, session)
         )
 
     async def chat_agents(self, session: NewSession) -> ChatAgents:
@@ -773,7 +829,8 @@ def _fits(
     # the agent asks before reading a new folder's files.
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
-        set(dirs) <= set(live.run_dirs)
+        not crosses_local(live.run_model, session.model)
+        and set(dirs) <= set(live.run_dirs)
         and live.run_effort == session.effort
         and live.run_agents.fingerprint == agents.fingerprint
         and live.run_account == account
@@ -781,8 +838,15 @@ def _fits(
     return (same and not needs_bypass and not live.rotate) or live.background_tasks > 0
 
 
+def _account(engine: Engine, session: Session) -> str | None:
+    """The account the session's next run opens on; none for a local model (B106)."""
+    return None if is_local(session.model) else engine.active_account()
+
+
 async def _apply_controls(live: LiveSession, run: AgentRun, session: Session) -> None:
-    if session.model != live.run_model:
+    # A run cannot move to or from a local model's server: its next message opens a new
+    # run for it (B106).
+    if session.model != live.run_model and not crosses_local(live.run_model, session.model):
         await run.set_model(session.model)
         live.run_model = session.model
     if session.follows_claude_code_mode:

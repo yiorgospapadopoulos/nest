@@ -25,10 +25,14 @@ struct ConfigurationView: View {
             } else {
                 Fireflies().padding(.vertical, 24)
             }
-            Text(ConfigurationText.footer)
-                .font(.ui(TypeSize.meta))
-                .foregroundStyle(Palette.t3)
-                .padding(.top, 8)
+            if let footer = ConfigurationText.footer(
+                signInOptional: shell.model.local.signInOptional)
+            {
+                Text(footer)
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .padding(.top, 8)
+            }
         }
         .task { try? await store.load() }
     }

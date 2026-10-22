@@ -31,6 +31,8 @@ enum Icon {
     static let restore = "arrow.down.right.and.arrow.up.left"
     static let open = "arrow.up.forward.square"
     static let agent = "cpu"
+    /// A local model (B106).
+    static let localModel = "memorychip"
     static let bell = "bell"
     static let goals = "checklist"
     static let question = "questionmark.circle"

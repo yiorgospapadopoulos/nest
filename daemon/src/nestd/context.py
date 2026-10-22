@@ -20,6 +20,7 @@ from nestd.accounts.profiles import CLAUDE as CLAUDE_ACCOUNTS
 from nestd.accounts.profiles import CODEX as CODEX_ACCOUNTS
 from nestd.accounts.profiles import FirstAccount, Profiles
 from nestd.accounts.service import Accounts
+from nestd.accounts.signed_in import SignedIn
 from nestd.accounts.store import AccountStore
 from nestd.approvals.queue import ApprovalQueue
 from nestd.approvals.store import ApprovalStore
@@ -69,6 +70,9 @@ from nestd.features.service import Features
 from nestd.features.store import FeatureStore
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.issues.service import IssueService
+from nestd.local.models import is_local
+from nestd.local.service import LocalModels, LocalSetup
+from nestd.local.store import LocalStore
 from nestd.local_apps.apps import LocalApps
 from nestd.modules.registry import Module, ModuleRegistry
 from nestd.notifications.delivery import NotificationDelivery
@@ -205,6 +209,14 @@ class AppContext:
     features: Features
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
+    # Model servers on this Mac or the network (B106).
+    local: LocalModels
+    # The port `nestd serve --port` gave, which wins over the settings' one.
+    port_flag: int | None = None
+
+    def serving_port(self) -> int:
+        """The port the daemon serves on: local models' runs reach its proxy there."""
+        return self.port_flag if self.port_flag is not None else self.settings.server.port
 
     @classmethod
     async def build(
@@ -225,6 +237,7 @@ class AppContext:
         claude_locations: ClaudeLocations | None = None,
         codex_transport: TransportFactory = spawn,
         codex_locations: CodexLocations | None = None,
+        local_setup: LocalSetup | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -239,7 +252,7 @@ class AppContext:
         command line and Claude Code's installer (D104), and `claude_locations` says where
         a standalone Claude Code may be. `codex_transport` starts Codex's app-server
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
-        may be.
+        may be. `local_setup` is what local models reach: the network and the apps' folders.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -251,6 +264,20 @@ class AppContext:
             FirstAccount(paths.claude_dir, paths.claude_account_file, paths.codex_home),
         )
         active = await ActiveAccounts.load(account_store, profiles)
+        sign_ins = SignInStore(db, clock)
+        logins = SignedIn(account_store, active, sign_ins)
+        local = LocalModels(
+            store=LocalStore(db),
+            secrets=secrets,
+            bus=bus,
+            clock=clock,
+            port=lambda: context.serving_port(),
+            setup=local_setup or LocalSetup.default(Path.home(), os.environ),
+            zone=zone,
+            signed_in=logins.any,
+            claude_signed_in=logins.claude,
+        )
+        await local.load()
         pixie_store = PixieStore(db, clock)
         notifier = Notifier(bus, pixie_store.name)
         repos = RepoService(paths, bus)
@@ -273,6 +300,7 @@ class AppContext:
                 settings=lambda: context.artifact_settings(),
                 zone=zone,
                 account=lambda: active.prepare(CLAUDE_ACCOUNTS),
+                local=local.ask_run,
             ),
         )
         connectors = ConnectorRegistry(db, clock, bus)
@@ -280,7 +308,6 @@ class AppContext:
         live_chats = LiveChats(paths.claude_dir)
         search = SearchIndex(db)
         commands = CommandStore(db, clock)
-        sign_ins = SignInStore(db, clock)
         where = _locations(paths)
 
         async def signed_in(engine: str) -> None:
@@ -404,7 +431,8 @@ class AppContext:
             live_chats=live_chats,
             queue=MessageQueue(db, clock, bus),
             models=engine.find,
-            default_model=engine.default_model,
+            # The first local model while no engine is signed in (B106).
+            default_model=lambda: local.default_or(engine.default_model),
             extras=lambda session: pixie_runtime.extras(session),
             agents=pixie_agents.for_session,
             issues=issues.fetch,
@@ -421,11 +449,12 @@ class AppContext:
                     ),
                     models=codex.find,
                     ready=codex.require_signed_in,
-                    default=codex.default_model,
+                    default=lambda: local.default_or(codex.default_model),
                     accounts=active.source(CODEX_ACCOUNTS),
                 )
             ],
             accounts=active.source(CLAUDE_ACCOUNTS),
+            local=local,
         )
         call_runs: PixieCallRuns = PixieCallRuns(
             pixies=pixie_store,
@@ -570,6 +599,7 @@ class AppContext:
             codex=codex.usage,
             account=lambda: active.prepare(CLAUDE_ACCOUNTS),
             other_codex=lambda: accounts.read_other_codex(),
+            claude_signed_in=logins.claude,
         )
         accounts = Accounts(
             store=account_store,
@@ -607,6 +637,7 @@ class AppContext:
                 repos=repos,
                 settings=lambda: context.settings.configuration,
                 save_settings=lambda changed: context.save_configuration_settings(changed),
+                local_in_use=local.in_use,
             ),
         )
         context = cls(
@@ -662,7 +693,7 @@ class AppContext:
             engine=engine,
             codex=codex,
             sign_ins=sign_ins,
-            chat_defaults=ChatDefaults(lambda: sessions.engines, sign_ins),
+            chat_defaults=ChatDefaults(lambda: sessions.engines, sign_ins, local.engine),
             pixies=pixies,
             pixie_calls=pixie_calls,
             teams=teams,
@@ -711,6 +742,7 @@ class AppContext:
             token_socket=None
             if paths.token_socket is None
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
+            local=local,
         )
         return context
 
@@ -724,8 +756,11 @@ class AppContext:
         agents = self.settings.agents
         stored = (agents.provider, agents.model, agents.effort, agents.permission_mode)
         concrete = (choices.provider, choices.model, choices.effort, choices.permission_mode)
+        # With no engine signed in they are provisional (B106): a local model added later,
+        # or an engine signed in, picks them then.
+        keep = resolved.complete and stored != concrete and await self.local.engine_signed_in()
         try:
-            if resolved.complete and stored != concrete:
+            if keep:
                 saved = save_agent_defaults(self.paths, choices)
                 self.settings = self.settings.model_copy(update={"agents": saved})
             if self.settings.pixies.model is None:
@@ -742,7 +777,8 @@ class AppContext:
         claude = self.sessions.engines.default
         model = choices.model if choices.provider == claude.name else None
         model = model or await claude.default_model()
-        if model is not None:
+        # A local model stands in only while no engine is signed in (B106): not kept.
+        if model is not None and not is_local(model):
             pixies = self.settings.pixies.model_copy(update={"model": model})
             saved = save_pixie_defaults(self.paths, pixies)
             self.settings = self.settings.model_copy(update={"pixies": saved})
@@ -765,6 +801,7 @@ class AppContext:
         return timedelta(minutes=minutes) if minutes else None
 
     async def close(self) -> None:
+        await self.local.close()
         await self.accounts.stop()
         await self.claude_code.stop()
         await self.modules.stop_all()

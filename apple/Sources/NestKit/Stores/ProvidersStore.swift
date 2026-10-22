@@ -14,10 +14,14 @@ public final class ProvidersStore {
     /// The other engines' default models, by engine name (B94).
     public private(set) var defaultModels: [String: String] = [:]
 
+    /// The local models (B106), which every engine's menus offer.
+    public let local: LocalModelsStore
+
     let api: any NestAPI
 
-    public init(api: any NestAPI) {
+    public init(api: any NestAPI, local: LocalModelsStore? = nil) {
         self.api = api
+        self.local = local ?? LocalModelsStore(api: api)
     }
 
     /// Loads the engines, then each other engine's models; `refresh` asks the engines for
@@ -79,15 +83,25 @@ public final class ProvidersStore {
     }
 
     /// What to tell the user before sending on an engine that said it is not signed in.
+    /// None once local models make signing in optional (B106).
     public func signInHint(for name: String?) -> String? {
-        guard let provider = provider(name), provider.signedIn == false else { return nil }
+        guard !local.signInOptional, let provider = provider(name), provider.signedIn == false
+        else { return nil }
         return provider.signInHint ?? "\(provider.displayName) isn't signed in."
     }
 
-    /// The engine's name for a chat off Claude, the default, where the chat shows it.
+    /// The engine's name for a chat off Claude, the default, where the chat shows it; a
+    /// local chat's header says it in its own words (B106).
     public func label(for session: Session?) -> String? {
-        guard let name = session?.provider, name != ProviderInfo.claude else { return nil }
+        guard let name = session?.provider, name != ProviderInfo.claude,
+            localModel(in: session) == nil
+        else { return nil }
         return displayName(name)
+    }
+
+    /// The local model the chat runs on, if any (B106).
+    public func localModel(in session: Session?) -> LocalModel? {
+        local.model(session?.model)
     }
 
     /// The model menu's sections (B91): a new chat's every engine, each under its name with
@@ -96,32 +110,56 @@ public final class ProvidersStore {
     public func modelSections(claude: ModelCatalog, provider: String?, isDraft: Bool)
         -> [ModelSection]
     {
-        guard offersChoice else {
-            return [
+        let own = provider ?? ProviderInfo.claude
+        let engines =
+            offersChoice
+            ? providers.filter { isDraft || $0.name == own }.map { info in
+                ModelSection(
+                    provider: info.name, title: info.displayName, detail: detail(for: info),
+                    catalog: catalog(for: info.name, claude: claude))
+            }
+            : [
                 ModelSection(
                     provider: ProviderInfo.claude, title: "Model", detail: "", catalog: claude)
             ]
-        }
-        let own = provider ?? ProviderInfo.claude
-        return providers.filter { isDraft || $0.name == own }.map { info in
+        return engines + localSection(engine: isDraft ? local.engine : own)
+    }
+
+    /// The local models under "Local" (B106), chosen on `engine`; none without any.
+    private func localSection(engine: String) -> [ModelSection] {
+        guard local.hasModels else { return [] }
+        let values = { (models: [LocalModel]) in Set(models.map(\.value)) }
+        return [
             ModelSection(
-                provider: info.name, title: info.displayName, detail: detail(for: info),
-                catalog: catalog(for: info.name, claude: claude))
-        }
+                provider: engine, title: LocalModelText.menuTitle,
+                detail: LocalModelText.menuDetail, catalog: ModelCatalog(models: local.infos),
+                local: true, unavailable: values(local.models.filter { !$0.running }),
+                weak: values(local.models.filter(\.isWeak)))
+        ]
     }
 
     /// A model's name, after its engine's off Claude, such as "Codex · GPT-5.5" (B94).
     public func modelTitle(_ model: String?, on provider: String?, claude: ModelCatalog)
         -> String
     {
+        if let local = local.model(model) {
+            return local.name
+        }
         let name = catalog(for: provider, claude: claude).label(for: model)
         guard let provider, provider != ProviderInfo.claude else { return name }
         return "\(displayName(provider)) · \(name)"
     }
 
-    /// The engine's models (nil: Claude's, which `AgentsStore` keeps).
+    /// The engine's models (nil: Claude's, which `AgentsStore` keeps), knowing the local
+    /// models too (B106).
     public func catalog(for name: String?, claude: ModelCatalog) -> ModelCatalog {
-        guard let name, name != ProviderInfo.claude else { return claude }
-        return ModelCatalog(models: models[name] ?? [], defaultModel: defaultModels[name])
+        var catalog =
+            if let name, name != ProviderInfo.claude {
+                ModelCatalog(models: models[name] ?? [], defaultModel: defaultModels[name])
+            } else {
+                claude
+            }
+        catalog.local = local.infos
+        return catalog
     }
 }

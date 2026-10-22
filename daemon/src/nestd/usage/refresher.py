@@ -74,12 +74,15 @@ class UsageRefresher:
         tick: timedelta = TICK,
         account: ActiveAccount | None = None,
         other_codex: Callable[[], Awaitable[None]] | None = None,
+        claude_signed_in: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         """`interval` reads the refresh setting each time; None turns the schedule off.
         `account` is the Claude account probes run on (None: Claude Code's own), and
         `other_codex` reads the inactive Codex accounts' windows with the active one's
-        (B98).
+        (B98). `claude_signed_in` says whether Claude can be probed at all: without a
+        login the schedule leaves it quietly (B106).
         """
+        self._claude_signed_in = claude_signed_in
         self._account = account
         self._other_codex = other_codex
         self._store = store
@@ -122,7 +125,7 @@ class UsageRefresher:
         interval = self._interval()
         if interval is None or not self.visibility.any_visible():
             return
-        if await self._due(CLAUDE, self._last_attempt, now, interval):
+        if await self._due(CLAUDE, self._last_attempt, now, interval) and await self._claude():
             self._last_attempt = now
             await self._run_probe()
         if await self._due(CODEX, self._codex_attempt, now, interval):
@@ -130,6 +133,9 @@ class UsageRefresher:
             await self._run_codex()
             if self._other_codex is not None:
                 await self._other_codex()
+
+    async def _claude(self) -> bool:
+        return self._claude_signed_in is None or await self._claude_signed_in()
 
     async def refresh(self) -> UsageLimits:
         """An ask the user made for Claude's windows, at most once per FORCED_SPACING."""

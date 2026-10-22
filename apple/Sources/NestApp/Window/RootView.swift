@@ -131,7 +131,10 @@ private struct ProjectBody: View {
 
     var body: some View {
         Group {
-            if shell.pixiesOpen {
+            if shell.model.local.isFirstRun {
+                // Nothing signed in or added yet: the welcome (B106).
+                FirstRunView()
+            } else if shell.pixiesOpen {
                 VStack(spacing: 0) {
                     PixiesView()
                     StatusBar()

@@ -76,6 +76,8 @@ async def test_a_failed_refresh_answers_502(api: Api) -> None:
 
 async def test_a_visible_client_starts_the_probes(api: Api) -> None:
     api.probes.replies.append(answer(0.3))
+    # Claude is probed only once Nest saw it signed in (B106).
+    await api.ctx.sign_ins.record("claude")
     phone = await pair_phone(api)
 
     response = await api.http.post(
