@@ -22,6 +22,7 @@ from nestd.api.routes import (
     engine,
     events,
     extensions,
+    features,
     goals,
     health,
     issues,
@@ -155,6 +156,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         claude_code,
         extensions,
         configuration,
+        features,
     ):
         app.include_router(module.router)
     # Last, so every /api route matches first.
