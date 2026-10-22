@@ -8,6 +8,7 @@ import httpx
 
 from nestd.api.app import create_app
 from nestd.context import AppContext
+from nestd.local.service import LocalSetup
 from tests.api_support import build_context, local_token
 from tests.codex_support import FakeAppServer
 from tests.fake_claude import FakeClaude
@@ -52,6 +53,7 @@ async def running_api(
     secrets: FakeSecretStore,
     push_transport: httpx.AsyncBaseTransport | None = None,
     codex_home: Path | None = None,
+    local_setup: LocalSetup | None = None,
 ) -> AsyncGenerator[Api]:
     provider = FakeProvider()
     runner = FakeRunner()
@@ -73,6 +75,7 @@ async def running_api(
         claude=claude,
         codex=codex,
         codex_home=codex_home,
+        local_setup=local_setup,
     )
     restart = RecordingRestart()
     app = create_app(ctx, restart=restart)

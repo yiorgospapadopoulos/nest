@@ -38,6 +38,7 @@ def build_sources(
     repos: RepoService,
     settings: Callable[[], ConfigurationSettings],
     save_settings: Callable[[ConfigurationSettings], ConfigurationSettings],
+    local_in_use: Callable[[], Awaitable[bool]],
 ) -> Sources:
     async def claude() -> EngineAccount:
         try:
@@ -80,4 +81,5 @@ def build_sources(
         settings=settings,
         save_settings=save_settings,
         repo_paths=lambda: [repo.path for repo in repos.list_repos()],
+        local_in_use=local_in_use,
     )

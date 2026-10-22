@@ -160,6 +160,9 @@ EXTENSIONS_UPDATED: Final = "extensions.updated"
 # them; ephemeral and global, `{scope: "user" | "repo", repo}` with the repo's name or
 # null. Clients fetch the page (or the project's part) again.
 CONFIGURATION_CHANGED: Final = "configuration.changed"
+# Local models (B106) were added or removed, or their engine or `local_only` changed;
+# ephemeral and global, `{}`. Clients fetch `GET /api/local/models` again.
+LOCAL_MODELS_CHANGED: Final = "local_models.changed"
 # Artifacts (B79). The chat's agent saved one, at that place in its transcript (stored):
 # `{artifact_id, version, title, kind, action}`, `action` `created` or `updated`, or
 # `edited` when the user saved a document section in the reader (B88).

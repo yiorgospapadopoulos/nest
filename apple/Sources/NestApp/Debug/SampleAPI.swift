@@ -68,6 +68,12 @@
         private var accountList: [EngineAccount]
         /// The banked resets used so far.
         private var bankedUsed: Set<String> = []
+        /// Local models (B106): none until a snapshot adds the sample ones, so other
+        /// snapshots stay as they were.
+        private var localList = LocalModelList(models: [])
+        private var setupState = SetupState(firstRun: false, localOnly: false)
+        /// Chats shown on a local model, by id: the model's `local:` value.
+        private var localChats: [String: String] = [:]
 
         init(now: Date = Date()) {
             self.now = now
@@ -176,6 +182,37 @@
             }
         }
 
+        /// Adds the sample local models (B106), or takes them away.
+        func setLocalModels(_ on: Bool, engine: String = ProviderInfo.claude) {
+            lock.withLock {
+                localList = LocalModelList(
+                    models: on ? SampleLocal.models : [], engine: engine,
+                    localOnly: localList.localOnly)
+            }
+        }
+
+        /// Shows chats on local models (B106 snapshots).
+        func runOnLocal(_ chats: [String: String]) {
+            lock.withLock { localChats = chats }
+        }
+
+        /// The first-run welcome (B106): nothing signed in, nothing added.
+        func setFirstRun(_ firstRun: Bool) {
+            lock.withLock { setupState = SetupState(firstRun: firstRun, localOnly: false) }
+        }
+
+        /// Signs Claude's first account in or out.
+        func setClaudeSignedIn(_ signedIn: Bool) {
+            lock.withLock {
+                accountList = accountList.map { account in
+                    guard account.provider == ProviderInfo.claude else { return account }
+                    var account = account
+                    account.signedIn = signedIn
+                    return account
+                }
+            }
+        }
+
         /// Shows why an account's last sign-in failed.
         func setSignInError(_ id: String, _ error: String?) {
             change(id) { $0.error = error }
@@ -193,6 +230,12 @@
         }
 
         private func onEngine(_ session: Session) -> Session {
+            if let model = lock.withLock({ localChats[session.id] }) {
+                var session = session
+                session.model = model
+                session.effort = nil
+                return session
+            }
             guard lock.withLock({ codexChats.contains(session.id) }) else { return session }
             var session = session
             session.provider = "codex"
@@ -1742,6 +1785,64 @@
 
         func removeCodexMarketplace(_ name: String) async throws {}
 
+        // MARK: Local models (B106)
+
+        func localModels() async throws -> LocalModelList {
+            lock.withLock { localList }
+        }
+
+        func findLocalModels() async throws -> LocalFind {
+            let added = lock.withLock { Set(localList.models.map(\.model)) }
+            return LocalFind(
+                running: SampleLocal.running.map { found in
+                    var found = found
+                    found.added = added.contains(found.model)
+                    return found
+                },
+                downloaded: SampleLocal.downloaded)
+        }
+
+        func checkLocalServer(address: String, key: String?) async throws -> LocalCheck {
+            SampleLocal.check(address)
+        }
+
+        func addLocalModels(address: String, key: String?, models: [String]) async throws
+            -> [LocalModel]
+        {
+            let added = SampleLocal.models.filter { models.contains($0.model) }
+            lock.withLock { localList.models += added }
+            return added
+        }
+
+        func removeLocalModel(_ id: String) async throws {
+            lock.withLock { localList.models.removeAll { $0.id == id } }
+        }
+
+        func setLocalEngine(_ engine: String) async throws {
+            lock.withLock { localList.engine = engine }
+        }
+
+        func startLocalServer(_ app: LocalApp) async throws {}
+
+        func localUsage() async throws -> LocalUsage {
+            LocalUsage(todayTokens: 48_600)
+        }
+
+        func setup() async throws -> SetupState {
+            lock.withLock { setupState }
+        }
+
+        func useLocalOnly() async throws {
+            lock.withLock {
+                setupState = SetupState(firstRun: false, localOnly: true)
+                localList.localOnly = true
+            }
+        }
+
+        func finishSetup() async throws {
+            lock.withLock { setupState.firstRun = false }
+        }
+
         // MARK: Artifacts (B79)
 
         func artifacts(repo: String?, sessionID: String?, pixieID: String?) async throws
@@ -3054,6 +3155,89 @@
                             ),
                         ]
                 })
+        }
+    }
+
+    /// The local models of the B106 snapshots: two LM Studio models ready, Ollama's not
+    /// running and a small one weak at tools; what Find on this Mac and Check answer.
+    enum SampleLocal {
+        static let models = [
+            LocalModel(
+                id: "lm_qwen30", serverID: "srv_lms", model: "qwen3-coder-30b",
+                name: "qwen3-coder-30b", address: "localhost:1234", app: "LM Studio",
+                context: 65_536),
+            LocalModel(
+                id: "lm_gptoss", serverID: "srv_lms", model: "gpt-oss-20b", name: "gpt-oss-20b",
+                address: "localhost:1234", app: "LM Studio", context: 131_072, thinking: true),
+            LocalModel(
+                id: "lm_devstral", serverID: "srv_ollama", model: "devstral-small-2",
+                name: "devstral-small-2", address: "localhost:11434", app: "Ollama",
+                running: false),
+            LocalModel(
+                id: "lm_qwen4b", serverID: "srv_lms", model: "qwen3-4b", name: "qwen3-4b",
+                address: "localhost:1234", app: "LM Studio", context: 32_768, tools: .weak,
+                weakReason: "Likely too weak at tools: edits and commands may fail"),
+            LocalModel(
+                id: "lm_gpt120", serverID: "srv_lms", model: "gpt-oss-120b", name: "gpt-oss-120b",
+                address: "localhost:1234", app: "LM Studio", context: 131_072, thinking: true,
+                memoryWarning: memoryWarning),
+        ]
+
+        static let memoryWarning =
+            "Needs about 65 GB of this Mac's 24 GB: other work may slow down or the Mac may stall."
+
+        static let running = [
+            FoundModel(
+                address: "localhost:1234", app: "LM Studio", model: "qwen3-coder-30b",
+                name: "qwen3-coder-30b", context: 65_536),
+            FoundModel(
+                address: "localhost:1234", app: "LM Studio", model: "gpt-oss-20b",
+                name: "gpt-oss-20b", context: 131_072, thinking: true),
+            FoundModel(
+                address: "localhost:1234", app: "LM Studio", model: "gpt-oss-120b",
+                name: "gpt-oss-120b", context: 131_072, thinking: true,
+                memoryWarning: memoryWarning),
+            FoundModel(
+                address: "localhost:1234", app: "LM Studio", model: "qwen3-4b", name: "qwen3-4b",
+                context: 32_768, tools: .weak,
+                weakReason: "Likely too weak at tools: edits and commands may fail"),
+            FoundModel(
+                address: "localhost:11434", app: "Ollama", model: "llama3.2:3b",
+                name: "llama3.2:3b", context: 4_096, tools: .weak,
+                weakReason: "Context of 4k is too small for an agent: set Ollama to 64k"),
+        ]
+
+        static let downloaded = [
+            DownloadedModel(
+                name: "devstral-small-2", source: "Ollama models folder",
+                path:
+                    "/Users/giorgos/.ollama/models/manifests/registry.ollama.ai/library/devstral-small-2/latest",
+                hint: "start Ollama to use it", start: .ollama),
+            DownloadedModel(
+                name: "Qwen3.8-27B (MLX)", source: "Hugging Face cache",
+                path: "/Users/giorgos/.cache/huggingface/hub/models--Qwen--Qwen3.8-27B-MLX",
+                hint: "open it in an app that serves MLX models, such as LM Studio", start: nil),
+        ]
+
+        /// localhost:8080 serves one model through Chat Completions; localhost:5001 has no
+        /// tool use; anything else does not answer.
+        static func check(_ address: String) -> LocalCheck {
+            switch address {
+            case "localhost:8080":
+                LocalCheck(
+                    ok: true,
+                    server: LocalServerInfo(
+                        address: address, app: nil, messages: false, responses: false, chat: true),
+                    models: [
+                        FoundModel(
+                            address: address, model: "qwen3-coder-30b-a3b-mlx",
+                            name: "Qwen3-Coder-30B-A3B (MLX)", context: 65_536)
+                    ])
+            case "localhost:5001":
+                LocalCheck(ok: false, error: .noTools)
+            default:
+                LocalCheck(ok: false, error: .unreachable)
+            }
         }
     }
 #endif

@@ -7,7 +7,10 @@ public enum ConfigurationText {
 
     public static let intro =
         "What your agents read: instructions, skills, MCP servers and each engine's own settings. These are the same files Claude Code and Codex use in a terminal, so changes here apply there too."
-    public static let footer = "Other engines appear here once you sign in to them under Accounts."
+    /// None while local models make signing in optional (B106).
+    public static func footer(signInOptional: Bool) -> String? {
+        signInOptional ? nil : "Other engines appear here once you sign in to them under Accounts."
+    }
     public static let editorFooter = "Saved files apply from each chat's next message."
     /// What the copy popup does; the instructions part only when it replaces them.
     public static func copyIntro(_ preview: CopyPreview) -> String {

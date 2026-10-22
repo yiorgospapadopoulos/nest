@@ -67,6 +67,9 @@ class Sources:
     save_settings: Callable[[ConfigurationSettings], ConfigurationSettings]
     # Every registered repo's folder, for the allow-list.
     repo_paths: Callable[[], list[Path]]
+    # Whether local models are in use (B106): both engines' setups then show, since
+    # either runs local chats without a sign in.
+    local_in_use: Callable[[], Awaitable[bool]]
 
 
 class Configuration:
@@ -99,11 +102,12 @@ class Configuration:
         sources = self._sources
         claude = await sources.claude.account()
         codex = await sources.codex.account()
+        local = await sources.local_in_use()
         state = State(
             where=where,
             settings=sources.settings(),
-            claude=None if claude.signed_in is False else claude,
-            codex=codex if codex.signed_in is True else None,
+            claude=None if claude.signed_in is False and not local else claude,
+            codex=codex if codex.signed_in is True or local else None,
         )
         if state.codex is not None:
             state = replace(state, codex_view=await self._codex_view(full=full))

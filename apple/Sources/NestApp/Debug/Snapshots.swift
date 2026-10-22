@@ -248,6 +248,10 @@
                 try await renderConfiguration(model, shell, controller, folder)
                 return
             }
+            if only == "b106" {
+                try await renderLocalModels(model, shell, controller, folder)
+                return
+            }
             if only == "b101" {
                 try await renderIssues(model, shell, controller, folder)
                 return
@@ -623,6 +627,157 @@
             sample.setCodexSignedIn(false)
             await model.providers.load()
             try await accounts.load()
+        }
+
+        /// B106: Settings > Accounts with local models (two ready, Ollama's not running, one
+        /// weak); Add local model on Find on this Mac and on Enter address (found, nothing
+        /// answered, no tools); the model menu's Local section and its engine submenu, drawn
+        /// as static lists; a chat on a local model with nothing signed in (the top bar's
+        /// local chip, Thinking not available) and its attach menu; the weak-at-tools bar
+        /// with the server-down card; Accounts after Use local models only; the first run.
+        private static func renderLocalModels(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            let local = model.local
+            sample.setCodexSignedIn(true)
+            sample.setLocalModels(true)
+            await model.providers.load()
+            await local.load()
+            try await model.accounts.load()
+            try await model.accounts.loadGitHub()
+            try await pairSettings(controller, .accounts, "b106-accounts", folder)
+
+            sample.setLocalModels(false)
+            await local.load()
+            let flow = AddLocalFlow(store: local)
+            try await flow.find()
+            shell.addLocal = flow
+            try await pairSettings(controller, .accounts, "b106-add-find", folder)
+            flow.tab = .address
+            flow.address = "localhost:8080"
+            try await flow.checkAddress()
+            try await pairSettings(controller, .accounts, "b106-add-address", folder)
+            for (address, name) in [
+                ("localhost:8081", "unreachable"), ("localhost:5001", "no-tools"),
+            ] {
+                flow.address = address
+                try await flow.checkAddress()
+                try await pairSettings(controller, .accounts, "b106-add-address-\(name)", folder)
+            }
+            shell.addLocal = nil
+
+            sample.setLocalModels(true)
+            await local.load()
+            if let chosen = local.infos.first {
+                shell.setModel(chosen, on: local.engine, for: shell.startDraftID)
+            }
+            try await pairView(localModelMenu(shell), "b106-model-menu", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "Local chats run on",
+                    rows: LocalModelText.engines.map { engine in
+                        MenuPreview.Row(
+                            title: LocalModelText.engineName(engine),
+                            detail: LocalModelText.engineDetail(engine),
+                            checked: engine == local.engine)
+                    }
+                ).frame(width: 300), "b106-engine-menu", folder)
+
+            // Nothing signed in: the top bar counts local tokens.
+            sample.setClaudeSignedIn(false)
+            sample.setCodexSignedIn(false)
+            await model.providers.load()
+            try await model.accounts.load()
+            sample.runOnLocal(["c1": "local:lm_qwen30"])
+            try await model.sessions.load()
+            shell.selectProject("cv-page")
+            let workspace = CGSize(width: 828, height: 790)
+            model.app.update("cv-page") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+                state.focusPane("c1")
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+            }
+            try await pair(controller, "b106-chat", folder)
+            try await pairView(
+                MenuPreview(
+                    title: "Attach",
+                    rows: [
+                        MenuPreview.Row(title: "Attach files…"),
+                        MenuPreview.Row(
+                            title: "Attach image", detail: LocalModelText.noImages,
+                            disabled: true),
+                        MenuPreview.Row(
+                            title: "Web search", detail: LocalModelText.noWebSearch,
+                            disabled: true),
+                    ]
+                ).frame(width: 290), "b106-attach-menu", folder)
+
+            sample.runOnLocal(["c1": "local:lm_qwen4b"])
+            try await model.sessions.load()
+            local.markDown(
+                "c1", LocalServerDown(app: "LM Studio", address: "localhost:1234", start: .lmstudio)
+            )
+            try await pair(controller, "b106-chat-down", folder)
+            local.clearDown("c1")
+
+            try await local.useLocalOnly()
+            try await pairSettings(controller, .accounts, "b106-accounts-local-only", folder)
+
+            sample.setLocalModels(false)
+            sample.setFirstRun(true)
+            await local.load()
+            try await pair(controller, "b106-first-run", folder)
+
+            sample.setFirstRun(false)
+            sample.runOnLocal([:])
+            sample.setClaudeSignedIn(true)
+            await local.load()
+            try await model.sessions.load()
+            try await model.accounts.load()
+            model.app.update("cv-page") { state in
+                state.layout = WorkspaceLayout()
+            }
+        }
+
+        /// The start draft's model menu with the Local section, then the engine submenu's
+        /// title and Add local model, as `ModelMenu` lists them (B106).
+        private static func localModelMenu(_ shell: Shell) -> some View {
+            let draft = shell.draft(for: shell.startDraftID)
+            let sections = shell.providers.modelSections(
+                claude: shell.agents.catalog, provider: draft.provider, isDraft: true)
+            let local = shell.model.local
+            return VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                    if index > 0 {
+                        Divider().padding(.horizontal, 10)
+                    }
+                    MenuPreview(
+                        title: section.title,
+                        rows: [MenuPreview.Row(title: section.detail, disabled: true)]
+                            + (section.local
+                            ? section.catalog.models
+                            : Array(section.catalog.models.prefix(3))).map { info in
+                                MenuPreview.Row(
+                                    title: info.displayName, detail: info.description,
+                                    checked: section.isSelected(
+                                        info, provider: draft.provider, model: draft.model),
+                                    disabled: section.isDisabled(info), warns: section.warns(info))
+                            })
+                }
+                Divider().padding(.horizontal, 10)
+                MenuPreview(
+                    title: "",
+                    rows: [
+                        MenuPreview.Row(title: LocalModelText.runsOn(local.engine), submenu: true),
+                        MenuPreview.Row(title: "\(LocalModelText.addTitle)…"),
+                    ])
+            }
+            .frame(width: 320)
         }
 
         /// B97: Settings > Configuration with Claude open, Codex open, every skill shown,
@@ -3080,6 +3235,8 @@
                 var detail = ""
                 var checked = false
                 var disabled = false
+                /// The line under the title in the wait colour (B106).
+                var warns = false
                 /// Opens a submenu: a chevron on the right.
                 var submenu = false
                 /// A separator above it.
@@ -3091,11 +3248,13 @@
 
             var body: some View {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                    if !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                    }
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         if row.divided {
                             Divider().padding(.vertical, 3)
@@ -3109,7 +3268,10 @@
                                 if !row.detail.isEmpty {
                                     Text(row.detail)
                                         .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(
+                                            row.warns
+                                                ? AnyShapeStyle(StatusTone.waiting.color)
+                                                : AnyShapeStyle(.secondary))
                                 }
                             }
                             Spacer(minLength: 0)
