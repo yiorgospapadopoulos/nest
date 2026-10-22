@@ -2,11 +2,20 @@ import NestKit
 import SwiftUI
 
 /// Each engine's accounts, one in use per engine, through the engines' own sign-ins (B98),
-/// and the `gh` login (B81).
+/// the local models (B106), first when the user chose them only, and the `gh` login (B81).
 struct AccountsPage: View {
+    @Environment(Shell.self) private var shell
+
     var body: some View {
+        let localFirst = shell.model.local.localOnly
+        if localFirst {
+            LocalModelsSection()
+        }
         EngineAccounts(provider: ProviderInfo.claude)
         EngineAccounts(provider: EngineMark.codex)
+        if !localFirst {
+            LocalModelsSection()
+        }
         GitHubSection()
     }
 }
@@ -244,15 +253,17 @@ private struct AccountControls: View {
             .buttonStyle(.nest(.soft))
         } else {
             let signedIn = account.signedIn == true
+            // With local models, signing in is a choice, not a need (B106).
+            let optional = shell.model.local.signInOptional
             if signedIn {
                 AccountLimits(limits: account.limits)
             }
             StatusLabel(
-                tone: signedIn ? .review : .done, label: AccountText.state(account),
-                hollow: !signedIn)
+                tone: signedIn ? .review : .done,
+                label: AccountText.state(account, optional: optional), hollow: !signedIn)
             if !signedIn {
                 Button("Sign in") { signIn() }
-                    .buttonStyle(.nest(.primary))
+                    .buttonStyle(.nest(optional ? .soft : .primary))
             }
             RowActionsMenu(title: account.title) {
                 Button("Rename…") { renaming = true }
@@ -296,7 +307,7 @@ private struct AccountConfirmations: ViewModifier {
             }
             Button("Cancel", role: .cancel) {}
         } message: { confirmation in
-            if confirmation == .signOut, account.first {
+            if confirmation == .signOut, account.first, !shell.model.local.signInOptional {
                 Text(signOutNote)
             }
         }

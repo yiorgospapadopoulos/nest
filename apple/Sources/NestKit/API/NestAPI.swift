@@ -326,6 +326,29 @@ public protocol NestAPI: Sendable {
     func codexMarketplaces() async throws -> [CodexMarketplace]
     func addCodexMarketplace(source: String) async throws
     func removeCodexMarketplace(_ name: String) async throws
+
+    // MARK: Local models (B106)
+
+    /// The added local models, the engine local chats run on and the local-only choice.
+    func localModels() async throws -> LocalModelList
+    /// Running servers on this Mac and models waiting in the model folders.
+    func findLocalModels() async throws -> LocalFind
+    /// Whether the server at the address can run agents, and its models.
+    func checkLocalServer(address: String, key: String?) async throws -> LocalCheck
+    /// Adds the server's models, by their ids on the server; answers them added.
+    func addLocalModels(address: String, key: String?, models: [String]) async throws
+        -> [LocalModel]
+    func removeLocalModel(_ id: String) async throws
+    /// The engine new local chats run on: "claude" or "codex".
+    func setLocalEngine(_ engine: String) async throws
+    /// Starts the app's server; `notFound` when the app is not installed.
+    func startLocalServer(_ app: LocalApp) async throws
+    func localUsage() async throws -> LocalUsage
+    /// Whether to show the first-run welcome.
+    func setup() async throws -> SetupState
+    /// The user chose local models only; the welcome is done.
+    func useLocalOnly() async throws
+    func finishSetup() async throws
 }
 
 extension NestAPI {
