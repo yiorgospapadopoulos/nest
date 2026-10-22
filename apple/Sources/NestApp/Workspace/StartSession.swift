@@ -128,7 +128,7 @@ private struct StartFade: View {
     }
 }
 
-/// "Waiting on you", "Open issues" (B101) and "Recent", grey labels over plain rows that
+/// "Waiting on you", "Open issues" (B101) and "Recent chats", grey labels over plain rows that
 /// open their chat, or start one from the issue; a list with nothing in it is left out.
 private struct StartColumn: View {
     let screen: StartScreen
@@ -169,17 +169,10 @@ private struct StartColumn: View {
                 .padding(.horizontal, 8)
                 .padding(.top, screen.waiting.isEmpty ? 0 : 14)
                 .padding(.bottom, 5)
-                if let empty = screen.issuesEmptyLine {
-                    Text(empty)
-                        .font(.ui(TypeSize.meta))
-                        .foregroundStyle(Palette.t3)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                }
                 IssueRows(screen: screen)
             }
             if !screen.recent.isEmpty {
-                SectionLabel(text: "Recent")
+                SectionLabel(text: "Recent chats")
                     .padding(.horizontal, 8)
                     .padding(.top, screen.waiting.isEmpty && !screen.showsIssues ? 0 : 14)
                     .padding(.bottom, 5)
