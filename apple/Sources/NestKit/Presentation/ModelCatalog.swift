@@ -8,16 +8,19 @@ public struct ModelCatalog: Sendable, Hashable {
     public var models: [ModelInfo]
     /// The model the engine runs when none is named; nil while unknown.
     public var defaultModel: String?
+    /// The local models (B106), which run on any engine: looked up, never listed.
+    public var local: [ModelInfo]
 
-    public init(models: [ModelInfo], defaultModel: String? = nil) {
+    public init(models: [ModelInfo], defaultModel: String? = nil, local: [ModelInfo] = []) {
         self.models = models
         self.defaultModel = defaultModel
+        self.local = local
     }
 
     /// The list entry for a model; nil (a chat from before B94) is the engine's default.
     public func info(for model: String?) -> ModelInfo? {
         let value = model ?? defaultModel
-        return models.first { $0.value == value }
+        return models.first { $0.value == value } ?? local.first { $0.value == value }
     }
 
     /// The menu title: the model's display name, or its raw value when the list does not
@@ -70,21 +73,38 @@ public struct ModelCatalog: Sendable, Hashable {
     }
 }
 
-/// One engine's part of the model menu (B91).
+/// One engine's part of the model menu (B91), or the local models' (B106).
 public struct ModelSection: Sendable, Hashable, Identifiable {
     /// The engine's name; Claude's for the one Model section without a choice of engines.
+    /// For the local models, the engine choosing one runs the chat on.
     public let provider: String
-    /// The engine's name, or "Model" when there is no choice of engines.
+    /// The engine's name, "Model" when there is no choice of engines, or "Local".
     public let title: String
     /// The plan, or "Not signed in"; empty for none.
     public let detail: String
     public let catalog: ModelCatalog
+    /// The local models' section, which any engine's chat may choose from.
+    public var local = false
+    /// Models greyed out: their server does not answer.
+    public var unavailable: Set<String> = []
+    /// Models whose line is a warning: weak at tools.
+    public var weak: Set<String> = []
 
-    public var id: String { provider }
+    public var id: String { local ? "local" : provider }
 
-    /// Whether the chat on `provider` (nil: Claude) with `model` is on this entry.
+    /// Whether the chat on `provider` (nil: Claude) with `model` is on this entry; a local
+    /// model whatever the engine.
     public func isSelected(_ info: ModelInfo, provider chat: String?, model: String?) -> Bool {
-        (chat ?? ProviderInfo.claude) == provider && catalog.isSelected(info, current: model)
+        (local || (chat ?? ProviderInfo.claude) == provider)
+            && catalog.isSelected(info, current: model)
+    }
+
+    public func isDisabled(_ info: ModelInfo) -> Bool {
+        unavailable.contains(info.value)
+    }
+
+    public func warns(_ info: ModelInfo) -> Bool {
+        weak.contains(info.value)
     }
 }
 

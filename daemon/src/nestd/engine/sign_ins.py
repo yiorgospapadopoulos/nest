@@ -31,3 +31,10 @@ class SignInStore:
             "SELECT provider FROM engine_sign_ins ORDER BY first_seen_at, provider LIMIT 1"
         )
         return None if row is None else str(row["provider"])
+
+    async def seen(self, provider: str) -> bool:
+        """Whether the engine was ever seen signed in."""
+        row = await self._db.fetch_one(
+            "SELECT 1 FROM engine_sign_ins WHERE provider = ?", (provider,)
+        )
+        return row is not None

@@ -73,6 +73,33 @@ export function saveUsageBarHidden(storage: () => Storage, names: string[]): voi
   }
 }
 
+// The Features groups the user opened (true) or closed (false) by hand (B103), by id; a
+// group without a choice opens when it has something new.
+export const FEATURE_GROUPS_KEY = "nest.features.groups";
+
+export function loadFeatureGroups(storage: () => Storage): Record<string, boolean> {
+  let saved: unknown;
+  try {
+    saved = JSON.parse(storage().getItem(FEATURE_GROUPS_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+  if (typeof saved !== "object" || saved === null || Array.isArray(saved)) return {};
+  return Object.fromEntries(
+    Object.entries(saved as Record<string, unknown>).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === "boolean",
+    ),
+  );
+}
+
+export function saveFeatureGroups(storage: () => Storage, groups: Record<string, boolean>): void {
+  try {
+    storage().setItem(FEATURE_GROUPS_KEY, JSON.stringify(groups));
+  } catch {
+    // Not remembered.
+  }
+}
+
 /** A saved list of names; anything malformed or unreadable is left out. */
 function loadNames(storage: () => Storage, key: string): string[] {
   let saved: unknown;

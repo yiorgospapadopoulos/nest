@@ -558,9 +558,10 @@ struct PixieModelItems: View {
                     Button("Models unavailable") {}.disabled(true)
                 }
                 ForEach(section.entries) { entry in
-                    OptionItem(title: entry.title, detail: entry.detail, checked: entry.checked) {
-                        pick(entry.request)
-                    }
+                    OptionItem(
+                        title: entry.title, detail: entry.detail, checked: entry.checked,
+                        disabled: entry.disabled, warns: entry.warns
+                    ) { pick(entry.request) }
                 }
             }
         }

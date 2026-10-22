@@ -26,6 +26,9 @@ class FakeSecretStore:
     def set(self, account: str, value: str) -> None:
         self.values[account] = value
 
+    def delete(self, account: str) -> None:
+        self.values.pop(account, None)
+
 
 class RecordingRestart:
     """Stands in for ending the daemon process; counts the restarts asked for."""

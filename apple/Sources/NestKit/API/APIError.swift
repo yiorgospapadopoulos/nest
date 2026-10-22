@@ -19,6 +19,8 @@ public enum APIError: Error, Sendable, Equatable {
     case notSignedIn(String)
     /// The chat's engine cannot do this, such as forking a Codex chat (B91).
     case unsupportedFeature(String, feature: ProviderFeature)
+    /// A local model's server does not answer (B106); the message was not taken.
+    case localServerDown(String, LocalServerDown)
     case payloadTooLarge(String)
     case rateLimited(String, retryAfter: Int?)
     /// A local app (VS Code) is not installed.
@@ -42,7 +44,7 @@ public enum APIError: Error, Sendable, Equatable {
         case .unauthorized(let detail), .notFound(let detail), .conflict(let detail),
             .openInClaudeCode(let detail), .messageTaken(let detail), .invalidInput(let detail),
             .pixieInTeam(let detail), .payloadTooLarge(let detail), .notSignedIn(let detail),
-            .unsupportedFeature(let detail, _),
+            .unsupportedFeature(let detail, _), .localServerDown(let detail, _),
             .rateLimited(let detail, _), .appNotInstalled(let detail),
             .gitFailed(let detail, _, _), .badGateway(let detail), .server(_, let detail),
             .transport(let detail), .decoding(let detail), .approveRefused(let detail, _, _):
@@ -56,6 +58,11 @@ public enum APIError: Error, Sendable, Equatable {
         case .conflict, .openInClaudeCode, .messageTaken, .approveRefused: true
         default: false
         }
+    }
+
+    /// What a refusal on a down local server names to start (B106).
+    public var serverDown: LocalServerDown? {
+        if case .localServerDown(_, let down) = self { down } else { nil }
     }
 
     /// Where origin pushes now, when approving was refused until the user confirms it.
@@ -77,6 +84,10 @@ public enum APIError: Error, Sendable, Equatable {
             return .messageTaken(detail)
         case 409 where body["code"]?.stringValue == "codex_not_signed_in":
             return .notSignedIn(detail)
+        case 409 where body["code"]?.stringValue == LocalServerDown.code:
+            return .localServerDown(
+                detailText(body["detail"]) ?? "The model's server is not running.",
+                LocalServerDown(body))
         case 409 where body["code"]?.stringValue == "unsupported_feature":
             let feature =
                 body["feature"]?.stringValue.flatMap(ProviderFeature.init(rawValue:)) ?? .unknown

@@ -269,6 +269,7 @@ import Testing
             SettingsPage.fixed.map(\.title) == [
                 "General", "Appearance", "Notifications", "Agents", "Usage", "Storage",
                 "Pixies", "Accounts", "Devices", "Keyboard shortcuts", "Configuration",
+                "Features",
             ])
         // B97: plugins, marketplaces, skills, MCP servers and connectors live there now.
         for word in ["plugins", "marketplaces", "skills", "mcp servers", "connectors", "hooks"] {

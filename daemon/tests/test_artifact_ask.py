@@ -4,6 +4,7 @@ tokens counted apart, and every open reader told when it starts and finishes.
 """
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,6 +17,8 @@ from nestd.artifacts.ask import ASK_PREAMBLE, AskBusyError, AskFailedError, Page
 from nestd.artifacts.models import Origin
 from nestd.config.models import ArtifactSettings
 from nestd.events import types
+from nestd.local.run import LocalRun, claude_env
+from nestd.providers.base import RunAccount
 from tests.api_client import Api, running_api
 from tests.fake_probe import rate_limit, result
 from tests.fakes import FakeClock, FakeSecretStore
@@ -326,3 +329,36 @@ async def test_a_reader_reads_todays_asks_when_it_opens(api: Api) -> None:
     # A lower limit set later never shows a negative count.
     assert (after["used"], after["limit"], after["remaining"], after["enabled"]) == (3, 2, 0, False)
     assert unknown.status_code == 404
+
+
+async def test_an_ask_goes_to_a_local_model_when_claude_cannot_take_it(api: Api) -> None:
+    """B106: without a Claude login, the first local model answers; no account is used."""
+    artifact_id = await page(api)
+    run = LocalRun(
+        model_id="lm_1",
+        model="qwen3-coder",
+        context=None,
+        vision=False,
+        thinking=False,
+        base_url_for_claude="http://127.0.0.1:1234",
+        key_for_claude="nest-local",
+        base_url_for_codex="http://127.0.0.1:1234/v1",
+        key_for_codex="nest-local",
+    )
+
+    async def local() -> LocalRun:
+        return run
+
+    async def account() -> RunAccount:
+        raise AssertionError("a local ask runs on no account")
+
+    api.probes.replies.append(reply("Local."))
+
+    answer = await asks(api, local=local, account=account).ask(artifact_id, "x", None)
+
+    assert answer.text == "Local."
+    options = api.probes.clients[-1].options
+    assert options.model == "qwen3-coder"
+    assert options.env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:1234"
+    assert options.settings is not None
+    assert json.loads(options.settings)["env"] == claude_env(run)

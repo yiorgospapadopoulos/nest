@@ -65,6 +65,11 @@ struct Composer: View {
                 SignInNote(text: hint)
                     .transition(.opacity)
             }
+            if pixie == nil, !start, let weak = shell.model.local.weakWarning(for: model(draft)) {
+                // The chat's local model is weak at tools until dismissed here (B106).
+                WeakToolsBar(model: weak, chat: chat)
+                    .transition(.opacity)
+            }
             if shell.isDraft(chat), let issue = draft.issue {
                 IssueNote(issue: issue) { withAnimation { draft.issue = nil } }
                     .transition(.opacity)
@@ -151,6 +156,11 @@ struct Composer: View {
             guard !Task.isCancelled else { return }
             await shell.completions.searchFiles(session: session, query: query)
         }
+    }
+
+    /// The chat's model: the draft's before the chat exists.
+    private func model(_ draft: ComposerDraft) -> String? {
+        shell.isDraft(chat) ? draft.model : live.flatMap(shell.sessions.session)?.model
     }
 
     /// The chat's session id: the pixie's chat for a pixie, nil for a new chat, which
@@ -650,7 +660,10 @@ private struct ControlRow: View {
         let isDraft = shell.isDraft(chat)
         let listening = shell.dictation.activeChat == chat
         HStack(spacing: fit.compact ? 0 : 2) {
-            if !pixie {
+            if !pixie, let local = shell.model.local.model(isDraft ? draft.model : session?.model) {
+                // What a local model cannot take shows greyed with its reason (B106).
+                LocalAttachMenu(model: local, attach: attach)
+            } else if !pixie {
                 Button(action: attach) {
                     Image(systemName: Icon.plus)
                         .font(.system(size: 13, weight: .regular))

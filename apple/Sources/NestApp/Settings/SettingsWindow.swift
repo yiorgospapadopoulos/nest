@@ -43,6 +43,7 @@ struct SettingsView: View {
         .ignoresSafeArea()
         .overlay { ConfigurationModals() }
         .overlay { PairDaemonModal() }
+        .overlay { AddLocalModal() }
         .overlay(alignment: .top) {
             if let toast = shell.toast {
                 ToastView(toast: toast)
@@ -53,6 +54,12 @@ struct SettingsView: View {
         .foregroundStyle(Palette.t1)
         .environment(\.accentColors, AccentColors(accent: settings.accent))
         .preferredColorScheme(settings.theme.colorScheme)
+        // Each opening of the window is a new visit: what was new during the last one shows no
+        // badge now, and the Features row's count is current from the start.
+        .task {
+            shell.model.features.beginVisit()
+            try? await shell.model.features.load()
+        }
     }
 }
 
@@ -82,6 +89,7 @@ extension SettingsPage {
         case .devices: "laptopcomputer.and.iphone"
         case .shortcuts: "keyboard"
         case .configuration: "slider.horizontal.3"
+        case .features: "book"
         case .project: "folder"
         case .addProject: "plus"
         }
@@ -117,7 +125,8 @@ private struct SettingsSidebar: View {
     var body: some View {
         @Bindable var shell = shell
         let listed = SettingsPage.listed(
-            projects: shell.app.repos.map(\.name), query: shell.settingsQuery)
+            projects: shell.app.repos.map(\.name), query: shell.settingsQuery,
+            features: shell.model.features.labels)
         VStack(alignment: .leading, spacing: 0) {
             SearchField(text: $shell.settingsQuery)
                 .padding(.horizontal, 10)
@@ -195,6 +204,9 @@ private struct SidebarItem: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+                if page == .features {
+                    NewFeaturesMark(count: shell.model.features.newCount)
+                }
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -204,6 +216,25 @@ private struct SidebarItem: View {
         .buttonStyle(.plain)
         .pointerStyle(.link)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The Features row's count and dot in the run colour while anything is new (B103).
+private struct NewFeaturesMark: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            HStack(spacing: 6) {
+                Text("\(count)")
+                    .font(.ui(11))
+                    .monospacedDigit()
+                Circle().frame(width: 6, height: 6)
+            }
+            .foregroundStyle(StatusTone.running.color)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(count) new")
+        }
     }
 }
 
@@ -287,6 +318,7 @@ private struct SettingsDetail: View {
         case .devices: DevicesPage()
         case .shortcuts: ShortcutsPage()
         case .configuration: ConfigurationView()
+        case .features: FeaturesPage()
         case .project(let name): ProjectPage(project: name)
         case .addProject: AddProjectPage()
         }
@@ -366,6 +398,8 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
     let title: String
     var detail: String?
     var mono = false
+    /// A line under the detail in the wait colour, with the warning sign (B106).
+    var warning: String?
     /// While set, the title is a field that edits it in place, starting from `initial`;
     /// `done` gets the text, or nil when cancelled.
     var rename: (initial: String, done: (String?) -> Void)?
@@ -391,6 +425,9 @@ struct SettingsListRow<Leading: View, Trailing: View>: View {
                         .foregroundStyle(Palette.t3)
                         .lineLimit(2)
                         .truncationMode(.middle)
+                }
+                if let warning {
+                    WarningLine(text: warning)
                 }
             }
             Spacer(minLength: 8)

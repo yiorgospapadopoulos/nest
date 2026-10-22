@@ -20,6 +20,7 @@ from nestd.providers.base import ModelOption
 from nestd.repos.service import RepoService
 from nestd.sessions.engines import AccountSource, Engine
 from nestd.sessions.extras import RunExtrasSource
+from nestd.sessions.local import LocalSource
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import CreateSession, Session, SessionState
 from nestd.sessions.queue import MessageQueue
@@ -75,6 +76,7 @@ class Env:
         calls: PixieCalls | None = None,
         engines: Sequence[Engine] = (),
         accounts: AccountSource | None = None,
+        local: LocalSource | None = None,
     ) -> SessionManager:
         return SessionManager(
             store=self.store,
@@ -96,6 +98,7 @@ class Env:
             calls=calls,
             engines=engines,
             accounts=accounts,
+            local=local,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

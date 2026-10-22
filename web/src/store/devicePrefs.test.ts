@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FEATURE_GROUPS_KEY,
+  loadFeatureGroups,
   loadMachine,
   loadUsageBarHidden,
   MACHINE_KEY,
+  saveFeatureGroups,
   saveMachine,
   saveUsageBarHidden,
   USAGE_BAR_HIDDEN_KEY,
@@ -53,6 +56,33 @@ describe("the daemon's machine name (B105)", () => {
     expect(loadMachine(broken)).toBeNull();
     expect(() => {
       saveMachine(broken, "Mac mini");
+    }).not.toThrow();
+  });
+});
+
+describe("the Features groups opened or closed on this device (B103)", () => {
+  it("remembers each group's explicit choice", () => {
+    expect(loadFeatureGroups(() => localStorage)).toEqual({});
+    saveFeatureGroups(() => localStorage, { chats: true, git: false });
+    expect(FEATURE_GROUPS_KEY).toBe("nest.features.groups");
+    expect(loadFeatureGroups(() => localStorage)).toEqual({ chats: true, git: false });
+  });
+
+  it("leaves out anything malformed", () => {
+    localStorage.setItem(FEATURE_GROUPS_KEY, '{"chats": true, "git": "yes", "pixies": false}');
+    expect(loadFeatureGroups(() => localStorage)).toEqual({ chats: true, pixies: false });
+    localStorage.setItem(FEATURE_GROUPS_KEY, '["chats"]');
+    expect(loadFeatureGroups(() => localStorage)).toEqual({});
+    localStorage.setItem(FEATURE_GROUPS_KEY, "null");
+    expect(loadFeatureGroups(() => localStorage)).toEqual({});
+    localStorage.setItem(FEATURE_GROUPS_KEY, "not json");
+    expect(loadFeatureGroups(() => localStorage)).toEqual({});
+  });
+
+  it("lasts until a reload when storage is unavailable", () => {
+    expect(loadFeatureGroups(broken)).toEqual({});
+    expect(() => {
+      saveFeatureGroups(broken, { chats: true });
     }).not.toThrow();
   });
 });

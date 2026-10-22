@@ -22,10 +22,13 @@ from nestd.api.routes import (
     engine,
     events,
     extensions,
+    features,
     goals,
     health,
     issues,
     local_apps,
+    local_models,
+    local_proxy,
     notifications,
     pairing,
     pixie_groups,
@@ -41,6 +44,7 @@ from nestd.api.routes import (
     service,
     session_pixies,
     sessions,
+    setup,
     storage,
     stuck,
     usage,
@@ -148,6 +152,8 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         agents,
         clients,
         local_apps,
+        local_models,
+        setup,
         push,
         notifications,
         service,
@@ -155,8 +161,17 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         claude_code,
         extensions,
         configuration,
+        features,
     ):
         app.include_router(module.router)
+    # The engines reach local models' servers through it (B106); not under device auth.
+    app.include_router(local_proxy.router)
+    local_proxy.configure(
+        app,
+        resolve=ctx.local.resolve,
+        key=ctx.local.translator_key,
+        transport=ctx.local.transport,
+    )
     # Last, so every /api route matches first.
     install_static(app, ctx.paths.web_dist)
     return app

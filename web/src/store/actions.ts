@@ -59,9 +59,11 @@ import type {
   ProviderInfo,
 } from "../api/types.ts";
 import {
+  loadFeatureGroups,
   loadFoldedTeams,
   loadShowAutomated,
   loadUsageBarHidden,
+  saveFeatureGroups,
   saveFoldedTeams,
   saveMachine,
   saveShowAutomated,
@@ -179,6 +181,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let showAutomated = loadShowAutomated(storage);
   let foldedTeams = loadFoldedTeams(storage);
   let usageBarHidden = loadUsageBarHidden(storage);
+  let featureGroups = loadFeatureGroups(storage);
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
@@ -1382,6 +1385,17 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         const limits = await quietly(() => api.engineLimits(provider));
         if (limits !== null) dispatch({ type: "engineLimits", provider, limits });
       }
+    },
+
+    /** The Features groups opened or closed by hand (B103), by id. */
+    featureGroups(): Record<string, boolean> {
+      return featureGroups;
+    },
+
+    /** Remembered on this device only. */
+    setFeatureGroup(id: string, open: boolean): void {
+      featureGroups = { ...featureGroups, [id]: open };
+      saveFeatureGroups(storage, featureGroups);
     },
 
     /** Whether the usage bar shows the engine (B102); remembered on this device only. */

@@ -534,25 +534,33 @@ struct CardField: View {
     var submit: (() -> Void)?
     /// Takes the keyboard as soon as it shows, as Other's field does.
     var focusOnAppear = false
+    /// Hides what is typed, such as a key.
+    var secure = false
     @Environment(\.accentColors) private var accent
     @FocusState private var focused: Bool
 
     var body: some View {
-        TextField("", text: $text)
-            .accessibilityLabel(placeholder)
-            .overlay(alignment: .leading) { Placeholder(text: placeholder, shown: text.isEmpty) }
-            .textFieldStyle(.plain)
-            .font(.ui(TypeSize.ui))
-            .focused($focused)
-            .onAppear { if focusOnAppear { focused = true } }
-            .onSubmit { submit?() }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(Palette.soft, in: .rounded(Radius.button))
-            .overlay(
-                RoundedRectangle.rounded(Radius.button)
-                    .strokeBorder(focused ? accent.focus : Palette.divider, lineWidth: 1)
-            )
+        Group {
+            if secure {
+                SecureField("", text: $text)
+            } else {
+                TextField("", text: $text)
+            }
+        }
+        .accessibilityLabel(placeholder)
+        .overlay(alignment: .leading) { Placeholder(text: placeholder, shown: text.isEmpty) }
+        .textFieldStyle(.plain)
+        .font(.ui(TypeSize.ui))
+        .focused($focused)
+        .onAppear { if focusOnAppear { focused = true } }
+        .onSubmit { submit?() }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Palette.soft, in: .rounded(Radius.button))
+        .overlay(
+            RoundedRectangle.rounded(Radius.button)
+                .strokeBorder(focused ? accent.focus : Palette.divider, lineWidth: 1)
+        )
     }
 }
 

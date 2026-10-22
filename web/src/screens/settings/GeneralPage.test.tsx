@@ -28,6 +28,7 @@ describe("settings list", () => {
       "Accounts",
       "Devices",
       "Configuration",
+      "Features",
     ]);
     const projects = screen.getByRole("region", { name: "Projects" });
     expect(

@@ -86,14 +86,16 @@ class SessionSink:
         attachments: AttachmentStore | None = None,
         calls: PixieCalls | None = None,
         active_account: Callable[[], str | None] | None = None,
+        local_usage: Callable[[TokenUsage], Awaitable[None]] | None = None,
     ) -> None:
         """`forking` is the engine session the run cuts into a new one (B59): the cut is
         done once the run reports another session id. `attachments` keeps the images of
         tool results (B59); without it they are left out. `calls` records the pixies the
         run's agents call (B46, B70). `active_account` names the engine's account in use
         now (B98): usage windows of a run on another one are not announced as the
-        engine's.
+        engine's. `local_usage` records a local model's turns (B106), which count apart.
         """
+        self._local_usage = local_usage
         self._active_account = active_account
         self._calls = calls
         self._forking = forking
@@ -186,9 +188,12 @@ class SessionSink:
         await self._isolated(
             "the result event", self._bus.publish(types.SESSION_RESULT, payload, self._session_id)
         )
-        await self._isolated(
-            "the turn result hooks", self._hooks.turn_result(self._session_id, info)
-        )
+        if self._local_usage is not None:
+            await self._isolated("the local usage", self._local_usage(info.tokens))
+        else:
+            await self._isolated(
+                "the turn result hooks", self._hooks.turn_result(self._session_id, info)
+            )
         await self._isolated(
             "ending the turn",
             self._turns.turn_finished(self._live, _error(info), end),
