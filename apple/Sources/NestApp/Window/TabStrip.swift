@@ -335,6 +335,42 @@ private struct UsageButton: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
+        if let chip = shell.model.local.chip(accounts: shell.model.accounts.accounts) {
+            LocalChip(text: chip)
+        } else {
+            LimitsChip()
+        }
+    }
+}
+
+/// With no account signed in, today's tokens on local models (B106): no limits apply. A
+/// click opens Settings > Accounts.
+private struct LocalChip: View {
+    let text: String
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        Button {
+            shell.openSettings(.accounts)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: Icon.localModel).font(.system(size: 10, weight: .medium))
+                Text(text)
+            }
+        }
+        .buttonStyle(UsageChipStyle())
+        .help("Local models have no limits; this counts today's tokens")
+        .font(.ui(11))
+        .monospacedDigit()
+        .padding(.bottom, TabStrip.centredOnStrip(UsageChipStyle.height))
+    }
+}
+
+/// The accounts' limits, as before B106.
+private struct LimitsChip: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
         TimelineView(.everyMinute) { context in
             let lines = UsageMeter.lines(
                 shell.model.accounts.accounts, choice: shell.settings.usageMeter,

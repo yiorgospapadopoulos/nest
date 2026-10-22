@@ -112,6 +112,7 @@ public final class LiveSync {
         }
         await agents.load()
         await providers.load()
+        await providers.local.load()
         try? await accounts.load()
         await chatPixies.load()
         await branchMaps.reload()
@@ -138,6 +139,7 @@ public final class LiveSync {
         habits.apply(event)
         chatPixies.apply(event)
         accounts.apply(event)
+        providers.local.apply(event)
         extensions.apply(event)
         configuration.apply(event)
         artifacts.apply(event)
@@ -194,6 +196,8 @@ public final class AppModel {
     public let agents: AgentsStore
     /// The engines chats run on, and their models apart from Claude's (B91).
     public let providers: ProvidersStore
+    /// The local models (B106), which the engines' menus offer too.
+    public let local: LocalModelsStore
     public let pixies: PixiesStore
     public let reports: PixieReportsStore
     public let habits: HabitsStore
@@ -243,7 +247,8 @@ public final class AppModel {
         search = MessageSearch(api: api)
         stuck = StuckSettingsStore(api: api)
         agents = AgentsStore(api: api)
-        providers = ProvidersStore(api: api)
+        local = LocalModelsStore(api: api, preferences: preferences)
+        providers = ProvidersStore(api: api, local: local)
         pixies = PixiesStore(api: api)
         reports = PixieReportsStore(api: api, now: now)
         habits = HabitsStore(api: api)

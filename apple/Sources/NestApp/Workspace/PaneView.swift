@@ -162,7 +162,10 @@ private struct PaneHeader: View {
                 StatusLabel(tone: tone, label: status, showsLabel: false)
                     .help(status)
             }
-            if let engine = shell.providers.label(for: session) {
+            if let session, let local = shell.providers.localModel(in: session) {
+                // A local chat names its model and engine (B106).
+                LocalChatLabel(model: local, engine: session.provider)
+            } else if let engine = shell.providers.label(for: session) {
                 // Only for a chat off Claude, the default (B91).
                 Text(engine)
                     .font(.ui(TypeSize.meta))

@@ -144,6 +144,8 @@ final class Shell {
     var configurationFolds: Set<String> = ["claude:plugins"]
     /// The Add server, Edit server or New skill form over Settings (B97).
     var configurationForm: ConfigurationForm?
+    /// The Add local model sheet over Settings (B106).
+    var addLocal: AddLocalFlow?
     /// Opens a window scene by id; the main window sets it once it shows.
     @ObservationIgnored var openWindow: ((String) -> Void)?
     /// The Connections list's unfolded groups; all are folded at first.
@@ -1095,6 +1097,7 @@ final class Shell {
                     let outgoing = bash.outgoing(text, chat: chat)
                     let queued = try await sessions.send(
                         chat, text: outgoing.text, attachmentIDs: attachments)
+                    model.local.clearDown(chat)
                     bash.sent(outgoing.rows, chat: chat)
                     if let queued {
                         activity.enqueue(queued, session: chat)
@@ -1108,6 +1111,9 @@ final class Shell {
             } catch APIError.notSignedIn(let message) {
                 withAnimation { draft.blocked = message }
                 Task { await providers.load(refresh: true) }
+            } catch APIError.localServerDown(_, let down) where !isDraft(chat) {
+                // The message stays in the composer for Retry (B106).
+                withAnimation { model.local.markDown(chat, down) }
             } catch {
                 show(error, doing: "Could not send")
             }
@@ -1624,6 +1630,22 @@ final class Shell {
         }
         settingsPage = page
         openWindow?(SettingsWindow.id)
+    }
+
+    /// Settings > Accounts with the Add local model sheet, on Find on this Mac (looking at
+    /// once) or Enter address (B106).
+    func openAddLocal(_ tab: AddLocalFlow.Tab = .find) {
+        let flow = AddLocalFlow(store: model.local, tab: tab)
+        addLocal = flow
+        openSettings(.accounts)
+        if tab == .find {
+            settingsChange("Could not look for local models") { try await flow.find() }
+        }
+    }
+
+    /// Starts a local model's server from a chat (B106), saying so when it is not installed.
+    func startLocal(_ app: LocalApp) {
+        run("Could not start \(app.title)") { try await self.model.local.start(app) }
     }
 
     /// Settings > Configuration with Claude's section and its connectors open (B97).
