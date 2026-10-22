@@ -9,6 +9,7 @@ from typing import Literal, Protocol, get_args
 from pydantic import BaseModel, Field, JsonValue, computed_field
 
 from nestd.config.models import Effort, PermissionMode
+from nestd.local.run import LocalRun
 
 
 class TextBlock(BaseModel):
@@ -72,7 +73,14 @@ type MessageBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
 # `command_output`: what a local slash command (/cost, /context...) answered, without the model.
 # `files_restored`: the user restored files to before one of their messages (IMP-02).
 type NoticeKind = Literal[
-    "compacted", "cleared", "model_fallback", "api_retry", "command_output", "files_restored"
+    "compacted",
+    "cleared",
+    "model_fallback",
+    "api_retry",
+    "command_output",
+    "files_restored",
+    # Nest has the local model's app load it with enough context before the run (B106).
+    "loading_model",
 ]
 
 
@@ -415,6 +423,8 @@ class SessionSpec:
     drops_turn: str | None = None
     # The engine's active account when the run opens (B98); None runs as without accounts.
     account: RunAccount | None = None
+    # A run on a local model goes to its server, for this run only (B106).
+    local: LocalRun | None = None
 
 
 @dataclass(frozen=True)

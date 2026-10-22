@@ -120,6 +120,10 @@ struct TranscriptView: View {
                             notes: row.run?.notes ?? [], running: row.isRunning,
                             failure: row.failure)
                     }
+                    // The chat's local server did not answer; the message waits (B106).
+                    if !hasNewer, let down = shell.model.local.serverDown[chat] {
+                        ServerDownCard(chat: chat, down: down)
+                    }
                     if let failure = store?.catchUpFailure {
                         // Live events wait until the missed ones load (audit BUG-101).
                         VStack(spacing: 4) {

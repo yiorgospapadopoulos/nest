@@ -800,6 +800,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
                   "created_at": "2026-10-21T18:00:00Z"}, "token": "t"}
                 """
         ) { _ = try await $0.redeemPairing(code: "K7QMR4XP", deviceName: "Air") },
+        RouteCase("GET", "/api/features", response: Fixture.text("features")) {
+            _ = try await $0.features()
+        },
+        RouteCase(
+            "POST", "/api/features/seen", body: #"{"ids":["branch-map","review"]}"#,
+            response: Fixture.text("features")
+        ) { _ = try await $0.markFeaturesShown(["branch-map", "review"]) },
         RouteCase("GET", "/api/repos/cv-page/commands", response: commandsJSON) {
             _ = try await $0.repoCommands("cv-page")
         },

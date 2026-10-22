@@ -403,6 +403,14 @@ public struct APIClient: NestAPI {
             "POST", ["pairing", "redeem"], body: RedeemRequest(code: code, deviceName: deviceName))
     }
 
+    public func features() async throws -> FeaturesCatalog {
+        try await get("features")
+    }
+
+    public func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+        try await call("POST", ["features", "seen"], body: FeaturesSeenRequest(ids: ids))
+    }
+
     // MARK: Settings (B81)
 
     public func repoBranches(_ name: String) async throws -> [String] {
@@ -928,6 +936,58 @@ public struct APIClient: NestAPI {
     /// A name such as `notes/ideas` is one path segment per slash.
     private static func filePath(_ id: String, _ name: String) -> [String] {
         ["pixies", id, "files"] + name.split(separator: "/").map(String.init)
+    }
+
+    // MARK: Local models (B106)
+
+    public func localModels() async throws -> LocalModelList {
+        try await get("local", "models")
+    }
+
+    public func findLocalModels() async throws -> LocalFind {
+        try await get("local", "find")
+    }
+
+    public func checkLocalServer(address: String, key: String?) async throws -> LocalCheck {
+        try await call(
+            "POST", ["local", "check"], body: LocalServerRequest(address: address, key: key))
+    }
+
+    public func addLocalModels(address: String, key: String?, models: [String]) async throws
+        -> [LocalModel]
+    {
+        let added: AddedLocalModels = try await call(
+            "POST", ["local", "models"],
+            body: LocalServerRequest(address: address, key: key, models: models))
+        return added.models
+    }
+
+    public func removeLocalModel(_ id: String) async throws {
+        try await perform("DELETE", ["local", "models", id])
+    }
+
+    public func setLocalEngine(_ engine: String) async throws {
+        try await perform("PUT", ["local", "engine"], body: LocalEngineRequest(engine: engine))
+    }
+
+    public func startLocalServer(_ app: LocalApp) async throws {
+        try await perform("POST", ["local", "start"], body: LocalStartRequest(app: app))
+    }
+
+    public func localUsage() async throws -> LocalUsage {
+        try await get("local", "usage")
+    }
+
+    public func setup() async throws -> SetupState {
+        try await get("setup")
+    }
+
+    public func useLocalOnly() async throws {
+        try await perform("POST", ["setup", "local-only"])
+    }
+
+    public func finishSetup() async throws {
+        try await perform("POST", ["setup", "done"])
     }
 
     // MARK: Plumbing

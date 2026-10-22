@@ -1424,3 +1424,31 @@ export interface CodexPlugins {
   plugins: CodexPlugin[];
   marketplaces: CodexMarketplace[];
 }
+
+/** One entry of Settings > Features (B103): what makes Nest different. */
+export interface Feature {
+  id: string;
+  name: string;
+  // Plain sentences; `backticks` spans show as code.
+  text: string;
+  // Where to find it in the app.
+  where: string;
+  // YYYY-MM-DD.
+  added: string;
+  changed: string | null;
+  block: string;
+  // New on this device: recent, and not shown yet or first shown less than a day ago.
+  new: boolean;
+}
+
+export interface FeatureGroup {
+  id: string;
+  name: string;
+  features: Feature[];
+}
+
+/** GET /api/features, and what POST /api/features/seen answers. */
+export interface FeaturesCatalog {
+  groups: FeatureGroup[];
+  new_count: number;
+}

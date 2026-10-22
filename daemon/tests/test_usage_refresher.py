@@ -435,3 +435,34 @@ async def test_probing_another_account_keeps_its_windows_without_announcing_them
     assert work.five_hour is not None
     assert work.five_hour.utilization == 0.42
     assert await h.usage_events() == 1
+
+
+async def test_claude_is_not_probed_without_a_login(
+    h: Rig, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B106: Nest runs on local models alone; no failed probe every interval."""
+    signed_in = False
+
+    async def claude() -> bool:
+        return signed_in
+
+    h.refresher = UsageRefresher(
+        store=h.store,
+        bus=h.bus,
+        clock=h.clock,
+        probe=UsageProbe(h.factory, Path()),
+        visibility=h.visibility,
+        interval=h.setting,
+        codex=h.codex,
+        claude_signed_in=claude,
+    )
+    h.visibility.report("mac", visible=True)
+
+    await h.refresher.tick()
+    assert h.factory.prompts == 0
+    assert "usage probe" not in caplog.text
+
+    signed_in = True
+    h.factory.replies.append(answer())
+    await h.refresher.tick()
+    assert h.factory.prompts == 1

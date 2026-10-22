@@ -302,29 +302,27 @@ import Testing
         let none = StartScreen(approvals: [], checksFailed: [], stuck: [], sessions: [])
         #expect(none.issues.isEmpty)
         #expect(!none.showsIssues)
-        #expect(none.issuesEmptyLine == nil)
     }
 
-    /// With Mine and nothing assigned, the section stays with a quiet line, so its switch
-    /// can go back to All; with All and nothing open it is left out.
-    @Test func mineWithoutIssuesKeepsTheSection() {
+    /// With nothing open or assigned, the section stays as its label with "· 0", so it
+    /// shows the project has issues on GitHub and its switch stays reachable.
+    @Test func noIssuesKeepTheSection() {
         let mine = StartScreen(
             approvals: [], checksFailed: [], stuck: [], sessions: [],
             issues: IssueList(available: true, show: .mine, issues: []))
         #expect(mine.showsIssues)
-        #expect(mine.issuesEmptyLine == "No open issues assigned to you")
         #expect(mine.issuesLabel == "Open issues · 0")
         #expect(mine.showsColumn(width: 1_000))
         let all = StartScreen(
             approvals: [], checksFailed: [], stuck: [], sessions: [],
             issues: IssueList(available: true, show: .all, issues: []))
-        #expect(!all.showsIssues)
-        #expect(!all.showsColumn(width: 1_000))
+        #expect(all.showsIssues)
+        #expect(all.issuesLabel == "Open issues · 0")
+        #expect(all.showsColumn(width: 1_000))
         let some = StartScreen(
             approvals: [], checksFailed: [], stuck: [], sessions: [],
             issues: IssueList(available: true, show: .mine, issues: Self.issues.issues))
         #expect(some.showsIssues)
-        #expect(some.issuesEmptyLine == nil)
         // Without GitHub there is nothing to switch.
         let none = StartScreen(
             approvals: [], checksFailed: [], stuck: [], sessions: [],

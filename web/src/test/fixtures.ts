@@ -1,5 +1,8 @@
 import type {
   AccountInfo,
+  Feature,
+  FeatureGroup,
+  FeaturesCatalog,
   AgentDefaults,
   Approval,
   Artifact,
@@ -987,4 +990,57 @@ export function codexPlugins(overrides: Partial<CodexPlugins> = {}): CodexPlugin
     marketplaces: [{ name: "openai", path: null }],
     ...overrides,
   };
+}
+
+export function feature(overrides: Partial<Feature> = {}): Feature {
+  return {
+    id: "needs-you",
+    name: "Needs you",
+    text: "Everything waiting on you in one list: approvals, questions, reviews and merges.",
+    where: "Right panel",
+    added: "2026-10-17",
+    changed: null,
+    block: "B77",
+    new: false,
+    ...overrides,
+  };
+}
+
+export function featureGroup(overrides: Partial<FeatureGroup> = {}): FeatureGroup {
+  return { id: "around", name: "Getting around", features: [feature()], ...overrides };
+}
+
+/** The catalog as the daemon gives it, with `new_count` counted from the features. */
+export function featuresCatalog(groups?: FeatureGroup[]): FeaturesCatalog {
+  const shown = groups ?? [
+    featureGroup({
+      features: [
+        feature(),
+        feature({
+          id: "split-workspace",
+          name: "Split workspace",
+          text: "Up to four chats, terminals, browsers or pixies side by side.",
+          where: "Workspace",
+          added: "2026-10-14",
+          block: "B36",
+        }),
+      ],
+    }),
+    featureGroup({
+      id: "chats",
+      name: "Chats",
+      features: [
+        feature({
+          id: "composer-shortcuts",
+          name: "Composer shortcuts",
+          text: "`/` for commands and skills, `@` for files and pixies.",
+          where: "Composer",
+          added: "2026-10-15",
+          block: "B59",
+        }),
+      ],
+    }),
+  ];
+  const count = shown.flatMap((g) => g.features).filter((f) => f.new).length;
+  return { groups: shown, new_count: count };
 }

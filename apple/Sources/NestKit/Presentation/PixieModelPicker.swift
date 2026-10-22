@@ -24,6 +24,10 @@ public struct PixieModelPicker {
         public let title: String
         public let detail: String
         public let checked: Bool
+        /// Greyed: a local model whose server does not answer (B106).
+        public let disabled: Bool
+        /// Its line is a warning: weak at tools.
+        public let warns: Bool
         /// The change choosing it saves.
         public let request: UpdatePixieRequest
     }
@@ -53,12 +57,12 @@ public struct PixieModelPicker {
 
     /// Real models only (B94): choosing another engine's model names that engine too.
     private static func entries(of section: ModelSection, pixie: Pixie) -> [Entry] {
-        let own = section.provider == pixie.engine
-        let provider = own ? nil : section.provider
+        let provider = section.provider == pixie.engine ? nil : section.provider
         return section.catalog.models.map { info in
             Entry(
                 id: info.value, title: info.displayName, detail: info.description,
-                checked: own && section.catalog.isSelected(info, current: pixie.model),
+                checked: section.isSelected(info, provider: pixie.engine, model: pixie.model),
+                disabled: section.isDisabled(info), warns: section.warns(info),
                 request: UpdatePixieRequest(provider: provider, model: info.value))
         }
     }

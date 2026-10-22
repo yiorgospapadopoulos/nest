@@ -9,6 +9,7 @@ from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.configuration.engines import CodexLocations
 from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
+from nestd.local.service import LocalSetup
 from nestd.paths import AppPaths
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
@@ -19,6 +20,7 @@ from tests.fake_opener import FakeOpener
 from tests.fake_probe import FakeProbeFactory
 from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock, FakeSecretStore
+from tests.local_support import LocalMac
 from tests.push_support import no_network
 
 
@@ -73,6 +75,7 @@ async def build_context(
     claude: FakeClaude | None = None,
     codex: FakeAppServer | None = None,
     codex_home: Path | None = None,
+    local_setup: LocalSetup | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
@@ -101,6 +104,8 @@ async def build_context(
         codex_locations=codex_locations(tmp_path),
         # Never the real machine's name.
         machine=fake_machine_name,
+        # Never a real model server, the user's model folders or a started app.
+        local_setup=local_setup or LocalMac(tmp_path / "local").setup(),
     )
 
 

@@ -524,3 +524,115 @@
   font: var(--fs-micro) / 1.45 var(--mono);
   white-space: pre-wrap;
 }
+
+/* A row's note of something new, such as Features' "3 new", in the run colour with a dot. */
+.set .snew {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--fs-meta);
+  color: var(--run);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.set .sdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--run);
+}
+
+/* Features (B103): plain group rows, title left, count and an arrow right; an open group
+   lists its features, where to find each under its text. */
+.ft-intro {
+  margin: 10px 16px 14px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.ft-groups {
+  margin: 0 16px 16px;
+  border-top: 1px solid var(--div);
+}
+.ft-grp {
+  border-bottom: 1px solid var(--div);
+}
+.ft-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--row);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+.ft-name {
+  flex: 1;
+  min-width: 0;
+}
+.ft-dot {
+  flex: none;
+  margin-right: -4px;
+}
+.ft-n {
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.ft-cv {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--t3);
+  transition: transform 0.2s;
+}
+.ft-row[aria-expanded="true"] .ft-cv {
+  transform: rotate(90deg);
+}
+.ft-body {
+  padding: 0 0 6px 12px;
+}
+.feat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid var(--div);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+}
+.fname {
+  margin-right: 6px;
+}
+.fdesc {
+  color: var(--t2);
+}
+.fdesc code {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--soft);
+}
+.fwhere {
+  font-size: var(--fs-label);
+  color: var(--t3);
+}
+.fnew {
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--run);
+  background: color-mix(in srgb, var(--run) 16%, transparent);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ft-cv {
+    transition: none;
+  }
+}

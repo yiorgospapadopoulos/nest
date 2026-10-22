@@ -123,9 +123,10 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
 
 async def _run_server(paths: AppPaths, rt: Runtime, port: int | None) -> None:
     ctx = await AppContext.build(paths, rt.secrets, rt.clock)
+    ctx.port_flag = port
     try:
         app = create_app(ctx, restart=rt.restart)
-        await rt.serve(app, port if port is not None else ctx.settings.server.port)
+        await rt.serve(app, ctx.serving_port())
     finally:
         await ctx.close()
 

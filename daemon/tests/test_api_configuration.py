@@ -152,6 +152,19 @@ async def test_claude_signed_out_is_not_shown(api: Api) -> None:
     assert (await page(api))["engines"] == []
 
 
+async def test_both_engines_show_signed_out_while_local_models_are_used(api: Api) -> None:
+    """B106: either engine runs local chats without a sign in, so its setup stays editable."""
+    await sign_out_codex(api)
+    api.claude.replies[None, STATUS] = ['{"loggedIn": false}']
+    await api.ctx.local.use_local_only()
+
+    assert [section["id"] for section in (await page(api))["engines"]] == ["claude", "codex"]
+    response = await api.http.put(
+        "/api/configuration/uses-shared", json={"engine": "codex", "item": "skills", "on": True}
+    )
+    assert response.status_code == 200
+
+
 async def test_the_page_with_codex(
     api: Api, where: Locations, codex: FakeCodexSetup, tmp_path: Path
 ) -> None:

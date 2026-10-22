@@ -139,6 +139,15 @@ final class FakeAPI: NestAPI {
         var repoConfigurations: [String: RepoConfiguration] = [:]
         var codexPlugins: [CodexPlugin] = []
         var codexMarketplaces: [CodexMarketplace] = []
+        // Local models (B106)
+        var localList = LocalModelList(models: [])
+        var localFind = LocalFind(running: [], downloaded: [])
+        /// What checking answers, by address; others are unreachable.
+        var localChecks: [String: LocalCheck] = [:]
+        var localUsage = LocalUsage(todayTokens: 0)
+        var setup = SetupState(firstRun: false, localOnly: false)
+        /// Settings > Features (B103); a seen report answers it as it is then.
+        var features = FeaturesCatalog(groups: [], newCount: 0)
     }
 
     let state = Mutex(State())
@@ -1074,6 +1083,14 @@ final class FakeAPI: NestAPI {
         try call("restartService") { _ in }
     }
 
+    func features() async throws -> FeaturesCatalog {
+        try call("features") { $0.features }
+    }
+
+    func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+        try call("markFeaturesShown", ids.joined(separator: ",")) { $0.features }
+    }
+
     // MARK: Settings (B81)
 
     func repoBranches(_ name: String) async throws -> [String] {
@@ -1476,5 +1493,68 @@ final class FakeAPI: NestAPI {
         try call("removeCodexMarketplace", name) { state in
             state.codexMarketplaces.removeAll { $0.name == name }
         }
+    }
+
+    // MARK: Local models (B106)
+
+    func localModels() async throws -> LocalModelList {
+        try call("localModels") { $0.localList }
+    }
+
+    func findLocalModels() async throws -> LocalFind {
+        try call("findLocalModels") { $0.localFind }
+    }
+
+    func checkLocalServer(address: String, key: String?) async throws -> LocalCheck {
+        try call("checkLocalServer", "\(address) key=\(key ?? "none")") {
+            $0.localChecks[address] ?? LocalCheck(ok: false, error: .unreachable)
+        }
+    }
+
+    func addLocalModels(address: String, key: String?, models: [String]) async throws
+        -> [LocalModel]
+    {
+        try call(
+            "addLocalModels", "\(address) key=\(key ?? "none") \(models.joined(separator: ","))"
+        ) { state in
+            let added = models.map { model in
+                LocalModel(
+                    id: "lm_\(model)", serverID: address, model: model, name: model,
+                    address: address, hasKey: key != nil)
+            }
+            state.localList.models += added
+            return added
+        }
+    }
+
+    func removeLocalModel(_ id: String) async throws {
+        try call("removeLocalModel", id) { $0.localList.models.removeAll { $0.id == id } }
+    }
+
+    func setLocalEngine(_ engine: String) async throws {
+        try call("setLocalEngine", engine) { $0.localList.engine = engine }
+    }
+
+    func startLocalServer(_ app: LocalApp) async throws {
+        try call("startLocalServer", app.rawValue) { _ in }
+    }
+
+    func localUsage() async throws -> LocalUsage {
+        try call("localUsage") { $0.localUsage }
+    }
+
+    func setup() async throws -> SetupState {
+        try call("setup") { $0.setup }
+    }
+
+    func useLocalOnly() async throws {
+        try call("useLocalOnly") { state in
+            state.setup = SetupState(firstRun: false, localOnly: true)
+            state.localList.localOnly = true
+        }
+    }
+
+    func finishSetup() async throws {
+        try call("finishSetup") { $0.setup.firstRun = false }
     }
 }

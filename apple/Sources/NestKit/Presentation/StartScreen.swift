@@ -13,7 +13,7 @@ public struct StartScreen: Sendable, Equatable {
         public let line: NeedsYouLine
     }
 
-    /// One row of "Recent": a chat and when it was last active.
+    /// One row of "Recent chats": a chat and when it was last active.
     public struct Recent: Sendable, Hashable, Identifiable {
         public let chat: String
         public let title: String
@@ -71,16 +71,11 @@ public struct StartScreen: Sendable, Equatable {
         let open = issues.flatMap { $0.available ? $0.issues : nil } ?? []
         self.issues = open
         issueCount = open.count
-        showsIssues = !open.isEmpty || (issues.map { $0.available && $0.show == .mine } ?? false)
+        showsIssues = issues?.available ?? false
     }
 
     /// More issues than rows: the list scrolls.
     public var issuesScroll: Bool { issues.count > Self.issueRows }
-
-    /// The quiet line of Mine with nothing assigned.
-    public var issuesEmptyLine: String? {
-        showsIssues && issues.isEmpty ? "No open issues assigned to you" : nil
-    }
 
     /// "Open issues · 7".
     public var issuesLabel: String { "Open issues \u{00B7} \(issueCount)" }
