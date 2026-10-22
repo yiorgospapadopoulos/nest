@@ -526,6 +526,14 @@ const calls: Call[] = [
   ["devices", (a) => a.devices(), "GET", "/api/devices", undefined],
   ["revoke device", (a) => a.revokeDevice("d/1"), "DELETE", "/api/devices/d%2F1", undefined],
   ["pairing code", (a) => a.pairingCode(), "POST", "/api/pairing/codes", undefined],
+  ["features", (a) => a.features(), "GET", "/api/features", undefined],
+  [
+    "features seen",
+    (a) => a.markFeaturesSeen(["needs-you", "focus-dim"]),
+    "POST",
+    "/api/features/seen",
+    { ids: ["needs-you", "focus-dim"] },
+  ],
   ["plugins", (a) => a.plugins(), "GET", "/api/extensions/plugins", undefined],
   ["marketplaces", (a) => a.marketplaces(), "GET", "/api/extensions/marketplaces", undefined],
   [
