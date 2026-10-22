@@ -12,7 +12,8 @@ struct SettingsWindow: View {
     var body: some View {
         Group {
             if let shell = controller.shell {
-                SettingsView().environment(shell)
+                // A new identity for each daemon's model, so the pages load from it.
+                SettingsView().environment(shell).id(ObjectIdentifier(shell))
             } else {
                 Text("Nest is starting")
                     .font(.ui(TypeSize.ui))
@@ -41,6 +42,7 @@ struct SettingsView: View {
         .background(Palette.windowOpaque)
         .ignoresSafeArea()
         .overlay { ConfigurationModals() }
+        .overlay { PairDaemonModal() }
         .overlay { AddLocalModal() }
         .overlay(alignment: .top) {
             if let toast = shell.toast {

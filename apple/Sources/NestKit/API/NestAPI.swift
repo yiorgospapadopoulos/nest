@@ -222,6 +222,10 @@ public protocol NestAPI: Sendable {
     func revokeDevice(_ id: String) async throws
     /// How many devices get push notifications (B81).
     func pushStatus() async throws -> PushStatus
+    /// The daemon's version and machine name; needs no token (B105).
+    func health() async throws -> DaemonHealth
+    /// Restarts the daemon: it answers first, then launchd starts it again.
+    func restartService() async throws
     /// Settings > Features with what is new on this device (B103).
     func features() async throws -> FeaturesCatalog
     /// Reports the features this device shows; only the first report of each counts.

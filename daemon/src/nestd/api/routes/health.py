@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 
 from nestd import __version__
+from nestd.api.deps import Context
 from nestd.api.schemas import Health
 
 router = APIRouter()
 
 
 @router.get("/api/health")
-async def health() -> Health:
-    return Health(status="ok", version=__version__)
+async def health(ctx: Context) -> Health:
+    return Health(status="ok", version=__version__, machine=ctx.machine)

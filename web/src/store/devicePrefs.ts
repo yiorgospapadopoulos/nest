@@ -22,6 +22,26 @@ export function saveShowAutomated(storage: () => Storage, on: boolean): void {
   }
 }
 
+// The name of the machine whose daemon serves this app (B105), so the notice shown while it
+// cannot be reached can name it.
+export const MACHINE_KEY = "nest.machine";
+
+export function loadMachine(storage: () => Storage): string | null {
+  try {
+    return storage().getItem(MACHINE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveMachine(storage: () => Storage, machine: string): void {
+  try {
+    storage().setItem(MACHINE_KEY, machine);
+  } catch {
+    // Not remembered.
+  }
+}
+
 // The teams folded in the pixie list (B40), by id.
 export const FOLDED_TEAMS_KEY = "nest.foldedTeams";
 

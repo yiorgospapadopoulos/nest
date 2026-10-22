@@ -111,9 +111,13 @@ private struct ConnectorRow: View {
                         .help(
                             connector.managedOnClaudeAI
                                 ? "Opens claude.ai's connector settings"
-                                : "Runs claude /mcp in the terminal to sign in"
+                                : shell.isRemote
+                                    ? DaemonText.terminalOff(shell.machineName)
+                                    : "Runs claude /mcp in the terminal to sign in"
                         )
                         .accessibilityLabel("Sign in to \(connector.displayName)")
+                        // A server's sign-in runs in a terminal on this Mac (B105).
+                        .disabled(shell.isRemote && !connector.managedOnClaudeAI)
                 } else if state != .connected {
                     Button(
                         connector.managedOnClaudeAI

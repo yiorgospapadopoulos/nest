@@ -114,6 +114,7 @@ private struct ProjectMenu: View {
             } label: {
                 Label("New terminal", systemImage: Icon.terminal)
             }
+            .localOnly(shell, DaemonText.terminalOff)
             Button {
                 shell.newBrowser()
             } label: {
@@ -126,21 +127,29 @@ private struct ProjectMenu: View {
                 Label("Open in VS Code", systemImage: Icon.code)
             }
             .shortcut(.openInVSCode, shell)
+            .localOnly(shell, DaemonText.appsOff)
             Button {
                 shell.openProject(in: .finder)
             } label: {
                 Label("Reveal in Finder", systemImage: Icon.folder)
             }
+            .localOnly(shell, DaemonText.appsOff)
             Button {
                 shell.openProject(in: .terminal)
             } label: {
                 Label("Open in Terminal", systemImage: Icon.terminal)
             }
+            .localOnly(shell, DaemonText.appsOff)
             Divider()
+            if shell.isRemote {
+                Text(DaemonText.appsOff(shell.machineName))
+            }
             Button {
                 shell.copyProjectPath()
             } label: {
-                Label("Copy path", systemImage: Icon.copy)
+                Label(
+                    shell.isRemote ? DaemonText.copyPath(shell.machineName) : "Copy path",
+                    systemImage: Icon.copy)
             }
             Divider()
             Button {

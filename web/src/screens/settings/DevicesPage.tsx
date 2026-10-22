@@ -9,7 +9,7 @@ import { Section } from "./rows.tsx";
 
 /** The paired devices, each but this one and the Mac with Revoke, and Pair a device. */
 export function DevicesPage() {
-  const { actions } = useStore();
+  const { state, actions } = useStore();
   const [devices, setDevices] = useState<ListedDevice[] | null>(null);
   const [asking, setAsking] = useState<ListedDevice | null>(null);
   // Revoked here since the list loaded.
@@ -44,7 +44,7 @@ export function DevicesPage() {
               </span>
               <span className="slab">
                 {device.name}
-                {device.is_local && <span className="hint">This Mac</span>}
+                {device.is_local && <span className="hint">{state.machine ?? "This Mac"}</span>}
                 {device.this_device && <span className="hint">This device</span>}
               </span>
             </span>

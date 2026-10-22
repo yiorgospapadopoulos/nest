@@ -65,6 +65,7 @@ import {
   loadUsageBarHidden,
   saveFeatureGroups,
   saveFoldedTeams,
+  saveMachine,
   saveShowAutomated,
   saveUsageBarHidden,
 } from "./devicePrefs.ts";
@@ -436,6 +437,14 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     }
   }
 
+  /** The daemon machine's name, kept for the next start; an older daemon has none. */
+  async function learnMachine(): Promise<void> {
+    const machine = (await quietly(() => api.health()))?.machine;
+    if (machine === undefined) return;
+    saveMachine(storage, machine);
+    dispatch({ type: "machine", machine });
+  }
+
   const settings = settingsActions(api, { dispatch, attempt, quietly, toast });
 
   return {
@@ -648,10 +657,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       if (event.type === "configuration.changed") void settings.configurationChanged(event.payload);
     },
 
-    retry: () => {
+    retry: async () => {
       dispatch({ type: "auth", auth: "loading" });
-      return load();
+      await Promise.all([load(), learnMachine()]);
     },
+
+    learnMachine,
 
     /** Resolves to an error message for the pairing screen, or null once paired. */
     async pair(code: string, deviceName: string): Promise<string | null> {

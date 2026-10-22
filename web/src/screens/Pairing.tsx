@@ -10,7 +10,7 @@ function normalizeCode(text: string): string {
 }
 
 export function Pairing() {
-  const { actions } = useStore();
+  const { state, actions, address } = useStore();
   const [code, setCode] = useState("");
   const [name, setName] = useState("iPhone");
   const [error, setError] = useState<string | null>(null);
@@ -32,10 +32,12 @@ export function Pairing() {
   return (
     <main className="center">
       <form className="pair gl" onSubmit={(e) => void submit(e)} aria-labelledby="pair-title">
-        <h1 id="pair-title">Pair this iPhone</h1>
+        <h1 id="pair-title">
+          {state.machine === null ? "Pair this iPhone" : `Pair with ${state.machine}`}
+        </h1>
         <p>
-          On your Mac, run <code>nestd pair</code> or open Pairing in the Nest app, then enter the
-          code it shows.
+          On {state.machine ?? "your Mac"}, run <code>nestd pair</code>, or open Settings &gt;
+          Devices in a Nest app connected to it, then enter the code it shows.
         </p>
         <label className="flbl" htmlFor="pair-code">
           Pairing code
@@ -72,6 +74,7 @@ export function Pairing() {
         <button className="b b-pri" type="submit" disabled={!ready}>
           {busy ? "Pairing..." : "Pair"}
         </button>
+        <p className="mono paddr">{address}</p>
       </form>
     </main>
   );

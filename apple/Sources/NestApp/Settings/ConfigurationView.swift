@@ -99,6 +99,7 @@ private struct SharedSection: View {
                 .buttonStyle(.nest())
             Button("Open folder") { LocalOpen.folder(shared.skills.folder) }
                 .buttonStyle(.nest())
+                .localOnly(shell, DaemonText.appsOff)
         }
         ForEach(ConfigurationText.shownSkills(skills, showAll: store.showsAllSkills)) { skill in
             SkillRow(skill: skill, codexIn: codexIn)
@@ -197,6 +198,7 @@ private struct SkillRow: View {
                 Text("read only").foregroundStyle(Palette.t3)
                 Button("Open") { LocalOpen.defaultApp(skill.path) }
                     .buttonStyle(.nest(.plain))
+                    .localOnly(shell, DaemonText.appsOff)
             } else {
                 Button("Edit") {
                     shell.editConfiguration(skill.path, title: skill.name, note: "skill")
@@ -206,6 +208,7 @@ private struct SkillRow: View {
         }
         .contextMenu {
             Button("Reveal in Finder") { LocalOpen.reveal(skill.path) }
+                .localOnly(shell, DaemonText.appsOff)
             if skill.source == .yours {
                 Button("Remove \(skill.name)") {
                     shell.settingsChange("Could not remove \(skill.name)") {
@@ -511,6 +514,8 @@ private struct EngineItemRow: View {
                     }
                 }
                 .buttonStyle(.nest())
+                // A folder opens in Finder on this Mac (B105); a file edits over the API.
+                .localOnly(shell, when: item.folder, DaemonText.appsOff)
             }
             if item.kind == .plugins {
                 pluginButtons(key: key)
@@ -799,6 +804,7 @@ struct ConfigChip: View {
 /// "Open in VS Code" with a menu for the default app and Finder.
 struct OpenMenu: View {
     let path: String
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         HStack(spacing: 1) {
@@ -816,10 +822,12 @@ struct OpenMenu: View {
             .fixedSize()
             .accessibilityLabel("More ways to open")
         }
+        .localOnly(shell, DaemonText.appsOff)
     }
 }
 
-/// Opens configuration files on this Mac, where the daemon is too.
+/// Opens configuration files on this Mac, where the daemon is too; off while connected
+/// to a daemon on another machine (`localOnly`).
 enum LocalOpen {
     static let vscodeID = "com.microsoft.VSCode"
 

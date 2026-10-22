@@ -210,6 +210,32 @@ final class Shell {
     /// The projects' branch maps (B96).
     var branchMaps: BranchMapStore { model.branchMaps }
 
+    /// Connected to a daemon on another machine (B105): what opens apps or a shell on this
+    /// Mac is off, as it would act on the wrong machine.
+    var isRemote: Bool { model.isRemote }
+    /// The daemon's machine, "This Mac" when local.
+    var machineName: String { model.machineName }
+
+    /// What a new window model takes over from the one it replaces when the window
+    /// switches daemons: the Settings window's page (a project page only stays on This
+    /// Mac's projects it has) and how windows open.
+    func keepSettings(of old: Shell) {
+        openWindow = old.openWindow
+        if case .project = old.settingsPage {
+            settingsPage = .general
+        } else {
+            settingsPage = old.settingsPage
+        }
+        settingsQuery = old.settingsQuery
+    }
+
+    /// Off while remote: says so instead (B105).
+    private func localOnly(_ why: String) -> Bool {
+        guard isRemote else { return true }
+        show(why, kind: .info)
+        return false
+    }
+
     /// The Claude account's name, else the Mac user's.
     var accountName: String { agents.accountName(fallback: userName) }
 
@@ -1323,7 +1349,8 @@ final class Shell {
     /// Run in terminal. A command of several lines is not run (`TerminalInput`), nor one
     /// whose folder is gone.
     func runInTerminal(command: String, from chat: String?) {
-        guard let project, let line = TerminalInput.line(for: command),
+        guard localOnly(DaemonText.terminalOff(machineName)), let project,
+            let line = TerminalInput.line(for: command),
             let place = model.terminalFolder(forPane: chat, project: project)
         else {
             return
@@ -1351,6 +1378,7 @@ final class Shell {
         case .browser(let url):
             NSWorkspace.shared.open(url)
         case .terminal(let command):
+            guard localOnly(DaemonText.terminalOff(machineName)) else { return }
             guard project != nil else {
                 show("Open a project to sign in to \(connector.displayName)", kind: .info)
                 return
@@ -1372,6 +1400,7 @@ final class Shell {
     /// "Terminal here": the folder's terminal pane, focused, or a new one; nothing opens
     /// for a folder that is gone.
     func openTerminal(in folder: String) {
+        guard localOnly(DaemonText.terminalOff(machineName)) else { return }
         guard TerminalFolder.exists(folder) else {
             show(TerminalFolder.goneMessage, kind: .failed)
             return
@@ -1382,7 +1411,7 @@ final class Shell {
 
     /// A new terminal pane in the project folder.
     func newTerminal() {
-        guard let path = repo?.path else { return }
+        guard localOnly(DaemonText.terminalOff(machineName)), let path = repo?.path else { return }
         pixiesOpen = false
         let size = workspaceSize
         update { $0.openTool(.terminal(in: path), in: size) }
@@ -1392,6 +1421,7 @@ final class Shell {
     /// folder, or a new one there; without a focused chat, the project's terminal pane, or
     /// a new one in the project folder. Nothing opens for a chat whose folder is gone.
     func openProjectTerminal() {
+        guard localOnly(DaemonText.terminalOff(machineName)) else { return }
         let target = model.terminalButtonTarget(
             focusedPane: projectState.layout.focused, project: project)
         let size = workspaceSize
@@ -1580,6 +1610,7 @@ final class Shell {
     }
 
     func continueInClaudeCode(_ id: String) {
+        guard localOnly(DaemonText.appsOff(machineName)) else { return }
         run("Could not open Claude Code") {
             let launch = try await self.sessions.openInClaudeCode(id)
             self.show(
@@ -1590,7 +1621,7 @@ final class Shell {
     // MARK: Project actions
 
     func openProject(in target: RepoApp) {
-        guard let name = project else { return }
+        guard localOnly(DaemonText.appsOff(machineName)), let name = project else { return }
         run("Could not open the project") { try await self.app.openProject(name, in: target) }
     }
 
@@ -1606,6 +1637,18 @@ final class Shell {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         show("Copied", kind: .done)
+    }
+
+    /// A folder typed on a remote, as its daemon's machine knows it (`~` is its home
+    /// there): registered with the daemon, then its settings page.
+    func addRemoteProject(path: String) {
+        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        run("Could not add the project") {
+            let repo = try await self.app.addProject(path: path)
+            self.pixiesOpen = false
+            self.openSettings(.project(repo.name))
+        }
     }
 
     /// Opens a folder as a project, registering it with the daemon when it is new.

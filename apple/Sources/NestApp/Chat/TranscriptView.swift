@@ -601,6 +601,7 @@ private struct CommandBlock: View {
                         Label("Run in terminal", systemImage: Icon.terminal)
                     }
                     .help("Run the command in a terminal pane in the chat's folder")
+                    .localOnly(shell, DaemonText.terminalOff)
                 }
             }
             .buttonStyle(.nest(.plain, height: 22))

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta, tzinfo
 from functools import partial
@@ -74,6 +74,7 @@ from nestd.local.models import is_local
 from nestd.local.service import LocalModels, LocalSetup
 from nestd.local.store import LocalStore
 from nestd.local_apps.apps import LocalApps
+from nestd.machine import machine_name
 from nestd.modules.registry import Module, ModuleRegistry
 from nestd.notifications.delivery import NotificationDelivery
 from nestd.notifications.notifier import Notifier
@@ -209,6 +210,8 @@ class AppContext:
     features: Features
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
+    # The machine's name for people, for clients on other machines (B105).
+    machine: str
     # Model servers on this Mac or the network (B106).
     local: LocalModels
     # The port `nestd serve --port` gave, which wins over the settings' one.
@@ -237,6 +240,7 @@ class AppContext:
         claude_locations: ClaudeLocations | None = None,
         codex_transport: TransportFactory = spawn,
         codex_locations: CodexLocations | None = None,
+        machine: Callable[[], Awaitable[str]] = machine_name,
         local_setup: LocalSetup | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
@@ -252,7 +256,8 @@ class AppContext:
         command line and Claude Code's installer (D104), and `claude_locations` says where
         a standalone Claude Code may be. `codex_transport` starts Codex's app-server
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
-        may be. `local_setup` is what local models reach: the network and the apps' folders.
+        may be. `machine` reads the machine's name, once. `local_setup` is what local
+        models reach: the network and the apps' folders.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -742,6 +747,7 @@ class AppContext:
             token_socket=None
             if paths.token_socket is None
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
+            machine=await machine(),
             local=local,
         )
         return context
