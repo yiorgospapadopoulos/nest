@@ -220,14 +220,23 @@ public final class AppModel {
     /// The live sync `connect()` started last.
     private var liveTask: Task<Void, Never>?
 
+    /// The daemon this model talks to (B105).
+    public let link: DaemonLink
+    let now: @Sendable () -> Date
+
+    /// `daemonPreferences` keeps what belongs to this daemon, its tabs and panes, apart
+    /// from the app's own look and shortcuts in `preferences`.
     public init(
         api: any NestAPI, events: any EventSource,
-        preferences: any KeyValueStore = UserDefaultsStore(), calendar: Calendar = .current,
-        now: @escaping @Sendable () -> Date = { Date() }
+        preferences: any KeyValueStore = UserDefaultsStore(),
+        daemonPreferences: (any KeyValueStore)? = nil, calendar: Calendar = .current,
+        now: @escaping @Sendable () -> Date = { Date() }, link: DaemonLink = DaemonLink()
     ) {
         self.api = api
+        self.link = link
+        self.now = now
         approvals = ApprovalsStore(api: api)
-        app = AppStore(api: api, store: preferences)
+        app = AppStore(api: api, store: daemonPreferences ?? preferences)
         sessions = SessionsStore(api: api, approvals: approvals)
         activity = ActivityStore(api: api)
         transcripts = Transcripts(api: api)
@@ -238,7 +247,7 @@ public final class AppModel {
         completions = CompletionStore(api: api)
         bash = BashStore(api: api)
         images = AttachmentImages(api: api)
-        devices = DevicesStore(api: api, now: now)
+        devices = DevicesStore(api: api, now: now, link: link)
         visibility = VisibilityReporter(api: api, now: now)
         search = MessageSearch(api: api)
         stuck = StuckSettingsStore(api: api)
@@ -257,7 +266,7 @@ public final class AppModel {
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)
-        issues = IssuesStore(api: api, store: preferences)
+        issues = IssuesStore(api: api, store: daemonPreferences ?? preferences)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
@@ -266,7 +275,27 @@ public final class AppModel {
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
             configuration: configuration, artifacts: artifacts, branchMaps: branchMaps)
         // A restarted daemon has forgotten that this app is on screen.
-        live.onConnected = { [visibility] in visibility.resend() }
+        live.onConnected = { [weak self, visibility] in
+            visibility.resend()
+            Task { await self?.noteConnected() }
+        }
+    }
+
+    public var isRemote: Bool { link.isRemote }
+    /// The remote's machine name, or "This Mac".
+    public var machineName: String { link.machineName }
+
+    /// A connect to a remote reads its machine name again; This Mac asks nothing.
+    func noteConnected() async {
+        guard link.isRemote else { return }
+        let machine = try? await api.health().machine
+        link.seen(machine: machine, at: now())
+    }
+
+    /// Restarts the daemon over its API, as the PWA does: for a remote, whose service
+    /// this Mac cannot start.
+    public func restartDaemon() async throws {
+        try await api.restartService()
     }
 
     /// Whether a device token is in use; false while the daemon was not running to give one.
@@ -300,6 +329,14 @@ public final class AppModel {
         return failure
     }
 
+    /// Stops the live sync and tells the daemon the app is no longer on screen, as when the
+    /// window switches to another daemon.
+    public func close() {
+        liveTask?.cancel()
+        liveTask = nil
+        visibility.update(visible: false)
+    }
+
     /// Runs the live sync. When the daemon refuses the token, it is asked for again once,
     /// and a different one connects at once: the daemon started after the app, or made a
     /// new token. Otherwise the refusal stays for the user's Retry.
@@ -328,6 +365,23 @@ public final class AppModel {
         let model = AppModel(
             api: APIClient(token: token, baseURL: baseURL),
             events: EventStream(token: token, baseURL: baseURL))
+        model.tokens = (tokens, token)
+        return model
+    }
+
+    /// The model for a paired daemon on another machine, with the token from its Keychain
+    /// item; without one it starts without a token, which the daemon refuses. Its tabs
+    /// and panes are kept under its own prefix in the preferences.
+    public static func remote(
+        _ daemon: RemoteDaemon, tokens: any TokenStore,
+        preferences: any KeyValueStore = UserDefaultsStore()
+    ) async throws -> AppModel {
+        let token = DeviceToken(try await read(tokens) ?? "")
+        let model = AppModel(
+            api: APIClient(token: token, baseURL: daemon.baseURL),
+            events: EventStream(token: token, baseURL: daemon.baseURL), preferences: preferences,
+            daemonPreferences: PrefixedStore(preferences, prefix: daemon.preferencesPrefix),
+            link: DaemonLink(remote: daemon))
         model.tokens = (tokens, token)
         return model
     }

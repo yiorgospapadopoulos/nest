@@ -267,6 +267,36 @@ public struct PairingCode: Decodable, Sendable, Hashable {
     }
 }
 
+/// A redeemed pairing code: the new device and its token, which the daemon shows once.
+public struct RedeemedPairing: Decodable, Sendable, Hashable {
+    public var device: Device
+    public var token: String
+}
+
+struct RedeemRequest: Encodable {
+    let code: String
+    let deviceName: String
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case deviceName = "device_name"
+    }
+}
+
+/// `GET /api/health`, which needs no token; `machine` is the daemon machine's name for
+/// people, absent from daemons before B105.
+public struct DaemonHealth: Codable, Sendable, Hashable {
+    public var status: String
+    public var version: String
+    public var machine: String?
+
+    public init(status: String, version: String, machine: String? = nil) {
+        self.status = status
+        self.version = version
+        self.machine = machine
+    }
+}
+
 public struct Attachment: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var filename: String

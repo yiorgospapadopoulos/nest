@@ -14,10 +14,39 @@ public final class DevicesStore {
 
     let api: any NestAPI
     let now: @Sendable () -> Date
+    /// The daemon the list is of: This Mac's, or a remote's (B105).
+    let link: DaemonLink
 
-    public init(api: any NestAPI, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(
+        api: any NestAPI, now: @escaping @Sendable () -> Date = { Date() },
+        link: DaemonLink = DaemonLink()
+    ) {
         self.api = api
         self.now = now
+        self.link = link
+    }
+
+    /// This Mac's device on a remote daemon; nil on This Mac's, where it is the local one.
+    public var thisMacDevice: String? { link.remote?.deviceID }
+
+    /// "Paired with This Mac", or with the remote machine.
+    public var pairedWith: String { "Paired with \(link.machineName)" }
+
+    /// A remote daemon's own device goes by its machine's name.
+    public func title(_ device: Device) -> String {
+        link.isRemote && device.isLocal ? link.machineName : device.name
+    }
+
+    /// "This Mac" for this Mac's device, "The daemon's machine" for a remote's own, else
+    /// when it was last seen.
+    public func detail(_ device: Device) -> String {
+        if link.isRemote && device.isLocal {
+            return "The daemon's machine"
+        }
+        if device.isLocal || device.id == thisMacDevice {
+            return DaemonText.thisMac
+        }
+        return lastSeenText(device)
     }
 
     public func load() async throws {
@@ -71,9 +100,10 @@ public final class DevicesStore {
         return "Expires in \(seconds / 60):" + String(format: "%02d", seconds % 60)
     }
 
-    /// This Mac's own token cannot be revoked from here; it would lock the app out.
+    /// This Mac's own token cannot be revoked from here, nor the daemon's own on a remote:
+    /// either would lock the app out.
     public func canRevoke(_ device: Device) -> Bool {
-        !device.isLocal
+        !device.isLocal && device.id != thisMacDevice
     }
 
     /// "This device", "Last seen 5m ago", "Last seen now" or "Not seen yet".
