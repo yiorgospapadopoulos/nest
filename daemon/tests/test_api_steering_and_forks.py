@@ -107,6 +107,8 @@ async def two_turns(api: Api) -> tuple[str, int, int]:
     await reach(api, session_id, "idle", results=1)
     await api.http.post(f"/api/sessions/{session_id}/messages", json={"text": "second"})
     await reach(api, session_id, "idle", results=2)
+    # The turn's "finished" notice lands just after the idle state; wait so it is not new.
+    await notified(api, session_id, "finished", count=2)
     first, second = await user_messages(api, session_id)
     return session_id, first, second
 
