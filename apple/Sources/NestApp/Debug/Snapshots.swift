@@ -252,6 +252,10 @@
                 try await renderIssues(model, shell, controller, folder)
                 return
             }
+            if only == "b103" {
+                try await renderFeatures(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("cv-page") { state in
                 state.openChat("c1", in: workspace)
@@ -385,6 +389,36 @@
             try await renderConfiguration(model, shell, controller, folder)
             try await renderAccounts(model, shell, controller, folder)
             try await renderIssues(model, shell, controller, folder)
+        }
+
+        /// B103: General with the Features row's count and dot before the page is seen; then
+        /// Settings > Features with the groups that hold something new open, their dots and New
+        /// badges, the sidebar's count still there once the page showed; Chats opened too (its
+        /// inline code); the search finding the page by a feature's name; and the page after
+        /// Settings closed and opened again, without badges, dots or count.
+        private static func renderFeatures(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            let store = model.features
+            // One visit across several renders, each its own Settings window.
+            sample.holdFeatureReports(true)
+            try await store.load()
+            try await pairSettings(controller, .general, "b103-sidebar-count", folder)
+            try await pairSettings(controller, .features, "b103-features", folder, height: 900)
+            if let chats = store.catalog?.groups.first(where: { $0.id == "chats" }) {
+                store.toggle(chats)
+            }
+            try await pairSettings(
+                controller, .features, "b103-features-chats-open", folder, height: 1_100)
+            shell.settingsQuery = "branch map"
+            try await pairSettings(controller, .features, "b103-search", folder)
+            shell.settingsQuery = ""
+            // Settings opened again: the reports reach the daemon and a new visit starts.
+            sample.holdFeatureReports(false)
+            store.beginVisit()
+            try await store.load()
+            try await pairSettings(controller, .features, "b103-after-close", folder)
         }
 
         /// B101: the start screen's open issues, and its draft once one is clicked; a chat

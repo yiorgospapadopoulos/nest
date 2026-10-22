@@ -7,6 +7,8 @@ public enum SettingsPage: Sendable, Hashable {
     case shortcuts
     /// What the agents read, shared and per engine (B97); replaces Extensions.
     case configuration
+    /// What makes Nest different, by area, with what is new (B103).
+    case features
     /// A project's page, by repo name.
     case project(String)
     case addProject
@@ -14,7 +16,7 @@ public enum SettingsPage: Sendable, Hashable {
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
         .general, .appearance, .notifications, .agents, .usage, .storage, .pixies,
-        .accounts, .devices, .shortcuts, .configuration,
+        .accounts, .devices, .shortcuts, .configuration, .features,
     ]
 
     public var title: String {
@@ -30,6 +32,7 @@ public enum SettingsPage: Sendable, Hashable {
         case .devices: "Devices"
         case .shortcuts: "Keyboard shortcuts"
         case .configuration: "Configuration"
+        case .features: "Features"
         case .project(let name): name
         case .addProject: "Add project"
         }
@@ -87,6 +90,8 @@ public enum SettingsPage: Sendable, Hashable {
                 "Permission rules", "Settings file", "Rules", "config.toml",
             ]
         case .devices: ["Pair a device", "Revoke", "iPhone"]
+        // The groups' and features' names come from the daemon, through `listed`.
+        case .features: ["New"]
         case .shortcuts:
             ["Restore defaults"] + ShortcutGroup.allCases.map(\.rawValue)
                 + ShortcutAction.allCases.map(\.title)
@@ -101,21 +106,22 @@ public enum SettingsPage: Sendable, Hashable {
         }
     }
 
-    /// Whether the page's title or one of its rows contains the query, ignoring case and
-    /// surrounding spaces; an empty query matches every page.
-    public func matches(_ query: String) -> Bool {
+    /// Whether the page's title, one of its rows or one of the `extra` labels contains the
+    /// query, ignoring case and surrounding spaces; an empty query matches every page.
+    public func matches(_ query: String, extra: [String] = []) -> Bool {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return true }
-        return ([title] + labels).contains { $0.localizedCaseInsensitiveContains(query) }
+        return ([title] + labels + extra).contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     /// The sidebar's pages: the fixed ones, each project, then Add project, as the query
-    /// leaves them.
-    public static func listed(projects: [String], query: String) -> (
+    /// leaves them. `features` are the Features page's group and feature names.
+    public static func listed(projects: [String], query: String, features: [String] = []) -> (
         pages: [SettingsPage], projects: [SettingsPage]
     ) {
         let projectPages = projects.map(SettingsPage.project) + [.addProject]
-        return (fixed.filter { $0.matches(query) }, projectPages.filter { $0.matches(query) })
+        let pages = fixed.filter { $0.matches(query, extra: $0 == .features ? features : []) }
+        return (pages, projectPages.filter { $0.matches(query) })
     }
 }
 
