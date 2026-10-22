@@ -8,7 +8,7 @@
 export type Tab = "inbox" | "projects" | "settings";
 
 // The Settings pages, in the order the list shows them (B81), as the Mac's: Configuration
-// replaced Extensions (B102).
+// replaced Extensions (B102), and Features follows it (B103).
 export const SETTINGS_PAGES = [
   "general",
   "appearance",
@@ -20,6 +20,7 @@ export const SETTINGS_PAGES = [
   "accounts",
   "devices",
   "configuration",
+  "features",
 ] as const;
 
 export type SettingsPageId = (typeof SETTINGS_PAGES)[number];

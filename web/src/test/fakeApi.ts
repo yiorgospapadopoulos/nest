@@ -35,6 +35,7 @@ import {
   codexPlugins,
   configurationPage,
   copyPreview,
+  featuresCatalog,
   engineLimits,
   projectConfiguration,
 } from "./fixtures.ts";
@@ -231,6 +232,8 @@ export function fakeApi(): FakeApi {
     pairingCode: vi
       .fn<Api["pairingCode"]>()
       .mockResolvedValue({ code: "ABCD2345", expires_at: "2026-10-06T10:10:00Z" }),
+    features: vi.fn<Api["features"]>().mockResolvedValue(featuresCatalog()),
+    markFeaturesSeen: vi.fn<Api["markFeaturesSeen"]>().mockResolvedValue(featuresCatalog()),
     plugins: vi.fn<Api["plugins"]>().mockResolvedValue([installedPlugin()]),
     marketplaces: vi.fn<Api["marketplaces"]>().mockResolvedValue([marketplace()]),
     addMarketplace: vi.fn<Api["addMarketplace"]>().mockResolvedValue(null),

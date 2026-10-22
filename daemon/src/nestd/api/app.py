@@ -22,6 +22,7 @@ from nestd.api.routes import (
     engine,
     events,
     extensions,
+    features,
     goals,
     health,
     issues,
@@ -160,6 +161,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         claude_code,
         extensions,
         configuration,
+        features,
     ):
         app.include_router(module.router)
     # The engines reach local models' servers through it (B106); not under device auth.

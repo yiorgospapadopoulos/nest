@@ -211,6 +211,8 @@ public final class AppModel {
     public let extensions: ExtensionsStore
     /// Settings > Configuration (B97).
     public let configuration: ConfigurationStore
+    /// Settings > Features (B103).
+    public let features: FeaturesStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -259,6 +261,7 @@ public final class AppModel {
         accounts = AccountsStore(api: api)
         extensions = ExtensionsStore(api: api)
         configuration = ConfigurationStore(api: api)
+        features = FeaturesStore(api: api, store: preferences)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)

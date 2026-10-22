@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { SETTINGS_PAGES, type SettingsPage, type SettingsPageId } from "../../routes.ts";
 import { useStore } from "../../store/context.ts";
 import { ProjectIcon } from "../../ui/bits.tsx";
@@ -9,6 +9,8 @@ import { AgentsPage } from "./AgentsPage.tsx";
 import { AppearancePage } from "./AppearancePage.tsx";
 import { ConfigurationView } from "./Configuration.tsx";
 import { DevicesPage } from "./DevicesPage.tsx";
+import { newCount } from "./featureNew.ts";
+import { FeaturesPage } from "./FeaturesPage.tsx";
 import { GeneralPage } from "./GeneralPage.tsx";
 import { NotificationsPage } from "./NotificationsPage.tsx";
 import { PixiesPage } from "./PixiesPage.tsx";
@@ -29,6 +31,7 @@ const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   accounts: { title: "Accounts", icon: "user" },
   devices: { title: "Devices", icon: "devices" },
   configuration: { title: "Configuration", icon: "list" },
+  features: { title: "Features", icon: "book" },
 };
 
 interface Props {
@@ -52,6 +55,10 @@ export function Settings(props: Props) {
 
 function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
   const { state, actions } = useStore();
+  // The features new when the Features page first showed in this visit to the tab (B103):
+  // they keep their badges and the row's count until the user leaves Settings, though the Mac
+  // stops counting them.
+  const [visitNew, setVisitNew] = useState<string[] | null>(null);
 
   useEffect(() => {
     void actions.loadAccount();
@@ -67,6 +74,8 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
   }, [gone, onBack]);
 
   if (page === null) {
+    const catalog = state.settings.features;
+    const fresh = catalog === null ? 0 : newCount(catalog, visitNew);
     return (
       <>
         <div className="snav">
@@ -78,6 +87,7 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
               key={id}
               icon={<Icon name={PAGES[id].icon} className="sico" />}
               label={PAGES[id].title}
+              {...(id === "features" && fresh > 0 ? { news: `${String(fresh)} new` } : {})}
               onOpen={() => {
                 onPage({ page: id });
               }}
@@ -144,6 +154,7 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
     accounts: () => <AccountsPage />,
     devices: () => <DevicesPage />,
     configuration: () => <ConfigurationView />,
+    features: () => <FeaturesPage visitNew={visitNew} onShow={setVisitNew} />,
   };
   return (
     <PageFrame title={PAGES[page.page].title} back={back} onBack={onBack}>

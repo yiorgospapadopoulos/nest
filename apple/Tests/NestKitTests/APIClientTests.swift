@@ -787,6 +787,13 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("DELETE", "/api/devices/dev-phone", response: "") {
             try await $0.revokeDevice("dev-phone")
         },
+        RouteCase("GET", "/api/features", response: Fixture.text("features")) {
+            _ = try await $0.features()
+        },
+        RouteCase(
+            "POST", "/api/features/seen", body: #"{"ids":["branch-map","review"]}"#,
+            response: Fixture.text("features")
+        ) { _ = try await $0.markFeaturesShown(["branch-map", "review"]) },
         RouteCase("GET", "/api/repos/cv-page/commands", response: commandsJSON) {
             _ = try await $0.repoCommands("cv-page")
         },

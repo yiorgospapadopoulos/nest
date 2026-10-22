@@ -19,6 +19,10 @@
         private var openElsewhere: Set<String> = []
         /// Manual usage refreshes so far; the daemon refuses one within 20 s of another.
         private var refreshes = 0
+        /// The features this device has shown (B103); they are new no more.
+        private var shownFeatures: Set<String> = []
+        private var featureReportsHeld = false
+        private var heldFeatureReports: Set<String> = []
         private var usage = UsageSettings(refreshMinutes: 3)
         private var archiveDays: Int? = 30
         private var pixieDefaults = PixieSettings()
@@ -1278,6 +1282,34 @@
         func revokeDevice(_ id: String) async throws {}
 
         func pushStatus() async throws -> PushStatus { PushStatus(devices: 1) }
+
+        func features() async throws -> FeaturesCatalog {
+            lock.withLock { SampleFeatures.catalog(shown: shownFeatures) }
+        }
+
+        func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+            lock.withLock {
+                if featureReportsHeld {
+                    heldFeatureReports.formUnion(ids)
+                } else {
+                    shownFeatures.formUnion(ids)
+                }
+                return SampleFeatures.catalog(shown: shownFeatures)
+            }
+        }
+
+        /// While held, the features' seen reports wait: each snapshot renders in a fresh
+        /// Settings window, which starts a new visit, so one visit's light and dark renders
+        /// would otherwise differ. Releasing applies the waiting reports.
+        func holdFeatureReports(_ held: Bool) {
+            lock.withLock {
+                featureReportsHeld = held
+                if !held {
+                    shownFeatures.formUnion(heldFeatureReports)
+                    heldFeatureReports = []
+                }
+            }
+        }
 
         // MARK: Settings (B81)
 
