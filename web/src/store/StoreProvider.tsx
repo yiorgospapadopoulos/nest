@@ -7,6 +7,7 @@ import { createActions } from "./actions.ts";
 import {
   loadDrafts,
   loadFoldedTeams,
+  loadMachine,
   loadShowAutomated,
   loadUsageBarHidden,
   saveDrafts,
@@ -38,6 +39,7 @@ export function StoreProvider({
     foldedTeams: loadFoldedTeams(from),
     usageBarHidden: loadUsageBarHidden(from),
     drafts: loadDrafts(from),
+    machine: loadMachine(from),
   }));
   const actions = useMemo(() => createActions(api, dispatch, storage), [api, storage]);
   const ready = state.auth === "ready";
@@ -49,6 +51,7 @@ export function StoreProvider({
 
   useEffect(() => {
     void actions.load();
+    void actions.learnMachine();
   }, [actions]);
 
   useEffect(() => {
@@ -103,6 +106,7 @@ export function StoreProvider({
     if (ready) void actions.refreshPush(browserPushEnv(window));
   }, [ready, actions]);
 
-  const value = useMemo(() => ({ state, actions }), [state, actions]);
+  const address = location.host;
+  const value = useMemo(() => ({ state, actions, address }), [state, actions, address]);
   return <StoreContext value={value}>{children}</StoreContext>;
 }

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { loadUsageBarHidden, saveUsageBarHidden, USAGE_BAR_HIDDEN_KEY } from "./devicePrefs.ts";
+import {
+  loadMachine,
+  loadUsageBarHidden,
+  MACHINE_KEY,
+  saveMachine,
+  saveUsageBarHidden,
+  USAGE_BAR_HIDDEN_KEY,
+} from "./devicePrefs.ts";
 
 const broken = (): Storage => {
   throw new Error("blocked");
@@ -30,6 +37,22 @@ describe("the usage bar's engines on this device (B102 item 29)", () => {
     expect(loadUsageBarHidden(broken)).toEqual([]);
     expect(() => {
       saveUsageBarHidden(broken, ["codex"]);
+    }).not.toThrow();
+  });
+});
+
+describe("the daemon's machine name (B105)", () => {
+  it("keeps the last name learned", () => {
+    expect(loadMachine(() => localStorage)).toBeNull();
+    saveMachine(() => localStorage, "Mac mini");
+    expect(localStorage.getItem(MACHINE_KEY)).toBe("Mac mini");
+    expect(loadMachine(() => localStorage)).toBe("Mac mini");
+  });
+
+  it("knows no name when storage is unavailable", () => {
+    expect(loadMachine(broken)).toBeNull();
+    expect(() => {
+      saveMachine(broken, "Mac mini");
     }).not.toThrow();
   });
 });
