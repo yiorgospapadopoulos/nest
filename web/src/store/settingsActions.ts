@@ -118,7 +118,7 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
      * give (an older daemon) only leaves its rows loading.
      */
     async loadSettings(): Promise<void> {
-      const [usage, stuck, storage, pixies, github, claude, codex] = await Promise.all([
+      const [usage, stuck, storage, pixies, github, claude, codex, features] = await Promise.all([
         quietly(() => api.usageSettings()),
         quietly(() => api.stuckSettings()),
         quietly(() => api.storageSettings()),
@@ -126,8 +126,9 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
         quietly(() => api.github()),
         quietly(() => api.claudeAccount()),
         quietly(() => api.codexAccount()),
+        quietly(() => api.features()),
       ]);
-      const found = { usage, stuck, storage, pixies, github, claude, codex };
+      const found = { usage, stuck, storage, pixies, github, claude, codex, features };
       const loaded: Partial<SettingsState> = Object.fromEntries(
         Object.entries(found).filter(([, value]) => value !== null),
       );
@@ -200,6 +201,13 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
     async version(): Promise<string | null> {
       const health = await quietly(() => api.health());
       return health?.version ?? null;
+    },
+
+    /** Tells the Mac which features this device shows (B103); quiet, as nothing waits on it. */
+    async markFeaturesShown(ids: string[]): Promise<void> {
+      if (ids.length === 0) return;
+      const features = await quietly(() => api.markFeaturesSeen(ids));
+      if (features !== null) set({ features });
     },
 
     devices(): Promise<ListedDevice[] | null> {

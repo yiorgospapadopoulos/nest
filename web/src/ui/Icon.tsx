@@ -90,6 +90,10 @@ const PATHS = {
   list: (
     <path d="M4 6.5l1.3 1.3 2.5-2.5M4 12.5l1.3 1.3 2.5-2.5M4.8 18h2M11 6.5h9M11 12.5h9M11 18h9" />
   ),
+  // Settings > Features (B103): an open book, as the Mac's.
+  book: (
+    <path d="M12 5.4C9.9 4 6.9 3.6 3 3.9v15c3.9-.3 6.9.1 9 1.5 2.1-1.4 5.1-1.8 9-1.5v-15c-3.9-.3-6.9.1-9 1.5zM12 5.4v15" />
+  ),
   // The Chats tab (B102): a list of lines, as the Mac's sidebar.
   lines: <path d="M5 6h14M5 12h14M5 18h9" />,
   q: (

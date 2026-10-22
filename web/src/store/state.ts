@@ -40,6 +40,7 @@ import type {
   EngineLimits,
   ModelList,
   ProjectConfiguration,
+  FeaturesCatalog,
   ProviderInfo,
 } from "../api/types.ts";
 
@@ -123,6 +124,8 @@ export interface SettingsState {
   // Settings > Configuration (B97), once the page asked; each project's part by its name.
   configuration: ConfigurationPage | null;
   projectConfiguration: Record<string, ProjectConfiguration>;
+  // Settings > Features (B103), loaded with the settings and refreshed by each report.
+  features: FeaturesCatalog | null;
 }
 
 export const NO_SETTINGS: SettingsState = {
@@ -138,6 +141,7 @@ export const NO_SETTINGS: SettingsState = {
   codex: null,
   configuration: null,
   projectConfiguration: {},
+  features: null,
 };
 
 export interface State {
