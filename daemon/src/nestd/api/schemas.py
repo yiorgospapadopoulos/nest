@@ -11,6 +11,7 @@ from nestd.tracking.models import BackgroundSummary, TrackedAgent, TrackedTask
 class Health(BaseModel):
     status: Literal["ok"]
     version: str
+    machine: str
 
 
 class Restarting(BaseModel):

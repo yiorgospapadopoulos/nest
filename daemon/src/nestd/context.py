@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta, tzinfo
 from functools import partial
@@ -67,6 +67,7 @@ from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.issues.service import IssueService
 from nestd.local_apps.apps import LocalApps
+from nestd.machine import machine_name
 from nestd.modules.registry import Module, ModuleRegistry
 from nestd.notifications.delivery import NotificationDelivery
 from nestd.notifications.notifier import Notifier
@@ -200,6 +201,8 @@ class AppContext:
     configuration_watcher: ConfigurationWatcher
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
+    # The machine's name for people, for clients on other machines (B105).
+    machine: str
 
     @classmethod
     async def build(
@@ -220,6 +223,7 @@ class AppContext:
         claude_locations: ClaudeLocations | None = None,
         codex_transport: TransportFactory = spawn,
         codex_locations: CodexLocations | None = None,
+        machine: Callable[[], Awaitable[str]] = machine_name,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -234,7 +238,7 @@ class AppContext:
         command line and Claude Code's installer (D104), and `claude_locations` says where
         a standalone Claude Code may be. `codex_transport` starts Codex's app-server
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
-        may be.
+        may be. `machine` reads the machine's name, once.
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -705,6 +709,7 @@ class AppContext:
             token_socket=None
             if paths.token_socket is None
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
+            machine=await machine(),
         )
         return context
 
