@@ -5,6 +5,8 @@ import type { State } from "./state.ts";
 export interface StoreValue {
   state: State;
   actions: Actions;
+  // The daemon's address: the host this app was opened from (B105).
+  address: string;
 }
 
 export const StoreContext = createContext<StoreValue | null>(null);

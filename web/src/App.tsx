@@ -47,13 +47,21 @@ function Root() {
     case "forbidden":
       return (
         <Notice title="This address is not allowed">
-          Add it to <code>server.allowed_origins</code> in the daemon settings on your Mac.
+          Add it to <code>server.allowed_origins</code> in the daemon settings on{" "}
+          {state.machine ?? "your Mac"}.
         </Notice>
       );
     case "offline":
       return (
-        <Notice title="Can't reach your Mac">
-          Check that the Mac is awake and Nest is running.
+        <Notice title={`Can't reach ${state.machine ?? "your Mac"}`}>
+          {state.machine === null ? (
+            "Check that the Mac is awake and Nest is running."
+          ) : (
+            <>
+              Check that {state.machine} is awake, Nest is running there and{" "}
+              <code>tailscale serve</code> is on.
+            </>
+          )}
           <button className="b b-pri" onClick={() => void actions.retry()}>
             Try again
           </button>

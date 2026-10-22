@@ -1001,6 +1001,8 @@ export type UpdateHabitBody = Partial<HabitBody>;
 export interface Health {
   status: "ok";
   version: string;
+  // The daemon machine's name for people (B105); absent from older daemons.
+  machine?: string;
 }
 
 /** What the Mac's data folder holds (`GET /api/storage`, D104). */

@@ -1165,6 +1165,14 @@ a.csign {
   border-radius: var(--r-inner);
   margin-top: 12px;
 }
+/* The daemon's address, under the Pair button (B105). */
+.pair .paddr {
+  margin: 4px 0 0;
+  font: 0.7059rem/1.3 var(--mono);
+  color: var(--t3);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .err {
   color: var(--fail-t);
   font-size: 0.7647rem;

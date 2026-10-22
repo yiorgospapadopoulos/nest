@@ -26,6 +26,18 @@ describe("devices", () => {
     ).toEqual(["Revoke iPad"]);
   });
 
+  it("labels the daemon's own device with its machine's name (B105)", async () => {
+    const api = fakeApi();
+    api.health.mockResolvedValue({ status: "ok", version: "0.1.0", machine: "Mac mini" });
+    api.devices.mockResolvedValue([device({ id: "mac", name: "This Mac", is_local: true })]);
+    await openSettings("Devices", { api });
+
+    const row = (await screen.findByText("Mac mini")).closest(".srow");
+    expect(row).toHaveTextContent("This Mac");
+    expect(row).toHaveTextContent("Mac mini");
+    expect(screen.getAllByText("This Mac")).toHaveLength(1);
+  });
+
   it("revokes a device after a confirmation", async () => {
     const api = fakeApi();
     const { user } = await openSettings("Devices", { api });
