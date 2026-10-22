@@ -138,6 +138,8 @@ final class FakeAPI: NestAPI {
         var repoConfigurations: [String: RepoConfiguration] = [:]
         var codexPlugins: [CodexPlugin] = []
         var codexMarketplaces: [CodexMarketplace] = []
+        /// Settings > Features (B103); a seen report answers it as it is then.
+        var features = FeaturesCatalog(groups: [], newCount: 0)
     }
 
     let state = Mutex(State())
@@ -1063,6 +1065,14 @@ final class FakeAPI: NestAPI {
 
     func pushStatus() async throws -> PushStatus {
         try call("pushStatus") { PushStatus(devices: $0.pushDevices) }
+    }
+
+    func features() async throws -> FeaturesCatalog {
+        try call("features") { $0.features }
+    }
+
+    func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+        try call("markFeaturesShown", ids.joined(separator: ",")) { $0.features }
     }
 
     // MARK: Settings (B81)

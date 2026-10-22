@@ -222,6 +222,11 @@ public protocol NestAPI: Sendable {
     func revokeDevice(_ id: String) async throws
     /// How many devices get push notifications (B81).
     func pushStatus() async throws -> PushStatus
+    /// Settings > Features with what is new on this device (B103).
+    func features() async throws -> FeaturesCatalog
+    /// Reports the features this device shows; only the first report of each counts.
+    /// Answers the catalog as `features()` would.
+    func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog
 
     // MARK: Settings (B81)
 
