@@ -83,8 +83,10 @@ private struct ConfigEditorSheet: View {
                 Spacer(minLength: 8)
                 Button("Open in VS Code") { LocalOpen.vscode(editor.path) }
                     .buttonStyle(.nest())
+                    .localOnly(shell, DaemonText.appsOff)
                 Button("Reveal in Finder") { LocalOpen.reveal(editor.path) }
                     .buttonStyle(.nest())
+                    .localOnly(shell, DaemonText.appsOff)
             }
             .padding(EdgeInsets(top: 16, leading: 20, bottom: 12, trailing: 20))
             .overlay(alignment: .bottom) { Separator() }
@@ -509,7 +511,7 @@ private struct SkillFormSheet: View {
     }
 }
 
-private struct FormLine<Content: View>: View {
+struct FormLine<Content: View>: View {
     let label: String
     @ViewBuilder let content: () -> Content
 

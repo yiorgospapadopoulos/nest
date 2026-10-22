@@ -184,6 +184,7 @@ private struct BrowserToolbar: View {
     @State private var showsServers = false
     @FocusState private var editing: Bool
     @Environment(\.accentColors) private var accent
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         HStack(spacing: 2) {
@@ -221,20 +222,23 @@ private struct BrowserToolbar: View {
                 )
                 .padding(.leading, 4)
                 .frame(minWidth: 60)
-            Button {
-                showsServers.toggle()
-            } label: {
-                Image(systemName: Icon.server)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.t3)
-            }
-            .buttonStyle(.nest(.plain, iconOnly: true))
-            .help("Local servers")
-            .accessibilityLabel("Local servers")
-            .popover(isPresented: $showsServers, arrowEdge: .bottom) {
-                LocalServerList(session: session) { showsServers = false }
-                    .frame(width: 260)
-                    .padding(8)
+            // The servers listening on this Mac, not on a remote daemon's machine (B105).
+            if !shell.isRemote {
+                Button {
+                    showsServers.toggle()
+                } label: {
+                    Image(systemName: Icon.server)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Palette.t3)
+                }
+                .buttonStyle(.nest(.plain, iconOnly: true))
+                .help("Local servers")
+                .accessibilityLabel("Local servers")
+                .popover(isPresented: $showsServers, arrowEdge: .bottom) {
+                    LocalServerList(session: session) { showsServers = false }
+                        .frame(width: 260)
+                        .padding(8)
+                }
             }
         }
         .onAppear { text = session.url?.absoluteString ?? "" }
@@ -319,20 +323,32 @@ struct LocalServerList: View {
 /// An empty browser: what to type, and the local servers to open.
 private struct StartPage: View {
     let session: BrowserSession
+    @Environment(Shell.self) private var shell
 
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: Icon.globe)
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(Palette.t3)
-            Text("Type an address, a localhost port such as 3000, or pick a local server")
-                .font(.ui(TypeSize.ui))
-                .foregroundStyle(Palette.t2)
-                .multilineTextAlignment(.center)
-            LocalServerList(session: session) {}
-                .frame(maxWidth: 300)
-                .padding(8)
-                .softFill()
+            if shell.isRemote {
+                Text("Type an address")
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t2)
+                Text(DaemonText.terminalOff(shell.machineName))
+                    .font(.ui(TypeSize.meta))
+                    .foregroundStyle(Palette.t3)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 300)
+            } else {
+                Text("Type an address, a localhost port such as 3000, or pick a local server")
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t2)
+                    .multilineTextAlignment(.center)
+                LocalServerList(session: session) {}
+                    .frame(maxWidth: 300)
+                    .padding(8)
+                    .softFill()
+            }
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

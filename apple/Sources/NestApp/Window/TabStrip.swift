@@ -126,8 +126,14 @@ struct TabStrip: View {
             AddProjectPopover {
                 addingProject = false
             } chooseFolder: {
-                choosingFolder = true
                 addingProject = false
+                // A remote's folders are typed in Settings: the picker would browse this
+                // Mac (B105).
+                if shell.isRemote {
+                    shell.openSettings(.addProject)
+                } else {
+                    choosingFolder = true
+                }
             }
             .environment(shell)
             .onDisappear {

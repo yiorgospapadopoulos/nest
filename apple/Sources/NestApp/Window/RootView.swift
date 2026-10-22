@@ -11,7 +11,9 @@ struct RootView: View {
             switch controller.phase {
             case .ready:
                 if let shell = controller.shell {
-                    ShellView().environment(shell)
+                    // A new identity for each daemon's model, so the window's hooks
+                    // (openWindow, the drag monitor) move to it.
+                    ShellView().environment(shell).id(ObjectIdentifier(shell))
                 }
             case .loading:
                 StartupView(title: "Starting", message: nil, retry: nil)
@@ -233,7 +235,10 @@ private struct ConnectionBanner: View {
     var body: some View {
         if let message {
             let service = controller.service
-            let starting = service.state == .starting
+            let starting = service.state == .starting && !shell.isRemote
+            let actions = DaemonText.actions(
+                shell.app.connection, remote: shell.isRemote, starting: starting,
+                offersStart: service.offersStart(when: shell.app.connection))
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     if starting {
@@ -244,14 +249,22 @@ private struct ConnectionBanner: View {
                     }
                     Text(starting ? "Starting the Nest service" : message)
                         .foregroundStyle(Palette.t1)
-                    if !starting {
-                        Button("Retry") { retry() }
-                            .buttonStyle(.nest(height: 24))
-                    }
-                    if service.offersStart(when: shell.app.connection) {
-                        Button("Start Nest service") { controller.startService() }
-                            .buttonStyle(.nest(.primary, height: 24))
-                            .help("Start or restart the Nest daemon's background service")
+                    ForEach(actions, id: \.self) { action in
+                        switch action {
+                        case .retry:
+                            Button("Retry") { retry() }
+                                .buttonStyle(.nest(height: 24))
+                        case .startService:
+                            Button("Start Nest service") { controller.startService() }
+                                .buttonStyle(.nest(.primary, height: 24))
+                                .help("Start or restart the Nest daemon's background service")
+                        case .pairAgain:
+                            Button("Pair again") { controller.pairAgain() }
+                                .buttonStyle(.nest(height: 24))
+                        case .useThisMac:
+                            Button("Use This Mac") { controller.use(nil) }
+                                .buttonStyle(.nest(.primary, height: 24))
+                        }
                     }
                 }
                 .font(.ui(TypeSize.ui, .medium))
@@ -259,39 +272,24 @@ private struct ConnectionBanner: View {
                 .padding(.trailing, 6)
                 .frame(height: 36)
                 .sheetSurface(radius: Radius.card)
-                if unreachable {
-                    ServiceNote(state: service.state)
+                if shell.app.connection.isUnreachable {
+                    if shell.isRemote {
+                        RemoteNote()
+                    } else {
+                        ServiceNote(state: service.state)
+                    }
                 }
             }
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
-    private var unreachable: Bool {
-        switch shell.app.connection {
-        case .disconnected, .reconnecting: true
-        default: false
-        }
-    }
-
     private var message: String? {
-        switch shell.app.connection {
-        case .connected:
+        if shell.app.connection == .connected {
             return shell.app.syncError.map { "Could not load from Nest: \(Shell.describe($0))" }
-        case .connecting:
-            return nil
-        case .disconnected:
-            return "Not connected to the Nest daemon"
-        case .reconnecting(let attempt, let delay):
-            let seconds = Int(delay.rounded(.up))
-            return attempt > 1
-                ? "Can't reach the Nest daemon. Trying again in \(seconds)s"
-                : "Reconnecting to the Nest daemon"
-        case .unauthorized:
-            return "The daemon did not accept this Mac's device token"
-        case .forbiddenOrigin:
-            return "The daemon refused this connection"
         }
+        return DaemonText.banner(
+            shell.app.connection, machine: shell.isRemote ? shell.machineName : nil)
     }
 
     private func retry() {
@@ -300,6 +298,34 @@ private struct ConnectionBanner: View {
         } else {
             controller.connect()
         }
+    }
+}
+
+/// Under the banner while a remote daemon cannot be reached: what to check on its machine,
+/// its address and when this Mac last reached it.
+private struct RemoteNote: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let link = shell.model.link
+        VStack(alignment: .leading, spacing: 6) {
+            Text(LocalizedStringKey(DaemonText.unreachableNote(link.machineName)))
+                .font(.ui(TypeSize.ui, .medium))
+                .foregroundStyle(Palette.t1)
+            if let url = link.baseURL {
+                Text(
+                    DaemonText.addressLine(
+                        url, lastConnected: link.lastConnected, calendar: .current)
+                )
+                .font(.mono(TypeSize.meta))
+                .foregroundStyle(Palette.t3)
+                .textSelection(.enabled)
+            }
+        }
+        .padding(14)
+        .frame(width: 560, alignment: .leading)
+        .sheetSurface(radius: Radius.card)
+        .transition(.opacity)
     }
 }
 
