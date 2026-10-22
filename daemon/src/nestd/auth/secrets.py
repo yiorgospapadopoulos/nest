@@ -1,10 +1,11 @@
 """Secret storage. Secrets live only in the macOS Keychain."""
 
 import logging
+from contextlib import suppress
 from typing import Protocol
 
 import keyring
-from keyring.errors import KeyringError
+from keyring.errors import KeyringError, PasswordDeleteError
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ class SecretStore(Protocol):
     def get(self, account: str) -> str | None: ...
 
     def set(self, account: str, value: str) -> None: ...
+
+    def delete(self, account: str) -> None:
+        """Remove the item; one that is not there is no error."""
+        ...
 
 
 class KeychainSecretStore:
@@ -42,3 +47,7 @@ class KeychainSecretStore:
 
     def set(self, account: str, value: str) -> None:
         keyring.set_password(SERVICE_NAME, account, value)
+
+    def delete(self, account: str) -> None:
+        with suppress(PasswordDeleteError):
+            keyring.delete_password(SERVICE_NAME, account)

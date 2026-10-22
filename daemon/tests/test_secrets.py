@@ -2,7 +2,7 @@ import logging
 
 import keyring
 import pytest
-from keyring.errors import PasswordSetError
+from keyring.errors import PasswordDeleteError, PasswordSetError
 
 from nestd.auth.secrets import LEGACY_SERVICE_NAME, SERVICE_NAME, KeychainSecretStore
 
@@ -17,12 +17,17 @@ class MemoryKeyring:
     def set_password(self, service: str, account: str, value: str) -> None:
         self.values[(service, account)] = value
 
+    def delete_password(self, service: str, account: str) -> None:
+        if self.values.pop((service, account), None) is None:
+            raise PasswordDeleteError(account)
+
 
 @pytest.fixture
 def fake_keyring(monkeypatch: pytest.MonkeyPatch) -> MemoryKeyring:
     memory = MemoryKeyring()
     monkeypatch.setattr(keyring, "get_password", memory.get_password)
     monkeypatch.setattr(keyring, "set_password", memory.set_password)
+    monkeypatch.setattr(keyring, "delete_password", memory.delete_password)
     return memory
 
 
@@ -84,3 +89,13 @@ def test_a_failed_copy_forward_still_returns_the_old_secret(
     # Writing a new secret still fails loudly.
     with pytest.raises(PasswordSetError):
         store.set("token", "new")
+
+
+def test_an_item_is_deleted_and_a_missing_one_is_no_error(fake_keyring: MemoryKeyring) -> None:
+    store = KeychainSecretStore()
+    store.set("local-server:ls_1", "k")
+
+    store.delete("local-server:ls_1")
+    store.delete("local-server:ls_1")
+
+    assert fake_keyring.values == {}
