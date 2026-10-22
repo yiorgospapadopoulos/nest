@@ -13,7 +13,10 @@ async def test_build_prepares_directories_settings_and_services(
 ) -> None:
     paths = AppPaths(config_dir=tmp_path / "config", data_dir=tmp_path / "data")
 
-    ctx = await AppContext.build(paths, secrets, clock)
+    async def machine() -> str:
+        return "Studio"
+
+    ctx = await AppContext.build(paths, secrets, clock, machine=machine)
     try:
         event = await ctx.bus.publish("x", {})
         devices = await ctx.devices.list_devices()
@@ -22,6 +25,7 @@ async def test_build_prepares_directories_settings_and_services(
 
     assert ctx.paths == paths
     assert ctx.clock is clock
+    assert ctx.machine == "Studio"
     assert ctx.settings == Settings()
     assert paths.settings_file.is_file()
     assert paths.db_path.is_file()
