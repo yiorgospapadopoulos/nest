@@ -105,6 +105,8 @@ async def test_a_turn_running_at_the_switch_finishes_on_its_account(
     env.provider.script(held(gate, reply("hi")), reply("next"))
     created = await env.create(mode="in_place")
     await env.reach(created.id, SessionState.RUNNING)
+    # The chat is running before its run opens; a switch before then opens it on the new one.
+    await until(lambda: bool(env.provider.runs and env.provider.runs[0].inputs))
 
     accounts.current = "0123456789ab"
     gate.set()
