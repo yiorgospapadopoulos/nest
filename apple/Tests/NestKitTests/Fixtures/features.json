@@ -1,0 +1,67 @@
+{
+  "groups": [
+    {
+      "id": "chats",
+      "name": "Chats",
+      "features": [
+        {
+          "id": "composer-shortcuts",
+          "name": "Composer shortcuts",
+          "text": "`/` for commands and skills, `@` for files and pixies, `!` to run a shell command, `#` to save a note to your instructions.",
+          "where": "Composer",
+          "added": "2026-10-15",
+          "changed": null,
+          "block": "B59",
+          "new": false
+        },
+        {
+          "id": "talk-while-working",
+          "name": "Talk while it works",
+          "text": "A message you send while the agent is working reaches it at its next step.",
+          "where": "Composer",
+          "added": "2026-10-15",
+          "changed": null,
+          "block": "B59",
+          "new": false
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "name": "Worktrees and git",
+      "features": [
+        {
+          "id": "branch-map",
+          "name": "Branch map",
+          "text": "Your branches and worktrees drawn as a tree. Start a chat on any of them.",
+          "where": "Sidebar",
+          "added": "2026-10-21",
+          "changed": null,
+          "block": "B96",
+          "new": true
+        },
+        {
+          "id": "feedback-to-agent",
+          "name": "Feedback back to the agent",
+          "text": "Failed checks and reviewers' comments go to the chat in one click.",
+          "where": "Needs you",
+          "added": "2026-10-14",
+          "changed": "2026-10-21",
+          "block": "B101",
+          "new": true
+        },
+        {
+          "id": "review",
+          "name": "Review before it lands",
+          "text": "Changes wait in a diff. Approve commits exactly what you saw and can open a pull request.",
+          "where": "Above the composer",
+          "added": "2026-10-15",
+          "changed": null,
+          "block": "B57",
+          "new": false
+        }
+      ]
+    }
+  ],
+  "new_count": 2
+}

@@ -9,6 +9,7 @@ import type {
   CopyResult,
   EngineId,
   EngineLimits,
+  FeaturesCatalog,
   FileText,
   McpServer,
   ProjectConfiguration,
@@ -279,6 +280,10 @@ export interface Api {
   devices(): Promise<ListedDevice[]>;
   revokeDevice(id: string): Promise<null>;
   pairingCode(): Promise<PairingCode>;
+  // Settings > Features (B103), with what is new on this device.
+  features(): Promise<FeaturesCatalog>;
+  // The features this device shows (1 to 500 ids); answers the catalog as `features`.
+  markFeaturesSeen(ids: string[]): Promise<FeaturesCatalog>;
   // Claude Code's plugins, skills and marketplaces (D104); writes answer 204.
   plugins(): Promise<InstalledPlugin[]>;
   marketplaces(): Promise<Marketplace[]>;
@@ -868,6 +873,14 @@ export class HttpApi implements Api {
 
   pairingCode() {
     return this.json<PairingCode>("POST", "/api/pairing/codes");
+  }
+
+  features() {
+    return this.json<FeaturesCatalog>("GET", "/api/features");
+  }
+
+  markFeaturesSeen(ids: string[]) {
+    return this.json<FeaturesCatalog>("POST", "/api/features/seen", { ids });
   }
 
   plugins() {

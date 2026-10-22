@@ -65,6 +65,9 @@ from nestd.engine.service import EngineInfo
 from nestd.engine.sign_ins import CLAUDE, CODEX, SignInStore
 from nestd.engine.store import EngineInfoStore
 from nestd.events.bus import EventBus
+from nestd.features.catalog import packaged_catalog
+from nestd.features.service import Features
+from nestd.features.store import FeatureStore
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.issues.service import IssueService
 from nestd.local.models import is_local
@@ -202,6 +205,8 @@ class AppContext:
     project_setup: ProjectSetup
     codex_plugins: CodexPluginSetup
     configuration_watcher: ConfigurationWatcher
+    # Settings > Features (B103).
+    features: Features
     # None when the paths name no socket, as in tests.
     token_socket: TokenSocket | None
     # Model servers on this Mac or the network (B106).
@@ -732,6 +737,7 @@ class AppContext:
             configuration_watcher=ConfigurationWatcher(
                 bus, where, lambda: {repo.name: repo.path for repo in repos.list_repos()}
             ),
+            features=Features(FeatureStore(db, clock), clock, zone, packaged_catalog()),
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None

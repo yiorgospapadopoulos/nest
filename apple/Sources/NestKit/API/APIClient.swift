@@ -389,6 +389,14 @@ public struct APIClient: NestAPI {
         try await get("push", "status")
     }
 
+    public func features() async throws -> FeaturesCatalog {
+        try await get("features")
+    }
+
+    public func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+        try await call("POST", ["features", "seen"], body: FeaturesSeenRequest(ids: ids))
+    }
+
     // MARK: Settings (B81)
 
     public func repoBranches(_ name: String) async throws -> [String] {

@@ -178,22 +178,35 @@ export function SegRow<T>({
   );
 }
 
-/** A tappable row that opens another page, with a chevron. */
+/** A tappable row that opens another page, with a chevron and, if any, what is new there. */
 export function LinkRow({
   icon,
   label,
+  news,
   onOpen,
 }: {
   icon: ReactNode;
   label: string;
+  // Such as "3 new", shown with a dot.
+  news?: string;
   onOpen: () => void;
 }) {
   return (
-    <button className="srow slink" onClick={onOpen}>
+    <button
+      className="srow slink"
+      aria-label={news === undefined ? undefined : `${label}, ${news}`}
+      onClick={onOpen}
+    >
       <span className="cn">
         {icon}
         <span>{label}</span>
       </span>
+      {news !== undefined && (
+        <span className="snew">
+          {news}
+          <span className="sdot" aria-hidden="true" />
+        </span>
+      )}
       <Icon name="chevr" className="schev" />
     </button>
   );

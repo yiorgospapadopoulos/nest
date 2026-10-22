@@ -145,6 +145,8 @@ final class FakeAPI: NestAPI {
         var localChecks: [String: LocalCheck] = [:]
         var localUsage = LocalUsage(todayTokens: 0)
         var setup = SetupState(firstRun: false, localOnly: false)
+        /// Settings > Features (B103); a seen report answers it as it is then.
+        var features = FeaturesCatalog(groups: [], newCount: 0)
     }
 
     let state = Mutex(State())
@@ -1070,6 +1072,14 @@ final class FakeAPI: NestAPI {
 
     func pushStatus() async throws -> PushStatus {
         try call("pushStatus") { PushStatus(devices: $0.pushDevices) }
+    }
+
+    func features() async throws -> FeaturesCatalog {
+        try call("features") { $0.features }
+    }
+
+    func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
+        try call("markFeaturesShown", ids.joined(separator: ",")) { $0.features }
     }
 
     // MARK: Settings (B81)

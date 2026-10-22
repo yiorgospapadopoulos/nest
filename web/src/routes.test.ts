@@ -19,6 +19,7 @@ describe("routes", () => {
       "/settings/configuration",
       { tab: "settings", chat: null, settings: { page: "configuration" } },
     ],
+    ["/settings/features", { tab: "settings", chat: null, settings: { page: "features" } }],
     // Extensions became Configuration (B102); an old address still opens it.
     ["/settings/extensions", { tab: "settings", chat: null, settings: { page: "configuration" } }],
     ["/settings/extensions/x", { tab: "inbox", chat: null }],
