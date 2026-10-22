@@ -79,6 +79,20 @@ async def test_answers_with_the_token_and_a_newline(folder: Path) -> None:
         await server.stop()
 
 
+async def test_a_client_that_never_closes_is_closed_after_a_short_wait(folder: Path) -> None:
+    _, source = tokens("tok-1")
+    server = TokenSocket(folder / SOCKET_NAME, source, close_wait=0.05)
+    await server.start()
+    reader, writer = await asyncio.open_unix_connection(folder / SOCKET_NAME)
+    try:
+        assert await reader.read() == b"tok-1\n"
+        # Stopping waits for open connections, so it only returns once the server closed this one.
+        await asyncio.wait_for(server.stop(), 2)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 async def test_each_connection_asks_for_the_current_token(folder: Path) -> None:
     calls, source = tokens("first", "rotated")
     server = TokenSocket(folder / SOCKET_NAME, source)
