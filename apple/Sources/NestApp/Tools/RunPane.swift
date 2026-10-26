@@ -288,11 +288,9 @@ final class RunTerminalView: TerminalView, @preconcurrency TerminalViewDelegate 
         }
     }
 
-    func clipboardCopy(source: TerminalView, content: Data) {
-        let text = String(decoding: content, as: UTF8.self)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
+    /// A dev server's output never sets the clipboard (OSC 52): the program running it
+    /// is not the user. Selecting and copying text works without this.
+    func clipboardCopy(source: TerminalView, content: Data) {}
 }
 
 /// The read-only terminal inside SwiftUI; the session keeps the view across rebuilds.
