@@ -21,6 +21,8 @@ import Testing
         let model = try await AppModel.local(tokens: TokenStub(token: "tok"))
         #expect(!model.isRemote)
         #expect(model.machineName == "This Mac")
+        // A run's port chips open this Mac's localhost (B108).
+        #expect(model.remoteMachine == nil)
         #expect(model.link.remote == nil)
         #expect(model.link.baseURL == nil)
         #expect(model.link.lastConnected == nil)
@@ -37,6 +39,7 @@ import Testing
         #expect(stream.request().url?.absoluteString == "wss://mac-mini.ts.net/api/events")
         #expect(model.isRemote)
         #expect(model.machineName == "Mac mini")
+        #expect(model.remoteMachine == "Mac mini")
         #expect(model.link.baseURL == mini.baseURL)
         #expect(model.link.lastConnected == mini.lastConnected)
         #expect(model.devices.thisMacDevice == "dev-air")

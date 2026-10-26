@@ -24,6 +24,9 @@
         private var featureReportsHeld = false
         private var heldFeatureReports: Set<String> = []
         private var usage = UsageSettings(refreshMinutes: 3)
+        /// Chats' runs and their output, by session id (B108).
+        private var runs: [String: RunStatus] = [:]
+        private var runOutputs: [String: String] = [:]
         private var archiveDays: Int? = 30
         private var pixieDefaults = PixieSettings()
         private var rules = NotificationRules()
@@ -466,6 +469,41 @@
 
         func openInClaudeCode(_ id: String) async throws -> ClaudeCodeLaunch {
             try decode(["launcher": "/tmp/claude.command"])
+        }
+
+        // MARK: Dev servers (B108)
+
+        /// Gives chats a run and its output, for snapshots; other chats have no command.
+        func setRun(_ status: RunStatus, output: String, for sessions: [String]) {
+            lock.withLock {
+                for id in sessions {
+                    runs[id] = status
+                    runOutputs[id] = output
+                }
+            }
+        }
+
+        func runStatus(_ id: String) async throws -> RunStatus {
+            lock.withLock {
+                runs[id] ?? RunStatus(available: false, command: nil, folder: "/tmp/\(id)")
+            }
+        }
+
+        func startRun(_ id: String) async throws -> RunStatus {
+            try await runStatus(id)
+        }
+
+        func stopRun(_ id: String) async throws -> RunStatus {
+            try await runStatus(id)
+        }
+
+        func restartRun(_ id: String) async throws -> RunStatus {
+            try await runStatus(id)
+        }
+
+        func runOutput(_ id: String) async throws -> RunOutput {
+            let status = try await runStatus(id)
+            return lock.withLock { RunOutput(folder: status.folder, text: runOutputs[id] ?? "") }
         }
 
         func diff(_ sessionID: String) async throws -> SessionDiff {

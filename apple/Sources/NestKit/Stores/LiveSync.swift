@@ -23,6 +23,7 @@ public final class LiveSync {
     let extensions: ExtensionsStore
     let configuration: ConfigurationStore
     let branchMaps: BranchMapStore
+    let runs: RunStore
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -40,7 +41,8 @@ public final class LiveSync {
         providers: ProvidersStore, pixies: PixiesStore, reports: PixieReportsStore,
         habits: HabitsStore,
         chatPixies: ChatPixiesStore, accounts: AccountsStore, extensions: ExtensionsStore,
-        configuration: ConfigurationStore, artifacts: ArtifactsStore, branchMaps: BranchMapStore
+        configuration: ConfigurationStore, artifacts: ArtifactsStore, branchMaps: BranchMapStore,
+        runs: RunStore
     ) {
         self.source = source
         self.app = app
@@ -62,6 +64,7 @@ public final class LiveSync {
         self.configuration = configuration
         self.artifacts = artifacts
         self.branchMaps = branchMaps
+        self.runs = runs
     }
 
     /// Runs until the task is cancelled or the daemon refuses the connection.
@@ -93,8 +96,8 @@ public final class LiveSync {
 
     /// Reloads repos, sessions, approvals, connectors, the usage chart, Claude Code chats,
     /// pixies and their reports, and the artifacts, then the models, agent defaults and
-    /// account, the engines, their accounts with their limits (B98), each chat's pixies and
-    /// the branch maps, which never fail the sync.
+    /// account, the engines, their accounts with their limits (B98), each chat's pixies, the
+    /// branch maps and the runs (B108), which never fail the sync.
     public func refresh() async {
         do {
             try await app.loadRepos()
@@ -116,6 +119,7 @@ public final class LiveSync {
         try? await accounts.load()
         await chatPixies.load()
         await branchMaps.reload()
+        await runs.reload()
     }
 
     /// The engines' logins and models, and the defaults the daemon may now resolve.
@@ -144,6 +148,7 @@ public final class LiveSync {
         configuration.apply(event)
         artifacts.apply(event)
         branchMaps.apply(event)
+        runs.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -220,6 +225,8 @@ public final class AppModel {
     public let branchMaps: BranchMapStore
     /// The projects' open GitHub issues (B101).
     public let issues: IssuesStore
+    /// The chats' folders' runs (B108).
+    public let runs: RunStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -275,13 +282,15 @@ public final class AppModel {
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)
         issues = IssuesStore(api: api, store: daemonPreferences ?? preferences)
+        runs = RunStore(api: api)
         live = LiveSync(
             source: events, app: app, sessions: sessions, approvals: approvals,
             activity: activity, transcripts: transcripts, usage: usage, connectors: connectors,
             claudeChats: claudeChats, agents: agents, providers: providers, pixies: pixies,
             reports: reports,
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
-            configuration: configuration, artifacts: artifacts, branchMaps: branchMaps)
+            configuration: configuration, artifacts: artifacts, branchMaps: branchMaps,
+            runs: runs)
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [weak self, visibility] in
             visibility.resend()
@@ -292,6 +301,9 @@ public final class AppModel {
     public var isRemote: Bool { link.isRemote }
     /// The remote's machine name, or "This Mac".
     public var machineName: String { link.machineName }
+    /// The remote's machine name, nil on This Mac: what a run's port chips say instead of
+    /// opening localhost, which is the other machine's (B108).
+    public var remoteMachine: String? { link.isRemote ? link.machineName : nil }
 
     /// A connect to a remote reads its machine name again; This Mac asks nothing.
     func noteConnected() async {

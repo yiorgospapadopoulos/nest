@@ -142,6 +142,24 @@ public struct ProjectState: Sendable, Hashable {
         return (pane, true)
     }
 
+    /// Run's output pane for `folder` (B108): an open one, focused, or a new one beside
+    /// `chat` that leaves the focus where it is. `opened` tells whether it is new.
+    @discardableResult
+    public mutating func runOutput(
+        folder: String, session: String, beside chat: String, in size: CGSize
+    ) -> (pane: ToolPane, opened: Bool) {
+        view = .workspace
+        // An open one stays where it is; the focus stays in the chat.
+        if let pane = openTools.first(where: { $0.kind == .run && $0.folder == folder }) {
+            return (pane, false)
+        }
+        let pane = ToolPane.run(folder: folder, session: session)
+        tools[pane.id] = pane
+        layout.place(pane.id, beside: chat, in: size)
+        pruneTools()
+        return (pane, true)
+    }
+
     /// Remembers the page a browser pane shows.
     public mutating func setURL(_ url: String, of pane: String) {
         tools[pane]?.url = url

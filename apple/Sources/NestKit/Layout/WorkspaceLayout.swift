@@ -284,6 +284,30 @@ public struct WorkspaceLayout: Sendable, Hashable {
         return .added
     }
 
+    /// Adds a pane next to `target` without taking the focus (B108): to its right when both
+    /// halves stay wide enough to read, else below it. When four are open, the last pane in
+    /// reading order other than `target` shows it instead. Without `target` open it opens
+    /// as a click would.
+    public mutating func place(_ pane: String, beside target: String, in size: CGSize) {
+        guard !contains(pane) else { return }
+        guard contains(target) else {
+            open(pane, in: size)
+            return
+        }
+        if leaves.count >= Self.maximumPanes {
+            replace(leaves.last { $0 != target }!, with: pane)
+            // The replaced pane had the focus: it goes to the chat, not the new pane.
+            if focused == pane {
+                focused = target
+            }
+            return
+        }
+        let frame = paneFrames(in: size).first { $0.chat == target }!.frame
+        let wide =
+            maximized != nil || (frame.width - Self.gutter) / 2 >= Self.minimumSideBySideWidth
+        insert(pane, at: target, side: wide ? .right : .bottom)
+    }
+
     /// Drops a chat onto a pane: splits the target on `side`. A chat that is not open yet
     /// replaces the target when four are open. Dropping into an empty workspace opens it.
     @discardableResult

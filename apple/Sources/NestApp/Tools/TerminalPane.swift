@@ -130,6 +130,13 @@ final class NestTerminalView: LocalProcessTerminalView {
     }
 
     private func applyTheme() {
+        applyNestTheme(dimmed: dimmed)
+    }
+}
+
+extension TerminalView {
+    /// The theme's colors for light or dark, on the focused or the dimmed pane's fill.
+    func applyNestTheme(dimmed: Bool) {
         let dark = effectiveAppearance.isDark
         let mac = DesignTokens.Colors.Mac.self
         nativeForegroundColor = .resolved(mac.textPrimary, dark: dark)

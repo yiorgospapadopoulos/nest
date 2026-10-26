@@ -61,7 +61,7 @@ struct WorkspaceView: View {
     }
 }
 
-/// A chat, terminal or browser pane, by the kind its id tells; on the Pixies tab, a
+/// A chat, terminal, browser or run output pane, by the kind its id tells; on the Pixies tab, a
 /// pixie's pane.
 private struct PaneContent: View {
     let pane: String
@@ -81,12 +81,12 @@ private struct PaneContent: View {
         switch PaneKind(paneID: pane) {
         case .chat:
             PaneView(chat: pane)
-        case .terminal, .browser:
+        case .terminal, .browser, .run:
             if let tool = shell.toolPane(pane) {
-                if tool.kind == .terminal {
-                    TerminalPaneView(pane: tool)
-                } else {
-                    BrowserPaneView(pane: tool)
+                switch tool.kind {
+                case .terminal: TerminalPaneView(pane: tool)
+                case .run: RunOutputPaneView(pane: tool)
+                case .browser, .chat: BrowserPaneView(pane: tool)
                 }
             }
         }

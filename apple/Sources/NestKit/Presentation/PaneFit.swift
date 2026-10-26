@@ -1,7 +1,8 @@
 import Foundation
 
 /// What a pane's header and composer show at the pane's width. A chat's header keeps its
-/// name first (B60): it drops the pull request chip, then shortens who started the chat.
+/// name first (B60): it drops the run's extra ports (B108) and the pull request chip, then
+/// shortens who started the chat.
 /// A pixie's header shortens its Details button to the icon, then drops its status word
 /// and @slug. The composer shortens where the chat works to its icon (B71), shortens,
 /// then hides, the context and shortens the model's name; attach, dictation and send
@@ -30,6 +31,9 @@ public struct PaneFit: Sendable, Equatable {
     /// The status word beside its dot, in a pixie's header; a chat's header shows the dot.
     public let showsStatusLabel: Bool
     public let showsPullRequest: Bool
+    /// A run's port chips beyond the first (B108); narrower headers keep the first and
+    /// stop.
+    public let showsAllPorts: Bool
     public let context: ContextStyle
     /// Tighter composer selectors with short labels: "Sonnet" for "Sonnet 5.5", "Med"
     /// for "Medium", "Edits" for "Accept edits".
@@ -38,6 +42,7 @@ public struct PaneFit: Sendable, Equatable {
     public init(width: Double) {
         showsDetailsLabel = width >= 480
         showsPullRequest = width >= 420
+        showsAllPorts = width >= 400
         showsHeaderDetails = width >= 360
         showsPlaceName = width >= 560
         showsStatusLabel = width >= 380

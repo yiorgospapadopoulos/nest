@@ -211,6 +211,28 @@ public struct APIClient: NestAPI {
             "PATCH", ["sessions", id, "pr", "review"], body: ReviewAutoSendRequest(autoSend: on))
     }
 
+    // MARK: Dev servers (B108)
+
+    public func runStatus(_ id: String) async throws -> RunStatus {
+        try await call("GET", ["sessions", id, "run"])
+    }
+
+    public func startRun(_ id: String) async throws -> RunStatus {
+        try await call("POST", ["sessions", id, "run", "start"])
+    }
+
+    public func stopRun(_ id: String) async throws -> RunStatus {
+        try await call("POST", ["sessions", id, "run", "stop"])
+    }
+
+    public func restartRun(_ id: String) async throws -> RunStatus {
+        try await call("POST", ["sessions", id, "run", "restart"])
+    }
+
+    public func runOutput(_ id: String) async throws -> RunOutput {
+        try await call("GET", ["sessions", id, "run", "output"])
+    }
+
     // MARK: Claude Code chats
 
     public func claudeChats(repo: String?, includeAutomated: Bool) async throws -> [ClaudeChat] {
