@@ -156,6 +156,16 @@ describe("search", () => {
     expect(document.querySelector(".hit")).toBeNull();
   });
 
+  it("names General's chats General (B110)", async () => {
+    const { user } = await openProjects([
+      hit({ repo: "general", title: "Disk", event_id: null, kind: "title", snippet: "[[Disk]]" }),
+    ]);
+
+    await user.type(field(), "disk");
+
+    expect(await screen.findByRole("button", { name: /^DiskGeneral$/ })).toBeInTheDocument();
+  });
+
   it("names a pixie's chat after its pixie and opens the pixie's page", async () => {
     const api = fakeApi();
     api.pixies.mockResolvedValue([pixie()]);

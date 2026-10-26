@@ -89,13 +89,13 @@ private let workspace = CGSize(width: 1000, height: 600)
         #expect(app.currentProject == "todo-ui")
     }
 
-    @Test func noReposMeansNoTabs() async throws {
+    @Test func noReposMeansGeneralOnly() async throws {
         api.set { $0.repos = [] }
         let app = app()
         try await app.loadRepos()
-        #expect(app.openProjects.isEmpty)
-        #expect(app.currentProject == nil)
-        #expect(memory.values["projects.current"] == nil)
+        #expect(app.openProjects == [Repo.generalName])
+        #expect(app.currentProject == Repo.generalName)
+        #expect(memory.values["projects.current"] == Repo.generalName)
     }
 
     @Test func managesTabs() async throws {

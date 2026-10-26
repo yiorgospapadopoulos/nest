@@ -1,4 +1,5 @@
 import { useStore } from "../../store/context.ts";
+import { projectName } from "../../store/general.ts";
 import { inboxGroups, needsCount } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
@@ -13,7 +14,7 @@ const PIXIE_REPO = "pixie:";
 
 interface Props {
   // The project the Chats tab shows, whose goals show under Needs you.
-  project: string | null;
+  project: string;
   onOpenChat: (sessionId: string) => void;
   onOpenPixie: (id: string) => void;
 }
@@ -26,7 +27,7 @@ interface Props {
 export function Inbox({ project, onOpenChat, onOpenPixie }: Props) {
   const { state } = useStore();
   const heading = (repo: string) => {
-    if (!repo.startsWith(PIXIE_REPO)) return <span>{repo}</span>;
+    if (!repo.startsWith(PIXIE_REPO)) return <span>{projectName(repo)}</span>;
     const pixie = state.pixies[repo.slice(PIXIE_REPO.length)];
     // A pixie deleted meanwhile.
     if (pixie === undefined) return <span>Pixie</span>;
@@ -90,7 +91,7 @@ export function Inbox({ project, onOpenChat, onOpenPixie }: Props) {
           ))}
         </section>
       ))}
-      {project !== null && <GoalsSection project={project} onOpenChat={onOpenChat} />}
+      <GoalsSection project={project} onOpenChat={onOpenChat} />
     </>
   );
 }

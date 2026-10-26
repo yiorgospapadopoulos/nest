@@ -29,6 +29,9 @@ BRANCH_REF = "refs/heads/"
 _TOP_LEVEL_KEYS = frozenset({"icon", "icon_color", "default_branch", "remote_url"})
 # Settings only a git repository has (D104).
 _GIT_KEYS = frozenset({"default_branch", "remote_url"})
+# General's chats have no project (B110): a built-in plain folder Nest owns, never saved
+# as a repo config or listed with the projects.
+GENERAL = "general"
 LINK_PATTERNS = (".env", ".env.*", "*.local", "*.local.*")
 SKIPPED_DIRS = frozenset({"node_modules", ".venv", "venv", "dist", "build", ".git"})
 
@@ -60,6 +63,11 @@ class RepoFolderMissingError(ConflictError):
 
 class RepoInUseError(ConflictError):
     pass
+
+
+class BuiltInRepoError(ConflictError):
+    def __init__(self) -> None:
+        super().__init__("General is built in and cannot be changed or removed")
 
 
 class NotAGitRepositoryError(ConflictError):
@@ -112,11 +120,24 @@ class RepoService:
         return repos
 
     def get(self, name: str) -> RepoConfig:
+        if name == GENERAL:
+            return self.general()
         for repo in load_repos(self._paths):
             if repo.name == name:
                 return repo
         msg = f"unknown repo {name!r}"
         raise RepoNotFoundError(msg)
+
+    def general(self) -> RepoConfig:
+        """General's folder, created on first use (B110)."""
+        self._paths.general_dir.mkdir(parents=True, exist_ok=True)
+        return RepoConfig(name=GENERAL, path=self._paths.general_dir, git=False)
+
+    def registered(self, name: str) -> RepoConfig:
+        """A repo the user registered, which they may change or remove; not General."""
+        if name == GENERAL:
+            raise BuiltInRepoError
+        return self.get(name)
 
     async def current(self, name: str) -> RepoConfig:
         """The repo, after checking whether a plain folder has become a git repository."""
@@ -179,6 +200,9 @@ class RepoService:
         except ValidationError as error:
             msg = f"invalid repo name {name!r}"
             raise InvalidRepoError(msg) from error
+        if repo.name.lower() == GENERAL:
+            msg = f"the name {GENERAL} is kept for General's chats; choose another name"
+            raise InvalidRepoError(msg)
         for existing in load_repos(self._paths):
             if existing.name == repo.name:
                 msg = f"repo {repo.name!r} already exists"
@@ -191,7 +215,7 @@ class RepoService:
         return repo
 
     def update_worktree_config(self, name: str, config: WorktreeConfig) -> RepoConfig:
-        repo = self.get(name).model_copy(update={"worktree": config})
+        repo = self.registered(name).model_copy(update={"worktree": config})
         save_repo(self._paths, repo)
         return repo
 
@@ -201,7 +225,7 @@ class RepoService:
         `setup_timeout_seconds`), checked as when the config file is loaded, then save and
         announce the repo to other devices (IMP-09, B36, D104).
         """
-        repo = self.get(name)
+        repo = self.registered(name)
         if _GIT_KEYS & changes.keys():
             if not repo.git:
                 msg = f"{name} is not a git repository"
@@ -228,13 +252,13 @@ class RepoService:
 
     def confirm_remote_url(self, name: str, url: str) -> RepoConfig:
         """The user confirmed that origin may push to `url` (D050)."""
-        repo = self.get(name).model_copy(update={"remote_url": url})
+        repo = self.registered(name).model_copy(update={"remote_url": url})
         save_repo(self._paths, repo)
         return repo
 
     def unregister(self, name: str) -> None:
         """Delete the repo's config; its folder is never touched."""
-        delete_repo(self._paths, self.get(name).name)
+        delete_repo(self._paths, self.registered(name).name)
 
     async def suggest_links(self, name: str) -> list[str]:
         repo = await self.git_repo(name)
@@ -249,7 +273,11 @@ class RepoService:
         """A plain folder whose root is now a git work tree (the user or the agent ran
         `git init`) becomes a git repo: saved and announced. A stat first keeps it cheap.
         """
-        if repo.git or not await asyncio.to_thread((repo.path / ".git").exists):
+        if (
+            repo.git
+            or repo.name == GENERAL
+            or not await asyncio.to_thread((repo.path / ".git").exists)
+        ):
             return repo
         try:
             toplevel = await run_hardened_git(["rev-parse", "--show-toplevel"], repo.path)

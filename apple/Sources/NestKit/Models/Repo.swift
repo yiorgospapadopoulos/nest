@@ -46,6 +46,23 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
         remoteURL = try container.decodeIfPresent(String.self, forKey: .remoteURL)
     }
 
+    private init(name: String) {
+        self.name = name
+        path = ""
+        worktree = WorktreeConfig()
+        git = false
+    }
+
+    /// General's chats have no project (B110): the daemon runs them in a folder it owns
+    /// and never lists it with the repos, so the app knows it by its reserved name.
+    public static let generalName = "general"
+    public static let general = Repo(name: generalName)
+
+    public var isGeneral: Bool { name == Self.generalName }
+
+    /// What the project is called on screen.
+    public var title: String { isGeneral ? "General" : name }
+
     /// The project's icon as Project settings edits it.
     public var projectIcon: ProjectIcon { ProjectIcon(mascot: icon, color: iconColor) }
 
@@ -54,6 +71,7 @@ public struct Repo: Codable, Sendable, Hashable, Identifiable {
 
     /// What sits next to the project's name in the toolbar.
     public var badge: ProjectBadge? {
+        guard !isGeneral else { return nil }
         guard git else { return .initGit }
         return checkoutBranch.map(ProjectBadge.branch)
     }

@@ -21,7 +21,7 @@ async def remove_repo(
     Purging tolerates a missing repo folder: git cleanup is skipped, rows are deleted. The
     runs in the repo's folders stop and their ports are freed (B108).
     """
-    repo = repos.get(name)
+    repo = repos.registered(name)
     owned = [
         *await sessions.list_sessions(repo.name, archived=False),
         *await sessions.list_sessions(repo.name, archived=True),

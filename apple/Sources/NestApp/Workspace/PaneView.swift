@@ -174,6 +174,10 @@ private struct PaneHeader: View {
                     .fixedSize()
                     .help("Runs on \(engine)")
             }
+            if session?.repo == Repo.generalName {
+                // Where a General chat runs, in place of a branch (B110).
+                MachineLabel(name: shell.machineName)
+            }
             if let session,
                 let startedBy = PixieLabels.startedBy(
                     session, pixies: shell.pixies.pixies)
@@ -219,6 +223,21 @@ private struct PaneHeader: View {
         // No visible tag says so any more; VoiceOver still hears whose history this is.
         .accessibilityLabel(
             shell.isClaudeChatPane(chat) && session == nil ? "\(title), Claude Code chat" : title)
+    }
+}
+
+/// The machine a General chat runs on: This Mac, or a remote daemon's machine (B105).
+private struct MachineLabel: View {
+    let name: String
+
+    var body: some View {
+        Label(name, systemImage: Icon.machine)
+            .labelStyle(.titleAndIcon)
+            .font(.ui(TypeSize.meta))
+            .foregroundStyle(Palette.t3)
+            .lineLimit(1)
+            .fixedSize()
+            .help("Runs on \(name)")
     }
 }
 

@@ -157,7 +157,7 @@ describe("Projects", () => {
       within(menu)
         .getAllByRole("menuitemradio")
         .map((i) => i.textContent),
-    ).toEqual(["Pixies", "TUtodo-ui", "Nnarwhal"]);
+    ).toEqual(["Pixies", "General", "TUtodo-ui", "Nnarwhal"]);
     expect(within(menu).getByRole("menuitemradio", { name: /todo-ui/ })).toHaveAttribute(
       "aria-checked",
       "true",
@@ -261,6 +261,7 @@ describe("Projects", () => {
     await user.click(screen.getByRole("button", { name: "Project: todo-ui" }));
     expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent)).toEqual([
       "Pixies",
+      "General",
       "TUtodo-ui",
       "Nnotes",
     ]);
@@ -272,17 +273,54 @@ describe("Projects", () => {
     expect(labels()).toEqual([]);
   });
 
-  it("explains how to add the first project", async () => {
-    const { user } = await openProjects([], []);
-    expect(screen.getByText(/No projects yet/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /New chat/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Show automated chats" })).toBeNull();
+  it("shows General's chats when there is no project yet (B110)", async () => {
+    const { user } = await openProjects([session({ id: "g", repo: "general", title: "Disk" })], []);
+
+    expect(screen.getByRole("button", { name: "Project: General" })).toBeInTheDocument();
+    expect(row(/^Disk, Idle/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New chat in General" })).toBeInTheDocument();
 
     // The pixies are still a tap away.
-    await user.click(screen.getByRole("button", { name: "Project: none" }));
-    expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Project: General" }));
+    expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent)).toEqual([
+      "Pixies",
+      "General",
+    ]);
     await user.click(screen.getByRole("menuitemradio", { name: "Pixies" }));
     expect(screen.getByRole("button", { name: "Project: Pixies" })).toBeInTheDocument();
+  });
+
+  it("opens General from the menu: its chats, no branch, no settings (B110)", async () => {
+    const api = withChats([
+      session({ id: "g", repo: "general", title: "Free disk space" }),
+      session({ id: "b", title: "Contact form" }),
+    ]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+
+    await user.click(screen.getByRole("button", { name: "Project: todo-ui" }));
+    const menu = screen.getByRole("dialog", { name: "Projects" });
+    expect(within(menu).getByRole("menuitemradio", { name: "General" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await user.click(within(menu).getByRole("menuitemradio", { name: "General" }));
+
+    const header = screen.getByRole("banner");
+    expect(within(header).getByRole("button", { name: "Project: General" })).toBeInTheDocument();
+    expect(header.querySelector(".pbr")).toBeNull();
+    expect(row(/^Free disk space, Idle/)).toBeInTheDocument();
+    expect(screen.queryByText("Contact form")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Project: General" }));
+    expect(screen.getByRole("menuitemradio", { name: "General" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.queryByRole("menuitem", { name: /Settings for/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByRole("button", { name: "New chat in General" }));
+    expect(screen.getByRole("region", { name: "New chat" })).toBeInTheDocument();
   });
 
   it("opens a chat with a tap and starts a new one", async () => {

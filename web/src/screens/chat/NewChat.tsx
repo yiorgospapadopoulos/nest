@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState, type KeyboardEvent } from "react";
 import type { RepoConfig, Session, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { projectName, repoNamed } from "../../store/general.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { RepoIcon } from "../projects/ProjectHeader.tsx";
@@ -32,7 +33,7 @@ interface Props {
  */
 export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
   const { state } = useStore();
-  const repo = state.repos.find((r) => r.name === name);
+  const repo = repoNamed(state.repos, name);
   const [workIn, setWorkIn] = useState<NewChatPlace>({});
   // A new worktree's optional branch name.
   const [typed, setTyped] = useState("");
@@ -55,7 +56,12 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
     <section className="push nc" aria-label="New chat" onKeyDown={onKeyDown}>
       <header className="ch-h">
         <div className="ch-r1">
-          <button className="back" aria-label={`Back to ${name}`} onClick={onBack} autoFocus>
+          <button
+            className="back"
+            aria-label={`Back to ${projectName(name)}`}
+            onClick={onBack}
+            autoFocus
+          >
             <Icon name="x" />
           </button>
         </div>
@@ -98,9 +104,9 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
         )}
         <div className="nc-who">
           {repo !== undefined && <RepoIcon repo={repo} />}
-          {name}
+          {projectName(name)}
         </div>
-        <h2 className="nc-q">{question(asked, name)}</h2>
+        <h2 className="nc-q">{question(asked, projectName(name))}</h2>
       </div>
       {worktree && (
         <div className="nc-n">

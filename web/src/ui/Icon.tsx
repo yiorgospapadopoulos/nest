@@ -24,6 +24,9 @@ function pixelRuns(rows: string[]): { x: number; y: number; width: number }[] {
 // Stroke icons from the locked design (plans/design/iphone.html), drawn on a 24px grid.
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
+  chat: (
+    <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />

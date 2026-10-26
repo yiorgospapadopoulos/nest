@@ -153,6 +153,15 @@ block = "B09"
 # Chats
 
 [[features]]
+id = "general-chats"
+group = "chats"
+name = "General"
+text = "Chats with no project, for a quick question or something to do on the machine itself."
+where = "+ after the tabs"
+added = 2026-10-26
+block = "B110"
+
+[[features]]
 id = "composer-shortcuts"
 group = "chats"
 name = "Composer shortcuts"
@@ -196,6 +205,16 @@ text = "A chat that stalls or repeats itself is flagged, with a nudge to get it 
 where = "Needs you"
 added = 2026-10-06
 block = "B20"
+
+[[features]]
+id = "auto-archive"
+group = "chats"
+name = "Tidies itself"
+text = "Chats left idle for a day or more, up to 90, are archived for you, even ones started outside Nest."
+where = "Settings > Storage"
+added = 2026-10-17
+block = "B81"
+changed = 2026-10-27
 
 # Worktrees and git
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Pixie, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { projectName, repoNamed } from "../../store/general.ts";
 import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ChatActions } from "../projects/ChatActions.tsx";
@@ -169,7 +170,9 @@ function SessionChat({
     <Frame
       title={session.title}
       status={status}
-      back={session.habit_run_id == null ? session.repo : runBack(state.pixies, session)}
+      back={
+        session.habit_run_id == null ? projectName(session.repo) : runBack(state.pixies, session)
+      }
       onBack={onBack}
       subtitle={
         run === null ? undefined : (
@@ -272,12 +275,5 @@ function runBack(pixies: Record<string, Pixie>, session: Session): string {
 /** Where the chat works, in the composer's row next to the mic (B102). */
 function ChatPlaceMark({ session }: { session: Session }) {
   const { state } = useStore();
-  return (
-    <PlaceChip
-      place={sessionPlace(
-        session,
-        state.repos.find((r) => r.name === session.repo),
-      )}
-    />
-  );
+  return <PlaceChip place={sessionPlace(session, repoNamed(state.repos, session.repo))} />;
 }
