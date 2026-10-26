@@ -7,11 +7,14 @@ import { Confirm } from "../pixies/Confirm.tsx";
 import { Loading, Row, Section, SelectRow, type Choice } from "./rows.tsx";
 
 // Archive chats idle for this many days; null never (D104).
-const ARCHIVE_DAYS = [null, 7, 30, 90];
+const ARCHIVE_DAYS = [null, 1, 2, 3, 7, 30, 90];
 
 function archiveChoices(current: number | null): Choice<number | null>[] {
   const days = ARCHIVE_DAYS.includes(current) ? ARCHIVE_DAYS : [...ARCHIVE_DAYS, current];
-  return days.map((d) => ({ value: d, label: d === null ? "Never" : `${String(d)} days` }));
+  return days.map((d) => ({
+    value: d,
+    label: d === null ? "Never" : d === 1 ? "1 day" : `${String(d)} days`,
+  }));
 }
 
 /** The space Nest uses and how it is kept small (B81; its own page since B86). */

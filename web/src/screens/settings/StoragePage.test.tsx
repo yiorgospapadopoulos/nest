@@ -43,11 +43,15 @@ describe("storage", () => {
       within(archive)
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual(["Never", "7 days", "30 days", "90 days"]);
+    ).toEqual(["Never", "1 day", "2 days", "3 days", "7 days", "30 days", "90 days"]);
     await user.selectOptions(archive, "30");
 
     expect(api.saveStorageSettings).toHaveBeenCalledWith({ archive_after_days: 30 });
     expect(archive).toHaveValue("30");
+    await user.selectOptions(archive, "1");
+
+    expect(api.saveStorageSettings).toHaveBeenLastCalledWith({ archive_after_days: 1 });
+    expect(archive).toHaveValue("1");
   });
 
   it("writes a small share as under 1%, and shares of nothing as 0%", async () => {
