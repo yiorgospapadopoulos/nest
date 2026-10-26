@@ -121,6 +121,11 @@ class AppPaths:
         return self.data_dir / "ask"
 
     @property
+    def general_dir(self) -> Path:
+        """Where General's chats run (B110); created on first use, not by `ensure`."""
+        return self.data_dir / "general"
+
+    @property
     def pixies_dir(self) -> Path:
         """Each pixie's soul, memory, notes and chat folder (D072)."""
         return self.data_dir / "pixies"
