@@ -108,13 +108,17 @@ private struct ProjectMenu: View {
     @State private var hovering = false
 
     var body: some View {
+        // General's folder belongs to Nest: no path to copy and no settings (B110).
+        let general = shell.repo?.isGeneral == true
         Menu {
-            Button {
-                shell.newTerminal()
-            } label: {
-                Label("New terminal", systemImage: Icon.terminal)
+            if !general {
+                Button {
+                    shell.newTerminal()
+                } label: {
+                    Label("New terminal", systemImage: Icon.terminal)
+                }
+                .localOnly(shell, DaemonText.terminalOff)
             }
-            .localOnly(shell, DaemonText.terminalOff)
             Button {
                 shell.newBrowser()
             } label: {
@@ -144,26 +148,28 @@ private struct ProjectMenu: View {
             if shell.isRemote {
                 Text(DaemonText.appsOff(shell.machineName))
             }
-            Button {
-                shell.copyProjectPath()
-            } label: {
-                Label(
-                    shell.isRemote ? DaemonText.copyPath(shell.machineName) : "Copy path",
-                    systemImage: Icon.copy)
-            }
-            Divider()
-            Button {
-                if let project = shell.project {
-                    shell.openSettings(.project(project))
+            if !general {
+                Button {
+                    shell.copyProjectPath()
+                } label: {
+                    Label(
+                        shell.isRemote ? DaemonText.copyPath(shell.machineName) : "Copy path",
+                        systemImage: Icon.copy)
                 }
-            } label: {
-                Label("Project settings…", systemImage: Icon.gear)
+                Divider()
+                Button {
+                    if let project = shell.project {
+                        shell.openSettings(.project(project))
+                    }
+                } label: {
+                    Label("Project settings…", systemImage: Icon.gear)
+                }
             }
         } label: {
             let project = shell.project ?? ""
             HStack(spacing: 8) {
                 ProjectIcon(project: project, repo: shell.app.repo(project), size: 15)
-                Text(project)
+                Text(shell.repo?.title ?? project)
                     .font(.ui(TypeSize.reading, .semibold))
                     .foregroundStyle(Palette.t1)
                     .lineLimit(1)
@@ -182,6 +188,6 @@ private struct ProjectMenu: View {
         .menuIndicator(.hidden)
         .onHover { hovering = $0 }
         .padding(.leading, -6)
-        .accessibilityLabel("Project \(shell.project ?? "")")
+        .accessibilityLabel("Project \(shell.repo?.title ?? shell.project ?? "")")
     }
 }
