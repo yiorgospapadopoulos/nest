@@ -34,8 +34,9 @@ import Testing
 
         try await app.removeProject("todo-ui", purgeChats: false)
         #expect(api.calls.last == "removeRepo todo-ui purge=false")
-        #expect(app.openProjects.isEmpty)
-        #expect(app.currentProject == nil)
+        // General opens once no project is left (B110).
+        #expect(app.openProjects == [Repo.generalName])
+        #expect(app.currentProject == Repo.generalName)
     }
 
     @Test func aRefusedRemovalKeepsTheProject() async throws {

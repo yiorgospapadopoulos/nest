@@ -242,21 +242,22 @@ public final class AppStore {
     }
 
     /// Loads the repos; tabs of repos that are gone close and their terminal and browser
-    /// panes end, and the first repo opens when no tab is open. A closed tab keeps its panes.
+    /// panes end, and the first repo (General without one) opens when no tab is open. A
+    /// closed tab keeps its panes.
     public func loadRepos() async throws {
         show(try await api.repos())
     }
 
     private func show(_ repos: [Repo]) {
         self.repos = repos
-        let names = Set(repos.map(\.name))
+        let names = Set(repos.map(\.name) + [Repo.generalName])
         openProjects.removeAll { !names.contains($0) }
         for name in projects.keys where !names.contains(name) {
             projects[name] = nil
             saveTools([], of: name)
         }
-        if openProjects.isEmpty, let first = repos.first {
-            openProjects = [first.name]
+        if openProjects.isEmpty {
+            openProjects = [repos.first?.name ?? Repo.generalName]
         }
         sortOpenProjects()
         if currentProject.map({ !openProjects.contains($0) }) ?? true {
@@ -280,8 +281,11 @@ public final class AppStore {
     }
 
     public func repo(_ name: String) -> Repo? {
-        repos.first { $0.name == name }
+        name == Repo.generalName ? .general : repos.first { $0.name == name }
     }
+
+    /// Whether General's tab is open, for the add-project popover, which always lists it.
+    public var isGeneralOpen: Bool { openProjects.contains(Repo.generalName) }
 
     /// Repos without an open tab, for the add-project popover.
     public var closedRepos: [Repo] {
@@ -329,10 +333,13 @@ public final class AppStore {
     /// Moves a tab to `index` among the open tabs and saves the new project order for every
     /// device (D090): the project goes just before the open tab that now follows it, or
     /// just after the one before it when it becomes last. Shown at once; when the save
-    /// fails the sync error is set and the repos load again.
+    /// fails the sync error is set and the repos load again. General stays first (B110).
     public func moveProject(_ name: String, to index: Int) {
-        guard let from = openProjects.firstIndex(of: name) else { return }
-        let target = min(max(index, 0), openProjects.count - 1)
+        guard name != Repo.generalName, let from = openProjects.firstIndex(of: name) else {
+            return
+        }
+        let first = isGeneralOpen ? 1 : 0
+        let target = min(max(index, first), openProjects.count - 1)
         guard target != from else { return }
         var tabs = openProjects
         tabs.remove(at: from)
@@ -359,9 +366,12 @@ public final class AppStore {
         }
     }
 
-    /// Sorts the open tabs by the repos' order; tabs of repos not loaded yet keep theirs.
+    /// Sorts the open tabs by the repos' order after General; tabs of repos not loaded yet
+    /// keep theirs.
     private func sortOpenProjects() {
-        let rank = { (name: String) in self.repos.firstIndex { $0.name == name } ?? Int.max }
+        let rank = { (name: String) in
+            name == Repo.generalName ? -1 : self.repos.firstIndex { $0.name == name } ?? Int.max
+        }
         openProjects = openProjects.enumerated()
             .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
             .map(\.element)
