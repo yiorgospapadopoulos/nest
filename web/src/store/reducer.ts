@@ -33,6 +33,7 @@ import {
   withoutArtifact,
   withSeen,
 } from "./artifacts.ts";
+import { runChanged, runOutputAdded, withRunOutput, withRunStatus } from "./runs.ts";
 import {
   draftKey,
   NO_BACKGROUND,
@@ -299,6 +300,12 @@ export function reduce(state: State, action: Action): State {
       return withoutArtifact(state, action.id);
     case "unseenArtifacts":
       return { ...state, unseenArtifacts: action.unseen };
+    case "run":
+      return withRunStatus(state, action.status, action.id);
+    case "runOutput":
+      return action.text === null
+        ? { ...state, runOutput: omit(state.runOutput, action.folder) }
+        : withRunOutput(state, action.folder, action.text);
     case "toast":
       return { ...state, toast: action.toast };
   }
@@ -445,6 +452,10 @@ export function applyEvent(state: State, event: NestEvent): State {
       return withUnseen(withSeen(next, str(p.artifact_id) ?? ""), p);
     case "artifact.deleted":
       return withUnseen(withoutArtifact(next, str(p.artifact_id) ?? ""), p);
+    case "run.changed":
+      return runChanged(next, p);
+    case "run.output":
+      return runOutputAdded(next, p);
     default:
       return next;
   }

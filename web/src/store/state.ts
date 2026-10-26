@@ -20,6 +20,7 @@ import type {
   PixieTeam,
   QueuedMessage,
   RepoConfig,
+  RunStatus,
   Session,
   ShellResult,
   TrackedAgent,
@@ -217,6 +218,10 @@ export interface State {
   artifactsGone: Record<string, true>;
   // Artifacts of every project whose latest version is not opened yet.
   unseenArtifacts: number;
+  // The dev server of each chat opened (B108), by session id; kept current by folder.
+  runs: Record<string, RunStatus>;
+  // The output of the runs whose sheet is open, by folder, raw; live from `run.output`.
+  runOutput: Record<string, string>;
   toast: Toast | null;
 }
 
@@ -262,6 +267,8 @@ export const initialState: State = {
   artifactLists: {},
   artifactsGone: {},
   unseenArtifacts: 0,
+  runs: {},
+  runOutput: {},
   toast: null,
 };
 
@@ -339,4 +346,7 @@ export type Action =
   | { type: "artifact"; artifact: Artifact }
   | { type: "artifactRemoved"; id: string }
   | { type: "unseenArtifacts"; unseen: number }
+  | { type: "run"; id: string; status: RunStatus }
+  // The output of a folder's run as the sheet opened (or it started again), or closed (null).
+  | { type: "runOutput"; folder: string; text: string | null }
   | { type: "toast"; toast: Toast | null };

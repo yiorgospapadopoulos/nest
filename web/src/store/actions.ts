@@ -47,6 +47,8 @@ import type {
   Restore,
   RewindPreview,
   RewindReply,
+  RunStatus,
+  RunVerb,
   SearchResults,
   SendAwayBody,
   Session,
@@ -188,6 +190,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   const onScreen = new Set<string>();
   // The chats on screen whose last load failed, tried again after a reconnect.
   const failed = new Set<string>();
+  // The folders whose run output a sheet shows (B108).
+  const outputs = new Set<string>();
   // The project whose goals the chat list shows, loaded again after a reconnect.
   let goalsOf: string | null = null;
   // The stored events that arrived during each snapshot request in flight.
@@ -401,6 +405,12 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     } else {
       failed.delete(id);
     }
+  }
+
+  /** The chat's dev server (B108); quiet, as a daemon before B108 has none to tell. */
+  async function loadRun(id: string): Promise<void> {
+    const status = await quietly(() => api.run(id));
+    if (status !== null) dispatch({ type: "run", id, status });
   }
 
   async function load(): Promise<void> {
@@ -685,6 +695,7 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     async openChat(id: string): Promise<void> {
       onScreen.add(id);
       dispatch({ type: "transcriptOpened", id });
+      void loadRun(id);
       await fetchChat(id);
     },
 
@@ -715,7 +726,35 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         ...goals,
         ...lists,
         ...[...onScreen].map((id) => fetchChat(id, true)),
+        ...[...onScreen].map(loadRun),
       ]);
+    },
+
+    /** After any reconnect: run events are not stored, so a dev server may have changed. */
+    async reloadRuns(): Promise<void> {
+      await Promise.all([...onScreen].map(loadRun));
+    },
+
+    /** Starts, stops or restarts the chat's dev server; null when refused. */
+    async runControl(id: string, verb: RunVerb): Promise<RunStatus | null> {
+      const status = await attempt(() => api.runControl(id, verb));
+      if (status !== null) dispatch({ type: "run", id, status });
+      return status;
+    },
+
+    /**
+     * Loads the folder's run output for its sheet, then `run.output` adds to it until
+     * closed. Asked again when the run starts again, as the daemon cleared it.
+     */
+    async openRunOutput(id: string, folder: string): Promise<void> {
+      outputs.add(folder);
+      const output = await attempt(() => api.runOutput(id));
+      if (outputs.has(folder)) dispatch({ type: "runOutput", folder, text: output?.text ?? "" });
+    },
+
+    closeRunOutput(folder: string): void {
+      outputs.delete(folder);
+      dispatch({ type: "runOutput", folder, text: null });
     },
 
     async resolve(approval: Approval, body: ResolveBody, done: string): Promise<boolean> {

@@ -71,6 +71,7 @@ export function StoreProvider({
           void actions.loadClaudeChats();
           void actions.reloadFailed();
           void actions.reloadArtifacts();
+          void actions.reloadRuns();
         } else {
           void actions.resync();
         }

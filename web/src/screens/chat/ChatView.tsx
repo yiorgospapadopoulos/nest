@@ -17,6 +17,7 @@ import { sessionPlace } from "./place.ts";
 import { PlaceChip } from "./PlaceMarks.tsx";
 import { PrChip } from "./PrChip.tsx";
 import { ReviewBar } from "./ReviewBar.tsx";
+import { RunButton, RunLine, RunSheet } from "./RunControl.tsx";
 import { Transcript } from "./Transcript.tsx";
 import { useStopTask } from "./useStopTask.ts";
 import { PixieView, type PixieTab } from "../pixies/PixieView.tsx";
@@ -132,6 +133,8 @@ function SessionChat({
   const { state, actions } = useStore();
   const session = state.sessions[id];
   const [menu, setMenu] = useState(false);
+  // The dev server's output sheet (B108).
+  const [output, setOutput] = useState(false);
   const history = state.history[id];
   const stopper = useStopTask(id);
   // Whether the first fetch is over: the history itself goes when the chat is deleted.
@@ -155,6 +158,12 @@ function SessionChat({
   if (session === undefined) return null;
   const tracking = state.tracking[id] ?? { tasks: [], agents: [], background: NO_BACKGROUND };
   const status = chatStatus(session, pendingFor(state, id));
+  // The dev server (B108), only for a chat whose repo has a run command.
+  const known = state.runs[id];
+  const run = known?.available === true ? known : null;
+  const showOutput = () => {
+    setOutput(true);
+  };
 
   return (
     <Frame
@@ -162,9 +171,22 @@ function SessionChat({
       status={status}
       back={session.habit_run_id == null ? session.repo : runBack(state.pixies, session)}
       onBack={onBack}
+      subtitle={
+        run === null ? undefined : (
+          <RunLine
+            place={sessionPlace(
+              session,
+              state.repos.find((r) => r.name === session.repo),
+            )}
+            status={run}
+            onOpen={showOutput}
+          />
+        )
+      }
       tools={
         <>
           <PrChip session={session} />
+          {run !== null && <RunButton sessionId={id} status={run} onOpen={showOutput} />}
           <ArtifactsButton scopes={chatScopes(session)} />
           <button
             className="ib"
@@ -219,6 +241,15 @@ function SessionChat({
         </>
       ) : (
         <p className="note pxrun">A habit run. Its chat is read only.</p>
+      )}
+      {output && run !== null && (
+        <RunSheet
+          sessionId={id}
+          status={run}
+          onClose={() => {
+            setOutput(false);
+          }}
+        />
       )}
       {menu && (
         <ChatActions

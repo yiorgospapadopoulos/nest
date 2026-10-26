@@ -561,6 +561,35 @@ export interface ShellResult {
   context: string;
 }
 
+/** A dev server's state (B108): `exited` ended on its own, with its exit code. */
+export type RunState = "stopped" | "starting" | "running" | "exited";
+
+/**
+ * The repo's run command in a chat's folder (B108). Chats that share a folder share its
+ * run and its port block; events name the folder.
+ */
+export interface RunStatus {
+  // The repo has a run command and the chat a folder; else `command` is null.
+  available: boolean;
+  command: string | null;
+  folder: string | null;
+  // The folder's ports; null when none could be given.
+  block: { start: number; end: number } | null;
+  state: RunState;
+  // Listening ports, ascending; may include ports outside the block.
+  listening: number[];
+  exit_code: number | null;
+  started_at: string | null;
+}
+
+/** The run's latest output, raw, ANSI escapes included. */
+export interface RunOutput {
+  folder: string;
+  text: string;
+}
+
+export type RunVerb = "start" | "stop" | "restart";
+
 /** Where a `#` memory goes (B59): the project's CLAUDE.md, or the user's. */
 export type MemoryScope = "project" | "user";
 

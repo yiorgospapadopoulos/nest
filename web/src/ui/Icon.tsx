@@ -112,6 +112,8 @@ const PATHS = {
   ),
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />,
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
+  play: <path d="M8 5.5v13l10-6.5z" />,
+  restart: <path d="M20 5v5h-5M18.7 15a7.5 7.5 0 1 1-1.6-8.1L20 10" />,
   inbox: <path d="M3 13l3-8h12l3 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 13h5l1.5 2.5h5L16 13h5" />,
   user: (
     <>

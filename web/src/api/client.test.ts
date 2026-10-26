@@ -295,6 +295,23 @@ const calls: Call[] = [
     "/api/sessions/s%2F1/shell",
     { command: "git status" },
   ],
+  ["run", (a) => a.run("s/1"), "GET", "/api/sessions/s%2F1/run", undefined],
+  [
+    "run start",
+    (a) => a.runControl("s1", "start"),
+    "POST",
+    "/api/sessions/s1/run/start",
+    undefined,
+  ],
+  ["run stop", (a) => a.runControl("s1", "stop"), "POST", "/api/sessions/s1/run/stop", undefined],
+  [
+    "run restart",
+    (a) => a.runControl("s1", "restart"),
+    "POST",
+    "/api/sessions/s1/run/restart",
+    undefined,
+  ],
+  ["run output", (a) => a.runOutput("s1"), "GET", "/api/sessions/s1/run/output", undefined],
   [
     "remember",
     (a) => a.remember("s1", "Run make check", "project"),

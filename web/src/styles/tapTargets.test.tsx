@@ -10,6 +10,7 @@ import {
   queuedMessage,
   repo,
   review,
+  runStatus,
   session,
   team,
 } from "../test/fixtures.ts";
@@ -124,6 +125,28 @@ describe("tap targets", () => {
     expect(box(screen.getByRole("button", { name: "Send now" })).height).toBe(TAP);
     // The background bar spans the column; its height is what counts.
     expect(box(screen.getByRole("button", { name: "1 running task" })).height).toBe(TAP);
+  });
+
+  it("are at least 44 points for a chat's dev server (B108)", async () => {
+    const api = fakeApi();
+    const status = runStatus({ available: true, command: "npm run dev" });
+    api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
+    api.run.mockResolvedValue(status);
+    const { user, push } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+    await user.click(screen.getByRole("button", { name: /^Validate contact form,/ }));
+
+    const run = await screen.findByRole("button", { name: "Run" });
+    expect(hitBox(run).height).toBeGreaterThanOrEqual(TAP);
+    push({
+      type: "run.changed",
+      payload: { folder: "/w/s1", status: { ...status, state: "running", listening: [41020] } },
+    });
+    expect(hitBox(screen.getByRole("button", { name: "Ports 41020" })).height).toBe(TAP);
+    expect(box(screen.getByRole("button", { name: "Stop npm run dev" }))).toEqual({
+      width: TAP,
+      height: TAP,
+    });
   });
 
   it("are at least 44 points in the search field", async () => {
