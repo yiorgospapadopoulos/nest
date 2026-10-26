@@ -3,6 +3,7 @@
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.repos.service import RepoInUseError, RepoService
+from nestd.runs.manager import RunManager
 from nestd.sessions.manager import SessionManager
 
 
@@ -13,10 +14,12 @@ async def remove_repo(
     repos: RepoService,
     sessions: SessionManager,
     bus: EventBus,
+    runs: RunManager,
 ) -> None:
     """Without `purge_sessions`, a repo that still has sessions (archived too) is refused.
 
-    Purging tolerates a missing repo folder: git cleanup is skipped, rows are deleted.
+    Purging tolerates a missing repo folder: git cleanup is skipped, rows are deleted. The
+    runs in the repo's folders stop and their ports are freed (B108).
     """
     repo = repos.registered(name)
     owned = [
@@ -33,5 +36,6 @@ async def remove_repo(
     ids = {session.id for session in owned}
     for session in owned:
         await sessions.purge(session.id, along_with=ids)
+    await runs.forget_repo(repo.name)
     repos.unregister(repo.name)
     await bus.publish(types.REPO_REMOVED, {"name": repo.name})

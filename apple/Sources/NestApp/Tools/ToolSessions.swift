@@ -3,13 +3,15 @@ import NestKit
 import SwiftUI
 import WebKit
 
-/// The live side of the terminal and browser panes: a shell or a web view per pane id.
+/// The live side of the terminal, browser and run output panes: a shell, a web view or a
+/// read-only terminal per pane id.
 /// They outlive the pane's SwiftUI view, so moving a pane, maximizing it or switching
 /// project tabs keeps the shell and the page; closing the pane ends them.
 @MainActor
 final class ToolSessions {
     private var terminals: [String: TerminalSession] = [:]
     private var browsers: [String: BrowserSession] = [:]
+    private var runOutputs: [String: RunOutputSession] = [:]
 
     func terminal(for pane: ToolPane) -> TerminalSession {
         if let session = terminals[pane.id] {
@@ -30,8 +32,20 @@ final class ToolSessions {
         return session
     }
 
+    /// The run output pane's read-only terminal (B108).
+    func runOutput(for pane: ToolPane) -> RunOutputSession {
+        if let session = runOutputs[pane.id] {
+            return session
+        }
+        let session = RunOutputSession()
+        runOutputs[pane.id] = session
+        return session
+    }
+
     /// Ends every session whose pane is not in `panes`.
     func keep(_ panes: Set<String>) {
+        // Closing an output pane leaves the run going; only its view goes.
+        runOutputs = runOutputs.filter { panes.contains($0.key) }
         for (id, session) in terminals where !panes.contains(id) {
             session.end()
             terminals[id] = nil

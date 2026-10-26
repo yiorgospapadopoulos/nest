@@ -106,11 +106,17 @@ async def build_context(
         machine=fake_machine_name,
         # Never a real model server, the user's model folders or a started app.
         local_setup=local_setup or LocalMac(tmp_path / "local").setup(),
+        # Never the real lsof.
+        port_probe=nothing_listening,
     )
 
 
 async def fake_machine_name() -> str:
     return "Test Mac"
+
+
+async def nothing_listening(_group: int) -> list[int]:
+    return []
 
 
 def codex_locations(tmp_path: Path) -> CodexLocations:

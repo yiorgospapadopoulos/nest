@@ -77,6 +77,18 @@ public protocol NestAPI: Sendable {
     /// Whether new review comments go to the agent as they arrive; answers the session.
     func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session
 
+    // MARK: Dev servers (B108)
+
+    /// The run of the chat's folder: its command, ports and state.
+    func runStatus(_ id: String) async throws -> RunStatus
+    /// Starts the folder's run command; a run already alive answers as it is.
+    func startRun(_ id: String) async throws -> RunStatus
+    /// Stops the folder's run; one not alive answers as it is.
+    func stopRun(_ id: String) async throws -> RunStatus
+    func restartRun(_ id: String) async throws -> RunStatus
+    /// The last lines the folder's run wrote, raw.
+    func runOutput(_ id: String) async throws -> RunOutput
+
     /// Claude Code chats Nest does not own, newest first; automated ones only when asked.
     func claudeChats(repo: String?, includeAutomated: Bool) async throws -> [ClaudeChat]
     func claudeChat(_ id: String) async throws -> ClaudeChat

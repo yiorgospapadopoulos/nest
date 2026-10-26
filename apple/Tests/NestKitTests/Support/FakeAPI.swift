@@ -148,6 +148,10 @@ final class FakeAPI: NestAPI {
         var setup = SetupState(firstRun: false, localOnly: false)
         /// Settings > Features (B103); a seen report answers it as it is then.
         var features = FeaturesCatalog(groups: [], newCount: 0)
+        /// Each chat's run (B108), by session id. Start and restart begin a new run (a
+        /// later start time), stop stops it; output answers `runOutputs` by session id.
+        var runs: [String: RunStatus] = [:]
+        var runOutputs: [String: String] = [:]
     }
 
     let state = Mutex(State())
@@ -466,6 +470,52 @@ final class FakeAPI: NestAPI {
     func setReviewAutoSend(_ id: String, _ on: Bool) async throws -> Session {
         try call("setReviewAutoSend", "\(id) \(on)") { state in
             session(id, in: &state) { $0.review?.autoSend = on }
+        }
+    }
+
+    func runStatus(_ id: String) async throws -> RunStatus {
+        try runCall("runStatus", id) { _ in }
+    }
+
+    func startRun(_ id: String) async throws -> RunStatus {
+        try runCall("startRun", id) { status in
+            if !status.isAlive {
+                Self.begin(&status)
+            }
+        }
+    }
+
+    func stopRun(_ id: String) async throws -> RunStatus {
+        try runCall("stopRun", id) { status in
+            status.state = .stopped
+            status.listening = []
+        }
+    }
+
+    func restartRun(_ id: String) async throws -> RunStatus {
+        try runCall("restartRun", id) { Self.begin(&$0) }
+    }
+
+    func runOutput(_ id: String) async throws -> RunOutput {
+        try call("runOutput", id) { state in
+            RunOutput(folder: state.runs[id]!.folder, text: state.runOutputs[id] ?? "")
+        }
+    }
+
+    private static func begin(_ status: inout RunStatus) {
+        status.state = .starting
+        status.listening = []
+        status.exitCode = nil
+        status.startedAt = Date(
+            timeIntervalSince1970: (status.startedAt?.timeIntervalSince1970 ?? 0) + 1)
+    }
+
+    private func runCall(_ name: String, _ id: String, change: (inout RunStatus) -> Void) throws
+        -> RunStatus
+    {
+        try call(name, id) { state in
+            change(&state.runs[id]!)
+            return state.runs[id]!
         }
     }
 

@@ -13,6 +13,8 @@ interface FrameProps {
   // Where Back goes, named only to assistive technology.
   back: string;
   onBack: () => void;
+  // A line under the name, such as where the chat works and its dev server's ports (B108).
+  subtitle?: ReactNode;
   // At the bar's end, such as the chat's menu.
   tools?: ReactNode;
   // A line under the bar, such as a pixie's tabs.
@@ -24,10 +26,31 @@ interface FrameProps {
  * The pushed chat screen under a flat bar, as the Mac's pane header (B102): a back chevron,
  * the name on one line with its status dot, then the tools.
  */
-export function Frame({ title, icon, status, back, onBack, tools, details, children }: FrameProps) {
+export function Frame({
+  title,
+  icon,
+  status,
+  back,
+  onBack,
+  subtitle,
+  tools,
+  details,
+  children,
+}: FrameProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") onBack();
   };
+  const name = (
+    <>
+      <h2>
+        {icon}
+        {title}
+      </h2>
+      {status !== undefined && (
+        <Dot tone={status.tone} label={status.label} plain={status.plain === true} />
+      )}
+    </>
+  );
   return (
     <section className="push" aria-label={title} onKeyDown={onKeyDown}>
       <header className="ch-h">
@@ -36,12 +59,13 @@ export function Frame({ title, icon, status, back, onBack, tools, details, child
             <Icon name="chevl" />
           </button>
           <div className="ch-t">
-            <h2>
-              {icon}
-              {title}
-            </h2>
-            {status !== undefined && (
-              <Dot tone={status.tone} label={status.label} plain={status.plain === true} />
+            {subtitle === undefined ? (
+              name
+            ) : (
+              <div className="ch-tc">
+                <div className="ch-tn">{name}</div>
+                <div className="ch-st">{subtitle}</div>
+              </div>
             )}
           </div>
           {tools}

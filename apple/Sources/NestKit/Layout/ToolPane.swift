@@ -6,6 +6,8 @@ public enum PaneKind: String, Codable, Sendable, Hashable {
     case chat
     case terminal
     case browser
+    /// A folder's run output (B108).
+    case run
 
     /// The kind of an open pane, from its id: tool panes carry their kind as a prefix.
     public init(paneID: String) {
@@ -13,6 +15,8 @@ public enum PaneKind: String, Codable, Sendable, Hashable {
             self = .terminal
         } else if paneID.hasPrefix(Self.browser.idPrefix) {
             self = .browser
+        } else if paneID.hasPrefix(Self.run.idPrefix) {
+            self = .run
         } else {
             self = .chat
         }
@@ -21,22 +25,28 @@ public enum PaneKind: String, Codable, Sendable, Hashable {
     var idPrefix: String { "\(rawValue):" }
 }
 
-/// A terminal or browser pane of a project's workspace. It takes a workspace slot like a
-/// chat and is remembered per project: a terminal reopens a fresh shell in its folder, a
-/// browser its page.
+/// A terminal, browser or run output pane of a project's workspace. It takes a workspace
+/// slot like a chat and is remembered per project: a terminal reopens a fresh shell in its
+/// folder, a browser its page, a run output pane its folder's current output.
 public struct ToolPane: Codable, Sendable, Hashable, Identifiable {
     public let id: String
     public let kind: PaneKind
-    /// The folder a terminal's shell starts in.
+    /// The folder a terminal's shell starts in, or whose run an output pane shows.
     public var folder: String?
     /// The address a browser shows; nil before the first page.
     public var url: String?
+    /// The chat a run output pane opened from, which the run's routes go through.
+    public var session: String?
 
-    public init(id: String, kind: PaneKind, folder: String? = nil, url: String? = nil) {
+    public init(
+        id: String, kind: PaneKind, folder: String? = nil, url: String? = nil,
+        session: String? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.folder = folder
         self.url = url
+        self.session = session
     }
 
     /// A new terminal pane whose shell starts in `folder`.
@@ -49,6 +59,11 @@ public struct ToolPane: Codable, Sendable, Hashable, Identifiable {
         ToolPane(id: newID(.browser), kind: .browser, url: url)
     }
 
+    /// A new pane showing the run of `folder`, as the daemon names it, through `session`.
+    public static func run(folder: String, session: String) -> ToolPane {
+        ToolPane(id: newID(.run), kind: .run, folder: folder, session: session)
+    }
+
     /// A unique pane id that tells the pane's kind.
     static func newID(_ kind: PaneKind) -> String {
         kind.idPrefix + UUID().uuidString.lowercased()
@@ -59,10 +74,10 @@ public struct ToolPane: Codable, Sendable, Hashable, Identifiable {
         (folder as NSString).standardizingPath
     }
 
-    /// The header's name: a terminal's folder name, a browser's host.
+    /// The header's name: a terminal's or run's folder name, a browser's host.
     public var title: String {
         switch kind {
-        case .terminal:
+        case .terminal, .run:
             let name = folder.map { ($0 as NSString).lastPathComponent } ?? ""
             return name.isEmpty ? "Terminal" : name
         case .browser, .chat:

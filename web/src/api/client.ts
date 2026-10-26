@@ -64,6 +64,9 @@ import type {
   Restore,
   RewindPreview,
   RewindReply,
+  RunOutput,
+  RunStatus,
+  RunVerb,
   ShellResult,
   SearchResults,
   SendResponse,
@@ -182,6 +185,11 @@ export interface Api {
   remember(sessionId: string, text: string, scope: MemoryScope): Promise<MemoryReply>;
   // A stored file, such as an image in a tool result, as data.
   attachment(id: string): Promise<Blob>;
+  // The dev server of the chat's folder (B108); start and restart answer 409 when the chat
+  // has no run command.
+  run(sessionId: string): Promise<RunStatus>;
+  runControl(sessionId: string, verb: RunVerb): Promise<RunStatus>;
+  runOutput(sessionId: string): Promise<RunOutput>;
   // Merges the pull request, then closes the session and removes its worktree.
   merge(sessionId: string, body: MergeBody): Promise<Session>;
   uploadAttachment(file: File): Promise<Attachment>;
@@ -549,6 +557,18 @@ export class HttpApi implements Api {
     const response = await this.fetchFn(path, { credentials: "same-origin" });
     if (!response.ok) throw failure(response.status, parse(await response.text()));
     return response.blob();
+  }
+
+  run(sessionId: string) {
+    return this.json<RunStatus>("GET", `${session(sessionId)}/run`);
+  }
+
+  runControl(sessionId: string, verb: RunVerb) {
+    return this.json<RunStatus>("POST", `${session(sessionId)}/run/${verb}`);
+  }
+
+  runOutput(sessionId: string) {
+    return this.json<RunOutput>("GET", `${session(sessionId)}/run/output`);
   }
 
   merge(sessionId: string, body: MergeBody) {

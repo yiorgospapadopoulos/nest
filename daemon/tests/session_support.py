@@ -23,6 +23,7 @@ from nestd.sessions.extras import RunExtrasSource
 from nestd.sessions.local import LocalSource
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import CreateSession, Session, SessionState
+from nestd.sessions.ports import PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
@@ -77,6 +78,7 @@ class Env:
         engines: Sequence[Engine] = (),
         accounts: AccountSource | None = None,
         local: LocalSource | None = None,
+        ports: PortsSource | None = None,
     ) -> SessionManager:
         return SessionManager(
             store=self.store,
@@ -99,6 +101,7 @@ class Env:
             engines=engines,
             accounts=accounts,
             local=local,
+            ports=ports,
         )
 
     async def find_model(self, model: str | None) -> ModelOption | None:

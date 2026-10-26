@@ -93,7 +93,12 @@ async def get_repo(name: str, ctx: Context) -> RepoView:
 async def unregister_repo(name: str, ctx: Context, purge_sessions: bool = False) -> Response:
     """Unregister the repo; with purge_sessions, delete its sessions first. The folder stays."""
     await remove_repo(
-        name, purge_sessions=purge_sessions, repos=ctx.repos, sessions=ctx.sessions, bus=ctx.bus
+        name,
+        purge_sessions=purge_sessions,
+        repos=ctx.repos,
+        sessions=ctx.sessions,
+        bus=ctx.bus,
+        runs=ctx.runs,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

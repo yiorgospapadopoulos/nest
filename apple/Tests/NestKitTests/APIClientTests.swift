@@ -30,6 +30,10 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let stuckJSON = """
         {"waiting_minutes": 15, "silent_minutes": 0, "repeated_calls": 4, "turn_minutes": 60}
         """
+    static let runStatusJSON = """
+        {"available": true, "command": "npm run dev", "folder": "/repo", "block": null,
+         "state": "stopped", "listening": [], "exit_code": null, "started_at": null}
+        """
     static let defaultsJSON = """
         {"model": "opus", "effort": "high", "permission_mode": "default", "mode": "in_place"}
         """
@@ -948,6 +952,21 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "PATCH", "/api/sessions/s1/pr/review", body: #"{"auto_send":true}"#,
             response: sessionJSON
         ) { _ = try await $0.setReviewAutoSend("s1", true) },
+        RouteCase("GET", "/api/sessions/s1/run", response: runStatusJSON) {
+            _ = try await $0.runStatus("s1")
+        },
+        RouteCase("POST", "/api/sessions/s1/run/start", response: runStatusJSON) {
+            _ = try await $0.startRun("s1")
+        },
+        RouteCase("POST", "/api/sessions/s1/run/stop", response: runStatusJSON) {
+            _ = try await $0.stopRun("s1")
+        },
+        RouteCase("POST", "/api/sessions/s1/run/restart", response: runStatusJSON) {
+            _ = try await $0.restartRun("s1")
+        },
+        RouteCase(
+            "GET", "/api/sessions/s1/run/output", response: #"{"folder": "/repo", "text": "ok\n"}"#
+        ) { _ = try await $0.runOutput("s1") },
         RouteCase(
             "POST", "/api/sessions/s1/approve",
             body:

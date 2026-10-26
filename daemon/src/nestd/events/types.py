@@ -19,6 +19,14 @@ REPOS_REORDERED: Final = "repos.reordered"
 # global, `{name}` of the repo. Clients read its branch map again.
 REPO_BRANCHES_CHANGED: Final = "repo.branches_changed"
 
+# A folder's dev server run (B108); ephemeral and global, matched to chats by `folder`.
+# Its state or listening ports changed: `{folder, repo, status}` with the RunStatus that
+# `GET /api/sessions/{id}/run` serves.
+RUN_CHANGED: Final = "run.changed"
+# What the run wrote, `{folder, text}`: raw, terminal escapes included, as read, so it may
+# end mid-line. A start's first chunk is the `$ <command>` line.
+RUN_OUTPUT: Final = "run.output"
+
 # Agent sessions; all carry the session id. SESSION_DELTA is ephemeral (never stored).
 SESSION_CREATED: Final = "session.created"
 # Renamed, pinned, archived or new controls; carries the changed fields and the session.

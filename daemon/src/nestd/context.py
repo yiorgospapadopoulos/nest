@@ -124,6 +124,9 @@ from nestd.repos.service import RepoService
 from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
 from nestd.review.watch import ReviewWatcher
+from nestd.runs.blocks import PortBlocks
+from nestd.runs.listening import PortProbe, listening_ports
+from nestd.runs.manager import RunManager
 from nestd.search.index import SearchIndex
 from nestd.sessions.commands import CommandStore
 from nestd.sessions.engines import Engine
@@ -214,6 +217,8 @@ class AppContext:
     machine: str
     # Model servers on this Mac or the network (B106).
     local: LocalModels
+    # Each folder's ports and dev server (B108).
+    runs: RunManager
     # The port `nestd serve --port` gave, which wins over the settings' one.
     port_flag: int | None = None
 
@@ -242,6 +247,7 @@ class AppContext:
         codex_locations: CodexLocations | None = None,
         machine: Callable[[], Awaitable[str]] = machine_name,
         local_setup: LocalSetup | None = None,
+        port_probe: PortProbe = listening_ports,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -257,7 +263,8 @@ class AppContext:
         a standalone Claude Code may be. `codex_transport` starts Codex's app-server
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
         may be. `machine` reads the machine's name, once. `local_setup` is what local
-        models reach: the network and the apps' folders.
+        models reach: the network and the apps' folders. `port_probe` reads the ports a dev
+        server run listens on (lsof).
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -382,6 +389,17 @@ class AppContext:
         activity = ActivityStore(db, clock)
         shell = login_shell(os.environ, os.getuid())
         shell_env = shell_env or LoginShellEnv(shell).get
+        runs = RunManager(
+            bus=bus,
+            # Read at each use, so new port settings apply to the next block given.
+            blocks=PortBlocks(db, clock, lambda: context.settings.ports),
+            repos=repos,
+            clock=clock,
+            logs_dir=paths.logs_dir,
+            probe=port_probe,
+            shell_env=shell_env,
+            base_env=os.environ,
+        )
 
         async def report(pixie_id: str, text: str) -> None:
             await pixies.send(pixie_id, text, [], sender=REPORT_BACK)
@@ -418,6 +436,7 @@ class AppContext:
                 if codex_home is None
                 else lambda path: forget_trust(codex_home, path),
                 bus=bus,
+                runs=runs,
             ),
             attachments=attachments,
             provider=provider
@@ -469,6 +488,7 @@ class AppContext:
             ],
             accounts=active.source(CLAUDE_ACCOUNTS),
             local=local,
+            ports=runs.agent_ports,
         )
         call_runs: PixieCallRuns = PixieCallRuns(
             pixies=pixie_store,
@@ -751,6 +771,7 @@ class AppContext:
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
             machine=await machine(),
             local=local,
+            runs=runs,
         )
         return context
 

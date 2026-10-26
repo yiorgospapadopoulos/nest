@@ -125,6 +125,10 @@ public enum EventType {
     public static let artifactStorage = "artifact.storage"
     /// A page's ask to Claude started or finished (B88); not stored.
     public static let artifactAsk = "artifact.ask"
+    /// A folder's run command changed state or listening ports (B108); not stored.
+    public static let runChanged = "run.changed"
+    /// The next piece of a folder's run output, raw, maybe mid-line (B108); not stored.
+    public static let runOutput = "run.output"
 }
 
 public enum EventBody: Sendable, Hashable {
@@ -215,6 +219,8 @@ public enum EventBody: Sendable, Hashable {
     case artifactDeleted(id: String, unseen: Int)
     case artifactStorage(ArtifactStorageEvent)
     case artifactAsk(ArtifactAskEvent)
+    case runChanged(RunChanged)
+    case runOutput(folder: String, text: String)
     case other
 
     init(type: String, payload: JSONValue) throws {
@@ -334,6 +340,11 @@ public enum EventBody: Sendable, Hashable {
         case EventType.artifactStorage:
             self = .artifactStorage(try payload.decode(ArtifactStorageEvent.self))
         case EventType.artifactAsk: self = .artifactAsk(try payload.decode(ArtifactAskEvent.self))
+        case EventType.runChanged: self = .runChanged(try payload.decode(RunChanged.self))
+        case EventType.runOutput:
+            self = .runOutput(
+                folder: try field("folder", as: String.self),
+                text: try field("text", as: String.self))
         default: self = .other
         }
     }

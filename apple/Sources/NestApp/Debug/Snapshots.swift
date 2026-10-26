@@ -252,6 +252,10 @@
                 try await renderLocalModels(model, shell, controller, folder)
                 return
             }
+            if only == "b108" {
+                try await renderDevServers(model, shell, controller, folder)
+                return
+            }
             if only == "b101" {
                 try await renderIssues(model, shell, controller, folder)
                 return
@@ -635,6 +639,74 @@
         /// as static lists; a chat on a local model with nothing signed in (the top bar's
         /// local chip, Thinking not available) and its attach menu; the weak-at-tools bar
         /// with the server-down card; Accounts after Use local models only; the first run.
+        /// B108: the Run control in each state, and the run output pane.
+        private static func renderDevServers(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            let block = PortBlock(start: 41020, end: 41029)
+            func run(
+                _ id: String, _ state: RunState, ports: [Int] = [], code: Int? = nil,
+                output: String = ""
+            ) async {
+                sample.setRun(
+                    RunStatus(
+                        available: true, command: "npm run dev", folder: "/wt/\(id)",
+                        block: block, state: state, listening: ports, exitCode: code,
+                        startedAt: Date(timeIntervalSince1970: 1_792_700_000)),
+                    output: output, for: [id])
+                await model.runs.load(id)
+            }
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.openCards = [.needsYou]
+                state.openChat("c1", in: workspace)
+                state.openChat("c2", in: workspace)
+                state.focusPane("c1")
+            }
+            await run("c1", .running, ports: [41020, 41021])
+            await run("c2", .stopped)
+            try await pair(controller, "b108-running-stopped", folder)
+
+            await run("c1", .running, ports: [5173, 41020, 41021, 41022])
+            await run("c2", .starting)
+            try await pair(controller, "b108-overflow-starting", folder)
+
+            await run("c1", .exited, code: 1)
+            await run("c2", .exited, code: 0)
+            try await pair(controller, "b108-exited", folder)
+
+            await run("c1", .running, ports: [41020, 41021], output: sampleRunOutput)
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c1", in: workspace)
+                state.runOutput(folder: "/wt/c1", session: "c1", beside: "c1", in: workspace)
+            }
+            shell.syncTools()
+            await model.runs.loadOutput(folder: "/wt/c1", session: "c1")
+            try await pair(controller, "b108-output-pane", folder) { _ in
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+        }
+
+        /// What a dev server writes, colours included.
+        private static let sampleRunOutput = """
+            $ npm run dev
+
+            > nest-web@0.1.0 dev
+            > vite --port $NEST_PORT --strictPort
+
+              \u{1B}[32mVITE v6.3.5\u{1B}[0m  ready in \u{1B}[1m412\u{1B}[0m ms
+
+              \u{1B}[32m➜\u{1B}[0m  Local:   \u{1B}[36mhttp://localhost:41020/\u{1B}[0m
+              \u{1B}[2m➜  press h + enter to show help\u{1B}[0m
+            \u{1B}[2m22:41:07\u{1B}[0m \u{1B}[36m[vite]\u{1B}[0m hmr update /src/board/Filters.tsx
+
+            """
+
         private static func renderLocalModels(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
         ) async throws {

@@ -128,7 +128,7 @@ enum PaneColors {
 
 /// On the left the grip, the chat's name, its status dot and who started it; on the
 /// right, at the trailing edge whatever the pane's width, the pull request chip, Stuck,
-/// maximize and close (B60). Where it works shows in the composer (B71). Drag it to swap
+/// the Run control (B108), maximize and close (B60). Where it works shows in the composer (B71). Drag it to swap
 /// panes.
 private struct PaneHeader: View {
     let chat: String
@@ -197,6 +197,9 @@ private struct PaneHeader: View {
             if let stuck = session?.stuck {
                 StuckBadge(flag: stuck)
             }
+            if session != nil {
+                RunControlView(chat: chat)
+            }
             PaneButtons(pane: chat)
         }
         .padding(.leading, 10)
@@ -210,6 +213,12 @@ private struct PaneHeader: View {
                 .onTapGesture(count: 2) { shell.toggleMaximize(chat) }
         }
         .modifier(PaneDragHandle(pane: chat, title: title, tone: tone))
+        // The run of the chat's folder (B108), read again once a worktree exists.
+        .task(id: session.map { "\($0.id) \($0.folder ?? "")" }) {
+            if let session {
+                await shell.runs.load(session.id)
+            }
+        }
         .accessibilityElement(children: .contain)
         // No visible tag says so any more; VoiceOver still hears whose history this is.
         .accessibilityLabel(

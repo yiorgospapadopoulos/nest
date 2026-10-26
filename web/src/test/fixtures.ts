@@ -30,6 +30,7 @@ import type {
   PixieTeam,
   QueuedMessage,
   RepoConfig,
+  RunStatus,
   Session,
   SessionDetail,
   SessionDiff,
@@ -111,6 +112,21 @@ export function session(overrides: Partial<Session> = {}): Session {
     started_by_pixie: null,
     habit_run_id: null,
     limit_pause: null,
+    ...overrides,
+  };
+}
+
+/** A chat's dev server (B108); by default the folder has no run command. */
+export function runStatus(overrides: Partial<RunStatus> = {}): RunStatus {
+  return {
+    available: false,
+    command: null,
+    folder: "/w/s1",
+    block: { start: 41020, end: 41029 },
+    state: "stopped",
+    listening: [],
+    exit_code: null,
+    started_at: null,
     ...overrides,
   };
 }

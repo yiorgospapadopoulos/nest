@@ -3,6 +3,7 @@
 import asyncio
 import os
 import signal
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,9 +59,15 @@ def _link(source: Path, target: Path, root: Path) -> bool:
 
 
 async def run_commands(
-    commands: list[str], cwd: Path, log_path: Path, timeout_seconds: int
+    commands: list[str],
+    cwd: Path,
+    log_path: Path,
+    timeout_seconds: int,
+    env: Mapping[str, str] | None = None,
 ) -> SetupResult:
-    """Run each command with /bin/sh in `cwd`, stopping at the first failure or timeout."""
+    """Run each command with /bin/sh in `cwd`, stopping at the first failure or timeout.
+    `env` is added to the daemon's environment, such as the worktree's ports (B108).
+    """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # The log file is the commands' stdout and stderr, so it needs a real file handle.
     with log_path.open("ab", buffering=0) as log:
@@ -71,6 +78,7 @@ async def run_commands(
                 "-c",
                 command,
                 cwd=cwd,
+                env=None if env is None else {**os.environ, **env},
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=log,
                 stderr=asyncio.subprocess.STDOUT,

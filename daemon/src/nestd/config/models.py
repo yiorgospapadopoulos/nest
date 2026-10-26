@@ -322,6 +322,28 @@ class ConfigurationSettings(_Strict):
     codex_claude_only_off: bool = False
 
 
+# The highest TCP port.
+MAX_PORT = 65535
+
+
+class PortSettings(_Strict):
+    """`[ports]` (B108): each folder a chat works in gets `size` consecutive ports, block
+    `index` starting at `start + index * size`, for `blocks` folders at most.
+    """
+
+    start: int = Field(default=41000, ge=1024, le=MAX_PORT)
+    size: int = Field(default=10, ge=1, le=100)
+    blocks: int = Field(default=100, ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def _fits_below_max_port(self) -> "PortSettings":
+        last = self.start + self.size * self.blocks - 1
+        if last > MAX_PORT:
+            msg = f"the ports run to {last}, past {MAX_PORT}: lower start, size or blocks"
+            raise ValueError(msg)
+        return self
+
+
 class Settings(_Strict):
     server: ServerSettings = Field(default_factory=ServerSettings)
     agents: AgentDefaults = Field(default_factory=AgentDefaults)
@@ -334,6 +356,7 @@ class Settings(_Strict):
     pixies: PixieDefaults = Field(default_factory=PixieDefaults)
     artifacts: ArtifactSettings = Field(default_factory=ArtifactSettings)
     configuration: ConfigurationSettings = Field(default_factory=ConfigurationSettings)
+    ports: PortSettings = Field(default_factory=PortSettings)
 
     @model_validator(mode="before")
     @classmethod
@@ -395,6 +418,16 @@ class IssuesConfig(_Strict):
     show: Annotated[IssueShow, BeforeValidator(_mine)] = "all"
 
 
+class RunConfig(_Strict):
+    """`[run]` (B108): the project's dev server, which the user starts and stops in each
+    folder a chat works in.
+    """
+
+    command: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    # Start it once a new worktree's setup succeeded.
+    after_setup: bool = False
+
+
 class RepoConfig(_Strict):
     # The name doubles as the config file name, so it must be a safe file name.
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -412,6 +445,8 @@ class RepoConfig(_Strict):
     icon_color: Color | None = None
     worktree: WorktreeConfig = Field(default_factory=WorktreeConfig)
     issues: IssuesConfig = Field(default_factory=IssuesConfig)
+    # None: the project has no dev server command, so its chats show no Run control.
+    run: RunConfig | None = None
 
     @model_validator(mode="after")
     def _plain_folders_have_no_branch(self) -> "RepoConfig":
