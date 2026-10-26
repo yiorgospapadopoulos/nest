@@ -190,6 +190,15 @@ describe("where a chat works, in its header", () => {
     expect(view.queryByText("This folder")).not.toBeInTheDocument();
   });
 
+  it("says nothing in General, and goes back to General (B110)", async () => {
+    const chat = inPlace({ repo: "general", cwd: "/data/general" });
+    const view = await openChat(chat, []);
+
+    expect(row(/^Tidy styles,/)).toHaveAccessibleName("Tidy styles, Idle");
+    expect(view.queryByTitle(/general/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back to General" })).toBeInTheDocument();
+  });
+
   it("knows no place for an in-place chat without a folder or a project", () => {
     expect(sessionPlace(inPlace({ cwd: null }), undefined)).toBeNull();
   });
@@ -380,5 +389,25 @@ describe("where a new chat works", () => {
       ...CHOICES,
     });
     expect(api.repo).not.toHaveBeenCalled();
+  });
+
+  it("offers no choice in General and starts the chat there (B110)", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([]);
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+    await user.click(screen.getByRole("button", { name: "New chat in General" }));
+    await waitFor(() => {
+      expect(api.agentDefaults).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByRole("button", { name: /^Where the chat works/ })).toBeNull();
+    await user.type(screen.getByLabelText("Message"), "Go{Enter}");
+    expect(api.createSession).toHaveBeenCalledWith({
+      repo: "general",
+      prompt: "Go",
+      attachment_ids: [],
+      ...CHOICES,
+    });
   });
 });

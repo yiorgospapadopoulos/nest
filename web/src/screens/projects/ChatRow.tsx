@@ -4,6 +4,7 @@ import type { ChatStatus } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { useStore } from "../../store/context.ts";
+import { repoNamed } from "../../store/general.ts";
 import { placeLabel, sessionPlace } from "../chat/place.ts";
 import { PlaceMark } from "../chat/PlaceMarks.tsx";
 import { startedByText } from "../pixies/options.ts";
@@ -27,10 +28,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
   const gestures = useRowGestures(onOpen, onActions);
   const starter = session.started_by_pixie;
   const startedBy = starter === null ? "" : `, ${startedByText(state.pixies[starter]?.name)}`;
-  const place = sessionPlace(
-    session,
-    state.repos.find((r) => r.name === session.repo),
-  );
+  const place = sessionPlace(session, repoNamed(state.repos, session.repo));
   const label =
     `${session.title}, ${status.label}${startedBy}` +
     `${session.stuck !== null ? ", stuck" : ""}${session.pinned ? ", pinned" : ""}` +

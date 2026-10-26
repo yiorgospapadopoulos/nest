@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SearchHit, SearchResults } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { projectName } from "../../store/general.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sprite } from "../pixies/Sprite.tsx";
 import { groupHits, type ChatHits } from "./searchHits.ts";
@@ -139,7 +140,7 @@ export function SearchResultsList({ query, onOpenChat, onOpenClaudeChat, onOpenP
                   ? (pixie?.name ?? "Pixie")
                   : group.claude
                     ? `${group.repo} · Claude Code`
-                    : group.repo}
+                    : projectName(group.repo)}
               </span>
             </button>
             {group.hits.map((hit) => (
