@@ -1,6 +1,6 @@
 #!/bin/sh
-# Runs the NestKit tests with coverage and fails unless every line and function of
-# Sources/NestKit (generated tokens excluded) is covered.
+# Runs the NestKit tests with coverage and prints the coverage of Sources/NestKit
+# (generated tokens excluded). Coverage is reported, not a target (D131).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -24,10 +24,6 @@ echo "$report" | awk '
         found = 1
         lines = $NF; functions = $(NF - 3)
         printf "NestKit coverage: lines %s, functions %s\n", lines, functions
-        if (lines != "100.00%" || functions != "100.00%") {
-            print "coverage is below 100%"
-            exit 1
-        }
     }
     END { if (!found) { print "no coverage total found"; exit 1 } }
 '

@@ -65,7 +65,6 @@ addopts = [
     "--cov=nestd",
     "--cov-branch",
     "--cov-report=term-missing",
-    "--cov-fail-under=100",
     "--strict-markers",
 ]
 # Starlette's TestClient falls back to httpx with a deprecation warning when httpx2 is missing
