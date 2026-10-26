@@ -218,6 +218,15 @@ added = 2026-10-21
 block = "B96"
 
 [[features]]
+id = "dev-servers"
+group = "git"
+name = "Dev servers side by side"
+text = "Each worktree gets its own ports. Run starts the project's dev server, and the ports it opens show in the chat."
+where = "Chat header"
+added = 2026-10-26
+block = "B108"
+
+[[features]]
 id = "review"
 group = "git"
 name = "Review before it lands"
