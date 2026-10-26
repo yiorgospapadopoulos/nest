@@ -34,7 +34,7 @@ struct StartSession: View {
                     if let project {
                         HStack(spacing: 8) {
                             ProjectIcon(project: project, repo: shell.repo, size: 14)
-                            Text(project)
+                            Text(shell.repo?.title ?? project)
                                 .lineLimit(1)
                         }
                         .font(.ui(TypeSize.label))
@@ -42,16 +42,18 @@ struct StartSession: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 6)
                     }
-                    Text(StartScreen.question(question ?? 0, project: project))
-                        .font(.ui(30, .medium))
-                        .tracking(-0.6)
-                        .lineSpacing(4)
-                        .foregroundStyle(Palette.t1)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 16)
-                        .accessibilityAddTraits(.isHeader)
+                    Text(
+                        StartScreen.question(question ?? 0, project: shell.repo?.title ?? project)
+                    )
+                    .font(.ui(30, .medium))
+                    .tracking(-0.6)
+                    .lineSpacing(4)
+                    .foregroundStyle(Palette.t1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 16)
+                    .accessibilityAddTraits(.isHeader)
                     Composer(start: shell.startDraftID)
                         .id(shell.startDraftID)
                         .environment(\.paneFit, PaneFit(width: width))

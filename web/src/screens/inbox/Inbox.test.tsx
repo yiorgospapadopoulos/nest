@@ -264,6 +264,12 @@ describe("Inbox", () => {
     expect(screen.getByRole("tab", { name: "Needs you 2" })).toBeInTheDocument();
   });
 
+  it("groups General's items under General (B110)", async () => {
+    await renderInbox({ api: withItems([question({ repo: "general", title: "Disk" })]) });
+
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("General1");
+  });
+
   it("groups a pixie's items under the pixie and opens its page", async () => {
     const api = withItems(
       [

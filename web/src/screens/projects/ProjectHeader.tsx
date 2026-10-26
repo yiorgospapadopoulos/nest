@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RepoConfig } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { GENERAL, projectName } from "../../store/general.ts";
 import { ProjectIcon } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
@@ -10,18 +11,19 @@ import { Sprite } from "../pixies/Sprite.tsx";
 const SPRITE_COLOR = "#8B7CF6";
 
 interface Props {
-  // The project shown, or null for the pixies (or no project at all).
-  repo: RepoConfig | null;
+  // The project shown, or General; the pixies show instead while `pixies` is set.
+  repo: RepoConfig;
   pixies: boolean;
   onProject: (name: string) => void;
   onPixies: () => void;
   // The + on the right: New chat in the project, or New pixie.
-  onAdd: (() => void) | null;
+  onAdd: () => void;
   onSettings: (name: string) => void;
 }
 
-/** A project's icon: its sprite when it has one, else its initials. */
+/** A project's icon: General's own, its sprite when it has one, else its initials. */
 export function RepoIcon({ repo }: { repo: RepoConfig }) {
+  if (repo.name === GENERAL) return <Icon name="chat" className="gico" />;
   return repo.icon === null ? (
     <ProjectIcon name={repo.name} />
   ) : (
@@ -40,8 +42,8 @@ export function ProjectHeader({ repo, pixies, onProject, onPixies, onAdd, onSett
   const close = () => {
     setMenu(false);
   };
-  const name = pixies ? "Pixies" : (repo?.name ?? "none");
-  const branch = pixies ? null : (repo?.current_branch ?? null);
+  const name = pixies ? "Pixies" : projectName(repo.name);
+  const branch = pixies ? null : repo.current_branch;
 
   return (
     <header className="bar">
@@ -54,8 +56,8 @@ export function ProjectHeader({ repo, pixies, onProject, onPixies, onAdd, onSett
           setMenu(true);
         }}
       >
-        {pixies ? <Icon name="pixie" className="pmi" /> : repo !== null && <RepoIcon repo={repo} />}
-        <span className="bar-t">{pixies || repo !== null ? name : "No project"}</span>
+        {pixies ? <Icon name="pixie" className="pmi" /> : <RepoIcon repo={repo} />}
+        <span className="bar-t">{name}</span>
         <Icon name="chev" className="pcv" />
       </button>
       {branch !== null && (
@@ -64,15 +66,13 @@ export function ProjectHeader({ repo, pixies, onProject, onPixies, onAdd, onSett
           <span>{branch}</span>
         </span>
       )}
-      {onAdd !== null && (
-        <button
-          className="ib bar-add"
-          aria-label={pixies ? "New pixie" : `New chat in ${name}`}
-          onClick={onAdd}
-        >
-          <Icon name="plus" />
-        </button>
-      )}
+      <button
+        className="ib bar-add"
+        aria-label={pixies ? "New pixie" : `New chat in ${name}`}
+        onClick={onAdd}
+      >
+        <Icon name="plus" />
+      </button>
       {menu && (
         <ActionSheet label="Projects" onClose={close}>
           <button
@@ -87,12 +87,24 @@ export function ProjectHeader({ repo, pixies, onProject, onPixies, onAdd, onSett
             <Icon name="pixie" />
             <span>Pixies</span>
           </button>
+          <button
+            className="asi"
+            role="menuitemradio"
+            aria-checked={!pixies && repo.name === GENERAL}
+            onClick={() => {
+              close();
+              onProject(GENERAL);
+            }}
+          >
+            <Icon name="chat" />
+            <span>General</span>
+          </button>
           {state.repos.map((each) => (
             <button
               key={each.name}
               className="asi"
               role="menuitemradio"
-              aria-checked={!pixies && each.name === repo?.name}
+              aria-checked={!pixies && each.name === repo.name}
               onClick={() => {
                 close();
                 onProject(each.name);
@@ -102,7 +114,7 @@ export function ProjectHeader({ repo, pixies, onProject, onPixies, onAdd, onSett
               <span>{each.name}</span>
             </button>
           ))}
-          {!pixies && repo !== null && (
+          {!pixies && repo.name !== GENERAL && (
             <button
               className="asi"
               role="menuitem"

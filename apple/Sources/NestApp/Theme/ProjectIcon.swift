@@ -21,7 +21,11 @@ struct ProjectIcon: View {
 
     var body: some View {
         Group {
-            if let mascot, mascot != .unknown {
+            if name == Repo.generalName {
+                Image(systemName: Icon.general)
+                    .font(.system(size: size * 0.8))
+                    .foregroundStyle(Palette.t2)
+            } else if let mascot, mascot != .unknown {
                 SpriteView(mascot: mascot, color: color ?? PixieColor.standard, size: size)
             } else {
                 badge

@@ -153,6 +153,15 @@ block = "B09"
 # Chats
 
 [[features]]
+id = "general-chats"
+group = "chats"
+name = "General"
+text = "Chats with no project, for a quick question or something to do on the machine itself."
+where = "+ after the tabs"
+added = 2026-10-26
+block = "B110"
+
+[[features]]
 id = "composer-shortcuts"
 group = "chats"
 name = "Composer shortcuts"

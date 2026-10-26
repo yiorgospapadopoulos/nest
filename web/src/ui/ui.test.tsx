@@ -78,7 +78,7 @@ describe("Toast", () => {
         connect={socketFactory().connect}
         location={{ protocol: "http:", host: "x" }}
       >
-        <Inbox project={null} onOpenChat={() => undefined} onOpenPixie={() => undefined} />
+        <Inbox project="todo-ui" onOpenChat={() => undefined} onOpenPixie={() => undefined} />
         <Toast />
       </StoreProvider>,
     );
@@ -107,7 +107,7 @@ describe("an error toast", () => {
         connect={socketFactory().connect}
         location={{ protocol: "http:", host: "x" }}
       >
-        <Inbox project={null} onOpenChat={() => undefined} onOpenPixie={() => undefined} />
+        <Inbox project="todo-ui" onOpenChat={() => undefined} onOpenPixie={() => undefined} />
         <Toast />
       </StoreProvider>,
     );

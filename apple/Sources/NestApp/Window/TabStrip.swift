@@ -45,11 +45,16 @@ struct TabStrip: View {
                 .padding(.horizontal, 6)
                 .padding(.bottom, Self.centred(on: 16))
                 .accessibilityHidden(true)
-            let tabs = shell.app.openProjects
+            // General stays first while open and is not dragged (B110).
+            if shell.app.isGeneralOpen {
+                ProjectTab(name: Repo.generalName, move: nil)
+            }
+            let first = shell.app.isGeneralOpen ? 1 : 0
+            let tabs = Array(shell.app.openProjects.dropFirst(first))
             ForEach(Array(tabs.enumerated()), id: \.element) { index, name in
                 let dragged = drag?.name == name
                 ProjectTab(name: name) { by in
-                    shell.app.moveProject(name, to: index + by)
+                    shell.app.moveProject(name, to: first + index + by)
                 }
                 .onGeometryChange(for: Double.self) {
                     $0.size.width
@@ -106,8 +111,9 @@ struct TabStrip: View {
             .onEnded { value in
                 let landing = TabDrag(
                     name: name, start: index, translation: value.translation.width)
+                let first = shell.app.isGeneralOpen ? 1 : 0
                 withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
-                    shell.app.moveProject(name, to: target(of: landing, count: count))
+                    shell.app.moveProject(name, to: first + target(of: landing, count: count))
                     drag = nil
                 }
             }
@@ -223,8 +229,9 @@ private struct TabCloseButton: View {
 /// over its end while hovered.
 private struct ProjectTab: View {
     let name: String
-    /// Moves the tab by this many places, for the accessibility actions.
-    let move: (Int) -> Void
+    /// Moves the tab by this many places, for the accessibility actions; nil for General,
+    /// which stays first.
+    let move: ((Int) -> Void)?
     @Environment(Shell.self) private var shell
     @State private var hovering = false
 
@@ -236,10 +243,11 @@ private struct ProjectTab: View {
         }
         let canClose = shell.app.openProjects.count > 1
         let closesOnHover = canClose && hovering && !isCurrent
+        let title = shell.app.repo(name)?.title ?? name
 
         HStack(spacing: 7) {
             ProjectIcon(project: name, repo: shell.app.repo(name), size: 13)
-            Text(name)
+            Text(title)
                 .font(.ui(TypeSize.ui))
                 .foregroundStyle(isCurrent ? Palette.t1 : Palette.t2)
                 .lineLimit(1)
@@ -249,7 +257,7 @@ private struct ProjectTab: View {
                 .fixedSize()
                 .opacity(closesOnHover ? 0 : 1)
             if canClose && isCurrent {
-                TabCloseButton(name: name) { shell.app.closeProject(name) }
+                TabCloseButton(name: title) { shell.app.closeProject(name) }
                     .padding(.leading, 1)
             }
         }
@@ -260,23 +268,37 @@ private struct ProjectTab: View {
         .modifier(TabBackground(isCurrent: isCurrent, hovering: hovering))
         .overlay(alignment: .trailing) {
             if closesOnHover {
-                TabCloseButton(name: name) { shell.app.closeProject(name) }
+                TabCloseButton(name: title) { shell.app.closeProject(name) }
                     .padding(.trailing, 4)
             }
         }
         .onTapGesture { shell.selectProject(name) }
         .onHover { hovering = $0 }
-        .help(attention > 0 ? "\(name), \(attention) need you" : name)
+        .help(attention > 0 ? "\(title), \(attention) need you" : title)
         // Ignored, not combined: a combined tab passed its press on to the close button.
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(attention > 0 ? "\(name), \(attention) need you" : name)
+        .accessibilityLabel(attention > 0 ? "\(title), \(attention) need you" : title)
         .accessibilityAction { shell.selectProject(name) }
         .accessibilityAction(named: "Close") {
             if canClose { shell.app.closeProject(name) }
         }
-        .accessibilityAction(named: "Move left") { move(-1) }
-        .accessibilityAction(named: "Move right") { move(1) }
+        .modifier(MoveActions(move: move))
+    }
+}
+
+/// A draggable tab's accessibility actions, standing in for the drag.
+private struct MoveActions: ViewModifier {
+    let move: ((Int) -> Void)?
+
+    func body(content: Content) -> some View {
+        if let move {
+            content
+                .accessibilityAction(named: "Move left") { move(-1) }
+                .accessibilityAction(named: "Move right") { move(1) }
+        } else {
+            content
+        }
     }
 }
 
@@ -571,6 +593,17 @@ private struct AddProjectPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            // General is always here: it can be closed but never removed (B110).
+            MenuRow(
+                icon: Icon.general, title: Repo.general.title,
+                detail: shell.app.isGeneralOpen
+                    ? "Chats with no project, open" : "Chats with no project",
+                detailIsPath: false
+            ) {
+                shell.openProject(Repo.generalName)
+                dismiss()
+            }
+            Separator().padding(.vertical, 4)
             SectionLabel(text: "Open a project")
                 .padding(.horizontal, 9)
                 .padding(.bottom, 6)
@@ -622,6 +655,8 @@ struct MenuRow: View {
     let detail: String?
     /// The project a row without an icon stands for, whose icon it shows.
     var repo: Repo?
+    /// A folder path shows in the code font; words in the interface font.
+    var detailIsPath = true
     let action: () -> Void
 
     var body: some View {
@@ -639,7 +674,7 @@ struct MenuRow: View {
                     Text(title).font(.ui(TypeSize.ui))
                     if let detail {
                         Text(detail)
-                            .font(.mono(TypeSize.meta))
+                            .font(detailIsPath ? .mono(TypeSize.meta) : .ui(TypeSize.meta))
                             .foregroundStyle(Palette.t3)
                             .lineLimit(1)
                             .truncationMode(.middle)

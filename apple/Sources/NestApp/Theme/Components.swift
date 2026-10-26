@@ -16,6 +16,9 @@ enum Icon {
     static let check = "checkmark"
     static let branch = "arrow.triangle.branch"
     static let folder = "folder"
+    /// General's tab (B110): chats with no project.
+    static let general = "bubble.left"
+    static let machine = "desktopcomputer"
     static let file = "doc"
     static let terminal = "terminal"
     static let edit = "pencil"
