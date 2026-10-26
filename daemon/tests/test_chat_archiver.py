@@ -1,6 +1,8 @@
-"""Chats idle for the chosen number of days are archived like a manual archive (D104)."""
+"""Chats idle for the chosen number of days are archived like a manual archive (D104).
+Claude Code chats Nest lists are archived in Nest's own archive (D040, D133)."""
 
 import json
+import os
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
@@ -13,6 +15,7 @@ from nestd.sessions.models import UpdateSession
 from nestd.storage.archiver import ChatArchiver
 from tests.api_client import Api, running_api
 from tests.async_support import until
+from tests.claude_support import CHAT_A, CHAT_B, CHAT_C, ClaudeHome, simple_chat, user
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
@@ -75,6 +78,41 @@ async def test_only_idle_unpinned_chats_past_the_limit_are_archived(
     assert await api.ctx.archiver.run_once() == []
 
 
+async def test_idle_claude_code_chats_are_archived_in_nest_too(
+    api: Api, clock: FakeClock, tmp_path: Path
+) -> None:
+    claude = ClaudeHome(tmp_path / "claude")
+    root = (tmp_path / "repo").resolve()
+    old = clock.now() - timedelta(days=3, seconds=1)
+    claude.write_chat(root, CHAT_A, simple_chat(), modified=old)
+    claude.write_chat(root, CHAT_B, simple_chat(), modified=clock.now() - timedelta(days=2))
+    claude.write_chat(root, CHAT_C, simple_chat(), modified=old)
+    claude.open_chat(os.getpid(), CHAT_C)
+    keep_after(api, 3)
+
+    assert await api.ctx.archiver.run_once() == [CHAT_A]
+
+    listed = {chat.id: chat.archived for chat in await api.ctx.claude_chats.list_chats()}
+    # Recent, and open in Claude Code right now: kept.
+    assert listed == {CHAT_A: True, CHAT_B: False, CHAT_C: False}
+    assert await api.ctx.archiver.run_once() == []
+
+
+async def test_automated_claude_code_chats_are_archived_though_hidden(
+    api: Api, clock: FakeClock, tmp_path: Path
+) -> None:
+    root = (tmp_path / "repo").resolve()
+    ClaudeHome(tmp_path / "claude").write_chat(
+        root,
+        CHAT_A,
+        [user("u1", "Review this change", entrypoint="sdk-py")],
+        modified=clock.now() - timedelta(days=2),
+    )
+    keep_after(api, 1)
+
+    assert await api.ctx.archiver.run_once() == [CHAT_A]
+
+
 async def test_nothing_is_archived_when_set_to_never(api: Api, clock: FakeClock) -> None:
     old = await idle_chat(api, "Old")
     clock.advance(timedelta(days=4000))
@@ -109,7 +147,11 @@ async def test_a_failed_check_is_logged_and_the_loop_goes_on(
         return StorageSettings()
 
     archiver = ChatArchiver(
-        sessions=api.ctx.sessions, clock=clock, settings=settings, interval=timedelta(hours=1)
+        sessions=api.ctx.sessions,
+        claude_chats=api.ctx.claude_chats,
+        clock=clock,
+        settings=settings,
+        interval=timedelta(hours=1),
     )
     await archiver.start()
     await until(lambda: len(calls) >= 1)

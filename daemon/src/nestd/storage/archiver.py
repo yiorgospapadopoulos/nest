@@ -3,6 +3,8 @@
 It checks when the daemon starts, every hour and when the setting is saved. Pinned chats,
 chats in a turn or waiting on the user, and chats paused at the usage limit are kept. Each
 archive goes through the same path as the user's Archive, so it is announced the same way.
+The Claude Code chats Nest lists go into Nest's own archive for them (D040), unless open in
+Claude Code right now (D133).
 """
 
 import asyncio
@@ -11,6 +13,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import timedelta
 
+from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.clock import Clock
 from nestd.config.models import StorageSettings
 from nestd.sessions.manager import SessionManager
@@ -26,12 +29,14 @@ class ChatArchiver:
         self,
         *,
         sessions: SessionManager,
+        claude_chats: ClaudeChats,
         clock: Clock,
         settings: Callable[[], StorageSettings],
         interval: timedelta = INTERVAL,
     ) -> None:
         """`settings` is read at each check, so a new limit applies at once."""
         self._sessions = sessions
+        self._claude_chats = claude_chats
         self._clock = clock
         self._settings = settings
         self._interval = interval
@@ -69,6 +74,11 @@ class ChatArchiver:
                 continue
             await self._sessions.update(session.id, UpdateSession(archived=True))
             archived.append(session.id)
+        for chat in await self._claude_chats.list_chats(include_automated=True):
+            if chat.archived or chat.open_in_claude_code or chat.last_activity_at > cutoff:
+                continue
+            await self._claude_chats.set_archived(chat.id, archived=True)
+            archived.append(chat.id)
         return archived
 
     async def _loop(self) -> None:
