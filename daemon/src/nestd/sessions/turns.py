@@ -37,6 +37,7 @@ from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.local import LocalSource, crosses_local, require
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
+from nestd.sessions.ports import NO_PORTS, FolderPorts, PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
 from nestd.sessions.sink import SessionSink, TurnEnd
@@ -146,14 +147,17 @@ class TurnRunner:
         nest_tools: NestToolsSource | None = None,
         call_tools: CallToolsSource | None = None,
         local: LocalSource | None = None,
+        ports: PortsSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
         holds the chats paused at the usage limit (B78); `agents` gives a project chat's
         run its subagents (B40), and `calls` follows the pixies it calls (B46).
         `nest_tools` gives every run the tools all chats and pixies have (B79), and
         `call_tools` the tool that calls the pixies its engine cannot run inside (B91).
-        `local` points runs on local models at their servers (B106).
+        `local` points runs on local models at their servers (B106). `ports` tells a
+        project chat's agent about its folder's ports and dev server (B108).
         """
+        self._ports = ports
         self._local = local
         self._nest_tools = nest_tools
         self._call_tools = call_tools
@@ -672,6 +676,8 @@ class TurnRunner:
             # sets it again, and the loop opens another run with that change.
             live.rotate = False
             extras = await self._pixie_extras(session)
+            # A pixie's own runs work in no project folder.
+            ports = NO_PORTS if extras else await self._folder_ports(session)
             # Following Claude Code's own mode, the run opens without one (IMP-06).
             mode = None if session.follows_claude_code_mode else session.permission_mode
             local = await self._local_run(live, session)
@@ -690,7 +696,7 @@ class TurnRunner:
                 drops_turn=session.fork_drops,
                 extra_dirs=dirs + (extras.extra_dirs if extras else ()),
                 system_prompt_append=(
-                    extras.system_prompt if extras else await self._nest_prompt(session)
+                    extras.system_prompt if extras else await self._nest_prompt(session, ports)
                 ),
                 tools=extras.tools if extras else (),
                 nest_tools=self._run_tools(session, agents),
@@ -701,6 +707,7 @@ class TurnRunner:
                 guard_git=_guarded(session),
                 account=account,
                 local=local,
+                env=ports.env,
             )
             sink = SessionSink(
                 live,
@@ -788,10 +795,20 @@ class TurnRunner:
         calls = self._call_tools(session, agents) if self._call_tools else ()
         return tools + calls
 
-    async def _nest_prompt(self, session: Session) -> str:
+    async def _folder_ports(self, session: Session) -> FolderPorts:
+        """The folder's ports; bookkeeping, so without them the run opens anyway."""
+        if self._ports is None:
+            return NO_PORTS
+        return await isolated_or("the folder's ports", session.id, self._ports(session), NO_PORTS)
+
+    async def _nest_prompt(self, session: Session, ports: FolderPorts) -> str:
         """Without Claude Code's task list (Codex, B91), the prompt leaves out what it says
-        about it.
+        about it. The folder's ports end it (B108).
         """
+        prompt = await self._base_prompt(session)
+        return prompt if ports.prompt is None else f"{prompt} {ports.prompt}"
+
+    async def _base_prompt(self, session: Session) -> str:
         claude = self._engines.of(session).supports("task_list")
         if _guarded(session):
             return GUARDED_PROMPT if claude else CODEX_GUARDED_PROMPT

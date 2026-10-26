@@ -149,6 +149,24 @@ async def test_a_guarded_run_has_no_git_credentials_in_codex_or_its_commands(
     await run.close()
 
 
+async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) -> None:
+    """B108: set for the commands too, whatever the user's environment policy passes on."""
+    ports = {"NEST_PORT": "41020", "NEST_PORT_1": "41021"}
+
+    server, run, _, _ = await opened(tmp_path, env=ports)
+    guarded_server, guarded, _, _ = await opened(tmp_path, env=ports, guard_git=True)
+
+    assert server.launches[0].env["NEST_PORT"] == "41020"
+    [start] = server.requests("thread/start")
+    assert start["config"] == {"shell_environment_policy.set": ports}
+    [guarded_start] = guarded_server.requests("thread/start")
+    assert guarded_start["config"] == {
+        "shell_environment_policy.set": {**ports, **_agent_env(tmp_path)}
+    }
+    await run.close()
+    await guarded.close()
+
+
 def _agent_env(tmp_path: Path) -> dict[str, str]:
     return agent_env(tmp_path / "gh")
 

@@ -65,6 +65,7 @@ from nestd.sessions.models import (
     UpdateSession,
     pixie_repo,
 )
+from nestd.sessions.ports import PortsSource
 from nestd.sessions.prompts import SessionPrompts
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rewinds import NO_CHECKPOINT, NO_PIXIE_RESTORE, Rewinds
@@ -131,6 +132,7 @@ class SessionManager:
         accounts: AccountSource | None = None,
         issues: IssueFetch | None = None,
         local: LocalSource | None = None,
+        ports: PortsSource | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -139,7 +141,8 @@ class SessionManager:
         `provider` and `models` are the default engine's; `engines` the others a chat
         can ask for, such as Codex (B91). `accounts` is the default engine's active
         account (B98). `issues` reads the issue a chat starts from (B101). `local` runs
-        chats on local models (B106).
+        chats on local models (B106). `ports` tells a project chat's agent about its
+        folder's ports and dev server (B108).
         """
         self._local = local
         self._issues = issues
@@ -182,6 +185,7 @@ class SessionManager:
             nest_tools=nest_tools,
             call_tools=call_tools,
             local=local,
+            ports=ports,
         )
         self._rewinds = Rewinds(
             store=store,

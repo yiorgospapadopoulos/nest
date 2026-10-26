@@ -425,6 +425,9 @@ class SessionSpec:
     account: RunAccount | None = None
     # A run on a local model goes to its server, for this run only (B106).
     local: LocalRun | None = None
+    # Added to the agent's own environment, so what it starts sees them too, such as its
+    # folder's ports (B108).
+    env: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)

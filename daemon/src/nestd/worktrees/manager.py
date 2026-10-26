@@ -4,10 +4,11 @@ import asyncio
 import logging
 import re
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
+from typing import Protocol
 
 from nestd.config.models import RepoConfig
 from nestd.errors import ConflictError, InvalidInputError
@@ -72,16 +73,35 @@ def _slug(title: str) -> str:
 type RemovedHook = Callable[[Path], object]
 
 
+class WorktreeRuns(Protocol):
+    """A worktree's ports and dev server run (B108)."""
+
+    async def setup_env(self, repo: RepoConfig, folder: Path) -> Mapping[str, str]:
+        """The variables its setup commands get, such as its ports."""
+        ...
+
+    async def set_up(self, repo: RepoConfig, folder: Path) -> None:
+        """Its setup succeeded."""
+        ...
+
+    async def removing(self, folder: Path) -> None:
+        """Nest is about to remove it."""
+        ...
+
+
 class WorktreeManager:
     def __init__(
         self,
         paths: AppPaths,
         on_removed: RemovedHook | None = None,
         bus: EventBus | None = None,
+        runs: WorktreeRuns | None = None,
     ) -> None:
         """With `bus`, each worktree added or removed is announced as the repo's branches
-        changing (B96).
+        changing (B96). `runs` gives setup commands the worktree's ports, starts its run
+        after setup and stops it before it is removed (B108).
         """
+        self._runs = runs
         self._paths = paths
         self._on_removed = on_removed
         self._bus = bus
@@ -179,12 +199,17 @@ class WorktreeManager:
     async def run_setup(
         self, repo: RepoConfig, worktree_path: Path, session_id: str
     ) -> SetupResult:
-        return await run_commands(
+        runs = self._runs
+        result = await run_commands(
             repo.worktree.setup,
             worktree_path,
             self._paths.logs_dir / f"setup-{session_id}.log",
             repo.worktree.setup_timeout_seconds,
+            None if runs is None else await runs.setup_env(repo, worktree_path),
         )
+        if result.ok and runs is not None:
+            await runs.set_up(repo, worktree_path)
+        return result
 
     async def remove(self, repo: RepoConfig, worktree: Worktree) -> bool:
         """Remove the worktree; close its agent first, so exit hooks cannot recreate files.
@@ -196,6 +221,7 @@ class WorktreeManager:
         """
         if not await asyncio.to_thread(self._owns, repo, worktree.path):
             return False
+        await self._removing(worktree.path)
         has_repo = await asyncio.to_thread(repo.path.is_dir)
         if has_repo and await asyncio.to_thread(_is_worktree, worktree.path):
             await run_hardened_git(["worktree", "remove", "--force", str(worktree.path)], repo.path)
@@ -209,6 +235,15 @@ class WorktreeManager:
     async def _branches_changed(self, repo: RepoConfig) -> None:
         if self._bus is not None:
             await self._bus.publish_ephemeral(types.REPO_BRANCHES_CHANGED, {"name": repo.name})
+
+    async def _removing(self, path: Path) -> None:
+        """Stop its run first (B108); a failure never keeps the worktree from being removed."""
+        if self._runs is None:
+            return
+        try:
+            await self._runs.removing(path)
+        except Exception as error:
+            logger.warning("stopping the run in the worktree %s failed (%s)", path, error)
 
     async def _removed(self, path: Path) -> None:
         """Bookkeeping: its failure never keeps the worktree from being removed."""

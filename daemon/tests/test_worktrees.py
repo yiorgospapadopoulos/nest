@@ -465,3 +465,77 @@ async def test_a_failing_removal_hook_still_removes_the_worktree(
 
     assert not worktree.path.exists()
     assert worktree.branch in branches(repo)
+
+
+def _exists(folder: Path) -> bool:
+    return folder.exists()
+
+
+class FakeRuns:
+    """A worktree's ports and run (B108), recording what the manager asked."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path, bool]] = []
+        self.broken = False
+
+    async def setup_env(self, repo: RepoConfig, folder: Path) -> dict[str, str]:
+        self.calls.append(("setup_env", folder, _exists(folder)))
+        return {"NEST_PORT": "50000", "NEST_PORT_1": "50001"}
+
+    async def set_up(self, repo: RepoConfig, folder: Path) -> None:
+        self.calls.append(("set_up", folder, _exists(folder)))
+
+    async def removing(self, folder: Path) -> None:
+        self.calls.append(("removing", folder, _exists(folder)))
+        if self.broken:
+            msg = "the run would not stop"
+            raise RuntimeError(msg)
+
+
+async def test_setup_commands_get_the_worktrees_ports_and_its_run_starts_after(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    runs = FakeRuns()
+    manager = WorktreeManager(paths, runs=runs)
+    repo = make_repo(tmp_path, WorktreeConfig(setup=['echo "$NEST_PORT $NEST_PORT_1" > ports']))
+    worktree = await manager.create(repo, "session-1", "t")
+
+    result = await manager.run_setup(repo, worktree.path, "session-1")
+
+    assert result.ok is True
+    assert (worktree.path / "ports").read_text(encoding="utf-8") == "50000 50001\n"
+    assert runs.calls == [("setup_env", worktree.path, True), ("set_up", worktree.path, True)]
+
+
+async def test_a_failed_setup_starts_no_run(paths: AppPaths, tmp_path: Path) -> None:
+    runs = FakeRuns()
+    manager = WorktreeManager(paths, runs=runs)
+    repo = make_repo(tmp_path, WorktreeConfig(setup=["exit 1"]))
+    worktree = await manager.create(repo, "session-1", "t")
+
+    result = await manager.run_setup(repo, worktree.path, "session-1")
+
+    assert result.ok is False
+    assert [call for call, _, _ in runs.calls] == ["setup_env"]
+
+
+async def test_a_worktrees_run_stops_before_it_is_removed_even_when_that_fails(
+    paths: AppPaths, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    runs = FakeRuns()
+    manager = WorktreeManager(paths, runs=runs)
+    repo = make_repo(tmp_path)
+    first = await manager.create(repo, "aaaaaaaa", "one")
+    second = await manager.create(repo, "bbbbbbbb", "two")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    await manager.remove(repo, first)
+    await manager.remove(repo, Worktree(outside, "agent/none", ""))
+    runs.broken = True
+    with caplog.at_level(logging.WARNING):
+        await manager.remove(repo, second)
+
+    assert runs.calls == [("removing", first.path, True), ("removing", second.path, True)]
+    assert not second.path.exists()
+    assert "stopping the run in the worktree" in caplog.text

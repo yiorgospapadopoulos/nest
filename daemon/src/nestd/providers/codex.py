@@ -270,6 +270,7 @@ class CodexProvider:
                 handler, run.permissions, run.stream.file_changes.get, run.stream.mcp_call
             )
             extra_env = {
+                **spec.env,
                 **(agent_env(self._gh_config_dir) if spec.guard_git else {}),
                 **(tools.env() if tools is not None else {}),
                 # The account's profile folder (B98) wins over the first account's home.
@@ -394,12 +395,16 @@ async def _ask_before_mcp_tools(rpc: CodexRpc, spec: SessionSpec) -> JsonObject:
 
 def _thread_config(spec: SessionSpec, gh_config_dir: Path) -> JsonObject:
     """Config overrides for the thread, as `-c key=value` would give them. A guarded run's
-    commands also get the credential-free git setup (D013), whatever the user's shell
-    environment policy leaves out.
+    commands also get the credential-free git setup (D013), and every run's commands its
+    folder's ports (B108), whatever the user's shell environment policy leaves out.
     """
     config: JsonObject = {}
-    if spec.guard_git:
-        env: dict[str, JsonValue] = dict(agent_env(gh_config_dir))
+    # The folder's ports (B108), whatever the policy lets through from the environment.
+    env: dict[str, JsonValue] = {
+        **spec.env,
+        **(agent_env(gh_config_dir) if spec.guard_git else {}),
+    }
+    if env:
         config["shell_environment_policy.set"] = env
     return config
 

@@ -214,6 +214,24 @@ def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: P
     assert options.env["HOME"] == "/Users/me"
 
 
+def test_a_runs_folder_ports_reach_claude_code_over_the_shells(tmp_path: Path) -> None:
+    """B108: what the agent starts gets the folder's ports too."""
+    options = build_options(
+        SessionSpec(
+            cwd=tmp_path,
+            permission_mode="default",
+            env={"NEST_PORT": "41020", "NEST_PORT_1": "41021"},
+        ),
+        ScriptedHandler(PermissionDecision("allow")),
+        tmp_path / "agent-gh",
+        shell_env={"NEST_PORT": "1", "HOME": "/Users/me"},
+    )
+
+    assert options.env is not None
+    assert (options.env["NEST_PORT"], options.env["NEST_PORT_1"]) == ("41020", "41021")
+    assert options.env["HOME"] == "/Users/me"
+
+
 def test_a_run_is_guarded_unless_it_says_otherwise(tmp_path: Path) -> None:
     options = build_options(
         SessionSpec(cwd=tmp_path, permission_mode="default"),

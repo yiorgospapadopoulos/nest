@@ -282,6 +282,8 @@ def build_options(
             **(shell_env or {}),
             **(agent_env(gh_config_dir) if spec.guard_git else {}),
             **CLAUDE_APP_ENV,
+            # Such as the folder's ports (B108).
+            **spec.env,
             # The account's profile folder (B98).
             **(spec.account.env if spec.account is not None else {}),
             # A local model's server (B106); the settings below make it beat the user's.
