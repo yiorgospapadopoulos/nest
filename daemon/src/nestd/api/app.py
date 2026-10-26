@@ -40,6 +40,7 @@ from nestd.api.routes import (
     push,
     repos,
     review,
+    runs,
     search,
     service,
     session_pixies,
@@ -105,6 +106,8 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
             await ctx.branch_watch.stop()
             await ctx.claude_chats.stop()
             await ctx.sessions.shutdown()
+            # After the agents, which may use the dev servers until they stop.
+            await ctx.runs.shutdown()
             await ctx.pr_adopter.settled()
             await ctx.notifications.stop()
             await ctx.modules.stop_all()
@@ -129,6 +132,7 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         repos,
         attachments,
         sessions,
+        runs,
         goals,
         session_pixies,
         pixie_groups,
