@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import type { ClaudeChat, Session } from "../../api/types.ts";
+import type { ClaudeChat, RepoConfig, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { chatList, type ChatEntry } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -14,7 +14,8 @@ import { PixieSection } from "../pixies/PixieSection.tsx";
 import type { PixieTab } from "../pixies/PixieView.tsx";
 
 interface Props {
-  project: string | null;
+  // The project shown, or General.
+  repo: RepoConfig;
   // The pixies show instead of a project, as the Mac's Pixies tab (B102).
   pixies: boolean;
   onProject: (name: string) => void;
@@ -37,7 +38,7 @@ interface Props {
  * pixies. While a search is typed, its results replace the list.
  */
 export function Projects({
-  project,
+  repo,
   pixies,
   onProject,
   onPixies,
@@ -54,7 +55,6 @@ export function Projects({
   const [acting, setActing] = useState<Session | null>(null);
   const [actingChat, setActingChat] = useState<ClaudeChat | null>(null);
   const [query, setQuery] = useState("");
-  const repo = state.repos.find((r) => r.name === project) ?? null;
 
   const newPixie = async () => {
     const created = await actions.createPixie({ name: "New pixie" });
@@ -148,13 +148,7 @@ export function Projects({
     );
   };
 
-  const listView = pixies ? (
-    <PixieSection onOpen={onOpenPixie} />
-  ) : repo === null ? (
-    <p className="sempty">No projects yet. Add one in the Nest app on your Mac.</p>
-  ) : (
-    chatsView(repo.name)
-  );
+  const listView = pixies ? <PixieSection onOpen={onOpenPixie} /> : chatsView(repo.name);
 
   return (
     <>
@@ -166,11 +160,9 @@ export function Projects({
         onAdd={
           pixies
             ? () => void newPixie()
-            : repo === null
-              ? null
-              : () => {
-                  onNewChat(repo.name);
-                }
+            : () => {
+                onNewChat(repo.name);
+              }
         }
         onSettings={onOpenSettings}
       />

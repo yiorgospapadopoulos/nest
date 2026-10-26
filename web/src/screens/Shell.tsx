@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NAVIGATE, type NavigateMessage } from "../pwa/navigate.ts";
 import { parseRoute, routePath, type Route, type SettingsPage, type Tab } from "../routes.ts";
 import { useStore } from "../store/context.ts";
+import { GENERAL_REPO, repoNamed } from "../store/general.ts";
 import { needsCount } from "../store/selectors.ts";
 import { ChatView, type ChatTarget } from "./chat/ChatView.tsx";
 import type { PixieTab } from "./pixies/PixieView.tsx";
@@ -24,8 +25,12 @@ export function Shell() {
   const [settings, setSettings] = useState<SettingsPage | null>(initial.settings ?? null);
   const [fromProjects, setFromProjects] = useState(false);
   const [chat, setChat] = useState<ChatTarget | null>(() => routeTarget(initial));
-  // The chosen project while it is still registered, else the first one.
-  const current = state.repos.find((r) => r.name === project)?.name ?? state.repos[0]?.name ?? null;
+  // The chosen project while it is still registered, else the first one, else General.
+  const currentRepo =
+    (project === null ? undefined : repoNamed(state.repos, project)) ??
+    state.repos[0] ??
+    GENERAL_REPO;
+  const current = currentRepo.name;
 
   useEffect(() => {
     const path = routePath({
@@ -129,7 +134,7 @@ export function Shell() {
         )}
         {tab === "projects" && (
           <Projects
-            project={current}
+            repo={currentRepo}
             pixies={pixies}
             onProject={(name) => {
               setProject(name);

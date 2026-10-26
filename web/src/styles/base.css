@@ -491,6 +491,13 @@ a.chip {
     transform: translateX(200%);
   }
 }
+/* General's icon where a project shows its initials (B110). */
+.gico {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--t2);
+}
 .pico {
   width: 22px;
   height: 22px;

@@ -119,17 +119,20 @@ describe("the project's goals under Needs you (B47, B102 item 11)", () => {
     expect(screen.queryByRole("region", { name: "Goals" })).not.toBeInTheDocument();
   });
 
-  it("shows no goals without a project", async () => {
+  it("shows General's goals when there is no project (B110)", async () => {
     const api = withGoals([], [], []);
     await openNeedsYou(api);
 
     expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
-    expect(api.goals).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(api.goals).toHaveBeenCalledWith("general");
+    });
   });
 
-  it("loads no goals after a reconnect that cannot resume, while there is no project", async () => {
+  it("loads no goals after a reconnect while they were never shown", async () => {
+    window.history.replaceState(null, "", "/projects");
     const api = withGoals([], [], []);
-    const { sockets } = await openNeedsYou(api);
+    const { sockets } = await renderApp({ api });
     const loads = api.approvals.mock.calls.length;
 
     const count = sockets.sockets.length;
@@ -146,11 +149,38 @@ describe("the project's goals under Needs you (B47, B102 item 11)", () => {
       sockets.last().open();
     });
 
-    // The snapshots load again; there is still no project to load goals for.
     await waitFor(() => {
       expect(api.approvals.mock.calls.length).toBeGreaterThan(loads);
     });
     expect(api.goals).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it("loads General's goals again after a reconnect that cannot resume (B110)", async () => {
+    const api = withGoals([], [], []);
+    const { sockets } = await openNeedsYou(api);
+    await waitFor(() => {
+      expect(api.goals).toHaveBeenCalled();
+    });
+    const loads = api.goals.mock.calls.length;
+
+    const count = sockets.sockets.length;
+    act(() => {
+      sockets.last().drop(1006);
+    });
+    await waitFor(
+      () => {
+        expect(sockets.sockets).toHaveLength(count + 1);
+      },
+      { timeout: 3000 },
+    );
+    act(() => {
+      sockets.last().open();
+    });
+
+    await waitFor(() => {
+      expect(api.goals.mock.calls.length).toBeGreaterThan(loads);
+    });
+    expect(api.goals).toHaveBeenLastCalledWith("general");
   }, 10_000);
 
   it("opens the chat from its name", async () => {
