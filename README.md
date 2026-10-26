@@ -317,7 +317,7 @@ Settings > Storage shows the space Nest's data folder uses as a total, a bar and
 archive_after_days = 30   # leave it out to never archive; 1 to 3650
 ```
 
-Nest chats not updated for that many days are archived as if you archived them yourself, checked at start, every hour and when the setting changes; pinned chats, chats in a turn or waiting on you, and chats paused at the usage limit are kept.
+Nest chats not updated for that many days are archived as if you archived them yourself, checked at start, every hour and when the setting changes; pinned chats, chats in a turn or waiting on you, and chats paused at the usage limit are kept. The menu on the Mac and the iPhone offers Never, 1, 2, 3, 7, 30 and 90 days.
 
 What new pixies start with, and the habit rules of every pixie:
 

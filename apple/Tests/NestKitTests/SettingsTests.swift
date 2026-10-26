@@ -193,7 +193,7 @@ import Testing
     @Test func archiveAndAttachmentWords() {
         #expect(
             StorageText.archiveChoices.map(StorageText.archiveLabel) == [
-                "Never", "7 days", "30 days", "90 days",
+                "Never", "1 day", "2 days", "3 days", "7 days", "30 days", "90 days",
             ])
         #expect(StorageText.archiveLabel(1) == "1 day")
         func attachment(_ session: String?, _ title: String?) -> LargeAttachment {

@@ -73,8 +73,8 @@ public enum StorageText {
         ]
     }
 
-    /// Archive chats idle for: Never, 7, 30 or 90 days.
-    public static let archiveChoices: [Int?] = [nil, 7, 30, 90]
+    /// Archive chats idle for: Never, 1, 2, 3, 7, 30 or 90 days.
+    public static let archiveChoices: [Int?] = [nil, 1, 2, 3, 7, 30, 90]
 
     /// "Never", "1 day", "30 days".
     public static func archiveLabel(_ days: Int?) -> String {
