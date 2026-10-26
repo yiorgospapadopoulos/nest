@@ -312,6 +312,15 @@ class AppContext:
         store = SessionStore(db, clock)
         live_chats = LiveChats(paths.claude_dir)
         search = SearchIndex(db)
+        claude_chats = ClaudeChats(
+            claude_dir=paths.claude_dir,
+            repos=repos,
+            store=store,
+            archive=ChatArchive(db, clock),
+            bus=bus,
+            live=live_chats,
+            on_refresh=search.sync_claude_chats,
+        )
         commands = CommandStore(db, clock)
         where = _locations(paths)
 
@@ -663,15 +672,7 @@ class AppContext:
             connectors=connectors,
             local_apps=LocalApps(opener, paths.launchers_dir),
             notifications=notifications,
-            claude_chats=ClaudeChats(
-                claude_dir=paths.claude_dir,
-                repos=repos,
-                store=store,
-                archive=ChatArchive(db, clock),
-                bus=bus,
-                live=live_chats,
-                on_refresh=search.sync_claude_chats,
-            ),
+            claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
             usage_refresher=usage_refresher,
             commands=commands,
@@ -720,6 +721,7 @@ class AppContext:
             ),
             archiver=ChatArchiver(
                 sessions=sessions,
+                claude_chats=claude_chats,
                 clock=clock,
                 # Read at each check, so a new limit from the API applies at once.
                 settings=lambda: context.settings.storage,
