@@ -15,7 +15,9 @@ from nestd.config.loader import (
 from nestd.config.models import (
     ConfigurationSettings,
     McpSharing,
+    PortSettings,
     RepoConfig,
+    RunConfig,
     ServerSettings,
     Settings,
     WorktreeConfig,
@@ -303,3 +305,73 @@ def test_save_configuration_keeps_the_other_sections(paths: AppPaths) -> None:
     assert written["configuration"]["mcp_shared"] == {"claude": True, "codex": False}
     assert written["server"]["port"] == 9001
     assert load_settings(paths).configuration == changed
+
+
+def test_a_repo_file_may_name_its_dev_server_command(paths: AppPaths) -> None:
+    (paths.repos_dir / "web.toml").write_text(
+        'name = "web"\npath = "/src/web"\n[run]\ncommand = "npm run dev"\nafter_setup = true\n',
+        encoding="utf-8",
+    )
+    (paths.repos_dir / "api.toml").write_text(
+        'name = "api"\npath = "/src/api"\n[run]\ncommand = "make serve"\n', encoding="utf-8"
+    )
+    (paths.repos_dir / "docs.toml").write_text(
+        'name = "docs"\npath = "/src/docs"\n', encoding="utf-8"
+    )
+
+    runs = {repo.name: repo.run for repo in load_repos(paths)}
+
+    assert runs == {
+        "api": RunConfig(command="make serve", after_setup=False),
+        "docs": None,
+        "web": RunConfig(command="npm run dev", after_setup=True),
+    }
+
+
+@pytest.mark.parametrize("run", [{}, {"command": ""}, {"command": "   "}, {"command": "x", "y": 1}])
+def test_a_run_section_needs_a_command(run: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        RepoConfig.model_validate({"name": "web", "path": "/src/web", "run": run})
+
+
+def test_a_saved_repo_keeps_its_run_section(tmp_path: Path) -> None:
+    paths = AppPaths(config_dir=tmp_path / "fresh", data_dir=tmp_path / "data")
+    repo = RepoConfig(name="web", path=Path("/src/web"), run=RunConfig(command="npm run dev"))
+
+    save_repo(paths, repo)
+
+    assert load_repos(paths) == [repo]
+
+
+def test_ports_default_to_a_hundred_blocks_of_ten_from_41000(paths: AppPaths) -> None:
+    assert load_settings(paths).ports == PortSettings(start=41000, size=10, blocks=100)
+
+    paths.settings_file.write_text(
+        "[ports]\nstart = 50000\nsize = 4\nblocks = 3\n", encoding="utf-8"
+    )
+
+    assert load_settings(paths).ports == PortSettings(start=50000, size=4, blocks=3)
+
+
+@pytest.mark.parametrize(
+    "ports",
+    [
+        {"start": 1023},
+        {"start": 65536},
+        {"size": 0},
+        {"size": 101},
+        {"blocks": 0},
+        {"blocks": 1001},
+        # 65000 + 10 * 100 - 1 = 65999
+        {"start": 65000},
+    ],
+)
+def test_ports_must_stay_in_range(ports: dict[str, int]) -> None:
+    with pytest.raises(ValidationError):
+        PortSettings.model_validate(ports)
+
+
+def test_the_last_block_may_end_at_the_highest_port() -> None:
+    ports = PortSettings(start=65535 - 99, size=10, blocks=10)
+
+    assert ports.start + ports.size * ports.blocks - 1 == 65535
