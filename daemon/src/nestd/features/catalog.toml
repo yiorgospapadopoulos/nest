@@ -197,6 +197,16 @@ where = "Needs you"
 added = 2026-10-06
 block = "B20"
 
+[[features]]
+id = "auto-archive"
+group = "chats"
+name = "Tidies itself"
+text = "Chats left idle for a day or more, up to 90, are archived for you."
+where = "Settings > Storage"
+added = 2026-10-17
+block = "B81"
+changed = 2026-10-26
+
 # Worktrees and git
 
 [[features]]
