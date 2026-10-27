@@ -1,7 +1,7 @@
 """Command line entry point.
 
 `nestd serve | service install|uninstall|status | pair | design generate|check|icon |
-gates changed`.
+gates changed | engines install`.
 """
 
 import argparse
@@ -20,6 +20,7 @@ from nestd.design.errors import DesignError
 from nestd.design.icon import generate_icons
 from nestd.design.loader import find_root
 from nestd.design.outputs import generate, stale_outputs
+from nestd.engine.acp_install import EngineInstall, run_npm
 from nestd.folder_move import (
     LEGACY_DB_NAME,
     FolderMoveError,
@@ -32,6 +33,8 @@ from nestd.gates.errors import GatesError
 from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
 from nestd.paths import AppPaths
+from nestd.providers.acp_engines import ACP_ENGINES
+from nestd.providers.shell_env import LoginShellEnv, login_shell
 from nestd.runtime import Runtime, default_runtime
 from nestd.service.launchd import LEGACY_LABEL, LaunchdService, ServiceError, build_path_env
 from nestd.storage.errors import DatabaseError
@@ -99,6 +102,12 @@ def _parser() -> argparse.ArgumentParser:
     changed.add_argument("--base", default="main", help="base ref (default: main)")
     changed.add_argument("--root", type=Path, help="repository root (default: from git)")
     changed.set_defaults(handler=_gates_changed)
+
+    engines = commands.add_parser("engines", help="manage the engines Nest installs itself")
+    engines_actions = engines.add_subparsers(required=True, metavar="action")
+    engines_actions.add_parser(
+        "install", help="install every bundled engine's pinned version that is missing"
+    ).set_defaults(handler=_engines_install)
     return parser
 
 
@@ -218,6 +227,30 @@ def _design_check(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> in
         print(f"nestd: {problem}", file=rt.err)
     print("nestd: run `nestd design generate` to update them", file=rt.err)
     return 1
+
+
+def _engines_install(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
+    """Each bundled engine's pinned version (B107); quick when they are all there."""
+    return asyncio.run(_install_engines(paths, rt))
+
+
+async def _install_engines(paths: AppPaths, rt: Runtime) -> int:
+    shell = LoginShellEnv(login_shell(rt.env, rt.uid))
+
+    async def env() -> dict[str, str]:
+        return {**rt.env, **await shell.get()}
+
+    failed = False
+    for engine in ACP_ENGINES:
+        if engine.delivery != "bundled":
+            continue
+        state = await EngineInstall(engine, paths.engines_dir, run_npm, env, rt.home).install()
+        if state.state == "ready":
+            print(f"{engine.name} {state.version} is installed", file=rt.out)
+        else:
+            failed = True
+            print(f"nestd: could not install {engine.name}: {state.detail}", file=rt.err)
+    return 1 if failed else 0
 
 
 # How many changed paths to name per part before summarising the rest.
