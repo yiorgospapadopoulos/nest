@@ -20,16 +20,30 @@ run (`guarded_env`) also gets the same rules for OpenCode's built-in agents thro
 `OPENCODE_CONFIG_CONTENT`, read after every config file, runs as the `build` agent, and may
 call only the built-in subagents. What is left: a user's rule for a single tool name that
 comes after their own `*` in their own agent settings, and plugins, which run their own code.
+
+How long an engine waits for one MCP tool call (`mcp_tool_timeout`, B112) bounds Nest's
+tools that wait on the user (`ask_user`) or on a called pixie. ACP's `mcpServers` carry no
+timeout, so it is the engine's own: OpenCode's comes from its config, which Nest sets to
+a week for every run (`experimental.mcp_timeout`, found in its 1.19.4 code; it covers the
+user's own MCP servers in Nest's runs too); Gemini CLI gives a server added over ACP its
+default of 10 minutes (0.65.0 code), which nothing changes; Cursor's is not known, so the
+MCP client's default of a minute is assumed.
 """
 
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
 type Delivery = Literal["bundled", "user_install"]
 type SignIn = Literal["api_key", "terminal"]
+
+# The MCP client's own default for one request, where an engine sets none.
+MCP_DEFAULT_TIMEOUT = timedelta(minutes=1)
+# Past the week a question waits (as Claude's do), so the question gives up first.
+OPENCODE_MCP_TIMEOUT = timedelta(days=7, hours=1)
 
 
 @dataclass(frozen=True)
@@ -61,6 +75,8 @@ class AcpEngine:
     home_env: Mapping[str, str] = field(default_factory=dict[str, str])
     # Where the engine is when the user installed it themselves (`user_install`).
     user_paths: tuple[str, ...] = ()
+    # How long the engine waits for one call of an MCP tool, Nest's included.
+    mcp_tool_timeout: timedelta = MCP_DEFAULT_TIMEOUT
 
     @property
     def several_accounts(self) -> bool:
@@ -95,7 +111,12 @@ _OPENCODE_GUARDED_RULES: dict[str, object] = {
     **_OPENCODE_RULES,
     "task": {"*": "deny", "general": "allow", "explore": "allow"},
 }
+# Read after every config file, so Nest's timeout wins (in milliseconds).
+_OPENCODE_CONFIG = {
+    "experimental": {"mcp_timeout": int(OPENCODE_MCP_TIMEOUT.total_seconds() * 1000)}
+}
 _OPENCODE_GUARDED_CONFIG = {
+    **_OPENCODE_CONFIG,
     "default_agent": "build",
     "agent": {name: {"permission": _OPENCODE_GUARDED_RULES} for name in _OPENCODE_AGENTS},
 }
@@ -121,6 +142,7 @@ OPENCODE = AcpEngine(
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
         # Else it lists the user's Claude Code skills as its own commands.
         "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+        "OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_CONFIG),
     },
     guarded_env={"OPENCODE_CONFIG_CONTENT": json.dumps(_OPENCODE_GUARDED_CONFIG)},
     login_command="opencode auth login",
@@ -129,6 +151,7 @@ OPENCODE = AcpEngine(
     # An added account keeps its login and sessions apart (data, state) but shares the
     # user's config folder, so the user's setup and the git config its commands read stay.
     home_env={"XDG_DATA_HOME": "data", "XDG_STATE_HOME": "state"},
+    mcp_tool_timeout=OPENCODE_MCP_TIMEOUT,
 )
 GEMINI = AcpEngine(
     id="gemini",
@@ -142,6 +165,7 @@ GEMINI = AcpEngine(
     tested=True,
     git_guard=True,
     home_env={"GEMINI_CLI_HOME": ""},
+    mcp_tool_timeout=timedelta(minutes=10),
 )
 CURSOR = AcpEngine(
     id="cursor",

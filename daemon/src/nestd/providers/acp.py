@@ -12,12 +12,20 @@ Nest decides every permission request itself (`acp_permissions`) and serves the 
 file reads and writes (`acp_fs`). A run's Nest tools (a pixie's memory, artifacts, calling
 pixies) are served by `ToolHost` and given to the engine as HTTP MCP servers; an engine
 without HTTP MCP cannot take them. ACP has no system prompt: a new session's first
-message starts with Nest's instructions and the tools hint as a block of its own, which
-the transcript does not show (only the engine's replies are).
+message starts with Nest's instructions, a pixie's skill list and the tools hint as a
+block of its own, which the transcript does not show (only the engine's replies are).
+
+ACP has no request for questions to the user, so a run on an engine with HTTP MCP also
+gets Nest's `ask_user` (`acp_questions`, B112). The engine's plan is the chat's task list
+(`acp_events`). A pixie's skill list cannot limit the engine's skills: the first message
+names them, which the engine may not keep to (B112, a recorded limitation), so a pixie on
+it keeps its list and `pixie_skills` is not reported unsupported. The only tasks an ACP
+chat shows are the pixies it called, which the session manager stops by their call, not
+the engine (B112), so Stop is offered.
 
 What only Claude does is reported unsupported (`ACP_UNSUPPORTED`): rewinding, forking,
-stopping one task, taking back a message, plan review, questions, the task list, `#`
-memory and a pixie's skill list.
+taking back a message, plan review, `#` memory outside a pixie's chat (the composer
+writes a pixie's own memory on every engine).
 """
 
 import asyncio
@@ -43,6 +51,7 @@ from nestd.providers.acp_events import AcpStream, NestTools
 from nestd.providers.acp_fs import AcpFiles
 from nestd.providers.acp_permissions import AcpPermissions, AcpRules
 from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory, spawn_acp
+from nestd.providers.acp_questions import ask_user_tool
 from nestd.providers.acp_rpc import (
     AUTH_REQUIRED,
     METHOD_NOT_FOUND,
@@ -93,13 +102,9 @@ ACP_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
     {
         "rewind",
         "fork",
-        "stop_task",
         "withdraw",
         "plan_review",
-        "questions",
-        "task_list",
         "memory",
-        "pixie_skills",
     }
 )
 # The model a chat without a model uses: the engine's own default (left as it is).
@@ -333,14 +338,15 @@ class AcpRun:
         spec: SessionSpec,
         handler: ApprovalHandler,
         sink: ProviderEventSink,
-        tools: ToolHost | None = None,
     ) -> None:
-        """`tools` serves the run's Nest tools while it is open; closing the run stops it."""
+        """The run serves its Nest tools from `start` until it closes."""
         self._engine = engine
         self._spec = spec
+        self._handler = handler
         self._sink = sink
-        self._tools = tools
-        self._nest = _nest_tools(spec)
+        self._tools: ToolHost | None = None
+        self._served = _served(spec)
+        self._nest = _nest_tools(self._served)
         self._model = spec.model
         self._mode: PermissionMode | None = spec.permission_mode
         self.stream = AcpStream(sink, self._nest)
@@ -380,8 +386,7 @@ class AcpRun:
         self._rpc = rpc
         caps = await initialize(rpc)
         self._caps = caps
-        if self._tools is not None and not caps.mcp_http:
-            raise AcpToolsUnsupportedError(self._engine)
+        await self._serve_tools(caps)
         servers = self._tools.acp_servers() if self._tools is not None else []
         session_id, result = await self._open_session(caps, servers)
         self.stream.session_id = session_id
@@ -465,6 +470,9 @@ class AcpRun:
         )
 
     async def stop_task(self, task_id: str) -> bool:
+        """The engine runs no task of its own Nest could stop; a called pixie is stopped
+        by the session manager (B112).
+        """
         return False
 
     async def close(self) -> None:
@@ -472,8 +480,26 @@ class AcpRun:
             await self.rpc.close()
             await asyncio.gather(*self._turns, return_exceptions=True)
         finally:
-            if self._tools is not None:
-                await self._tools.close()
+            await self.close_tools()
+
+    async def close_tools(self) -> None:
+        if self._tools is not None:
+            await self._tools.close()
+
+    async def _serve_tools(self, caps: AgentCaps) -> None:
+        """The run's Nest tools, with `ask_user` on an engine that takes HTTP MCP servers;
+        an engine without them runs only without Nest's other tools.
+        """
+        if self._served and not caps.mcp_http:
+            raise AcpToolsUnsupportedError(self._engine)
+        if not caps.mcp_http:
+            return
+        ask = ask_user_tool(self._handler, self._engine.mcp_tool_timeout)
+        served = {**self._served, NEST_SERVER: (*self._served.get(NEST_SERVER, ()), ask)}
+        self._tools = await ToolHost.start(served)
+        self._served = served
+        self._nest = _nest_tools(served)
+        self.stream.nest = self._nest
 
     async def _open_session(
         self, caps: AgentCaps, servers: list[JsonValue]
@@ -566,9 +592,12 @@ class AcpRun:
         blocks: list[JsonValue] = []
         if self._lead_pending:
             self._lead_pending = False
-            lead = "\n\n".join(
-                part for part in (self._spec.system_prompt_append, _tools_hint(self._spec)) if part
+            parts = (
+                self._spec.system_prompt_append,
+                skills_line(self._spec.skills),
+                _tools_hint(self._served),
             )
+            lead = "\n\n".join(part for part in parts if part)
             if lead:
                 blocks.append({"type": "text", "text": lead})
         message = user_input.text
@@ -632,22 +661,13 @@ class AcpProvider:
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
     ) -> AcpRun:
         launch = await self._launcher(spec.account)
-        servers = {name: tools for name, tools in _served(spec).items() if tools}
-        tools = await ToolHost.start(servers) if servers else None
-        try:
-            run = AcpRun(self._engine, spec, handler, sink, tools)
-            guarded = (
-                {**agent_env(self._gh_config_dir), **self._engine.guarded_env}
-                if spec.guard_git
-                else {}
-            )
-            extra = {**spec.env, **guarded}
-            env = process_env(await self._shell_env(), launch.env, extra)
-            transport = await self._transport(AcpLaunch(launch.args, env), spec.cwd)
-        except BaseException:
-            if tools is not None:
-                await tools.close()
-            raise
+        run = AcpRun(self._engine, spec, handler, sink)
+        guarded = (
+            {**agent_env(self._gh_config_dir), **self._engine.guarded_env} if spec.guard_git else {}
+        )
+        extra = {**spec.env, **guarded}
+        env = process_env(await self._shell_env(), launch.env, extra)
+        transport = await self._transport(AcpLaunch(launch.args, env), spec.cwd)
         rpc = AcpRpc(
             transport, run.stream.handle, run.on_request, run.closed, peer=self._engine.name
         )
@@ -655,8 +675,7 @@ class AcpProvider:
             await run.start(rpc)
         except BaseException:
             await rpc.close()
-            if tools is not None:
-                await tools.close()
+            await run.close_tools()
             raise
         return run
 
@@ -725,27 +744,37 @@ def process_env(
     return env
 
 
+type Served = Mapping[str, tuple[AgentTool, ...]]
+
+
 def _served(spec: SessionSpec) -> dict[str, tuple[AgentTool, ...]]:
-    """Nest's MCP servers for the run, named as Claude's runs have them (`claude_tools`)."""
-    return {TOOL_SERVER: spec.tools, NEST_SERVER: spec.nest_tools}
+    """Nest's MCP servers for the run that have tools, named as Claude's runs have them
+    (`claude_tools`).
+    """
+    servers = {TOOL_SERVER: spec.tools, NEST_SERVER: spec.nest_tools}
+    return {name: tools for name, tools in servers.items() if tools}
 
 
-def _nest_tools(spec: SessionSpec) -> NestTools:
-    return {
-        server: frozenset(tool.name for tool in tools)
-        for server, tools in _served(spec).items()
-        if tools
-    }
+def _nest_tools(served: Served) -> NestTools:
+    return {server: frozenset(tool.name for tool in tools) for server, tools in served.items()}
 
 
-def _tools_hint(spec: SessionSpec) -> str:
+def skills_line(skills: tuple[str, ...]) -> str:
+    """A pixie's skill list as a line of its first message: ACP has no per-run skill list,
+    so the engine is only asked to keep to it (B112); empty leaves every skill.
+    """
+    if not skills:
+        return ""
+    return f"Use only these skills in this chat: {', '.join(skills)}. Leave any other skill alone."
+
+
+def _tools_hint(served: Served) -> str:
     """A line naming the run's Nest tools, which the model may not find among the user's
     many MCP tools on its own; empty without any.
     """
     groups = [
         ", ".join(tool.name for tool in tools) + f" (the {server} MCP server)"
-        for server, tools in _served(spec).items()
-        if tools
+        for server, tools in served.items()
     ]
     if not groups:
         return ""

@@ -8,7 +8,7 @@ from pathlib import Path
 from nestd.engine.acp import AcpSetup
 from nestd.engine.acp_install import NpmError, installed_program, platform_names
 from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine
-from nestd.providers.acp_process import AcpLaunch
+from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory
 from nestd.providers.base import ModelOption
 from nestd.providers.codex_rpc import Transport
 
@@ -69,11 +69,13 @@ async def no_engine_process(launch: AcpLaunch, cwd: Path) -> Transport:
     raise OSError(msg)
 
 
-def acp_setup(tmp_path: Path, npm: FakeNpm | None = None) -> AcpSetup:
-    """No real npm, engine, PATH or home."""
+def acp_setup(
+    tmp_path: Path, npm: FakeNpm | None = None, transport: AcpTransportFactory | None = None
+) -> AcpSetup:
+    """No real npm, engine, PATH or home; `transport` is an in-memory engine to run."""
     return AcpSetup(
         npm=npm or FakeNpm(),
-        transport=no_engine_process,
+        transport=transport or no_engine_process,
         base_env={"PATH": str(tmp_path / "no-bin")},
         home=tmp_path / "home",
     )

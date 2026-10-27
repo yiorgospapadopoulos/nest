@@ -117,13 +117,20 @@ async def test_a_text_reply_streams_and_ends_with_its_tokens(tmp_path: Path) -> 
         "fs": {"readTextFile": True, "writeTextFile": True},
         "terminal": False,
     }
-    assert agent.requests("session/new") == [{"cwd": str(tmp_path), "mcpServers": []}]
+    [new] = agent.requests("session/new")
+    # Every run takes Nest's server for `ask_user` (B112).
+    assert new["cwd"] == str(tmp_path)
+    assert [s["name"] for s in new["mcpServers"]] == ["nest"]  # type: ignore[index,union-attr]
     [model] = agent.requests("session/set_config_option")
     assert (model["configId"], model["value"]) == ("model", FREE_MODEL)
     # Nest's instructions lead the first message as a block of their own.
     [prompt] = agent.requests("session/prompt")
     assert prompt["prompt"] == [
-        {"type": "text", "text": "You run inside Nest."},
+        {
+            "type": "text",
+            "text": "You run inside Nest.\n\nNest's tools for this chat are MCP tools: "
+            "ask_user (the nest MCP server).",
+        },
         {"type": "text", "text": "Reply with exactly the word: pong"},
     ]
     assert ("provider_session_id", "ses_e8559c2fbffeMG37VUaTxc32MU") in sink.calls

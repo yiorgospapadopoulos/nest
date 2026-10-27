@@ -116,6 +116,11 @@ class FakeAgent:
         self.answers: list[tuple[str, JsonObject]] = []
         self._waiting: dict[object, asyncio.Future[JsonObject]] = {}
         self._notified: dict[str, asyncio.Event] = {}
+        # Steps queued after one another, answered before the transcript's (B112).
+        self._queued: dict[str, deque[list[Step]]] = {}
+        # The transport of each request, by method, in order (B112).
+        self.asked_on: dict[str, list[FakeTransport]] = {}
+        self._next_id = 9000
         self._plays: set[asyncio.Task[None]] = set()
 
     async def __call__(self, launch: AcpLaunch, cwd: Path) -> FakeTransport:
@@ -130,6 +135,26 @@ class FakeAgent:
     def script(self, method: str, steps: list[Step]) -> None:
         """Answer the next request of `method` with these steps first."""
         self.exchanges.setdefault(method, deque()).appendleft(steps)
+
+    def queue(self, method: str, steps: list[Step]) -> None:
+        """Answer a later request of `method` with these steps, after those queued before."""
+        self._queued.setdefault(method, deque()).append(steps)
+
+    def release(self, name: str) -> None:
+        """Let an `expect` step waiting for `name` go on, as if the client had sent it."""
+        self._notified.setdefault(name, asyncio.Event()).set()
+
+    async def request(
+        self, transport: FakeTransport, method: str, params: JsonObject
+    ) -> JsonObject:
+        """A request of the agent outside any prompt's steps; the client's whole answer."""
+        self._next_id += 1
+        waiting: asyncio.Future[JsonObject] = asyncio.get_running_loop().create_future()
+        self._waiting[self._next_id] = waiting
+        message: JsonObject = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
+        message["params"] = params
+        transport.push(message)
+        return await waiting
 
     def answer_with(self, method: str, result: JsonObject) -> None:
         """Answer every request of `method` with this result."""
@@ -156,11 +181,19 @@ class FakeAgent:
         if request_id is None:
             self._notified.setdefault(method, asyncio.Event()).set()
             return
+        self.asked_on.setdefault(method, []).append(transport)
+        queued = self._queued.get(method)
+        if queued:
+            self._start(transport, request_id, queued.popleft())
+            return
         found = self.exchanges.get(method)
         if not found:
             transport.push({"jsonrpc": "2.0", "id": request_id, "result": {}})
             return
         steps = found.popleft() if len(found) > 1 else found[0]
+        self._start(transport, request_id, steps)
+
+    def _start(self, transport: FakeTransport, request_id: object, steps: list[Step]) -> None:
         task = asyncio.create_task(self._play(transport, request_id, steps))
         self._plays.add(task)
         task.add_done_callback(self._plays.discard)
