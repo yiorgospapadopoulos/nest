@@ -32,6 +32,8 @@ PLAN_NOTICE = "The plan is ready for review."
 PLAN_APPROVED_MODE: PermissionMode = "acceptEdits"
 PLAN_MODES: dict[str, PermissionMode] = {mode: mode for mode in get_args(PlanApprovalMode)}
 KEEP_PLANNING = "Keep planning"
+# Calls nest no deeper than a team's leader calling its members; a bound for safety.
+_MAX_CALL_DEPTH = 8
 
 
 def keep_planning_message(note: str | None) -> str:
@@ -62,6 +64,11 @@ class SessionPrompts:
         session = await self._store.get(self._session_id)
         if request.tool_name in session.allowed_tools:
             return PermissionDecision("allow")
+        if session.called_by is not None:
+            # What the caller allows for good, its subagents may do (B112).
+            caller = await self._store.get(await self._owner())
+            if request.tool_name in caller.allowed_tools:
+                return PermissionDecision("allow")
         approval = await self._wait(
             ApprovalKind.PERMISSION,
             {
@@ -123,10 +130,28 @@ class SessionPrompts:
     async def _wait(
         self, kind: ApprovalKind, payload: dict[str, JsonValue], notice: str
     ) -> Approval:
-        async def on_waiting(waiting: bool) -> None:
-            await self._on_waiting(self._session_id, waiting)
+        """A called pixie's item is its caller's, listed and notified as the caller's own,
+        as a subagent's is (B112); its own run waits on it, and both show waiting.
+        """
+        owner = await self._owner()
+        sessions = dict.fromkeys((self._session_id, owner))
 
-        return await self._queue.wait(self._session_id, kind, payload, notice, on_waiting)
+        async def on_waiting(_waiting: bool) -> None:
+            for session_id in sessions:
+                await self._on_waiting(session_id, self._queue.waiting(session_id))
+
+        return await self._queue.wait(
+            owner, kind, payload, notice, on_waiting, run_session_id=self._session_id
+        )
+
+    async def _owner(self) -> str:
+        """The chat the session's calls began in: itself unless a pixie it called."""
+        session = await self._store.get(self._session_id)
+        for _ in range(_MAX_CALL_DEPTH):
+            if session.called_by is None:
+                break
+            session = await self._store.get(session.called_by)
+        return session.id
 
     async def _allow_always(self, tool_name: str) -> None:
         async with self._rules:

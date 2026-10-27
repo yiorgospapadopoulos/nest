@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nestd.clock import Clock
 from nestd.events.bus import EventBus
+from nestd.pixies.agents import EDIT_TOOLS
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import Pixie
 from nestd.pixies.prompt import habit_system_prompt, recent_conversation, system_prompt
@@ -80,7 +81,8 @@ class PixieRuntime:
     ) -> RunExtras:
         """A called pixie works as its subagent would: its call prompt, its memory read-only
         and none of its own tools; it calls pixies only as a leader, through the run's call
-        tool.
+        tool. With read access it edits nothing in the caller's folder: its write root is
+        its workdir, and on Claude it has no edit tools, as its subagent has none (B112).
         """
         if self._called_prompt is None:
             msg = f"pixie {pixie.id!r} cannot be called as a session here"
@@ -91,4 +93,5 @@ class PixieRuntime:
             tools=(),
             write_root=write_root,
             skills=tuple(pixie.skills),
+            disallowed_tools=EDIT_TOOLS if pixie.project_access == "read" else (),
         )

@@ -1,4 +1,5 @@
-"""The main agent's task list, from TaskCreate and TaskUpdate calls and their results.
+"""The main agent's task list, from TaskCreate and TaskUpdate calls and their results, or
+from an engine's own plan, which replaces the whole list (B112).
 
 A TaskCreate result reads `Task #<id> created successfully: <subject>`; that is where the
 id comes from. Updates apply once their result shows they succeeded.
@@ -12,7 +13,7 @@ import re
 
 from pydantic import JsonValue
 
-from nestd.providers.base import ToolResultBlock, ToolUseBlock
+from nestd.providers.base import PlanStep, ToolResultBlock, ToolUseBlock
 from nestd.tracking.models import TASK_STATUSES, TrackedTask
 
 TASK_CREATE = "TaskCreate"
@@ -37,6 +38,24 @@ class TaskList:
         changed = bool(self._visible)
         self._visible.clear()
         return changed
+
+    def replace(self, steps: list[PlanStep]) -> bool:
+        """An engine's own plan (Codex, ACP; B112): the whole list, numbered from #1 as
+        Claude Code numbers a new one, replaces the tasks; whether the visible list changed.
+        """
+        before = self.snapshot()
+        self._tasks = {
+            str(index): TrackedTask(
+                id=str(index),
+                subject=step.text,
+                description=None,
+                active_form=None,
+                status=step.status,
+            )
+            for index, step in enumerate(steps, start=1)
+        }
+        self._visible = set(self._tasks)
+        return self.snapshot() != before
 
     def tool_use(self, block: ToolUseBlock) -> None:
         if block.name in (TASK_CREATE, TASK_UPDATE):

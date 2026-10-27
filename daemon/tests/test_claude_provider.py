@@ -1030,7 +1030,7 @@ async def test_a_user_server_named_like_the_tool_server_is_not_auto_allowed(tmp_
 async def test_subagents_become_agent_definitions(tmp_path: Path) -> None:
     spec = SessionSpec(
         cwd=tmp_path,
-        permission_mode="default",
+        permission_mode="auto",
         subagents={
             "tester": Subagent(
                 description="Tester: you test.",
@@ -1060,6 +1060,22 @@ async def test_subagents_become_agent_definitions(tmp_path: Path) -> None:
         # Left out: the chat's model and thinking, and every skill and tool.
         "plain": AgentDefinition(description="Plain", prompt="Plain.", permissionMode="default"),
     }
+
+
+async def test_a_subagent_keeps_its_own_mode_whatever_the_callers(tmp_path: Path) -> None:
+    """A called pixie works with the access its settings give it (user, 2026-10-27)."""
+    spec = SessionSpec(
+        cwd=tmp_path,
+        permission_mode="plan",
+        subagents={
+            "tester": Subagent(description="T", prompt="T.", permission_mode="bypassPermissions")
+        },
+    )
+
+    options = build_options(spec, ScriptedHandler(PermissionDecision("allow")), tmp_path)
+
+    assert options.agents is not None
+    assert options.agents["tester"].permissionMode == "bypassPermissions"
 
 
 async def test_subagents_never_get_the_runs_own_tools(tmp_path: Path) -> None:

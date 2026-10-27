@@ -15,6 +15,7 @@ from pydantic import BaseModel, TypeAdapter
 from nestd.events import types
 from nestd.events.models import Event
 from nestd.providers.base import AgentTask, MessageBlock, ToolResultBlock, ToolUseBlock
+from nestd.providers.claude_tools import CALL_TOOL
 
 SEND_MESSAGE = "SendMessage"
 # The result of a call that went on in the background.
@@ -87,7 +88,8 @@ def agent_work(events: Sequence[Event], parent: str, calls: Sequence[str]) -> li
 
 
 def _prompt(call: ToolUseBlock) -> str | None:
-    value = call.input.get("message" if call.name == SEND_MESSAGE else "prompt")
+    key = "message" if call.name == SEND_MESSAGE else "task" if call.name == CALL_TOOL else "prompt"
+    value = call.input.get(key)
     return value if isinstance(value, str) else None
 
 

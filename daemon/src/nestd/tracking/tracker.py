@@ -7,6 +7,7 @@ from nestd.events.models import Event
 from nestd.providers.base import (
     AgentTask,
     MessageBlock,
+    PlanStep,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
@@ -15,6 +16,7 @@ from nestd.tracking.agents import AgentBoard, Change
 from nestd.tracking.tasks import TaskList
 
 _BLOCKS = TypeAdapter(list[MessageBlock])
+_STEPS = TypeAdapter(list[PlanStep])
 
 
 class SessionTracker:
@@ -41,6 +43,15 @@ class SessionTracker:
                 return self.tasks.clear(), Change.NONE
             case types.SESSION_AGENT_TASK:
                 return False, self.agents.task(AgentTask.model_validate(payload), event.ts)
+            case types.SESSION_PLAN:
+                steps = _STEPS.validate_python(payload["steps"])
+                parent = payload.get("parent_tool_use_id")
+                if isinstance(parent, str):
+                    return False, self.agents.plan(parent, steps)
+                return self.tasks.replace(steps), Change.NONE
+            case types.SESSION_AGENT_PAUSED:
+                paused = payload.get("paused") is True
+                return False, self.agents.paused(str(payload["tool_use_id"]), paused)
             case types.SESSION_STATE:
                 return False, self.agents.state(str(payload["state"]), event.ts)
             case types.SESSION_MESSAGE:

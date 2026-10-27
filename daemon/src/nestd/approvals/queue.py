@@ -36,8 +36,10 @@ class ApprovalQueue:
         self._store = store
         self._bus = bus
         self._notifier = notifier
-        # Approval id to (session id, future) for items an agent run is waiting on.
-        self._waiters: dict[str, tuple[str, asyncio.Future[Approval]]] = {}
+        # Approval id to (session id, the session whose run waits, future) for items an
+        # agent run is waiting on. A called pixie's items are its caller's, as a subagent's
+        # are, while its own run waits on them (B112).
+        self._waiters: dict[str, tuple[str, str, asyncio.Future[Approval]]] = {}
 
     async def get(self, approval_id: str) -> Approval:
         return await self._store.get(approval_id)
@@ -52,8 +54,8 @@ class ApprovalQueue:
         return items[-1] if items else None
 
     def waiting(self, session_id: str) -> bool:
-        """Whether an agent run of the session is waiting on an item."""
-        return any(owner == session_id for owner, _ in self._waiters.values())
+        """Whether an agent run of the session, or of a pixie it called, waits on an item."""
+        return any(session_id in (owner, run) for owner, run, _ in self._waiters.values())
 
     async def wait(
         self,
@@ -62,11 +64,14 @@ class ApprovalQueue:
         payload: dict[str, JsonValue],
         notice: str,
         on_waiting: WaitingCallback,
+        run_session_id: str | None = None,
     ) -> Approval:
-        """Create an item and wait until it is resolved or expired; return its final state."""
+        """Create an item and wait until it is resolved or expired; return its final state.
+        `run_session_id` is the session whose run waits, when not `session_id`'s own.
+        """
         approval = await self._create(session_id, kind, payload, notice)
         future = asyncio.get_running_loop().create_future()
-        self._waiters[approval.id] = (session_id, future)
+        self._waiters[approval.id] = (session_id, run_session_id or session_id, future)
         try:
             await on_waiting(True)
             return await future
@@ -99,6 +104,12 @@ class ApprovalQueue:
     async def expire(self, session_id: str, kinds: Sequence[ApprovalKind], reason: str) -> None:
         for approval in await self._store.pending(kinds, session_id):
             await self._close(approval.id, ApprovalStatus.EXPIRED, {"reason": reason})
+
+    async def expire_run(self, run_session_id: str, reason: str) -> None:
+        """Expire what a session's run waits on that is listed under its caller (B112)."""
+        for approval_id, (owner, run, _) in list(self._waiters.items()):
+            if run == run_session_id and owner != run:
+                await self._close(approval_id, ApprovalStatus.EXPIRED, {"reason": reason})
 
     async def expire_stale(self) -> None:
         """On startup, nothing waits on permissions or questions any more; reviews stay."""
@@ -134,6 +145,6 @@ class ApprovalQueue:
             approval.session_id,
         )
         waiter = self._waiters.get(approval_id)
-        if waiter is not None and not waiter[1].done():
-            waiter[1].set_result(approval)
+        if waiter is not None and not waiter[2].done():
+            waiter[2].set_result(approval)
         return approval

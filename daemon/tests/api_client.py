@@ -10,6 +10,7 @@ import pytest
 from nestd.api.app import create_app
 from nestd.context import AppContext
 from nestd.local.service import LocalSetup
+from nestd.providers.acp_process import AcpTransportFactory
 from tests.acp_engine_support import FakeNpm
 from tests.api_support import build_context, local_token
 from tests.codex_support import FakeAppServer
@@ -64,6 +65,7 @@ async def running_api(
     codex_home: Path | None = None,
     local_setup: LocalSetup | None = None,
     loops: bool = False,
+    acp: AcpTransportFactory | None = None,
 ) -> AsyncGenerator[Api]:
     """Without `loops`, the services that poll on a timer stay stopped (B111): their own
     tests drive them, and their real-time ticks would race the test.
@@ -91,6 +93,7 @@ async def running_api(
         codex_home=codex_home,
         local_setup=local_setup,
         npm=npm,
+        acp=acp,
     )
     restart = RecordingRestart()
     app = create_app(ctx, restart=restart, loops=loops)

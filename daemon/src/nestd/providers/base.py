@@ -237,6 +237,13 @@ class AgentTask(BaseModel):
     summary: str | None = Field(default=None, exclude_if=_none)
 
 
+class PlanStep(BaseModel):
+    """One step of an engine's own task list (B112)."""
+
+    text: str
+    status: Literal["pending", "in_progress", "completed"]
+
+
 class SlashCommand(BaseModel):
     """A command the user can type as "/name": built in, from the user's setup, or a skill."""
 
@@ -405,6 +412,9 @@ class SessionSpec:
     nest_tools: tuple[AgentTool, ...] = ()
     # When set, file edits outside this folder are denied, in every permission mode.
     write_root: Path | None = None
+    # Tools the run never gets, such as the edit tools of a called pixie with read access
+    # (B112). Engines without such tools rely on `write_root` instead.
+    disallowed_tools: tuple[str, ...] = ()
     # Claude Code skill names for this run; empty leaves Claude Code's default (all).
     skills: tuple[str, ...] = ()
     # Subagents by the name the agent calls them with; fixed for the run's life (B40).
@@ -607,6 +617,13 @@ class ProviderEventSink(Protocol):
         """How many background tasks the agent has running, reported when it changes."""
         ...
 
+    async def plan(self, steps: list[PlanStep], parent_tool_use_id: str | None) -> None:
+        """The whole task list of the main agent, or of the subagent the tool call
+        `parent_tool_use_id` started, as an engine's own plan reports it (B112): Codex's
+        plan updates and ACP's `plan`, the equivalent of Claude Code's task list.
+        """
+        ...
+
     async def task(self, update: AgentTask) -> None:
         """A task started, moved to the background or finished, even between turns.
 
@@ -716,8 +733,8 @@ type ProviderFeature = Literal[
     "pixies",
     # The composer's `#` memory, which goes into CLAUDE.md, a file only Claude Code reads.
     "memory",
-    # A pixie's own list of skills, which limits a Claude run to them; Codex has no per-run
-    # skill list (B91), so a pixie on it takes none.
+    # A pixie's own list of skills, which limits its runs to them: Claude's per run, Codex's
+    # per thread (B112); an ACP engine is told the list in its prompt.
     "pixie_skills",
 ]
 

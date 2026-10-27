@@ -8,6 +8,7 @@ from nestd.providers.base import (
     McpServer,
     MessageBlock,
     NoticeKind,
+    PlanStep,
     ResultInfo,
     TokenUsage,
     UsageInfo,
@@ -56,6 +57,9 @@ class RecordingSink:
 
     async def task(self, update: AgentTask) -> None:
         self.calls.append(("task", update))
+
+    async def plan(self, steps: list[PlanStep], parent_tool_use_id: str | None) -> None:
+        self.calls.append(("plan", (steps, parent_tool_use_id)))
 
     async def connectors(self, servers: list[McpServer]) -> None:
         self.calls.append(("connectors", servers))

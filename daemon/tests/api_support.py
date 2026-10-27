@@ -11,6 +11,7 @@ from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.local.service import LocalSetup
 from nestd.paths import AppPaths
+from nestd.providers.acp_process import AcpTransportFactory
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
 from tests.acp_engine_support import FakeNpm, acp_setup
@@ -79,6 +80,7 @@ async def build_context(
     codex_home: Path | None = None,
     local_setup: LocalSetup | None = None,
     npm: FakeNpm | None = None,
+    acp: AcpTransportFactory | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     paths = make_paths(
@@ -118,7 +120,7 @@ async def build_context(
         # Never the real lsof.
         port_probe=nothing_listening,
         # Never real npm, engine processes, PATH or home (B107).
-        acp_setup=acp_setup(tmp_path, npm),
+        acp_setup=acp_setup(tmp_path, npm, acp),
     )
 
 

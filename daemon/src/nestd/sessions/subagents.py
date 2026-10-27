@@ -8,7 +8,16 @@ from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from typing import Protocol
 
-from nestd.providers.base import AgentTask, AgentTool, CallRules, MessageBlock, Subagent
+from pydantic import JsonValue
+
+from nestd.providers.base import (
+    AgentTask,
+    AgentTool,
+    CallRules,
+    MessageBlock,
+    Subagent,
+    TokenUsage,
+)
 from nestd.sessions.models import NewSession, Session
 
 
@@ -157,3 +166,31 @@ class PixieCalls(Protocol):
         ...
 
     async def task(self, session_id: str, agents: ChatAgents, update: AgentTask) -> None: ...
+
+
+class CallBridge(Protocol):
+    """The calls made with Nest's call_pixie tool (B112): each called pixie's session works
+    as a subagent of its caller, its work shown under the call.
+    """
+
+    async def message(
+        self, session_id: str, blocks: list[MessageBlock], parent_tool_use_id: str | None
+    ) -> None:
+        """Any run's message: its call_pixie calls, and a called session's work."""
+        ...
+
+    async def relay(self, session_id: str, event_type: str, payload: dict[str, JsonValue]) -> None:
+        """Another event of a run, such as its text as written or its plan."""
+        ...
+
+    async def turn_tokens(self, session_id: str, tokens: TokenUsage) -> bool:
+        """Whether a called session's turn counts as its caller's subagent usage."""
+        ...
+
+    async def stop(self, session_id: str, task_id: str) -> bool:
+        """Stop the session's call by its tool call or called session id, if it has one."""
+        ...
+
+    async def released(self, session_id: str) -> None:
+        """The session was archived: its calls end with its run."""
+        ...

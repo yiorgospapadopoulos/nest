@@ -7,6 +7,8 @@ if the agent had crashed, so each step is isolated and only logged (D048).
 from collections.abc import Awaitable, Callable
 from typing import Literal, Protocol
 
+from pydantic import JsonValue
+
 from nestd.attachments.store import AttachmentStore
 from nestd.config.models import PermissionMode
 from nestd.events import types
@@ -20,6 +22,7 @@ from nestd.providers.base import (
     McpServer,
     MessageBlock,
     NoticeKind,
+    PlanStep,
     ResultInfo,
     TokenUsage,
     UsageInfo,
@@ -29,7 +32,7 @@ from nestd.sessions.hooks import SessionHooks
 from nestd.sessions.live import LiveSession
 from nestd.sessions.result_images import keep_images
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import PixieCalls
+from nestd.sessions.subagents import CallBridge, PixieCalls
 from nestd.usage.publish import publish_usage
 
 # A turn that ended without failing, whatever its result says: it made way for the next
@@ -87,6 +90,7 @@ class SessionSink:
         calls: PixieCalls | None = None,
         active_account: Callable[[], str | None] | None = None,
         local_usage: Callable[[TokenUsage], Awaitable[None]] | None = None,
+        bridge: CallBridge | None = None,
     ) -> None:
         """`forking` is the engine session the run cuts into a new one (B59): the cut is
         done once the run reports another session id. `attachments` keeps the images of
@@ -94,7 +98,10 @@ class SessionSink:
         run's agents call (B46, B70). `active_account` names the engine's account in use
         now (B98): usage windows of a run on another one are not announced as the
         engine's. `local_usage` records a local model's turns (B106), which count apart.
+        `bridge` follows the run's call_pixie calls and shows a called pixie's work under
+        its call in the caller (B112).
         """
+        self._bridge = bridge
         self._local_usage = local_usage
         self._active_account = active_account
         self._calls = calls
@@ -136,6 +143,11 @@ class SessionSink:
                 ),
             )
         await self._isolated("the message hooks", self._hooks.message(self._session_id))
+        if self._bridge is not None:
+            await self._isolated(
+                "the called pixies",
+                self._bridge.message(self._session_id, blocks, parent_tool_use_id),
+            )
 
     async def text_delta(self, text: str) -> None:
         await self._isolated("starting a turn", self._turns.agent_active(self._live))
@@ -143,6 +155,7 @@ class SessionSink:
             "the text event",
             self._bus.publish_ephemeral(types.SESSION_DELTA, {"text": text}, self._session_id),
         )
+        await self._relay(types.SESSION_DELTA, {"text": text})
 
     async def thinking(self, active: bool) -> None:
         await self._isolated("starting a turn", self._turns.agent_active(self._live))
@@ -161,14 +174,12 @@ class SessionSink:
 
     async def _delta(self, event_type: str, text: str, parent_tool_use_id: str | None) -> None:
         await self._isolated("starting a turn", self._turns.agent_active(self._live))
+        payload: dict[str, JsonValue] = {"text": text, "parent_tool_use_id": parent_tool_use_id}
         await self._isolated(
             "the text event",
-            self._bus.publish_ephemeral(
-                event_type,
-                {"text": text, "parent_tool_use_id": parent_tool_use_id},
-                self._session_id,
-            ),
+            self._bus.publish_ephemeral(event_type, payload, self._session_id),
         )
+        await self._relay(event_type, payload)
 
     async def hook(self, output: HookOutput) -> None:
         # Not agent output: SessionStart and Stop hooks speak outside a turn.
@@ -190,6 +201,8 @@ class SessionSink:
         )
         if self._local_usage is not None:
             await self._isolated("the local usage", self._local_usage(info.tokens))
+        elif await self._caller_counts(info.tokens):
+            pass  # a called pixie's tokens are its caller's, as a subagent's are (B112)
         else:
             await self._isolated(
                 "the turn result hooks", self._hooks.turn_result(self._session_id, info)
@@ -278,17 +291,49 @@ class SessionSink:
 
     async def task(self, update: AgentTask) -> None:
         # Not agent output: a background task can finish while the session is idle.
+        payload = update.model_dump(mode="json")
         await self._isolated(
             "the task event",
-            self._bus.publish(
-                types.SESSION_AGENT_TASK, update.model_dump(mode="json"), self._session_id
-            ),
+            self._bus.publish(types.SESSION_AGENT_TASK, payload, self._session_id),
         )
+        await self._relay(types.SESSION_AGENT_TASK, payload)
         if self._calls is not None:
             await self._isolated(
                 "the pixie calls", self._calls.task(self._session_id, self._live.run_agents, update)
             )
         await self._isolated("the message hooks", self._hooks.message(self._session_id))
+
+    async def plan(self, steps: list[PlanStep], parent_tool_use_id: str | None) -> None:
+        """An engine's own plan, as Claude's TaskCreate and TaskUpdate feed the task list
+        and Goals (B112).
+        """
+        await self._isolated("starting a turn", self._turns.agent_active(self._live))
+        payload: dict[str, JsonValue] = {
+            "steps": [step.model_dump(mode="json") for step in steps],
+            "parent_tool_use_id": parent_tool_use_id,
+        }
+        await self._isolated(
+            "the plan event", self._bus.publish(types.SESSION_PLAN, payload, self._session_id)
+        )
+        await self._isolated("the message hooks", self._hooks.message(self._session_id))
+        await self._relay(types.SESSION_PLAN, payload)
+
+    async def _relay(self, event_type: str, payload: dict[str, JsonValue]) -> None:
+        if self._bridge is not None:
+            await self._isolated(
+                "the called pixie's work",
+                self._bridge.relay(self._session_id, event_type, payload),
+            )
+
+    async def _caller_counts(self, tokens: TokenUsage) -> bool:
+        if self._bridge is None:
+            return False
+        return await isolated_or(
+            "the called pixie's usage",
+            self._session_id,
+            self._bridge.turn_tokens(self._session_id, tokens),
+            False,
+        )
 
     async def stopped(self, error: str) -> None:
         await self._isolated("the run's end", self._turns.run_stopped(self._live, error))

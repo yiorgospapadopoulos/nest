@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
 
+from pydantic import JsonValue, TypeAdapter
+
 from nestd.approvals.models import BLOCKING, ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.attachments.store import Attachment, AttachmentStore
@@ -27,9 +29,10 @@ from nestd.events.bus import EventBus
 from nestd.issues.message import issue_message, issue_meta
 from nestd.issues.models import Issue
 from nestd.local.models import is_local
-from nestd.providers.base import AgentProvider, ApprovalHandler
+from nestd.providers.base import AgentProvider, AgentTask, ApprovalHandler, MessageBlock
 from nestd.prs.untrusted import one_line
 from nestd.repos.service import RepoNotFoundError, RepoService, require_folder
+from nestd.sessions.bookkeeping import isolated
 from nestd.sessions.engines import AccountSource, DefaultModel, Engine, Engines, ModelLookup
 from nestd.sessions.errors import (
     CannotRewindError,
@@ -78,7 +81,13 @@ from nestd.sessions.rules import (
 )
 from nestd.sessions.states import StateWriter
 from nestd.sessions.store import SessionStore
-from nestd.sessions.subagents import CallToolsSource, ChatAgentsSource, PixieCalls
+from nestd.sessions.subagents import (
+    CallBridge,
+    CallToolsSource,
+    ChatAgents,
+    ChatAgentsSource,
+    PixieCalls,
+)
 from nestd.sessions.titles import short_title
 from nestd.sessions.turns import TurnRunner
 from nestd.sessions.updates import save_changes
@@ -96,6 +105,11 @@ LIMIT_TICK = timedelta(seconds=5)
 # What a chat paused at the usage limit is sent when it goes on with nothing queued (B78).
 CONTINUE_TEXT = "Continue where you left off."
 LIMIT_RESUME = Sender(origin="limit_resume")
+# A called pixie's events that are shown live and never stored (B112).
+_EPHEMERAL = frozenset(
+    {types.SESSION_DELTA, types.SESSION_THINKING_DELTA, types.SESSION_SUBAGENT_DELTA}
+)
+_BLOCKS = TypeAdapter(list[MessageBlock])
 
 logger = logging.getLogger(__name__)
 
@@ -200,11 +214,73 @@ class SessionManager:
         self._live: dict[str, LiveSession] = {}
         # Set when the daemon stops its agents: no message starts a turn after that.
         self._stopping = False
+        self._calls = calls
+        self._bridge: CallBridge | None = None
 
     @property
     def engines(self) -> Engines:
         """The engines chats can run on (B91)."""
         return self._engines
+
+    @property
+    def stopping(self) -> bool:
+        """Whether the daemon is stopping its agents."""
+        return self._stopping
+
+    def bridge(self, calls: CallBridge) -> None:
+        """Follow the pixies runs call with call_pixie (B112), which needs the sessions."""
+        self._bridge = calls
+        self._turns.bridge = calls
+
+    async def agent_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: dict[str, JsonValue],
+        agents: ChatAgents,
+    ) -> None:
+        """An event of a pixie the session called, shown under its call as a subagent's
+        own (B112): stored as the session's, its calls of pixies followed with the run's
+        `agents`, and its tasks and agents tracked. Bookkeeping: a failure is only logged.
+        """
+        if event_type in _EPHEMERAL:
+            await isolated(
+                "the called pixie's text",
+                session_id,
+                self._bus.publish_ephemeral(event_type, payload, session_id),
+            )
+            return
+        await isolated(
+            "the called pixie's event",
+            session_id,
+            self._bus.publish(event_type, payload, session_id),
+        )
+        if self._calls is not None and event_type == types.SESSION_MESSAGE:
+            parent = payload.get("parent_tool_use_id")
+            blocks = _BLOCKS.validate_python(payload.get("blocks"))
+            await isolated(
+                "the pixie calls",
+                session_id,
+                self._calls.message(
+                    session_id, agents, blocks, parent if isinstance(parent, str) else None
+                ),
+            )
+        elif self._calls is not None and event_type == types.SESSION_AGENT_TASK:
+            await isolated(
+                "the pixie calls",
+                session_id,
+                self._calls.task(session_id, agents, AgentTask.model_validate(payload)),
+            )
+        await isolated("the message hooks", session_id, self._hooks.message(session_id))
+
+    async def stop_call(self, session_id: str, reason: str) -> None:
+        """Stop a called pixie's run, as stopping its call does (B112). Its session stays,
+        so the next call of that pixie continues it; a usage limit pause ends.
+        """
+        await self._approvals.expire_run(session_id, reason)
+        if await self._limits.clear(session_id, "stopped"):
+            await self._states.set(session_id, SessionState.INTERRUPTED)
+        await self._release(session_id, reason)
 
     async def list_sessions(self, repo: str | None = None, archived: bool = False) -> list[Session]:
         return await self._store.list_sessions(repo, archived)
@@ -566,7 +642,9 @@ class SessionManager:
         if session.pixie_id is not None or session.started_by_pixie is not None:
             engine.require("pixies")
         await self._require_ready(engine, session.model)
-        await self._refuse_member_calls(session, text)
+        if sender.origin is None:
+            # What the daemon sends, such as a called pixie's report, may name any pixie.
+            await self._refuse_member_calls(session, text)
         await self._require_not_open_elsewhere(session)
         attachments = await self._attachments.for_session(attachment_ids, session_id)
         await require_features(self._local, session.model, attachments)
@@ -684,6 +762,7 @@ class SessionManager:
         """
         await self._store.get(session_id)
         await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
+        await self._approvals.expire_run(session_id, "interrupted by the user")
         live = self._live.get(session_id)
         stopped = False
         if live is not None:
@@ -698,9 +777,13 @@ class SessionManager:
 
     async def stop_task(self, session_id: str, task_id: str) -> None:
         """Stop one running task of the session's agent, a background command or a
-        subagent, without stopping the turn; its end arrives as a task event (B59).
+        subagent, without stopping the turn; its end arrives as a task event (B59). A
+        pixie called with call_pixie stops on every engine, by its call (B112).
         """
-        self._engines.of(await self._store.get(session_id)).require("stop_task")
+        session = await self._store.get(session_id)
+        if self._bridge is not None and await self._bridge.stop(session_id, task_id):
+            return
+        self._engines.of(session).require("stop_task")
         live = self._live.get(session_id)
         run = live.run if live is not None else None
         if run is None:
@@ -716,7 +799,11 @@ class SessionManager:
         there (PL-15). A turn, background tasks or publishing in progress keep the run.
         """
         live = self._live.get(session_id)
-        if live is None or live.busy or live.background_tasks or live.publishing:
+        if live is None:
+            return
+        # A turn's end is announced in the run's reader, which closing cancels (B99).
+        await live.settled.wait()
+        if live.busy or live.background_tasks or live.publishing:
             return
         live.cancel_idle_close()
         await live.close_run()
@@ -744,6 +831,9 @@ class SessionManager:
         if changes.get("archived_at") is not None:
             await self._release(session_id, "the session was archived")
             await self._end_pause(session_id, "archived")
+            if self._bridge is not None:
+                # The pixies it called stop with it, as subagents end with their run (B112).
+                await isolated("the called pixies", session_id, self._bridge.released(session_id))
         session = await self._save_changes(session_id, changes)
         live = self._live.get(session_id)
         if live is not None and {"model", "permission_mode"} & changes.keys():
@@ -1041,6 +1131,7 @@ class SessionManager:
         live.stopped = True
         try:
             await self._approvals.expire(session_id, tuple(ApprovalKind), reason)
+            await self._approvals.expire_run(session_id, reason)
             await live.stop()
             # Read again: setup may have created the worktree while the session was starting.
             yield await self._store.get(session_id)
@@ -1064,6 +1155,7 @@ class SessionManager:
 
     async def _shut_down(self, live: LiveSession, reason: str) -> None:
         await self._approvals.expire(live.session_id, BLOCKING, reason)
+        await self._approvals.expire_run(live.session_id, reason)
         await live.stop()
         # The agent is gone; what was written into its turn waits for a turn again (B59).
         await self._queue.unsend_all(live.session_id)

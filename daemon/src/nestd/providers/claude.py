@@ -247,6 +247,7 @@ def build_options(
         )
     local = spec.local
     disallowed: list[str] = list(GIT_WRITE_RULES) if spec.guard_git else []
+    disallowed.extend(spec.disallowed_tools)
     if local is not None:
         # Anthropic's servers run web searches; a local model has none (B106).
         disallowed.append(WEB_SEARCH)

@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Whether the live run can take a message whose files are in these folders as it is.
 type RunFits = Callable[[LiveSession, Session, tuple[Path, ...]], Awaitable[bool]]
-# A message's text as the agent gets it.
-type AgentText = Callable[[LiveSession, str], Awaitable[str]]
+# A message's text as the agent gets it, by who sent it.
+type AgentText = Callable[[LiveSession, str, Sender], Awaitable[str]]
 
 
 class Steering:
@@ -118,7 +118,7 @@ class Steering:
         run = live.run
         assert run is not None  # noqa: S101 (checked by `_ready` under the same lock)
         try:
-            text = await self._agent_text(live, message.text)
+            text = await self._agent_text(live, message.text, message.sender)
             await run.steer(user_input(text, attachments), message.id)
         except Exception as error:
             # The run is ending; the message waits for the next turn instead.

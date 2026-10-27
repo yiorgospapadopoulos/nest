@@ -28,7 +28,7 @@ from nestd.providers.codex_tools import TOKEN_ENV
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.codex_support import item, note, turn_completed
-from tests.fake_provider import RESULT, FakeRun, Turn, limited, reply
+from tests.fake_provider import RESULT, FakeRun, Turn, reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, reach
@@ -109,7 +109,8 @@ async def test_a_claude_chat_calls_a_codex_pixie_and_gets_its_report(api: Api) -
     assert CALL_PIXIE_TOOL in {tool.name for tool in run.spec.nest_tools}
     [called] = await _call_sessions(api, coder)
     assert called["called_by"] == chat_id
-    assert (called["provider"], called["model"], called["state"]) == ("codex", "gpt-5.5", "closed")
+    # Its run closed; the session stays, to be continued by the next call (B112).
+    assert (called["provider"], called["model"], called["state"]) == ("codex", "gpt-5.5", "idle")
     [start] = api.codex.requests("thread/start")
     repo = str(api.ctx.repos.get("repo").path)
     # It works in the caller's folder, guarded, with its call prompt.
@@ -281,25 +282,6 @@ async def test_a_called_pixie_sends_no_notification_of_its_own(api: Api) -> None
     # The caller hears about it; the called session sends no notification of its own.
     assert outcome == ["Done."]
     assert [e for e in events if e["type"] == types.NOTIFY] == []
-
-
-async def test_a_called_pixie_fails_at_the_usage_limit_instead_of_pausing(api: Api) -> None:
-    helper = await _pixie(api, "Helper")
-    api.provider.script(limited())
-    api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
-    await create(api, provider="codex", mode="in_place")
-    await until(lambda: bool(api.codex.requests("turn/start")))
-    [start] = api.codex.requests("thread/start")
-    nest = cast("JsonObject", cast("JsonObject", start["config"])["mcp_servers.nest"])
-    [launch] = [launch for launch in api.codex.launches if launch.cwd is not None]
-
-    answer = await _mcp_call(str(nest["url"]), launch.env[TOKEN_ENV], "helper")
-
-    result = cast("JsonObject", answer["result"])
-    assert result["isError"] is True
-    assert "@helper failed" in json.dumps(result["content"])
-    [called] = await _call_sessions(api, helper)
-    assert called["limit_pause"] is None
 
 
 async def test_a_called_pixie_on_a_signed_out_codex_is_refused(api: Api) -> None:
