@@ -146,6 +146,9 @@ export function fakeApi(): FakeApi {
     codexLogout: vi
       .fn<Api["codexLogout"]>()
       .mockResolvedValue(codexAccount({ signed_in: false, email: null, plan: null })),
+    saveEngineKey: vi.fn<Api["saveEngineKey"]>().mockResolvedValue({}),
+    removeEngineKey: vi.fn<Api["removeEngineKey"]>().mockResolvedValue({}),
+    installEngine: vi.fn<Api["installEngine"]>().mockResolvedValue({}),
     account: vi.fn<Api["account"]>().mockResolvedValue(account()),
     agentDefaults: vi.fn<Api["agentDefaults"]>().mockResolvedValue(agentDefaults()),
     saveAgentDefaults: vi

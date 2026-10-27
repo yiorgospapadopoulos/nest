@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import {
+  acpProvider,
   artifact,
   artifactContent,
   artifactDetail,
@@ -634,16 +635,47 @@ describe("engines (B102)", () => {
     expect(dispatched).toHaveLength(1);
   });
 
-  it("loads Codex's usage windows quietly", async () => {
+  it("loads the listed engines' usage windows quietly", async () => {
     const { api, dispatched, actions } = setup();
+    api.providers.mockResolvedValueOnce({
+      providers: [
+        claudeProvider(),
+        codexProvider(),
+        acpProvider({ name: "cursor", state: "not_installed" }),
+      ],
+    });
+    await actions.loadProviders();
+    dispatched.length = 0;
     await actions.loadEngineLimits();
-    expect(api.engineLimits).toHaveBeenCalledWith("codex");
+    expect(api.engineLimits.mock.calls).toEqual([["codex"]]);
     expect(dispatched).toEqual([
       { type: "engineLimits", provider: "codex", limits: engineLimits() },
     ]);
     api.engineLimits.mockRejectedValueOnce(new Error("no codex"));
     await actions.loadEngineLimits();
     expect(dispatched).toHaveLength(1);
+  });
+
+  it("saves and removes an engine's key on its first account, then reads the engines again", async () => {
+    const { api, actions } = setup();
+    expect(await actions.saveEngineKey("gemini", "AIza-test")).toBe(true);
+    expect(api.saveEngineKey).toHaveBeenCalledWith("gemini-main", "AIza-test");
+    expect(api.providers).toHaveBeenCalledTimes(1);
+
+    await actions.removeEngineKey("gemini");
+    expect(api.removeEngineKey).toHaveBeenCalledWith("gemini-main");
+    expect(api.providers).toHaveBeenCalledTimes(2);
+
+    api.saveEngineKey.mockRejectedValueOnce(new ApiError(400, "The key was refused"));
+    expect(await actions.saveEngineKey("gemini", "bad")).toBe(false);
+    expect(api.providers).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads the engines again when one's install or login changes", () => {
+    const { api, actions } = setup();
+    actions.receive(event({ type: "engine.state", session_id: null, payload: { name: "gemini" } }));
+    actions.receive(event({ type: "accounts.changed", session_id: null, payload: {} }));
+    expect(api.providers).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes another engine's usage, saying when it was refreshed moments ago", async () => {

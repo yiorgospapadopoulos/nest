@@ -81,8 +81,8 @@ import { draftKey, type Action, type Toast } from "./state.ts";
 
 export type Dispatch = (action: Action) => void;
 
-// The engines besides Claude whose usage windows the daemon keeps (B91).
-export const OTHER_ENGINES = ["codex"];
+// The events after which the engine list is read again.
+const ENGINE_EVENTS = new Set(["account.codex", "accounts.changed", "engine.state"]);
 
 /** The notice for a `usage.warning` event (D104): "5 hour limit 82% used". */
 export function warningText(payload: JsonObject): string {
@@ -184,6 +184,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   let foldedTeams = loadFoldedTeams(storage);
   let usageBarHidden = loadUsageBarHidden(storage);
   let featureGroups = loadFeatureGroups(storage);
+  // The engines besides Claude that can run chats, from the last engine list (B91, B107).
+  let otherEngines: ProviderInfo[] = [];
   // Until the first load succeeds, a failure means the Mac cannot be reached at all.
   let loaded = false;
   // The chats on screen, kept complete across a reconnect that cannot resume.
@@ -327,7 +329,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
   /** Each engine's models besides Claude's; one the Mac cannot give keeps its last list. */
   async function loadOtherModels(providers: ProviderInfo[]): Promise<void> {
-    for (const { name } of providers.filter((p) => p.name !== CLAUDE)) {
+    // An engine not installed has no models to ask for yet; `engine.state` says when it has.
+    otherEngines = providers.filter((p) => p.name !== CLAUDE && p.state === "ready");
+    for (const { name } of otherEngines) {
       const list = await quietly(() => api.models(name));
       if (list !== null) dispatch({ type: "modelList", provider: name, list });
     }
@@ -662,8 +666,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       }
       if (event.type === "usage.warning") toast(warningText(event.payload), "info");
       if (event.type === "extensions.updated") void settings.extensionsChanged();
-      // Whether Codex can run chats follows its login.
-      if (event.type === "account.codex") void loadProviders();
+      // Whether an engine can run chats follows its login and its install (B107).
+      if (ENGINE_EVENTS.has(event.type)) void loadProviders();
       if (event.type === "configuration.changed") void settings.configurationChanged(event.payload);
     },
 
@@ -1418,9 +1422,32 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
 
     loadProviders,
 
+    /**
+     * An engine's API key (B107, Gemini), on its first account: the Mac keeps it in the
+     * Keychain and checks it. True once saved.
+     */
+    async saveEngineKey(engine: string, key: string): Promise<boolean> {
+      const saved = await attempt(() => api.saveEngineKey(`${engine}-main`, key));
+      if (saved === null) return false;
+      await loadProviders();
+      return true;
+    },
+
+    /** Removes the engine's API key, which signs it out. */
+    async removeEngineKey(engine: string): Promise<void> {
+      if ((await attempt(() => api.removeEngineKey(`${engine}-main`))) !== null) {
+        await loadProviders();
+      }
+    },
+
+    /** Installs the engine on the Mac; `engine.state` events follow. */
+    async installEngine(engine: string): Promise<void> {
+      if ((await attempt(() => api.installEngine(engine))) !== null) await loadProviders();
+    },
+
     /** The other engines' usage windows (B91), quietly: one the Mac cannot give keeps its last. */
     async loadEngineLimits(): Promise<void> {
-      for (const provider of OTHER_ENGINES) {
+      for (const { name: provider } of otherEngines) {
         const limits = await quietly(() => api.engineLimits(provider));
         if (limits !== null) dispatch({ type: "engineLimits", provider, limits });
       }

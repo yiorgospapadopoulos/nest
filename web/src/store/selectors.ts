@@ -468,6 +468,14 @@ export function engineList(state: State): ProviderInfo[] {
         sign_in_hint: null,
         account: state.account,
         unsupported: [],
+        version: null,
+        tested: true,
+        git_guard: true,
+        state: "ready",
+        state_detail: null,
+        sign_in: "browser",
+        login_command: null,
+        installable: false,
       },
     ]
   );
@@ -475,7 +483,38 @@ export function engineList(state: State): ProviderInfo[] {
 
 /** A new chat can run on more than one engine, so the model menu offers the choice. */
 export function offersEngineChoice(state: State): boolean {
-  return (state.providers?.length ?? 0) > 1;
+  return state.providers !== null && engineList(state).length > 1;
+}
+
+/**
+ * Whether a new chat can start on the engine now: installed, and not signed out. An engine
+ * that signs in through the browser (Claude, Codex) stays offered signed out, as on the
+ * Mac: the composer says to sign in, and its chats fail until then.
+ */
+export function engineReady(provider: ProviderInfo): boolean {
+  if (provider.state !== "ready") return false;
+  return provider.sign_in === "browser" || provider.signed_in !== false;
+}
+
+const ENGINE_STATE: Record<Exclude<ProviderInfo["state"], "ready">, string> = {
+  not_installed: "Not installed",
+  installing: "Installing...",
+  install_failed: "Install failed",
+};
+
+/**
+ * Whether a pixie can be set to run on the engine: installed, and one whose git commands
+ * Nest can block, since a pixie's runs promise no commits (B107). Its sign-in can follow.
+ */
+export function pixieCanRunOn(state: State, provider: string): boolean {
+  const listed = engineList(state).find((p) => p.name === provider);
+  return listed === undefined || (listed.state === "ready" && listed.git_guard);
+}
+
+/** Why a new chat cannot start on the engine, in words; empty when it can. */
+export function engineStateText(provider: ProviderInfo): string {
+  if (provider.state !== "ready") return ENGINE_STATE[provider.state];
+  return provider.signed_in === false ? "Not signed in" : "";
 }
 
 /** The engine's name; none is Claude, an engine not listed is named after itself. */
@@ -485,9 +524,10 @@ export function engineName(state: State, name: string | null | undefined): strin
   return listed?.display_name ?? engine.charAt(0).toUpperCase() + engine.slice(1);
 }
 
-/** The grey line under an engine in a menu: not signed in, else its plan. */
+/** The grey line under an engine in a menu: why it cannot run (B107), else its plan. */
 export function engineDetail(provider: ProviderInfo): string {
-  return provider.signed_in === false ? "Not signed in" : (provider.account?.plan ?? "");
+  const why = engineStateText(provider);
+  return why !== "" ? why : (provider.account?.plan ?? "");
 }
 
 /**
@@ -509,15 +549,18 @@ export interface ModelSection {
   provider: string;
   // The engine's name, or "Model" when there is no choice of engines.
   title: string;
-  // Its plan, or "Not signed in"; empty for none.
+  // Its plan, or why it cannot run, such as "Not signed in"; empty for none.
   detail: string;
   catalog: ModelCatalog;
+  // False when a new chat cannot start on it (B107): its models show, not choosable.
+  available: boolean;
 }
 
 /**
- * The model menu's sections: a new chat's (`isDraft`) every engine, so choosing a model
- * chooses the engine; a chat that exists only its own engine's (`provider`, none is
- * Claude). With one engine, one Model section.
+ * The model menu's sections: a new chat's (`isDraft`) every engine Nest supports, so
+ * choosing a model chooses the engine, one not installed or signed out shown but not
+ * choosable; a chat that exists only its own engine's (`provider`, none is Claude). With
+ * one engine, one Model section.
  */
 export function modelSections(
   state: State,
@@ -525,17 +568,36 @@ export function modelSections(
   isDraft: boolean,
 ): ModelSection[] {
   if (!offersEngineChoice(state)) {
-    return [{ provider: CLAUDE, title: "Model", detail: "", catalog: catalogFor(state, CLAUDE) }];
+    return [
+      {
+        provider: CLAUDE,
+        title: "Model",
+        detail: "",
+        catalog: catalogFor(state, CLAUDE),
+        available: true,
+      },
+    ];
   }
   const own = provider ?? CLAUDE;
-  return engineList(state)
-    .filter((p) => isDraft || p.name === own)
-    .map((p) => ({
-      provider: p.name,
-      title: p.display_name,
-      detail: engineDetail(p),
-      catalog: catalogFor(state, p.name),
-    }));
+  if (!isDraft) {
+    const listed = engineList(state).find((p) => p.name === own);
+    return [
+      {
+        provider: own,
+        title: listed?.display_name ?? engineName(state, own),
+        detail: listed === undefined ? "" : engineDetail(listed),
+        catalog: catalogFor(state, own),
+        available: true,
+      },
+    ];
+  }
+  return engineList(state).map((p) => ({
+    provider: p.name,
+    title: p.display_name,
+    detail: engineDetail(p),
+    catalog: catalogFor(state, p.name),
+    available: engineReady(p),
+  }));
 }
 
 /** A model's name, after its engine's off Claude, such as "Codex · GPT-5.5". */
@@ -585,9 +647,26 @@ export interface UsageBarLine {
   name: string;
 }
 
+/**
+ * Whether the engine has plan limits to show: Claude does, another engine unless the Mac
+ * said it has no windows (B107: the ACP engines report tokens only).
+ */
+export function reportsLimits(state: State, provider: string): boolean {
+  if (provider === CLAUDE) return true;
+  const windows = state.engineLimits[provider]?.windows;
+  return windows === undefined || windows.length > 0;
+}
+
+/** The other engines whose limits can show: signed in, and with windows to show. */
+export function meteredOthers(state: State): ProviderInfo[] {
+  return (state.providers ?? []).filter(
+    (p) => p.name !== CLAUDE && p.signed_in === true && reportsLimits(state, p.name),
+  );
+}
+
 /** Claude, then the other engines that said they are signed in, in the list's order. */
 function meteredEngines(state: State): UsageBarLine[] {
-  const others = (state.providers ?? []).filter((p) => p.name !== CLAUDE && p.signed_in === true);
+  const others = meteredOthers(state);
   return [
     { provider: CLAUDE, name: engineName(state, CLAUDE) },
     ...others.map((p) => ({ provider: p.name, name: p.display_name })),
@@ -613,9 +692,10 @@ export interface UsageBarChoice {
   shown: boolean;
 }
 
-/** Every engine listed, in its order, checked unless unchecked on this device. */
+/** Every engine listed with limits, in its order, checked unless unchecked on this device. */
 export function usageBarChoices(state: State): UsageBarChoice[] {
-  return engineList(state).map((p) => ({
+  const listed = engineList(state).filter((p) => reportsLimits(state, p.name));
+  return listed.map((p) => ({
     provider: p.name,
     name: p.display_name,
     detail: p.signed_in === false ? engineDetail(p) : "",

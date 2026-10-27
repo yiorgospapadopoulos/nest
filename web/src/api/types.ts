@@ -736,18 +736,42 @@ export type ProviderFeature =
   | "memory"
   | "pixie_skills";
 
+/** Whether an engine can run chats on this Mac (B107); only "ready" can. */
+export type EngineState = "ready" | "not_installed" | "installing" | "install_failed";
+
+/**
+ * How the user signs in to an engine (B107): in the browser (Claude, Codex), with an API
+ * key kept in the Mac's Keychain, with the engine's own command in Terminal, or not at all.
+ */
+export type EngineSignIn = "browser" | "api_key" | "terminal";
+
 /** An engine a new chat can run on (`GET /api/providers`, B91), the default one first. */
 export interface ProviderInfo {
-  // What a chat's `provider` is set to: "claude" or "codex".
+  // What a chat's `provider` is set to, such as "claude", "codex" or "opencode".
   name: string;
   display_name: string;
-  // Null when Nest does not check (Claude) or Codex could not be asked; Codex stays
-  // offered when false, and its chats fail until the user signs in.
+  // Null when Nest does not check (Claude) or the engine could not be asked; an engine
+  // that said false is not offered for new chats.
   signed_in: boolean | null;
   // What to tell the user when `signed_in` is false.
   sign_in_hint: string | null;
   account: AccountInfo | null;
   unsupported: ProviderFeature[];
+  // The installed engine's version, such as "1.19.4"; null when unknown.
+  version: string | null;
+  // False for an engine Nest has not tried itself: it is labelled "untested".
+  tested: boolean;
+  // False when Nest cannot block the engine's git commands (B107).
+  git_guard: boolean;
+  state: EngineState;
+  // Why it is not installed, or why installing failed, in plain words.
+  state_detail: string | null;
+  sign_in: EngineSignIn;
+  // The command the user runs on the Mac to sign in, such as "agent login", for a
+  // "terminal" sign-in.
+  login_command: string | null;
+  // Nest can fetch it itself; false for an engine the user installs (Cursor).
+  installable: boolean;
 }
 
 export interface ProviderList {
