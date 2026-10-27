@@ -4,9 +4,12 @@ teams it can call with `@handle` (B40); in a pixie's own chat, every other pixie
 A team is called through its leader, the only pixie that calls pixies: its own members
 (B70). The run's call guard holds every agent to that.
 
-Only Claude takes Nest-defined subagents. A pixie on Codex, or any pixie a run on Codex
-calls, is called with the call_pixie tool instead and runs as a session of its own (B91):
-`ChatAgents.tool_calls`. A called leader's own session calls its members the same way.
+A run calls the pixies on its own engine as that engine's own subagents, where the engine
+has them: Claude Code's subagents, and Codex's (B112: agent roles of the thread,
+`providers.codex_roles`). A pixie on another engine, and every pixie a run on an engine
+without them (ACP) calls, is called with the call_pixie tool instead and runs as a session
+of its own (B91): `ChatAgents.tool_calls`. A called leader's own session calls its members
+the same way.
 """
 
 from collections.abc import Callable
@@ -35,6 +38,8 @@ TEAM_CALL = (
 )
 # How the leader is called: as the run's subagent, or with the call tool (B91).
 LEADER_SUBAGENT = "the subagent {slug}, with the Agent tool"
+# As a Codex run's own subagent (B112).
+LEADER_AGENT = "the agent role {slug}, with spawn_agent (`agent_type` set to {slug}),"
 LEADER_TOOL = f"the pixie {{slug}}, with the {CALL_PIXIE_TOOL} tool"
 # Named, so the chat does not call them itself.
 TEAM_CALL_MEMBERS = " Do not call its members ({members}) yourself."
@@ -49,6 +54,23 @@ and `run_in_background` set to false, and wait for its result. To continue a mem
 called earlier in this conversation, use SendMessage to its agent id instead of a new \
 call. Then report what each member did and the combined result. You call only your \
 team's members; for other help, use Claude Code's ordinary subagents."""
+# The same for a leader on Codex, whose members on Codex are its own subagents (B112).
+CODEX_TEAM_SECTION = """## Your team
+You lead the team {name} (@{handle}). Its members in this chat:
+{members}
+When a request comes for the team, decide which member does which part; you may do a \
+part yourself. Call each member with spawn_agent, with `agent_type` set to its slug, and \
+wait for its result. To continue a member you called earlier in this conversation, send \
+it the next task (followup_task, or send_input) to its agent id instead of spawning it \
+again. Then report what each member did and the combined result. You call only your \
+team's members; for other help, spawn an agent without a pixie's role."""
+# How a Codex run continues a pixie it called earlier in the chat, as its own subagent
+# (B112), where a Claude run is told to use SendMessage (`pixies.calls.CONTINUE_NOTE`).
+CODEX_CONTINUE_NOTE = (
+    "\n\n(@{slug} was called earlier in this chat as agent {agent_id}. Continue that agent"
+    " with followup_task (or send_input, after resume_agent if it was closed) to"
+    " '{agent_id}' instead of spawning a new one.)"
+)
 NO_MEMBERS = "No other member is in this chat."
 # A member the leader calls with the call tool, and how (B91).
 TOOL_MARK = f" (call with {CALL_PIXIE_TOOL})"
@@ -57,12 +79,17 @@ TOOL_MEMBERS = (
     " set to its slug, and wait for its report."
 )
 
-# Whether an engine, by provider name, runs Nest-defined subagents (Claude only).
-type InlineEngines = Callable[[str], bool]
+CODEX = "codex"
+# The engines, by provider name, that run Nest-defined subagents of their own (B112).
+NATIVE_ENGINES = frozenset({DEFAULT_PROVIDER, CODEX})
+
+# The engine, by provider name, whose own subagents run Nest-defined ones; None when it
+# runs none. A pixie is the run's subagent when both name the same engine.
+type InlineEngines = Callable[[str], str | None]
 
 
-def claude_only(provider: str) -> bool:
-    return provider == DEFAULT_PROVIDER
+def native_subagents(provider: str) -> str | None:
+    return provider if provider in NATIVE_ENGINES else None
 
 
 @dataclass(frozen=True)
@@ -83,9 +110,9 @@ class PixieAgents:
         pixies: PixieStore,
         files: PixieFiles,
         teams: TeamStore,
-        inline: InlineEngines = claude_only,
+        inline: InlineEngines = native_subagents,
     ) -> None:
-        """`inline` says which engines run Nest-defined subagents."""
+        """`inline` says which engines run Nest-defined subagents of their own."""
         self._pixies = pixies
         self._files = files
         self._teams = teams
@@ -126,7 +153,7 @@ class PixieAgents:
             for item in available
         }
         tool_calls = self._tool_calls(session.provider, available)
-        calls = tuple(_team_call(team, available, tool_calls) for team in teams)
+        calls = tuple(_team_call(team, available, tool_calls, session.provider) for team in teams)
         rules = CallRules(
             pixies=frozenset(offered),
             main=frozenset(
@@ -199,13 +226,13 @@ class PixieAgents:
 
     def _tool_calls(self, provider: str, available: list["_Available"]) -> dict[str, str]:
         """The pixies a run on `provider` calls with the call tool: all of them when its
-        engine runs no Nest subagents, else those on an engine that does not.
+        engine runs no Nest subagents of its own, else those on another engine.
         """
-        inline = self._inline(provider)
+        engine = self._inline(provider)
         return {
             item.pixie.slug: item.pixie.id
             for item in available
-            if not (inline and self._inline(item.pixie.provider))
+            if engine is None or self._inline(item.pixie.provider) != engine
         }
 
     def _team_section(self, team: PixieTeam | None, available: list["_Available"]) -> str | None:
@@ -222,9 +249,8 @@ class PixieAgents:
             f" {item.description}"
             for item in members
         )
-        section = TEAM_SECTION.format(
-            name=team.name, handle=team.handle, members=lines or NO_MEMBERS
-        )
+        template = CODEX_TEAM_SECTION if leader.provider == CODEX else TEAM_SECTION
+        section = template.format(name=team.name, handle=team.handle, members=lines or NO_MEMBERS)
         return section + TOOL_MEMBERS if by_tool else section
 
     def _read(self, pixie: Pixie) -> _Available | None:
@@ -257,14 +283,19 @@ def _members(team: PixieTeam, available: list[_Available]) -> list[_Available]:
 
 
 def _team_call(
-    team: PixieTeam, available: list[_Available], tool_calls: dict[str, str]
+    team: PixieTeam, available: list[_Available], tool_calls: dict[str, str], provider: str
 ) -> TeamCall:
-    """The instruction a message calling the team gets: hand it to the leader."""
+    """The instruction a message calling the team gets: hand it to the leader, as the
+    run's engine calls it.
+    """
     # Offered teams have an offered leader.
     leader = next(item.pixie.slug for item in available if item.pixie.id == team.leader_id)
     slugs = ", ".join(item.pixie.slug for item in _members(team, available))
     members = TEAM_CALL_MEMBERS.format(members=slugs) if slugs else ""
-    how = (LEADER_TOOL if leader in tool_calls else LEADER_SUBAGENT).format(slug=leader)
+    if leader in tool_calls:
+        how = LEADER_TOOL.format(slug=leader)
+    else:
+        how = (LEADER_AGENT if provider == CODEX else LEADER_SUBAGENT).format(slug=leader)
     return TeamCall(team.handle, TEAM_CALL.format(handle=team.handle, leader=how, members=members))
 
 

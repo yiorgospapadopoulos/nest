@@ -9,6 +9,7 @@ import pytest
 from pydantic import JsonValue
 
 from nestd.providers.base import AgentTool, UserInput
+from nestd.providers.codex import QUESTIONS_CONFIG
 from nestd.providers.codex_rpc import JsonObject
 from nestd.providers.codex_tools import TOKEN_ENV, ToolHost
 from tests.async_support import until
@@ -111,7 +112,7 @@ async def test_a_run_without_nest_tools_gets_no_server(tmp_path: Path) -> None:
     server, run, _, _ = await opened(tmp_path)
 
     [start] = server.requests("thread/start")
-    assert start["config"] == {}
+    assert start["config"] == QUESTIONS_CONFIG
     assert "developerInstructions" not in start
     assert TOKEN_ENV not in server.launches[0].env
     await run.close()
@@ -233,10 +234,9 @@ async def test_a_pixie_runs_writes_stay_in_its_write_root(tmp_path: Path) -> Non
 
     await run.send(UserInput("hi"))
     [turn] = server.requests("turn/start")
-    sandbox = cast("JsonObject", turn["sandboxPolicy"])
-    assert sandbox["type"] == "workspaceWrite"
-    # The projects are readable, not writable: only its workdir is.
-    assert sandbox["writableRoots"] == []
+    # No sandbox beyond Claude's (B112): Codex asks Nest about every edit instead.
+    assert turn["approvalPolicy"] == "untrusted"
+    assert turn["sandboxPolicy"] == {"type": "dangerFullAccess"}
     answer = await server.request("item/fileChange/requestApproval", {"itemId": "f1"})
     assert answer["result"] == {"decision": "decline"}
     await run.close()

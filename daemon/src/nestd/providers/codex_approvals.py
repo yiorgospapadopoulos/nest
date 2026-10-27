@@ -1,5 +1,11 @@
-"""Codex's requests to its client: command, file change and MCP tool call approvals go to
-the user through Nest's approval handler; the rest Nest declines (B91, D113).
+"""Codex's requests to its client: command, file change and MCP tool call approvals and
+Codex's own questions (`request_user_input`, B112) go to the user through Nest's approval
+handler; the rest Nest declines (B91, D113).
+
+Each request names its thread: the run's own, or a Codex subagent's (a pixie called
+natively, B112), whose requests land in the same Needs you, decided with that thread's
+permissions (`RunPermissions` by thread: its pixie's mode capped by its caller's, and its
+access).
 
 A guarded run's git writes are declined before anyone is asked (D013), with the matchers the
 Claude side uses: `is_git_write` for commands (the whole command, shell wrapper included),
@@ -14,7 +20,9 @@ inside Codex's shell wrapper), file changes as a whole. Nest never accepts an ex
 amendment, which would change the user's Codex rules for good.
 
 A run with a write root (a pixie's, D072) has every file change outside it declined, in
-every mode, as Claude's write guard denies it.
+every mode, as Claude's write guard denies it. A read-only pixie's thread has every file
+change declined, as Claude denies such a subagent its edit tools, and a thread the call
+guard refused (B70) is allowed nothing.
 """
 
 import re
@@ -28,6 +36,7 @@ from nestd.config.models import PermissionMode
 from nestd.providers.base import ApprovalHandler, PermissionRequest
 from nestd.providers.codex_items import file_paths, obj, shown_command, text
 from nestd.providers.codex_modes import command_decision, file_change_decision
+from nestd.providers.codex_questions import USER_INPUT, question_request, user_input_answer
 from nestd.providers.codex_rpc import METHOD_NOT_FOUND, CodexRpcError, JsonObject
 from nestd.providers.git_guard import tool_writes
 
@@ -38,12 +47,14 @@ ELICITATION = "mcpServer/elicitation/request"
 TOOL_CALL_APPROVAL = "mcp_tool_call"
 _ACCEPT: JsonValue = {"action": "accept", "content": {}, "_meta": None}
 _DECLINE: JsonValue = {"action": "decline", "content": None, "_meta": None}
+# Extra sandbox permissions are never granted: the mode decides the sandbox.
+_NO_PERMISSIONS: JsonValue = {"permissions": {}, "scope": "turn"}
 _MESSAGE_TOOL = re.compile(r'run tool "([^"]+)"')
 
 
 @dataclass(frozen=True)
 class RunPermissions:
-    """What a run's approvals depend on, read when each one comes."""
+    """What a thread's approvals depend on, read when each one comes."""
 
     mode: PermissionMode | None
     guarded: bool
@@ -51,18 +62,23 @@ class RunPermissions:
     write_root: Path | None = None
     # The MCP servers that are Nest's own tools for this run.
     nest_servers: frozenset[str] = frozenset()
+    # A read-only pixie's thread: every file change is declined (B112).
+    read_only: bool = False
+    # A subagent thread the call guard refused (B70): nothing it asks is allowed.
+    refused: bool = False
 
 
 class CodexApprovals:
     def __init__(
         self,
         handler: ApprovalHandler,
-        permissions: Callable[[], RunPermissions],
+        permissions: Callable[[str], RunPermissions],
         file_changes: Callable[[str], JsonObject | None],
         mcp_calls: Callable[[str, str], JsonObject | None],
     ) -> None:
-        """`file_changes` finds the file change item an approval is for, by item id;
-        `mcp_calls` the MCP tool call in progress, by server and turn.
+        """`permissions` gives a thread's, by thread id; `file_changes` finds the file
+        change item an approval is for, by item id; `mcp_calls` the MCP tool call in
+        progress, by server and turn.
         """
         self._handler = handler
         self._permissions = permissions
@@ -70,21 +86,24 @@ class CodexApprovals:
         self._mcp_calls = mcp_calls
 
     async def handle(self, method: str, params: JsonObject) -> JsonValue:
+        permissions = self._permissions(text(params.get("threadId")))
+        if permissions.refused:
+            return _refusal(method)
         if method == COMMAND_APPROVAL:
-            return {"decision": await self._command(params)}
+            return {"decision": await self._command(params, permissions)}
         if method == FILE_APPROVAL:
-            return {"decision": await self._file_change(params)}
+            return {"decision": await self._file_change(params, permissions)}
         if method == PERMISSIONS_APPROVAL:
-            # Extra sandbox permissions are never granted: the mode decides the sandbox.
-            return {"permissions": {}, "scope": "turn"}
+            return _NO_PERMISSIONS
         if method == ELICITATION:
-            return await self._elicitation(params)
+            return await self._elicitation(params, permissions)
+        if method == USER_INPUT:
+            return user_input_answer(params, await self._handler.ask(question_request(params)))
         msg = f"Nest does not answer {method}"
         raise CodexRpcError(METHOD_NOT_FOUND, msg)
 
-    async def _command(self, params: JsonObject) -> str:
+    async def _command(self, params: JsonObject, permissions: RunPermissions) -> str:
         command = text(params.get("command"))
-        permissions = self._permissions()
         auto = command_decision(command, permissions.mode, permissions.guarded)
         if auto is not None:
             return auto
@@ -105,8 +124,9 @@ class CodexApprovals:
         )
         return _answer(decision.behavior == "allow", decision.always)
 
-    async def _file_change(self, params: JsonObject) -> str:
-        permissions = self._permissions()
+    async def _file_change(self, params: JsonObject, permissions: RunPermissions) -> str:
+        if permissions.read_only:
+            return "decline"
         item = self._file_changes(text(params.get("itemId"))) or {}
         paths = file_paths(item)
         root = permissions.write_root
@@ -127,14 +147,13 @@ class CodexApprovals:
         )
         return _answer(decision.behavior == "allow", decision.always)
 
-    async def _elicitation(self, params: JsonObject) -> JsonValue:
+    async def _elicitation(self, params: JsonObject, permissions: RunPermissions) -> JsonValue:
         """An MCP tool call approval is decided like a tool permission; any other question
         an MCP server asks is declined.
         """
         meta = obj(params.get("_meta"))
         if meta.get("codex_approval_kind") != TOOL_CALL_APPROVAL:
             return _DECLINE
-        permissions = self._permissions()
         server = text(params.get("serverName"))
         if server in permissions.nest_servers:
             return _ACCEPT
@@ -156,6 +175,20 @@ class CodexApprovals:
             )
         )
         return _ACCEPT if decision.behavior == "allow" else _DECLINE
+
+
+def _refusal(method: str) -> JsonValue:
+    """The answer that allows nothing, for a thread the call guard refused."""
+    if method in (COMMAND_APPROVAL, FILE_APPROVAL):
+        return {"decision": "decline"}
+    if method == PERMISSIONS_APPROVAL:
+        return _NO_PERMISSIONS
+    if method == ELICITATION:
+        return _DECLINE
+    if method == USER_INPUT:
+        return {"answers": {}}
+    msg = f"Nest does not answer {method}"
+    raise CodexRpcError(METHOD_NOT_FOUND, msg)
 
 
 def _message_tool(message: str) -> str:

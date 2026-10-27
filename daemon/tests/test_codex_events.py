@@ -254,13 +254,21 @@ async def test_without_usage_reports_there_are_no_tokens_or_context() -> None:
 
 
 async def test_a_report_of_another_turn_does_not_start_the_count() -> None:
-    codex, _ = stream()
+    codex, sink = stream()
     other = usage({"inputTokens": 9}, {"inputTokens": 9})
     other["params"]["turnId"] = "turn-0"  # type: ignore[index]
 
-    await feed(codex, started(), other)
+    await feed(
+        codex,
+        started(),
+        other,
+        usage({"inputTokens": 30}, {"inputTokens": 21}),
+        turn_completed(),
+    )
 
-    assert codex._first_total is None  # pyright: ignore[reportPrivateUsage]
+    _, info = sink.calls[-1]
+    assert isinstance(info, ResultInfo)
+    assert info.tokens == TokenUsage(input_tokens=21)
 
 
 async def test_failed_and_interrupted_turns_say_so() -> None:

@@ -24,6 +24,7 @@ from nestd.providers.claude import agent_env
 from nestd.providers.codex import (
     CODEX_UNSUPPORTED,
     NO_REWIND,
+    QUESTIONS_CONFIG,
     CodexNotSignedInError,
     CodexProvider,
     CodexRun,
@@ -108,7 +109,7 @@ async def test_opening_starts_app_server_and_a_thread_in_the_chats_folder(
             "approvalPolicy": "untrusted",
             "approvalsReviewer": "user",
             "sandbox": "workspace-write",
-            "config": {},
+            "config": QUESTIONS_CONFIG,
             "developerInstructions": "You are running inside Nest.",
         }
     ]
@@ -144,7 +145,10 @@ async def test_a_guarded_run_has_no_git_credentials_in_codex_or_its_commands(
     assert env["GH_CONFIG_DIR"] == str(tmp_path / "gh")
     [start] = server.requests("thread/start")
     assert start["model"] == "gpt-5.5"
-    assert start["config"] == {"shell_environment_policy.set": {**_agent_env(tmp_path)}}
+    assert start["config"] == {
+        "shell_environment_policy.set": {**_agent_env(tmp_path)},
+        **QUESTIONS_CONFIG,
+    }
     assert "developerInstructions" not in start
     await run.close()
 
@@ -158,10 +162,11 @@ async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) 
 
     assert server.launches[0].env["NEST_PORT"] == "41020"
     [start] = server.requests("thread/start")
-    assert start["config"] == {"shell_environment_policy.set": ports}
+    assert start["config"] == {"shell_environment_policy.set": ports, **QUESTIONS_CONFIG}
     [guarded_start] = guarded_server.requests("thread/start")
     assert guarded_start["config"] == {
-        "shell_environment_policy.set": {**ports, **_agent_env(tmp_path)}
+        "shell_environment_policy.set": {**ports, **_agent_env(tmp_path)},
+        **QUESTIONS_CONFIG,
     }
     await run.close()
     await guarded.close()
@@ -393,9 +398,12 @@ async def test_claude_only_operations_fail_cleanly(tmp_path: Path) -> None:
     assert not await run.stop_task("task-1")
     assert await run.context_usage() is None
     assert await codex.fork_point(tmp_path, "thread-1", "m1") is None
-    assert {"rewind", "fork", "slash_commands", "plan_review", "task_list"} <= CODEX_UNSUPPORTED
-    # Stage 2: pixies, the pixies a chat calls and Nest's tools run on Codex too.
-    assert CODEX_UNSUPPORTED.isdisjoint({"pixies", "subagents", "nest_tools"})
+    assert {"rewind", "fork", "slash_commands", "plan_review"} <= CODEX_UNSUPPORTED
+    # Stage 2: pixies, the pixies a chat calls and Nest's tools run on Codex too; B112:
+    # its own questions, plan, subagent stops and skill limits.
+    assert CODEX_UNSUPPORTED.isdisjoint(
+        {"pixies", "subagents", "nest_tools", "questions", "task_list", "stop_task", "pixie_skills"}
+    )
     assert codex.unsupported == CODEX_UNSUPPORTED
     await run.close()
 
@@ -436,10 +444,18 @@ async def test_a_guarded_runs_git_push_is_declined_and_other_commands_asked(
     test = await server.request(
         "item/commandExecution/requestApproval", {"command": "npm test", "itemId": "c2"}
     )
+    commit = await server.request(
+        "item/commandExecution/requestApproval", {"command": "git commit -m wip", "itemId": "c3"}
+    )
 
     assert push["result"] == {"decision": "decline"}
-    assert test["result"] == {"decision": "accept"}
-    assert [r.tool_input["command"] for r in handler.requests] == ["npm test"]
+    assert test["result"] == commit["result"] == {"decision": "accept"}
+    # A pixie may commit (D123); with no sandbox beyond Claude's, it is asked like any other.
+    assert [r.tool_input["command"] for r in handler.requests] == ["npm test", "git commit -m wip"]
+    [start] = server.requests("thread/start")
+    assert (start["approvalPolicy"], start["sandbox"]) == ("untrusted", "danger-full-access")
+    [init] = server.requests("initialize")
+    assert init["capabilities"] == {"experimentalApi": True, "requestAttestation": False}
     await run.close()
 
 

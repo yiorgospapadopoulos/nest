@@ -8,7 +8,9 @@ from nestd.providers.base import (
     PermissionRequest,
     PlanDecision,
     PlanRequest,
+    Question,
     QuestionAnswer,
+    QuestionOption,
     QuestionRequest,
 )
 from nestd.providers.codex_approvals import CodexApprovals, RunPermissions
@@ -44,7 +46,7 @@ def approvals(
     pending = calls or {}
     return CodexApprovals(
         handler,
-        lambda: permissions,
+        lambda _thread: permissions,
         (changes or {}).get,
         lambda server, turn: pending.get((server, turn)),
     )
@@ -391,3 +393,131 @@ async def test_a_file_change_outside_the_write_root_is_declined_in_every_mode(
             "decision": "decline"
         }
     assert handler.requests == []
+
+
+class Asker(Handler):
+    def __init__(self, answer: QuestionAnswer) -> None:
+        super().__init__()
+        self.answer = answer
+        self.questions: list[QuestionRequest] = []
+
+    async def ask(self, request: QuestionRequest) -> QuestionAnswer:
+        self.questions.append(request)
+        return self.answer
+
+
+# `item/tool/requestUserInput` as the pinned 0.163 schema has it (ToolRequestUserInputParams,
+# experimental): questions with options, a free one, and one whose free answer is "other".
+USER_INPUT: JsonObject = {
+    "threadId": "t",
+    "turnId": "turn-1",
+    "itemId": "call-q",
+    "isBlocking": True,
+    "questions": [
+        {
+            "id": "db",
+            "header": "Database",
+            "question": "Which database?",
+            "isOther": True,
+            "isSecret": False,
+            "options": [
+                {"label": "Postgres", "description": "The usual"},
+                {"label": "SQLite", "description": "Small"},
+            ],
+        },
+        {"id": "name", "header": "Name", "question": "What name?", "options": None},
+        {
+            "id": "port",
+            "header": "Port",
+            "question": "Which port?",
+            "isOther": True,
+            "options": [{"label": "8080", "description": ""}],
+        },
+    ],
+}
+
+
+async def test_codexs_questions_reach_the_user_and_come_back_by_question_id() -> None:
+    handler = Asker(
+        QuestionAnswer({"Which database?": "SQLite", "What name?": "nest", "Which port?": "9000"})
+    )
+
+    answer = await approvals(handler).handle("item/tool/requestUserInput", USER_INPUT)
+
+    [request] = handler.questions
+    assert request == QuestionRequest(
+        questions=(
+            Question(
+                question="Which database?",
+                header="Database",
+                options=(
+                    QuestionOption("Postgres", "The usual"),
+                    QuestionOption("SQLite", "Small"),
+                ),
+                multi_select=False,
+            ),
+            Question(question="What name?", header="Name", options=(), multi_select=False),
+            Question(
+                question="Which port?",
+                header="Port",
+                options=(QuestionOption("8080"),),
+                multi_select=False,
+            ),
+        ),
+        tool_use_id="call-q",
+    )
+    # ToolRequestUserInputResponse: answers by question id; a free answer beside options is
+    # a note, as Codex's own clients send it.
+    assert answer == {
+        "answers": {
+            "db": {"answers": ["SQLite"]},
+            "name": {"answers": ["nest"]},
+            "port": {"answers": ["user_note: 9000"]},
+        }
+    }
+
+
+async def test_dismissed_questions_answer_nothing_so_codex_goes_on() -> None:
+    handler = Asker(QuestionAnswer(None, "dismissed"))
+
+    answer = await approvals(handler).handle("item/tool/requestUserInput", USER_INPUT)
+
+    assert answer == {"answers": {}}
+
+
+async def test_a_read_only_pixies_thread_has_its_file_changes_declined_in_every_mode() -> None:
+    handler = Handler()
+    by_thread = {
+        "pixie": RunPermissions("bypassPermissions", True, read_only=True),
+        "main": RunPermissions("bypassPermissions", True),
+    }
+    changes: dict[str, JsonObject] = {"c": {"changes": [{"path": "/r/a"}]}}
+    codex = CodexApprovals(
+        handler, lambda thread: by_thread[thread], changes.get, lambda _server, _turn: None
+    )
+    change: JsonObject = {"itemId": "c"}
+
+    pixie = await codex.handle("item/fileChange/requestApproval", change | {"threadId": "pixie"})
+    main = await codex.handle("item/fileChange/requestApproval", change | {"threadId": "main"})
+    run = await codex.handle(
+        "item/commandExecution/requestApproval", command("ls") | {"threadId": "pixie"}
+    )
+
+    assert pixie == {"decision": "decline"}
+    assert main == {"decision": "accept"}
+    # Only its edits are taken away, as Claude denies such a subagent its edit tools.
+    assert run == {"decision": "accept"}
+    assert handler.requests == []
+
+
+async def test_a_thread_the_call_guard_refused_is_allowed_nothing() -> None:
+    handler = Asker(QuestionAnswer({"Which database?": "SQLite"}))
+    refused = RunPermissions("bypassPermissions", False, refused=True)
+    none: dict[str, JsonObject] = {}
+    codex = CodexApprovals(handler, lambda _thread: refused, none.get, lambda _s, _t: None)
+
+    assert await codex.handle("item/commandExecution/requestApproval", command("ls")) == {
+        "decision": "decline"
+    }
+    assert await codex.handle("item/tool/requestUserInput", USER_INPUT) == {"answers": {}}
+    assert handler.questions == []
