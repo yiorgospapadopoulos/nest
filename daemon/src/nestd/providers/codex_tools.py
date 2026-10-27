@@ -25,6 +25,7 @@ import uvicorn
 from claude_agent_sdk import create_sdk_mcp_server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
+from pydantic import JsonValue
 from starlette.responses import PlainTextResponse
 from starlette.types import Receive, Scope, Send
 from uvicorn.server import ServerState
@@ -90,6 +91,20 @@ class ToolHost:
     def env(self) -> dict[str, str]:
         """What the app-server process needs to reach the servers: the token."""
         return {TOKEN_ENV: self.token}
+
+    def acp_servers(self) -> list[JsonValue]:
+        """The servers as an ACP session's `mcpServers` (B107): ACP has no variable to
+        name, so the token goes in the request's header, sent only over the engine's stdin.
+        """
+        return [
+            {
+                "type": "http",
+                "name": name,
+                "url": f"http://{HOST}:{self.port}/{name}/mcp",
+                "headers": [{"name": "Authorization", "value": f"Bearer {self.token}"}],
+            }
+            for name in self._names
+        ]
 
     async def close(self) -> None:
         """Stop serving: tool calls still running are cancelled, the token is gone."""
