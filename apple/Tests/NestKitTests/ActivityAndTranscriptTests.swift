@@ -633,7 +633,7 @@ import Testing
         api.set { $0.gates["sessionEvents"] = gate }
 
         let paging = Task { try await transcript.loadNewer() }
-        try await waitFor { api.calls.count == 3 }
+        await api.untilCalls { $0.count == 3 }
         // Published after the daemon read the page: only the live copies bring them.
         transcript.receive(Self.message(251))
         transcript.receive(Self.message(252))
@@ -656,7 +656,7 @@ import Testing
         // The page around 240 reaches the newest event, so live ones apply after it.
         transcript.requestFocus(event: 240)
         let jumping = Task { try await transcript.resolveFocus() }
-        try await waitFor { api.calls.count == 3 }
+        await api.untilCalls { $0.count == 3 }
         transcript.receive(Self.message(251))
         open.finish()
         #expect(try await jumping.value == "e240")
@@ -673,7 +673,7 @@ import Testing
         api.set { $0.gates["sessionEvents"] = gate }
 
         let reloading = Task { try await transcript.load() }
-        try await waitFor { api.calls.count == 2 }
+        await api.untilCalls { $0.count == 2 }
         // Arrives live while the reload's answer (event 251) is on its way.
         transcript.receive(Self.message(252))
         transcript.receive(Fixture.event(EventType.sessionDelta, #"{"text": "Hi"}"#, id: nil))

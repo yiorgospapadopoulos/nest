@@ -257,10 +257,9 @@ import Testing
         prompt.answer(open, to: request.id)
     }
 
-    static func settle() async {
-        for _ in 0..<20 {
-            await Task.yield()
-        }
+    /// Waits until the prompt asks.
+    static func asked(_ prompt: ArtifactLinkPrompt) async throws {
+        try await waitFor { prompt.request != nil }
     }
 
     @Test func thePromptAnswersOnceAndASecondAskIsBusy() async throws {
@@ -268,7 +267,7 @@ import Testing
         let url = URL(string: "https://example.com")!
         #expect(prompt.request == nil)
         let first = Task { await prompt.ask(url) }
-        await Self.settle()
+        try await Self.asked(prompt)
         let request = try #require(prompt.request)
         #expect(request.url == url)
         #expect(request.message == "https://example.com")
@@ -281,16 +280,16 @@ import Testing
         prompt.answer(true, to: request.id)
 
         let second = Task { await prompt.ask(url) }
-        await Self.settle()
+        try await Self.asked(prompt)
         Self.choose(prompt, false)
         #expect(await second.value == .declined)
     }
 
-    @Test func dismissingThePromptEndsTheWait() async {
+    @Test func dismissingThePromptEndsTheWait() async throws {
         let prompt = ArtifactLinkPrompt()
         prompt.dismiss()
         let asked = Task { await prompt.ask(URL(string: "https://example.com")!) }
-        await Self.settle()
+        try await Self.asked(prompt)
         prompt.dismiss()
         #expect(prompt.request == nil)
         #expect(await asked.value == .dismissed)
@@ -322,12 +321,12 @@ import Testing
         return nil
     }
 
-    @Test func openLinkAsksThenOpensAndReplies() async {
+    @Test func openLinkAsksThenOpensAndReplies() async throws {
         let prompt = ArtifactLinkPrompt()
         let opened = Opened()
         let session = Self.session(prompt, opened: opened)
         let reply = Task { await session.receive(Self.request()) }
-        await Self.settle()
+        try await Self.asked(prompt)
         #expect(opened.urls.isEmpty)
         Self.choose(prompt, true)
         #expect(
@@ -336,17 +335,17 @@ import Testing
         #expect(opened.urls == [URL(string: "https://example.com/a")!])
     }
 
-    @Test func cancelDeclinesAndASecondCallWhileAskingIsBusy() async {
+    @Test func cancelDeclinesAndASecondCallWhileAskingIsBusy() async throws {
         let prompt = ArtifactLinkPrompt()
         let opened = Opened()
         let session = Self.session(prompt, opened: opened)
         let first = Task { await session.receive(Self.request()) }
-        await Self.settle()
+        try await Self.asked(prompt)
         #expect(Self.code(await session.receive(Self.request(id: "r2"))) == .busy)
         Self.choose(prompt, false)
         #expect(Self.code(await first.value) == .declined)
         let dismissed = Task { await session.receive(Self.request(id: "r3")) }
-        await Self.settle()
+        try await Self.asked(prompt)
         prompt.dismiss()
         #expect(Self.code(await dismissed.value) == .declined)
         #expect(opened.urls.isEmpty)
@@ -383,19 +382,19 @@ import Testing
         #expect(Self.code(await session.receive(Self.request(method: "x"))) == .rateLimited)
     }
 
-    @Test func aFollowedLinkAsksThenOpensWithoutAReply() async {
+    @Test func aFollowedLinkAsksThenOpensWithoutAReply() async throws {
         let prompt = ArtifactLinkPrompt()
         let opened = Opened()
         let session = Self.session(prompt, opened: opened)
         let url = URL(string: "https://example.com/b")!
         let followed = Task { await session.follow(url) }
-        await Self.settle()
+        try await Self.asked(prompt)
         Self.choose(prompt, true)
         await followed.value
         #expect(opened.urls == [url])
 
         let cancelled = Task { await session.follow(url) }
-        await Self.settle()
+        try await Self.asked(prompt)
         Self.choose(prompt, false)
         await cancelled.value
         #expect(opened.urls == [url])

@@ -336,8 +336,11 @@ import Testing
         return ArtifactsStore(api: api)
     }
 
+    /// Lets queued main-actor work run, to show something did not happen.
     static func settle() async {
-        await ArtifactBridgeTests.settle()
+        for _ in 0..<20 {
+            await Task.yield()
+        }
     }
 
     @Test func theStoreKnowsWhatEachPageStored() async throws {
@@ -371,9 +374,8 @@ import Testing
             session: nil)
         store.apply(event)
         #expect(seen == [.write(set: ["b": "2"], remove: [])])
-        await Self.settle()
         // What it holds is read again, for the reader's line.
-        #expect(store.storageSize(of: "a1") == 4)
+        try await waitFor { store.storageSize(of: "a1") == 4 }
         store.stopObserving(token)
         store.apply(event)
         #expect(seen.count == 1)

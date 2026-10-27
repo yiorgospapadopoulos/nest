@@ -96,7 +96,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["rewind"] = gate.stream }
         let restoring = Task { await flow.confirm() }
-        try await waitFor { flow.isRestoring }
+        await api.reached("rewind")
+        #expect(flow.isRestoring)
         #expect(flow.confirmLabel == "Restoring…")
         #expect(!flow.canConfirm)
         gate.continuation.finish()

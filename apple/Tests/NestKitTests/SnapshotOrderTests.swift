@@ -39,7 +39,7 @@ import Testing
         }
         let release = hold("sessions")
         let loading = Task { try await sessions.load() }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
 
         sessions.apply(Self.state("idle"))
         sessions.apply(Fixture.event(EventType.sessionDeleted, #"{"session_id": "gone"}"#))
@@ -85,7 +85,8 @@ import Testing
             try await sessions.publish(
                 review, approvals.publishForm(for: review, session: sessions.session(id)))
         }
-        try await waitFor { approvals.busy.contains(review.id) }
+        await api.reached("approve")
+        #expect(approvals.busy.contains(review.id))
 
         sessions.apply(Self.state("closed", session: id))
         release()
@@ -108,7 +109,8 @@ import Testing
             try await sessions.publish(
                 review, approvals.publishForm(for: review, session: sessions.session(id)))
         }
-        try await waitFor { approvals.busy.contains(review.id) }
+        await api.reached("approve")
+        #expect(approvals.busy.contains(review.id))
 
         sessions.apply(Fixture.event(EventType.sessionDeleted, #"{"session_id": "\#(id)"}"#))
         release()
@@ -122,7 +124,7 @@ import Testing
         api.set { $0.details[detail.id] = detail }
         let release = hold("session")
         let loading = Task { try await activity.load(session: detail.id) }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
 
         let queued = QueuedMessage(
             id: "q1", text: "next", createdAt: Date(timeIntervalSince1970: 0))
@@ -146,7 +148,7 @@ import Testing
         api.set { $0.approvals = [permission] }
         let release = hold("approvals")
         let loading = Task { try await approvals.load() }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
 
         approvals.apply(
             Fixture.event(

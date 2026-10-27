@@ -179,7 +179,7 @@ import Testing
             $0.gates["goals"] = gate
         }
         let loading = Task { try await store.loadGoals(repo: "todo-ui", sessions: sessions) }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
         // Published after the daemon read the goals: only the live copy brings it.
         store.apply(tasksEvent("s1", []))
         open.finish()

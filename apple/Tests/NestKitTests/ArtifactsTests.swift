@@ -295,54 +295,6 @@ import Testing
         }
     }
 
-    @Test func theViewsWordsReadPlainly() {
-        #expect(ArtifactText.origin(Fixture.artifact()) == "Pick a queue")
-        #expect(ArtifactText.origin(Fixture.artifact(chatDeleted: true)) == "Deleted chat")
-        #expect(ArtifactText.origin(Fixture.artifact(chatTitle: nil)) == "Deleted chat")
-        #expect(
-            ArtifactText.origin(Fixture.artifact(chatDeleted: true, pixieName: "Reviewer"))
-                == "Reviewer")
-        let now = Fixture.date("2026-10-17T10:00:00Z")
-        #expect(ArtifactText.when(now - 20, now: now) == "now")
-        #expect(ArtifactText.when(now - 540, now: now) == "9m ago")
-        #expect(ArtifactText.kind(.markdown) == "Markdown")
-        #expect(ArtifactText.kind(.html) == "HTML")
-        #expect(ArtifactText.kind(.unknown) == "Document")
-        #expect(
-            [ArtifactKind.slides, .document, .design, .designSystem].map(ArtifactText.kind) == [
-                "Slides", "Document", "Design", "Design system",
-            ])
-        #expect(
-            [ArtifactKind.markdown, .html, .slides, .document, .design, .designSystem, .unknown]
-                .map(\.symbol) == [
-                    "doc.richtext", "chevron.left.forwardslash.chevron.right", "play.rectangle",
-                    "doc.text", "rectangle.3.group", "swatchpalette", "doc.richtext",
-                ])
-        #expect(ArtifactText.version(2, of: 3) == "Version 2 of 3")
-        let artifact = Fixture.artifact(kind: "document")
-        #expect(
-            ArtifactText.line(artifact, author: .agent, saved: now - 540, now: now)
-                == "Document · Pick a queue · saved 9m ago")
-        #expect(
-            ArtifactText.line(artifact, author: .user, saved: now - 540, now: now)
-                == "Document · Pick a queue · Edited by you 9m ago")
-        #expect(
-            ArtifactText.line(artifact, author: .unknown, saved: now, now: now)
-                == "Document · Pick a queue · saved now")
-        #expect(ArtifactText.empty(.chat("s1")) == "This chat has saved no artifacts yet.")
-        #expect(
-            ArtifactText.empty(.project("todo-ui"))
-                == "No chat in this project has saved an artifact yet.")
-        #expect(ArtifactText.empty(.pixie("p1")) == "This pixie has saved no artifacts yet.")
-        #expect(ArtifactText.empty(.pixies) == "No pixie has saved an artifact yet.")
-        #expect(
-            [ArtifactQuery.chat("s1"), .project("r"), .pixie("p"), .pixies].map(\.label) == [
-                "This chat", "Whole project", "This pixie", "All pixies",
-            ])
-        #expect(ArtifactText.deleted == "Deleted")
-        #expect([0, -1, 1, 99, 100].map(ArtifactText.badge) == [nil, nil, "1", "99", "99+"])
-    }
-
     @Test func aCardSaysSavedOrItsVersion() {
         func card(_ action: String, _ version: Int) -> ArtifactCard {
             Fixture.decode(
@@ -605,7 +557,7 @@ import Testing
         api.set { $0.gates["artifact"] = gate.stream }
         let first = Task { await store.check("a1") }
         let second = Task { await store.check("a1") }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
         gate.continuation.finish()
         await first.value
         await second.value

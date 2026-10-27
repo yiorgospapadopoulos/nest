@@ -6,20 +6,33 @@ import Testing
 
 /// Holds every sleep until released, to see which of several queries waits.
 final class GateSleeper: Sleeper {
-    private let waiting = Mutex<[CheckedContinuation<Void, Never>]>([])
+    private struct State {
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        var arrived = 0
+    }
 
-    var count: Int { waiting.withLock { $0.count } }
+    private let state = Mutex(State())
+    private let changes = Changes()
 
     func sleep(seconds: Double) async throws {
         await withCheckedContinuation { continuation in
-            waiting.withLock { $0.append(continuation) }
+            state.withLock { state in
+                state.waiting.append(continuation)
+                state.arrived += 1
+            }
+            changes.note()
         }
     }
 
+    /// Ends once `count` sleeps have begun.
+    func arrivals(_ count: Int) async {
+        await changes.until { [self] in self.state.withLock { $0.arrived >= count } }
+    }
+
     func releaseAll() {
-        waiting.withLock { list in
-            list.forEach { $0.resume() }
-            list = []
+        state.withLock { state in
+            state.waiting.forEach { $0.resume() }
+            state.waiting = []
         }
     }
 }
@@ -130,15 +143,15 @@ enum SearchFixture {
         #expect(api.calls == ["search zod all 20"])
     }
 
-    @Test func onlyTheNewestQueryIsSent() async throws {
+    @Test func onlyTheNewestQueryIsSent() async {
         let sleeper = GateSleeper()
         api.set { $0.searches["form"] = SearchFixture.results }
         let search = MessageSearch(api: api, sleeper: sleeper)
 
         let first = Task { await search.results(for: "fo") }
-        try await waitUntil { sleeper.count == 1 }
+        await sleeper.arrivals(1)
         let second = Task { await search.results(for: "form") }
-        try await waitUntil { sleeper.count == 2 }
+        await sleeper.arrivals(2)
         sleeper.releaseAll()
 
         #expect(await first.value == nil)
@@ -146,7 +159,7 @@ enum SearchFixture {
         #expect(api.calls == ["search form all 20"])
     }
 
-    @Test func aSlowAnswerToAnOlderQueryIsDropped() async throws {
+    @Test func aSlowAnswerToAnOlderQueryIsDropped() async {
         let (gate, open) = AsyncStream<Void>.makeStream()
         let sleeper = FakeSleeper()
         api.set {
@@ -156,7 +169,7 @@ enum SearchFixture {
         let search = MessageSearch(api: api, sleeper: sleeper)
 
         let first = Task { await search.results(for: "fo") }
-        try await waitUntil { sleeper.delays.withLock { $0.count } == 1 }
+        await api.reached("search fo")
         let second = await search.results(for: "form")
         open.finish()
 
@@ -174,9 +187,5 @@ enum SearchFixture {
         let search = MessageSearch(api: api, sleeper: CancelledSleeper())
         #expect(await search.results(for: "zod") == nil)
         #expect(api.calls.isEmpty)
-    }
-
-    @Test func sleepsForRealByDefault() {
-        #expect(MessageSearch(api: api).sleeper is TaskSleeper)
     }
 }

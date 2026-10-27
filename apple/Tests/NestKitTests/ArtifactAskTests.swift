@@ -299,7 +299,7 @@ import UniformTypeIdentifiers
             $0.gates["askArtifact"] = gate
         }
         let running = Task { try await store.ask("a1", prompt: "Hi?", system: "Brief") }
-        await ArtifactBridgeTests.settle()
+        await api.reached("askArtifact")
         #expect(store.isAsking("a1"))
         open.finish()
         let answer = try await running.value
@@ -385,9 +385,8 @@ import UniformTypeIdentifiers
         let (gate, open) = AsyncStream<Void>.makeStream()
         api.set { $0.gates["askArtifact"] = gate }
         let first = Task { try await store.ask("a1", prompt: "one", system: nil) }
-        while !api.calls.contains("askArtifact a1 one system=") {
-            await Task.yield()
-        }
+        await api.reached("askArtifact")
+        #expect(api.calls.contains("askArtifact a1 one system="))
         // A second ask is refused at once; the first still runs.
         api.set { $0.failNext["askArtifact"] = APIError.conflict("busy") }
         await #expect(throws: APIError.conflict("busy")) {

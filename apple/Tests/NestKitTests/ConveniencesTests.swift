@@ -341,9 +341,8 @@ import Testing
         api.set { $0.gates["sessionFiles ap"] = gate }
 
         let slow = Task { await store.searchFiles(session: "s1", query: "ap") }
-        while store.latestSearch == nil {
-            await Task.yield()
-        }
+        await api.reached("sessionFiles ap")
+        #expect(store.latestSearch != nil)
         await store.searchFiles(session: "s1", query: "app")
         open.finish()
         await slow.value

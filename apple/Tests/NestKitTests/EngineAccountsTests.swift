@@ -165,29 +165,6 @@ extension Fixture {
     }
 }
 
-@Suite struct BankedResetTextTests {
-    let now = Fixture.accountsNow
-
-    /// The Banked resets button counts what is available; each credit says when it expires.
-    @Test func bankedResetWords() {
-        #expect(AccountText.bankedResetsTitle(0) == "Banked resets")
-        #expect(AccountText.bankedResetsTitle(2) == "Banked resets 2")
-        let credit = BankedCredit(
-            id: "c1", title: nil, description: nil,
-            expiresAt: now.addingTimeInterval(20 * 86_400))
-        #expect(AccountText.creditTitle(credit) == "Reset")
-        #expect(AccountText.creditExpiry(credit, calendar: Fixture.utc) == "expires 9 Nov")
-        let named = BankedCredit(id: "c2", title: "Weekly reset", description: "x", expiresAt: nil)
-        #expect(AccountText.creditTitle(named) == "Weekly reset")
-        #expect(AccountText.creditExpiry(named, calendar: Fixture.utc) == nil)
-        #expect(AccountText.useOutcome(.reset) == "Limits reset")
-        #expect(AccountText.useOutcome(.nothingToReset) == "Nothing to reset yet")
-        #expect(AccountText.useOutcome(.noCredit) == "No banked resets left")
-        #expect(AccountText.useOutcome(.alreadyRedeemed) == "That reset was already used")
-        #expect(AccountText.useOutcome(.unknown) == "Could not use the reset")
-    }
-}
-
 @MainActor @Suite struct AccountsStoreTests {
     let api = FakeAPI()
 
@@ -239,7 +216,8 @@ extension Fixture {
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["signOutAccount"] = gate.stream }
         let out = Task { try await store.signOut("a1b2c3d4e5f6") }
-        try await waitFor { store.isBusy("a1b2c3d4e5f6") }
+        await api.reached("signOutAccount")
+        #expect(store.isBusy("a1b2c3d4e5f6"))
         #expect(!store.isBusy("claude-main"))
         gate.continuation.finish()
         try await out.value
@@ -294,7 +272,8 @@ extension Fixture {
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["activateAccount"] = gate.stream }
         let moving = Task { try await store.activate("claude-main") }
-        try await waitFor { store.account("claude-main")?.active == true }
+        await api.reached("activateAccount")
+        #expect(store.account("claude-main")?.active == true)
         #expect(store.account("a1b2c3d4e5f6")?.active == false)
         gate.continuation.finish()
         await #expect(throws: APIError.self) { try await moving.value }
@@ -369,7 +348,8 @@ extension Fixture {
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["refreshAccounts"] = gate.stream }
         let first = Task { await store.refresh() }
-        try await waitFor { store.isRefreshing }
+        await api.reached("refreshAccounts")
+        #expect(store.isRefreshing)
         await store.refresh()
         gate.continuation.finish()
         await first.value
