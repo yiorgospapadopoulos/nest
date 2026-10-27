@@ -5,11 +5,16 @@ shadow roots with `:root` rewritten and scripts stripped. Libraries from the CDN
 here; a small stand-in for marked is given where rendering matters.
 """
 
+import atexit
 import json
+import os
+import select
 import shutil
 import subprocess
+import tempfile
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
@@ -19,22 +24,23 @@ from nestd.design.loader import find_root
 
 _JSDOM = find_root(Path(__file__).resolve()) / "web" / "node_modules" / "jsdom"
 
-# Loads a page in jsdom with optional stand-ins (marked; the Mac's reply handler with queued
-# replies), runs a scenario module on it and prints what the scenario returns, with the
-# page's script errors.
-_HARNESS = r"""
+# One node process per test worker runs the scenarios. Each request is a JSON line on stdin
+# ({page, options, scenario}): the page loads in a fresh jsdom with optional stand-ins (marked;
+# the Mac's reply handler with queued replies), the scenario module runs on it, and one marked
+# line answers with what the scenario returns and the page's script errors.
+_RUNNER = r"""
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { createInterface } from "node:readline";
 
-const [pagePath, jsdomPath, optionsText, scenarioPath] = process.argv.slice(2);
+const [jsdomPath, MARK] = process.argv.slice(2);
 const require = createRequire(jsdomPath + "/");
 const { JSDOM, VirtualConsole } = require(jsdomPath);
-const options = JSON.parse(optionsText);
-const errors = [];
-const requests = [];
-const virtualConsole = new VirtualConsole();
-virtualConsole.on("jsdomError", (error) => errors.push(String(error.message || error)));
+const idl = require(jsdomPath + "/lib/generated/idl/utils.js");
+// A rejection nothing handles ends the runner, as it ended the process each test once had.
+process.on("unhandledRejection", (error) => {
+  process.stderr.write("unhandled rejection: " + ((error && error.stack) || error) + "\n");
+  process.exit(1);
+});
 
 function escape(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -113,56 +119,151 @@ function fakeMermaid(window, settings) {
   };
 }
 
-const dom = new JSDOM(readFileSync(pagePath, "utf8"), {
-  runScripts: "dangerously",
-  pretendToBeVisual: true,
-  virtualConsole,
-  beforeParse(window) {
-    if (options.marked) window.marked = fakeMarked();
-    if (options.matchMedia) window.matchMedia = () => ({ matches: false });
-    if (options.brokenMarked) {
-      window.marked = { Renderer: function () {}, parse() { throw new Error("broken"); } };
-    }
-    // jsdom has no blob URLs: each call gives a new one naming the blob's type and size.
-    let blobs = 0;
-    window.URL.createObjectURL = (blob) => "blob:nest/" + (blobs += 1) + "/" + blob.type + "/" + blob.size;
-    // Seconds-long timers (the libraries' fallback) run at once.
-    if (options.fastTimers) {
-      const wait = window.setTimeout;
-      window.setTimeout = (fn, ms, ...rest) => wait(fn, ms >= 1000 ? 10 : ms, ...rest);
-    }
-    if (options.breakScript) {
-      Object.defineProperty(window, "ResizeObserver", { get() { throw new Error("broken"); } });
-    }
-    if (options.mermaid) fakeMermaid(window, options.mermaid);
-    if (options.replies) {
-      window.webkit = { messageHandlers: { nest: { postMessage(request) {
-        requests.push(JSON.parse(JSON.stringify(request)));
-        const reply = options.replies.shift() || { ok: true, result: {} };
-        return new Promise((resolve) => setTimeout(() => resolve({ nest: 1, id: request.id, ...reply }), 0));
-      } } } };
-    }
-  },
-});
-// A click or key press as the user's own (isTrusted), which a page's script cannot make.
-const idl = require(jsdomPath + "/lib/generated/idl/utils.js");
-function trusted(target, type = "click", init = {}) {
-  const Event = type.startsWith("key") ? dom.window.KeyboardEvent : dom.window.MouseEvent;
-  const event = new Event(type, { bubbles: true, cancelable: true, composed: true, ...init });
-  idl.implForWrapper(event).isTrusted = true;
-  idl.implForWrapper(target)._dispatch(idl.implForWrapper(event));
-  return event;
+async function runScenario({ page, options, scenario }) {
+  const errors = [];
+  const requests = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", (error) => errors.push(String(error.message || error)));
+  const dom = new JSDOM(page, {
+    runScripts: "dangerously",
+    pretendToBeVisual: true,
+    virtualConsole,
+    beforeParse(window) {
+      if (options.marked) window.marked = fakeMarked();
+      if (options.matchMedia) window.matchMedia = () => ({ matches: false });
+      if (options.brokenMarked) {
+        window.marked = { Renderer: function () {}, parse() { throw new Error("broken"); } };
+      }
+      // jsdom has no blob URLs: each call gives a new one naming the blob's type and size.
+      let blobs = 0;
+      window.URL.createObjectURL = (blob) => "blob:nest/" + (blobs += 1) + "/" + blob.type + "/" + blob.size;
+      // Seconds-long timers (the libraries' fallback) run at once.
+      if (options.fastTimers) {
+        const wait = window.setTimeout;
+        window.setTimeout = (fn, ms, ...rest) => wait(fn, ms >= 1000 ? 10 : ms, ...rest);
+      }
+      if (options.breakScript) {
+        Object.defineProperty(window, "ResizeObserver", { get() { throw new Error("broken"); } });
+      }
+      if (options.mermaid) fakeMermaid(window, options.mermaid);
+      if (options.replies) {
+        window.webkit = { messageHandlers: { nest: { postMessage(request) {
+          requests.push(JSON.parse(JSON.stringify(request)));
+          const reply = options.replies.shift() || { ok: true, result: {} };
+          return new Promise((resolve) => setTimeout(() => resolve({ nest: 1, id: request.id, ...reply }), 0));
+        } } } };
+      }
+    },
+  });
+  // A click or key press as the user's own (isTrusted), which a page's script cannot make.
+  function trusted(target, type = "click", init = {}) {
+    const Event = type.startsWith("key") ? dom.window.KeyboardEvent : dom.window.MouseEvent;
+    const event = new Event(type, { bubbles: true, cancelable: true, composed: true, ...init });
+    idl.implForWrapper(event).isTrusted = true;
+    idl.implForWrapper(target)._dispatch(idl.implForWrapper(event));
+    return event;
+  }
+  const source = "export default async function ({ window, document, requests, tick, trusted }) {\n"
+    + scenario + "\n}";
+  const url = "data:text/javascript;base64," + Buffer.from(source).toString("base64");
+  const { default: run } = await import(url);
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+  try {
+    const result = await run({ window: dom.window, document: dom.window.document, requests, tick, trusted });
+    return { result, errors };
+  } finally {
+    // Stops the page's timers so nothing of it runs into the next scenario.
+    dom.window.close();
+  }
 }
-const { default: scenario } = await import(pathToFileURL(scenarioPath).href);
-const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
-const result = await scenario({ window: dom.window, document: dom.window.document, requests, tick, trusted });
-console.log(JSON.stringify({ result, errors }));
-process.exit(0);
+
+for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
+  let answer;
+  try {
+    answer = await runScenario(JSON.parse(line));
+  } catch (error) {
+    answer = { failure: String((error && error.stack) || error) };
+  }
+  process.stdout.write(MARK + JSON.stringify(answer) + "\n");
+}
 """  # noqa: E501 (embedded JavaScript)
+_MARK = b"@@nest-runner@@ "
+_TIMEOUT = 60.0
+
+
+class _Runner:
+    """The worker's node process; started on first use and again after it dies."""
+
+    def __init__(self, node: str) -> None:
+        self._folder = tempfile.TemporaryDirectory(prefix="nest-jsdom-")
+        script = Path(self._folder.name) / "runner.mjs"
+        script.write_text(_RUNNER, encoding="utf-8")
+        self._stderr = tempfile.TemporaryFile()  # noqa: SIM115 (kept open with the process)
+        self._process = subprocess.Popen(  # noqa: S603
+            [node, str(script), str(_JSDOM), _MARK.decode()],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self._stderr,
+        )
+        self._buffer = b""
+
+    def alive(self) -> bool:
+        return self._process.poll() is None
+
+    def run(self, request: dict[str, Any]) -> dict[str, Any]:
+        stdin, stdout = self._process.stdin, self._process.stdout
+        assert stdin is not None
+        assert stdout is not None
+        try:
+            stdin.write(json.dumps(request).encode() + b"\n")
+            stdin.flush()
+        except BrokenPipeError:
+            self._fail("the jsdom runner exited before it took the scenario")
+        deadline = time.monotonic() + _TIMEOUT
+        while True:
+            # Only "\n" ends a line: U+2028 inside the JSON does not.
+            line, found, rest = self._buffer.partition(b"\n")
+            if found:
+                self._buffer = rest
+                if line.startswith(_MARK):
+                    return json.loads(line[len(_MARK) :])
+                continue
+            left = deadline - time.monotonic()
+            if left <= 0 or not select.select([stdout], [], [], left)[0]:
+                self._fail(f"the jsdom runner gave no answer in {_TIMEOUT:.0f} s")
+            chunk = os.read(stdout.fileno(), 1 << 16)
+            if not chunk:
+                self._fail("the jsdom runner exited")
+            self._buffer += chunk
+
+    def _fail(self, reason: str) -> NoReturn:
+        self.close()
+        self._stderr.seek(0)
+        stderr = self._stderr.read().decode(errors="replace")
+        pytest.fail(f"{reason} (exit code {self._process.returncode}):\n{stderr}")
+
+    def close(self) -> None:
+        if self.alive():
+            self._process.kill()
+        self._process.wait()
+        for stream in (self._process.stdin, self._process.stdout):
+            if stream is not None:
+                stream.close()
+        self._folder.cleanup()
+
+
+_runner: _Runner | None = None
+
+
+def _close_runner() -> None:
+    if _runner is not None:
+        _runner.close()
+
+
+atexit.register(_close_runner)
 
 
 def run_page(
-    tmp_path: Path,
     page: str,
     scenario: str,
     *,
@@ -171,37 +272,17 @@ def run_page(
     mermaid: dict[str, Any] | None = None,
     extra: dict[str, bool] | None = None,
 ) -> Any:  # noqa: ANN401 (what the scenario returns, as JSON)
+    global _runner
     node = shutil.which("node")
     if node is None or not _JSDOM.is_dir():
         pytest.skip("node or the web part's jsdom (npm ci in web/) is not installed")
-    (tmp_path / "harness.mjs").write_text(_HARNESS, encoding="utf-8")
-    (tmp_path / "page.html").write_text(page, encoding="utf-8")
-    (tmp_path / "scenario.mjs").write_text(
-        "export default async function ({ window, document, requests, tick, trusted }) {\n"
-        + scenario
-        + "\n}",
-        encoding="utf-8",
-    )
     options: dict[str, Any] = {"marked": marked, "mermaid": mermaid, **(extra or {})}
     if replies is not None:
         options["replies"] = replies
-    done = subprocess.run(  # noqa: S603
-        [
-            node,
-            str(tmp_path / "harness.mjs"),
-            str(tmp_path / "page.html"),
-            str(_JSDOM),
-            json.dumps(options),
-            str(tmp_path / "scenario.mjs"),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    assert done.returncode == 0, done.stderr
-    # Lines end with "\n" only: splitlines would also split at U+2028 inside the JSON.
-    output = json.loads(done.stdout.strip().split("\n")[-1])
+    if _runner is None or not _runner.alive():
+        _runner = _Runner(node)
+    output = _runner.run({"page": page, "options": options, "scenario": scenario})
+    assert "failure" not in output, output["failure"]
     assert output["errors"] == []
     return output["result"]
 
@@ -215,10 +296,9 @@ const count = () => document.getElementById("nest-count").textContent;
 """  # noqa: E501 (embedded JavaScript)
 
 
-def test_slides_split_on_lines_that_are_exactly_three_dashes(tmp_path: Path) -> None:
+def test_slides_split_on_lines_that_are_exactly_three_dashes() -> None:
     deck = "# One\r\n---\r\nTwo\n--- \nstill two\n ---\nstill\n---\n\n---\n   \n---\nThree\n---"
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", deck, 1),
         """
         return {
@@ -253,9 +333,8 @@ def test_slides_split_on_lines_that_are_exactly_three_dashes(tmp_path: Path) -> 
         "# T\n\nSetext\n---\nnext",
     ],
 )
-def test_the_deck_splits_exactly_as_the_daemon_checks_it(tmp_path: Path, deck: str) -> None:
+def test_the_deck_splits_exactly_as_the_daemon_checks_it(deck: str) -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", deck, 1),
         'return [...document.querySelectorAll(".slide")].map((slide) => slide.textContent);',
     )
@@ -264,9 +343,8 @@ def test_the_deck_splits_exactly_as_the_daemon_checks_it(tmp_path: Path, deck: s
     assert result == [slide.replace("\r", "") for slide in slides_of(deck)]
 
 
-def test_a_deck_of_nothing_still_has_one_slide(tmp_path: Path) -> None:
+def test_a_deck_of_nothing_still_has_one_slide() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", "---\n\n---", 1),
         """
         const count = document.getElementById("nest-count").textContent;
@@ -277,9 +355,8 @@ def test_a_deck_of_nothing_still_has_one_slide(tmp_path: Path) -> None:
     assert result == [1, "1 / 1"]
 
 
-def test_slides_move_with_keys_and_never_touch_the_url(tmp_path: Path) -> None:
+def test_slides_move_with_keys_and_never_touch_the_url() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", "A\n---\nB\n---\nC\n---\nD", 1),
         _KEYS
         + """
@@ -324,9 +401,8 @@ def test_slides_move_with_keys_and_never_touch_the_url(tmp_path: Path) -> None:
     }
 
 
-def test_slides_move_with_taps_on_the_outer_thirds_and_swipes(tmp_path: Path) -> None:
+def test_slides_move_with_taps_on_the_outer_thirds_and_swipes() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", "A\n---\nB\n---\nC", 1),
         _KEYS
         + """
@@ -377,10 +453,9 @@ def test_slides_move_with_taps_on_the_outer_thirds_and_swipes(tmp_path: Path) ->
     ]
 
 
-def test_slides_render_markdown_and_find_title_slides(tmp_path: Path) -> None:
+def test_slides_render_markdown_and_find_title_slides() -> None:
     deck = "# Talk\n\nBy me\n---\n## Plan\n\nOne\n\n```js\nlet x = 1 < 2;\n```\n---\nNo heading"
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", deck, 1),
         """
         return [...document.querySelectorAll(".slide")].map((slide) => [
@@ -410,9 +485,8 @@ const toc = (id) => [...document.querySelectorAll("#" + id + " a")].map((a) => [
 """  # noqa: E501 (embedded JavaScript)
 
 
-def test_a_document_is_split_into_sections_with_contents(tmp_path: Path) -> None:
+def test_a_document_is_split_into_sections_with_contents() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "Report", _DOC, 3),
         _SECTIONS
         + """
@@ -455,10 +529,9 @@ def test_a_document_is_split_into_sections_with_contents(tmp_path: Path) -> None
     }
 
 
-def test_document_slugs_are_unique_and_avoid_the_pages_own_ids(tmp_path: Path) -> None:
+def test_document_slugs_are_unique_and_avoid_the_pages_own_ids() -> None:
     doc = "## Nest md\n\n## Café & crème!\n\n## ???\n\n## ???\n"
     result = run_page(
-        tmp_path,
         templates.render("document", "D", doc, 1),
         'return [...document.querySelectorAll("#nest-sections h2")].map((h) => h.id);',
         marked=True,
@@ -467,12 +540,9 @@ def test_document_slugs_are_unique_and_avoid_the_pages_own_ids(tmp_path: Path) -
     assert result == ["nest-md-2", "café-crème", "section", "section-2"]
 
 
-def test_without_marked_sections_stay_text_with_contents_from_their_headings(
-    tmp_path: Path,
-) -> None:
+def test_without_marked_sections_stay_text_with_contents_from_their_headings() -> None:
     doc = "Opening\n\n## One ##\n\nx\n\n## Two\n\ny"
     result = run_page(
-        tmp_path,
         templates.render("document", "D", doc, 1),
         _SECTIONS
         + """
@@ -491,9 +561,8 @@ def test_without_marked_sections_stay_text_with_contents_from_their_headings(
     }
 
 
-def test_a_short_document_has_no_contents(tmp_path: Path) -> None:
+def test_a_short_document_has_no_contents() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", "\n\n## Only\n\ntext", 1),
         _SECTIONS
         + """
@@ -518,9 +587,8 @@ const status = () => document.querySelector(".nest-editor-status");
 )
 
 
-def test_saving_a_section_rebuilds_the_whole_markdown(tmp_path: Path) -> None:
+def test_saving_a_section_rebuilds_the_whole_markdown() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "Report", _DOC, 3),
         _EDIT
         + """
@@ -566,9 +634,8 @@ def test_saving_a_section_rebuilds_the_whole_markdown(tmp_path: Path) -> None:
     }
 
 
-def test_the_next_save_is_based_on_the_saved_version(tmp_path: Path) -> None:
+def test_the_next_save_is_based_on_the_saved_version() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", "Top\n\n## A\n\na\n", 7),
         _EDIT
         + """
@@ -588,9 +655,8 @@ def test_the_next_save_is_based_on_the_saved_version(tmp_path: Path) -> None:
     ]
 
 
-def test_an_unchanged_save_or_cancel_closes_without_saving(tmp_path: Path) -> None:
+def test_an_unchanged_save_or_cancel_closes_without_saving() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", _DOC, 1),
         _EDIT
         + """
@@ -607,9 +673,8 @@ def test_an_unchanged_save_or_cancel_closes_without_saving(tmp_path: Path) -> No
     assert result == [0, 0, False, 0, True]
 
 
-def test_a_conflict_keeps_the_text_and_asks_for_a_reload(tmp_path: Path) -> None:
+def test_a_conflict_keeps_the_text_and_asks_for_a_reload() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", _DOC, 1),
         _EDIT
         + """
@@ -634,9 +699,8 @@ def test_a_conflict_keeps_the_text_and_asks_for_a_reload(tmp_path: Path) -> None
     }
 
 
-def test_another_error_keeps_the_text_and_shows_the_message(tmp_path: Path) -> None:
+def test_another_error_keeps_the_text_and_shows_the_message() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", _DOC, 1),
         _EDIT
         + """
@@ -655,9 +719,8 @@ def test_another_error_keeps_the_text_and_shows_the_message(tmp_path: Path) -> N
     assert result == [["Too big", False, "## Last\nMine"], "unavailable"]
 
 
-def test_without_a_host_a_save_fails_quietly_with_a_message(tmp_path: Path) -> None:
+def test_without_a_host_a_save_fails_quietly_with_a_message() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", "## A\n\nx", 1),
         _EDIT
         + """
@@ -670,9 +733,8 @@ def test_without_a_host_a_save_fails_quietly_with_a_message(tmp_path: Path) -> N
     assert result == "Nest is not here"
 
 
-def test_a_contents_link_at_the_top_closes_the_contents(tmp_path: Path) -> None:
+def test_a_contents_link_at_the_top_closes_the_contents() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", _DOC, 1),
         """
         const top = document.getElementById("nest-toc-top");
@@ -706,7 +768,7 @@ _SCREEN = (
 )
 
 
-def test_design_screens_are_sandboxed_in_shadow_roots(tmp_path: Path) -> None:
+def test_design_screens_are_sandboxed_in_shadow_roots() -> None:
     content = json.dumps(
         {
             "screens": [
@@ -716,7 +778,6 @@ def test_design_screens_are_sandboxed_in_shadow_roots(tmp_path: Path) -> None:
         }
     )
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         """
         const frames = [...document.querySelectorAll("[data-screen]")];
@@ -780,12 +841,11 @@ const world = document.getElementById("nest-world");
 """
 
 
-def test_the_design_canvas_zooms_with_buttons_keys_wheel_and_gestures(tmp_path: Path) -> None:
+def test_the_design_canvas_zooms_with_buttons_keys_wheel_and_gestures() -> None:
     content = json.dumps(
         {"layout": "canvas", "screens": [{"title": "A", "html": "<p>a</p>"}], "notes": "Hi"}
     )
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         _ZOOM
         + """
@@ -841,10 +901,9 @@ def test_the_design_canvas_zooms_with_buttons_keys_wheel_and_gestures(tmp_path: 
     }
 
 
-def test_the_design_canvas_pans_and_pinches_with_pointers(tmp_path: Path) -> None:
+def test_the_design_canvas_pans_and_pinches_with_pointers() -> None:
     content = json.dumps({"layout": "canvas", "screens": [{"title": "A", "html": "<p>a</p>"}]})
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         _ZOOM
         + """
@@ -878,7 +937,7 @@ def test_the_design_canvas_pans_and_pinches_with_pointers(tmp_path: Path) -> Non
     ]
 
 
-def test_a_design_system_mounts_each_component_sandboxed(tmp_path: Path) -> None:
+def test_a_design_system_mounts_each_component_sandboxed() -> None:
     content = json.dumps(
         {
             "components": [
@@ -892,7 +951,6 @@ def test_a_design_system_mounts_each_component_sandboxed(tmp_path: Path) -> None
         }
     )
     result = run_page(
-        tmp_path,
         templates.render("design_system", "S", content, 1),
         """
         return [...document.querySelectorAll("[data-component]")].map((preview) =>
@@ -903,14 +961,13 @@ def test_a_design_system_mounts_each_component_sandboxed(tmp_path: Path) -> None
     assert result == ["<style>:host{color:red}</style><button>Go</button>", ""]
 
 
-def test_a_preview_that_cannot_get_a_shadow_root_says_so(tmp_path: Path) -> None:
+def test_a_preview_that_cannot_get_a_shadow_root_says_so() -> None:
     content = json.dumps({"components": [{"name": "A", "html": "<b>x</b>"}]})
     page = templates.render("design_system", "S", content, 1).replace(
         "<body>", "<body><script>Element.prototype.attachShadow = null;</script>", 1
     )
 
     result = run_page(
-        tmp_path,
         page,
         'return document.querySelector("[data-component]").textContent;',
     )
@@ -929,9 +986,8 @@ const stage = document.getElementById("nest-stage");
 _DECK = "# Flows\n---\n## One\n\n```mermaid\nflowchart LR\n  A --> B\n```\n---\nEnd"
 
 
-def test_a_deck_loaded_hidden_draws_its_diagrams_once_shown(tmp_path: Path) -> None:
+def test_a_deck_loaded_hidden_draws_its_diagrams_once_shown() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", _DECK, 1),
         _DIAGRAMS
         + """
@@ -959,9 +1015,8 @@ def test_a_deck_loaded_hidden_draws_its_diagrams_once_shown(tmp_path: Path) -> N
     }
 
 
-def test_a_diagram_that_still_comes_out_empty_is_drawn_again(tmp_path: Path) -> None:
+def test_a_diagram_that_still_comes_out_empty_is_drawn_again() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", _DECK, 1),
         _DIAGRAMS
         + """
@@ -979,9 +1034,8 @@ def test_a_diagram_that_still_comes_out_empty_is_drawn_again(tmp_path: Path) -> 
     }
 
 
-def test_a_diagram_that_stays_empty_is_tried_three_times_then_shown(tmp_path: Path) -> None:
+def test_a_diagram_that_stays_empty_is_tried_three_times_then_shown() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", _DECK, 1),
         _DIAGRAMS
         + """
@@ -995,11 +1049,10 @@ def test_a_diagram_that_stays_empty_is_tried_three_times_then_shown(tmp_path: Pa
     assert result == [3, ["-8 -8 16 16"], ""]
 
 
-def test_a_frame_hidden_after_its_scripts_start_redraws_when_shown(tmp_path: Path) -> None:
+def test_a_frame_hidden_after_its_scripts_start_redraws_when_shown() -> None:
     # Text measured while the scripts started, but Mermaid then measured nothing: the frame
     # was hidden in between. Shown later, its size changes and the diagram is drawn again.
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", _DECK, 1),
         _DIAGRAMS
         + """
@@ -1029,10 +1082,9 @@ def test_a_frame_hidden_after_its_scripts_start_redraws_when_shown(tmp_path: Pat
     }
 
 
-def test_a_document_loaded_hidden_draws_its_diagrams_once_shown(tmp_path: Path) -> None:
+def test_a_document_loaded_hidden_draws_its_diagrams_once_shown() -> None:
     doc = "## Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("document", "Doc", doc, 1),
         _DIAGRAMS
         + """
@@ -1049,10 +1101,9 @@ def test_a_document_loaded_hidden_draws_its_diagrams_once_shown(tmp_path: Path) 
     assert result == [0, 1, ["-8 -8 300 100"], "strict"]
 
 
-def test_a_document_redraws_a_diagram_drawn_empty_when_its_frame_is_shown(tmp_path: Path) -> None:
+def test_a_document_redraws_a_diagram_drawn_empty_when_its_frame_is_shown() -> None:
     doc = "## Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("document", "Doc", doc, 1),
         _DIAGRAMS
         + """
@@ -1154,10 +1205,9 @@ def _cleaned(result: dict[str, Any]) -> None:
     assert result["hidden"] != "none"
 
 
-def test_a_documents_raw_html_is_cleaned_and_its_diagrams_still_draw(tmp_path: Path) -> None:
+def test_a_documents_raw_html_is_cleaned_and_its_diagrams_still_draw() -> None:
     doc = f"## Safe\n\n{_HOSTILE}\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("document", "Doc", doc, 1),
         _CHECK
         + _DIAGRAMS
@@ -1178,10 +1228,9 @@ def test_a_documents_raw_html_is_cleaned_and_its_diagrams_still_draw(tmp_path: P
     assert result["boxes"] == ["-8 -8 300 100"]
 
 
-def test_a_decks_raw_html_is_cleaned_and_its_diagrams_still_draw(tmp_path: Path) -> None:
+def test_a_decks_raw_html_is_cleaned_and_its_diagrams_still_draw() -> None:
     deck = f"# Title\n---\n## Safe\n\n{_HOSTILE}\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", deck, 1),
         _CHECK
         + _DIAGRAMS
@@ -1201,10 +1250,9 @@ def test_a_decks_raw_html_is_cleaned_and_its_diagrams_still_draw(tmp_path: Path)
     assert result["boxes"] == ["-8 -8 300 100"]
 
 
-def test_design_notes_are_cleaned_like_markdown(tmp_path: Path) -> None:
+def test_design_notes_are_cleaned_like_markdown() -> None:
     content = json.dumps({"screens": [{"title": "A", "html": "<p>a</p>"}], "notes": _HOSTILE})
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         _CHECK + 'return report(document.querySelector(".intro-body"));',
         marked=True,
@@ -1214,7 +1262,7 @@ def test_design_notes_are_cleaned_like_markdown(tmp_path: Path) -> None:
     assert result["tags"] == sorted({*_EXPECTED_TAGS, "div"})
 
 
-def test_screens_keep_forms_and_styles_but_nothing_that_runs(tmp_path: Path) -> None:
+def test_screens_keep_forms_and_styles_but_nothing_that_runs() -> None:
     html = (
         "<style>:root{--a:1} @import url(https://fonts.googleapis.com/x);</style>"
         '<link rel="stylesheet" href="http://fonts.googleapis.com/x">'
@@ -1228,7 +1276,6 @@ def test_screens_keep_forms_and_styles_but_nothing_that_runs(tmp_path: Path) -> 
     )
     content = json.dumps({"screens": [{"title": "A", "html": html}]})
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         """
         const body = document.querySelector("[data-screen]").shadowRoot.querySelector(".nest-body");
@@ -1249,9 +1296,8 @@ def test_screens_keep_forms_and_styles_but_nothing_that_runs(tmp_path: Path) -> 
     ]
 
 
-def test_a_save_without_the_users_click_is_refused(tmp_path: Path) -> None:
+def test_a_save_without_the_users_click_is_refused() -> None:
     result = run_page(
-        tmp_path,
         templates.render("document", "D", "## A\n\nx", 1),
         _EDIT
         + """
@@ -1296,11 +1342,8 @@ const state = () => ({
         ("design", json.dumps({"screens": [{"title": "A", "html": "<p>a</p>"}], "notes": "Hi"})),
     ],
 )
-def test_a_rendered_page_is_ready_without_its_source_or_the_ring(
-    tmp_path: Path, kind: str, content: str
-) -> None:
+def test_a_rendered_page_is_ready_without_its_source_or_the_ring(kind: str, content: str) -> None:
     result = run_page(
-        tmp_path,
         templates.render(kind, "T", content, 1),
         _STATE + "await wait(20); return state();",
         marked=True,
@@ -1313,9 +1356,8 @@ def test_a_rendered_page_is_ready_without_its_source_or_the_ring(
     assert result["ring"] == "none"
 
 
-def test_a_markdown_page_is_ready_once_rendered(tmp_path: Path) -> None:
+def test_a_markdown_page_is_ready_once_rendered() -> None:
     result = run_page(
-        tmp_path,
         templates.render("markdown", "T", "# Hello", 1),
         _STATE
         + "await wait(20);"
@@ -1331,9 +1373,8 @@ def test_a_markdown_page_is_ready_once_rendered(tmp_path: Path) -> None:
     }
 
 
-def test_a_slow_page_shows_the_ring_and_not_its_source_until_ready(tmp_path: Path) -> None:
+def test_a_slow_page_shows_the_ring_and_not_its_source_until_ready() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", _DECK, 1),
         _STATE
         + """
@@ -1357,16 +1398,12 @@ def test_a_slow_page_shows_the_ring_and_not_its_source_until_ready(tmp_path: Pat
 
 
 @pytest.mark.parametrize("kind", ["markdown", "slides", "document", "design"])
-def test_libraries_that_never_let_the_script_run_fall_back_to_the_source(
-    tmp_path: Path, kind: str
-) -> None:
+def test_libraries_that_never_let_the_script_run_fall_back_to_the_source(kind: str) -> None:
     content = json.dumps({"screens": [], "notes": "Hi"}) if kind == "design" else "# A"
     page = templates.render(kind, "T", content, 1)
     # The page's own script never runs, as when a library's script hangs.
     page = page[: page.rindex("<script>")] + "</body></html>"
-    result = run_page(
-        tmp_path, page, _STATE + "await wait(60); return state();", extra={"fastTimers": True}
-    )
+    result = run_page(page, _STATE + "await wait(60); return state();", extra={"fastTimers": True})
 
     assert result == {
         "classes": ["nest-fallback"],
@@ -1376,10 +1413,8 @@ def test_libraries_that_never_let_the_script_run_fall_back_to_the_source(
     }
 
 
-def test_a_markdown_page_without_marked_shows_its_source_at_once(tmp_path: Path) -> None:
-    result = run_page(
-        tmp_path, templates.render("markdown", "T", "# A", 1), _STATE + "return state();"
-    )
+def test_a_markdown_page_without_marked_shows_its_source_at_once() -> None:
+    result = run_page(templates.render("markdown", "T", "# A", 1), _STATE + "return state();")
 
     assert result == {
         "classes": ["nest-fallback", "nest-started"],
@@ -1388,9 +1423,8 @@ def test_a_markdown_page_without_marked_shows_its_source_at_once(tmp_path: Path)
     }
 
 
-def test_a_markdown_page_whose_rendering_fails_shows_its_source(tmp_path: Path) -> None:
+def test_a_markdown_page_whose_rendering_fails_shows_its_source() -> None:
     result = run_page(
-        tmp_path,
         templates.render("markdown", "T", "# A", 1),
         _STATE + "return state();",
         extra={"brokenMarked": True},
@@ -1403,9 +1437,8 @@ def test_a_markdown_page_whose_rendering_fails_shows_its_source(tmp_path: Path) 
     }
 
 
-def test_a_template_whose_script_fails_shows_its_source(tmp_path: Path) -> None:
+def test_a_template_whose_script_fails_shows_its_source() -> None:
     result = run_page(
-        tmp_path,
         templates.render("slides", "Deck", "# A", 1),
         _STATE + "return state();",
         marked=True,
@@ -1419,13 +1452,12 @@ def test_a_template_whose_script_fails_shows_its_source(tmp_path: Path) -> None:
     }
 
 
-def test_a_page_ready_after_its_fallback_shows_the_page(tmp_path: Path) -> None:
+def test_a_page_ready_after_its_fallback_shows_the_page() -> None:
     page = templates.render("slides", "Deck", _DECK, 1)
     # The page's script starts only after the fallback timer, as after a slow library.
     at = page.rindex("<script>")
     code = page[at + len("<script>") : page.rindex("</script>")]
     result = run_page(
-        tmp_path,
         page[:at] + "</body></html>",
         _STATE
         + f"""
@@ -1446,10 +1478,9 @@ def test_a_page_ready_after_its_fallback_shows_the_page(tmp_path: Path) -> None:
     }
 
 
-def test_a_markdown_pages_raw_html_is_cleaned_and_its_diagrams_drawn(tmp_path: Path) -> None:
+def test_a_markdown_pages_raw_html_is_cleaned_and_its_diagrams_drawn() -> None:
     content = f"# Notes\n\n{_HOSTILE}\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("markdown", "T", content, 1),
         _CHECK
         + _DIAGRAMS
@@ -1466,10 +1497,9 @@ def test_a_markdown_pages_raw_html_is_cleaned_and_its_diagrams_drawn(tmp_path: P
     assert result["boxes"] == ["-8 -8 300 100"]
 
 
-def test_a_markdown_page_loaded_hidden_draws_its_diagrams_once_shown(tmp_path: Path) -> None:
+def test_a_markdown_page_loaded_hidden_draws_its_diagrams_once_shown() -> None:
     content = "# A\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = run_page(
-        tmp_path,
         templates.render("markdown", "T", content, 1),
         _DIAGRAMS
         + """
@@ -1527,9 +1557,8 @@ const shown = () => [...document.querySelectorAll(".mockup")].map((m) => m.class
 """  # noqa: E501 (embedded JavaScript)
 
 
-def test_the_intro_and_descriptions_are_rendered_and_screens_mounted(tmp_path: Path) -> None:
+def test_the_intro_and_descriptions_are_rendered_and_screens_mounted() -> None:
     result = run_page(
-        tmp_path,
         templates.render("design", "D", _MOCKUPS, 1),
         """
         return {
@@ -1551,9 +1580,8 @@ def test_the_intro_and_descriptions_are_rendered_and_screens_mounted(tmp_path: P
     }
 
 
-def test_each_screen_is_fitted_to_its_column(tmp_path: Path) -> None:
+def test_each_screen_is_fitted_to_its_column() -> None:
     result = run_page(
-        tmp_path,
         templates.render("design", "D", _MOCKUPS, 1),
         """
         const phone = () => {
@@ -1582,9 +1610,8 @@ def test_each_screen_is_fitted_to_its_column(tmp_path: Path) -> None:
     }
 
 
-def test_the_layout_can_be_switched(tmp_path: Path) -> None:
+def test_the_layout_can_be_switched() -> None:
     result = run_page(
-        tmp_path,
         templates.render("design", "D", _MOCKUPS, 1),
         """
         const state = () => [document.body.getAttribute("data-layout"),
@@ -1607,10 +1634,9 @@ def test_the_layout_can_be_switched(tmp_path: Path) -> None:
     ]
 
 
-def test_tabs_show_one_mockup_and_move_with_keys(tmp_path: Path) -> None:
+def test_tabs_show_one_mockup_and_move_with_keys() -> None:
     content = json.dumps({**json.loads(_MOCKUPS), "layout": "tabs"})
     result = run_page(
-        tmp_path,
         templates.render("design", "D", content, 1),
         _DESIGN_STATE
         + """
@@ -1644,9 +1670,8 @@ def test_tabs_show_one_mockup_and_move_with_keys(tmp_path: Path) -> None:
     ]
 
 
-def test_a_screen_opens_fitted_large_and_the_overlay_steps_and_closes(tmp_path: Path) -> None:
+def test_a_screen_opens_fitted_large_and_the_overlay_steps_and_closes() -> None:
     result = run_page(
-        tmp_path,
         templates.render("design", "D", _MOCKUPS, 1),
         _DESIGN_STATE
         + """
