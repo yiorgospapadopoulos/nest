@@ -85,15 +85,16 @@ from nestd.notifications.subscriptions import PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
 from nestd.paths import AppPaths
 from nestd.pixies.activity import ActivityStore
-from nestd.pixies.agents import PixieAgents
+from nestd.pixies.agents import PixieAgents, native_subagents
 from nestd.pixies.call_runs import PixieCallRuns
-from nestd.pixies.call_store import CallStore
+from nestd.pixies.call_store import BridgedCallStore, CallStore
 from nestd.pixies.calls import PixieCallLog
 from nestd.pixies.files import PixieFiles
 from nestd.pixies.habit_events import HabitEvents
 from nestd.pixies.habit_store import HabitStore
 from nestd.pixies.habit_tools import PixieHabitTools
 from nestd.pixies.habits import HabitService
+from nestd.pixies.models import DEFAULT_PROVIDER
 from nestd.pixies.nest_tools import PixieNest
 from nestd.pixies.report_store import ReportStore
 from nestd.pixies.reporting import Reports
@@ -196,6 +197,8 @@ class AppContext:
     chat_defaults: ChatDefaults
     pixies: PixieService
     pixie_calls: PixieCallLog
+    # The pixies runs call with call_pixie (B112).
+    pixie_call_runs: PixieCallRuns
     teams: TeamService
     report_back: ReportBack
     habits: HabitService
@@ -447,16 +450,30 @@ class AppContext:
             deliver=report,
             busy=lambda session_id: sessions.busy(session_id),
         )
-        pixie_calls = PixieCallLog(CallStore(db, clock), pixie_store, team_store, bus)
+        bridged_calls = BridgedCallStore(db, clock)
+        pixie_calls = PixieCallLog(
+            CallStore(db, clock),
+            pixie_store,
+            team_store,
+            bus,
+            bridged=bridged_calls,
+            engine_of=lambda session_id: _engine_of(store, session_id),
+        )
         # The habit scheduler and the pixie calls across engines join once they exist:
         # they need the sessions (B42, B91).
         followers: list[StateFollower] = [report_back, pixie_calls]
+        # Claude and Codex run the pixies on their own engine as their own subagents (B112).
+        # The default engine stands for Claude (a fake one in tests), so its pixies stay
+        # its own subagents, as do Codex's on Codex (B112).
         pixie_agents = PixieAgents(
             pixie_store,
             pixie_files,
             team_store,
-            # Only the default engine (Claude) runs pixies as its own subagents (B91).
-            inline=lambda provider: sessions.engines.by_name(provider) is sessions.engines.default,
+            inline=lambda provider: (
+                DEFAULT_PROVIDER
+                if sessions.engines.by_name(provider) is sessions.engines.default
+                else native_subagents(provider)
+            ),
         )
         issues = IssueService(
             repo=repos.get, run=runner, clock=clock, cwd=paths.data_dir, chats=store.issue_chats
@@ -547,7 +564,11 @@ class AppContext:
             sessions=sessions,
             bus=bus,
             defaults=lambda: context.settings.agents,
+            store=bridged_calls,
+            log=pixie_calls,
+            usage=usage.record_subagent,
         )
+        sessions.bridge(call_runs)
         followers.append(call_runs)
         pixie_nest = PixieNest(
             pixies=pixie_store,
@@ -776,6 +797,7 @@ class AppContext:
             chat_defaults=ChatDefaults(lambda: sessions.engines, sign_ins, local.engine),
             pixies=pixies,
             pixie_calls=pixie_calls,
+            pixie_call_runs=call_runs,
             teams=teams,
             report_back=report_back,
             habits=habits,
@@ -789,6 +811,8 @@ class AppContext:
                 engine_of=sessions.engines.of,
                 project_folder=lambda name: repos.get(name).path,
                 user_memory=None if paths.claude_dir is None else paths.claude_dir / "CLAUDE.md",
+                pixie_files=pixie_files,
+                clock=clock,
                 shell_env=shell_env,
                 shell=shell,
                 base_env=os.environ,
@@ -899,3 +923,8 @@ def _locations(paths: AppPaths) -> Locations | None:
     if paths.claude_dir is None or paths.claude_account_file is None or paths.codex_home is None:
         return None
     return Locations(paths.claude_dir, paths.claude_account_file, paths.codex_home)
+
+
+async def _engine_of(store: SessionStore, session_id: str) -> str:
+    """A chat's engine, for continuing the pixies it called its own way (B112)."""
+    return (await store.get(session_id)).provider

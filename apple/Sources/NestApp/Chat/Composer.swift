@@ -47,6 +47,11 @@ struct Composer: View {
         return shell.pixies.pixies.first { $0.id == pixie }?.chatSessionID
     }
 
+    /// A pixie's own chat, whose `#` saves to the pixie's memory (B112).
+    private var isPixieChat: Bool {
+        pixie != nil || shell.sessions.session(chat)?.pixieID != nil
+    }
+
     var body: some View {
         let draft = shell.draft(for: chat)
         let suggestions = suggestions(draft)
@@ -121,13 +126,15 @@ struct Composer: View {
                 get: { draft.memory != nil }, set: { if !$0 { draft.memory = nil } }),
             presenting: draft.memory
         ) { memory in
-            ForEach(MemoryScope.choices(pixie: pixie != nil), id: \.self) { scope in
+            ForEach(MemoryScope.choices(pixie: isPixieChat), id: \.self) { scope in
                 Button(scope.label) { shell.saveMemory(memory, scope: scope, from: chat) }
             }
             Button("Cancel", role: .cancel) { draft.memory = nil }
         } message: { memory in
             Text(
-                "\u{201C}\(memory)\u{201D} goes into CLAUDE.md: the project's, or yours for all projects."
+                isPixieChat
+                    ? "\u{201C}\(memory)\u{201D} goes into the pixie's memory."
+                    : "\u{201C}\(memory)\u{201D} goes into CLAUDE.md: the project's, or yours for all projects."
             )
         }
         .onChange(of: suggestions?.trigger) { _, trigger in

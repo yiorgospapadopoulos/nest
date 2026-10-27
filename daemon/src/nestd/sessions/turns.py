@@ -46,6 +46,7 @@ from nestd.sessions.steering import Steering
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import (
     NO_AGENTS,
+    CallBridge,
     CallToolsSource,
     ChatAgents,
     ChatAgentsSource,
@@ -97,20 +98,27 @@ GUARDED_PROMPT = (
     f"{_CONNECTORS_NOTE} {_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
-# The same for Codex chats, which have no task list but Nest's artifact tools (B91).
+# Engines other than Claude Code plan with their own plan tool, which Nest shows as the
+# chat's task list (B112).
+_OWN_PLAN_NOTE = (
+    "For any request that edits files or takes more than one step, plan its steps with your "
+    "plan tool first and keep the plan current as you work."
+)
+# The same for Codex and the other engines, which have no TaskCreate but Nest's artifact
+# tools (B91).
 CODEX_PROMPT = (
     "You are running inside Nest. Commit when the user asks. Push, open or merge a pull "
     f"request only when the user explicitly asks for it in this chat. {_CONNECTORS_NOTE} "
-    f"{ARTIFACT_NOTE}"
+    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_PLAIN_FOLDER_PROMPT = (
     f"You are running inside Nest, in a folder that is not a git repository. {_CONNECTORS_NOTE} "
-    f"{ARTIFACT_NOTE}"
+    f"{_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 CODEX_GUARDED_PROMPT = (
     "You are running inside Nest. You may commit your work. Do not run git push, "
     "gh pr create or gh pr merge: the user pushes and opens or merges pull requests. "
-    f"{_CONNECTORS_NOTE} {ARTIFACT_NOTE}"
+    f"{_CONNECTORS_NOTE} {_OWN_PLAN_NOTE} {ARTIFACT_NOTE}"
 )
 
 # How Claude Code ends a turn when a message written into it arrived as the turn ended: it
@@ -178,6 +186,9 @@ class TurnRunner:
         self._engines = engines
         self._handler_for = handler_for
         self._idle_close = idle_close
+        # The pixies runs call with call_pixie (B112); set once it exists, as it needs the
+        # sessions.
+        self.bridge: CallBridge | None = None
         self.steering = Steering(store, queue, attachments, self._run_fits, self.agent_text)
 
     async def guard(self, live: LiveSession, work: Coroutine[Any, Any, Outcome | None]) -> None:
@@ -269,7 +280,7 @@ class TurnRunner:
             if not shown:
                 await self._announce(live, text, attachments, sender)
                 shown = True
-            await self._run_turn(live, text, attachments)
+            await self._run_turn(live, text, attachments, sender)
         except asyncio.CancelledError:
             if not live.turn_active:
                 _keep_unsent(live, Unsent(text, attachments, shown, sender))
@@ -296,7 +307,9 @@ class TurnRunner:
             session_id,
         )
 
-    async def _run_turn(self, live: LiveSession, text: str, attachments: list[Attachment]) -> None:
+    async def _run_turn(
+        self, live: LiveSession, text: str, attachments: list[Attachment], sender: Sender
+    ) -> None:
         session = await self._start_turn(live)
         cwd = require_cwd(session)
         if not cwd.is_dir():
@@ -306,12 +319,16 @@ class TurnRunner:
         await isolated("the turn start hooks", live.session_id, self._hooks.turn_starting(session))
         run = await self._ensure_run(live, session, cwd)
         live.turn_active = True
-        await run.send(user_input(await self.agent_text(live, text), attachments))
+        await run.send(user_input(await self.agent_text(live, text, sender), attachments))
 
-    async def agent_text(self, live: LiveSession, text: str) -> str:
+    async def agent_text(self, live: LiveSession, text: str, sender: Sender = USER) -> str:
         """`text` as the agent gets it: teams it calls get their instruction (B40), and
-        pixies it calls again are continued (B46). The chat shows what was typed.
+        pixies it calls again are continued (B46). The chat shows what was typed. What
+        the daemon sends, such as a called pixie's report, reaches the agent as written:
+        a team or pixie it names is no call (B112).
         """
+        if sender.origin is not None:
+            return text
         agents = live.run_agents
         if self._calls is None:
             return agents.message(text)
@@ -355,14 +372,14 @@ class TurnRunner:
 
     async def _limited(self, live: LiveSession, info: ResultInfo) -> bool:
         """Whether the usage limit cut the turn off: it reported the limit and its message
-        was cut off, or it ended with an error. A habit run is not paused: it fails (B78);
-        neither is a called pixie, whose caller waits for it (B91).
+        was cut off, or it ended with an error. A habit run is not paused: it fails (B78).
+        A called pixie pauses as its caller would, and its call waits (B112).
         """
         hit = live.limit_hit
         if hit is None or not (hit.cut_off or info.is_error):
             return False
         session = await self._store.get(live.session_id)
-        return session.habit_run_id is None and session.called_by is None
+        return session.habit_run_id is None
 
     async def turn_finished(
         self, live: LiveSession, error: str | None, end: TurnEnd | None
@@ -588,18 +605,18 @@ class TurnRunner:
             raise
         if taken is None:
             return ended  # the user took it off the queue meanwhile
-        text, attachments = taken
-        await self.submit(live, text, attachments, shown=True)
+        text, attachments, sender = taken
+        await self.submit(live, text, attachments, shown=True, sender=sender)
         return None
 
-    async def _take(self, live: LiveSession) -> tuple[str, list[Attachment]] | None:
+    async def _take(self, live: LiveSession) -> tuple[str, list[Attachment], Sender] | None:
         queued = await self._queue.pop(live.session_id)
         if queued is None:
             return None
         ids = [attachment.id for attachment in queued.attachments]
         attachments = await self._attachments.for_session(ids, live.session_id)
         await self._announce(live, queued.text, attachments, queued.sender)
-        return queued.text, attachments
+        return queued.text, attachments, queued.sender
 
     async def _report_context(self, live: LiveSession, run: AgentRun) -> None:
         """How full the context window is after the turn, for the session's meter."""
@@ -612,7 +629,9 @@ class TurnRunner:
         await self._bus.publish(
             types.SESSION_CONTEXT, {"context": usage.model_dump(mode="json")}, session_id
         )
-        if session.pixie_id is not None and usage.percent >= ROTATE_PERCENT:
+        # A called pixie keeps its context, as a subagent does (B112).
+        rotates = session.pixie_id is not None and session.called_by is None
+        if rotates and usage.percent >= ROTATE_PERCENT:
             live.rotate = True
 
     async def _end_turn(self, live: LiveSession, state: SessionState, error: str | None) -> None:
@@ -689,9 +708,12 @@ class TurnRunner:
                 model=session.model if local is None else local.model,
                 # A local model without thinking takes no thinking level.
                 effort=session.effort if local is None or local.thinking else None,
-                # A pixie never resumes: each run starts fresh with its memory (D072). A
+                # A pixie never resumes: each run starts fresh with its memory (D072), but
+                # a called pixie continues its call's session as a subagent does (B112). A
                 # rewound or forked conversation resumes cut (B59).
-                resume_id=None if extras else (session.fork_from or session.provider_session_id),
+                resume_id=None
+                if extras and session.called_by is None
+                else (session.fork_from or session.provider_session_id),
                 resume_at=session.fork_at,
                 drops_turn=session.fork_drops,
                 extra_dirs=dirs + (extras.extra_dirs if extras else ()),
@@ -701,6 +723,7 @@ class TurnRunner:
                 tools=extras.tools if extras else (),
                 nest_tools=self._run_tools(session, agents),
                 write_root=extras.write_root if extras else None,
+                disallowed_tools=extras.disallowed_tools if extras else (),
                 skills=extras.skills if extras else (),
                 subagents=agents.engine_subagents,
                 call_rules=agents.rules,
@@ -721,6 +744,7 @@ class TurnRunner:
                 calls=self._calls,
                 active_account=engine.active_account,
                 local_usage=None if local is None else self._usage_of(local),
+                bridge=self.bridge,
             )
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
             live.run_account = None if account is None else account.id
@@ -809,7 +833,9 @@ class TurnRunner:
         return prompt if ports.prompt is None else f"{prompt} {ports.prompt}"
 
     async def _base_prompt(self, session: Session) -> str:
-        claude = self._engines.of(session).supports("task_list")
+        # Only Claude Code plans with TaskCreate; other engines plan with their own tool,
+        # which feeds the same task list (B112).
+        claude = self._engines.of(session) is self._engines.default
         if _guarded(session):
             return GUARDED_PROMPT if claude else CODEX_GUARDED_PROMPT
         git = await self._repos.has_git(session.repo)

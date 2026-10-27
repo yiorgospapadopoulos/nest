@@ -100,7 +100,6 @@ import Testing
 
     @Test func memoryGoesToTheProjectOrTheUser() {
         #expect(MemoryScope.choices(pixie: false) == [.project, .user])
-        #expect(MemoryScope.choices(pixie: true) == [.user])
         #expect(MemoryScope.project.label == "Project memory")
         #expect(MemoryScope.user.label == "User memory")
         let saved = Fixture.decode(

@@ -9,6 +9,9 @@ uses for the same work, so clients draw them as they draw Claude's: a shell comm
 its input is known: when it runs, ends or asks permission (OpenCode first announces a call
 with no input). Its result comes when it completes or fails.
 
+The engine's own plan (`plan`, the whole list each time) is the main agent's task list, as
+Claude Code's TaskCreate and TaskUpdate keep it (B112).
+
 The turn ends with the answer to its `session/prompt`: the stop reason and the tokens it
 used. A session reopened with `session/load` replays its history first; Nest has the
 transcript, so the replay is dropped (`replaying`).
@@ -18,7 +21,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import JsonValue
 
@@ -26,6 +29,7 @@ from nestd.providers.acp_rpc import JsonObject
 from nestd.providers.base import (
     CommandCatalog,
     ContextUsage,
+    PlanStep,
     ProviderEventSink,
     ResultInfo,
     SlashCommand,
@@ -73,6 +77,12 @@ _PATH_KEYS = frozenset(
     }
 )
 UNFINISHED = "The turn ended before this tool call finished."
+# ACP's plan entry statuses are Nest's; anything else is taken as not started.
+_PLAN_STATUSES: dict[str, Literal["pending", "in_progress", "completed"]] = {
+    "pending": "pending",
+    "in_progress": "in_progress",
+    "completed": "completed",
+}
 _STOPS: dict[str, tuple[str, bool, str | None]] = {
     "end_turn": ("success", False, None),
     "cancelled": ("cancelled", False, None),
@@ -282,7 +292,8 @@ def tokens(usage: JsonObject) -> TokenUsage:
 class AcpStream:
     def __init__(self, sink: ProviderEventSink, nest: NestTools) -> None:
         self._sink = sink
-        self._nest = nest
+        # Nest's own MCP servers, known once the run has chosen them.
+        self.nest = nest
         self.session_id: str | None = None
         # True while `session/load` replays history Nest already has.
         self.replaying = False
@@ -424,6 +435,14 @@ class AcpStream:
             return
         self._context = ContextUsage(percent=min(100.0, 100 * used / size), used=used, limit=size)
 
+    async def _plan(self, update: JsonObject) -> None:
+        steps = [
+            PlanStep(text=content, status=_PLAN_STATUSES.get(text(entry.get("status")), "pending"))
+            for entry in (obj(e) for e in items(update.get("entries")))
+            if (content := text(entry.get("content")))
+        ]
+        await self._sink.plan(steps, None)
+
     async def _commands(self, update: JsonObject) -> None:
         commands = [
             SlashCommand(
@@ -440,7 +459,7 @@ class AcpStream:
         if call.shown:
             return
         call.shown = True
-        name, tool_input = tool_use(call, self._nest)
+        name, tool_input = tool_use(call, self.nest)
         await self._sink.message([ToolUseBlock(id=call.id, name=name, input=tool_input)], None)
 
     async def _end_text(self) -> None:
@@ -464,6 +483,7 @@ class AcpStream:
         "tool_call": _tool_call,
         "tool_call_update": _tool_call,
         "usage_update": _usage,
+        "plan": _plan,
     }
 
 

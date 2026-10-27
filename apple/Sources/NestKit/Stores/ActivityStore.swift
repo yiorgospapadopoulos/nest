@@ -231,6 +231,18 @@ public final class ActivityStore {
         }
     }
 
+    /// A called pixie's row while its session waits for the usage limit to reset (B112).
+    public static let paused = "Paused at limit"
+
+    private func changeRunningAgent(
+        _ agentID: String, in session: String, _ change: (inout TrackedAgent) -> Void
+    ) {
+        guard let index = agents[session]?.firstIndex(where: { $0.id == agentID }),
+            agents[session]?[index].status == .running
+        else { return }
+        change(&agents[session]![index])
+    }
+
     public func apply(_ event: Event) {
         live.record(event)
         switch event.body {
@@ -250,6 +262,27 @@ public final class ActivityStore {
             guard let toolUseID = task.toolUseID else { return }
             stopping[id]?.remove(toolUseID)
             background[id]?.finish(toolUseID: toolUseID, as: task.agentStatus, at: event.ts)
+        // An engine's own plan and a called pixie's pause read as the daemon tracks them
+        // (B112); its next snapshots say the same.
+        case .plan(let steps, nil):
+            guard let id = event.sessionID else { return }
+            tasks[id] = steps.enumerated().map { index, step in
+                TrackedTask(
+                    id: String(index + 1), subject: step.text, description: nil,
+                    activeForm: nil, status: step.status)
+            }
+        case .plan(let steps, let parent?):
+            guard let id = event.sessionID,
+                let working = steps.first(where: { $0.status == .inProgress })
+            else { return }
+            changeRunningAgent(parent, in: id) { agent in
+                if agent.activity != Self.paused {
+                    agent.activity = working.text
+                }
+            }
+        case .agentPaused(let toolUseID, let paused):
+            guard let id = event.sessionID else { return }
+            changeRunningAgent(toolUseID, in: id) { $0.activity = paused ? Self.paused : nil }
         case .sessionState(.running, _):
             guard let id = event.sessionID else { return }
             noRun.remove(id)

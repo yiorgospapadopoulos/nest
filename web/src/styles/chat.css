@@ -412,6 +412,12 @@
   background: var(--fill);
   text-align: center;
 }
+/* "@tester finished", opening the pixie's work (B112). */
+.m-pxres {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
 /* "Working... 12s" at the end of a running turn (D045). */
 .m-live {
   font-size: 0.7059rem;

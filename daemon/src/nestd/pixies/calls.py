@@ -14,12 +14,14 @@ messages; every other subagent's calls are left alone.
 
 import json
 import re
+from collections.abc import Awaitable, Callable
 from typing import Literal, cast
 
 from pydantic import JsonValue
 
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.pixies.agents import CODEX, CODEX_CONTINUE_NOTE
 from nestd.pixies.call_models import (
     CallEntry,
     CallState,
@@ -29,12 +31,13 @@ from nestd.pixies.call_models import (
     SendAway,
     TeamMember,
 )
-from nestd.pixies.call_store import CallStore
+from nestd.pixies.call_store import BridgedCallStore, CallStore
 from nestd.pixies.models import PixieTeam
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.providers.base import (
     AGENT_TOOLS,
+    CALL_PIXIE_TOOL,
     AgentTask,
     MessageBlock,
     ToolResultBlock,
@@ -51,6 +54,11 @@ CONTINUE_NOTE = (
     "\n\n(@{slug} was called earlier in this chat as agent {agent_id}. Continue that agent"
     " with SendMessage to '{agent_id}' instead of starting a new one.)"
 )
+# The same for a pixie the run calls with the call tool (B112).
+CALL_CONTINUE_NOTE = (
+    f"\n\n(@{{slug}} was called earlier in this chat with {CALL_PIXIE_TOOL}. Calling it again"
+    " continues that session, with what it did there; set `fresh` to true to start it over.)"
+)
 CHANGED_MEMBERS_NOTE = (
     "\n\n(Since @{leader} last called them, these members of @{handle} changed: {members}."
     " Tell @{leader} to call them fresh with the Agent tool instead of continuing them.)"
@@ -61,15 +69,29 @@ _ENDED: dict[str | None, CallState] = {"completed": "done", "failed": "failed"}
 # States that end a turn's calls; a closed chat ends the background ones too.
 _CUT_OFF = frozenset({SessionState.FAILED, SessionState.INTERRUPTED})
 
+# A chat's engine by its session id (B112).
+type EngineOf = Callable[[str], Awaitable[str]]
+
 
 class PixieCallLog:
     def __init__(
-        self, store: CallStore, pixies: PixieStore, teams: TeamStore, bus: EventBus
+        self,
+        store: CallStore,
+        pixies: PixieStore,
+        teams: TeamStore,
+        bus: EventBus,
+        bridged: BridgedCallStore | None = None,
+        engine_of: EngineOf | None = None,
     ) -> None:
+        """`bridged` holds the calls made with the call tool (B112); `engine_of` names a
+        chat's engine, whose own subagents are continued its own way.
+        """
+        self._engine_of = engine_of
         self._store = store
         self._pixies = pixies
         self._teams = teams
         self._bus = bus
+        self._bridged = bridged
 
     async def note(self, session_id: str, agents: ChatAgents, text: str) -> str:
         """For each solo pixie `text` calls, and the leader of each team it calls, whose
@@ -79,10 +101,15 @@ class PixieCallLog:
         members = agents.team_members(text)
         notes: list[str] = []
         for pixie in agents.mentioned_pixies(text) + [p for p in members if p.leader]:
+            if pixie.slug in agents.tool_calls:
+                if await self._bridged_continues(session_id, agents, pixie):
+                    notes.append(CALL_CONTINUE_NOTE.format(slug=pixie.slug))
+                continue
             call = await self._store.latest_agent(session_id, pixie.id)
             if call is None or call.fingerprint != agents.pixie_fingerprint(pixie.slug):
                 continue
-            notes.append(CONTINUE_NOTE.format(slug=pixie.slug, agent_id=call.agent_id))
+            note = CODEX_CONTINUE_NOTE if await self._engine(session_id) == CODEX else CONTINUE_NOTE
+            notes.append(note.format(slug=pixie.slug, agent_id=call.agent_id))
             team = [m for m in members if m.team_id == pixie.team_id and not m.leader]
             changed = [m.slug for m in team if await self._changed(session_id, agents, m)]
             if changed:
@@ -179,9 +206,14 @@ class PixieCallLog:
     async def calls(self, session_id: str, pixie_id: str) -> list[CallWork]:
         """Every call to the pixie in the chat's group, newest first, with its work."""
         calls = await self._store.in_group(session_id, pixie_id)
+        # A call made with the call tool carries its own work, continued or not (B112).
+        bridged = (
+            set[str]() if self._bridged is None else await self._bridged.tool_use_ids(session_id)
+        )
         by_agent: dict[str, list[str]] = {}
         for call in reversed(calls):
-            by_agent.setdefault(call.continues or call.tool_use_id, []).append(call.tool_use_id)
+            key = call.tool_use_id if call.tool_use_id in bridged else call.continues
+            by_agent.setdefault(key or call.tool_use_id, []).append(call.tool_use_id)
         events = await self._bus.session_events(session_id)
         works = {
             work.tool_use_id: work
@@ -208,9 +240,35 @@ class PixieCallLog:
         else:
             assert request.team_id is not None  # noqa: S101 (SendAway names one)
             pixie_ids = [pixie.id for pixie in await self._pixies.members(request.team_id)]
+        if self._bridged is not None:
+            await self._bridged.send_away(session_id, pixie_ids)
         if await self._store.send_away(session_id, pixie_ids, request.team_id):
             await self._announce(session_id)
         return await self.group(session_id)
+
+    async def _engine(self, session_id: str) -> str | None:
+        return None if self._engine_of is None else await self._engine_of(session_id)
+
+    async def continued(self, session_id: str, tool_use_id: str, root: str) -> None:
+        """A call made with the call tool continued the session of the call `root` (B112)."""
+        call = await self._store.by_tool_use(session_id, tool_use_id)
+        if call is not None and call.continues is None:
+            await self._store.update(call.id, continues=root)
+            await self._announce(session_id)
+
+    async def _bridged_continues(
+        self, session_id: str, agents: ChatAgents, pixie: OfferedPixie
+    ) -> bool:
+        if self._bridged is None:
+            return False
+        call = await self._bridged.latest(session_id, pixie.id)
+        return call is not None and call.fingerprint == agents.pixie_fingerprint(pixie.slug)
+
+    async def _bridged_call(self, session_id: str, tool_use_id: str) -> bool:
+        return (
+            self._bridged is not None
+            and await self._bridged.get(session_id, tool_use_id) is not None
+        )
 
     async def _changed(self, session_id: str, agents: ChatAgents, pixie: OfferedPixie) -> bool:
         call = await self._store.latest_agent(session_id, pixie.id)
@@ -282,10 +340,18 @@ class PixieCallLog:
         found = _AGENT_ID.search(block.content)
         if found is not None and call.agent_id is None:
             changes["agent_id"] = found.group(1)
-        background = call.background or ASYNC_LAUNCH in block.content
-        if background and not call.background:
-            changes["background"] = True
-        if block.is_error or (call.continues is not None and _refused(block.content)):
+        bridged = await self._bridged_call(session_id, block.tool_use_id)
+        if bridged:
+            # Only its result tells: a called pixie's own calls run in the foreground.
+            background = ASYNC_LAUNCH in block.content
+            if background != call.background:
+                changes["background"] = background
+        else:
+            background = call.background or ASYNC_LAUNCH in block.content
+            if background and not call.background:
+                changes["background"] = True
+        sent = call.continues is not None and not bridged
+        if block.is_error or (sent and _refused(block.content)):
             await self._store.finish(call.id, "failed", **changes)
         elif not background:
             await self._store.finish(call.id, "done", **changes)

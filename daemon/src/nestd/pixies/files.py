@@ -61,6 +61,9 @@ class PixieFiles:
     def workdir(self, pixie_id: str) -> Path:
         return self._folder(pixie_id) / "workdir"
 
+    def memory_path(self, pixie_id: str) -> Path:
+        return self._path(pixie_id, "memory")
+
     def read(self, pixie_id: str, name: str) -> FileText:
         path = self._path(pixie_id, name)
         if not path.is_file():

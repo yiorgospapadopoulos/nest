@@ -49,6 +49,11 @@ public enum EventType {
     public static let sessionTasks = "session.tasks"
     public static let sessionAgents = "session.agents"
     public static let sessionAgentTask = "session.agent_task"
+    /// An engine's own task list, whole: the main agent's, or a subagent's or called
+    /// pixie's under its call (B112).
+    public static let sessionPlan = "session.plan"
+    /// A called pixie paused at the usage limit, or went on (B112).
+    public static let sessionAgentPaused = "session.agent_paused"
     /// The chat's group of pixies changed: a call started or ended, or one was sent away
     /// (B46).
     public static let sessionPixies = "session.pixies"
@@ -155,6 +160,11 @@ public enum EventBody: Sendable, Hashable {
     case agents([TrackedAgent], background: BackgroundSummary?)
     /// A subagent or background command started, moved to the background or finished.
     case agentTask(AgentTask)
+    /// An engine's whole task list; `parent` names the call of the subagent or pixie it
+    /// belongs to, nil for the main agent's (B112).
+    case plan([PlanStep], parent: String?)
+    /// A called pixie's session paused at the usage limit, or went on (B112).
+    case agentPaused(toolUseID: String, paused: Bool)
     /// The chat's whole group of pixies, as `GET /api/sessions/{id}/pixies` lists it.
     case pixieGroup([ChatPixieEntry])
     /// How full the context window is after a turn.
@@ -263,6 +273,14 @@ public enum EventBody: Sendable, Hashable {
                 try field("agents", as: [TrackedAgent].self),
                 background: try field("background", as: BackgroundSummary?.self))
         case EventType.sessionAgentTask: self = .agentTask(try payload.decode(AgentTask.self))
+        case EventType.sessionPlan:
+            self = .plan(
+                try field("steps", as: [PlanStep].self),
+                parent: try field("parent_tool_use_id", as: String?.self))
+        case EventType.sessionAgentPaused:
+            self = .agentPaused(
+                toolUseID: try field("tool_use_id", as: String.self),
+                paused: payload["paused"]?.boolValue == true)
         case EventType.sessionPixies:
             self = .pixieGroup(try field("group", as: [ChatPixieEntry].self))
         case EventType.sessionContext:
@@ -396,7 +414,26 @@ public enum MessageOrigin: String, UnknownSafeEnum {
     case report
     /// Nest's message that lets Claude continue after the usage limit reset (B78).
     case limitResume = "limit_resume"
+    /// The report of a pixie the chat called in the background (B112).
+    case pixieResult = "pixie_result"
     case unknown
+}
+
+/// How a pixie the chat called ended, on its `pixie_result` message (B112).
+public enum PixieResultStatus: String, UnknownSafeEnum {
+    case done, failed, stopped, interrupted
+    case unknown
+}
+
+/// A step of an engine's own task list (`session.plan`, B112).
+public struct PlanStep: Decodable, Sendable, Hashable {
+    public var text: String
+    public var status: TaskStatus
+
+    public init(text: String, status: TaskStatus) {
+        self.text = text
+        self.status = status
+    }
 }
 
 public struct UserMessage: Decodable, Sendable, Hashable {
@@ -409,11 +446,17 @@ public struct UserMessage: Decodable, Sendable, Hashable {
     public var issue: IssueMessageInfo?
     /// The review comments Nest sent in it (B101).
     public var reviewFeedback: ReviewFeedbackInfo?
+    /// A `pixie_result` message's pixie, the call it answers and how it ended (B112).
+    public var pixieID: String?
+    public var toolUseID: String?
+    public var status: PixieResultStatus?
 
     enum CodingKeys: String, CodingKey {
-        case text, attachments, origin, issue
+        case text, attachments, origin, issue, status
         case fromPixie = "from_pixie"
         case reviewFeedback = "review_feedback"
+        case pixieID = "pixie_id"
+        case toolUseID = "tool_use_id"
     }
 }
 

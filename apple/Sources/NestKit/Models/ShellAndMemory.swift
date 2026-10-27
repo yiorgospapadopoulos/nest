@@ -52,17 +52,27 @@ public enum MemoryScope: String, Codable, Sendable, CaseIterable {
     case project
     /// `~/.claude/CLAUDE.md`, for all projects.
     case user
+    /// The pixie's own memory: where `#` in a pixie's chat always goes, on every engine
+    /// (B112).
+    case pixie
 
     public var label: String {
         switch self {
         case .project: "Project memory"
         case .user: "User memory"
+        case .pixie: "Pixie memory"
         }
     }
 
-    /// A pixie's chat has no project memory.
+    /// A pixie's chat saves only to the pixie's memory.
     public static func choices(pixie: Bool) -> [MemoryScope] {
-        pixie ? [.user] : [.project, .user]
+        pixie ? [.pixie] : [.project, .user]
+    }
+
+    /// The scope the request names: the daemon takes project or user and writes a pixie
+    /// chat's memory to the pixie whichever it is.
+    var requested: MemoryScope {
+        self == .pixie ? .user : self
     }
 }
 
@@ -122,6 +132,12 @@ public enum ComposerInput: Sendable, Hashable {
             return .memory(rest)
         }
         return .message
+    }
+
+    /// `#` is offered where the chat's engine saves to CLAUDE.md, and in a pixie's own chat
+    /// on every engine, where it saves to the pixie's memory (B112).
+    public static func offersMemory(in session: Session?, engineSaves: Bool) -> Bool {
+        engineSaves || session?.pixieID != nil
     }
 
     /// The daemon runs commands in the user's own chats, not a pixie's or one a pixie

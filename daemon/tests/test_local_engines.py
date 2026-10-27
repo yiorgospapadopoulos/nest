@@ -6,6 +6,7 @@ from pathlib import Path
 from nestd.local.run import LocalRun, claude_env, codex_config
 from nestd.providers.base import PermissionDecision, SessionSpec, UserInput
 from nestd.providers.claude import build_options
+from nestd.providers.codex import QUESTIONS_CONFIG
 from nestd.providers.git_guard import GIT_WRITE_RULES
 from tests.codex_support import SIGNED_OUT, FakeAppServer
 from tests.recording_sink import RecordingSink
@@ -93,7 +94,7 @@ async def test_a_local_codex_run_needs_no_login_and_names_its_provider(tmp_path:
     opened = await provider(tmp_path, server).open(spec, Handler(), RecordingSink())
 
     [start] = server.requests("thread/start")
-    assert start["config"] == codex_config(run)
+    assert start["config"] == {**codex_config(run), **QUESTIONS_CONFIG}
     assert start["model"] == "qwen/qwen3-coder-30b"
     assert server.requests("account/read") == []
     await opened.send(UserInput("hi"))

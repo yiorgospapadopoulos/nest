@@ -16,6 +16,8 @@ class RunExtras:
     # None: the run may edit anywhere its permission mode allows.
     write_root: Path | None
     skills: tuple[str, ...] = ()
+    # Tools the run never gets, such as a called read pixie's edit tools (B112).
+    disallowed_tools: tuple[str, ...] = ()
 
 
 type RunExtrasSource = Callable[[Session], Awaitable[RunExtras]]

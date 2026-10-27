@@ -60,13 +60,16 @@ class CodexFetchError(Exception):
     """Codex could not be asked; the message never quotes what it printed."""
 
 
-async def initialize(rpc: CodexRpc) -> None:
-    """The handshake every connection starts with; stable API only (no experimental)."""
+async def initialize(rpc: CodexRpc, experimental: bool = False) -> None:
+    """The handshake every connection starts with. A run's connection opts into the
+    experimental API (B112) for Codex's own questions to the user (`request_user_input`);
+    the short-lived ones that only read models, login and usage stay on the stable API.
+    """
     await rpc.request(
         "initialize",
         {
             "clientInfo": {"name": "nest", "title": "Nest", "version": __version__},
-            "capabilities": {"experimentalApi": False, "requestAttestation": False},
+            "capabilities": {"experimentalApi": experimental, "requestAttestation": False},
         },
     )
     await rpc.notify("initialized", {})

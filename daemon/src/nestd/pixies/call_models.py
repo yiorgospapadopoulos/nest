@@ -29,6 +29,27 @@ class PixieCall(BaseModel):
     finished_at: datetime | None
 
 
+type BridgedState = Literal["running", "done", "failed", "stopped", "interrupted"]
+
+
+class BridgedCall(BaseModel):
+    """A call made with the call_pixie tool and the called pixie's own session (B112)."""
+
+    caller: str
+    tool_use_id: str
+    pixie_id: str
+    called: str
+    # The tool use id of the chain's first call; its own for a fresh call.
+    root: str
+    fingerprint: str
+    background: bool
+    state: BridgedState
+    sent_away: bool
+    delivered: bool
+    started_at: datetime
+    finished_at: datetime | None
+
+
 class CallEntry(BaseModel):
     id: str
     pixie_id: str

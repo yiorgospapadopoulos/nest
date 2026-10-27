@@ -596,7 +596,8 @@ export type MemoryScope = "project" | "user";
 export interface MemoryReply {
   // The file written.
   path: string;
-  scope: MemoryScope;
+  // `pixie`: the pixie's own memory, in a pixie's chat whatever was asked (B112).
+  scope: MemoryScope | "pixie";
   line: string;
 }
 

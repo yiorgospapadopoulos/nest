@@ -8,14 +8,17 @@
 | auto              | on-request      | workspace-write    | auto_review |
 | bypassPermissions | never           | danger-full-access | user        |
 
-In acceptEdits Nest accepts file changes itself and asks for commands.
+In acceptEdits Nest accepts file changes itself and asks for commands. Every sandbox has
+network, as Claude Code has.
 
-`untrusted` asks before every command Codex does not know to be read-only, as Claude Code's
-default mode asks. A guarded run (D013, B58) always uses `untrusted` with the user as
-reviewer, so every such command comes to Nest, which declines git writes; its sandbox is
-workspace-write without network (read-only in plan mode), and in bypass Nest accepts the
-rest itself. Other runs' workspace-write sandbox has network, like Claude Code's. A run
-with a write root writes only there (`codex_permissions`).
+`untrusted` asks before every command Codex does not know to be read-only and before every
+file change, as Claude Code's default mode asks. A guarded run (D013, B58: pixie chats,
+habit runs, chats a pixie started, called pixies) gets no sandbox beyond Claude's (B112):
+always `untrusted` with the user as reviewer and full access (read-only in plan mode, which
+is what the mode is), so every such command and file change comes to Nest, which declines
+git writes; in bypass Nest accepts the rest itself. A run with a write root (a pixie's,
+D072) is also `untrusted`, so each file change comes to Nest, which declines one outside the
+root (`codex_approvals`), as Claude's write guard denies it.
 """
 
 from collections.abc import Sequence
@@ -66,26 +69,18 @@ _MODES: dict[PermissionMode, CodexPermissions] = {
 
 
 def codex_permissions(
-    mode: PermissionMode | None,
-    guarded: bool,
-    write_root: Path | None = None,
-    cwd: Path | None = None,
+    mode: PermissionMode | None, guarded: bool, write_root: Path | None = None
 ) -> CodexPermissions:
-    """A run with a `write_root` (a pixie's, D072) may write only there: never full access,
-    and read-only when it works in a folder outside the root (`cwd`), since the sandbox
-    always lets it write in its working folder.
+    """A guarded run or one with a `write_root` asks Nest about every command Codex does
+    not know to be read-only and every file change.
     """
     if guarded:
-        sandbox: SandboxMode = "read-only" if mode == "plan" else "workspace-write"
-        permissions = CodexPermissions("untrusted", sandbox, "user", network=False)
-    else:
-        permissions = _MODES[mode or "default"]
+        sandbox: SandboxMode = "read-only" if mode == "plan" else "danger-full-access"
+        return CodexPermissions("untrusted", sandbox, "user", network=True)
+    permissions = _MODES[mode or "default"]
     if write_root is None:
         return permissions
-    inside = cwd is not None and (cwd == write_root or write_root in cwd.parents)
-    if permissions.sandbox == "read-only" or not inside:
-        return replace(permissions, sandbox="read-only")
-    return replace(permissions, sandbox="workspace-write")
+    return replace(permissions, approval_policy="untrusted", reviewer="user")
 
 
 def command_decision(
@@ -100,7 +95,11 @@ def command_decision(
 
 
 def file_change_decision(mode: PermissionMode | None) -> AutoDecision | None:
-    """What Nest answers a file change approval itself; None asks the user."""
+    """What Nest answers a file change approval itself; None asks the user. Plan mode
+    edits nothing, as Claude Code's plan mode.
+    """
     if mode in ("acceptEdits", "bypassPermissions"):
         return "accept"
+    if mode == "plan":
+        return "decline"
     return None

@@ -1,4 +1,4 @@
-"""Codex provider on `codex app-server` (B91, D113): plain chats, stage 1.
+"""Codex provider on `codex app-server` (B91, D113).
 
 Each run is one app-server process with one thread: started, or resumed by the thread id
 Nest keeps as the session's provider session id. Each user message is a turn
@@ -7,18 +7,24 @@ model or mode applies from the next turn. A message written into a running turn 
 with `turn/steer`.
 
 What only Claude does fails cleanly or is reported unsupported (`CODEX_UNSUPPORTED`), so
-clients hide it: rewinding files or the conversation, forking, slash commands, stopping
-one background task, taking back a steered message, plan review, questions, the task list,
-`#` memory and a pixie's skill list. Stage 2 serves a run's Nest tools (a pixie's memory,
-habits and Nest actions, artifacts, calling pixies) to Codex as a local MCP server
-(`codex_tools`) that the thread's `config` names, so pixies run on Codex and Codex chats
-call pixies. The thread's developer instructions name those tools, so the model finds
+clients hide it: rewinding files or the conversation, forking, slash commands, taking back
+a steered message, plan review and `#` memory. Stage 2 serves a run's Nest tools (a
+pixie's memory, habits and Nest actions, artifacts, calling pixies) to Codex as a local MCP
+server (`codex_tools`) that the thread's `config` names, so pixies run on Codex and Codex
+chats call pixies. The thread's developer instructions name those tools, so the model finds
 them among the user's own.
+
+B112 uses Codex's own mechanisms where Claude's have an equivalent: the pixies on Codex a
+run calls are Codex's own subagents (agent roles of the thread, `codex_roles`, followed as
+Claude's subagents, `codex_agents`), Codex asks its questions with `request_user_input`
+(the experimental API, `codex_questions`), its plan is the run's task list, and a pixie's
+skill list switches the other skills off for its thread (`skills.config`).
 """
 
 import os
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from pydantic import JsonValue
@@ -40,6 +46,7 @@ from nestd.providers.base import (
 )
 from nestd.providers.claude import agent_env
 from nestd.providers.claude_tools import NEST_SERVER, TOOL_SERVER
+from nestd.providers.codex_agents import CodexAgents, Subthread
 from nestd.providers.codex_approvals import CodexApprovals, RunPermissions
 from nestd.providers.codex_engine import DEFAULT_MODEL, NOT_SIGNED_IN, initialize, read_login
 from nestd.providers.codex_events import CodexStream
@@ -52,6 +59,7 @@ from nestd.providers.codex_process import (
     bundled_binary,
     spawn,
 )
+from nestd.providers.codex_roles import CodexRoles, read_only, skill_overrides
 from nestd.providers.codex_rpc import CodexRpc, JsonObject
 from nestd.providers.codex_tools import ToolHost
 from nestd.providers.shell_env import ShellEnvSource, no_shell_env
@@ -61,13 +69,9 @@ CODEX_UNSUPPORTED: frozenset[ProviderFeature] = frozenset(
         "rewind",
         "fork",
         "slash_commands",
-        "stop_task",
         "withdraw",
         "plan_review",
-        "questions",
-        "task_list",
         "memory",
-        "pixie_skills",
     }
 )
 NO_REWIND = "Codex chats cannot restore files to before a message."
@@ -85,6 +89,17 @@ _CONNECTOR_STATUSES = {
     "cancelled": "failed",
     "disabled": "disabled",
 }
+# Codex offers its question tool outside its own plan mode only with this feature (B112),
+# still under development in 0.163, so its warning about that is kept out.
+QUESTIONS_CONFIG: JsonObject = {
+    "features.default_mode_request_user_input": True,
+    "suppress_unstable_features_warning": True,
+}
+AGENTS_HINT = (
+    "Pixies are agent roles here: @<slug> in a message calls the pixie <slug>. Spawn it with"
+    " spawn_agent, `agent_type` set to its slug, give it the request and wait for its"
+    " result. Pixie roles: {roles}."
+)
 
 
 class CodexNotSignedInError(ConflictError):
@@ -103,33 +118,57 @@ class CodexRun:
     steers = True
 
     def __init__(
-        self, spec: SessionSpec, sink: ProviderEventSink, tools: ToolHost | None = None
+        self,
+        spec: SessionSpec,
+        sink: ProviderEventSink,
+        tools: ToolHost | None = None,
     ) -> None:
-        """`tools` serves the run's Nest tools while it is open; closing the run stops it."""
+        """`tools` serves the run's Nest tools while it is open; closing the run stops them,
+        and removes the files of the pixies it calls natively (`attach`).
+        """
         self._spec = spec
         self._sink = sink
         self._model = spec.model if spec.local is None else spec.local.model
         self._mode: PermissionMode | None = spec.permission_mode
-        self.stream = CodexStream(sink)
+        self.stream = CodexStream(sink, CodexAgents(sink, spec.call_rules))
         self._rpc: CodexRpc | None = None
         self._tools = tools
+        self._roles: CodexRoles | None = None
 
-    def attach(self, rpc: CodexRpc, thread_id: str) -> None:
+    def attach(self, rpc: CodexRpc, thread_id: str, roles: CodexRoles | None = None) -> None:
         self._rpc = rpc
         self.stream.thread_id = thread_id
+        self._roles = roles
 
-    def permissions(self) -> RunPermissions:
-        return RunPermissions(
-            self._mode, self._spec.guard_git, self._spec.write_root, _nest_servers(self._spec)
-        )
+    def permissions(self, thread_id: str = "") -> RunPermissions:
+        """The run's permissions, or a subagent thread's: each pixie on the way from the
+        run's agent works in its own mode, the nearest one's
+        access holds, and one the call guard refused is allowed nothing.
+        """
+        spec = self._spec
+        run = RunPermissions(self._mode, spec.guard_git, spec.write_root, _nest_servers(spec))
+        agents = self.stream.agents
+        chain: list[Subthread] = []
+        thread = agents.thread(thread_id)
+        while thread is not None and len(chain) < 64:
+            chain.append(thread)
+            thread = agents.thread(thread.parent)
+        mode, limited = self._mode, False
+        for thread in reversed(chain):
+            if thread.refused is not None:
+                return replace(run, refused=True)
+            subagent = spec.subagents.get(thread.role or "")
+            if subagent is not None:
+                mode = subagent.permission_mode
+                limited = read_only(subagent)
+        return replace(run, mode=mode, read_only=limited) if chain else run
 
     async def closed(self, reason: str) -> None:
         """Codex ended on its own, and with it the run's tools; while the run opens,
         opening fails instead.
         """
         if self._rpc is not None:
-            if self._tools is not None:
-                await self._tools.close()
+            await self._release()
             await self._sink.stopped(reason)
 
     @property
@@ -194,6 +233,7 @@ class CodexRun:
         return self.stream.turn_id is None or message_id not in self.stream.steered
 
     async def interrupt(self) -> None:
+        """Stops the run's own turn; its subagents go on, as Claude's background ones do."""
         turn_id = self.stream.turn_id
         if turn_id is not None:
             await self.rpc.request(
@@ -205,6 +245,9 @@ class CodexRun:
 
     async def set_permission_mode(self, mode: PermissionMode) -> None:
         self._mode = mode
+        if self._roles is not None:
+            # The pixies it calls from now on work in the lower of their mode and this one.
+            self._roles.write(mode)
 
     async def connector_statuses(self) -> list[McpServer]:
         page = await self.rpc.request(
@@ -226,14 +269,21 @@ class CodexRun:
         return RewindResult(can_rewind=False, error=NO_REWIND)
 
     async def stop_task(self, task_id: str) -> bool:
-        return False
+        """Stops one of Codex's subagents (its thread's turn), by its task or call id."""
+        return await self.stream.agents.stop(task_id)
 
     async def close(self) -> None:
         try:
             await self.rpc.close()
         finally:
-            if self._tools is not None:
-                await self._tools.close()
+            await self._release()
+
+    async def _release(self) -> None:
+        await self.stream.agents.close()
+        if self._tools is not None:
+            await self._tools.close()
+        if self._roles is not None:
+            self._roles.close()
 
 
 class CodexProvider:
@@ -292,25 +342,37 @@ class CodexProvider:
                 await tools.close()
             raise
         rpc = CodexRpc(transport, run.stream.handle, approvals.handle, run.closed)
+        run.stream.agents.connect(rpc.request, run.stream.handle)
+        roles: CodexRoles | None = None
         try:
-            await initialize(rpc)
+            await initialize(rpc, experimental=True)
             # A local model's own provider needs no login (B106).
             if spec.local is None and not (await read_login(rpc)).signed_in:
                 raise CodexNotSignedInError
-            config = _thread_config(spec, self._gh_config_dir)
+            config = _thread_config(spec, self._gh_config_dir) | QUESTIONS_CONFIG
             if spec.local is not None:
                 config |= codex_config(spec.local)
             if tools is not None:
                 config |= tools.config()
             if spec.guard_git:
                 config |= await _ask_before_mcp_tools(rpc, spec)
+            skills = await _folder_skills(rpc, spec)
+            if spec.skills:
+                config["skills.config"] = skill_overrides(spec.skills, skills)
+            if spec.subagents:
+                own = {} if tools is None or not spec.tools else _own_server(tools)
+                roles = CodexRoles(spec.subagents, spec.guard_git, spec.write_root, skills, own)
+                config |= roles.config(spec.permission_mode)
             thread_id = await self._open_thread(rpc, spec, config)
         except BaseException:
             await rpc.close()
+            await run.stream.agents.close()
             if tools is not None:
                 await tools.close()
+            if roles is not None:
+                roles.close()
             raise
-        run.attach(rpc, thread_id)
+        run.attach(rpc, thread_id, roles)
         await sink.provider_session_id(thread_id)
         return run
 
@@ -331,7 +393,9 @@ class CodexProvider:
         if model and model != DEFAULT_MODEL:
             params["model"] = model
         instructions = "\n\n".join(
-            part for part in (spec.system_prompt_append, _tools_hint(spec)) if part
+            part
+            for part in (spec.system_prompt_append, _tools_hint(spec), _agents_hint(spec))
+            if part
         )
         if instructions:
             params["developerInstructions"] = instructions
@@ -347,12 +411,18 @@ class CodexProvider:
 
 
 def _permissions(spec: SessionSpec, mode: PermissionMode | None) -> CodexPermissions:
-    return codex_permissions(mode, spec.guard_git, spec.write_root, spec.cwd)
+    return codex_permissions(mode, spec.guard_git, spec.write_root)
 
 
 def _served(spec: SessionSpec) -> dict[str, tuple[AgentTool, ...]]:
     """Nest's MCP servers for the run, named as Claude's runs have them (`claude_tools`)."""
     return {TOOL_SERVER: spec.tools, NEST_SERVER: spec.nest_tools}
+
+
+def _own_server(tools: ToolHost) -> JsonObject:
+    """The thread config entry of the run's own tools (a pixie's), for its subagents' roles."""
+    key = f"mcp_servers.{TOOL_SERVER}"
+    return {name: entry for name, entry in tools.config().items() if name == key}
 
 
 def _tools_hint(spec: SessionSpec) -> str:
@@ -369,8 +439,35 @@ def _tools_hint(spec: SessionSpec) -> str:
     return f"Nest's tools for this chat are MCP tools: {' and '.join(groups)}."
 
 
+def _agents_hint(spec: SessionSpec) -> str:
+    """How the run's agent calls the pixies it may call as Codex's own subagents (B112):
+    Codex spawns agents only when asked to, and a mention by @slug is such a request.
+    """
+    rules = spec.call_rules
+    callable_ = [slug for slug in spec.subagents if rules is None or slug in rules.main]
+    if not callable_:
+        return ""
+    return AGENTS_HINT.format(roles=", ".join(callable_))
+
+
 def _nest_servers(spec: SessionSpec) -> frozenset[str]:
     return frozenset(name for name, tools in _served(spec).items() if tools)
+
+
+async def _folder_skills(rpc: CodexRpc, spec: SessionSpec) -> list[tuple[str, bool]]:
+    """The skills Codex finds for the run's folder, by name with whether they are on; only
+    asked when a skill list limits the run or a pixie it calls.
+    """
+    if not spec.skills and not any(sub.skills for sub in spec.subagents.values()):
+        return []
+    response = await rpc.request("skills/list", {"cwds": [str(spec.cwd)]})
+    found: list[tuple[str, bool]] = []
+    for entry in items(response.get("data")):
+        for skill in items(obj(entry).get("skills")):
+            name = text(obj(skill).get("name"))
+            if name:
+                found.append((name, obj(skill).get("enabled") is not False))
+    return found
 
 
 async def _ask_before_mcp_tools(rpc: CodexRpc, spec: SessionSpec) -> JsonObject:

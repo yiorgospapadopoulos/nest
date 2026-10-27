@@ -289,7 +289,10 @@ export function Composer({
       return;
     }
     if (mode === "memory") {
-      if (text.slice(1).trim() !== "") setSheet({ kind: "memory" });
+      if (text.slice(1).trim() === "") return;
+      // A pixie's chat has one memory to save to, the pixie's own, on every engine (B112).
+      if (live?.pixie_id != null) void remember(live.id, "user");
+      else setSheet({ kind: "memory" });
       return;
     }
     setSending(true);
@@ -605,16 +608,14 @@ export function Composer({
               setSheet(null);
             }}
           >
-            {live.pixie_id == null && (
-              <button
-                className="asi"
-                role="menuitem"
-                onClick={() => void remember(live.id, "project")}
-              >
-                Project memory
-                <small>CLAUDE.md in this project</small>
-              </button>
-            )}
+            <button
+              className="asi"
+              role="menuitem"
+              onClick={() => void remember(live.id, "project")}
+            >
+              Project memory
+              <small>CLAUDE.md in this project</small>
+            </button>
             <button className="asi" role="menuitem" onClick={() => void remember(live.id, "user")}>
               User memory
               <small>Your CLAUDE.md, for all projects</small>

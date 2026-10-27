@@ -995,6 +995,69 @@ describe("pixie calls", () => {
     expect(shape(items)).toEqual(["group:1.0,1.1,1.2", "pixie:2.0"]);
     expect(items[1]).toMatchObject({ kind: "pixie", call: { result: "stopped" }, steps: [] });
   });
+
+  it("shows a call_pixie call on any engine as the pixie's row, as a subagent's (B112)", () => {
+    const callPixie = (id: string, input: JsonObject) => ({
+      type: "tool_use",
+      id,
+      name: "mcp__nest__call_pixie",
+      input,
+    });
+    const items = buildTranscript(
+      [
+        blocks(
+          1,
+          callPixie("c1", { pixie: "tester", task: "Check the form", description: "Form check" }),
+          callPixie("c2", { pixie: "tester", task: "Look again\nat the form" }),
+        ),
+        sub(2, "c1", { type: "text", text: "Looking." }),
+        blocks(3, { type: "tool_result", tool_use_id: "c1", content: "All good" }),
+      ],
+      {},
+      null,
+      new Set(["c2"]),
+      known,
+    );
+
+    expect(shape(items)).toEqual(["pixie:1.0", "pixie:1.1"]);
+    expect(items[0]).toMatchObject({
+      kind: "pixie",
+      pixie: tester,
+      call: { id: "c1", arg: "Form check", result: "All good" },
+      steps: [{ kind: "text", text: "Looking." }],
+    });
+    expect(items[1]).toMatchObject({ call: { id: "c2", arg: "Look again", result: null } });
+  });
+
+  it("shows a background call's result as a line of its own, never the user's (B112)", () => {
+    const result = (id: number, status: string) =>
+      event({
+        id,
+        type: "session.user_message",
+        payload: {
+          text: "@tester finished. Its report: all good",
+          origin: "pixie_result",
+          pixie_id: "p1",
+          tool_use_id: "c1",
+          status,
+        },
+      });
+    const items = buildTranscript(
+      [result(1, "done"), result(2, "failed"), result(3, "stopped"), result(4, "interrupted")],
+      {},
+      null,
+    );
+
+    expect(items).toEqual(
+      ["done", "failed", "stopped", "interrupted"].map((status, index) => ({
+        kind: "pixie_result",
+        key: String(index + 1),
+        pixieId: "p1",
+        call: "c1",
+        status,
+      })),
+    );
+  });
 });
 
 describe("subagents (B59)", () => {

@@ -11,7 +11,7 @@ from pydantic import JsonValue
 from nestd.context import AppContext
 from nestd.errors import NotFoundError
 from nestd.events import types
-from nestd.pixies.agents import PixieAgents
+from nestd.pixies.agents import CODEX_CONTINUE_NOTE, PixieAgents
 from nestd.pixies.call_models import GroupEntry, SendAway, TeamMember
 from nestd.pixies.calls import CHANGED_MEMBERS_NOTE, CONTINUE_NOTE, PixieCallLog
 from nestd.pixies.files import PixieFiles
@@ -58,7 +58,8 @@ class Chat:
                 model=None,
                 effort=None,
                 permission_mode="default",
-                provider="fake",
+                # Claude's pixies are its own subagents (B112).
+                provider="claude",
                 pixie_id=pixie_id,
             )
         )
@@ -393,6 +394,18 @@ async def test_a_pixie_tagged_again_is_told_to_continue(chat: Chat) -> None:
         " SendMessage to 'ag1' instead of starting a new one.)"
     )
     assert await chat.note("no mention of scribe") == ""
+
+
+async def test_a_codex_chat_continues_its_own_subagent_its_own_way(chat: Chat) -> None:
+    """B112: Codex runs a Codex pixie as its own subagent, continued with its own tools."""
+    await chat.ctx.pixies.update(chat.id("Scribe"), UpdatePixie(provider="codex"))
+    chat.session = await chat.store.update((await chat.new_session("web")).id, provider="codex")
+    await chat.say(agent("a1", "scribe"))
+    await chat.say(handback("a1", "thread-7"))
+
+    assert await chat.note("@scribe again") == CODEX_CONTINUE_NOTE.format(
+        slug="scribe", agent_id="thread-7"
+    )
 
 
 async def test_a_changed_pixie_starts_fresh(chat: Chat) -> None:

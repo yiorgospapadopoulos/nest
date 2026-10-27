@@ -5,7 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from nestd.clock import Clock
-from nestd.pixies.call_models import CallState, PixieCall
+from nestd.pixies.call_models import BridgedCall, BridgedState, CallState, PixieCall
 from nestd.storage.db import Database
 
 # Newest first; calls started at the same moment by the order they were stored.
@@ -140,3 +140,107 @@ class CallStore:
 
 def _call(row: sqlite3.Row) -> PixieCall:
     return PixieCall.model_validate(dict(row))
+
+
+class BridgedCallStore:
+    """The calls made with the call_pixie tool and their called sessions (B112)."""
+
+    def __init__(self, db: Database, clock: Clock) -> None:
+        self._db = db
+        self._clock = clock
+
+    async def add(
+        self,
+        *,
+        caller: str,
+        tool_use_id: str,
+        pixie_id: str,
+        called: str,
+        root: str,
+        fingerprint: str,
+        background: bool,
+    ) -> None:
+        await self._db.execute(
+            "INSERT INTO pixie_bridged_calls (caller, tool_use_id, pixie_id, called, root,"
+            " fingerprint, background, state, started_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)",
+            (
+                caller,
+                tool_use_id,
+                pixie_id,
+                called,
+                root,
+                fingerprint,
+                int(background),
+                self._clock.now().isoformat(),
+            ),
+        )
+
+    async def get(self, caller: str, tool_use_id: str) -> BridgedCall | None:
+        row = await self._db.fetch_one(
+            "SELECT * FROM pixie_bridged_calls WHERE caller = ? AND tool_use_id = ?",
+            (caller, tool_use_id),
+        )
+        return None if row is None else _bridged(row)
+
+    async def latest(self, caller: str, pixie_id: str) -> BridgedCall | None:
+        """The pixie's latest call in the chat that was not sent away."""
+        row = await self._db.fetch_one(
+            "SELECT * FROM pixie_bridged_calls WHERE caller = ? AND pixie_id = ?"  # noqa: S608
+            f" AND sent_away = 0 {_NEWEST}",
+            (caller, pixie_id),
+        )
+        return None if row is None else _bridged(row)
+
+    async def tool_use_ids(self, caller: str) -> set[str]:
+        rows = await self._db.fetch_all(
+            "SELECT tool_use_id FROM pixie_bridged_calls WHERE caller = ?", (caller,)
+        )
+        return {row["tool_use_id"] for row in rows}
+
+    async def called_sessions(self, caller: str) -> list[str]:
+        """Every session the chat's calls ran in."""
+        rows = await self._db.fetch_all(
+            "SELECT DISTINCT called FROM pixie_bridged_calls WHERE caller = ? ORDER BY called",
+            (caller,),
+        )
+        return [row["called"] for row in rows]
+
+    async def finish(self, caller: str, tool_use_id: str, state: BridgedState) -> None:
+        await self._db.execute(
+            "UPDATE pixie_bridged_calls SET state = ?, finished_at = ?"
+            " WHERE caller = ? AND tool_use_id = ? AND state = 'running'",
+            (state, self._clock.now().isoformat(), caller, tool_use_id),
+        )
+
+    async def delivered(self, caller: str, tool_use_id: str) -> None:
+        await self._db.execute(
+            "UPDATE pixie_bridged_calls SET delivered = 1 WHERE caller = ? AND tool_use_id = ?",
+            (caller, tool_use_id),
+        )
+
+    async def send_away(self, caller: str, pixie_ids: list[str]) -> None:
+        marks = ", ".join("?" for _ in pixie_ids)
+        await self._db.execute(
+            "UPDATE pixie_bridged_calls SET sent_away = 1"  # noqa: S608
+            f" WHERE caller = ? AND pixie_id IN ({marks})",
+            (caller, *pixie_ids),
+        )
+
+    async def interrupt_all(self) -> list[BridgedCall]:
+        """On start: every call a previous process left running, now interrupted."""
+        async with self._db.transaction() as tx:
+            rows = await tx.fetch_all(
+                "SELECT * FROM pixie_bridged_calls WHERE state = 'running'"
+                " ORDER BY started_at, rowid"
+            )
+            await tx.execute(
+                "UPDATE pixie_bridged_calls SET state = 'interrupted', finished_at = ?"
+                " WHERE state = 'running'",
+                (self._clock.now().isoformat(),),
+            )
+        return [_bridged(row) for row in rows]
+
+
+def _bridged(row: sqlite3.Row) -> BridgedCall:
+    return BridgedCall.model_validate(dict(row))

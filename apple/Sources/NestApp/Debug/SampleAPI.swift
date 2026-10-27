@@ -789,10 +789,7 @@
                     signInHint: signedIn == false
                         ? "Codex isn't signed in. Sign in under Settings > Accounts." : nil,
                     account: signedIn == true ? ClaudeAccount(plan: "ChatGPT Plus") : nil,
-                    unsupported: [
-                        .rewind, .fork, .slashCommands, .stopTask, .withdraw, .planReview,
-                        .questions, .taskList, .memory, .pixieSkills,
-                    ]),
+                    unsupported: [.rewind, .fork, .slashCommands, .withdraw, .planReview, .memory]),
             ])
         }
 

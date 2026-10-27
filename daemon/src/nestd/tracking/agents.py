@@ -1,8 +1,10 @@
 """The main agent, the subagents it starts with the Agent tool, and its background commands.
 
-A subagent's own messages carry `parent_tool_use_id` set to its Agent call's id. A
-foreground subagent is done when that call's result arrives. A background one (started
-with `run_in_background`, or moved there later) gets its result at once and keeps running;
+A subagent's own messages carry `parent_tool_use_id` set to its Agent call's id. A pixie
+called with Nest's call_pixie tool is a subagent the same way, its session's work relayed
+under that call (B112). A foreground subagent is done when that call's result arrives. A
+background one (started with `run_in_background`, or moved there later) gets its result
+at once and keeps running;
 it ends when the engine reports its task finished. Background Bash commands are followed
 the same way. The main agent's status follows the session state.
 """
@@ -19,9 +21,11 @@ from nestd.providers.base import (
     AGENT_TOOLS,
     AgentTask,
     MessageBlock,
+    PlanStep,
     ToolResultBlock,
     ToolUseBlock,
 )
+from nestd.providers.claude_tools import CALL_TOOL
 from nestd.tracking.models import (
     AgentStatus,
     AgentStep,
@@ -30,12 +34,15 @@ from nestd.tracking.models import (
     TrackedAgent,
 )
 from nestd.tracking.steps import short_arg, short_result
+from nestd.tracking.transcripts import ASYNC_LAUNCH
 
 MAIN = "main"
 BASH_TOOL = "Bash"
 # The engine's task type for a shell command.
 LOCAL_BASH = "local_bash"
 MAX_STEPS = 8
+# A called pixie's row while its session waits for the usage limit to reset (B112).
+PAUSED = "Paused at limit"
 _RUNNING_STATES = frozenset({"starting", "running", "waiting"})
 # Turn ends after which the agent run, and so its background work, goes on.
 _RUN_STAYS = frozenset({"failed", "interrupted"})
@@ -63,6 +70,9 @@ class _Agent:
     kind: Literal["agent", "bash"] = "agent"
     # Its tool call returns at once; its task's end is reported separately.
     background: bool = False
+    # The engine said it runs in the background (its task started or moved there), not only
+    # its call's input.
+    moved: bool = False
     # The subagent that started it; None for the main agent's own.
     parent: str | None = None
 
@@ -183,6 +193,25 @@ class AgentBoard:
                     agent.finish("failed", at)
         return Change.LIFECYCLE
 
+    def paused(self, tool_use_id: str, paused: bool) -> Change:
+        """A called pixie's session paused at the usage limit, or went on (B112)."""
+        agent = self._agents.get(tool_use_id)
+        if agent is None or agent.status != "running":
+            return Change.NONE
+        agent.activity = PAUSED if paused else None
+        return Change.LIFECYCLE
+
+    def plan(self, parent: str, steps: list[PlanStep]) -> Change:
+        """A subagent's own plan: its row shows the step it works on (B112)."""
+        agent = self._agents.get(parent)
+        if agent is None or agent.status != "running":
+            return Change.NONE
+        working = next((step.text for step in steps if step.status == "in_progress"), None)
+        if working is None or agent.activity == PAUSED:
+            return Change.NONE
+        agent.activity = working
+        return Change.ACTIVITY
+
     def _tool_use(self, agent: _Agent, block: ToolUseBlock, at: datetime) -> Change:
         arg = short_arg(block.input, self.root)
         agent.steps.append(AgentStep(id=block.id, tool=block.name, arg=arg, result=None))
@@ -197,11 +226,12 @@ class AgentBoard:
                 return Change.ACTIVITY
             self._commands[block.id] = _command(block.id, command, description, at)
             return Change.LIFECYCLE
-        if block.name not in AGENT_TOOLS:
+        if block.name not in AGENT_TOOLS and block.name != CALL_TOOL:
             return Change.ACTIVITY
+        kind = "subagent_type" if block.name in AGENT_TOOLS else "pixie"
         self._agents[block.id] = _Agent(
             id=block.id,
-            name=_text(block.input.get("subagent_type")) or "agent",
+            name=_text(block.input.get(kind)) or "agent",
             description=description,
             started_at=at,
             background=background,
@@ -220,6 +250,15 @@ class AgentBoard:
         self._bash.pop(block.tool_use_id, None)
         # A background call's result only says it started, unless it could not start.
         started = self._agents.get(block.tool_use_id) or self._commands.get(block.tool_use_id)
+        if (
+            started is not None
+            and started.kind == "agent"
+            and not started.moved
+            and ASYNC_LAUNCH not in block.content
+        ):
+            # Asked for the background, it ran in the foreground: the call guard keeps a
+            # leader's calls there (B70), and a called pixie's calls (B112).
+            started.background = False
         if started is None or (started.background and not block.is_error):
             return Change.ACTIVITY
         started.finish("failed" if block.is_error else "done", at)
@@ -229,6 +268,7 @@ class AgentBoard:
         key = task.tool_use_id or task.task_id
         agent = self._agents.get(key)
         if agent is not None:
+            agent.moved = True
             if agent.background:
                 return Change.NONE
             agent.background = True

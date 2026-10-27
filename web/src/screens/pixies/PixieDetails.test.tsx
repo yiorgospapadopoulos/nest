@@ -172,6 +172,17 @@ describe("Pixie details", () => {
     expect(screen.queryByRole("button", { name: "Add project" })).not.toBeInTheDocument();
   });
 
+  it("offers skills for a pixie on any engine (B112)", async () => {
+    const api = withModels();
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), codexProvider()] });
+    api.pixieSkills.mockResolvedValue([skill("triage")]);
+    const { user } = await details(api, pixie({ provider: "codex", model: "gpt-5.5" }));
+
+    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    await user.click(await within(sheet("Add skill")).findByRole("button", { name: /triage/ }));
+    expect(api.updatePixie).toHaveBeenLastCalledWith("p1", { skills: ["triage"] });
+  });
+
   it("keeps both of two quick chip removals, saving them one after the other", async () => {
     const api = fakeApi();
     const shown = pixie({ skills: ["a", "b", "c"] });

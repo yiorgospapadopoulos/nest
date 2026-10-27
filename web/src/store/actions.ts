@@ -1070,7 +1070,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       scope: MemoryScope,
     ): Promise<MemoryReply | null> {
       const saved = await attempt(() => api.remember(sessionId, text, scope));
-      if (saved !== null) toast(`Saved to ${scope} memory: ${saved.path}`);
+      // A pixie's chat saves to the pixie's own memory, whatever was asked (B112).
+      if (saved !== null) toast(`Saved to ${saved.scope} memory: ${saved.path}`);
       return saved;
     },
 

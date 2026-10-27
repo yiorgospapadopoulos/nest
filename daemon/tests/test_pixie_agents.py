@@ -113,8 +113,7 @@ async def test_a_definition_carries_the_pixie(ctx: AppContext, agents: PixieAgen
         CALL_PREAMBLE.format(name="Tester", slug="tester") + "\n" + NO_PIXIE_CALLS + "\n\n"
     )
     assert NO_PIXIE_CALLS == (
-        "- You call no pixies. For help, use Claude Code's ordinary subagents, such as"
-        " Explore or general-purpose."
+        "- You call no pixies. For help, use your engine's own ordinary subagents, if it has any."
     )
     assert "You test everything.  \nSecond line." in sub.prompt
     assert "- likes '''fences'''" in sub.prompt
@@ -465,3 +464,28 @@ async def test_a_called_pixie_without_its_folder_has_no_prompt(
 
     with pytest.raises(PixieNotFoundError):
         await agents.called_prompt(gone)
+
+
+async def test_a_codex_chat_calls_its_codex_pixies_as_codexs_own_subagents(
+    ctx: AppContext, agents: PixieAgents
+) -> None:
+    """B112: on the same engine, its own subagents; on another, the call tool."""
+    team = await ctx.teams.create(CreateTeam(name="QA crew", handle="qa"))
+    lead = await ctx.pixies.create(CreatePixie(name="Lead", soul="You lead.", provider="codex"))
+    bugs = await ctx.pixies.create(CreatePixie(name="Bugs", soul="Bugs.", provider="codex"))
+    helper = await ctx.pixies.create(CreatePixie(name="Helper"))
+    for pixie in (lead, bugs):
+        await ctx.pixies.update(pixie.id, UpdatePixie(team_id=team.id))
+    codex_chat = chat().model_copy(update={"provider": "codex"})
+
+    offered = await agents.for_session(codex_chat)
+
+    assert offered.tool_calls == {"helper": helper.id}
+    assert sorted(offered.engine_subagents) == ["bugs", "lead"]
+    assert "the agent role lead, with spawn_agent" in offered.teams[0].instruction
+    lead_prompt = offered.subagents["lead"].prompt
+    assert "Call each member with spawn_agent, with `agent_type` set to its slug" in lead_prompt
+    assert "(call with call_pixie)" not in lead_prompt
+    # A Claude chat calls them with the call tool.
+    claude = await agents.for_session(chat())
+    assert claude.tool_calls == {"lead": lead.id, "bugs": bugs.id}

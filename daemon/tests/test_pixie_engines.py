@@ -140,9 +140,10 @@ async def test_a_codex_pixies_chat_runs_on_codex_with_its_tools(api: Api) -> Non
     assert "Coder" in str(start["developerInstructions"])
     [turn] = api.codex.requests("turn/start")
     assert turn["model"] == "gpt-5.5"
-    # A pixie's run is guarded: Codex asks before every command, without network.
+    # A pixie's run is guarded: Codex asks Nest before every command it does not know to be
+    # read-only, with no sandbox beyond Claude's (B112).
     assert turn["approvalPolicy"] == "untrusted"
-    assert cast("JsonObject", turn["sandboxPolicy"])["networkAccess"] is False
+    assert turn["sandboxPolicy"] == {"type": "dangerFullAccess"}
 
 
 async def test_a_codex_pixie_while_codex_is_signed_out_is_refused(api: Api) -> None:
@@ -183,13 +184,8 @@ async def test_a_codex_pixies_habit_runs_on_codex(api: Api) -> None:
     assert "mcp_servers.pixie" in cast("JsonObject", start["config"])
 
 
-async def test_a_codex_pixie_takes_no_skill_list_but_keeps_a_stored_one(api: Api) -> None:
-    refusal = {
-        "detail": "A Codex pixie cannot be limited to chosen skills.",
-        "code": "unsupported_feature",
-        "provider": "codex",
-        "feature": "pixie_skills",
-    }
+async def test_a_codex_pixie_takes_a_skill_list_and_keeps_it_across_moves(api: Api) -> None:
+    """B112: every engine takes a pixie's skills (Codex limits them per thread)."""
     created = await api.http.post(
         "/api/pixies", json={"name": "X", "provider": "codex", "skills": ["review"]}
     )
@@ -198,25 +194,18 @@ async def test_a_codex_pixie_takes_no_skill_list_but_keeps_a_stored_one(api: Api
     set_skills = await api.http.patch(
         f"/api/pixies/{claude['id']}", json={"skills": ["review", "debug"]}
     )
-    moving_with_skills = await api.http.post("/api/pixies", json={"name": "Y"})
+    back = await api.http.patch(f"/api/pixies/{claude['id']}", json={"provider": "claude"})
+    other = (await api.http.post("/api/pixies", json={"name": "Y"})).json()
     both = await api.http.patch(
-        f"/api/pixies/{moving_with_skills.json()['id']}",
-        json={"provider": "codex", "skills": ["review"]},
+        f"/api/pixies/{other['id']}", json={"provider": "codex", "skills": ["review"]}
     )
-    cleared = await api.http.patch(f"/api/pixies/{claude['id']}", json={"skills": []})
 
-    assert (created.status_code, created.json()) == (409, refusal)
-    # Moved to Codex, its list stays stored, unused, until it is back on Claude.
-    assert moved.status_code == 200
-    assert moved.json()["skills"] == ["review"]
-    assert (set_skills.status_code, set_skills.json()) == (409, refusal)
-    assert both.status_code == 409
-    assert (await api.http.get(f"/api/pixies/{moving_with_skills.json()['id']}")).json()[
-        "provider"
-    ] == "claude"
-    # Clearing it changes nothing a run uses, so it is allowed.
-    assert cleared.status_code == 200
-    assert cleared.json()["skills"] == []
+    assert created.status_code == 201
+    assert created.json()["skills"] == ["review"]
+    assert (moved.status_code, moved.json()["skills"]) == (200, ["review"])
+    assert (set_skills.status_code, set_skills.json()["skills"]) == (200, ["review", "debug"])
+    assert (back.status_code, back.json()["skills"]) == (200, ["review", "debug"])
+    assert both.status_code == 200
+    assert (both.json()["provider"], both.json()["skills"]) == ("codex", ["review"])
     providers = (await api.http.get("/api/providers")).json()["providers"]
-    assert "pixie_skills" in providers[1]["unsupported"]
-    assert "pixie_skills" not in providers[0]["unsupported"]
+    assert all("pixie_skills" not in p["unsupported"] for p in providers)

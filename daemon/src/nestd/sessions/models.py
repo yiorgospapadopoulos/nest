@@ -22,8 +22,9 @@ def pixie_repo(pixie_id: str) -> str:
 
 # A user message the daemon sends: to a pixie, the outcome of chats it started (B41) or a
 # report one of its habit runs made (B42); to a chat going on after the usage limit reset
-# with nothing queued, the message that lets Claude continue (`limit_resume`, B78).
-type MessageOrigin = Literal["report_back", "report", "limit_resume"]
+# with nothing queued, the message that lets Claude continue (`limit_resume`, B78); to a
+# chat, the report of a pixie it called in the background (`pixie_result`, B112).
+type MessageOrigin = Literal["report_back", "report", "limit_resume", "pixie_result"]
 
 
 @dataclass(frozen=True)

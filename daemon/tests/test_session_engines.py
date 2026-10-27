@@ -11,7 +11,7 @@ from nestd.errors import InvalidInputError
 from nestd.providers.base import ModelOption
 from nestd.providers.codex import CODEX_UNSUPPORTED, CodexNotSignedInError
 from nestd.sessions.engines import Engine, Engines
-from nestd.sessions.errors import UnsupportedFeatureError
+from nestd.sessions.errors import TaskNotFoundError, UnsupportedFeatureError
 from nestd.sessions.models import CreateSession, NewSession, SessionState, UpdateSession
 from nestd.sessions.turns import CODEX_GUARDED_PROMPT, CODEX_PLAIN_FOLDER_PROMPT, CODEX_PROMPT
 from nestd.storage.db import Database
@@ -138,7 +138,8 @@ async def test_claude_only_operations_are_refused_on_a_codex_chat(env: Env, code
         await env.manager.rewind(created.id, 1, dry_run=True)
     with pytest.raises(UnsupportedFeatureError, match="cannot be forked"):
         await env.manager.fork(created.id, 1)
-    with pytest.raises(UnsupportedFeatureError, match="single background task"):
+    # Stopping one subagent works on Codex too (B112).
+    with pytest.raises(TaskNotFoundError):
         await env.manager.stop_task(created.id, "task-1")
 
     assert rewound.value.payload() == {

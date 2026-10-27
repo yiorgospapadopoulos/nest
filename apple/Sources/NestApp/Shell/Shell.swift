@@ -1155,8 +1155,11 @@ final class Shell {
         let bash =
             Pixie.id(ofRepo: draftKey) == nil
             && ComposerInput.canRunShell(in: sessions.session(session))
-        // `#` saves to CLAUDE.md, which only Claude Code reads (B91).
-        return ComposerInput.of(text, bash: bash, memory: supports(.memory, chat: draftKey))
+        // `#` saves to CLAUDE.md, which only Claude Code reads (B91), or in a pixie's chat
+        // to the pixie's memory on every engine (B112).
+        let memory = ComposerInput.offersMemory(
+            in: sessions.session(session), engineSaves: supports(.memory, chat: draftKey))
+        return ComposerInput.of(text, bash: bash, memory: memory)
     }
 
     /// The chat a composer's `#` and `!` act on; nil before the chat exists.

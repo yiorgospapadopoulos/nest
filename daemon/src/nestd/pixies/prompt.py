@@ -59,8 +59,7 @@ instructions.
 - Answer the calling chat concisely."""
 # Only a team's leader calls pixies (B70).
 NO_PIXIE_CALLS = (
-    "- You call no pixies. For help, use Claude Code's ordinary subagents, such as Explore"
-    " or general-purpose."
+    "- You call no pixies. For help, use your engine's own ordinary subagents, if it has any."
 )
 
 QUOTE_NOTE = (

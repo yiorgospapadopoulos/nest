@@ -61,6 +61,13 @@ SESSION_AGENTS: Final = "session.agents"
 # A subagent or background command the engine runs as a task started, moved to the
 # background or finished; stored, possibly between turns. Tracking reads it.
 SESSION_AGENT_TASK: Final = "session.agent_task"
+# The whole task list an engine's own plan reports (Codex, ACP; B112): `{steps: [{text,
+# status}], parent_tool_use_id}`, null for the main agent, else the call that started the
+# subagent or called pixie. Stored; tracking reads it as Claude's TaskCreate and TaskUpdate.
+SESSION_PLAN: Final = "session.plan"
+# A pixie called with call_pixie paused at the usage limit (`paused: true`) or went on
+# (`false`), `{tool_use_id, paused}` (B112). Stored; tracking shows it on the call's row.
+SESSION_AGENT_PAUSED: Final = "session.agent_paused"
 # The session's queued follow-up messages after any change, oldest first (D032); those
 # written into the running turn are `sent` until the agent reads them (B59).
 SESSION_QUEUED: Final = "session.queued"
