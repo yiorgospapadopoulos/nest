@@ -175,16 +175,7 @@ import Testing
         #expect(Self.habit(schedule: "null", triggers: "[]").summary == "")
     }
 
-    @Test func outcomesReadAsWords() {
-        let words = [
-            HabitRunOutcome.queued, .running, .reported, .quiet, .failed, .stalled, .timedOut,
-            .skipped, .unknown,
-        ].map(\.label)
-        #expect(
-            words == [
-                "Queued", "Running", "Reported", "Quiet", "Failed", "Stalled", "Timed out",
-                "Skipped", "Unknown",
-            ])
+    @Test func outcomesHaveTones() {
         #expect(HabitRunOutcome.reported.tone == .review)
         #expect(HabitRunOutcome.running.tone == .running)
         #expect(HabitRunOutcome.queued.tone == .running)

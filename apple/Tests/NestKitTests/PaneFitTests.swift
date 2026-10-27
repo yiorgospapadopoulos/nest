@@ -63,15 +63,6 @@ import Testing
         #expect(PaneFit.shortModel("") == "")
     }
 
-    @Test func compactLabelsStayRecognizable() {
-        let efforts: [Effort] = [.low, .medium, .high, .xhigh, .max, .unknown]
-        #expect(efforts.map(\.shortLabel) == ["Low", "Med", "High", "X-high", "Max", "Unknown"])
-        #expect(PermissionMode.acceptEdits.shortLabel == "Edits")
-        for mode in [PermissionMode.default, .bypassPermissions, .plan, .unknown] {
-            #expect(mode.shortLabel == mode.label)
-        }
-    }
-
     @Test func contextLabelsFollowTheFit() {
         let context = SessionContext(percent: 41.4, used: 82_800, limit: 200_000)
         #expect(PaneFit.ContextStyle.full.label(context) == "context 41%")

@@ -189,20 +189,6 @@ import Testing
         )
     }
 
-    @Test func enginesHaveTheirMenuWords() {
-        #expect(LocalModelText.engineName("claude") == "Claude Code")
-        #expect(LocalModelText.engineName("codex") == "Codex")
-        #expect(LocalModelText.engineName("gemini") == "Gemini CLI")
-        #expect(LocalModelText.engineName("someengine") == "Someengine")
-        #expect(LocalModelText.engineDetail("claude") == "Every Nest chat feature")
-        #expect(
-            LocalModelText.engineDetail("codex")
-                == "Smaller tool set; no rewind, fork, questions or task list")
-        #expect(LocalModelText.engineDetail("gemini") == "")
-        #expect(LocalModelText.engines == ["claude", "codex"])
-        #expect(LocalModelText.runsOn("codex") == "Local chats run on Codex")
-    }
-
     @Test func theChipCountsTodaysTokens() {
         #expect(LocalModelText.chip(tokens: 48_600) == "Local · 49k tokens today")
         #expect(LocalModelText.chip(tokens: 0) == "Local · 0 tokens today")

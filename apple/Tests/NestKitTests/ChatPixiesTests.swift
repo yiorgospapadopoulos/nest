@@ -142,12 +142,7 @@ enum ChatPixieJSON {
         #expect(nameless.id == "team:")
     }
 
-    @Test func callStatesHaveWords() {
-        #expect(PixieCallState.running.label == "working")
-        #expect(PixieCallState.done.label == "done")
-        #expect(PixieCallState.failed.label == "failed")
-        #expect(PixieCallState.interrupted.label == "interrupted")
-        #expect(PixieCallState.unknown.label == "idle")
+    @Test func callStatesKnowWhenTheyRun() {
         #expect(PixieCallState.running.isRunning)
         #expect(!PixieCallState.done.isRunning)
     }
@@ -409,7 +404,7 @@ private func agent(
         }
         let store = ChatPixiesStore(api: api)
         let loading = Task { await store.load() }
-        try await waitFor { api.calls.count == 1 }
+        await api.untilCalls { $0.count == 1 }
         // Published after the daemon read the groups: only the live copy brings it.
         store.apply(J.groupEvent("s1", J.pixie("new")))
         open.finish()

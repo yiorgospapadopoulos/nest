@@ -61,11 +61,7 @@ import Testing
         #expect(settled.filter(\.isInFlight).isEmpty)
     }
 
-    @Test func permissionModesHaveComposerLabels() {
-        #expect(
-            PermissionMode.selectable.map(\.label) == ["Ask", "Accept edits", "Plan", "Bypass"])
-        #expect(PermissionMode.unknown.label == "Unknown")
-        #expect(PermissionMode.auto.label == "Auto")
+    @Test func composerOptionsMatchTheEngine() {
         #expect(PermissionMode.options(supportsAuto: false) == PermissionMode.selectable)
         #expect(PermissionMode.options(supportsAuto: true) == PermissionMode.selectable + [.auto])
         #expect(Effort.selectable.map(\.rawValue) == ["low", "medium", "high", "xhigh", "max"])

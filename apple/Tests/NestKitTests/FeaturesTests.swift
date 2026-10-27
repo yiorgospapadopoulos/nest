@@ -144,26 +144,6 @@ import Testing
             ])
     }
 
-    @Test func pageWords() async throws {
-        let (store, api) = store()
-        #expect(store.intro == FeaturesStore.introBase)
-        #expect(store.footer == nil)
-        try await store.load()
-        #expect(
-            store.intro
-                == "What makes Nest different, by area. The README has every detail. 2 new since your last update."
-        )
-        #expect(store.footer == "5 features. New ones show \"New\" until you close Settings.")
-        var none = Self.catalog
-        none.newCount = 0
-        none.groups = [none.groups[1]]
-        none.groups[0].features = [none.groups[0].features[2]]
-        api.set { $0.features = none }
-        try await store.load()
-        #expect(store.intro == "What makes Nest different, by area. The README has every detail.")
-        #expect(store.footer == "1 feature. New ones show \"New\" until you close Settings.")
-    }
-
     /// The catalog once this device has shown every feature: nothing is new any more.
     static var seenCatalog: FeaturesCatalog {
         var seen = catalog

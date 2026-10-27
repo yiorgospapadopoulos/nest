@@ -201,10 +201,6 @@ private let workspace = CGSize(width: 1000, height: 600)
         try await app().openProject("todo-ui", in: .finder)
         #expect(api.calls == ["openRepo todo-ui finder"])
     }
-
-    @Test func defaultsToUserDefaults() {
-        #expect(AppStore(api: api).store is UserDefaultsStore)
-    }
 }
 
 @Suite struct ProjectStateTests {

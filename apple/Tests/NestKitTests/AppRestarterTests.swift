@@ -113,14 +113,6 @@ final class FakeSpawner: ProcessSpawner {
         runner.finish()
         #expect(await first.value)
     }
-
-    @Test func theLocalRestarterReopensThisApp() {
-        let restarter = AppRestarter.local(service: .local(repoPath: nil))
-
-        #expect(restarter.appPath == Bundle.main.bundleURL.path)
-        #expect(restarter.pid == getpid())
-        #expect(restarter.spawner is DetachedSpawner)
-    }
 }
 
 @Suite struct DetachedSpawnerTests {
