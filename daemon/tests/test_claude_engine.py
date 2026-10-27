@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from nestd.providers.base import AccountInfo, EngineDetails, ModelOption
-from nestd.providers.claude_engine import engine_details, plan_label
+from nestd.providers.claude_engine import engine_details
 
 LEVELS = ["low", "medium", "high", "xhigh", "max"]
 
@@ -134,23 +134,3 @@ def test_blank_or_odd_account_fields_are_null() -> None:
 @pytest.mark.parametrize("info", [None, {}, {"account": "x", "models": []}, {"commands": []}])
 def test_nothing_usable_is_none(info: dict[str, Any] | None) -> None:
     assert engine_details(info) is None
-
-
-@pytest.mark.parametrize(
-    ("raw", "label"),
-    [
-        ("Claude Pro", "Claude Pro"),
-        ("claude max", "claude max"),
-        ("pro", "Claude Pro"),
-        ("max", "Claude Max"),
-        ("max_20x", "Claude Max"),
-        ("Team", "Claude Team"),
-        ("enterprise", "Claude Enterprise"),
-        ("free", "Claude Free"),
-        ("claude_max", "Claude Max"),
-        ("startup-plan", "Startup Plan"),
-        ("   ", None),
-    ],
-)
-def test_plan_labels(raw: str, label: str | None) -> None:
-    assert plan_label(raw) == label

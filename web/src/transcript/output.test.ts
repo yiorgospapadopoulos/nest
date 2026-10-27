@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { outputPreview, PREVIEW_CHARS, PREVIEW_LINES } from "./output.ts";
 

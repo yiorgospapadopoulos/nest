@@ -15,6 +15,7 @@ from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
 from tests.acp_engine_support import FakeNpm, acp_setup
 from tests.codex_support import FakeAppServer
+from tests.db_support import migrated_copy
 from tests.fake_claude import FakeClaude, locations
 from tests.fake_engine import FakeInfoFactory
 from tests.fake_opener import FakeOpener
@@ -80,8 +81,14 @@ async def build_context(
     npm: FakeNpm | None = None,
 ) -> AppContext:
     record = log if log is not None else []
+    paths = make_paths(
+        tmp_path, ["recorder"] if log is not None else None, token_socket, codex_home
+    )
+    # A database already there, as after a restart, is kept.
+    if not paths.db_path.exists():
+        await migrated_copy(paths.db_path)
     return await AppContext.build(
-        make_paths(tmp_path, ["recorder"] if log is not None else None, token_socket, codex_home),
+        paths,
         secrets,
         clock,
         {"recorder": lambda: RecordingModule(record)},

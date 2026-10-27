@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { HabitSchedule } from "../../api/types.ts";
 import { habitRun } from "../../test/fixtures.ts";

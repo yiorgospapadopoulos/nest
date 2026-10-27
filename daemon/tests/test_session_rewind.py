@@ -205,6 +205,7 @@ async def test_a_message_sent_while_restoring_starts_afterwards(env: Env) -> Non
 
 async def test_changed_files_are_named_from_the_chats_folder(env: Env) -> None:
     """B59: the rewind sheet lists `src/a.ts`, not the full path; outside files stay whole."""
+    env.use_worktrees()
     env.provider.script(echoed("msg-1", reply("one")))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)

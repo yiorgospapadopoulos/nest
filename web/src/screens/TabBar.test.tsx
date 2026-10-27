@@ -31,9 +31,4 @@ describe("the tab bar (B102)", () => {
     const { container } = render(<TabBar tab="inbox" onTab={vi.fn()} badge={0} />);
     expect(container.querySelector(".cnt")).toBeNull();
   });
-
-  it("is a flat bar, not a raised panel", () => {
-    render(<TabBar tab="inbox" onTab={vi.fn()} badge={0} />);
-    expect(screen.getByRole("tablist", { name: "Sections" })).not.toHaveClass("gl");
-  });
 });

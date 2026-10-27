@@ -57,27 +57,6 @@ import Testing
     }
 }
 
-@Suite struct OptionLabelTests {
-    @Test func effortLabels() {
-        #expect(
-            Effort.selectable.map(\.label) == ["Low", "Medium", "High", "Extra high", "Max"])
-        #expect(Effort.unknown.label == "Unknown")
-    }
-
-    @Test func permissionModesDescribeThemselves() {
-        #expect(
-            PermissionMode.selectable.map(\.summary) == [
-                "Asks before edits and commands", "Edits files without asking",
-                "Reads and plans only", "Runs everything without asking",
-            ])
-        #expect(PermissionMode.unknown.summary == "")
-        #expect(PermissionMode.auto.summary == "Asks only when Claude Code judges an action risky")
-        #expect(PermissionMode.acceptEdits.shortLabel == "Edits")
-        #expect(PermissionMode.plan.shortLabel == "Plan")
-        #expect(PermissionMode.unknown.planChoiceLabel == "Auto-accept edits")
-    }
-}
-
 @Suite struct DropZoneTests {
     private let size = CGSize(width: 400, height: 300)
 

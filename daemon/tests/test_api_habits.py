@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from nestd.pixies.reporting import FromRun
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
@@ -14,8 +14,10 @@ from tests.pixie_nest_support import idle
 
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
-    async with running_api(tmp_path, clock, secrets) as running:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         yield running
 
 
@@ -103,6 +105,7 @@ async def test_habit_crud(api: Api) -> None:
     assert after.json() == []
 
 
+@pytest.mark.loops
 async def test_run_now_and_the_history(api: Api) -> None:
     pid = await pixie(api)
     hid = (await api.http.post(f"/api/pixies/{pid}/habits", json=HABIT)).json()["id"]

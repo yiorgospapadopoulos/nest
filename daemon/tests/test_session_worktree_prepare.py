@@ -77,6 +77,7 @@ def test_names_that_only_start_like_git_are_links_like_any_other() -> None:
 
 async def test_a_link_that_cannot_be_made_does_not_stop_the_chat(env: Env) -> None:
     """BUG-96: `conf` is tracked as a file, while the main checkout has a folder there."""
+    env.use_worktrees()
     commit_file(env.repo_path, "conf", "tracked\n")
     git(env.repo_path, "rm", "-q", "--cached", "conf")
     (env.repo_path / "conf").unlink()
@@ -99,6 +100,7 @@ async def test_a_nudge_during_setup_lets_it_finish_before_the_prompt(env: Env) -
     """BUG-95: the prompt never reaches the agent in a worktree that missed its setup; the
     nudge's message follows it, as when it comes while the run opens (D036).
     """
+    env.use_worktrees()
     await env.register(
         WorktreeConfig(setup=["touch started; while [ ! -f go ]; do sleep 0.02; done; touch ran"])
     )

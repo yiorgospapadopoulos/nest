@@ -500,7 +500,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["deleteAttachment"] = gate.stream }
         let deleting = Task { try await store.delete(first) }
-        try await waitFor { store.deleting.contains("a1") }
+        await api.reached("deleteAttachment")
+        #expect(store.deleting.contains("a1"))
         gate.continuation.finish()
         try await deleting.value
         #expect(store.deleting.isEmpty)
@@ -519,7 +520,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["rebuildSearch"] = gate.stream }
         let task = Task { try await store.rebuildSearch() }
-        try await waitFor { store.isRebuilding }
+        await api.reached("rebuildSearch")
+        #expect(store.isRebuilding)
         gate.continuation.finish()
         try await task.value
         #expect(!store.isRebuilding)
@@ -572,7 +574,8 @@ import Testing
             $0.github.state = .signedOut
         }
         let task = Task { try await store.checkGitHub() }
-        try await waitFor { store.isCheckingGitHub }
+        await api.reached("checkGitHubAccount")
+        #expect(store.isCheckingGitHub)
         gate.continuation.finish()
         try await task.value
         #expect(!store.isCheckingGitHub)
@@ -741,7 +744,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["installPlugin"] = gate.stream }
         let task = Task { try await store.installPlugin("lint@official") }
-        try await waitFor { store.busy.contains("lint@official") }
+        await api.reached("installPlugin")
+        #expect(store.busy.contains("lint@official"))
         gate.continuation.finish()
         try await task.value
         #expect(store.plugins?.map(\.id) == ["pdf@official", "lint@official"])

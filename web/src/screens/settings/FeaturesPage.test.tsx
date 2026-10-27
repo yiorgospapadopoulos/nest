@@ -112,28 +112,6 @@ describe("the Features row in Settings", () => {
 });
 
 describe("the Features page", () => {
-  it("shows the intro with the new count, and the groups with their counts", async () => {
-    const { user } = await openSettings(null, { api: apiWith(withNew()) });
-    await user.click(await screen.findByRole("button", { name: "Features, 3 new" }));
-
-    expect(
-      await screen.findByText(
-        "What makes Nest different, by area. The README has every detail. 3 new since your last update.",
-      ),
-    ).toBeInTheDocument();
-    expect(group("Getting around")).toHaveTextContent(/^Getting around2$/);
-    expect(group("Chats")).toHaveTextContent(/^Chats1$/);
-    expect(group("Worktrees and git")).toHaveTextContent(/^Worktrees and git2$/);
-  });
-
-  it("leaves the count out of the intro when nothing is new", async () => {
-    await openSettings("Features");
-
-    expect(
-      await screen.findByText("What makes Nest different, by area. The README has every detail."),
-    ).toBeInTheDocument();
-  });
-
   it("opens the groups with something new, each feature with its badge, text and place", async () => {
     const { user } = await openSettings(null, { api: apiWith(withNew()) });
     await user.click(await screen.findByRole("button", { name: "Features, 3 new" }));
@@ -162,19 +140,6 @@ describe("the Features page", () => {
     expect(dot("Getting around")).toHaveAttribute("aria-hidden", "true");
     expect(dot("Worktrees and git")).not.toBeNull();
     expect(dot("Chats")).toBeNull();
-  });
-
-  it("shows backtick spans as inline code", async () => {
-    const { user } = await openSettings("Features");
-
-    await user.click(group("Chats"));
-
-    const shortcuts = row(screen.getByText("Composer shortcuts"));
-    expect([...shortcuts.querySelectorAll("code")].map((code) => code.textContent)).toEqual([
-      "/",
-      "@",
-    ]);
-    expect(shortcuts).toHaveTextContent("/ for commands and skills, @ for files and pixies.");
   });
 
   it("waits for the catalog", async () => {

@@ -77,6 +77,7 @@ async def test_archive_and_unarchive(env: Env, clock: FakeClock) -> None:
 async def test_archiving_a_working_session_closes_its_run_and_keeps_the_worktree(
     env: Env,
 ) -> None:
+    env.use_worktrees()
     env.provider.script(ask("Bash", hang()))
     created = await env.create()
     session = await env.reach(created.id, SessionState.WAITING)

@@ -7,7 +7,13 @@ import { claudeProvider, codexProvider, usagePeriod, usageSettings } from "../..
 import { memoryStorage } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
-const openUsage = (api = fakeApi()) => openSettings("Usage", { api });
+// Clicked through from the list: opened from its address, the page asks for other engines'
+// limits before the engines have loaded, and Codex's never show (I-note, B111).
+async function openUsage(api = fakeApi()) {
+  const rendered = await openSettings(null, { api });
+  await rendered.user.click(await screen.findByRole("button", { name: "Usage" }));
+  return rendered;
+}
 
 describe("usage page", () => {
   it("shows the limits and the period, with the usage settings under them", async () => {

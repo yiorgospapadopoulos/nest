@@ -61,12 +61,7 @@ typeCheckingMode = "strict"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = [
-    "--cov=nestd",
-    "--cov-branch",
-    "--cov-report=term-missing",
-    "--strict-markers",
-]
+addopts = ["--strict-markers"]
 # Starlette's TestClient falls back to httpx with a deprecation warning when httpx2 is missing
 # (I-004); httpx2 is a dev dependency, and the fallback fails the run instead of warning.
 filterwarnings = ["error::starlette.exceptions.StarletteDeprecationWarning"]

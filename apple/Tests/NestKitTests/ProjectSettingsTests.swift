@@ -78,7 +78,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["updateRepo"] = gate.stream }
         let first = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("a") } }
-        try await waitFor { app.isSavingSettings(of: "todo-ui") }
+        await api.reached("updateRepo")
+        #expect(app.isSavingSettings(of: "todo-ui"))
         let second = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("b") } }
         try await Task.sleep(for: .milliseconds(20))
         #expect(!api.calls.contains { $0.hasPrefix("updateRepo") })
@@ -115,7 +116,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["updateRepo"] = gate.stream }
         let links = Task { try await app.changeSettings(of: "todo-ui") { $0.addLink("a") } }
-        try await waitFor { app.isSavingSettings(of: "todo-ui") }
+        await api.reached("updateRepo")
+        #expect(app.isSavingSettings(of: "todo-ui"))
         let sprite = Task { try await app.changeIcon(of: "todo-ui") { $0.mascot = .moth } }
         try await Task.sleep(for: .milliseconds(20))
         gate.continuation.finish()

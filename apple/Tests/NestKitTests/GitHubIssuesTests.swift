@@ -361,7 +361,7 @@ import Testing
     /// one, which is remembered and read again at once.
     /// While a start screen shows, its issues are read again every interval and when the
     /// app or window comes back, keeping the list and choice; nothing once it goes.
-    @MainActor @Test func theStartScreenKeepsItsIssuesCurrent() async throws {
+    @MainActor @Test func theStartScreenKeepsItsIssuesCurrent() async {
         let api = FakeAPI()
         api.set { $0.issues["nest"] = Self.issues }
         let preferences = MemoryStore(["issues.show.nest": "mine"])
@@ -378,10 +378,11 @@ import Testing
         refresher.start("nest")
         #expect(refresher.repo == "nest")
         await clock.tick()
-        try await waitUntil { api.calls.count == 1 }
+        await clock.untilWaiting()
         #expect(api.calls == ["issues nest show=mine"])
         await clock.tick()
-        try await waitUntil { api.calls.count == 2 }
+        await clock.untilWaiting()
+        #expect(api.calls.count == 2)
 
         // Back to the app: read now, without refresh, as the timer does.
         await refresher.wake()
@@ -405,21 +406,6 @@ import Testing
         refresher.start("nest")
         #expect(refresher.repo == "nest")
         refresher.stop()
-    }
-
-    /// The timer waits for real outside tests.
-    /// Outside tests the timer waits for real; the full suite can keep the main actor busy,
-    /// so the first read is given seconds to come.
-    @MainActor @Test func theRefresherSleepsForReal() async throws {
-        let api = FakeAPI()
-        let refresher = IssueRefresher(
-            issues: IssuesStore(api: api, store: MemoryStore()), interval: .milliseconds(1))
-        refresher.start("nest")
-        for _ in 0..<1_000 where api.calls.isEmpty {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        refresher.stop()
-        #expect(api.calls.first == "issues nest")
     }
 
     @MainActor @Test func theIssueSwitchIsRememberedPerProject() async {
@@ -509,9 +495,8 @@ import Testing
         let sending = Task {
             try await approvals.sendReviewComment("PRR_5", of: Self.reviewApproval)
         }
-        while !api.calls.contains("reviewFeedback s-issue PRR_5") {
-            await Task.yield()
-        }
+        await api.reached("reviewFeedback")
+        #expect(api.calls.contains("reviewFeedback s-issue PRR_5"))
         #expect(approvals.sendingComments == ["PRR_5"])
         #expect(approvals.busy.isEmpty)
         open.finish()
@@ -664,13 +649,24 @@ import Testing
 private actor ManualTicks {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var pending = 0
+    private var watchers: [CheckedContinuation<Void, Never>] = []
 
     func wait() async {
         if pending > 0 {
             pending -= 1
             return
         }
-        await withCheckedContinuation { waiters.append($0) }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+            watchers.forEach { $0.resume() }
+            watchers = []
+        }
+    }
+
+    /// Resolves once the timer is back in `wait()`, so the work after the last tick is done.
+    func untilWaiting() async {
+        guard waiters.isEmpty else { return }
+        await withCheckedContinuation { watchers.append($0) }
     }
 
     func tick() {

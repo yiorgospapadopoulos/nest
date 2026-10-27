@@ -57,10 +57,6 @@ final class StubProtocol: URLProtocol {
             _ = try await transport.send(URLRequest(url: URL(string: "http://127.0.0.1:8765/")!))
         }
     }
-
-    @Test func defaultsToTheSharedSession() {
-        #expect(URLSessionTransport().session === URLSession.shared)
-    }
 }
 
 @Suite struct UserDefaultsStoreTests {

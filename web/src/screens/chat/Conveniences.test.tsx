@@ -5,7 +5,7 @@ import type { Approval, NestEvent, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { commandList, detail, event, plan, repo, session } from "../../test/fixtures.ts";
-import { renderApp } from "../../test/render.tsx";
+import { renderApp, typeAndWait } from "../../test/render.tsx";
 
 interface Setup {
   chat?: Session;
@@ -181,8 +181,7 @@ describe("file mentions", () => {
     expect(field).toHaveValue("Look at @src/app.py ");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
-    await user.type(field, "and me@x");
-    await act(() => new Promise((done) => setTimeout(done, 200)));
+    await typeAndWait(user, field, "and me@x", 200);
     expect(api.files).toHaveBeenCalledTimes(1);
   });
 
@@ -226,8 +225,7 @@ describe("file mentions", () => {
     await user.click(screen.getByRole("tab", { name: "Chats" }));
     await user.click(screen.getByRole("button", { name: "New chat in todo-ui" }));
 
-    await user.type(screen.getByLabelText("Message"), "@src");
-    await act(() => new Promise((done) => setTimeout(done, 200)));
+    await typeAndWait(user, screen.getByLabelText("Message"), "@src", 200);
     expect(api.files).not.toHaveBeenCalled();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });

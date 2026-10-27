@@ -274,11 +274,11 @@ import Testing
         let token = DeviceToken("")
         model.tokens = (daemon, token)
         let run = Task { await model.runLive() }
-        try await waitFor { source.count == 1 }
+        await source.until(count: 1)
 
         daemon.token.withLock { $0 = "tok" }
         source.latest?.finish(throwing: EventStreamError.unauthorized)
-        try await waitFor { source.count == 2 }
+        await source.until(count: 2)
         #expect(token.current == "tok")
 
         source.latest?.yield(.connected(resumed: false))
@@ -293,7 +293,7 @@ import Testing
         let model = AppModel(api: api, events: source, preferences: MemoryStore())
         model.tokens = (TokenStub(token: "same"), DeviceToken("same"))
         let run = Task { await model.runLive() }
-        try await waitFor { source.count == 1 }
+        await source.until(count: 1)
 
         source.latest?.finish(throwing: EventStreamError.unauthorized)
         await run.value
@@ -309,7 +309,7 @@ import Testing
         daemon.failure.withLock { $0 = .noAnswer }
         model.tokens = (daemon, DeviceToken("old"))
         let run = Task { await model.runLive() }
-        try await waitFor { source.count == 1 }
+        await source.until(count: 1)
 
         source.latest?.finish(throwing: EventStreamError.unauthorized)
         await run.value
@@ -323,14 +323,21 @@ import Testing
 final class ReconnectingSource: EventSource {
     typealias Continuation = AsyncThrowingStream<EventStreamUpdate, any Error>.Continuation
     private let streams = Mutex<[Continuation]>([])
+    private let changes = Changes()
 
     var count: Int { streams.withLock { $0.count } }
     var latest: Continuation? { streams.withLock { $0.last } }
+
+    /// Ends once `count` streams were asked for.
+    func until(count: Int) async {
+        await changes.until { [self] in self.count >= count }
+    }
 
     func updates() -> AsyncThrowingStream<EventStreamUpdate, any Error> {
         let (stream, continuation) = AsyncThrowingStream<EventStreamUpdate, any Error>
             .makeStream()
         streams.withLock { $0.append(continuation) }
+        changes.note()
         return stream
     }
 }

@@ -6,17 +6,22 @@ from pathlib import Path
 import pytest
 
 from nestd.events import types
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.fake_provider import reply, until_interrupted
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import init_repo
 from tests.test_api_sessions import create, notified, reach
 
+# The stuck watcher ticks on its own timer (B111).
+pytestmark = pytest.mark.loops
+
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
-    async with running_api(tmp_path, clock, secrets) as running:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         await running.http.post("/api/repos", json={"path": str(init_repo(tmp_path / "repo"))})
         yield running
 

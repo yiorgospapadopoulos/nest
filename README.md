@@ -37,11 +37,12 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 
 ```bash
 make install   # install daemon and web dependencies
-make check     # every quality gate: format, lint, types, tests with a coverage report, build, audit
+make check     # every quality gate: format, lint and types of every part first, then tests and builds, then audits
 make check-changed  # the gates of only the parts changed since the merge base with main (BASE=origin/main to change it)
 make fmt       # auto-format and auto-fix lint
-make test      # tests only
-make check-apple  # Swift lint, build, tests with a NestKit coverage report
+make test      # tests only (and the web and Mac builds)
+make coverage  # the coverage report of every part (not part of the gates)
+make check-apple  # Swift lint, then one build of the app and its tests, then the tests
 make app       # build apple/build/Nest.app (signed with "Nest Local Signing" when present, else ad hoc; D042)
 make run-app   # build and open the Mac app
 make install-app  # build and copy Nest.app into /Applications
@@ -49,9 +50,9 @@ make tokens    # regenerate design token outputs
 make icon      # render the app icon PNGs from the icon pixie's sprite and build AppIcon.icns (D120)
 ```
 
-The daemon tests in `make check`, `make check-daemon` and `make test` run in 4 parallel worker processes (pytest-xdist) by default; `PYTEST_WORKERS=auto make check` uses one per core and `PYTEST_WORKERS=0` runs one process. Coverage from the workers is merged into one report. A targeted run such as `cd daemon && uv run pytest tests/test_cli.py` stays single-process unless `-n` is given. See D125.
+The daemon tests in `make check`, `make check-daemon` and `make test` run in 4 parallel worker processes (pytest-xdist) by default; `PYTEST_WORKERS=auto make check` uses one per core and `PYTEST_WORKERS=0` runs one process. The gates run without coverage; `make coverage` merges the workers' coverage into one report. A targeted run such as `cd daemon && uv run pytest tests/test_cli.py` stays single-process unless `-n` is given. See D125.
 
-`make check-changed` asks `nestd gates changed` which parts the work touched since the merge base with `BASE` (default `main`), counting committed, staged, unstaged and untracked files, prints why, and runs only those gates in `make check`'s order. A file in `daemon/`, `web/` or `apple/` runs that part; `design/` and the generator in `daemon/src/nestd/design/` run all three; the generated token and icon files run their part and the daemon, whose tests check them; `README.md`, `LICENSE` and `docs/` run nothing; anything else (the `Makefile`, `.github/`, a new top-level folder) runs everything, as does a failure to work the parts out. It is the gate for work in a worktree; the full `make check` runs before merging into `main` and after cross-cutting changes. See D125.
+`make check-changed` asks `nestd gates changed` which parts the work touched since the merge base with `BASE` (default `main`), counting committed, staged, unstaged and untracked files, prints why, and runs only those gates in `make check`'s order (the lint stage of each part, then the tests, then the audits). A file in `daemon/`, `web/` or `apple/` runs that part; `design/` and the generator in `daemon/src/nestd/design/` run all three; the generated token and icon files run their part and the daemon, whose tests check them; `README.md`, `LICENSE` and `docs/` run nothing; anything else (the `Makefile`, `.github/`, a new top-level folder) runs everything, as does a failure to work the parts out. It is the gate for work in a worktree; the full `make check` runs before merging into `main` and after cross-cutting changes. See D125.
 
 CI: `.github/workflows/check.yml` is set to run `make check-daemon` and `make check-web` on GitHub Actions (`ubuntu-latest`) for every push and pull request. Off `main`, a first job runs `nestd gates changed` against `origin/main` (or the pull request's base) and each job runs only when its part changed, by the same rules; on `main` both always run. The Swift gates run only locally (`make check-apple`). See D066 and D071.
 
@@ -439,7 +440,9 @@ All routes need a device token (`Authorization: Bearer <token>` or the `nest_tok
 | Local apps | `POST /api/sessions/{id}/open-in-claude-code` (closes the chat's idle agent run first), `POST /api/repos/{name}/open` (`vscode`, `finder`, `terminal`) |
 | Events | `WS /api/events?after=<id>` (replay, then live; text deltas, `session.thinking`, `session.thinking_delta` and `session.subagent_delta` (`{text, parent_tool_use_id}`), `claude_chats.updated` and live `session.agents` updates during a turn arrive with `id: null`; revoking a device closes its sockets with 4401; `session.notice` `{kind: compacted\|cleared\|model_fallback\|api_retry\|command_output\|files_restored, text}` marks Claude Code's own notices; `session.hook` `{hook_id, hook_name, hook_event, outcome, exit_code, system_message, output}` is a hook's message for the user or its failure (D086); `session.result` has no cost (the context meter replaces it, D086) and carries `handoff: true` when the turn ended only to make way for the next message, or `stopped: true` when the user stopped it, or `limit: true` when the usage limit cut it off and paused the chat, none of which is a failure (D087, D101); `session.limit_paused` `{limit_pause}` and `session.limit_cleared` `{reason: reset\|resumed\|stopped\|archived\|closed}` follow a chat's usage limit pause, each after the `session.updated` of `limit_pause` (D101); `session.queued` lists pending messages with `sent`; `session.rewound` `{message, through, text, attachments}` says the session's events `message` to `through` were deleted by a conversation rewind (D087); `session.updated` with `changes: {git_violation}` follows every set or clear of the violation flag; `session.workspace` lists the worktree's links as `linked`, `missing`, `existing` and `failed`; a turn that ends with an engine error ends with `session.state` `failed` and its reason) |
 
-Tests cover what matters (core behaviour, risky logic, important failure paths and every fixed bug), not a coverage number. Each part prints its coverage; no gate fails on a percentage (D131).
+Tests cover what matters (core behaviour, risky logic, important failure paths and every fixed bug), not a coverage number. `make coverage` prints each part's coverage; no gate measures or fails on a percentage (D131, D137).
+
+Tests stay fast and deterministic (D137): they wait for an event or a signal from a fake, never for a wall-clock deadline or a real sleep. Daemon API tests start the background loops only when a test is about one; daemon tests copy a migrated template database and template repositories, and chats work in place unless a test is about worktrees.
 
 ## License
 

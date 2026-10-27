@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { artifact, session } from "../../test/fixtures.ts";
 import { KIND_ICONS, KIND_LABELS, chatScopes, originOf, pixieScopes } from "./view.ts";

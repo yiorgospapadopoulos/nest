@@ -300,7 +300,8 @@ private func date(_ text: String) -> Date {
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["usagePeriod"] = gate.stream }
         let task = Task { try await usage.loadPeriod() }
-        try await waitFor { usage.isLoading }
+        await api.reached("usagePeriod")
+        #expect(usage.isLoading)
         gate.continuation.finish()
         try await task.value
         #expect(!usage.isLoading)

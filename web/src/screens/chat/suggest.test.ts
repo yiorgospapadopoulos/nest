@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { commandList } from "../../test/fixtures.ts";
 import { matchCommands, replaceTrigger, soulLine, triggerAt } from "./suggest.ts";

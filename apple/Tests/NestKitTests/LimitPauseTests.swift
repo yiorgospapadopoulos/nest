@@ -176,9 +176,8 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         }
         try await store.load()
         let resuming = Task { try await store.resumeAfterLimit("s1") }
-        while !api.calls.contains("resumeLimit s1") {
-            await Task.yield()
-        }
+        await api.reached("resumeLimit")
+        #expect(api.calls.contains("resumeLimit s1"))
         #expect(store.resumingLimit == ["s1"])
         open.finish()
         try await resuming.value

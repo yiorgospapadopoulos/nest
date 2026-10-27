@@ -117,6 +117,7 @@ async def test_a_nudge_while_the_worktree_is_created_keeps_the_prompt(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """BUG-58: cut off before it was shown, the prompt is shown when it goes to the agent."""
+    env.use_worktrees()
     started, release = gate_worktree_add(monkeypatch)
     env.provider.script(reply("on it"), reply("answer to the nudge"))
     created = await env.create()
@@ -474,6 +475,7 @@ async def test_a_send_while_the_worktree_is_removed_is_refused(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """BUG-53: closing keeps the session's live state, marked stopped, until it is closed."""
+    env.use_worktrees()
     env.provider.script(reply("done"), reply("never"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)

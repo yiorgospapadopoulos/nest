@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { Goal, JsonValue, Session, TrackedTask } from "../../api/types.ts";
@@ -135,25 +135,13 @@ describe("the project's goals under Needs you (B47, B102 item 11)", () => {
     const { sockets } = await renderApp({ api });
     const loads = api.approvals.mock.calls.length;
 
-    const count = sockets.sockets.length;
-    act(() => {
-      sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(sockets.sockets).toHaveLength(count + 1);
-      },
-      { timeout: 3000 },
-    );
-    act(() => {
-      sockets.last().open();
-    });
+    sockets.reconnect();
 
     await waitFor(() => {
       expect(api.approvals.mock.calls.length).toBeGreaterThan(loads);
     });
     expect(api.goals).not.toHaveBeenCalled();
-  }, 10_000);
+  });
 
   it("loads General's goals again after a reconnect that cannot resume (B110)", async () => {
     const api = withGoals([], [], []);
@@ -163,25 +151,13 @@ describe("the project's goals under Needs you (B47, B102 item 11)", () => {
     });
     const loads = api.goals.mock.calls.length;
 
-    const count = sockets.sockets.length;
-    act(() => {
-      sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(sockets.sockets).toHaveLength(count + 1);
-      },
-      { timeout: 3000 },
-    );
-    act(() => {
-      sockets.last().open();
-    });
+    sockets.reconnect();
 
     await waitFor(() => {
       expect(api.goals.mock.calls.length).toBeGreaterThan(loads);
     });
     expect(api.goals).toHaveBeenLastCalledWith("general");
-  }, 10_000);
+  });
 
   it("opens the chat from its name", async () => {
     const api = withGoals([FINISHED], [{ session_id: "f", tasks: PLAN }]);
@@ -242,25 +218,13 @@ describe("the project's goals under Needs you (B47, B102 item 11)", () => {
 
     // Meanwhile the user's next message cleared it, and the event was missed.
     api.goals.mockResolvedValue([]);
-    const count = sockets.sockets.length;
-    act(() => {
-      sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(sockets.sockets).toHaveLength(count + 1);
-      },
-      { timeout: 3000 },
-    );
-    act(() => {
-      sockets.last().open();
-    });
+    sockets.reconnect();
 
     await waitFor(() => {
       expect(screen.queryByRole("region", { name: "Goals" })).not.toBeInTheDocument();
     });
     expect(api.goals).toHaveBeenLastCalledWith("narwhal");
-  }, 10_000);
+  });
 
   it("keeps what it knows, without a message, when the goals cannot load", async () => {
     const api = withGoals([WORKING], []);

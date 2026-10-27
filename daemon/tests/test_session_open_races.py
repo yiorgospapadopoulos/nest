@@ -113,6 +113,7 @@ async def test_a_mode_the_engine_switched_to_itself_is_known_to_the_run(env: Env
 async def test_interrupting_while_the_worktree_is_created_keeps_the_chat_usable(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    env.use_worktrees()
     started, release = gate_worktree_add(monkeypatch)
     env.provider.script(reply("on it"))
     created = await env.create(PROMPT)
@@ -134,6 +135,7 @@ async def test_interrupting_while_the_worktree_is_created_keeps_the_chat_usable(
 async def test_closing_while_the_worktree_is_created_removes_it_and_keeps_its_branch(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    env.use_worktrees()
     started, release = gate_worktree_add(monkeypatch)
     created = await env.create(PROMPT)
     await asyncio.wait_for(started.wait(), 5)
@@ -156,6 +158,7 @@ async def test_closing_while_the_worktree_is_created_removes_it_and_keeps_its_br
 async def test_a_worktree_add_failing_after_an_interrupt_fails_the_session(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    env.use_worktrees()
     started, release = gate_worktree_add(monkeypatch, fail=True)
     created = await env.create(PROMPT)
     await asyncio.wait_for(started.wait(), 5)

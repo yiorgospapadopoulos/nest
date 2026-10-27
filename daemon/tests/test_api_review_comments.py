@@ -13,7 +13,7 @@ from nestd.gitops.runner import CommandError
 from nestd.prs.models import PrReview
 from nestd.prs.reviews import REPLY, parse_reviews
 from nestd.sessions.store import SessionStore
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.fake_provider import edit, reply
 from tests.fake_runner import PR_URL, pr_json
@@ -24,12 +24,17 @@ from tests.test_api_prs import opened, session_of
 from tests.test_api_review import approvals, approve, finished_with_changes
 from tests.test_api_sessions import create, notified, reach
 
+# The pull request monitor reads the review comments (B111).
+pytestmark = pytest.mark.loops
+
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
     repo = init_repo(tmp_path / "repo")
     with_origin(repo, tmp_path / "origin.git")
-    async with running_api(tmp_path, clock, secrets) as running:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         await running.http.post("/api/repos", json={"path": str(repo)})
         yield running
 

@@ -126,7 +126,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["runShell"] = gate.stream }
         let running = Task { await store.run("ls", chat: "s1") }
-        try await waitFor { !store.rows(chat: "s1").isEmpty }
+        await api.reached("runShell")
+        #expect(!store.rows(chat: "s1").isEmpty)
         #expect(store.rows(chat: "s1")[0].command == "ls")
         #expect(store.rows(chat: "s1")[0].isRunning)
         gate.continuation.finish()
@@ -160,7 +161,8 @@ import Testing
             $0.gates["runShell"] = AsyncStream<Void>.makeStream().stream
         }
         Task { await store.run("slow", chat: "s1") }
-        try await waitFor { store.rows(chat: "s1").count == 3 }
+        await api.reached("runShell")
+        #expect(store.rows(chat: "s1").count == 3)
 
         let outgoing = store.outgoing("Why?", chat: "s1")
         #expect(outgoing.text == "context of ls\n\nWhy?")

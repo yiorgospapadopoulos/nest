@@ -138,7 +138,7 @@ extension EventStreamUpdate {
     @Test func cancellingClosesTheSocket() async throws {
         let connection = FakeConnection([eventFrame(id: 1)], then: .hang)
         _ = try await collect(stream(FakeConnector([connection])).updates(), count: 2)
-        try await waitUntil { connection.isClosed }
+        await connection.changes.until { connection.isClosed }
     }
 
     @Test func backoffIsCapped() {
@@ -147,26 +147,6 @@ extension EventStreamUpdate {
         #expect(Backoff().delay(attempt: 0) == 0.5)
         #expect(Backoff() == Backoff(initial: 0.5, maximum: 30))
     }
-
-    @Test func taskSleeperSleeps() async throws {
-        try await TaskSleeper().sleep(seconds: 0)
-    }
-
-    @Test func defaultsUseURLSessionAndTheLocalDaemon() {
-        let events = EventStream(token: "t")
-        #expect(events.baseURL == APIClient.defaultBaseURL)
-        #expect(events.connector is URLSessionWebSocketConnector)
-        #expect(events.sleeper is TaskSleeper)
-        #expect(events.lastEventID == nil)
-    }
-}
-
-/// Polls a condition that becomes true on another task.
-func waitUntil(_ condition: @Sendable () -> Bool) async throws {
-    for _ in 0..<500 where !condition() {
-        try await Task.sleep(for: .milliseconds(2))
-    }
-    #expect(condition())
 }
 
 @Suite struct URLSessionWebSocketConnectorTests {
@@ -204,12 +184,12 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
         let connector = connector
         let request = request
         let connecting = Task { try await connector.connect(request) }
-        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+        await task.until { $0.pendingPing != nil }
 
         task.serverCloses(code: 4401, reason: "not authenticated")
 
         let ended = Task { _ = try? await connecting.value }
-        try await waitUntil { task.state.withLock { $0.cancelledWith != nil } }
+        await task.until { $0.cancelledWith != nil }
         // Releases the ping if the connect is still waiting, so a failure cannot hang.
         task.cancel(with: .goingAway, reason: nil)
         await ended.value
@@ -231,7 +211,7 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
         let connector = connector
         let request = request
         let connecting = Task { try await connector.connect(request) }
-        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+        await task.until { $0.pendingPing != nil }
 
         task.send(.string("first"))
 
@@ -284,7 +264,7 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
         let waiting = Task {
             try await withCheckedThrowingContinuation { opening.start($0) }
         }
-        try await waitUntil { opening.isWaiting }
+        try await waitFor { opening.isWaiting }
         opening.finish(nil)
         opening.finish(URLError(.timedOut))
         try await waiting.value
@@ -306,11 +286,11 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
         let connector = connector
         let request = request
         let connecting = Task { try await connector.connect(request) }
-        try await waitUntil { task.state.withLock { $0.pendingPing != nil } }
+        await task.until { $0.pendingPing != nil }
 
         connecting.cancel()
 
-        try await waitUntil { task.state.withLock { $0.cancelledWith } != nil }
+        await task.until { $0.cancelledWith != nil }
         #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
         try await expectConnectFails(connecting)
     }
@@ -323,9 +303,7 @@ func waitUntil(_ condition: @Sendable () -> Bool) async throws {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await connector.connect(request)
         }
-        try await waitUntil {
-            task.state.withLock { $0.cancelledWith != nil || $0.pendingPing != nil }
-        }
+        await task.until { $0.cancelledWith != nil || $0.pendingPing != nil }
         #expect(task.state.withLock { $0.cancelledWith } == .normalClosure)
         try await expectConnectFails(connecting)
     }

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { repo } from "../test/fixtures.ts";
 import { GENERAL, projectName, repoNamed } from "./general.ts";

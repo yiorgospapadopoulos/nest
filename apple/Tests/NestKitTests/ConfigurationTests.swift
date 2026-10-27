@@ -622,7 +622,8 @@ import Testing
         api.set { $0.gates["saveConfigurationFile"] = gate }
         editor.text = "# Mine"
         let saving = Task { try await editor.save() }
-        while !editor.saving { await Task.yield() }
+        await api.reached("saveConfigurationFile")
+        #expect(editor.saving)
         let reads = api.calls.count
         try await editor.checkDisk()
         #expect(api.calls.count == reads)
@@ -699,7 +700,8 @@ import Testing
         let (gate, open) = AsyncStream<Void>.makeStream()
         api.set { $0.gates["setSkillEnabled"] = gate }
         let change = Task { try await store.setCodexEnabled(skill, true) }
-        while store.busy.isEmpty { await Task.yield() }
+        await api.reached("setSkillEnabled")
+        #expect(!store.busy.isEmpty)
         #expect(store.page?.shared.skills.items[3].codexEnabled == true)
         open.finish()
         try await change.value
@@ -864,7 +866,8 @@ import Testing
         let (gate, open) = AsyncStream<Void>.makeStream()
         api.set { $0.gates["codexPlugins al"] = gate }
         let slow = Task { try await store.loadCodexPlugins(query: "al") }
-        while store.codexQuery != "al" { await Task.yield() }
+        await api.reached("codexPlugins al")
+        #expect(store.codexQuery == "al")
         try await store.loadCodexPlugins(query: "")
         open.finish()
         try await slow.value
@@ -902,13 +905,13 @@ import Testing
         api.set { $0.configuration.engines.removeLast() }
         store.apply(
             Fixture.event(EventType.configurationChanged, #"{"scope": "user", "repo": null}"#))
-        while store.page?.engines.count != 1 { await Task.yield() }
+        try await waitFor { store.page?.engines.count == 1 }
         api.set { $0.configuration = Fixture.configurationPage }
         store.apply(
             Fixture.event(
                 EventType.accountCodex,
                 #"{"signed_in": true, "checked_at": "2026-10-20T10:00:00Z"}"#))
-        while store.page?.engines.count != 2 { await Task.yield() }
+        try await waitFor { store.page?.engines.count == 2 }
         let before = api.calls.count
         store.apply(Fixture.event("daemon.started", "{}"))
         #expect(api.calls.count == before)

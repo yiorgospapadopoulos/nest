@@ -305,7 +305,8 @@ import Testing
             $0.gates["diff"] = gate.stream
         }
         let reloading = Task { try await store.loadDiff(for: review) }
-        try await waitFor { store.loadingDiffs.contains(review.sessionID) }
+        await api.reached("diff")
+        #expect(store.loadingDiffs.contains(review.sessionID))
         #expect(store.diffs[review.sessionID] == Fixture.diff)
         #expect(!store.isReviewLoaded(review))
 
@@ -369,7 +370,8 @@ import Testing
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["diff"] = gate.stream }
         let loading = Task { try await store.loadDiff(for: review) }
-        try await waitFor { store.loadingDiffs.contains(review.sessionID) }
+        await api.reached("diff")
+        #expect(store.loadingDiffs.contains(review.sessionID))
 
         store.apply(.approvalResolved(review))
         #expect(store.loadingDiffs.isEmpty)
@@ -413,7 +415,7 @@ import Testing
         let task = Task {
             try await store.publish(review, store.publishForm(for: review, session: nil))
         }
-        try await waitFor { store.progress(session: review.sessionID) != nil }
+        await api.reached("approve")
         let progress = try #require(store.progress(session: review.sessionID))
         #expect(progress.isRunning)
         #expect(store.busy == [review.id])

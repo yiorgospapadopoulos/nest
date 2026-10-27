@@ -6,7 +6,6 @@ handler, faked by the harness with queued replies.
 
 import base64
 import json
-from pathlib import Path
 from typing import Any
 
 from nestd.artifacts.bridge import with_shim
@@ -20,9 +19,8 @@ def _page(init: dict[str, Any] | None) -> str:
     return with_shim(_PAGE, init)
 
 
-def test_stored_values_are_there_at_once_through_every_api(tmp_path: Path) -> None:
+def test_stored_values_are_there_at_once_through_every_api() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"a": "1", "b": "x", "odd": 5}, "files": []}),
         """
         const local = window.localStorage;
@@ -63,9 +61,8 @@ def test_stored_values_are_there_at_once_through_every_api(tmp_path: Path) -> No
     }
 
 
-def test_writes_are_coalesced_into_one_call_at_most_every_300_ms(tmp_path: Path) -> None:
+def test_writes_are_coalesced_into_one_call_at_most_every_300_ms() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"c": "old"}}),
         _WAIT
         + """
@@ -101,9 +98,8 @@ def test_writes_are_coalesced_into_one_call_at_most_every_300_ms(tmp_path: Path)
     }
 
 
-def test_clear_goes_at_once_after_writes_already_on_their_way(tmp_path: Path) -> None:
+def test_clear_goes_at_once_after_writes_already_on_their_way() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"a": "1"}}),
         _WAIT
         + """
@@ -133,11 +129,10 @@ def test_clear_goes_at_once_after_writes_already_on_their_way(tmp_path: Path) ->
     }
 
 
-def test_writes_over_a_cap_are_refused_and_change_nothing(tmp_path: Path) -> None:
+def test_writes_over_a_cap_are_refused_and_change_nothing() -> None:
     big = 255 * 1024
     stored = {f"k{i}": "v" * big for i in range(8)}
     result = run_page(
-        tmp_path,
         _page({"storage": stored}),
         _WAIT
         + f"""
@@ -181,9 +176,8 @@ def test_writes_over_a_cap_are_refused_and_change_nothing(tmp_path: Path) -> Non
     }
 
 
-def test_at_most_1000_keys_are_kept(tmp_path: Path) -> None:
+def test_at_most_1000_keys_are_kept() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {f"k{i}": "v" for i in range(1000)}}),
         """
         const storage = window.nest.storage;
@@ -196,9 +190,8 @@ def test_at_most_1000_keys_are_kept(tmp_path: Path) -> None:
     assert result == ["quota: Storage may hold at most 1,000 keys", "stored"]
 
 
-def test_a_cap_the_app_reports_rejects_the_write(tmp_path: Path) -> None:
+def test_a_cap_the_app_reports_rejects_the_write() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {}}),
         _WAIT
         + """
@@ -214,9 +207,8 @@ def test_a_cap_the_app_reports_rejects_the_write(tmp_path: Path) -> None:
     assert result == "quota: Storage may hold at most 2 MiB"
 
 
-def test_changes_from_other_devices_reach_the_cache_and_listeners(tmp_path: Path) -> None:
+def test_changes_from_other_devices_reach_the_cache_and_listeners() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"a": "1", "b": "2"}}),
         _WAIT
         + """
@@ -261,9 +253,8 @@ def test_changes_from_other_devices_reach_the_cache_and_listeners(tmp_path: Path
     }
 
 
-def test_session_storage_lives_in_the_page_only(tmp_path: Path) -> None:
+def test_session_storage_lives_in_the_page_only() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"a": "local"}}),
         _WAIT
         + """
@@ -292,7 +283,7 @@ def _file(path: str, data: bytes, mime: str) -> dict[str, Any]:
     return {"path": path, "size": len(data), "mime": mime, "data": base64.b64encode(data).decode()}
 
 
-def test_the_artifacts_files_are_read_through_nest_files(tmp_path: Path) -> None:
+def test_the_artifacts_files_are_read_through_nest_files() -> None:
     text = "héllo ✓\n".encode()
     files = [
         _file("data/notes.txt", text, "text/plain"),
@@ -300,7 +291,6 @@ def test_the_artifacts_files_are_read_through_nest_files(tmp_path: Path) -> None
         {"path": "broken", "size": 1},
     ]
     result = run_page(
-        tmp_path,
         _page({"storage": {}, "files": files}),
         """
         const files = window.nest.files;
@@ -335,9 +325,8 @@ def test_the_artifacts_files_are_read_through_nest_files(tmp_path: Path) -> None
     }
 
 
-def test_save_file_asks_the_app_with_a_complete_request(tmp_path: Path) -> None:
+def test_save_file_asks_the_app_with_a_complete_request() -> None:
     result = run_page(
-        tmp_path,
         _page(None),
         """
         const save = window.nest.saveFile;
@@ -396,7 +385,7 @@ def test_save_file_asks_the_app_with_a_complete_request(tmp_path: Path) -> None:
     }
 
 
-def test_an_init_element_that_is_not_an_object_gives_an_empty_start(tmp_path: Path) -> None:
+def test_an_init_element_that_is_not_an_object_gives_an_empty_start() -> None:
     page = _page(None).replace(
         "<script>", '<script type="application/json" id="nest-init">[1, 2]</script><script>', 1
     )
@@ -408,14 +397,13 @@ def test_an_init_element_that_is_not_an_object_gives_an_empty_start(tmp_path: Pa
         " !!document.getElementById('nest-init')];"
     )
 
-    assert run_page(tmp_path, page, scenario) == [[], [], False]
-    assert run_page(tmp_path, broken, scenario) == [[], [], True]
+    assert run_page(page, scenario) == [[], [], False]
+    assert run_page(broken, scenario) == [[], [], True]
 
 
-def test_init_data_is_escaped_in_the_page(tmp_path: Path) -> None:
+def test_init_data_is_escaped_in_the_page() -> None:
     value = "</script><script>window.__ran = 1</script>" + chr(0x2028)
     result = run_page(
-        tmp_path,
         _page({"storage": {"v": value}}),
         "return [window.nest.storage.get('v'), window.__ran === undefined];",
     )
@@ -436,9 +424,8 @@ _USAGE = {
 }
 
 
-def test_usage_is_read_through_the_app(tmp_path: Path) -> None:
+def test_usage_is_read_through_the_app() -> None:
     result = run_page(
-        tmp_path,
         _page(None),
         "const usage = await window.nest.usage();"
         " return { usage, requests: requests.map((r) => [r.method, r.params]) };",
@@ -448,10 +435,9 @@ def test_usage_is_read_through_the_app(tmp_path: Path) -> None:
     assert result == {"usage": _USAGE, "requests": [["usage", {}]]}
 
 
-def test_usage_changes_reach_the_pages_listeners(tmp_path: Path) -> None:
+def test_usage_changes_reach_the_pages_listeners() -> None:
     fresh = {**_USAGE, "today": {"tokens": 1500, "sessions": 4}}
     result = run_page(
-        tmp_path,
         _page(None),
         _WAIT
         + f"""
@@ -481,9 +467,8 @@ def test_usage_changes_reach_the_pages_listeners(tmp_path: Path) -> None:
     }
 
 
-def test_asking_claude_checks_the_request_in_the_page(tmp_path: Path) -> None:
+def test_asking_claude_checks_the_request_in_the_page() -> None:
     result = run_page(
-        tmp_path,
         _page(None),
         """
         const ask = window.nest.ask;
@@ -531,7 +516,7 @@ def test_asking_claude_checks_the_request_in_the_page(tmp_path: Path) -> None:
     }
 
 
-def test_the_apps_ask_errors_reach_the_page(tmp_path: Path) -> None:
+def test_the_apps_ask_errors_reach_the_page() -> None:
     errors = [
         {"code": "budget", "message": "20 asks a day; resets at midnight"},
         {"code": "disabled", "message": "Asking Claude is turned off"},
@@ -539,7 +524,6 @@ def test_the_apps_ask_errors_reach_the_page(tmp_path: Path) -> None:
         {"code": "unavailable", "message": "Claude did not answer"},
     ]
     result = run_page(
-        tmp_path,
         _page(None),
         """
         const results = [];
@@ -554,9 +538,8 @@ def test_the_apps_ask_errors_reach_the_page(tmp_path: Path) -> None:
     assert result == [[error["code"], error["message"]] for error in errors]
 
 
-def test_nest_storage_also_answers_to_the_storage_names(tmp_path: Path) -> None:
+def test_nest_storage_also_answers_to_the_storage_names() -> None:
     result = run_page(
-        tmp_path,
         _page({"storage": {"a": "1"}}),
         _WAIT
         + """
@@ -590,9 +573,8 @@ def test_nest_storage_also_answers_to_the_storage_names(tmp_path: Path) -> None:
     }
 
 
-def test_an_answer_reads_as_its_text_where_a_string_is_wanted(tmp_path: Path) -> None:
+def test_an_answer_reads_as_its_text_where_a_string_is_wanted() -> None:
     result = run_page(
-        tmp_path,
         _page(None),
         """
         const answer = await window.nest.ask("A haiku");

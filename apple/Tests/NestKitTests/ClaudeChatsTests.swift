@@ -194,7 +194,8 @@ import Testing
         }
 
         let task = Task { try await store.setArchived(id, true) }
-        try await waitFor { api.calls.last == "setClaudeChatArchived \(id) true" }
+        await api.reached("setClaudeChatArchived")
+        #expect(api.calls.last == "setClaudeChatArchived \(id) true")
         // Optimistic: the sidebar moves it before the daemon answers.
         #expect(store.chat(id)?.archived == true)
         gate.continuation.finish()
@@ -233,7 +234,8 @@ import Testing
             $0.failures["setClaudeChatArchived"] = APIError.notFound("No such chat")
         }
         let task = Task { try await store.setArchived(id, true) }
-        try await waitFor { store.chat(id)?.archived == true }
+        await api.reached("setClaudeChatArchived")
+        #expect(store.chat(id)?.archived == true)
         api.set { $0.claudeChats[0].title = "Renamed in Claude Code" }
         // The refresh still sees the chat archived, as the optimistic update left it.
         api.set { $0.claudeChats[0].archived = true }

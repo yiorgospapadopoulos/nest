@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from nestd.storage.db import Database
+from tests.db_support import migrated_copy
 from tests.fakes import FakeClock, FakeSecretStore
 
 # The configuration API tests' daemon and engine folders (B97); a module's own fixture of
@@ -11,9 +12,15 @@ from tests.fakes import FakeClock, FakeSecretStore
 pytest_plugins = ("tests.configuration_api",)
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", "loops: the test's API runs the services that poll on a timer (B111)"
+    )
+
+
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
-    database = await Database.open(tmp_path / "nest.db")
+    database = await Database.open(await migrated_copy(tmp_path / "nest.db"))
     yield database
     await database.close()
 

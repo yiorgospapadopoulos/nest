@@ -31,6 +31,13 @@ final class FakeWebSocketTask: WebSocketTask {
     }
 
     let state = Mutex(State())
+    /// Noted after each change of `state`.
+    let changes = Changes()
+
+    /// Ends once the state satisfies `holds`.
+    func until(_ holds: @escaping @Sendable (State) -> Bool) async {
+        await changes.until { [self] in self.state.withLock { holds($0) } }
+    }
 
     var closeCode: URLSessionWebSocketTask.CloseCode { state.withLock { $0.closeCode } }
     var closeReason: Data? { state.withLock { $0.closeReason } }
@@ -70,6 +77,7 @@ final class FakeWebSocketTask: WebSocketTask {
             state.pendingPing = pongReceiveHandler
             return (false, nil)
         }
+        changes.note()
         if answered {
             pongReceiveHandler(error)
         }
@@ -84,6 +92,7 @@ final class FakeWebSocketTask: WebSocketTask {
             }
             return (state.pendingPing, state.receiver)
         }
+        changes.note()
         ping?(URLError(.cancelled))
         receiver?.resume(throwing: URLError(.cancelled))
     }
@@ -136,6 +145,9 @@ final class FakeConnection: WebSocketConnection {
         self.ending = ending
     }
 
+    /// Noted when the socket closes.
+    let changes = Changes()
+
     var isClosed: Bool { state.withLock { $0.closed } }
 
     func receive() async throws -> String {
@@ -162,11 +174,13 @@ final class FakeConnection: WebSocketConnection {
     }
 
     func close() {
-        state.withLock { state in
+        let waiter = state.withLock { state in
             state.closed = true
             defer { state.waiter = nil }
             return state.waiter
-        }?.resume()
+        }
+        changes.note()
+        waiter?.resume()
     }
 }
 

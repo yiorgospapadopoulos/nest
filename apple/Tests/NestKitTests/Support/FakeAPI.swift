@@ -167,16 +167,33 @@ final class FakeAPI: NestAPI {
         state.withLock { $0.failures[call] = error }
     }
 
+    /// How many calls reached each gate while one was set.
+    private let arrivals = Mutex<[String: Int]>([:])
+    /// Noted after each call and each gate reached.
+    let changes = Changes()
+
+    /// Ends once `count` calls have reached the named gate while it was set, open or not.
+    func reached(_ gate: String, count: Int = 1) async {
+        await changes.until { [self] in self.arrivals.withLock { $0[gate, default: 0] >= count } }
+    }
+
+    /// Ends once the recorded calls satisfy `holds`.
+    func untilCalls(_ holds: @escaping @Sendable ([String]) -> Bool) async {
+        await changes.until { [self] in holds(self.state.withLock { $0.calls }) }
+    }
+
     private func pass(_ gate: String) async {
-        if let stream = state.withLock({ $0.gates[gate] }) {
-            for await _ in stream {}
-        }
+        guard let stream = state.withLock({ $0.gates[gate] }) else { return }
+        arrivals.withLock { $0[gate, default: 0] += 1 }
+        changes.note()
+        for await _ in stream {}
     }
 
     private func call<T>(_ name: String, _ detail: String = "", _ answer: (inout State) -> T) throws
         -> T
     {
-        try state.withLock { state in
+        defer { changes.note() }
+        return try state.withLock { state in
             state.calls.append(detail.isEmpty ? name : "\(name) \(detail)")
             if let failure = state.failures[name] ?? state.failNext.removeValue(forKey: name) {
                 throw failure

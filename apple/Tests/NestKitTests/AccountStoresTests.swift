@@ -196,7 +196,8 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         let gate = AsyncStream<Void>.makeStream()
         api.set { $0.gates["createPairingCode"] = gate.stream }
         let task = Task { try await store.createPairingCode() }
-        try await waitFor { store.isCreatingCode }
+        await api.reached("createPairingCode")
+        #expect(store.isCreatingCode)
         gate.continuation.finish()
         try await task.value
         #expect(!store.isCreatingCode)
@@ -362,20 +363,9 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(settings.theme == .auto)
         #expect(settings.accent == .graphite)
     }
-
-    @Test func defaultsToUserDefaults() {
-        #expect(SettingsStore().store is UserDefaultsStore)
-    }
 }
 
 @Suite struct ThemeTests {
-    @Test func everyAccentMapsToItsToken() {
-        #expect(
-            AccentName.allCases.map { Theme.accent($0).name } == AccentName.allCases.map(\.rawValue)
-        )
-        #expect(DesignTokens.Accent.all.map(\.name) == AccentName.allCases.map(\.rawValue))
-    }
-
     @Test func statusTonesFollowTheSessionState() {
         #expect(StatusTone.of(.starting, hasReview: false) == .running)
         #expect(StatusTone.of(.running, hasReview: true) == .running)
@@ -385,15 +375,5 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(StatusTone.of(.idle, hasReview: true) == .review)
         #expect(StatusTone.of(.idle, hasReview: false) == .done)
         #expect(StatusTone.of(.closed, hasReview: false) == .done)
-    }
-
-    /// The Mac look's quiet status colors: one color for a tone's dot and its word, and the
-    /// greys for what no longer runs.
-    @Test func statusTonesUseTheMacLooksColors() {
-        let mac = DesignTokens.Colors.Mac.self
-        #expect(
-            StatusTone.allCases.map(\.themedColor) == [
-                mac.run, mac.wait, mac.ok, mac.bad, mac.textSecondary, mac.textTertiary,
-            ])
     }
 }

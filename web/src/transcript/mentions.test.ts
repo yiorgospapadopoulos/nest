@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { pixie, team } from "../test/fixtures.ts";
 import { leaderColor, mentionColors, mentionParts } from "./mentions.ts";

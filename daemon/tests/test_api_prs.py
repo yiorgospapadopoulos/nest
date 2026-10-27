@@ -8,7 +8,7 @@ import pytest
 from nestd.events import types
 from nestd.gitops.runner import CommandError
 from nestd.sessions.store import SessionStore
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.fake_provider import hang
 from tests.fake_runner import PR_URL, check_run, pr_json
@@ -26,11 +26,17 @@ from tests.test_api_sessions import create, reach
 PASSED = [check_run("unit"), check_run("lint", conclusion="FAILURE")]
 
 
+# The pull request monitor reads the pull requests (B111).
+pytestmark = pytest.mark.loops
+
+
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
     repo = init_repo(tmp_path / "repo")
     with_origin(repo, tmp_path / "origin.git")
-    async with running_api(tmp_path, clock, secrets) as running:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         await running.http.post("/api/repos", json={"path": str(repo)})
         yield running
 

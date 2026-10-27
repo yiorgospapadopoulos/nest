@@ -246,6 +246,7 @@ async def test_a_preview_never_starts_claude_code(env: Env) -> None:
 
 async def test_a_deleted_folder_is_reported(env: Env) -> None:
     """BUG-94: a readable conflict, not a server error, and no run opens in it."""
+    env.use_worktrees()
     env.provider.script(echoed("msg-1", reply("one")))
     created = await env.create()
     session = await env.reach(created.id, SessionState.IDLE)

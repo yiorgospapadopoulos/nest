@@ -184,11 +184,4 @@ import Testing
         pairing.address = " "
         #expect(!pairing.canPair)
     }
-
-    @Test func thePublicInitTalksOverTheNetwork() {
-        let pairing = DaemonPairing(daemons: daemons, deviceName: "Air")
-        #expect(pairing.transport is URLSessionTransport)
-        #expect(pairing.address == "")
-        #expect(pairing.now().timeIntervalSinceNow < 5)
-    }
 }

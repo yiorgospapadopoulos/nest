@@ -138,7 +138,8 @@ import Testing
         api.set { $0.gates["reorderPixies"] = gate.stream }
 
         let moving = Task { try await store.move("b", onto: "a") }
-        try await waitFor { store.pixies.map(\.id) == ["b", "a"] }
+        await api.reached("reorderPixies")
+        #expect(store.pixies.map(\.id) == ["b", "a"])
         #expect(!api.calls.contains("reorderPixies b,a"))
         gate.continuation.finish()
         try await moving.value
@@ -159,7 +160,8 @@ import Testing
         }
 
         let first = Task { try await store.move("a", onto: "c") }
-        try await waitFor { store.pixies.map(\.id) == ["b", "c", "a"] }
+        await api.reached("reorderPixies")
+        #expect(store.pixies.map(\.id) == ["b", "c", "a"])
         let second = Task { try await store.move("b", onto: "a") }
         try await waitFor { store.pixies.map(\.id) == ["c", "a", "b"] }
         gate.continuation.finish()
@@ -189,7 +191,8 @@ import Testing
         api.set { $0.gates["reorderPixies"] = gate.stream }
 
         let moving = Task { try await store.move("b", onto: "a") }
-        try await waitFor { store.pixies.map(\.id) == ["b", "a"] }
+        await api.reached("reorderPixies")
+        #expect(store.pixies.map(\.id) == ["b", "a"])
         _ = try await store.create(CreatePixieRequest(name: "C"))
         gate.continuation.finish()
         await #expect(throws: APIError.invalidInput("the order changed")) {
@@ -229,7 +232,7 @@ import Testing
         api.set { $0.gates["updatePixie"] = gate.stream }
 
         let first = Task { try await store.update("a", UpdatePixieRequest(skills: ["y", "z"])) }
-        try await waitFor { api.calls.contains("updatePixie a") }
+        await api.untilCalls { $0.contains("updatePixie a") }
         #expect(store.pixies[0].skills == ["y", "z"])
         // The second list is built from what shows now.
         let next = store.pixies[0].skills.filter { $0 != "y" }

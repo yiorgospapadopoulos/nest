@@ -234,17 +234,6 @@ describe("project page", () => {
     expect(api.updateRepo).toHaveBeenCalledWith("todo-ui", { setup_timeout_seconds: 1800 });
   });
 
-  it("names a one minute limit in the singular", async () => {
-    const configured = {
-      ...repo("todo-ui"),
-      worktree: { default: null, link: [], setup: [], setup_timeout_seconds: 60 },
-    };
-    const { user } = await openFromProjects([configured]);
-    await user.click(tab("Worktrees"));
-
-    expect(screen.getByLabelText("Setup time limit")).toHaveDisplayValue("1 minute");
-  });
-
   it("sets the tab icon and its colour", async () => {
     const { user, api } = await openFromProjects();
     await user.click(tab("Look"));

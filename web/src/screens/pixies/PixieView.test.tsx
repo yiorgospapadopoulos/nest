@@ -113,7 +113,7 @@ describe("Pixie page", () => {
   });
 
   it("goes back when the pixie is deleted elsewhere", async () => {
-    const { push } = await openPixie();
+    const { push } = await openPixie(fakeApi(), pixie(), "Chat", { from: "list" });
 
     push({ type: "pixie.deleted", session_id: null, payload: { pixie_id: "p1" } });
     await waitFor(() => {

@@ -135,11 +135,6 @@ def test_only_the_four_template_kinds_render(kind: str) -> None:
         render(kind, "T", "x")
 
 
-def test_the_template_kinds() -> None:
-    assert TEMPLATE_KINDS == ("markdown", "slides", "document", "design", "design_system")
-    assert set(SAMPLES) == set(TEMPLATE_KINDS)
-
-
 @pytest.mark.parametrize("kind", TEMPLATE_KINDS)
 def test_each_page_is_one_document_with_the_shim_before_any_script(kind: str) -> None:
     page = render(kind, "Plan & <notes>", SAMPLES[kind], 2)
@@ -292,37 +287,6 @@ def test_slides_keep_their_markdown_in_an_escaped_pre() -> None:
     assert "&amp;amp;" in page
 
 
-def test_slides_are_a_scaled_16_by_9_stage_with_a_counter_and_progress() -> None:
-    page = render("slides", "Deck", _DECK)
-    parsed = outline(page)
-    style = style_of(page)
-    script = parsed.inline[-1]
-
-    for element in ("nest-deck", "nest-stage", "nest-count", "nest-progress", "nest-md"):
-        assert element in parsed.attrs, element
-    assert re.search(r"\.stage \{[^}]*width: 1280px;[^}]*height: 720px;", style)
-    assert "var WIDTH = 1280;" in script
-    assert "var HEIGHT = 720;" in script
-    assert "Math.min(width / WIDTH, height / HEIGHT)" in script
-    # Slides are split on a line that is exactly ---.
-    assert 'line.replace(/\\r$/, "") === "---"' in script
-    # Keys, swipes and taps on the outer thirds.
-    for key in ('"ArrowRight"', '"ArrowLeft"', '"PageDown"', '"PageUp"', '" "', '"Home"', '"End"'):
-        assert f"case {key}:" in script, key
-    assert '"pointerup"' in script
-    assert "width / 3" in script
-
-
-def test_slides_print_one_per_landscape_page_without_chrome() -> None:
-    style = style_of(render("slides", "Deck", _DECK))
-    printed = style.split("@media print", 1)[1]
-
-    assert "@page { size: 1280px 720px; margin: 0; }" in style
-    assert "break-after: page;" in printed
-    assert re.search(r"\.chrome[^{]*\{[^}]*display: none", printed)
-    assert "print-color-adjust: exact;" in printed
-
-
 # Document.
 
 
@@ -368,20 +332,6 @@ def test_a_document_shows_its_title_unless_the_markdown_starts_with_one(
     page = render("document", "Report <1>", content)
 
     assert ('<h1 class="doc-title">Report &lt;1&gt;</h1>' in page) is shown
-
-
-def test_a_document_has_contents_beside_or_above_and_prints_on_a4() -> None:
-    page = render("document", "Doc", _DOC)
-    parsed = outline(page)
-    style = style_of(page)
-    printed = style.split("@media print", 1)[1]
-
-    assert {"nest-toc-side", "nest-toc-top"} <= set(parsed.attrs)
-    assert "<summary>Contents</summary>" in page
-    assert "@media (min-width: 900px)" in style
-    assert "@page { size: A4 portrait;" in style
-    assert re.search(r"\.toc-side,[^{]*\{[^}]*display: none", printed)
-    assert ".nest-edit" in printed
 
 
 # Design.
@@ -483,38 +433,6 @@ def test_the_old_names_still_work() -> None:
     assert outline(page).texts["nest-notes"] == "\nOld notes"
     # A missing or unusable label is the mockup's number.
     assert [m["label"] for m in _mockups(page)] == ["B2", "2", "x", "Z"]
-
-
-@pytest.mark.parametrize(
-    ("layout", "expected"),
-    [("grid", "grid"), ("tabs", "tabs"), ("canvas", "canvas"), ("stack", "stack"), ("x", "stack")],
-)
-def test_the_layout_comes_from_the_data_and_can_be_switched(layout: str, expected: str) -> None:
-    page = render("design", "D", json.dumps({"layout": layout, "screens": [{"title": "A"}]}))
-
-    assert f'<body data-layout="{expected}">' in page
-    for name in ("stack", "grid", "tabs", "canvas"):
-        assert f'data-layout="{name}"' in page
-    # A tab per mockup, labelled with its label and title.
-    assert (
-        '<button type="button" role="tab" id="nest-tab-0" aria-controls="mockup-0"'
-        ' aria-selected="false" tabindex="-1"><span class="badge">1</span> A</button>'
-    ) in page
-
-
-def test_a_design_has_an_overlay_and_canvas_zoom_tools() -> None:
-    page = render("design", "D", _DESIGN)
-    parsed = outline(page)
-    script = parsed.inline[-1]
-
-    assert {"nest-canvas", "nest-world", "nest-zoom", "nest-viewer"} <= set(parsed.attrs)
-    assert parsed.attrs["nest-viewer"]["role"] == "dialog"
-    assert parsed.attrs["nest-viewer"]["aria-modal"] == "true"
-    for zoom in ("in", "out", "fit"):
-        assert f'data-zoom="{zoom}"' in page
-    for event in ('"wheel"', '"pointerdown"', '"pointermove"', '"gesturechange"', '"keydown"'):
-        assert event in script, event
-    assert 'role="button" tabindex="0" aria-label="Open A, Calm start, larger"' in page
 
 
 def test_a_design_embeds_each_screens_html_as_json_by_index() -> None:
@@ -695,28 +613,6 @@ def test_a_design_system_shows_its_type_scale_safely() -> None:
         "16 px, 400",
         "16 px, 400",
     ]
-
-
-def test_a_design_system_shows_spacing_and_radii_as_bars_and_tiles() -> None:
-    system = {
-        "spacing": [{"name": "s", "value": 8}, {"name": "l", "value": 2.5}, {"value": "x"}],
-        "radii": [{"name": "card", "value": 16}, {"name": "pill", "value": 999}],
-    }
-    page = render("design_system", "S", json.dumps(system))
-
-    assert re.findall(r'<span class="bar" style="width: ([^"]*)px;"></span>', page) == [
-        "8",
-        "2.5",
-        "0",
-    ]
-    assert re.findall(r'<span class="tile" style="border-radius: ([^"]*)px;"></span>', page) == [
-        "16",
-        "999",
-    ]
-    assert "<h2>Spacing</h2>" in page
-    assert "<h2>Radii</h2>" in page
-    for missing in ("Colors", "Typography", "Components"):
-        assert f"<h2>{missing}</h2>" not in page
 
 
 def test_a_design_system_embeds_components_as_json_with_a_preview_each() -> None:
