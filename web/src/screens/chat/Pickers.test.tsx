@@ -4,6 +4,7 @@ import type { ModelList, Session } from "../../api/types.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { defined } from "../../test/defined.ts";
 import {
+  acpProvider,
   agentDefaults,
   claudeProvider,
   codexProvider,
@@ -251,6 +252,30 @@ describe("engines in the model menu (B91)", () => {
       expect.objectContaining({ provider: "codex", model: "gpt-5.5-mini" }),
     );
     expect(api.createSession.mock.calls[0]?.[0]).not.toHaveProperty("effort");
+  });
+
+  it("does not offer a new chat an engine signed out or not installed (B107)", async () => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue({
+      providers: [
+        claudeProvider(),
+        acpProvider({ name: "cursor", display_name: "Cursor agent", signed_in: false }),
+        acpProvider({ name: "gemini", display_name: "Gemini CLI", state: "not_installed" }),
+      ],
+    });
+    api.models.mockImplementation((provider) =>
+      Promise.resolve(provider === "cursor" ? CODEX : modelList({ default_model: "opus" })),
+    );
+    const { user } = await newChat(api);
+
+    await user.click(await screen.findByRole("button", { name: "Model: Opus 5.5" }));
+    const sheet = screen.getByRole("dialog", { name: "Model" });
+    const cursor = within(sheet).getByRole("group", { name: "Cursor agent" });
+    expect(cursor).toHaveTextContent(/^Cursor agentNot signed in/);
+    expect(within(cursor).getByRole("menuitemradio", { name: /^GPT-5.5 mini/ })).toBeDisabled();
+    expect(within(sheet).getByRole("group", { name: "Gemini CLI" })).toHaveTextContent(
+      /^Gemini CLINot installed/,
+    );
   });
 
   it("sets a new chat's model with /model, by name", async () => {

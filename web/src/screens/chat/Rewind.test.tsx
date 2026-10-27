@@ -4,7 +4,15 @@ import { ApiError } from "../../api/client.ts";
 import type { NestEvent, RewindPreview, Session } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { claudeChat, detail, event, repo, session } from "../../test/fixtures.ts";
+import {
+  acpProvider,
+  claudeChat,
+  claudeProvider,
+  detail,
+  event,
+  repo,
+  session,
+} from "../../test/fixtures.ts";
 import { renderApp } from "../../test/render.tsx";
 
 const ACTIONS = "Message actions";
@@ -363,6 +371,16 @@ describe("message actions", () => {
     await openChat(chat);
 
     expect(screen.queryByRole("button", { name: ACTIONS })).toBeNull();
+  });
+
+  it("are not offered on an engine that can neither rewind nor fork (B91, B107)", async () => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), acpProvider()] });
+    await openChat(session({ provider: "opencode" }), undefined, api);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: ACTIONS })).toBeNull();
+    });
   });
 
   it("are not offered in a Claude Code chat shown read only", async () => {
