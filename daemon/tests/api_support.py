@@ -13,6 +13,7 @@ from nestd.local.service import LocalSetup
 from nestd.paths import AppPaths
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
+from tests.acp_engine_support import FakeNpm, acp_setup
 from tests.codex_support import FakeAppServer
 from tests.fake_claude import FakeClaude, locations
 from tests.fake_engine import FakeInfoFactory
@@ -76,6 +77,7 @@ async def build_context(
     codex: FakeAppServer | None = None,
     codex_home: Path | None = None,
     local_setup: LocalSetup | None = None,
+    npm: FakeNpm | None = None,
 ) -> AppContext:
     record = log if log is not None else []
     return await AppContext.build(
@@ -108,6 +110,8 @@ async def build_context(
         local_setup=local_setup or LocalMac(tmp_path / "local").setup(),
         # Never the real lsof.
         port_probe=nothing_listening,
+        # Never real npm, engine processes, PATH or home (B107).
+        acp_setup=acp_setup(tmp_path, npm),
     )
 
 

@@ -45,6 +45,26 @@ public enum ProviderFeature: String, UnknownSafeEnum {
     }
 }
 
+/// Whether an engine can run chats on this Mac (B107); Claude and Codex are always ready.
+public enum EngineState: String, UnknownSafeEnum {
+    case ready
+    case notInstalled = "not_installed"
+    case installing
+    case installFailed = "install_failed"
+    case unknown
+}
+
+/// How the user signs in to an engine (B107).
+public enum EngineSignIn: String, UnknownSafeEnum {
+    /// The engine's own sign-in page (Claude, Codex).
+    case browser
+    /// A key pasted in Settings, which the daemon keeps in the Keychain (Gemini).
+    case apiKey = "api_key"
+    /// The engine's own login command, run in Terminal (OpenCode, Cursor).
+    case terminal
+    case unknown
+}
+
 /// An engine a new chat can run on, from `GET /api/providers` (B91).
 public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     /// The engine chats run on when none is chosen, and every chat from before B91.
@@ -62,12 +82,28 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
     public var account: ClaudeAccount?
     /// Features this app does not know are left out.
     public var unsupported: Set<ProviderFeature>
+    /// The installed engine's version, when known (B107).
+    public var version: String?
+    /// False labels the engine "untested".
+    public var tested: Bool
+    /// False: Nest cannot block the engine's git commands.
+    public var gitGuard: Bool
+    public var state: EngineState
+    /// Why it is not installed, or why installing failed, in plain words.
+    public var stateDetail: String?
+    public var signIn: EngineSignIn
+    /// The command the user runs in Terminal to sign in, such as `agent login`, for a
+    /// terminal sign-in.
+    public var loginCommand: String?
 
     public var id: String { name }
 
     public init(
         name: String, displayName: String, signedIn: Bool? = nil, signInHint: String? = nil,
-        account: ClaudeAccount? = nil, unsupported: Set<ProviderFeature> = []
+        account: ClaudeAccount? = nil, unsupported: Set<ProviderFeature> = [],
+        version: String? = nil, tested: Bool = true, gitGuard: Bool = true,
+        state: EngineState = .ready, stateDetail: String? = nil, signIn: EngineSignIn = .browser,
+        loginCommand: String? = nil
     ) {
         self.name = name
         self.displayName = displayName
@@ -75,6 +111,13 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         self.signInHint = signInHint
         self.account = account
         self.unsupported = unsupported
+        self.version = version
+        self.tested = tested
+        self.gitGuard = gitGuard
+        self.state = state
+        self.stateDetail = stateDetail
+        self.signIn = signIn
+        self.loginCommand = loginCommand
     }
 
     public init(from decoder: any Decoder) throws {
@@ -87,13 +130,60 @@ public struct ProviderInfo: Decodable, Sendable, Hashable, Identifiable {
         unsupported = Set(
             try container.decode([ProviderFeature].self, forKey: .unsupported)
                 .filter { $0 != .unknown })
+        // A daemon before B107 sends none of these: Claude and Codex as they were.
+        version = try container.decodeIfPresent(String.self, forKey: .version)
+        tested = try container.decodeIfPresent(Bool.self, forKey: .tested) ?? true
+        gitGuard = try container.decodeIfPresent(Bool.self, forKey: .gitGuard) ?? true
+        state = try container.decodeIfPresent(EngineState.self, forKey: .state) ?? .ready
+        stateDetail = try container.decodeIfPresent(String.self, forKey: .stateDetail)
+        signIn = try container.decodeIfPresent(EngineSignIn.self, forKey: .signIn) ?? .browser
+        loginCommand = try container.decodeIfPresent(String.self, forKey: .loginCommand)
+    }
+
+    /// Whether a new chat may run on it: ready, and not refused for a sign-in Nest checks
+    /// itself. Claude and Codex stay offered signed out and say so at sending (B91).
+    public var offeredForNewChats: Bool {
+        state == .ready && (signIn == .browser || signedIn != false)
+    }
+
+    /// Whether a pixie may run on it: ready, and Nest can block its git commands, since a
+    /// pixie's runs must not commit or push; the daemon refuses the others (B107).
+    public var offeredForPixies: Bool {
+        state == .ready && gitGuard
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, account, unsupported
+        case name, account, unsupported, version, tested, state
         case displayName = "display_name"
         case signedIn = "signed_in"
         case signInHint = "sign_in_hint"
+        case gitGuard = "git_guard"
+        case stateDetail = "state_detail"
+        case signIn = "sign_in"
+        case loginCommand = "login_command"
+    }
+}
+
+/// `engine.state`: installing an engine moved on, or its state changed (B107). Clients read
+/// the engines again.
+public struct EngineStateChange: Decodable, Sendable, Hashable {
+    public var name: String
+    public var state: EngineState
+    public var version: String?
+    public var stateDetail: String?
+
+    public init(
+        name: String, state: EngineState, version: String? = nil, stateDetail: String? = nil
+    ) {
+        self.name = name
+        self.state = state
+        self.version = version
+        self.stateDetail = stateDetail
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, state, version
+        case stateDetail = "state_detail"
     }
 }
 

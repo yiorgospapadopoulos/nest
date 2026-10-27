@@ -96,9 +96,12 @@ _FEATURE_WORDS: dict[str, str] = {
     "stop_task": "stop a single background task",
     "memory": "save a memory to CLAUDE.md",
     "pixie_skills": "be limited to chosen skills",
+    # B107: an engine whose git commands Nest cannot block.
+    "pixies": "run pixies, habits or the chats a pixie starts, since Nest cannot block its"
+    " git commands",
 }
 # What lacks the feature, when it is not a chat.
-_FEATURE_SUBJECTS: dict[str, str] = {"pixie_skills": "pixie"}
+_FEATURE_SUBJECTS: dict[str, str] = {"pixie_skills": "pixie", "pixies": "engine"}
 
 
 class UnsupportedFeatureError(ConflictError):

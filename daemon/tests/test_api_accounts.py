@@ -78,9 +78,14 @@ async def api(first: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncI
 
 
 async def accounts(api: Api) -> list[dict[str, Any]]:
+    """Claude's and Codex's: the ACP engines' first accounts are B107's tests'."""
     response = await api.http.get("/api/accounts")
     assert response.status_code == 200
-    return response.json()["accounts"]
+    return of_claude_and_codex(response.json()["accounts"])
+
+
+def of_claude_and_codex(listed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [account for account in listed if account["provider"] in ("claude", "codex")]
 
 
 async def published(api: Api, kind: str) -> list[dict[str, Any]]:
@@ -259,7 +264,11 @@ async def test_an_added_claude_account_signs_in_on_its_own_profile(api: Api) -> 
     assert await published(api, types.USAGE_UPDATED) == []
     assert await published(api, types.ACCOUNT_CLAUDE) == []
     changed = await published(api, types.ACCOUNTS_CHANGED)
-    assert [a["id"] for a in changed[-1]["accounts"]] == ["claude-main", added["id"], "codex-main"]
+    assert [a["id"] for a in of_claude_and_codex(changed[-1]["accounts"])] == [
+        "claude-main",
+        added["id"],
+        "codex-main",
+    ]
 
 
 async def test_only_one_sign_in_of_an_engine_runs_at_a_time(api: Api) -> None:
@@ -365,7 +374,7 @@ async def test_a_codex_sign_in_that_cannot_start_leaves_no_account(api: Api) -> 
 
 
 async def test_an_unknown_engine_or_account_is_refused(api: Api) -> None:
-    assert (await api.http.post("/api/accounts/gemini")).status_code == 422
+    assert (await api.http.post("/api/accounts/cursor")).status_code == 422
     assert (await api.http.put("/api/accounts/nobody/active")).status_code == 404
     assert (await api.http.post("/api/accounts/nobody/logout")).status_code == 404
 
@@ -392,7 +401,11 @@ async def test_only_a_signed_in_account_becomes_active(api: Api) -> None:
 
     assert response.status_code == 409
     assert same.status_code == 200
-    assert [a["active"] for a in same.json()["accounts"]] == [True, False, True]
+    assert [a["active"] for a in of_claude_and_codex(same.json()["accounts"])] == [
+        True,
+        False,
+        True,
+    ]
     gate.set()
 
 
@@ -506,7 +519,7 @@ async def test_removing_an_added_account_signs_it_out_and_deletes_only_its_folde
     response = await api.http.delete(f"/api/accounts/{added['id']}")
 
     assert response.status_code == 200
-    assert [(a["id"], a["active"]) for a in response.json()["accounts"]] == [
+    assert [(a["id"], a["active"]) for a in of_claude_and_codex(response.json()["accounts"])] == [
         ("claude-main", True),
         ("codex-main", True),
     ]
@@ -533,7 +546,8 @@ async def test_removing_the_active_account_hands_over_to_a_signed_in_one(api: Ap
 
     response = await api.http.delete(f"/api/accounts/{first['id']}")
 
-    assert [(a["id"], a["active"]) for a in response.json()["accounts"]][1:] == [
+    listed = of_claude_and_codex(response.json()["accounts"])
+    assert [(a["id"], a["active"]) for a in listed][1:] == [
         ("codex-main", False),
         (second["id"], True),
     ]

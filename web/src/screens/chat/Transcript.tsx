@@ -21,6 +21,7 @@ import type {
 } from "../../api/types.ts";
 import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
+import { supportsFeature } from "../../store/selectors.ts";
 import { draftKey, type BashRun, type HistoryStatus } from "../../store/state.ts";
 import { elapsed, summarizeTools, thoughtLabel, toolKind } from "../../transcript/activity.ts";
 import {
@@ -145,8 +146,14 @@ export function Transcript({
   >(null);
   const { fill, ask } = usePrefill(draftKey({ session: session.id }));
   // Never in a pixie's chat: each run starts fresh, so earlier runs' checkpoints are gone.
+  // Editing rewinds, so an engine that cannot rewind (B91) offers only what it can do.
+  const canRewind = supportsFeature(state, "rewind", session.provider);
+  const canFork = supportsFeature(state, "fork", session.provider);
   const onActions =
-    AT_REST.has(session.state) && session.archived_at === null && session.pixie_id == null
+    AT_REST.has(session.state) &&
+    session.archived_at === null &&
+    session.pixie_id == null &&
+    (canRewind || canFork)
       ? (event: number) => {
           setSheet({ kind: "actions", event });
         }
@@ -271,11 +278,15 @@ export function Transcript({
       {sheet?.kind === "actions" && (
         <MessageActions
           onClose={close}
-          onEdit={() => void edit(sheet.event)}
-          onRewind={() => {
-            setSheet({ kind: "rewind", event: sheet.event });
-          }}
-          onFork={() => void fork(sheet.event)}
+          onEdit={canRewind ? () => void edit(sheet.event) : undefined}
+          onRewind={
+            canRewind
+              ? () => {
+                  setSheet({ kind: "rewind", event: sheet.event });
+                }
+              : undefined
+          }
+          onFork={canFork ? () => void fork(sheet.event) : undefined}
         />
       )}
       {sheet?.kind === "rewind" && (
@@ -465,25 +476,27 @@ function Item({
 
 interface MessageActionsProps {
   onClose: () => void;
-  onEdit: () => void;
-  onRewind: () => void;
-  onFork: () => void;
+  // Each left out where the chat's engine cannot do it.
+  onEdit: (() => void) | undefined;
+  onRewind: (() => void) | undefined;
+  onFork: (() => void) | undefined;
 }
 
 /** What can be done with one of the user's messages (B59), as in Claude Code. */
 function MessageActions({ onClose, onEdit, onRewind, onFork }: MessageActionsProps) {
-  const item = (label: string, run: () => void) => (
-    <button
-      className="asi"
-      role="menuitem"
-      onClick={() => {
-        onClose();
-        run();
-      }}
-    >
-      {label}
-    </button>
-  );
+  const item = (label: string, run: (() => void) | undefined) =>
+    run !== undefined && (
+      <button
+        className="asi"
+        role="menuitem"
+        onClick={() => {
+          onClose();
+          run();
+        }}
+      >
+        {label}
+      </button>
+    );
   return (
     <ActionSheet label="Message" onClose={onClose}>
       {item("Edit", onEdit)}

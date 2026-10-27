@@ -8,7 +8,8 @@ from pydantic import BaseModel, field_validator
 from nestd.providers.base import BankedResets
 from nestd.usage.models import AccountWindow
 
-type AccountProvider = Literal["claude", "codex"]
+# The engines an account can be added for: Cursor has one only (B107).
+type AccountProvider = Literal["claude", "codex", "opencode", "gemini"]
 NAME_LIMIT = 40
 
 
@@ -48,6 +49,16 @@ class AccountSignIn(BaseModel):
     # Codex's sign-in page, which the client opens; None for Claude, whose sign in opens
     # the browser on the Mac itself.
     auth_url: str | None
+    # For an engine signed in in Terminal (B107): the command the user runs there.
+    login_command: str | None = None
+
+
+class AccountKey(BaseModel):
+    """`PUT /api/accounts/{id}/key` (B107). Checked by the service, never here, so a
+    refusal never repeats the key.
+    """
+
+    key: str
 
 
 type ResetOutcome = Literal["reset", "nothing_to_reset", "no_credit", "already_redeemed"]

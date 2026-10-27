@@ -3,10 +3,11 @@
 The first account of each engine is the user's own login: `~/.claude` and `~/.claude.json`,
 and `~/.codex`, run exactly as without Nest. Every other account is a folder Nest owns,
 `<data_dir>/profiles/<engine>/<id>/`, that the engine is pointed at with CLAUDE_CONFIG_DIR
-or CODEX_HOME. Its path never changes: Claude Code names the account's Keychain item after
-it. Everything but the login is shared with the first account by links, so agents behave
-the same on every account; Claude's user MCP servers live beside the login in its
-`.claude.json`, so they are copied in instead.
+or CODEX_HOME, or an ACP engine's own variables (B107). Its path never changes: Claude Code
+names the account's Keychain item after it. Everything but the login is shared with the
+first account by links, so agents behave the same on every account; Claude's user MCP
+servers live beside the login in its `.claude.json`, so they are copied in instead. An ACP
+engine's added account shares nothing: it is only its own login's folder.
 
 Nothing here ever writes, moves or deletes inside the first account's folders: only a
 checked path inside the profiles folder is created or removed.
@@ -24,12 +25,15 @@ from pydantic import JsonValue
 
 from nestd.configuration.files import read_text, write_text
 from nestd.errors import ConflictError
+from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine, account_env, acp_engine
 
 logger = logging.getLogger(__name__)
 
 CLAUDE = "claude"
 CODEX = "codex"
-PROVIDERS = (CLAUDE, CODEX)
+# ACP engines (B107) with a folder per account; their added accounts share nothing.
+ACP_PROFILES = tuple(engine.id for engine in ACP_ENGINES if engine.several_accounts)
+PROVIDERS = (CLAUDE, CODEX, *ACP_PROFILES)
 CLAUDE_CONFIG_DIR = "CLAUDE_CONFIG_DIR"
 CODEX_HOME = "CODEX_HOME"
 CODEX_SQLITE_HOME = "CODEX_SQLITE_HOME"
@@ -113,13 +117,20 @@ class Profiles:
         folder = str(self.checked(profile))
         if provider == CLAUDE:
             return {CLAUDE_CONFIG_DIR: folder}
-        return {CODEX_HOME: folder, CODEX_SQLITE_HOME: str(self._first_codex())}
+        if provider == CODEX:
+            return {CODEX_HOME: folder, CODEX_SQLITE_HOME: str(self._first_codex())}
+        return account_env(_acp(provider), Path(folder))
 
     def prepare(self, provider: str, profile: Path) -> dict[str, str]:
         """Make the folder and share the first account's setup into it; cheap when done.
         Returns the account's environment.
         """
         folder = self.checked(profile)
+        if provider not in (CLAUDE, CODEX):
+            env = self.env(provider, folder)
+            for path in {Path(value) for value in env.values()}:
+                path.mkdir(parents=True, exist_ok=True)
+            return env
         if provider == CLAUDE:
             source = self._first_claude()
             own: Callable[[str], bool] = CLAUDE_OWN.__contains__
@@ -150,6 +161,14 @@ class Profiles:
             msg = "Codex's home is not known, so no Codex account can be added"
             raise ProfileError(msg)
         return self._first.codex_home
+
+
+def _acp(provider: str) -> AcpEngine:
+    engine = acp_engine(provider)
+    if engine is None or not engine.several_accounts:
+        msg = f"{provider} has no account folders"
+        raise ProfileError(msg)
+    return engine
 
 
 def _codex_own(name: str) -> bool:

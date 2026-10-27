@@ -66,7 +66,7 @@ def test_a_new_folder_is_under_the_profiles_folder_by_engine_and_id(
         ("claude", "../../home"),
         ("claude", "0123456789AB"),
         ("claude", "0123456789a"),
-        ("gemini", "0123456789ab"),
+        ("cursor", "0123456789ab"),
     ],
 )
 def test_a_folder_needs_a_known_engine_and_a_twelve_hex_id(

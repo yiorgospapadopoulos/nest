@@ -16,6 +16,8 @@ BASE ?= main
 install:
 	cd daemon && uv sync
 	cd web && npm ci
+	# The open engines' pinned versions in Nest's own folder (B107); quick once there.
+	cd daemon && uv run nestd engines install
 
 check: check-daemon check-web check-apple
 

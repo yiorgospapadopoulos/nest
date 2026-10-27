@@ -136,6 +136,11 @@ class AppPaths:
         return self.data_dir / "artifacts"
 
     @property
+    def engines_dir(self) -> Path:
+        """The ACP engines Nest installs, one pinned version each (B107); made on install."""
+        return self.data_dir / "engines"
+
+    @property
     def db_path(self) -> Path:
         return self.data_dir / DB_NAME
 

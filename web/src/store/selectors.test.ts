@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BackgroundItem, ModelOption, Session } from "../api/types.ts";
 import {
+  acpProvider,
   account,
   agentDefaults,
   claudeProvider,
@@ -739,16 +740,7 @@ describe("engines (B102 items 22, 25, 27, 28, as NestKit ProvidersStore)", () =>
   it("lists the engines, Claude alone before the list loads", () => {
     expect(engineList(engines()).map((p) => p.name)).toEqual(["claude", "codex"]);
     const before = { ...initialState, account: account() };
-    expect(engineList(before)).toEqual([
-      {
-        name: "claude",
-        display_name: "Claude",
-        signed_in: null,
-        sign_in_hint: null,
-        account: account(),
-        unsupported: [],
-      },
-    ]);
+    expect(engineList(before)).toEqual([claudeProvider()]);
     expect(offersEngineChoice(engines())).toBe(true);
     expect(offersEngineChoice(before)).toBe(false);
   });
@@ -791,6 +783,31 @@ describe("engines (B102 items 22, 25, 27, 28, as NestKit ProvidersStore)", () =>
     expect(modelSections(engines(), null, false).map((s) => s.provider)).toEqual(["claude"]);
     const alone = modelSections({ ...engines(), providers: [claudeProvider()] }, null, true);
     expect(alone.map((s) => [s.provider, s.title, s.detail])).toEqual([["claude", "Model", ""]]);
+  });
+
+  it("offers a new chat only the engines that can run now (B107)", () => {
+    const state = engines({
+      providers: [
+        claudeProvider(),
+        codexProvider({ signed_in: false }),
+        acpProvider(),
+        acpProvider({ name: "gemini", display_name: "Gemini CLI", signed_in: false }),
+        acpProvider({ name: "cursor", display_name: "Cursor agent", state: "not_installed" }),
+      ],
+    });
+    const draft = modelSections(state, null, true);
+    expect(draft.map((s) => [s.provider, s.detail, s.available])).toEqual([
+      ["claude", "Claude Max", true],
+      // An engine signing in through the browser stays offered signed out, as on the Mac.
+      ["codex", "Not signed in", true],
+      ["opencode", "", true],
+      ["gemini", "Not signed in", false],
+      ["cursor", "Not installed", false],
+    ]);
+    // A chat that exists keeps its own engine, even one not listed.
+    expect(modelSections(state, "cursor", false)[0]?.available).toBe(true);
+    expect(modelSections(state, "newengine", false).map((s) => s.title)).toEqual(["Newengine"]);
+    expect(modelTitle(state, "big-pickle", "opencode")).toBe("OpenCode · big-pickle");
   });
 
   it("titles a model after its engine off Claude", () => {
@@ -877,5 +894,14 @@ describe("the usage bar's engines (B102 items 23, 29)", () => {
     expect(usageBarChoices(initialState)).toEqual([
       { provider: "claude", name: "Claude", detail: "", shown: true },
     ]);
+  });
+
+  it("leaves out an engine that reports no limits (B107)", () => {
+    const state = engines({
+      providers: [claudeProvider(), codexProvider(), acpProvider()],
+      engineLimits: { opencode: { windows: [] } },
+    });
+    expect(usageBarLines(state).map((l) => l.provider)).toEqual(["claude", "codex"]);
+    expect(usageBarChoices(state).map((c) => c.provider)).toEqual(["claude", "codex"]);
   });
 });

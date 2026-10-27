@@ -9,6 +9,7 @@ import httpx
 from nestd.api.app import create_app
 from nestd.context import AppContext
 from nestd.local.service import LocalSetup
+from tests.acp_engine_support import FakeNpm
 from tests.api_support import build_context, local_token
 from tests.codex_support import FakeAppServer
 from tests.fake_claude import FakeClaude
@@ -33,6 +34,7 @@ class Api:
         restart: RecordingRestart,
         claude: FakeClaude,
         codex: FakeAppServer,
+        npm: FakeNpm,
     ) -> None:
         self.ctx = ctx
         self.http = http
@@ -44,6 +46,7 @@ class Api:
         self.restart = restart
         self.claude = claude
         self.codex = codex
+        self.npm = npm
 
 
 @asynccontextmanager
@@ -62,6 +65,7 @@ async def running_api(
     engine = FakeInfoFactory()
     claude = FakeClaude()
     codex = FakeAppServer()
+    npm = FakeNpm()
     ctx = await build_context(
         tmp_path,
         clock,
@@ -76,6 +80,7 @@ async def running_api(
         codex=codex,
         codex_home=codex_home,
         local_setup=local_setup,
+        npm=npm,
     )
     restart = RecordingRestart()
     app = create_app(ctx, restart=restart)
@@ -86,6 +91,8 @@ async def running_api(
             httpx.AsyncClient(transport=transport, base_url="https://mac.tailnet.ts.net") as http,
         ):
             http.headers["Authorization"] = f"Bearer {local_token(secrets)}"
-            yield Api(ctx, http, provider, runner, opener, probes, engine, restart, claude, codex)
+            yield Api(
+                ctx, http, provider, runner, opener, probes, engine, restart, claude, codex, npm
+            )
     finally:
         await ctx.close()

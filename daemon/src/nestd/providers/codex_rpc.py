@@ -5,6 +5,7 @@ sends requests and notifications; the server answers them, sends notifications o
 and sends requests (approvals) that Nest answers. One reader takes every line for the life
 of the connection: notifications are handled in order on it, and each server request in a
 task of its own, since an approval can wait for the user while the turn streams on.
+The ACP engines (B107) speak the same, with the field (`acp_rpc`).
 """
 
 import asyncio
@@ -70,8 +71,16 @@ class CodexRpc:
         on_notification: NotificationHandler,
         on_request: RequestHandler,
         on_closed: ClosedHandler | None = None,
+        *,
+        peer: str = "Codex",
+        jsonrpc: bool = False,
     ) -> None:
+        """`peer` names the server in messages and logs; `jsonrpc` adds the "jsonrpc": "2.0"
+        field to every message, which servers that follow JSON-RPC to the letter (ACP) need.
+        """
         self._transport = transport
+        self._peer = peer
+        self._jsonrpc = jsonrpc
         self._on_notification = on_notification
         self._on_request = on_request
         self._on_closed = on_closed
@@ -115,17 +124,19 @@ class CodexRpc:
         await asyncio.gather(self._reader, return_exceptions=True)
 
     async def _write(self, message: JsonObject) -> None:
+        if self._jsonrpc:
+            message = {"jsonrpc": "2.0", **message}
         line = json.dumps(message, separators=(",", ":")).encode() + b"\n"
         async with self._write_lock:
             await self._transport.write(line)
 
     async def _read(self) -> None:
-        reason = "Codex ended"
+        reason = f"{self._peer} ended"
         try:
             while line := await self._transport.readline():
                 await self._handle(line)
         except Exception as error:
-            reason = f"Codex's output could not be read ({type(error).__name__})"
+            reason = f"{self._peer}'s output could not be read ({type(error).__name__})"
         tail = self._transport.stderr()
         self._ended = f"{reason}: {tail}" if tail else reason
         for answer in self._pending.values():
@@ -138,10 +149,10 @@ class CodexRpc:
         try:
             raw: object = json.loads(line)
         except ValueError:
-            logger.warning("Codex wrote a line that is not JSON; it is skipped")
+            logger.warning("%s wrote a line that is not JSON; it is skipped", self._peer)
             return
         if not isinstance(raw, dict):
-            logger.warning("Codex wrote a JSON value that is not an object; it is skipped")
+            logger.warning("%s wrote a JSON value that is not an object; it is skipped", self._peer)
             return
         message = cast("JsonObject", raw)
         method = message.get("method")
@@ -154,7 +165,7 @@ class CodexRpc:
             try:
                 await self._on_notification(method, params)
             except Exception:
-                logger.exception("handling Codex's %s notification failed", method)
+                logger.exception("handling %s's %s notification failed", self._peer, method)
         else:
             self._resolve(message)
 
@@ -170,7 +181,7 @@ class CodexRpc:
             answer.set_exception(
                 CodexRpcError(
                     code if isinstance(code, int) else INTERNAL_ERROR,
-                    text if isinstance(text, str) else "Codex refused the request",
+                    text if isinstance(text, str) else f"{self._peer} refused the request",
                     error.get("data"),
                 )
             )
@@ -184,7 +195,7 @@ class CodexRpc:
         except CodexRpcError as error:
             reply = {"id": request_id, "error": {"code": error.code, "message": error.message}}
         except Exception:
-            logger.exception("answering Codex's %s request failed", method)
+            logger.exception("answering %s's %s request failed", self._peer, method)
             reply = {"id": request_id, "error": {"code": INTERNAL_ERROR, "message": "Nest failed"}}
         with suppress(Exception):
             await self._write(reply)

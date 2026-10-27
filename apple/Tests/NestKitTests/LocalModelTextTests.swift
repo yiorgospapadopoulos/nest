@@ -192,7 +192,8 @@ import Testing
     @Test func enginesHaveTheirMenuWords() {
         #expect(LocalModelText.engineName("claude") == "Claude Code")
         #expect(LocalModelText.engineName("codex") == "Codex")
-        #expect(LocalModelText.engineName("gemini") == "Gemini")
+        #expect(LocalModelText.engineName("gemini") == "Gemini CLI")
+        #expect(LocalModelText.engineName("someengine") == "Someengine")
         #expect(LocalModelText.engineDetail("claude") == "Every Nest chat feature")
         #expect(
             LocalModelText.engineDetail("codex")

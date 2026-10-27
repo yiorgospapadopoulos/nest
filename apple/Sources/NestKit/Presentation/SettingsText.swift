@@ -106,11 +106,15 @@ public enum PixieSettingsText {
 
 /// The words of Settings > Accounts (B81, B98).
 public enum AccountText {
-    /// "Claude", "Codex", else the engine's name capitalized.
+    /// "Claude", "Codex", the other known engines' names (B107), else the engine's name
+    /// capitalized.
     public static func engine(_ provider: String) -> String {
         switch provider {
         case ProviderInfo.claude: "Claude"
         case "codex": "Codex"
+        case "opencode": "OpenCode"
+        case "gemini": "Gemini CLI"
+        case "cursor": "Cursor agent"
         default: provider.capitalized
         }
     }

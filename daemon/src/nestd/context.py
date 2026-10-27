@@ -58,12 +58,15 @@ from nestd.configuration.service import Configuration, prepare_engine
 from nestd.configuration.watcher import ConfigurationWatcher
 from nestd.configuration.wiring import build_sources
 from nestd.connectors.registry import ConnectorRegistry
+from nestd.engine.acp import AcpEngineService, AcpSetup, build_acp_engines
+from nestd.engine.acp_install import InstallState
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
 from nestd.engine.defaults import ChatDefaults
 from nestd.engine.fetch import InfoClientFactory, fetch_details
 from nestd.engine.service import EngineInfo
 from nestd.engine.sign_ins import CLAUDE, CODEX, SignInStore
 from nestd.engine.store import EngineInfoStore
+from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.features.catalog import packaged_catalog
 from nestd.features.service import Features
@@ -102,6 +105,8 @@ from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.pixies.teams import TeamService
 from nestd.pixies.triggers import HabitTriggers
+from nestd.providers.acp import AcpProvider
+from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine
 from nestd.providers.base import AgentProvider, EngineDetails, UsageInfo
 from nestd.providers.claude import ClaudeProvider
 from nestd.providers.codex import CodexProvider
@@ -184,6 +189,8 @@ class AppContext:
     engine: EngineInfo
     # Codex's models and login (B91).
     codex: CodexEngine
+    # The ACP engines Nest runs, by name, in the catalogue's order (B107).
+    acp: dict[str, AcpEngineService]
     # Which engine was signed in first, and the defaults Nest picks from it (B94).
     sign_ins: SignInStore
     chat_defaults: ChatDefaults
@@ -248,6 +255,7 @@ class AppContext:
         machine: Callable[[], Awaitable[str]] = machine_name,
         local_setup: LocalSetup | None = None,
         port_probe: PortProbe = listening_ports,
+        acp_setup: AcpSetup | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -264,19 +272,24 @@ class AppContext:
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
         may be. `machine` reads the machine's name, once. `local_setup` is what local
         models reach: the network and the apps' folders. `port_probe` reads the ports a dev
-        server run listens on (lsof).
+        server run listens on (lsof). `acp_setup` is what the ACP engines reach: npm, their
+        processes, the environment they start from (B107).
         """
         paths.ensure()
         settings = load_settings(paths)
         db = await Database.open(paths.db_path)
         bus = EventBus(db, clock)
         account_store = AccountStore(db, clock)
+        for engine in ACP_ENGINES:
+            await account_store.ensure_first(engine.id)
         profiles = Profiles(
             paths.data_dir / "profiles",
             FirstAccount(paths.claude_dir, paths.claude_account_file, paths.codex_home),
         )
         active = await ActiveAccounts.load(account_store, profiles)
         sign_ins = SignInStore(db, clock)
+        # Local models stand in only when no subscription engine is signed in: an ACP engine
+        # does not count (B107).
         logins = SignedIn(account_store, active, sign_ins)
         local = LocalModels(
             store=LocalStore(db),
@@ -389,6 +402,29 @@ class AppContext:
         activity = ActivityStore(db, clock)
         shell = login_shell(os.environ, os.getuid())
         shell_env = shell_env or LoginShellEnv(shell).get
+        acp_setup = acp_setup or AcpSetup()
+
+        async def engine_state(engine: AcpEngine, state: InstallState) -> None:
+            await bus.publish_ephemeral(
+                types.ENGINE_STATE,
+                {
+                    "name": engine.id,
+                    "state": state.state,
+                    "version": state.version,
+                    "state_detail": state.detail,
+                },
+            )
+
+        acp = build_acp_engines(
+            root=paths.engines_dir,
+            db=db,
+            clock=clock,
+            secrets=secrets,
+            shell_env=shell_env,
+            active=active.prepare,
+            on_change=engine_state,
+            setup=acp_setup,
+        )
         runs = RunManager(
             bus=bus,
             # Read at each use, so new port settings apply to the next block given.
@@ -484,7 +520,23 @@ class AppContext:
                     ready=codex.require_signed_in,
                     default=lambda: local.default_or(codex.default_model),
                     accounts=active.source(CODEX_ACCOUNTS),
-                )
+                ),
+                *(
+                    Engine(
+                        AcpProvider(
+                            service.engine,
+                            service.launch,
+                            paths.agent_gh_dir,
+                            transport=acp_setup.transport,
+                        ),
+                        models=service.find,
+                        ready=service.require_ready,
+                        default=service.default_model,
+                        accounts=active.source(service.name),
+                        git_guard=service.engine.git_guard,
+                    )
+                    for service in acp.values()
+                ),
             ],
             accounts=active.source(CLAUDE_ACCOUNTS),
             local=local,
@@ -649,6 +701,7 @@ class AppContext:
             codex_launch=codex_launch,
             close_idle_runs=sessions.close_idle_runs,
             claude_switched=engine.refresh,
+            acp=acp,
         )
         # The shared setup is the first account's: every other one links to it (B98).
         codex_setup = CodexSetup(codex_transport, lambda: codex_launch({}))
@@ -718,6 +771,7 @@ class AppContext:
             ),
             engine=engine,
             codex=codex,
+            acp=acp,
             sign_ins=sign_ins,
             chat_defaults=ChatDefaults(lambda: sessions.engines, sign_ins, local.engine),
             pixies=pixies,
@@ -832,6 +886,8 @@ class AppContext:
     async def close(self) -> None:
         await self.local.close()
         await self.accounts.stop()
+        for service in self.acp.values():
+            await service.install.stop()
         await self.claude_code.stop()
         await self.modules.stop_all()
         await self.notifications.close()

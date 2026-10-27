@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import type { LimitWindow, UsageSettings } from "../../api/types.ts";
 import { clockTime, percent, resetLabel } from "../../format.ts";
-import { CLAUDE } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { engineList, usageBarChoices } from "../../store/selectors.ts";
+import { engineList, meteredOthers, usageBarChoices } from "../../store/selectors.ts";
 import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
 import { UsagePeriodCard } from "./UsagePeriodCard.tsx";
@@ -32,7 +31,7 @@ export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   const limits = state.limits;
   const settings = state.settings.usage;
   const now = new Date();
-  const others = engineList(state).filter((e) => e.name !== CLAUDE && e.signed_in === true);
+  const others = meteredOthers(state);
 
   useEffect(() => {
     void actions.loadEngineLimits();

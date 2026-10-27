@@ -18,6 +18,7 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
+from nestd.accounts.acp import AcpAccount
 from nestd.accounts.active import ActiveAccounts, run_account
 from nestd.accounts.codex import (
     CodexAccount,
@@ -38,10 +39,12 @@ from nestd.accounts.store import AccountStore, StoredAccount
 from nestd.claude_code.account import ClaudeAccount, ClaudeAccountStatus, SignInRunningError
 from nestd.claude_code.cli import ClaudeCli, ClaudeCliError
 from nestd.clock import Clock
+from nestd.engine.acp import AcpAccountStatus, AcpEngineService
 from nestd.engine.codex import CodexEngine
 from nestd.errors import ConflictError
 from nestd.events import types
 from nestd.events.bus import EventBus
+from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.base import BankedResets, EngineWindow, UsageInfo, UsageWindow
 from nestd.providers.codex_engine import CodexFetchError, ask_codex, fetch_codex_usage
 from nestd.providers.codex_limits import consume_reset, read_limits
@@ -54,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 # Statuses older than this are asked again when the accounts are listed.
 STATUS_MAX_AGE = timedelta(seconds=60)
-TITLES = {CLAUDE: "Claude", CODEX: "Codex"}
+TITLES = {CLAUDE: "Claude", CODEX: "Codex", **{engine.id: engine.name for engine in ACP_ENGINES}}
 OUTCOMES: dict[str, ResetOutcome] = {
     "reset": "reset",
     "nothingToReset": "nothing_to_reset",
@@ -62,8 +65,8 @@ OUTCOMES: dict[str, ResetOutcome] = {
     "alreadyRedeemed": "already_redeemed",
 }
 
-type Handle = ClaudeAccount | CodexAccount
-type Status = ClaudeAccountStatus | CodexAccountStatus
+type Handle = ClaudeAccount | CodexAccount | AcpAccount
+type Status = ClaudeAccountStatus | CodexAccountStatus | AcpAccountStatus
 # A Codex app-server launch on the account's folder, from its environment.
 type CodexLauncher = Callable[[Mapping[str, str]], CodexLaunch]
 
@@ -78,6 +81,10 @@ class NotSignedInError(ConflictError):
 
 class NoBankedResetsError(ConflictError):
     pass
+
+
+class NoKeyError(ConflictError):
+    """Only an engine that signs in with an API key keeps one (B107)."""
 
 
 class Accounts:
@@ -97,11 +104,13 @@ class Accounts:
         codex_launch: CodexLauncher,
         close_idle_runs: Callable[[Collection[str]], Awaitable[None]],
         claude_switched: Callable[[], Awaitable[object]],
+        acp: Mapping[str, AcpEngineService] | None = None,
         new_id: Callable[[], str] = lambda: secrets.token_hex(6),
     ) -> None:
         """`codex` is the engine's view of its active account; `close_idle_runs` closes
         the idle chat runs opened on any of the given accounts, and `claude_switched`
         reads Claude's models and account again once another Claude account is active.
+        `acp` are the ACP engines Nest runs, by name (B107).
         """
         self._store = store
         self._active = active
@@ -117,7 +126,10 @@ class Accounts:
         self._close_idle_runs = close_idle_runs
         self._claude_switched = claude_switched
         self._new_id = new_id
+        self._acp = dict(acp or {})
         self._handles: dict[str, Handle] = {}
+        # Each handle's engine, by account.
+        self._handle_providers: dict[str, str] = {}
         # Added and never signed in: removed again when the first sign in does not end
         # signed in.
         self._fresh: set[str] = set()
@@ -170,14 +182,18 @@ class Accounts:
         folder = self._profiles.folder(provider, account_id)
         await asyncio.to_thread(self._profiles.prepare, provider, folder)
         account = await self._store.add(account_id, provider, folder)
-        self._fresh.add(account_id)
+        # An ACP engine's account signs in later, with a key or in Terminal (B107).
+        if provider not in self._acp:
+            self._fresh.add(account_id)
         try:
-            auth_url = await self._start(account)
+            auth_url, command = await self._start(account)
         except BaseException:
             await self._remove(account, folder)
             raise
         await self._changed()
-        return AccountSignIn(account=await self.get(account_id), auth_url=auth_url)
+        return AccountSignIn(
+            account=await self.get(account_id), auth_url=auth_url, login_command=command
+        )
 
     async def login(self, account_id: str) -> AccountSignIn:
         """Sign in to the account again; 409 while a sign in of its engine runs."""
@@ -185,9 +201,11 @@ class Accounts:
         self._require_no_sign_in(account.provider)
         await run_account(self._profiles, account)
         self._sign_in_errors.pop(account_id, None)
-        auth_url = await self._start(account)
+        auth_url, command = await self._start(account)
         await self._changed()
-        return AccountSignIn(account=await self.get(account_id), auth_url=auth_url)
+        return AccountSignIn(
+            account=await self.get(account_id), auth_url=auth_url, login_command=command
+        )
 
     async def cancel(self, account_id: str) -> None:
         """Stop the account's sign in, if one runs; announced without an error."""
@@ -199,6 +217,25 @@ class Accounts:
         handle = await self._handle(await self._store.get(account_id))
         await handle.logout()
         return await self.get(account_id)
+
+    async def set_key(self, account_id: str, key: str) -> Account:
+        """Keep an API key engine's key for the account in the Keychain, then ask again;
+        409 for any other engine. The key is never logged, announced or answered.
+        """
+        await (await self._acp_handle(account_id)).set_key(key)
+        return await self.get(account_id)
+
+    async def delete_key(self, account_id: str) -> Account:
+        """Forget the account's key: it is signed out. 409 for any other engine."""
+        await (await self._acp_handle(account_id)).delete_key()
+        return await self.get(account_id)
+
+    async def _acp_handle(self, account_id: str) -> AcpAccount:
+        handle = await self._handle(await self._store.get(account_id))
+        if not isinstance(handle, AcpAccount):
+            msg = "only an engine that signs in with an API key keeps one"
+            raise NoKeyError(msg)
+        return handle
 
     async def rename(self, account_id: str, name: str | None) -> Account:
         await self._store.get(account_id)
@@ -329,34 +366,46 @@ class Accounts:
     def _require_no_sign_in(self, provider: str) -> None:
         if any(
             handle.signing_in
-            for handle in self._handles.values()
-            if isinstance(handle, ClaudeAccount) == (provider == CLAUDE)
+            for account_id, handle in self._handles.items()
+            if self._handle_providers.get(account_id) == provider
         ):
             msg = "a sign in is already in progress"
             raise SignInRunningError(msg)
 
-    async def _start(self, account: StoredAccount) -> str | None:
+    async def _start(self, account: StoredAccount) -> tuple[str | None, str | None]:
+        """The page to sign in on (Codex), and the command to run in Terminal (B107)."""
         handle = await self._handle(account)
         if isinstance(handle, ClaudeAccount):
             await handle.login()
-            return None
-        return (await handle.login()).auth_url
+            return None, None
+        if isinstance(handle, AcpAccount):
+            return None, await handle.login()
+        return (await handle.login()).auth_url, None
 
     async def _handle(self, account: StoredAccount) -> Handle:
         handle = self._handles.get(account.id)
         if handle is None:
             env = self._profiles.env(account.provider, account.profile)
             announce = partial(self._outcome, account.id)
+            service = self._acp.get(account.provider)
             if account.provider == CLAUDE:
                 handle = ClaudeAccount(self._claude_cli, self._clock, announce, env)
-            else:
+            elif service is not None:
+                handle = AcpAccount(
+                    service, account.id, partial(run_account, self._profiles, account), announce
+                )
+            elif account.provider == CODEX:
                 handle = CodexAccount(
                     partial(self._codex_status, account.id, env),
                     self._codex_transport,
                     partial(self._codex_launch, env),
                     announce,
                 )
+            else:
+                msg = f"Nest does not run {account.provider}"
+                raise ConflictError(msg)
             self._handles[account.id] = handle
+            self._handle_providers[account.id] = account.provider
         return handle
 
     async def _codex_status(self, account_id: str, env: Mapping[str, str]) -> CodexAccountStatus:
@@ -378,7 +427,7 @@ class Accounts:
         return status
 
     async def _record(self, account_id: str, status: Status) -> None:
-        error = status.error if isinstance(status, CodexAccountStatus) else None
+        error = status.error if isinstance(status, CodexAccountStatus | AcpAccountStatus) else None
         if error is None:
             self._status_errors.pop(account_id, None)
         else:
@@ -409,6 +458,9 @@ class Accounts:
 
     async def _announce(self, provider: str, status: Status, error: str | None) -> None:
         """The active account's status as before B98, for the clients that read it."""
+        if provider not in (CLAUDE, CODEX):
+            # ACP engines have only `accounts.changed` (B107).
+            return
         payload: dict[str, JsonValue] = {**status.model_dump(mode="json"), "error": error}
         kind = types.ACCOUNT_CLAUDE if provider == CLAUDE else types.ACCOUNT_CODEX
         await self._bus.publish(kind, payload)
@@ -418,6 +470,9 @@ class Accounts:
         active = account.id == self._active.id(account.provider)
         if account.provider == CLAUDE:
             await self._refresher.probe(await run_account(self._profiles, account), active)
+            return
+        if account.provider != CODEX:
+            # ACP engines report tokens per turn only, no windows (B107).
             return
         if active:
             info = await self._codex.usage()
@@ -442,8 +497,11 @@ class Accounts:
         self._active.choose(account)
         others = {a.id for a in await self._store.list() if a.provider == provider} - {account.id}
         await self._close_idle_runs(others)
+        service = self._acp.get(provider)
         if provider == CODEX:
             self._codex.forget()
+        elif service is not None:
+            service.forget()
         else:
             self._background(self._claude_switched())
         self._refresher.wake()
@@ -464,6 +522,8 @@ class Accounts:
                 for w in (limits.five_hour, limits.seven_day)
             )
             return UsageInfo(five_hour=five_hour, seven_day=seven_day)
+        if account.provider != CODEX:
+            return UsageInfo(five_hour=None, seven_day=None, provider=account.provider)
         windows = [
             EngineWindow(utilization=w.utilization, resets_at=w.resets_at, minutes=w.minutes)
             for w in (await self._usage.engine_limits(CODEX, account.id)).windows
@@ -476,6 +536,7 @@ class Accounts:
         """
         try:
             handle = self._handles.pop(account.id, None)
+            self._handle_providers.pop(account.id, None)
             if handle is not None:
                 await handle.stop()
             await asyncio.to_thread(self._profiles.remove, profile)
@@ -497,7 +558,9 @@ class Accounts:
             id=account.id,
             provider=account.provider,
             name=account.name,
-            title=account.name or account.email or TITLES[account.provider],
+            title=account.name
+            or account.email
+            or TITLES.get(account.provider, account.provider.capitalize()),
             email=account.email,
             plan=account.plan,
             signed_in=account.signed_in,
@@ -508,7 +571,7 @@ class Accounts:
             limits=await self._usage.windows(account.id),
             checked_at=account.checked_at,
             banked_resets=None
-            if account.provider == CLAUDE
+            if account.provider != CODEX
             else await self._usage.banked(account.id),
         )
 

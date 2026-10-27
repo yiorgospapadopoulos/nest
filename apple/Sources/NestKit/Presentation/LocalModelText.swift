@@ -4,7 +4,6 @@ import Foundation
 /// the model menu's Local section, and a local chat's header, bars and cards.
 public enum LocalModelText {
     public static let sectionTitle = "Local models"
-    public static let sectionNote = "free, on this Mac"
     public static let menuTitle = "Local"
     public static let menuDetail = "On this Mac, free, no limits"
     public static let addTitle = "Add local model"

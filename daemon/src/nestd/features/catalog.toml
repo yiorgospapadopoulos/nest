@@ -452,6 +452,15 @@ added = 2026-10-20
 block = "B91"
 
 [[features]]
+id = "more-engines"
+group = "engines"
+name = "More engines"
+text = "Chat with other coding agents, some with free models, which Nest installs and keeps to a tested version. Each one asks Nest before it runs a command or edits a file."
+where = "Settings › Accounts"
+added = 2026-10-27
+block = "B107"
+
+[[features]]
 id = "several-accounts"
 group = "engines"
 name = "Several accounts"

@@ -196,7 +196,7 @@ async def test_a_codex_default_is_checked_against_codexs_models(api: Api) -> Non
         "/api/agents/defaults",
         json={"provider": "codex", "model": "gpt-5.5", "effort": "high"},
     )
-    unknown = await api.http.put("/api/agents/defaults", json={"provider": "gemini"})
+    unknown = await api.http.put("/api/agents/defaults", json={"provider": "amp"})
 
     assert effort.status_code == 422
     assert effort.json() == {"detail": "GPT-5.5 does not take a thinking level"}

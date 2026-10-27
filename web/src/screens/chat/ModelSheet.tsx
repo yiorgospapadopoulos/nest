@@ -15,8 +15,9 @@ interface Props {
 
 /**
  * The composer's one model menu, as the Mac's (B91, B94): a new chat lists each engine's
- * models under its name, with its plan or "Not signed in", and choosing a model chooses
- * its engine; an open chat lists only its own engine's. Real models only, no default entry.
+ * models under its name, with its plan or why it cannot run ("Not signed in", "Not
+ * installed"; its models then not choosable, B107), and choosing a model chooses its
+ * engine; an open chat lists only its own engine's. Real models only, no default entry.
  */
 export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props) {
   const { state } = useStore();
@@ -43,6 +44,7 @@ export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props)
                 className="asi"
                 role="menuitemradio"
                 aria-checked={checked}
+                disabled={!section.available}
                 data-autofocus={checked ? true : undefined}
                 onClick={() => {
                   onPick(option.value, section.provider);

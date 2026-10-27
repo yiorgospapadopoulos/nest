@@ -9,7 +9,7 @@ import type {
 } from "../../api/types.ts";
 import { CLAUDE, isSelected, supportsAuto, thinkingLevels } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { catalogFor, modelSections, modelTitle } from "../../store/selectors.ts";
+import { catalogFor, modelSections, modelTitle, pixieCanRunOn } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { effortLabel, NO_THINKING, PERMISSIONS, type Option } from "../chat/options.ts";
@@ -156,6 +156,7 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
     <ActionSheet label="Model" title={<b>Model</b>} onClose={onClose}>
       {modelSections(state, own, true).map((section) => {
         const mine = section.provider === own;
+        const choosable = pixieCanRunOn(state, section.provider);
         return (
           <div key={section.provider} role="group" aria-label={section.title} className="msec">
             <div className="msec-h">
@@ -175,6 +176,7 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
                   className="asi"
                   role="menuitemradio"
                   aria-checked={checked}
+                  disabled={!choosable}
                   data-autofocus={checked ? true : undefined}
                   onClick={() => {
                     save(

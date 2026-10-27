@@ -159,9 +159,15 @@ public final class LiveSync {
         case .reposChanged, .branchesChanged:
             // A branch change may be the project folder's own, which its label shows.
             app.reloadRepos()
-        case .codexAccount:
-            // Signed in or out: the engines' lists and the defaults may change (B94).
+        case .codexAccount, .engineState:
+            // Signed in or out, or installed: the engines' lists and the defaults may
+            // change (B94, B107).
             reloadEngines()
+        case .accountsChanged(let accounts):
+            // An engine Nest checks itself signed in or out, such as from Terminal (B107).
+            if providers.signInChanged(accounts) {
+                reloadEngines()
+            }
         case .result:
             // A turn in a plain folder may have run git init; the repo update event, when
             // the daemon sends one, makes this redundant but harmless.

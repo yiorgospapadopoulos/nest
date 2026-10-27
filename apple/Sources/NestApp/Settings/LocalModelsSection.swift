@@ -9,9 +9,10 @@ struct LocalModelsSection: View {
 
     var body: some View {
         let store = shell.model.local
-        SettingsSection(
-            title: "\(LocalModelText.sectionTitle) · \(LocalModelText.sectionNote)", bare: true
-        ) {
+        SettingsSection(title: "", bare: true) {
+            AccountsHeader(title: LocalModelText.sectionTitle) {
+                AccountsSymbol(name: Icon.laptop)
+            }
             if store.hasModels {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(store.models) { model in

@@ -100,6 +100,7 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
             ) : (
               <optgroup
                 key={section.provider}
+                disabled={!section.available}
                 label={
                   section.detail === "" ? section.title : `${section.title} · ${section.detail}`
                 }

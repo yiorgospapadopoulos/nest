@@ -867,9 +867,22 @@ export function claudeProvider(overrides: Partial<ProviderInfo> = {}): ProviderI
     sign_in_hint: null,
     account: account(),
     unsupported: [],
+    ...browserEngine,
     ...overrides,
   };
 }
+
+// What Claude and Codex send of B107's engine fields.
+const browserEngine = {
+  version: null,
+  tested: true,
+  git_guard: true,
+  state: "ready",
+  state_detail: null,
+  sign_in: "browser",
+  login_command: null,
+  installable: false,
+} as const;
 
 export function codexProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo {
   return {
@@ -884,6 +897,28 @@ export function codexProvider(overrides: Partial<ProviderInfo> = {}): ProviderIn
       organization: null,
     },
     unsupported: ["rewind", "fork", "slash_commands", "pixies"],
+    ...browserEngine,
+    ...overrides,
+  };
+}
+
+/** An engine Nest runs over ACP (B107); OpenCode unless `overrides` say otherwise. */
+export function acpProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo {
+  return {
+    name: "opencode",
+    display_name: "OpenCode",
+    signed_in: true,
+    sign_in_hint: null,
+    account: null,
+    unsupported: ["rewind", "fork", "stop_task", "withdraw", "plan_review", "questions"],
+    version: "1.19.4",
+    tested: true,
+    git_guard: true,
+    state: "ready",
+    state_detail: null,
+    sign_in: "terminal",
+    login_command: "opencode auth login",
+    installable: true,
     ...overrides,
   };
 }

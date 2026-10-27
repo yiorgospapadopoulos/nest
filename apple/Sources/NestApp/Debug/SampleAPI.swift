@@ -1480,6 +1480,16 @@
             change(id) { $0.signingIn = false }
         }
 
+        func saveEngineKey(_ id: String, key: String) async throws {
+            change(id) { $0.signedIn = true }
+        }
+
+        func removeEngineKey(_ id: String) async throws {
+            change(id) { $0.signedIn = false }
+        }
+
+        func installEngine(_ name: String) async throws {}
+
         func signOutAccount(_ id: String) async throws -> EngineAccount {
             change(id) {
                 $0.signedIn = false

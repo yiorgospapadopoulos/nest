@@ -283,6 +283,12 @@ export interface Api {
   // Codex's login (B94); signing in happens on the Mac only, its callback being local.
   codexAccount(): Promise<CodexAccount>;
   codexLogout(): Promise<CodexAccount>;
+  // An engine's API key (B107, Gemini only), kept in the Mac's Keychain; `account` is an
+  // account id such as "gemini-main". Removing it signs the engine out.
+  saveEngineKey(account: string, key: string): Promise<unknown>;
+  removeEngineKey(account: string): Promise<unknown>;
+  // 202 at once; `engine.state` events follow.
+  installEngine(engine: string): Promise<unknown>;
   // 202 at once; `claude_code.install` events follow.
   installClaudeCode(): Promise<unknown>;
   devices(): Promise<ListedDevice[]>;
@@ -994,6 +1000,18 @@ export class HttpApi implements Api {
 
   codexLogout() {
     return this.json<CodexAccount>("POST", "/api/accounts/codex/logout");
+  }
+
+  saveEngineKey(account: string, key: string) {
+    return this.json<unknown>("PUT", `/api/accounts/${encodeURIComponent(account)}/key`, { key });
+  }
+
+  removeEngineKey(account: string) {
+    return this.json<unknown>("DELETE", `/api/accounts/${encodeURIComponent(account)}/key`);
+  }
+
+  installEngine(engine: string) {
+    return this.json<unknown>("POST", `/api/engines/${encodeURIComponent(engine)}/install`);
   }
 
   configuration() {

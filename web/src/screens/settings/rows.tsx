@@ -7,11 +7,14 @@ import { Icon } from "../../ui/Icon.tsx";
 /** A section: its title (if any), extra controls beside it, then its rows in a group. */
 export function Section({
   title,
+  mark,
   tools,
   className,
   children,
 }: {
   title?: string;
+  // Drawn before the title, such as an engine's mark on Accounts.
+  mark?: ReactNode;
   tools?: ReactNode;
   className?: string;
   children: ReactNode;
@@ -21,6 +24,7 @@ export function Section({
     <section className={className} aria-labelledby={title === undefined ? undefined : id}>
       {title !== undefined && (
         <h2 className="pg-h" id={id}>
+          {mark}
           {title}
           {tools}
         </h2>

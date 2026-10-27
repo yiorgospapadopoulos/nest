@@ -1,4 +1,5 @@
-"""The agent engines a chat can run on (B91): Claude, the default, and Codex.
+"""The agent engines a chat can run on (B91): Claude, the default, Codex, and the ACP
+engines (B107).
 
 A session records its engine by provider name (`claude`, `codex`); sessions from before
 B91 are Claude's. Each engine has its own model list, and some lack features Claude has,
@@ -42,13 +43,22 @@ class Engine:
     default: DefaultModel | None = None
     # None: the engine has no accounts to choose from, as in tests.
     accounts: AccountSource | None = None
+    # False when Nest cannot block the engine's git commands (B107): pixies, habits and
+    # the chats a pixie starts, whose block is a promise, are refused on it.
+    git_guard: bool = True
 
     @property
     def name(self) -> str:
         return self.provider.name
 
+    @property
+    def unsupported(self) -> frozenset[ProviderFeature]:
+        """What its chats lack: the provider's, and pixies without a git guard."""
+        unguarded: frozenset[ProviderFeature] = frozenset(() if self.git_guard else ("pixies",))
+        return self.provider.unsupported | unguarded
+
     def supports(self, feature: ProviderFeature) -> bool:
-        return feature not in self.provider.unsupported
+        return feature not in self.unsupported
 
     def require(self, feature: ProviderFeature) -> None:
         if not self.supports(feature):

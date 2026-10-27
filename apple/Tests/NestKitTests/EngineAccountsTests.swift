@@ -145,7 +145,9 @@ extension Fixture {
         #expect(AccountText.state(unknown) == "Not checked")
         #expect(AccountText.engine("claude") == "Claude")
         #expect(AccountText.engine("codex") == "Codex")
-        #expect(AccountText.engine("gemini") == "Gemini")
+        #expect(AccountText.engine("gemini") == "Gemini CLI")
+        // An engine this app does not know yet reads as its id, capitalized.
+        #expect(AccountText.engine("later") == "Later")
     }
 
     /// The row's two thin lines: the window, its percent and its reset time.

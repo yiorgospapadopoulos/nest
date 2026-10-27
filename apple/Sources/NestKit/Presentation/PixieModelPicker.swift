@@ -46,7 +46,12 @@ public struct PixieModelPicker {
         let engine = pixie.engine
         catalog = providers.catalog(for: engine, claude: claude)
         runningModel = pixie.model ?? catalog.defaultModel
+        // Only engines a pixie may run on, and its own so its model shows (B107).
         let sections = providers.modelSections(claude: claude, provider: engine, isDraft: true)
+            .filter { section in
+                section.local || section.provider == engine
+                    || providers.provider(section.provider)?.offeredForPixies != false
+            }
         self.sections = sections.map { section in
             Section(
                 provider: section.provider, title: section.title, detail: section.detail,

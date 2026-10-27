@@ -288,6 +288,12 @@ public protocol NestAPI: Sendable {
     func bankedResets(_ id: String) async throws -> BankedResets
     /// Uses one of a signed-in Codex account's banked resets on its limits now.
     func useBankedReset(_ id: String, creditID: String) async throws -> BankedResetUse
+    /// Stores an engine account's API key in the daemon's Keychain and checks it (B107).
+    func saveEngineKey(_ id: String, key: String) async throws
+    /// Removes the key, which signs the account out.
+    func removeEngineKey(_ id: String) async throws
+    /// Starts installing an engine; `engine.state` events tell how it goes (B107).
+    func installEngine(_ name: String) async throws
     func claudeCode() async throws -> ClaudeCodeStatus
     /// Runs Anthropic's installer; `claude_code.install` events tell how it goes.
     func installClaudeCode() async throws
