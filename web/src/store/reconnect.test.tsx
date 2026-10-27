@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { NestEvent, Session } from "../api/types.ts";
 import { fakeApi } from "../test/fakeApi.ts";
@@ -18,23 +18,7 @@ async function openChat(chat: Session, events: NestEvent[]) {
   await rendered.user.click(screen.getByRole("tab", { name: "Chats" }));
   await rendered.user.click(screen.getByRole("button", { name: new RegExp(`^${chat.title},`) }));
   await screen.findByRole("region", { name: chat.title });
-  // A daemon restart, or a phone waking up: the socket drops and opens again.
-  const reconnect = async () => {
-    const count = rendered.sockets.sockets.length;
-    act(() => {
-      rendered.sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(rendered.sockets.sockets).toHaveLength(count + 1);
-      },
-      { timeout: 3000 },
-    );
-    act(() => {
-      rendered.sockets.last().open();
-    });
-  };
-  return { ...rendered, reconnect };
+  return { ...rendered, reconnect: rendered.sockets.reconnect };
 }
 
 describe("a reconnect that cannot resume", () => {
@@ -50,7 +34,7 @@ describe("a reconnect that cannot resume", () => {
     // the daemon replays nothing; meanwhile the turn went on and ended.
     api.sessionEvents.mockResolvedValue([said(1, "First"), said(2, "Second"), said(3, "Third")]);
     api.session.mockResolvedValue(detail(session({ state: "idle" })));
-    await reconnect();
+    reconnect();
 
     expect(sockets.last().url).toBe("wss://mac.ts.net/api/events");
     // What arrived meanwhile is shown (and, being new, announced too).
@@ -67,7 +51,7 @@ describe("a reconnect that cannot resume", () => {
       payload: { blocks: [{ type: "text", text: "Third" }] },
     });
     expect(screen.getAllByText("Third", { selector: ".tx *" })).toHaveLength(1);
-  }, 10_000);
+  });
 
   it("keeps the live text of a turn that is still running", async () => {
     const { api, push, reconnect } = await openChat(session({ state: "running" }), [
@@ -77,11 +61,11 @@ describe("a reconnect that cannot resume", () => {
     push({ id: null, session_id: "s1", type: "session.delta", payload: { text: "Seco" } });
 
     api.sessionEvents.mockResolvedValue([said(1, "First"), said(2, "Second")]);
-    await reconnect();
+    reconnect();
 
     expect(await screen.findByText("Second", { selector: ".tx *" })).toBeInTheDocument();
     expect(screen.getByText("Seco")).toBeInTheDocument();
-  }, 10_000);
+  });
 
   it("refetches only the chats still on screen", async () => {
     const { api, user, reconnect } = await openChat(session(), [said(1, "First")]);
@@ -89,13 +73,13 @@ describe("a reconnect that cannot resume", () => {
     await user.click(screen.getByRole("button", { name: /back/i }));
     const calls = api.sessionEvents.mock.calls.length;
 
-    await reconnect();
+    reconnect();
 
     await waitFor(() => {
       expect(api.repos).toHaveBeenCalledTimes(2);
     });
     expect(api.sessionEvents).toHaveBeenCalledTimes(calls);
-  }, 10_000);
+  });
 });
 
 describe("a chat whose history failed to load", () => {
@@ -113,25 +97,13 @@ describe("a chat whose history failed to load", () => {
     expect(screen.queryByText("No messages yet")).not.toBeInTheDocument();
     // A stored event gives the socket a cursor, so the reconnect resumes from it.
     push({ id: 3, session_id: "s2", type: "session.state", payload: { state: "idle" } });
-    const count = sockets.sockets.length;
-    act(() => {
-      sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(sockets.sockets).toHaveLength(count + 1);
-      },
-      { timeout: 3000 },
-    );
-    act(() => {
-      sockets.last().open();
-    });
+    sockets.reconnect();
 
     expect(sockets.last().url).toBe("wss://mac.ts.net/api/events?after=3");
     expect(await screen.findByText("First", { selector: ".tx *" })).toBeInTheDocument();
     expect(screen.queryByText("The messages could not be loaded.")).not.toBeInTheDocument();
     expect(api.repos).toHaveBeenCalledTimes(1);
-  }, 10_000);
+  });
 
   it("loads it again from Retry", async () => {
     const api = fakeApi();

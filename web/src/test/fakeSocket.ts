@@ -1,3 +1,5 @@
+import { act } from "@testing-library/react";
+import { expect } from "vitest";
 import type { SocketLike } from "../api/events.ts";
 import type { NestEvent } from "../api/types.ts";
 
@@ -51,5 +53,20 @@ export function socketFactory() {
     return latest;
   };
   const last = () => latest;
-  return { sockets, connect, last };
+  /**
+   * A daemon restart or a phone waking up: the socket drops and the app connects again.
+   * Going online skips the back-off, which `events.test.ts` covers with fake timers.
+   */
+  const reconnect = () => {
+    const count = sockets.length;
+    act(() => {
+      latest.drop(1006);
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(sockets).toHaveLength(count + 1);
+    act(() => {
+      latest.open();
+    });
+  };
+  return { sockets, connect, last, reconnect };
 }

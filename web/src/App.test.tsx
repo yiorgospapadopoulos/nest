@@ -219,18 +219,7 @@ describe("App", () => {
     });
 
     push({ id: 3, type: "daemon.started" });
-    act(() => {
-      sockets.last().drop(1006);
-    });
-    await waitFor(
-      () => {
-        expect(sockets.sockets).toHaveLength(2);
-      },
-      { timeout: 2000 },
-    );
-    act(() => {
-      sockets.last().open();
-    });
+    sockets.reconnect();
     expect(sockets.last().url).toBe("wss://mac.ts.net/api/events?after=3");
     expect(api.repos).toHaveBeenCalledTimes(2);
     // The Claude Code chat list changes without stored events, so it reloads on every open.

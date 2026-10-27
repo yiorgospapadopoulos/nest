@@ -242,32 +242,17 @@ describe("a chat's dev server", () => {
 
   it("is fetched again after a reconnect, as run events are not stored", async () => {
     const { api, header, push, sockets, changed } = await openChat(running());
-    const reconnect = async () => {
-      const count = sockets.sockets.length;
-      act(() => {
-        sockets.last().drop(1006);
-      });
-      await waitFor(
-        () => {
-          expect(sockets.sockets).toHaveLength(count + 1);
-        },
-        { timeout: 3000 },
-      );
-      act(() => {
-        sockets.last().open();
-      });
-    };
 
     // Without a cursor the reconnect cannot resume: everything on screen is reloaded.
     api.run.mockResolvedValue(stopped);
-    await reconnect();
+    sockets.reconnect();
     expect(await within(header()).findByRole("button", { name: "Run" })).toBeInTheDocument();
 
     // A stored event moves the cursor, so this one resumes; the run is still asked again.
     push({ id: 7, type: "session.context", payload: {} });
     changed(running());
     api.run.mockResolvedValue(runStatus({ ...stopped, state: "exited", exit_code: 2 }));
-    await reconnect();
+    sockets.reconnect();
     expect(await within(header()).findByRole("button", { name: "Exited 2" })).toBeInTheDocument();
     expect(api.run).toHaveBeenCalledTimes(3);
   }, 15_000);
