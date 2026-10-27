@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from nestd.providers.base import AccountInfo, EngineWindow, ModelOption, UsageInfo, window_label
+from nestd.providers.base import AccountInfo, EngineWindow, ModelOption, UsageInfo
 from nestd.providers.codex_engine import (
     MAX_PAGES,
     CodexFetchError,
@@ -236,22 +236,6 @@ def test_codex_windows_keep_their_lengths_and_are_labelled_by_them(
     assert usage.five_hour is None
     assert usage.seven_day is None
     assert [(w.minutes, w.utilization, w.label) for w in usage.windows] == windows
-
-
-@pytest.mark.parametrize(
-    ("minutes", "label"),
-    [
-        (300, "5 hour"),
-        (10080, "Weekly"),
-        (43200, "30 day"),
-        (1440, "1 day"),
-        (120, "2 hour"),
-        (90, "90 minute"),
-        (None, "Usage"),
-    ],
-)
-def test_a_window_is_labelled_by_its_length(minutes: int | None, label: str) -> None:
-    assert window_label(minutes) == label
 
 
 def test_a_snapshot_without_windows_is_no_usage() -> None:

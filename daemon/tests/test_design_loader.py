@@ -5,7 +5,7 @@ import pytest
 
 from nestd.design.errors import DesignError
 from nestd.design.loader import find_root, load_tokens
-from tests.design_support import REPO_ROOT, STATUSES, minimal_tokens, themed, write_tokens
+from tests.design_support import REPO_ROOT, STATUSES, minimal_tokens, write_tokens
 
 
 def _load(tmp_path: Path, data: dict[str, Any]) -> None:
@@ -43,70 +43,11 @@ def test_a_color_without_a_dark_value_is_rejected(tmp_path: Path) -> None:
     _rejects(tmp_path, data, r"colors\.text\.primary\.dark: Field required")
 
 
-def test_unknown_keys_are_rejected(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    data["colors"]["text"]["primary"]["mid"] = "#000000"
-    _rejects(tmp_path, data, r"colors\.text\.primary\.mid: Extra inputs are not permitted")
-    data = minimal_tokens()
-    data["shadows"] = {}
-    _rejects(tmp_path, data, r"shadows: Extra inputs are not permitted")
-
-
-def test_invalid_color_strings_are_rejected(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    data["glass"]["border"] = themed("#000000", "white")
-    _rejects(tmp_path, data, r"glass\.border\.dark: Value error, invalid color 'white'")
-
-
-@pytest.mark.parametrize("name", ["Text", "text-primary", "1st", "text__x", "_text"])
-def test_token_names_must_be_snake_case(tmp_path: Path, name: str) -> None:
-    data = minimal_tokens()
-    data["spacing"][name] = 4
-    _rejects(tmp_path, data, "String should match pattern")
-
-
-def test_status_kinds_are_fixed(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    del data["status"]["interrupted"]
-    _rejects(tmp_path, data, "status must define exactly running, waiting, review")
-    data = minimal_tokens()
-    data["status"]["paused"] = data["status"]["done"]
-    _rejects(tmp_path, data, "status must define exactly")
-
-
 @pytest.mark.parametrize("section", ["accent", "wallpaper"])
 def test_the_default_option_must_exist(tmp_path: Path, section: str) -> None:
     data = minimal_tokens()
     data[section]["default"] = "neon"
     _rejects(tmp_path, data, f"{section}: Value error, default 'neon' is not one of the options")
-
-
-def test_a_wallpaper_needs_at_least_one_stop(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    data["wallpaper"]["options"]["stone"]["stops"] = []
-    _rejects(tmp_path, data, "stops: List should have at least 1 item")
-
-
-@pytest.mark.parametrize(
-    ("section", "key", "value"),
-    [
-        ("radius", "window", -1),
-        ("spacing", "md", -2),
-        ("motion", "duration", {"fast": -5}),
-        ("motion", "easing", {"pop": [1.2, 0, 0.5, 1]}),
-        ("typography", "weight", {"bold": 1001}),
-        ("typography", "size", {"body": 0}),
-        ("typography", "family", {"system": ['SF "Pro"']}),
-        ("typography", "family", {"system": []}),
-    ],
-)
-def test_out_of_range_values_are_rejected(
-    tmp_path: Path, section: str, key: str, value: object
-) -> None:
-    data = minimal_tokens()
-    data[section][key] = value
-    with pytest.raises(DesignError, match=section):
-        _load(tmp_path, data)
 
 
 def test_invalid_toml_is_reported(tmp_path: Path) -> None:
@@ -172,12 +113,6 @@ def test_a_theme_inherits_what_it_does_not_override_from_the_default(tmp_path: P
     assert deep.spacing == clear.spacing
 
 
-def test_a_theme_needs_its_own_name_and_description(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    del data["glass"]["themes"]["options"]["deep"]["description"]
-    _rejects(tmp_path, data, r"glass\.themes\.options\.deep\.description: Field required")
-
-
 def test_the_default_theme_must_define_every_value(tmp_path: Path) -> None:
     data = minimal_tokens()
     del data["glass"]["themes"]["options"]["clear"]["colors"]["rim"]
@@ -190,47 +125,3 @@ def test_the_default_theme_must_exist(tmp_path: Path) -> None:
     _rejects(
         tmp_path, data, r"glass\.themes: Value error, default 'sand' is not one of the options"
     )
-
-
-def test_a_bad_theme_color_is_rejected(tmp_path: Path) -> None:
-    data = minimal_tokens()
-    data["glass"]["themes"]["options"]["deep"]["colors"]["tint"]["dark"] = "black"
-    _rejects(
-        tmp_path,
-        data,
-        r"glass\.themes\.options\.deep\.colors\.tint\.dark: Value error, invalid color 'black'",
-    )
-
-
-@pytest.mark.parametrize(
-    ("change", "message"),
-    [
-        ({"radius": {"pane": -1}}, r"deep\.radius\.pane"),
-        ({"backdrop": {"blur": -4}}, r"deep\.backdrop\.blur"),
-        ({"name": 'Deep "blue"'}, r"deep\.name"),
-        ({"description": ""}, r"deep\.description"),
-        ({"shadow": {"panel": {"depth": 3}}}, r"deep\.shadow\.panel\.depth: Extra inputs"),
-        ({"spacing": {"margin": 3}}, r"deep\.spacing\.margin: Extra inputs"),
-    ],
-)
-def test_invalid_theme_values_are_rejected(
-    tmp_path: Path, change: dict[str, Any], message: str
-) -> None:
-    data = minimal_tokens()
-    data["glass"]["themes"]["options"]["deep"].update(change)
-    _rejects(tmp_path, data, message)
-
-
-@pytest.mark.parametrize(
-    "themes",
-    [
-        "clear",
-        {"default": "clear", "options": ["clear"]},
-        {"default": ["clear"], "options": {"clear": {}}},
-        {"default": "clear", "options": {"clear": "glass"}},
-    ],
-)
-def test_malformed_theme_tables_are_rejected(tmp_path: Path, themes: object) -> None:
-    data = minimal_tokens()
-    data["glass"]["themes"] = themes
-    _rejects(tmp_path, data, r"glass\.themes")

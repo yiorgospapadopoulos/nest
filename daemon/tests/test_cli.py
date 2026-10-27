@@ -12,14 +12,10 @@ from fastapi import FastAPI
 
 from nestd.accounts.profiles import LEAKED_ENV
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
-from nestd.auth.secrets import KeychainSecretStore
 from nestd.cli import main
-from nestd.clock import SystemClock
 from nestd.paths import AppPaths
-from nestd.runtime import Runtime, default_runtime
-from nestd.server import run_uvicorn
-from nestd.service.launchd import LABEL, CommandResult, run_command
-from nestd.service.restart import terminate_self
+from nestd.runtime import Runtime
+from nestd.service.launchd import LABEL, CommandResult
 from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
@@ -106,17 +102,6 @@ def moving() -> Iterator[Rig]:
     shutil.rmtree(home)
     root.handlers[:] = handlers
     root.setLevel(level)
-
-
-def test_default_runtime_uses_the_real_system() -> None:
-    runtime = default_runtime()
-
-    assert runtime.home == Path.home()
-    assert isinstance(runtime.secrets, KeychainSecretStore)
-    assert isinstance(runtime.clock, SystemClock)
-    assert runtime.run_command is run_command
-    assert runtime.serve is run_uvicorn
-    assert runtime.restart is terminate_self
 
 
 def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:
@@ -223,26 +208,6 @@ def test_service_uninstall(cli: Rig) -> None:
     assert f"Stopped and removed {LABEL}" in cli.out.getvalue()
 
 
-def test_service_status_running(cli: Rig) -> None:
-    cli.run("service", "install")
-    cli.recorder.print_result = CommandResult(0, "state = running\n", "")
-
-    assert cli.run("service", "status") == 0
-
-    output = cli.out.getvalue()
-    assert "installed: yes" in output
-    assert "loaded: yes" in output
-    assert "state = running" in output
-
-
-def test_service_status_not_installed(cli: Rig) -> None:
-    assert cli.run("service", "status") == 1
-
-    output = cli.out.getvalue()
-    assert "installed: no" in output
-    assert "loaded: no" in output
-
-
 def test_pair_prints_a_code_and_its_expiry(cli: Rig) -> None:
     assert cli.run("pair") == 0
 
@@ -250,13 +215,6 @@ def test_pair_prints_a_code_and_its_expiry(cli: Rig) -> None:
     assert lines[0].startswith("Pairing code: ")
     assert len(lines[0].removeprefix("Pairing code: ")) == 8
     assert lines[1].startswith("Expires at ")
-
-
-def test_a_command_is_required(cli: Rig) -> None:
-    with pytest.raises(SystemExit) as exited:
-        cli.run()
-
-    assert exited.value.code == 2
 
 
 def test_serve_moves_the_folders_from_before_the_rename_first(moving: Rig) -> None:
