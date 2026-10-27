@@ -458,6 +458,8 @@ private struct MoreEngineRow: View {
     @State private var addingKey = false
     @State private var key = ""
     @State private var removingKey = false
+    // A tooltip does not show inside this row, so the warning opens on hover instead.
+    @State private var showingWarning = false
 
     private var accountID: String {
         shell.model.accounts.accounts(of: setup.name).first(where: \.active)?.id
@@ -481,7 +483,15 @@ private struct MoreEngineRow: View {
                         Image(systemName: Icon.warning)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(StatusTone.waiting.color)
-                            .help(warning)
+                            .contentShape(Rectangle())
+                            .onHover { showingWarning = $0 }
+                            .popover(isPresented: $showingWarning, arrowEdge: .bottom) {
+                                Text(warning)
+                                    .font(.ui(TypeSize.meta))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(width: 240, alignment: .leading)
+                                    .padding(10)
+                            }
                             .accessibilityLabel(warning)
                     }
                 }
