@@ -1,9 +1,20 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { detail, event, groupEntry, pixie, repo, session, team } from "../../test/fixtures.ts";
+import {
+  acpProvider,
+  claudeProvider,
+  codexProvider,
+  detail,
+  event,
+  groupEntry,
+  pixie,
+  repo,
+  session,
+  team,
+} from "../../test/fixtures.ts";
 import { showPixies } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
@@ -22,8 +33,9 @@ async function openChat(
   state: "idle" | "running" = "idle",
   api = fakeApi(),
   pixies = [tester],
+  provider = "claude",
 ) {
-  const chat = session({ state });
+  const chat = session({ state, provider });
   api.pixies.mockResolvedValue(pixies);
   api.repos.mockResolvedValue([repo("todo-ui")]);
   api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [chat]));
@@ -121,6 +133,74 @@ describe("pixie calls in the chat", () => {
     );
     expect(screen.getByText(/and @nobody-leads or @stranger/, { selector: ".m-u" })).toBeVisible();
     expect(screen.queryByText("@stranger", { selector: ".m-u span" })).not.toBeInTheDocument();
+  });
+});
+
+describe("pixie calls on every engine (B112)", () => {
+  const callPixie = (id: string) => ({
+    type: "tool_use",
+    id,
+    name: "mcp__nest__call_pixie",
+    input: { pixie: "tester", task: "Check the form", description: "Check the form" },
+  });
+
+  it.each([
+    ["codex", codexProvider()],
+    ["opencode", acpProvider()],
+  ])("shows a %s chat's call as the pixie's row, with its work and Stop", async (name, info) => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), info] });
+    const { user } = await openChat(
+      [
+        message(1, null, callPixie("c1")),
+        message(2, "c1", { type: "text", text: "Looking at the form." }),
+      ],
+      "running",
+      api,
+      [tester],
+      name,
+    );
+
+    const row = await screen.findByRole("button", { name: /Check the form/ });
+    expect(row).toHaveTextContent("running");
+    await user.click(row);
+    const steps = screen.getByRole("group", { name: "Tester's steps" });
+    expect(within(steps).getByText("Looking at the form.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Stop Tester" }));
+    expect(api.stopTask).toHaveBeenCalledWith("s1", "c1");
+  });
+
+  it("shows a background call's end as a line that opens the pixie's work", async () => {
+    const api = fakeApi();
+    const ended = (id: number, status: string) =>
+      event({
+        id,
+        type: "session.user_message",
+        payload: {
+          text: "@tester finished. Its report follows.",
+          origin: "pixie_result",
+          pixie_id: "p1",
+          tool_use_id: "c1",
+          status,
+        },
+      });
+    const { user } = await openChat(
+      [ended(1, "done"), ended(2, "failed"), ended(3, "stopped"), ended(4, "interrupted")],
+      "idle",
+      api,
+    );
+
+    const line = await screen.findByRole("button", { name: "@tester finished" });
+    expect(screen.getByText("@tester failed")).toBeInTheDocument();
+    expect(screen.getByText("@tester was stopped")).toBeInTheDocument();
+    expect(screen.getByText("@tester was interrupted")).toBeInTheDocument();
+    expect(document.querySelector(".m-u")).toBeNull();
+
+    await user.click(line);
+    await waitFor(() => {
+      expect(api.pixieCalls).toHaveBeenCalledWith("s1", "p1");
+    });
   });
 });
 

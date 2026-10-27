@@ -896,7 +896,7 @@ export function codexProvider(overrides: Partial<ProviderInfo> = {}): ProviderIn
       plan: "ChatGPT Plus",
       organization: null,
     },
-    unsupported: ["rewind", "fork", "slash_commands", "pixies"],
+    unsupported: ["rewind", "fork", "slash_commands", "withdraw", "plan_review", "memory"],
     ...browserEngine,
     ...overrides,
   };
@@ -910,7 +910,7 @@ export function acpProvider(overrides: Partial<ProviderInfo> = {}): ProviderInfo
     signed_in: true,
     sign_in_hint: null,
     account: null,
-    unsupported: ["rewind", "fork", "stop_task", "withdraw", "plan_review", "questions"],
+    unsupported: ["rewind", "fork", "withdraw", "plan_review", "memory"],
     version: "1.19.4",
     tested: true,
     git_guard: true,

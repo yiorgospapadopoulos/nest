@@ -4,7 +4,15 @@ import { ApiError } from "../../api/client.ts";
 import type { RepoConfig, Session, ShellResult } from "../../api/types.ts";
 import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
-import { detail, event, pixie, repo, session } from "../../test/fixtures.ts";
+import {
+  claudeProvider,
+  codexProvider,
+  detail,
+  event,
+  pixie,
+  repo,
+  session,
+} from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
 import { renderApp } from "../../test/render.tsx";
 
@@ -40,9 +48,9 @@ async function openChat({
 
 const pixieChat = session({ id: "c1", title: "Tester", repo: "pixie:p1", pixie_id: "p1" });
 
-async function openPixieChat(api = fakeApi()) {
-  api.session.mockResolvedValue(detail(pixieChat));
-  const rendered = await openPixie(api, pixie({ chat_session_id: "c1" }));
+async function openPixieChat(api = fakeApi(), provider = "claude") {
+  api.session.mockResolvedValue(detail({ ...pixieChat, provider }));
+  const rendered = await openPixie(api, pixie({ chat_session_id: "c1", provider }));
   await waitFor(() => {
     expect(api.session).toHaveBeenCalledWith("c1");
   });
@@ -289,16 +297,20 @@ describe("# memory (B59)", () => {
     expect(api.sendMessage).toHaveBeenCalledWith("s1", "## Plan", []);
   });
 
-  it("offers only user memory in a pixie's chat", async () => {
+  it("saves to the pixie's own memory in its chat, on an engine without memory (B112)", async () => {
     const api = fakeApi();
-    api.remember.mockResolvedValue({ path: "/u/CLAUDE.md", scope: "user", line: "- x" });
-    const { user, field } = await openPixieChat(api);
+    api.providers.mockResolvedValue({ providers: [claudeProvider(), codexProvider()] });
+    api.remember.mockResolvedValue({ path: "/p/p1/MEMORY.md", scope: "pixie", line: "- x" });
+    const { user, field } = await openPixieChat(api, "codex");
 
-    await user.type(field, "#Be brief{Enter}");
-    expect(screen.queryByRole("menuitem", { name: /^Project memory/ })).toBeNull();
-    await user.click(screen.getByRole("menuitem", { name: /^User memory/ }));
+    await user.type(field, "#Be brief");
+    expect(screen.getByText("Memory")).toBeInTheDocument();
+    await user.type(field, "{Enter}");
 
+    expect(screen.queryByRole("dialog", { name: "Save to memory" })).toBeNull();
     expect(api.remember).toHaveBeenCalledWith("c1", "Be brief", "user");
+    expect(await screen.findByText("Saved to pixie memory: /p/p1/MEMORY.md")).toBeInTheDocument();
+    expect(field).toHaveValue("");
     expect(api.sendToPixie).not.toHaveBeenCalled();
   });
 

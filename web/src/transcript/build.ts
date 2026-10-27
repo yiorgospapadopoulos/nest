@@ -10,7 +10,7 @@ import type {
   Pixie,
 } from "../api/types.ts";
 import { permissionOf } from "../api/payloads.ts";
-import { turnLabel } from "./activity.ts";
+import { CALL_TOOL, turnLabel } from "./activity.ts";
 import { editDiff, type EditDiff } from "./edits.ts";
 import { agentReport } from "./report.ts";
 
@@ -114,7 +114,20 @@ export interface ArtifactItem {
   action: "created" | "updated";
 }
 
+/**
+ * A background pixie call's end, as Nest tells the caller (B112): "@slug finished", like a
+ * subagent's, never the user's bubble. `call` is the call's tool use id.
+ */
+export interface PixieResultItem {
+  kind: "pixie_result";
+  key: string;
+  pixieId: string;
+  call: string;
+  status: "done" | "failed" | "stopped" | "interrupted";
+}
+
 export type TranscriptItem =
+  | PixieResultItem
   // `from`: the pixie that sent it into this chat (B41).
   | { kind: "user"; key: string; text: string; attachments: string[]; from?: string }
   // What Nest tells a pixie once the chats it started have finished (B41), or after a
@@ -158,8 +171,8 @@ const SUMMARY_LIMIT = 40;
 const STOPPED = "stopped";
 const NO_TASKS: ReadonlySet<string> = new Set();
 const NO_PIXIES: ReadonlyMap<string, Pixie> = new Map();
-// The tools that call a subagent, by `input.subagent_type`.
-const AGENT_TOOLS = new Set(["Task", "Agent"]);
+// The tools that call a subagent, by `input.subagent_type`, and Nest's call tool.
+const AGENT_TOOLS = new Set(["Task", "Agent", CALL_TOOL]);
 // The tools that save artifacts (B79), with the name their rows show. Their input carries
 // the whole document, which a row never shows; a saved one shows as its card instead.
 const ARTIFACT_TOOLS: ReadonlyMap<string, string> = new Map([
@@ -427,8 +440,15 @@ function scheduleOf(s: JsonObject): HabitSchedule | null {
   }
 }
 
+const RESULT_STATUSES: ReadonlySet<unknown> = new Set(["done", "failed", "stopped", "interrupted"]);
+
 function userItems(key: string, p: JsonObject): TranscriptItem[] {
   const text = str(p.text) ?? "";
+  if (p.origin === "pixie_result") {
+    const status = RESULT_STATUSES.has(p.status) ? (p.status as PixieResultItem["status"]) : "done";
+    const pixieId = str(p.pixie_id) ?? "";
+    return [{ kind: "pixie_result", key, pixieId, call: str(p.tool_use_id) ?? "", status }];
+  }
   if (p.origin === "report_back") return [{ kind: "report", key, text: reportLines(text) }];
   // What Nest sends to go on after a usage limit reset (B78).
   if (p.origin === "limit_resume") return [{ kind: "report", key, title: "Nest", text }];
@@ -568,13 +588,21 @@ function callLabel(block: JsonObject, root: string | null): { name: string; arg:
   const input = obj(block.input);
   const artifact = ARTIFACT_TOOLS.get(name);
   if (artifact !== undefined) return { name: artifact, arg: str(input.title) ?? "" };
+  if (name === CALL_TOOL) {
+    // Its short description, as an Agent call's row shows, else the task's first line.
+    const description = str(input.description) ?? "";
+    const task = (str(input.task) ?? "").replace(/\n[\s\S]*$/, "");
+    return { name, arg: description === "" ? task : description };
+  }
   return { name, arg: toolArg(input, root) };
 }
 
 /** The pixie an agent call goes to, if it names one. */
 function calledPixie(block: JsonObject, pixies: ReadonlyMap<string, Pixie>): Pixie | undefined {
-  if (!AGENT_TOOLS.has(str(block.name) ?? "")) return undefined;
-  return pixies.get(str(obj(block.input).subagent_type) ?? "");
+  const name = str(block.name) ?? "";
+  if (!AGENT_TOOLS.has(name)) return undefined;
+  const input = obj(block.input);
+  return pixies.get(str(name === CALL_TOOL ? input.pixie : input.subagent_type) ?? "");
 }
 
 /** A subagent's own thinking and text, and the tools it used as plain lines. */

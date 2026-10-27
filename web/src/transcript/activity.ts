@@ -27,6 +27,10 @@ export function turnLabel(ms: number, stopped: boolean): string {
 
 export type ToolKind = "command" | "read" | "edit" | "search" | "fetch" | "agent" | "other";
 
+// Nest's tool that calls a pixie by `input.pixie` (B91): a subagent call on every engine
+// (B112).
+export const CALL_TOOL = "mcp__nest__call_pixie";
+
 const KINDS: Record<string, ToolKind> = {
   Bash: "command",
   Read: "read",
@@ -40,6 +44,7 @@ const KINDS: Record<string, ToolKind> = {
   WebSearch: "fetch",
   Task: "agent",
   Agent: "agent",
+  [CALL_TOOL]: "agent",
 };
 
 export function toolKind(name: string): ToolKind {

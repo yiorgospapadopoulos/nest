@@ -29,6 +29,7 @@ import {
   turnStart,
   type HookItem,
   type PixieCallItem,
+  type PixieResultItem,
   type SubStep,
   type ThinkingItem,
   type ToolItem,
@@ -462,6 +463,20 @@ function Item({
           onOpenWork={onOpenWork}
         />
       );
+    case "pixie_result":
+      return (
+        <PixieResult
+          item={item}
+          ev={ev}
+          onOpen={
+            onOpenWork === undefined
+              ? undefined
+              : () => {
+                  onOpenWork({ pixie: item.pixieId });
+                }
+          }
+        />
+      );
     case "artifact":
       return <ArtifactCard item={item} ev={ev} scopes={chatScopes(session)} />;
     case "card":
@@ -572,6 +587,8 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
           <Markdown text={item.text} />
         </div>
       );
+    case "pixie_result":
+      return <PixieResult item={item} ev={ev} onOpen={undefined} />;
     case "answer":
       return (
         <div className="m-ans" data-ev={ev}>
@@ -741,6 +758,40 @@ function teamFaces(
       const working = entry?.members.some((m) => m.pixie_id === p.id && m.state === "running");
       return { pixie_id: p.id, leader, state: busy && (leader || working) ? "running" : null };
     });
+}
+
+const RESULT_WORDS: Record<PixieResultItem["status"], string> = {
+  done: "finished",
+  failed: "failed",
+  stopped: "was stopped",
+  interrupted: "was interrupted",
+};
+
+/**
+ * "@tester finished": a background call's end in its caller (B112), opening the pixie's
+ * work in this chat as its call's row does.
+ */
+function PixieResult({
+  item,
+  ev,
+  onOpen,
+}: {
+  item: PixieResultItem;
+  ev: string | undefined;
+  onOpen: (() => void) | undefined;
+}) {
+  const { state } = useStore();
+  const slug = state.pixies[item.pixieId]?.slug;
+  const text = `${slug === undefined ? "A pixie" : `@${slug}`} ${RESULT_WORDS[item.status]}`;
+  return onOpen === undefined ? (
+    <div className="m-sys" data-ev={ev}>
+      {text}
+    </div>
+  ) : (
+    <button className="m-sys m-pxres" data-ev={ev} onClick={onOpen}>
+      {text}
+    </button>
+  );
 }
 
 /** "from Tester" with its mascot, above a message a pixie sent into this chat (B41). */
