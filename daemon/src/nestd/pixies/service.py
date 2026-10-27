@@ -29,7 +29,7 @@ from nestd.pixies.slugs import check_slug, free_slug, slugify
 from nestd.pixies.store import PixieStore
 from nestd.pixies.teams import TeamService
 from nestd.sessions.engines import Engine
-from nestd.sessions.errors import SessionNotFoundError, UnsupportedFeatureError
+from nestd.sessions.errors import SessionNotFoundError
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import (
     USER,
@@ -96,7 +96,6 @@ class PixieService:
         await self._check_slug(slug)
         engine = self._engine(request.provider)
         engine.require("pixies")
-        _require_skills(engine, request.skills)
         model = request.model or await self._new_model(engine)
         await self._sessions.fitting_mode(
             model,
@@ -143,7 +142,6 @@ class PixieService:
         engine = self._engine(changes.get("provider", before.provider))
         if moved:
             engine.require("pixies")
-        _require_skills(engine, request.skills)
         default_model = await self._new_model(engine)
         # Back to the default: the concrete model and thinking Nest picks (B94).
         if "model" in changes and changes["model"] is None:
@@ -368,14 +366,6 @@ class PixieService:
 
     async def _announce(self, pixie: Pixie) -> None:
         await self._bus.publish(types.PIXIE_UPDATED, {"pixie": pixie.model_dump(mode="json")})
-
-
-def _require_skills(engine: Engine, skills: list[str] | None) -> None:
-    """409 when a skill list is set on a pixie whose engine takes none (Codex, B91). A list
-    stored before it moved there stays, unused; clearing it is allowed.
-    """
-    if skills and not engine.supports("pixie_skills"):
-        raise UnsupportedFeatureError(engine.name, "pixie_skills")
 
 
 def _copy_name(name: str, taken: set[str]) -> str:

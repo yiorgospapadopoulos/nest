@@ -9,6 +9,8 @@ import pytest
 from nestd.composer.memory import append_memory
 from nestd.composer.service import ComposerActions, NoUserMemoryError
 from nestd.composer.shell import context_block, run_command
+from nestd.pixies.files import PixieFiles
+from nestd.providers.acp import ACP_UNSUPPORTED
 from nestd.providers.codex import CODEX_UNSUPPORTED
 from nestd.sessions.engines import Engine, Engines
 from nestd.sessions.errors import (
@@ -25,6 +27,7 @@ from tests.fakes import FakeClock
 from tests.test_session_store import new_session
 
 SHELL = "/bin/sh"
+PIXIE = "0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture
@@ -136,12 +139,17 @@ def actions(
     codex = FakeProvider()
     codex.name = "codex"  # type: ignore[misc]
     codex.unsupported = CODEX_UNSUPPORTED  # type: ignore[misc]
-    engines = Engines(Engine(FakeProvider()), [Engine(codex)])
+    opencode = FakeProvider()
+    opencode.name = "opencode"  # type: ignore[misc]
+    opencode.unsupported = ACP_UNSUPPORTED  # type: ignore[misc]
+    engines = Engines(Engine(FakeProvider()), [Engine(codex), Engine(opencode)])
     return ComposerActions(
         sessions=get,
         engine_of=engines.of,
         project_folder=lambda repo: tmp_path / "projects" / repo,
         user_memory=user_memory,
+        pixie_files=PixieFiles(tmp_path / "pixies"),
+        clock=FakeClock(),
         shell_env=fixed_env,
         shell=SHELL,
         base_env={"PATH": os.environ["PATH"], "NEST_TEST": "daemon", "PWD": "/elsewhere"},
@@ -200,13 +208,32 @@ async def test_project_memory_goes_to_the_projects_folder_and_user_memory_to_cla
     assert user_memory.read_text(encoding="utf-8") == "- Answer briefly\n"
 
 
-async def test_a_pixie_chat_has_only_user_memory(store: SessionStore, tmp_path: Path) -> None:
-    session = await store.create(new_session(repo="pixie:p1", cwd=tmp_path))
-    composer = actions(store, tmp_path, tmp_path / "CLAUDE.md", pixie_id="p1")
+@pytest.mark.parametrize("provider", ["claude", "codex", "opencode"])
+async def test_a_pixie_chats_memory_is_the_pixies_own_on_every_engine(
+    store: SessionStore, tmp_path: Path, provider: str
+) -> None:
+    """B112: `#` in a pixie's chat adds a fact to its memory, never to CLAUDE.md."""
+    PixieFiles(tmp_path / "pixies").create(PIXIE, "I am Ada.")
+    session = await store.create(new_session(repo="pixie:p1", cwd=tmp_path, provider=provider))
+    composer = actions(store, tmp_path, tmp_path / "CLAUDE.md", pixie_id=PIXIE)
 
-    with pytest.raises(PixieChatError, match="no project memory"):
-        await composer.remember(session.id, "x", "project")
-    assert (await composer.remember(session.id, "x", "user")).path == tmp_path / "CLAUDE.md"
+    written = await composer.remember(session.id, "Prefers  short\nanswers", "user")
+
+    memory = tmp_path / "pixies" / PIXIE / "MEMORY.md"
+    assert (written.path, written.scope) == (memory, "pixie")
+    assert written.line.endswith(": Prefers short answers")
+    assert memory.read_text(encoding="utf-8").endswith(f"{written.line}\n")
+    assert not (tmp_path / "CLAUDE.md").exists()
+
+
+async def test_a_chat_a_pixie_started_keeps_claude_memory(
+    store: SessionStore, tmp_path: Path
+) -> None:
+    session = await store.create(new_session(repo="app", cwd=tmp_path, provider="opencode"))
+    composer = actions(store, tmp_path, tmp_path / "CLAUDE.md", started_by_pixie="p1")
+
+    with pytest.raises(UnsupportedFeatureError):
+        await composer.remember(session.id, "x", "user")
 
 
 async def test_a_codex_chat_has_no_memory(store: SessionStore, tmp_path: Path) -> None:
