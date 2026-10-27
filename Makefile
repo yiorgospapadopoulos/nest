@@ -1,6 +1,7 @@
 # Quality gates for every part of Nest. `make check` is the single entry point.
 
-.PHONY: install-app check check-changed check-daemon check-web check-apple fmt test install tokens icon app run-app
+.PHONY: install-app check check-changed gates check-daemon check-web check-apple fmt test install tokens icon app run-app \
+	lint-daemon test-daemon audit-daemon lint-web test-web audit-web lint-apple test-apple audit-apple coverage
 
 # Swift sources to format and lint; the generated tokens follow the generator's layout.
 APPLE_SWIFT = $$(find apple/Sources apple/Tests -name '*.swift' -not -path '*/Generated/*') apple/Package.swift
@@ -19,7 +20,10 @@ install:
 	# The open engines' pinned versions in Nest's own folder (B107); quick once there.
 	cd daemon && uv run nestd engines install
 
-check: check-daemon check-web check-apple
+# Each part's gate is three stages: lint (format, lint, types), test (tests and build) and
+# audit. Across parts the fast stages run first, so a lint failure shows in seconds (B111).
+check:
+	$(MAKE) --no-print-directory gates PARTS="daemon web apple"
 
 # The gates of only the parts changed since the merge base with BASE, uncommitted and
 # untracked files included (`nestd gates changed` prints why). If the parts cannot be worked
@@ -29,26 +33,57 @@ check-changed:
 	  echo "check-changed: could not work out the changed parts, running every gate"; \
 	  parts="daemon web apple"; \
 	}; \
-	for part in $$parts; do $(MAKE) --no-print-directory check-$$part || exit 1; done
+	$(MAKE) --no-print-directory gates PARTS="$$parts"
 
-check-daemon:
+gates:
+	@for stage in lint test audit; do \
+	  for part in $(PARTS); do $(MAKE) --no-print-directory $$stage-$$part || exit 1; done; \
+	done
+
+check-daemon: lint-daemon test-daemon audit-daemon
+check-web: lint-web test-web audit-web
+check-apple: lint-apple test-apple
+
+lint-daemon:
 	cd daemon && uv run ruff format --check .
 	cd daemon && uv run ruff check .
 	cd daemon && uv run pyright
+
+test-daemon:
 	cd daemon && uv run pytest -n $(PYTEST_WORKERS)
+
+audit-daemon:
 	cd daemon && uv run pip-audit --skip-editable
 
-check-web:
+lint-web:
 	cd web && npm run format:check
 	cd web && npm run lint
 	cd web && npm run typecheck
-	cd web && npm run test:coverage
-	cd web && npm run build
+
+# The bundle only: `typecheck` has already run tsc.
+test-web:
+	cd web && npm test
+	cd web && npx vite build
+
+audit-web:
 	cd web && npm run audit
 
-check-apple:
+lint-apple:
 	swift format lint --strict --parallel $(APPLE_SWIFT)
-	cd apple && swift build
+
+# One build of the app, NestKit and the tests, then the tests on it. A coverage build uses
+# other flags and rebuilds everything, so coverage stays out of the gate (`make coverage`).
+test-apple:
+	cd apple && swift build --build-tests
+	cd apple && swift test --skip-build
+
+audit-apple:
+	@:
+
+# Coverage of every part, reported and never a target (D131); not part of the gates (B111).
+coverage:
+	cd daemon && uv run pytest -n $(PYTEST_WORKERS) --cov=nestd --cov-branch --cov-report=term-missing
+	cd web && npm run test:coverage
 	apple/scripts/coverage.sh
 
 fmt:
@@ -56,10 +91,7 @@ fmt:
 	cd web && npm run format
 	swift format --in-place --parallel $(APPLE_SWIFT)
 
-test:
-	cd daemon && uv run pytest -n $(PYTEST_WORKERS)
-	cd web && npm run test:coverage
-	cd apple && swift test
+test: test-daemon test-web test-apple
 
 tokens:
 	cd daemon && uv run nestd design generate
