@@ -29,20 +29,16 @@ from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import ChatAgentsSource, PixieCalls
 from nestd.storage.db import Database
 from nestd.worktrees.manager import WorktreeManager
-from tests.async_support import until
+from tests.async_support import until_published
 from tests.claude_support import ClaudeHome
 from tests.fake_provider import FakeProvider
 from tests.fakes import FakeClock
 from tests.git_support import init_repo
 from tests.recording_hooks import RecordingHooks
 
-# Worktree by default, so most tests exercise the full worktree flow.
-DEFAULTS = AgentDefaults(
-    model="claude-sonnet-5",
-    effort="medium",
-    permission_mode="acceptEdits",
-    default_mode="worktree",
-)
+# In place by default: a worktree costs a real `git worktree add` and removal, so the tests
+# about worktrees opt in with `Env.use_worktrees` (B111).
+DEFAULTS = AgentDefaults(model="claude-sonnet-5", effort="medium", permission_mode="acceptEdits")
 
 
 class Env:
@@ -104,6 +100,10 @@ class Env:
             ports=ports,
         )
 
+    def use_worktrees(self) -> None:
+        """New chats get a worktree unless they ask otherwise."""
+        self.defaults = self.defaults.model_copy(update={"default_mode": "worktree"})
+
     async def find_model(self, model: str | None) -> ModelOption | None:
         value = model or "default"
         return next((m for m in self.models or [] if m.value == value), None)
@@ -124,7 +124,7 @@ class Env:
             states = await self.states(session_id)
             return bool(states) and states[-1] == state
 
-        await until(reached)
+        await until_published(self.bus, reached)
         return await self.store.get(session_id)
 
     async def event_types(self, session_id: str) -> list[str]:

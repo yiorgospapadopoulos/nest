@@ -307,6 +307,7 @@ async def test_update_without_a_live_run_only_persists(env: Env) -> None:
 
 
 async def test_close_removes_the_worktree_and_keeps_the_branch(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(reply("ok"))
     created = await env.create()
     session = await env.reach(created.id, SessionState.IDLE)
@@ -327,6 +328,7 @@ async def test_close_removes_the_worktree_and_keeps_the_branch(env: Env) -> None
 
 
 async def test_close_keeps_the_worktree_by_default_and_stops_a_running_turn(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(ask("Bash", hang()))
     created = await env.create()
     session = await env.reach(created.id, SessionState.WAITING)
@@ -471,6 +473,7 @@ async def test_one_sessions_failure_does_not_stop_shutdown_of_the_others(
 
 
 async def test_setup_in_progress_is_interrupted(env: Env) -> None:
+    env.use_worktrees()
     env.repos.update_worktree_config("repo", WorktreeConfig(setup=["sleep 30"]))
     created = await env.create()
     await until(lambda: (env.paths.logs_dir / f"setup-{created.id}.log").exists())
@@ -591,6 +594,7 @@ async def test_shutdown_while_waiting_for_permission_interrupts(env: Env) -> Non
 
 
 async def test_close_waits_for_the_agent_to_exit_before_removing_the_worktree(env: Env) -> None:
+    env.use_worktrees()
     env.provider.exit_hook = True
     env.provider.script(reply("ok"))
     created = await env.create()

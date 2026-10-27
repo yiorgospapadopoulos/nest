@@ -120,6 +120,7 @@ async def test_an_interrupted_turn_reports_how_long_it_ran(env: Env) -> None:
 
 
 async def test_a_turn_stopped_before_the_agent_ran_has_no_duration(env: Env) -> None:
+    env.use_worktrees()
     env.repos.update_worktree_config("repo", WorktreeConfig(setup=["exit 7"]))
     created = await env.create()
 

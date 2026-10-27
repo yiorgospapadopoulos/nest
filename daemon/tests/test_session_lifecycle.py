@@ -16,7 +16,7 @@ from nestd.sessions.errors import (
 from nestd.sessions.models import SessionState
 from nestd.sessions.turns import NEST_PROMPT
 from nestd.storage.db import Database
-from tests.async_support import until
+from tests.async_support import until_published
 from tests.fake_provider import crash, reply
 from tests.fakes import FakeClock
 from tests.git_support import git
@@ -40,6 +40,7 @@ async def test_a_manager_without_an_issue_reader_starts_no_chat_from_an_issue(en
 
 
 async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
+    env.use_worktrees()
     await env.register()
     env.provider.script(reply("Done."))
 
@@ -256,6 +257,7 @@ async def test_create_validates_repo_and_attachments(env: Env) -> None:
 
 
 async def test_links_are_reported_with_the_workspace(env: Env) -> None:
+    env.use_worktrees()
     await env.register(WorktreeConfig(link=[".env", "absent.env"]))
     (env.repo_path / ".env").write_text("A=1", encoding="utf-8")
     env.provider.script(reply("ok"))
@@ -273,6 +275,7 @@ async def test_links_are_reported_with_the_workspace(env: Env) -> None:
 
 
 async def test_setup_failure_fails_the_session_without_starting_the_agent(env: Env) -> None:
+    env.use_worktrees()
     await env.register(WorktreeConfig(setup=["exit 7"]))
 
     created = await env.create()
@@ -293,6 +296,7 @@ async def test_setup_failure_fails_the_session_without_starting_the_agent(env: E
 
 
 async def test_worktree_errors_fail_the_session(env: Env, tmp_path: Path) -> None:
+    env.use_worktrees()
     empty = tmp_path / "empty"
     empty.mkdir()
     git(empty, "init", "-q", "-b", "main")
@@ -329,7 +333,7 @@ async def until_turns(env: Env, session_id: str, count: int) -> None:
         states = [e.payload["state"] for e in events if e.type == types.SESSION_STATE]
         return len(results) == count and states[-1] == "idle"
 
-    await until(done)
+    await until_published(env.bus, done)
 
 
 async def test_attachments_reach_the_agent_and_reopen_the_run_for_new_dirs(env: Env) -> None:
@@ -375,6 +379,7 @@ async def test_attachments_reach_the_agent_and_reopen_the_run_for_new_dirs(env: 
 
 
 async def test_send_queues_during_setup_and_rejects_closed_and_unknown_sessions(env: Env) -> None:
+    env.use_worktrees()
     await env.register(WorktreeConfig(setup=["sleep 30"]))
     created = await env.create()
 

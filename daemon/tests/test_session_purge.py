@@ -42,6 +42,7 @@ async def deleted_events(env: Env) -> list[object]:
 
 
 async def test_purge_deletes_the_session_and_everything_it_left(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(reply("ok"))
     attachment = await env.attachments.save("notes.txt", b"x", "text/plain")
     created = await env.create(attachment_ids=[attachment.id])
@@ -76,6 +77,7 @@ async def test_purge_stops_a_working_session(env: Env) -> None:
 
 
 async def test_purge_after_close_with_the_worktree_already_removed(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(reply("ok"))
     created = await env.create()
     await env.reach(created.id, SessionState.IDLE)
@@ -98,6 +100,7 @@ async def test_purge_never_touches_an_in_place_checkout(env: Env) -> None:
 
 
 async def test_purge_of_a_session_whose_repo_is_no_longer_registered(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(reply("ok"))
     created = await env.create()
     session = await env.reach(created.id, SessionState.IDLE)
@@ -113,6 +116,7 @@ async def test_purge_of_a_session_whose_repo_is_no_longer_registered(env: Env) -
 
 
 async def test_purge_after_the_repo_folder_was_deleted(env: Env) -> None:
+    env.use_worktrees()
     env.provider.script(reply("ok"))
     attachment = await env.attachments.save("notes.txt", b"x", "text/plain")
     created = await env.create(attachment_ids=[attachment.id])
