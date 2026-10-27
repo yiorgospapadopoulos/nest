@@ -6,7 +6,7 @@ import { defined } from "../../test/defined.ts";
 import { fakeApi, type FakeApi } from "../../test/fakeApi.ts";
 import { detail, pixie, repo, session, team } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
-import { renderApp } from "../../test/render.tsx";
+import { renderApp, typeAndWait } from "../../test/render.tsx";
 
 const PIXIES = [
   pixie({ id: "lead", slug: "qa-lead", name: "Lead", position: 0, team_id: "qa" }),
@@ -107,7 +107,10 @@ describe("pixie mentions", () => {
 
     await user.type(field, "@rev");
     await screen.findByRole("option", { name: "Reviewer@reviewer" });
-    await act(() => new Promise((done) => setTimeout(done, 20)));
+    // The soul's failed read has settled.
+    await act(() =>
+      Promise.allSettled(api.pixieFile.mock.results.map((r) => r.value as Promise<unknown>)),
+    );
     expect(screen.getByRole("option", { name: "Reviewer@reviewer" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
     expect(field).toHaveValue("@reviewer ");
@@ -177,8 +180,7 @@ describe("pixie mentions", () => {
     const api = withPixies(fakeApi(), [pixie()], []);
     const { user } = await openPixie(api, pixie());
 
-    await user.type(screen.getByLabelText("Message"), "@te");
-    await act(() => new Promise((done) => setTimeout(done, 200)));
+    await typeAndWait(user, screen.getByLabelText("Message"), "@te", 200);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

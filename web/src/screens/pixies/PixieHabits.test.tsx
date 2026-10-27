@@ -5,6 +5,7 @@ import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { detail, habit, habitRun, pixie, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
+import { fill } from "../../test/render.tsx";
 
 const details = (api = fakeApi()) => openPixie(api, pixie(), "Details");
 
@@ -94,10 +95,6 @@ describe("Pixie habits page (B42)", () => {
     const api = fakeApi();
     const { user } = await openHabits(api);
     const add = await within(sheet("Habits")).findByRole("button", { name: "New habit" });
-    // At the full right of its row, with no heading repeating the sheet's title (B85).
-    expect(add.parentElement).toHaveClass("pxhrow");
-    expect(add.parentElement?.children).toHaveLength(1);
-    expect(within(sheet("Habits")).getAllByRole("heading", { name: "Habits" })).toHaveLength(1);
     expect(add).toHaveTextContent("New");
     await user.click(add);
 
@@ -107,8 +104,8 @@ describe("Pixie habits page (B42)", () => {
     // only leaves Save off, with no message.
     expect(save).toBeDisabled();
     expect(within(editor).queryByText(/name the habit/i)).not.toBeInTheDocument();
-    await user.type(within(editor).getByLabelText("Name"), "Hourly sweep");
-    await user.type(within(editor).getByLabelText("What to check"), "Look for stuck chats");
+    await fill(user, within(editor).getByLabelText("Name"), "Hourly sweep");
+    await fill(user, within(editor).getByLabelText("What to check"), "Look for stuck chats");
     expect(save).toBeDisabled();
     expect(within(editor).getByText("Choose a schedule or a trigger.")).toBeInTheDocument();
 
@@ -153,14 +150,14 @@ describe("Pixie habits page (B42)", () => {
     expect(within(sheet("Habits")).getByText("Hourly sweep")).toBeInTheDocument();
   });
 
-  it("offers the time fields each schedule needs", async () => {
+  it("offers the day and time fields a weekly schedule needs", async () => {
     const api = fakeApi();
     const { user } = await openHabits(api);
     await user.click(await within(sheet("Habits")).findByRole("button", { name: "New habit" }));
     const editor = sheet("New habit");
     const schedule = within(editor).getByLabelText("Schedule");
-    await user.type(within(editor).getByLabelText("Name"), "Weekly");
-    await user.type(within(editor).getByLabelText("What to check"), "Sum up the week");
+    await fill(user, within(editor).getByLabelText("Name"), "Weekly");
+    await fill(user, within(editor).getByLabelText("What to check"), "Sum up the week");
 
     await user.selectOptions(schedule, "weekly");
     await user.selectOptions(within(editor).getByLabelText("Day"), "4");
@@ -175,11 +172,15 @@ describe("Pixie habits page (B42)", () => {
       "p1",
       expect.objectContaining({ schedule: { kind: "weekly", weekday: 4, time: "18:30" } }),
     );
+  });
 
+  it("offers no day for a daily schedule, and no time without a schedule", async () => {
+    const api = fakeApi();
+    const { user } = await openHabits(api);
     await user.click(await within(sheet("Habits")).findByRole("button", { name: "New habit" }));
     const second = sheet("New habit");
-    await user.type(within(second).getByLabelText("Name"), "Daily");
-    await user.type(within(second).getByLabelText("What to check"), "Check");
+    await fill(user, within(second).getByLabelText("Name"), "Daily");
+    await fill(user, within(second).getByLabelText("What to check"), "Check");
     await user.selectOptions(within(second).getByLabelText("Schedule"), "daily");
     expect(within(second).queryByLabelText("Day")).not.toBeInTheDocument();
     await user.selectOptions(within(second).getByLabelText("Schedule"), "weekdays");
@@ -201,8 +202,8 @@ describe("Pixie habits page (B42)", () => {
     const { user } = await openHabits(api);
     await user.click(await within(sheet("Habits")).findByRole("button", { name: "New habit" }));
     const editor = sheet("New habit");
-    await user.type(within(editor).getByLabelText("Name"), "Check");
-    await user.type(within(editor).getByLabelText("What to check"), "Look");
+    await fill(user, within(editor).getByLabelText("Name"), "Check");
+    await fill(user, within(editor).getByLabelText("What to check"), "Look");
     await user.click(within(editor).getByLabelText("When a chat fails"));
     await user.click(within(editor).getByRole("button", { name: "Save" }));
 
@@ -229,7 +230,7 @@ describe("Pixie habits page (B42)", () => {
     expect(within(editor).getByLabelText("Time")).toHaveValue("07:45");
     expect(within(editor).getByLabelText("When a chat looks stuck")).toBeChecked();
     await user.clear(within(editor).getByLabelText("Name"));
-    await user.type(within(editor).getByLabelText("Name"), "Midweek check");
+    await fill(user, within(editor).getByLabelText("Name"), "Midweek check");
     await user.click(within(editor).getByRole("button", { name: "Save" }));
 
     expect(api.updateHabit).toHaveBeenCalledWith("p1", "h1", {

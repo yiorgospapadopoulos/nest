@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { expect } from "vitest";
+import userEvent, { PointerEventsCheckLevel, type UserEvent } from "@testing-library/user-event";
+import { expect, vi } from "vitest";
 import type { NestEvent } from "../api/types.ts";
 import { App } from "../App.tsx";
 import { fakeApi, type FakeApi } from "./fakeApi.ts";
@@ -34,7 +34,9 @@ export async function renderApp({
   ready = true,
 }: Options = {}) {
   const sockets = socketFactory();
-  const user = userEvent.setup();
+  // No pause between keystrokes and no pointer-events walk up the tree on every action:
+  // both cost time on each step and neither is what these tests are about.
+  const user = userEvent.setup({ delay: null, pointerEventsCheck: PointerEventsCheckLevel.Never });
   const view = render(
     <App
       api={api}
@@ -56,4 +58,22 @@ export async function renderApp({
     });
   };
   return { ...view, api, sockets, user, storage, push };
+}
+
+/** Types with the clock faked, then lets `ms` pass: a debounce is waited out without real time. */
+export async function typeAndWait(user: UserEvent, element: Element, text: string, ms: number) {
+  // The clock still runs along: Testing Library's wrapper waits on a real zero timeout.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await user.type(element, text);
+    await act(() => vi.advanceTimersByTimeAsync(ms));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+/** Fills a free-text field in one paste, where the keystrokes are not what a test is about. */
+export async function fill(user: UserEvent, field: HTMLElement, text: string) {
+  await user.click(field);
+  await user.paste(text);
 }

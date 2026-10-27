@@ -915,7 +915,10 @@ describe("review cards", () => {
 
     expect(await screen.findByText("The branch is gone.")).toBeInTheDocument();
     expect(api.session).toHaveBeenCalledWith("s1");
-    expect(approve).toBeEnabled();
+    // Enabled again once the session's failed load settles.
+    await waitFor(() => {
+      expect(approve).toBeEnabled();
+    });
   });
 
   it("say why approving waits for background work", async () => {

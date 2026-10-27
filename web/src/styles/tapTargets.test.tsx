@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
 import { screen, within } from "@testing-library/react";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { fakeApi } from "../test/fakeApi.ts";
 import {
   detail,
@@ -16,6 +16,7 @@ import {
 } from "../test/fixtures.ts";
 import { openPixie, showPixies } from "../test/pixies.ts";
 import { renderApp } from "../test/render.tsx";
+import { openSettings } from "../test/settings.ts";
 
 // The app's own stylesheets: jsdom has no layout, but it applies their declared sizes.
 const SHEETS = ["base.css", "screens.css", "chat.css"].map((name) =>
@@ -28,16 +29,20 @@ const styles = SHEETS.map((text) => {
   return style;
 });
 
-beforeAll(() => {
-  document.head.append(...styles);
-});
+// Attached at the first measurement of each test, after the app got where it is going:
+// with them in place every style lookup while it renders matches all of their rules,
+// which made these tests slow and flaky under load (jsdom ignores a disabled sheet).
+function measuring() {
+  if (styles[0]?.isConnected !== true) document.head.append(...styles);
+}
 
-afterAll(() => {
+afterEach(() => {
   for (const style of styles) style.remove();
 });
 
 /** The box a control declares, in CSS pixels. */
 function box(element: HTMLElement) {
+  measuring();
   const css = getComputedStyle(element);
   const px = (value: string) => Number.parseFloat(value) || 0;
   return {
@@ -55,8 +60,8 @@ function hitBox(element: HTMLElement) {
   const px = (value: string) => Number.parseFloat(value) || 0;
   let width = own.width;
   let height = own.height;
-  for (const sheet of document.styleSheets) {
-    for (const rule of sheet.cssRules) {
+  for (const style of styles) {
+    for (const rule of style.sheet?.cssRules ?? []) {
       if (!(rule instanceof CSSStyleRule) || !rule.selectorText.endsWith("::before")) continue;
       if (!element.matches(rule.selectorText.replace(/::before$/, ""))) continue;
       width = Math.max(width, px(rule.style.width), px(rule.style.minWidth));
@@ -68,6 +73,14 @@ function hitBox(element: HTMLElement) {
 
 // Apple's smallest comfortable tap target.
 const TAP = 44;
+
+/** Text buttons are as wide as their words; their height is what falls short. */
+function reach(control: HTMLElement, sides: "height" | "both" = "both") {
+  const hit = hitBox(control);
+  const name = control.textContent || (control.getAttribute("aria-label") ?? "");
+  expect(hit.height, name).toBeGreaterThanOrEqual(TAP);
+  if (sides === "both") expect(hit.width, name).toBeGreaterThanOrEqual(TAP);
+}
 
 describe("tap targets", () => {
   it("are at least 44 points in a chat", async () => {
@@ -255,32 +268,33 @@ describe("tap targets", () => {
     }
   });
 
-  it("are at least 44 points for card buttons, switches and colour swatches", async () => {
+  it("are at least 44 points on a Needs you row", async () => {
     const api = fakeApi();
     api.approvals.mockResolvedValue([review()]);
     api.sessions.mockImplementation((archived) => Promise.resolve(archived ? [] : [session()]));
     const { user } = await renderApp({ api });
 
-    // Text buttons are as wide as their words; their height is what falls short.
-    const reach = (control: HTMLElement, sides: "height" | "both" = "both") => {
-      const hit = hitBox(control);
-      const name = control.textContent || (control.getAttribute("aria-label") ?? "");
-      expect(hit.height, name).toBeGreaterThanOrEqual(TAP);
-      if (sides === "both") expect(hit.width, name).toBeGreaterThanOrEqual(TAP);
-    };
-    // A Needs you row's chevron and name (B102), then a plain button of the open item.
+    // A row's chevron and name (B102), then a plain button of the open item.
     const chevron = await screen.findByRole("button", { name: "Show details" });
     reach(chevron);
     reach(screen.getByRole("button", { name: "Validate contact form" }), "height");
     await user.click(chevron);
     reach(await screen.findByRole("button", { name: "Feedback" }), "height");
-    await user.click(screen.getByRole("tab", { name: "Chats" }));
+  });
+
+  it("are at least 44 points in the Chats header", async () => {
+    window.history.replaceState(null, "", "/projects");
+    await renderApp();
+
     reach(screen.getByRole("switch", { name: "Show automated chats" }));
-    // The Chats header's project menu and New chat (B102).
+    // The project menu and New chat (B102).
     reach(screen.getByRole("button", { name: "Project: todo-ui" }), "height");
     reach(screen.getByRole("button", { name: "New chat in todo-ui" }));
-    await user.click(screen.getByRole("tab", { name: "Settings" }));
-    // The Settings list's rows.
+  });
+
+  it("are at least 44 points on the Settings list and the Appearance page", async () => {
+    const { user } = await openSettings(null);
+
     reach(await screen.findByRole("button", { name: "Appearance" }), "height");
     await user.click(screen.getByRole("button", { name: "Appearance" }));
     reach(screen.getByRole("button", { name: "Back to Settings" }), "height");
@@ -289,21 +303,27 @@ describe("tap targets", () => {
     ).getAllByRole("button")) {
       reach(swatch);
     }
-    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
-    await user.click(screen.getByRole("button", { name: "Accounts" }));
+  });
+
+  it("are at least 44 points on the Accounts page", async () => {
+    await openSettings("Accounts");
     reach(await screen.findByRole("button", { name: "Show email" }), "height");
-    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
-    await user.click(screen.getByRole("button", { name: "Storage" }));
-    // The Storage page's buttons (B86).
+  });
+
+  it("are at least 44 points on the Storage page (B86)", async () => {
+    await openSettings("Storage");
     reach(await screen.findByRole("button", { name: "Review large attachments" }), "height");
     reach(screen.getByRole("button", { name: "Rebuild" }), "height");
-    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
-    await user.click(screen.getByRole("button", { name: "Agents" }));
-    // A segmented control's segments.
+  });
+
+  it("are at least 44 points for a segmented control's segments", async () => {
+    await openSettings("Agents");
     reach(await screen.findByRole("button", { name: "Current branch" }), "height");
-    await user.click(screen.getByRole("button", { name: "Back to Settings" }));
-    await user.click(screen.getByRole("button", { name: "Usage" }));
-    // The usage page's controls (B84, B86).
+  });
+
+  it("are at least 44 points on the Usage page (B84, B86)", async () => {
+    const { user } = await openSettings("Usage");
+
     reach(await screen.findByRole("button", { name: "Refresh usage" }), "height");
     reach(screen.getByRole("button", { name: "Week" }), "height");
     reach(screen.getByRole("button", { name: "Previous period" }));

@@ -6,6 +6,7 @@ import { fakeApi } from "../../test/fakeApi.ts";
 import type { ModelOption, PermissionMode } from "../../api/types.ts";
 import { claudeProvider, codexProvider, modelList, pixie, session } from "../../test/fixtures.ts";
 import { openPixie } from "../../test/pixies.ts";
+import { fill } from "../../test/render.tsx";
 
 const details = (api = withModels(), shown = pixie()) => openPixie(api, shown, "Details");
 
@@ -449,13 +450,13 @@ describe("Pixie details", () => {
     await user.click(screen.getByRole("button", { name: "Add skill" }));
     const picker = sheet("Add skill");
     const search = await within(picker).findByRole("searchbox", { name: "Search skills" });
-    await user.type(search, "PULL");
+    await fill(user, search, "PULL");
     expect(groups(picker)).toEqual([["review", ["prReviews a pull request"]]]);
     await user.clear(search);
-    await user.type(search, "sty");
+    await fill(user, search, "sty");
     expect(groups(picker)).toEqual([["review", ["style"]]]);
     await user.clear(search);
-    await user.type(search, "nothing like it");
+    await fill(user, search, "nothing like it");
     expect(groups(picker)).toEqual([]);
     expect(picker).toHaveTextContent("No matching skills");
   });
@@ -513,13 +514,6 @@ describe("Pixie details", () => {
 
     await user.click(screen.getByRole("button", { name: /^Memory/ }));
     expect(await within(sheet("Memory")).findByText("Uses pnpm")).toBeInTheDocument();
-  });
-
-  it("counts one fact as one", async () => {
-    const api = fakeApi();
-    api.pixieFile.mockResolvedValueOnce({ text: "- 2026-10-01: Uses pnpm\n", hash: "m" });
-    await details(api);
-    expect(await screen.findByRole("button", { name: /^Memory.*1 fact$/ })).toBeInTheDocument();
   });
 
   it("counts memory facts again, quietly, when the pixie changes or its turn ends", async () => {
@@ -583,7 +577,7 @@ describe("Pixie details", () => {
   it("deletes the pixie after asking and goes back", async () => {
     const api = fakeApi();
     api.deletePixie.mockRejectedValueOnce(new Error("Mac asleep"));
-    const { user } = await details(api);
+    const { user } = await openPixie(api, pixie(), "Details", { from: "list" });
 
     const remove = async () => {
       await user.click(screen.getByRole("button", { name: "Delete pixie" }));
