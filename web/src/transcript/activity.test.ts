@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { elapsed, summarizeTools, thoughtLabel, toolKind, turnLabel } from "./activity.ts";
 

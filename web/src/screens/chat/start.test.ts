@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Approval, Session } from "../../api/types.ts";
 import { initialState, type State } from "../../store/state.ts";

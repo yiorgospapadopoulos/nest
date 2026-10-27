@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { BLINK_MS, fourFaces, HOP_MS, phaseOffset, STEP_MS } from "./motion.ts";
 

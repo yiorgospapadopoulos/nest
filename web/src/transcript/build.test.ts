@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Approval, JsonObject, JsonValue } from "../api/types.ts";
 import {

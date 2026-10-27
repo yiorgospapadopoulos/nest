@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { approval, mergeApproval, question, review, reviewComments } from "../../test/fixtures.ts";
 import { approvalLine, checksFailedLine, lineText, stuckLine } from "./needsLine.ts";

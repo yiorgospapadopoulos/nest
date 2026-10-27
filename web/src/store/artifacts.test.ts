@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Artifact, ArtifactFilter, JsonObject } from "../api/types.ts";
 import { artifact, artifactDetail, event } from "../test/fixtures.ts";

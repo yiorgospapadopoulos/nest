@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { defined } from "../../test/defined.ts";
 import { configurationPage, copyPreview, engineSection, skillItem } from "../../test/fixtures.ts";

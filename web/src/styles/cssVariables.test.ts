@@ -1,3 +1,4 @@
+// @vitest-environment node
 /// <reference types="node" />
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
