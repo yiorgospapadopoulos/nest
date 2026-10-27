@@ -8,6 +8,7 @@ from sqlite3 import Row
 from nestd.clock import Clock
 from nestd.errors import NotFoundError
 from nestd.storage.db import Database
+from nestd.usage.store import first_account
 
 _COLUMNS = "id, provider, name, profile, position, created_at, email, plan, signed_in, checked_at"
 
@@ -65,6 +66,16 @@ class AccountStore:
             (account_id, provider, str(profile), self._clock.now().isoformat(), provider),
         )
         return await self.get(account_id)
+
+    async def ensure_first(self, provider: str) -> None:
+        """The engine's first account, the user's own login, made when it is missing: an
+        engine added after B98, such as the ACP ones (B107).
+        """
+        await self._db.execute(
+            "INSERT INTO engine_accounts (id, provider, position, created_at)"
+            " VALUES (?, ?, 0, ?) ON CONFLICT (id) DO NOTHING",
+            (first_account(provider), provider, self._clock.now().isoformat()),
+        )
 
     async def rename(self, account_id: str, name: str | None) -> None:
         await self._db.execute(

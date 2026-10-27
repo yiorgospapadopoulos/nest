@@ -255,6 +255,9 @@ class SessionManager:
             if request.provider is not None
             else await self._engines.listing(request.model, self._defaults_engine(defaults))
         )
+        if started_by_pixie is not None:
+            # Its git block is a promise the engine must keep (B107).
+            engine.require("pixies")
         if not is_local(request.model):
             # First: asking whether it is ready also brings its model list (Codex).
             await engine.require_ready()
@@ -430,6 +433,7 @@ class SessionManager:
         `provider` is the pixie's engine (None: the default), which must be ready (409).
         """
         engine = self._engines.default if provider is None else self._engines.by_name(provider)
+        engine.require("pixies")
         await self._require_ready(engine, model)
         await self._require_mode(engine, model, permission_mode)
         attachments = await self._attachments.for_session(attachment_ids, None)
@@ -558,7 +562,10 @@ class SessionManager:
         """
         session = await self._store.get(session_id)
         require_open(session)
-        await self._require_ready(self._engines.of(session), session.model)
+        engine = self._engines.of(session)
+        if session.pixie_id is not None or session.started_by_pixie is not None:
+            engine.require("pixies")
+        await self._require_ready(engine, session.model)
         await self._refuse_member_calls(session, text)
         await self._require_not_open_elsewhere(session)
         attachments = await self._attachments.for_session(attachment_ids, session_id)

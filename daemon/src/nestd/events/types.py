@@ -158,6 +158,9 @@ ACCOUNT_CODEX: Final = "account.codex"
 # outcome, renamed, made active, removed, or new usage windows; `GET /api/accounts`'s body.
 # ACCOUNT_CLAUDE and ACCOUNT_CODEX keep coming for the active accounts.
 ACCOUNTS_CHANGED: Final = "accounts.changed"
+# An ACP engine's install changed (B107), ephemeral and global: `{name, state, version,
+# state_detail}` as in `GET /api/providers`. Clients load the providers again.
+ENGINE_STATE: Final = "engine.state"
 # Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
 # `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
 CLAUDE_CODE_INSTALL: Final = "claude_code.install"

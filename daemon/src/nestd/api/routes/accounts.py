@@ -9,6 +9,7 @@ from nestd.accounts.codex import CodexAccountStatus, CodexSignIn
 from nestd.accounts.github import GithubStatus
 from nestd.accounts.models import (
     Account,
+    AccountKey,
     AccountList,
     AccountName,
     AccountProvider,
@@ -102,7 +103,8 @@ async def codex_logout(ctx: Context) -> CodexAccountStatus:
 @router.post("/{provider}", status_code=status.HTTP_202_ACCEPTED)
 async def add_account(provider: AccountProvider, ctx: Context) -> AccountSignIn:
     """Add an account after the engine's others and start signing in to it: Claude opens
-    the browser on the Mac, Codex gives `auth_url` to open. 409 while another sign in of
+    the browser on the Mac, Codex gives `auth_url` to open, OpenCode `login_command` to run
+    in Terminal; Gemini's key is put afterwards (B107). 409 while another sign in of
     the engine runs. One whose first sign in fails or is cancelled is removed again.
     """
     return await ctx.accounts.add(provider)
@@ -110,7 +112,9 @@ async def add_account(provider: AccountProvider, ctx: Context) -> AccountSignIn:
 
 @router.post("/{account_id}/login", status_code=status.HTTP_202_ACCEPTED)
 async def login(account_id: str, ctx: Context) -> AccountSignIn:
-    """Sign in to the account again; 409 while a sign in of its engine runs."""
+    """Sign in to the account again; 409 while a sign in of its engine runs. An engine
+    signed in in Terminal gives `login_command` (B107).
+    """
     return await ctx.accounts.login(account_id)
 
 
@@ -130,6 +134,20 @@ async def logout(account_id: str, ctx: Context) -> Account:
 async def rename(account_id: str, body: AccountName, ctx: Context) -> Account:
     """1 to 40 characters, trimmed; null or empty clears it."""
     return await ctx.accounts.rename(account_id, body.name)
+
+
+@router.put("/{account_id}/key")
+async def set_key(account_id: str, body: AccountKey, ctx: Context) -> Account:
+    """Keep the account's API key in the Keychain and check again (Gemini, B107); 409 for
+    an engine that signs in otherwise. The key is never returned or announced.
+    """
+    return await ctx.accounts.set_key(account_id, body.key)
+
+
+@router.delete("/{account_id}/key")
+async def delete_key(account_id: str, ctx: Context) -> Account:
+    """Forget the account's API key, which signs it out (B107)."""
+    return await ctx.accounts.delete_key(account_id)
 
 
 @router.put("/{account_id}/active")

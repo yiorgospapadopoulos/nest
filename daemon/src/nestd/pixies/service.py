@@ -95,6 +95,7 @@ class PixieService:
         slug = request.slug or await self._free_slug(slugify(request.name))
         await self._check_slug(slug)
         engine = self._engine(request.provider)
+        engine.require("pixies")
         _require_skills(engine, request.skills)
         model = request.model or await self._new_model(engine)
         await self._sessions.fitting_mode(
@@ -140,6 +141,8 @@ class PixieService:
             for name in _CLEARABLE:
                 changes.setdefault(name, None)
         engine = self._engine(changes.get("provider", before.provider))
+        if moved:
+            engine.require("pixies")
         _require_skills(engine, request.skills)
         default_model = await self._new_model(engine)
         # Back to the default: the concrete model and thinking Nest picks (B94).

@@ -36,7 +36,7 @@ async def test_providers_list_the_default_engine_then_codex_with_its_login(api: 
     response = await api.http.get("/api/providers")
 
     assert response.status_code == 200
-    default, codex = response.json()["providers"]
+    default, codex, *_acp = response.json()["providers"]
     assert (default["name"], default["signed_in"], default["unsupported"]) == ("fake", None, [])
     assert default["account"]["plan"] == "Claude Max"
     assert codex["name"] == "codex"
@@ -72,7 +72,7 @@ async def test_codexs_models_and_account_are_served_apart_from_claudes(api: Api)
     codex = (await api.http.get("/api/models", params={"provider": "codex"})).json()
     claude = (await api.http.get("/api/models")).json()
     account = (await api.http.get("/api/account", params={"provider": "codex"})).json()
-    bogus = await api.http.get("/api/models", params={"provider": "gemini"})
+    bogus = await api.http.get("/api/models", params={"provider": "amp"})
 
     # Only real models, each engine's default named (B94).
     assert [m["value"] for m in codex["models"]] == ["gpt-6.1-sol", "gpt-5.5"]
@@ -126,7 +126,7 @@ async def test_a_codex_chat_while_signed_out_is_refused_with_its_code(api: Api) 
 
 async def test_an_unknown_provider_is_a_validation_error(api: Api) -> None:
     response = await api.http.post(
-        "/api/sessions", json={"repo": "repo", "prompt": "Do it", "provider": "gemini"}
+        "/api/sessions", json={"repo": "repo", "prompt": "Do it", "provider": "amp"}
     )
 
     assert response.status_code == 422

@@ -64,7 +64,7 @@ async def test_a_pixie_runs_on_claude_unless_set_to_codex(api: Api) -> None:
         "/api/pixies",
         json={"name": "Coder", "provider": "codex", "model": "gpt-5.5", "effort": "high"},
     )
-    unknown = await api.http.post("/api/pixies", json={"name": "G", "provider": "gemini"})
+    unknown = await api.http.post("/api/pixies", json={"name": "G", "provider": "amp"})
 
     assert plain.json()["provider"] == "claude"
     assert coder.status_code == 201, coder.text
