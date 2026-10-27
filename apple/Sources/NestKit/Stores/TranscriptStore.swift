@@ -22,8 +22,7 @@ public struct ToolCall: Sendable, Hashable {
 
     /// The subagent an agent call ran, such as a pixie's slug; nil for other tools.
     public var subagentType: String? {
-        guard ToolSummary.kind(of: name) == .agent else { return nil }
-        return input["subagent_type"]?.stringValue
+        ToolSummary.subagent(tool: name, input: input)
     }
 }
 
@@ -123,6 +122,8 @@ public struct TranscriptItem: Sendable, Hashable, Identifiable {
         case habitReport(String)
         /// Nest's message that lets Claude continue after the usage limit reset (B78).
         case limitResume(String)
+        /// A pixie the chat called in the background ended (B112).
+        case pixieResult(PixieResultLine)
         /// A hook's message, output or failure, as a muted line (B59).
         case hook(HookRun)
         /// An artifact the chat saved, as a card that opens it (B79).
@@ -514,6 +515,11 @@ public final class TranscriptStore {
                 append(key, .habitReport(message.text), eventID)
             } else if message.origin == .limitResume {
                 append(key, .limitResume(message.text), eventID)
+            } else if message.origin == .pixieResult {
+                let line = PixieResultLine(
+                    pixieID: message.pixieID, status: message.status ?? .unknown,
+                    text: message.text)
+                append(key, .pixieResult(line), eventID)
             } else if let github = GitHubMessage.of(message) {
                 append(
                     key, .user(text: github.own, attachments: message.attachments), eventID,

@@ -133,7 +133,8 @@ public struct APIClient: NestAPI {
         -> SavedMemory
     {
         try await call(
-            "POST", ["sessions", id, "memory"], body: MemoryRequest(text: text, scope: scope))
+            "POST", ["sessions", id, "memory"],
+            body: MemoryRequest(text: text, scope: scope.requested))
     }
 
     public func attachmentData(_ id: String) async throws -> Data {

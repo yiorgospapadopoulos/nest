@@ -176,7 +176,7 @@ public enum LocalModelText {
     public static func engineDetail(_ engine: String) -> String {
         switch engine {
         case ProviderInfo.claude: "Every Nest chat feature"
-        case "codex": "Smaller tool set; no rewind, fork, questions or task list"
+        case "codex": "Smaller tool set; no rewind or fork"
         default: ""
         }
     }

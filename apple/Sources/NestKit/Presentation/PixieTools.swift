@@ -56,6 +56,36 @@ public enum ReportBack {
     }
 }
 
+/// The daemon's message that a pixie the chat called in the background ended (B112): a
+/// compact line, never the user's bubble.
+public struct PixieResultLine: Sendable, Hashable {
+    public var pixieID: String?
+    public var status: PixieResultStatus
+    /// The message as the agent got it, with the report.
+    public var text: String
+
+    public init(pixieID: String?, status: PixieResultStatus, text: String) {
+        self.pixieID = pixieID
+        self.status = status
+        self.text = text
+    }
+
+    /// "@scout finished", by the pixie's slug; a pixie no longer known by the first
+    /// mention in the message.
+    public func title(pixies: [Pixie]) -> String {
+        let slug =
+            pixies.first { $0.id == pixieID }?.slug
+            ?? text.firstMatch(of: /@([\w-]+)/).map { String($0.1) }
+        let name = slug.map { "@\($0)" } ?? "A pixie"
+        return switch status {
+        case .failed: "\(name) failed"
+        case .stopped: "\(name) was stopped"
+        case .interrupted: "\(name) was interrupted"
+        case .done, .unknown: "\(name) finished"
+        }
+    }
+}
+
 extension SessionsStore {
     /// The live state on a pixie's card for a chat: running, needs you, ready for review,
     /// failed, interrupted, paused at the usage limit, idle or closed.

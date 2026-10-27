@@ -387,6 +387,8 @@ struct TranscriptRow: View {
             HabitReportRow(text: text)
         case .limitResume(let text):
             LimitResumeRow(text: text)
+        case .pixieResult(let line):
+            PixieResultRow(line: line)
         case .hook(let run):
             HookRow(id: item.id, run: run)
         case .bash(let block):

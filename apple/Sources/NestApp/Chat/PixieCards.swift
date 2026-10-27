@@ -454,3 +454,32 @@ struct HabitReportRow: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// A pixie the chat called in the background ended (B112): one quiet line like a habit's
+/// report, not the user's bubble; the call's row holds the report.
+struct PixieResultRow: View {
+    let line: PixieResultLine
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: icon).font(.system(size: 10))
+            Text(line.title(pixies: shell.pixies.pixies)).font(.ui(TypeSize.meta, .medium))
+        }
+        .foregroundStyle(Palette.t2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .softFill()
+        .accessibilityElement(children: .combine)
+    }
+
+    private var icon: String {
+        switch line.status {
+        case .failed: "exclamationmark.circle"
+        case .stopped: "stop.circle"
+        case .interrupted: "pause.circle"
+        case .done, .unknown: "checkmark.circle"
+        }
+    }
+}
