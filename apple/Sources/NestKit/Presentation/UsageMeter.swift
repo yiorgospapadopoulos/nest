@@ -154,12 +154,21 @@ public enum UsageMeter {
         let shown = ordered(accounts, choice).filter {
             choice.shows($0) && $0.signedIn != false
         }
-        return shown.isEmpty ? accounts.filter(\.active).prefix(1).map { $0 } : shown
+        return shown.isEmpty ? metered(accounts).filter(\.active).prefix(1).map { $0 } : shown
+    }
+
+    /// Accounts with limits to show: Claude's and Codex's, and any other that reported
+    /// some; the engines added in B107 report tokens only.
+    private static func metered(_ accounts: [EngineAccount]) -> [EngineAccount] {
+        accounts.filter {
+            [ProviderInfo.claude, "codex"].contains($0.provider) || !$0.limits.isEmpty
+        }
     }
 
     private static func ordered(_ accounts: [EngineAccount], _ choice: UsageMeterChoice)
         -> [EngineAccount]
     {
+        let accounts = metered(accounts)
         let named = choice.order.compactMap { id in accounts.first { $0.id == id } }
         return named + accounts.filter { !choice.order.contains($0.id) }
     }

@@ -170,20 +170,30 @@ public struct AccountList: Codable, Sendable, Hashable {
     }
 }
 
-/// A sign-in that started: the account, and for Codex the page to open in the browser.
+/// A sign-in that started: the account, and for Codex the page to open in the browser; for
+/// an engine signed in from Terminal, the command to run there (B107).
 public struct AccountSignIn: Codable, Sendable, Hashable {
-    public var account: EngineAccount
+    /// Nil when the daemon answers only the command.
+    public var account: EngineAccount?
     public var authURL: URL?
+    public var loginCommand: String?
 
-    public init(account: EngineAccount, authURL: URL?) {
+    public init(account: EngineAccount?, authURL: URL?, loginCommand: String? = nil) {
         self.account = account
         self.authURL = authURL
+        self.loginCommand = loginCommand
     }
 
     enum CodingKeys: String, CodingKey {
         case account
         case authURL = "auth_url"
+        case loginCommand = "login_command"
     }
+}
+
+/// `PUT /api/accounts/{id}/key`: the engine's API key, which only the daemon keeps.
+struct EngineKeyRequest: Encodable {
+    var key: String
 }
 
 /// `PUT /api/accounts/{id}/name`: null clears the name.

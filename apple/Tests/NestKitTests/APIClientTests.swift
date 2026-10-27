@@ -573,7 +573,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         RouteCase("POST", "/api/accounts/codex", response: signInJSON) {
             let started = try await $0.addAccount(provider: "codex")
             #expect(started.authURL?.host() == "auth.openai.com")
-            #expect(started.account.signingIn)
+            #expect(started.account?.signingIn == true)
         },
         RouteCase(
             "POST", "/api/accounts/claude",
@@ -587,6 +587,26 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("POST", "/api/accounts/codex-main/login/cancel", response: "") {
             try await $0.cancelAccountSignIn("codex-main")
+        },
+        // B107: a terminal engine's login answers only its command.
+        RouteCase(
+            "POST", "/api/accounts/cursor-main/login",
+            response: #"{"auth_url": null, "login_command": "agent login"}"#
+        ) {
+            let started = try await $0.signInAccount("cursor-main")
+            #expect(started.account == nil)
+            #expect(started.loginCommand == "agent login")
+        },
+        RouteCase(
+            "PUT", "/api/accounts/gemini-main/key", body: #"{"key":"k-123"}"#, response: ""
+        ) {
+            try await $0.saveEngineKey("gemini-main", key: "k-123")
+        },
+        RouteCase("DELETE", "/api/accounts/gemini-main/key", response: "") {
+            try await $0.removeEngineKey("gemini-main")
+        },
+        RouteCase("POST", "/api/engines/opencode/install", response: "") {
+            try await $0.installEngine("opencode")
         },
         RouteCase("POST", "/api/accounts/claude-main/logout", response: accountJSON) {
             _ = try await $0.signOutAccount("claude-main")

@@ -185,15 +185,40 @@ public final class AccountsStore {
     /// Adds an account of the engine and starts its sign-in; answers the page to open in
     /// the browser when the engine has one (Codex), and `accounts.changed` tells the outcome.
     public func add(_ provider: String) async throws -> URL? {
+        try await startAdding(provider).authURL
+    }
+
+    /// Adding with the whole answer, such as the login command of an engine signed in from
+    /// Terminal (B107).
+    public func startAdding(_ provider: String) async throws -> AccountSignIn {
         let started = try await api.addAccount(provider: provider)
-        put(started.account)
-        return started.authURL
+        if let account = started.account { put(account) }
+        return started
     }
 
     public func signIn(_ id: String) async throws -> URL? {
+        try await startSignIn(id).authURL
+    }
+
+    public func startSignIn(_ id: String) async throws -> AccountSignIn {
         let started = try await api.signInAccount(id)
-        put(started.account)
-        return started.authURL
+        if let account = started.account { put(account) }
+        return started
+    }
+
+    /// Hands the engine's API key to the daemon, which keeps it in the Keychain and checks
+    /// the account again (B107); the key is not kept here.
+    public func saveKey(_ id: String, key: String) async throws {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        try await api.saveEngineKey(id, key: key)
+        try await load()
+    }
+
+    /// Removes the key, which signs the account out.
+    public func removeKey(_ id: String) async throws {
+        try await api.removeEngineKey(id)
+        try await load()
     }
 
     public func cancelSignIn(_ id: String) async throws {

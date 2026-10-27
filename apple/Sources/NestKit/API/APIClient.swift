@@ -548,6 +548,18 @@ public struct APIClient: NestAPI {
             body: UseBankedResetRequest(creditID: creditID))
     }
 
+    public func saveEngineKey(_ id: String, key: String) async throws {
+        try await perform("PUT", ["accounts", id, "key"], body: EngineKeyRequest(key: key))
+    }
+
+    public func removeEngineKey(_ id: String) async throws {
+        try await perform("DELETE", ["accounts", id, "key"])
+    }
+
+    public func installEngine(_ name: String) async throws {
+        try await perform("POST", ["engines", name, "install"])
+    }
+
     public func claudeCode() async throws -> ClaudeCodeStatus {
         try await get("claude-code")
     }

@@ -1243,6 +1243,24 @@ final class FakeAPI: NestAPI {
         try call("cancelAccountSignIn", id) { _ in }
     }
 
+    func saveEngineKey(_ id: String, key: String) async throws {
+        try call("saveEngineKey", id) { state in
+            let index = state.accounts.firstIndex { $0.id == id }!
+            state.accounts[index].signedIn = true
+        }
+    }
+
+    func removeEngineKey(_ id: String) async throws {
+        try call("removeEngineKey", id) { state in
+            let index = state.accounts.firstIndex { $0.id == id }!
+            state.accounts[index].signedIn = false
+        }
+    }
+
+    func installEngine(_ name: String) async throws {
+        try call("installEngine", name) { _ in }
+    }
+
     func signOutAccount(_ id: String) async throws -> EngineAccount {
         await pass("signOutAccount")
         return try call("signOutAccount", id) { state in
