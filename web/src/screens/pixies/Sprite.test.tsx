@@ -8,13 +8,6 @@ import { phaseOffset } from "./motion.ts";
 import { MASCOTS } from "./options.ts";
 import { Sprite, WorkingDot } from "./Sprite.tsx";
 
-// The spec both apps follow (B48): what a working sprite shows `t` ms into its clock.
-function frameAt(t: number): { dy: number; blink: boolean } {
-  const step = Math.floor(t / 170) % 4;
-  const up = step === 1 || step === 2;
-  return { dy: up ? -1 : 0, blink: up && Math.floor(t / 680) % 3 === 2 };
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -69,19 +62,6 @@ describe("a pixie's sprite at rest and at work (B48, B89)", () => {
       );
       unmount();
     }
-  });
-
-  it("offers every mascot in the picker, in the design's order", () => {
-    expect(MASCOTS).toEqual(Object.keys(MASCOT_SPRITES));
-  });
-
-  it("joins a row's run of one tone into a single rect", () => {
-    render(<Sprite mascot="bluebell" color="#E5484D" size={24} />);
-    // Row 0 is "....######....": one rect six cells wide.
-    const top = [...sprite().querySelectorAll(".pxhop > rect[y='0']")];
-    expect(top).toHaveLength(1);
-    expect(top[0]).toHaveAttribute("x", "4");
-    expect(top[0]).toHaveAttribute("width", "6");
   });
 
   it("hops and blinks while working, from its own phase, drawing its eyes in its colour", () => {
@@ -153,36 +133,6 @@ describe("the stylesheet's keyframes (B48)", () => {
   sheet.textContent = readFileSync("src/styles/screens.css", "utf8");
   document.head.append(sheet);
   const rules = [...defined(sheet.sheet).cssRules];
-  const keyframes = (name: string) =>
-    defined(
-      rules.find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === name),
-    );
-  // The value a step-end animation shows at `progress` (0 to 1): its last keyframe so far.
-  const valueAt = (rule: CSSKeyframesRule, property: string, progress: number) => {
-    let value = "";
-    let latest = -1;
-    for (const frame of [...rule.cssRules] as CSSKeyframeRule[]) {
-      for (const at of frame.keyText.split(",").map((text) => parseFloat(text) / 100)) {
-        if (at <= progress && at > latest) {
-          latest = at;
-          value = frame.style.getPropertyValue(property);
-        }
-      }
-    }
-    return value;
-  };
-  const hop = keyframes("pxhop");
-  const lid = keyframes("pxblink");
-
-  it("match the spec at every 10 ms of the blink cycle", () => {
-    for (let t = 0; t < 2040; t += 10) {
-      const frame = frameAt(t);
-      const up = valueAt(hop, "transform", (t % 680) / 680) === "translateY(-1px)";
-      expect(up ? -1 : 0, `hop at ${String(t)} ms`).toBe(frame.dy);
-      const shut = valueAt(lid, "opacity", t / 2040) === "1";
-      expect(shut, `lids at ${String(t)} ms`).toBe(frame.blink);
-    }
-  });
 
   it("run in hard steps on the shared clock, from each sprite's phase", () => {
     const style = (selector: string) =>

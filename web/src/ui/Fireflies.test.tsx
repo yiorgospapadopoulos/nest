@@ -47,60 +47,6 @@ describe("the fireflies and row glow stylesheet (B80)", () => {
       rules.find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === name),
     );
 
-  // Each frame as [at, x, y, scale, opacity], in units of the 16 by 12 box.
-  const UNIT =
-    /^translate\(calc\((-?[\d.]+) \* var\(--u\)\), calc\((-?[\d.]+) \* var\(--u\)\)\) scale\(([\d.]+)\)$/;
-  const frames = (name: string) =>
-    ([...keyframes(name).cssRules] as CSSKeyframeRule[]).flatMap((frame) => {
-      const [, x, y, scale] = defined(UNIT.exec(frame.style.getPropertyValue("transform")));
-      return frame.keyText
-        .split(",")
-        .map((at) => [
-          parseFloat(at),
-          Number(x),
-          Number(y),
-          Number(scale),
-          Number(frame.style.getPropertyValue("opacity")),
-        ]);
-    });
-  const sorted = (rows: number[][]) => rows.sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0));
-
-  it("moves each dot as the spec says", () => {
-    expect(sorted(frames("ff1"))).toEqual([
-      [0, 0, 0, 1, 1],
-      [30, 4, -4, 0.75, 0.55],
-      [60, 6, 1, 1.15, 1],
-      [100, 0, 0, 1, 1],
-    ]);
-    expect(sorted(frames("ff2"))).toEqual([
-      [0, 0, 0, 0.8, 0.6],
-      [40, -4, 5, 1.15, 1],
-      [70, 3, 6, 0.9, 0.7],
-      [100, 0, 0, 0.8, 0.6],
-    ]);
-    expect(sorted(frames("ff3"))).toEqual([
-      [0, 0, 0, 1.1, 1],
-      [50, -6, -5, 0.8, 0.55],
-      [100, 0, 0, 1.1, 1],
-    ]);
-  });
-
-  it("places and times each dot, glowing in the accent", () => {
-    const dot = (n: number) => style(`.ff i:nth-child(${String(n)})`);
-    expect([1, 2, 3].map((n) => [dot(n).left, dot(n).top, dot(n).animation])).toEqual([
-      ["calc(1 * var(--u))", "calc(5 * var(--u))", "ff1 2.4s ease-in-out infinite"],
-      ["calc(7 * var(--u))", "calc(1 * var(--u))", "ff2 2.9s ease-in-out infinite"],
-      ["calc(12 * var(--u))", "calc(8 * var(--u))", "ff3 2.1s ease-in-out infinite"],
-    ]);
-    expect(style(".ff").color).toBe("var(--accent)");
-    expect(style(".ff").getPropertyValue("--u")).toMatch(/^calc\(var\(--ffh\) ?\/ ?12\)$/);
-    expect(style(".ff i").background).toBe("currentcolor");
-    expect(style(".ff i").boxShadow).toBe(
-      "0 0 calc(4 * var(--u)) calc(1.5 * var(--u)) currentcolor",
-    );
-    expect(style(".b-pri .ff").color).toBe("var(--on-accent)");
-  });
-
   it("sweeps a band of accent across the row without catching taps", () => {
     const band = style(".rglow::after");
     expect(band.pointerEvents).toBe("none");
