@@ -296,7 +296,7 @@ describe("more engines (B107)", () => {
     const cursor = row("Cursor agent");
     expect(within(cursor).getByText("untested")).toBeInTheDocument();
     expect(within(cursor).getByRole("img", { name: GIT_WARNING })).toBeInTheDocument();
-    expect(within(cursor).getByText("Not installed")).toBeInTheDocument();
+    expect(within(cursor).getByText("Not on PATH: install it yourself")).toBeInTheDocument();
     expect(within(cursor).queryByRole("button")).toBeNull();
     expect(section("More engines")).not.toHaveTextContent("from your PATH");
   });

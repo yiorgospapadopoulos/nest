@@ -18,6 +18,9 @@ public struct EngineSetup: Sendable, Equatable {
     /// Engines the user installs themselves, which Nest does not fetch.
     static let installedByUser: Set<String> = ["cursor"]
 
+    /// An engine the user installs themselves that Nest did not find.
+    public static let notOnPath = "Not on PATH: install it yourself"
+
     public static let gitWarningText =
         "Nest cannot block this engine's git commands, so it may commit or push on its own."
 
@@ -52,7 +55,9 @@ public struct EngineSetup: Sendable, Equatable {
         case .installing:
             (state, action) = ("Installing", .none)
         case .notInstalled:
-            (state, action) = ("Not installed", canInstall ? .install(again: false) : .none)
+            (state, action) =
+                canInstall
+                ? ("Not installed", .install(again: false)) : (Self.notOnPath, .none)
         case .installFailed:
             (state, action) = ("Install failed", canInstall ? .install(again: true) : .none)
         case .unknown:

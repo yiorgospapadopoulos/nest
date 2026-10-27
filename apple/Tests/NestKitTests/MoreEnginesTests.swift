@@ -107,7 +107,7 @@ import Testing
 
         // Nest does not fetch Cursor's CLI: no Install, and no explanation shown.
         let cursor = byName["cursor"]!
-        #expect((cursor.state, cursor.action) == ("Not installed", .none))
+        #expect((cursor.state, cursor.action) == (EngineSetup.notOnPath, .none))
         #expect(cursor.failure == nil)
         #expect(cursor.labels == ["untested"])
         #expect(cursor.gitWarning == EngineSetup.gitWarningText)

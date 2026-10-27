@@ -63,6 +63,10 @@ const ENGINE_STATE: Record<EngineState, { tone: StatusTone; label: string }> = {
 
 /** The state beside an engine: why it cannot run, else whether it is signed in. */
 function engineStatus(engine: ProviderInfo): { tone: StatusTone; label: string } {
+  // Nest does not fetch an engine the user installs themselves: it was not found on PATH.
+  if (engine.state === "not_installed" && !engine.installable) {
+    return { tone: "wait", label: "Not on PATH: install it yourself" };
+  }
   if (engine.state !== "ready" || engine.signed_in === true) return ENGINE_STATE[engine.state];
   if (engine.sign_in === "api_key") return { tone: "wait", label: "No key" };
   return CODEX_STATE[String(engine.signed_in) as keyof typeof CODEX_STATE];
