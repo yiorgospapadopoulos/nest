@@ -60,6 +60,40 @@
   font-weight: 500;
   color: var(--t2);
 }
+/* Accounts: each engine's and GitHub's title is bright, after its mark, so they stand apart. */
+.set .acct .pg-h {
+  margin-top: 20px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--t1);
+}
+.set .acct-mark {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: var(--soft);
+  font: 600 var(--fs-micro) var(--mono);
+  color: var(--t2);
+}
+/* More engines: a row's name with its labels on one line, the version under it. */
+.set .eng-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.set .eng-chip {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--soft);
+  font-size: var(--fs-micro);
+  color: var(--t2);
+}
+.set .eng-warn {
+  color: var(--wait);
+}
 .set .pg-h + .lgrp,
 .set section > .lgrp {
   border-top: 1px solid var(--div);

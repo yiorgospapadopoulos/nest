@@ -1,9 +1,17 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import type { GithubAccount } from "../../api/types.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
-import { account, claudeAccount, codexAccount, github } from "../../test/fixtures.ts";
+import {
+  account,
+  acpProvider,
+  claudeAccount,
+  claudeProvider,
+  codexAccount,
+  codexProvider,
+  github,
+} from "../../test/fixtures.ts";
 import { openSettings } from "../../test/settings.ts";
 
 const openAccounts = (api = fakeApi()) => openSettings("Accounts", { api });
@@ -169,8 +177,7 @@ describe("codex account", () => {
     expect(await within(codex).findByText("me@example.com")).toBeInTheDocument();
     expect(within(codex).getByText("ChatGPT Plus")).toBeInTheDocument();
     expect(within(codex).getByText("Signed in")).toHaveClass("sst", "ok");
-    const names = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(names).toEqual(["Claude", "Codex", "GitHub"]);
+    expect(headingNames()).toEqual(["Claude", "Codex", "GitHub"]);
   });
 
   it("signs out after a confirmation and follows the account.codex event", async () => {
@@ -223,3 +230,155 @@ describe("codex account", () => {
     expect(section("Codex")).toHaveTextContent("Loading...");
   });
 });
+
+describe("more engines (B107)", () => {
+  const gemini = (signedIn: boolean) =>
+    acpProvider({
+      name: "gemini",
+      display_name: "Gemini CLI",
+      version: "0.65.0",
+      signed_in: signedIn,
+      sign_in: "api_key",
+      login_command: null,
+    });
+  const engines = ({ geminiSignedIn = false, opencodeSignedIn = true } = {}) => ({
+    providers: [
+      claudeProvider(),
+      codexProvider(),
+      acpProvider({ signed_in: opencodeSignedIn }),
+      gemini(geminiSignedIn),
+      acpProvider({
+        name: "cursor",
+        display_name: "Cursor agent",
+        version: null,
+        tested: false,
+        git_guard: false,
+        signed_in: null,
+        state: "not_installed",
+        state_detail: "Install Cursor agent yourself; Nest uses it from your PATH.",
+        installable: false,
+        sign_in: "terminal",
+        login_command: "agent login",
+      }),
+    ],
+  });
+  const withEngines = (options?: Parameters<typeof engines>[0]) => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue(engines(options));
+    return api;
+  };
+  const GIT_WARNING =
+    "Nest cannot block this engine's git commands, so it may commit or push on its own.";
+  /** An engine's row in More engines. */
+  const row = (name: string) => {
+    const found = within(section("More engines")).getByText(name).closest(".srow");
+    if (!(found instanceof HTMLElement)) throw new Error(`no row for ${name}`);
+    return found;
+  };
+
+  it("lists every other engine as a row of one More engines section", async () => {
+    await openAccounts(withEngines());
+
+    await screen.findByRole("region", { name: "More engines" });
+    expect(headingNames()).toEqual(["Claude", "Codex", "More engines", "GitHub"]);
+
+    const opencode = row("OpenCode");
+    expect(opencode).toHaveTextContent("1.19.4");
+    expect(within(opencode).getByText("Ready")).toBeInTheDocument();
+    expect(within(opencode).queryByRole("button")).toBeNull();
+    expect(within(opencode).queryByRole("img", { name: GIT_WARNING })).toBeNull();
+
+    const key = row("Gemini CLI");
+    expect(within(key).getByText("No key")).toBeInTheDocument();
+    expect(within(key).getByRole("button", { name: "Add a Gemini CLI API key" })).toBeVisible();
+
+    // Not installed, which the user does themselves: no action, no explanation.
+    const cursor = row("Cursor agent");
+    expect(within(cursor).getByText("untested")).toBeInTheDocument();
+    expect(within(cursor).getByRole("img", { name: GIT_WARNING })).toBeInTheDocument();
+    expect(within(cursor).getByText("Not installed")).toBeInTheDocument();
+    expect(within(cursor).queryByRole("button")).toBeNull();
+    expect(section("More engines")).not.toHaveTextContent("from your PATH");
+  });
+
+  it("offers a signed-out OpenCode its sign-in command to copy", async () => {
+    const { user } = await openAccounts(withEngines({ opencodeSignedIn: false }));
+    await screen.findByRole("region", { name: "More engines" });
+
+    const opencode = row("OpenCode");
+    expect(within(opencode).getByText("Signed out")).toBeInTheDocument();
+    const copy = within(opencode).getByRole("button", {
+      name: "Copy the OpenCode sign-in command",
+    });
+    expect(copy).toHaveTextContent("Copy sign-in command");
+    const written = vi.spyOn(navigator.clipboard, "writeText");
+    await user.click(copy);
+
+    expect(written).toHaveBeenCalledWith("opencode auth login");
+  });
+
+  it("adds a pasted key, then removes it", async () => {
+    const api = withEngines();
+    // The Mac checks a saved key and lists Gemini as signed in, until it is removed.
+    api.saveEngineKey.mockImplementation(() => {
+      api.providers.mockResolvedValue(engines({ geminiSignedIn: true }));
+      return Promise.resolve({});
+    });
+    api.removeEngineKey.mockImplementation(() => {
+      api.providers.mockResolvedValue(engines());
+      return Promise.resolve({});
+    });
+    const { user } = await openAccounts(api);
+    await screen.findByRole("region", { name: "More engines" });
+
+    await user.click(within(row("Gemini CLI")).getByRole("button", { name: /Add a Gemini/ }));
+    const field = screen.getByLabelText("Gemini CLI API key");
+    expect(field).toHaveAttribute("type", "password");
+    await user.type(field, "AIza-test{Enter}");
+
+    expect(api.saveEngineKey).toHaveBeenCalledWith("gemini-main", "AIza-test");
+    await waitFor(() => {
+      expect(within(row("Gemini CLI")).getByText("Ready")).toBeInTheDocument();
+    });
+    await user.click(
+      within(row("Gemini CLI")).getByRole("button", { name: "Remove the Gemini CLI API key" }),
+    );
+    expect(api.removeEngineKey).toHaveBeenCalledWith("gemini-main");
+    expect(await within(row("Gemini CLI")).findByText("No key")).toBeInTheDocument();
+  });
+
+  it("installs an engine again after a failed install", async () => {
+    const api = fakeApi();
+    api.providers.mockResolvedValue({
+      providers: [
+        claudeProvider(),
+        acpProvider({
+          signed_in: null,
+          state: "install_failed",
+          state_detail: "npm could not be reached",
+        }),
+      ],
+    });
+    const { user } = await openAccounts(api);
+    await screen.findByRole("region", { name: "More engines" });
+
+    const opencode = row("OpenCode");
+    expect(within(opencode).getByText("Install failed")).toBeInTheDocument();
+    expect(section("More engines")).toHaveTextContent("npm could not be reached");
+    const install = within(opencode).getByRole("button", { name: "Install OpenCode" });
+    expect(install).toHaveTextContent("Install again");
+    await user.click(install);
+
+    expect(api.installEngine).toHaveBeenCalledWith("opencode");
+  });
+});
+
+/** The section titles as a screen reader hears them, without the hidden marks. */
+function headingNames(): string[] {
+  return screen.getAllByRole("heading", { level: 2 }).map((h) =>
+    [...h.childNodes]
+      .filter((n) => !(n instanceof HTMLElement && n.getAttribute("aria-hidden") === "true"))
+      .map((n) => n.textContent)
+      .join(""),
+  );
+}
