@@ -2,7 +2,8 @@ import NestKit
 import SwiftUI
 
 /// Each engine's accounts, one in use per engine, through the engines' own sign-ins (B98),
-/// the local models (B106), first when the user chose them only, and the `gh` login (B81).
+/// then every other engine the daemon lists as one More engines section (B107), the local
+/// models (B106), first when the user chose them only, and the `gh` login (B81).
 struct AccountsPage: View {
     @Environment(Shell.self) private var shell
 
@@ -13,6 +14,10 @@ struct AccountsPage: View {
         }
         EngineAccounts(provider: ProviderInfo.claude)
         EngineAccounts(provider: EngineMark.codex)
+        let others = EngineSetup.others(shell.providers.providers)
+        if !others.isEmpty {
+            MoreEnginesSection(setups: others)
+        }
         if !localFirst {
             LocalModelsSection()
         }
@@ -29,7 +34,8 @@ private struct EngineAccounts: View {
     var body: some View {
         let store = shell.model.accounts
         let engine = AccountText.engine(provider)
-        SettingsSection(title: engine, bare: true) {
+        SettingsSection(title: "", bare: true) {
+            AccountsHeader(engine: provider, title: engine)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(store.accounts(of: provider)) { account in
                     AccountRow(account: account)
@@ -417,13 +423,194 @@ private struct AccountLimits: View {
     }
 }
 
+/// The engines past Claude and Codex (B107), one compact row each, as one section.
+private struct MoreEnginesSection: View {
+    let setups: [EngineSetup]
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        SettingsSection(title: "", bare: true) {
+            AccountsHeader(title: "More engines") { AccountsSymbol(name: Icon.agent) }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(setups, id: \.name) { setup in
+                    MoreEngineRow(setup: setup)
+                }
+            }
+            .overlay(alignment: .top) { Separator() }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("More engines")
+        }
+        // A sign-in in Terminal sends no event, so the engines are asked again on the way back.
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+        ) { _ in
+            Task { await shell.providers.load(refresh: true) }
+        }
+    }
+}
+
+/// An engine's name with its version under it, its labels and the git warning mark, then
+/// its state and its one action. The engine runs on its account in use, the first one
+/// unless another was chosen before.
+private struct MoreEngineRow: View {
+    let setup: EngineSetup
+    @Environment(Shell.self) private var shell
+    @State private var addingKey = false
+    @State private var key = ""
+    @State private var removingKey = false
+
+    private var accountID: String {
+        shell.model.accounts.accounts(of: setup.name).first(where: \.active)?.id
+            ?? "\(setup.name)-main"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(setup.title).font(.ui(TypeSize.ui, .medium)).lineLimit(1)
+                    ForEach(setup.labels, id: \.self) { label in
+                        Text(label)
+                            .font(.ui(10, .medium))
+                            .foregroundStyle(Palette.t2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Palette.soft, in: .rounded(4))
+                    }
+                    if let warning = setup.gitWarning {
+                        Image(systemName: Icon.warning)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(StatusTone.waiting.color)
+                            .help(warning)
+                            .accessibilityLabel(warning)
+                    }
+                }
+                if let version = setup.version {
+                    Text(version)
+                        .font(.mono(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                }
+                if let failure = setup.failure {
+                    Text(failure)
+                        .font(.ui(TypeSize.meta))
+                        .foregroundStyle(Palette.t3)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                if setup.installing {
+                    Fireflies()
+                }
+                StatusLabel(
+                    tone: setup.ready ? .review : .done, label: setup.state, hollow: !setup.ready)
+                action
+            }
+        }
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) { Separator() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(setup.title)
+        .confirmationDialog(
+            "Remove the \(setup.title) key?", isPresented: $removingKey,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { removeKey() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(setup.title) chats cannot run until you save a key again.")
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch setup.action {
+        case .none:
+            EmptyView()
+        case .install(let again):
+            Button(again ? "Install again" : "Install") { install() }
+                .buttonStyle(.nest(.primary))
+        case .signIn(let command):
+            // The login runs where the daemon does, so not in this Mac's Terminal.
+            if shell.isRemote {
+                Button("Copy sign-in command") { shell.copyText(command) }
+                    .buttonStyle(.nest(.soft))
+            } else {
+                Button("Sign in") { openTerminal(command) }
+                    .buttonStyle(.nest(.primary))
+            }
+        case .addKey(let placeholder):
+            if addingKey {
+                CardField(
+                    placeholder: placeholder, text: $key, submit: saveKey, focusOnAppear: true,
+                    secure: true
+                )
+                .frame(width: 220)
+                Button("Save") { saveKey() }
+                    .buttonStyle(.nest(.primary))
+                    .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } else {
+                Button("Add key") { addingKey = true }
+                    .buttonStyle(.nest(.primary))
+            }
+        case .removeKey:
+            Button("Remove key") { removingKey = true }
+                .buttonStyle(.nest(.soft))
+        }
+    }
+
+    private func install() {
+        let providers = shell.providers
+        let name = setup.name
+        shell.settingsChange("Could not install \(setup.title)") {
+            try await providers.install(name)
+        }
+    }
+
+    /// The key goes to the daemon only, which keeps it in the Keychain; the field empties.
+    private func saveKey() {
+        let typed = key
+        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        key = ""
+        addingKey = false
+        let store = shell.model.accounts
+        let providers = shell.providers
+        let id = accountID
+        shell.settingsChange("Could not save the key") {
+            try await store.saveKey(id, key: typed)
+            await providers.load()
+        }
+    }
+
+    private func removeKey() {
+        let store = shell.model.accounts
+        let providers = shell.providers
+        let id = accountID
+        shell.settingsChange("Could not remove the key") {
+            try await store.removeKey(id)
+            await providers.load()
+        }
+    }
+
+    /// Asks the daemon for the account's login command, which may differ from the
+    /// engine's for an added account, then runs it in Terminal.
+    private func openTerminal(_ fallback: String) {
+        let store = shell.model.accounts
+        let id = accountID
+        shell.settingsChange("Could not open Terminal") {
+            let started = try await store.startSignIn(id)
+            try await TerminalSignIn.run(started.loginCommand ?? fallback)
+        }
+    }
+}
+
 private struct GitHubSection: View {
     @Environment(Shell.self) private var shell
 
     var body: some View {
         let accounts = shell.model.accounts
         let github = accounts.github
-        SettingsSection(title: "GitHub", bare: true) {
+        SettingsSection(title: "", bare: true) {
+            AccountsHeader(title: "GitHub") { AccountsSymbol(name: Icon.pullRequest) }
             SettingsListRow(title: github?.login ?? "GitHub") {
                 SettingsBadge(text: "gh")
             } trailing: {
