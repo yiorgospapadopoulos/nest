@@ -13,7 +13,7 @@ from nestd.config.models import StorageSettings
 from nestd.events import types
 from nestd.sessions.models import UpdateSession
 from nestd.storage.archiver import ChatArchiver
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.claude_support import CHAT_A, CHAT_B, CHAT_C, ClaudeHome, simple_chat, user
 from tests.fake_provider import reply
@@ -23,8 +23,10 @@ from tests.test_api_sessions import create, reach
 
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
-    async with running_api(tmp_path, clock, secrets) as running:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         await running.http.post("/api/repos", json={"path": str(init_repo(tmp_path / "repo"))})
         yield running
 
@@ -121,6 +123,7 @@ async def test_nothing_is_archived_when_set_to_never(api: Api, clock: FakeClock)
     assert not await archived(api, old)
 
 
+@pytest.mark.loops
 async def test_saving_the_setting_archives_at_once(api: Api, clock: FakeClock) -> None:
     old = await idle_chat(api, "Old")
     clock.advance(timedelta(days=31))

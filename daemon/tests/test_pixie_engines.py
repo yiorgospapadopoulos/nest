@@ -14,7 +14,7 @@ from nestd.providers.codex_rpc import JsonObject
 from nestd.providers.codex_tools import TOKEN_ENV
 from nestd.storage.db import Database
 from nestd.storage.migrations import PACKAGED
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.codex_support import SIGNED_OUT, turn_completed
 from tests.fake_provider import reply
@@ -23,8 +23,10 @@ from tests.test_api_sessions import reach
 
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
-    async with running_api(tmp_path, clock, secrets) as running:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         yield running
 
 
@@ -153,6 +155,7 @@ async def test_a_codex_pixie_while_codex_is_signed_out_is_refused(api: Api) -> N
     assert sent.json() == {"detail": NOT_SIGNED_IN, "code": "codex_not_signed_in"}
 
 
+@pytest.mark.loops
 async def test_a_codex_pixies_habit_runs_on_codex(api: Api) -> None:
     api.codex.script(turn_completed())
     pid = (await api.http.post("/api/pixies", json={"name": "Coder", "provider": "codex"})).json()[

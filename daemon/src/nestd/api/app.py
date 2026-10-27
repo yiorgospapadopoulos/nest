@@ -55,8 +55,10 @@ from nestd.context import AppContext
 from nestd.service.restart import Restarter
 
 
-def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
-    """`restart` ends the daemon process for `POST /api/service/restart`."""
+def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> FastAPI:
+    """`restart` ends the daemon process for `POST /api/service/restart`. Without `loops`,
+    the services that poll on a timer are not started, so tests drive them directly.
+    """
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
@@ -72,20 +74,24 @@ def create_app(ctx: AppContext, *, restart: Restarter) -> FastAPI:
         try:
             await ctx.modules.start_enabled(ctx.settings.modules.enabled, ctx)
             await ctx.notifications.start()
-            await ctx.claude_chats.start()
-            await ctx.branch_watch.start()
-            await ctx.usage_refresher.start()
-            await ctx.prs.monitor.start()
-            await ctx.search.start()
-            await ctx.stuck.start()
-            await ctx.engine.start()
+            if loops:
+                await ctx.claude_chats.start()
+                await ctx.branch_watch.start()
+                await ctx.usage_refresher.start()
+                await ctx.prs.monitor.start()
+                await ctx.search.start()
+                await ctx.stuck.start()
+                await ctx.engine.start()
             await ctx.report_back.start()
-            await ctx.habit_scheduler.start()
+            if loops:
+                await ctx.habit_scheduler.start()
             await ctx.habit_triggers.start()
-            await ctx.sessions.start()
-            await ctx.archiver.start()
+            if loops:
+                await ctx.sessions.start()
+                await ctx.archiver.start()
             await ctx.usage_warnings.start()
-            await ctx.configuration_watcher.start()
+            if loops:
+                await ctx.configuration_watcher.start()
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.

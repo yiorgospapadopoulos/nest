@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+import pytest
 
 from nestd.api.app import create_app
 from nestd.context import AppContext
@@ -49,6 +50,11 @@ class Api:
         self.npm = npm
 
 
+def wants_loops(request: pytest.FixtureRequest) -> bool:
+    """Whether the test is marked to run the timer loops (`@pytest.mark.loops`)."""
+    return "loops" in request.keywords
+
+
 @asynccontextmanager
 async def running_api(
     tmp_path: Path,
@@ -57,7 +63,11 @@ async def running_api(
     push_transport: httpx.AsyncBaseTransport | None = None,
     codex_home: Path | None = None,
     local_setup: LocalSetup | None = None,
+    loops: bool = False,
 ) -> AsyncGenerator[Api]:
+    """Without `loops`, the services that poll on a timer stay stopped (B111): their own
+    tests drive them, and their real-time ticks would race the test.
+    """
     provider = FakeProvider()
     runner = FakeRunner()
     opener = FakeOpener()
@@ -83,7 +93,7 @@ async def running_api(
         npm=npm,
     )
     restart = RecordingRestart()
-    app = create_app(ctx, restart=restart)
+    app = create_app(ctx, restart=restart, loops=loops)
     transport = httpx.ASGITransport(app=app)
     try:
         async with (

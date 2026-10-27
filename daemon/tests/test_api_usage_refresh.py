@@ -7,16 +7,21 @@ import pytest
 
 from nestd.usage.refresher import FORCED_SPACING
 from nestd.usage.visibility import VISIBILITY_TTL
-from tests.api_client import Api, running_api
+from tests.api_client import Api, running_api, wants_loops
 from tests.async_support import until
 from tests.fake_probe import answer, result
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.test_api_push import pair_phone
 
+# The usage refresher runs on its own timer (B111).
+pytestmark = pytest.mark.loops
+
 
 @pytest.fixture
-async def api(tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore) -> AsyncIterator[Api]:
-    async with running_api(tmp_path, clock, secrets) as running:
+async def api(
+    tmp_path: Path, clock: FakeClock, secrets: FakeSecretStore, request: pytest.FixtureRequest
+) -> AsyncIterator[Api]:
+    async with running_api(tmp_path, clock, secrets, loops=wants_loops(request)) as running:
         yield running
 
 
