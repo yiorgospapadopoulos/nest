@@ -5,9 +5,12 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
+bin_path="$(swift build --show-bin-path)"
+# Profiles left by earlier runs would be merged into this report.
+rm -rf "$bin_path/codecov"
+
 swift test --enable-code-coverage --quiet
 
-bin_path="$(swift build --show-bin-path)"
 profdata="$bin_path/codecov/default.profdata"
 bundle="$bin_path/NestKitTests.xctest"
 binary="$bundle/Contents/MacOS/$(basename "$bundle" .xctest)"
