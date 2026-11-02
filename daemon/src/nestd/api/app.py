@@ -31,6 +31,7 @@ from nestd.api.routes import (
     local_proxy,
     notifications,
     pairing,
+    perf,
     pixie_groups,
     pixie_reports,
     pixie_settings,
@@ -52,6 +53,8 @@ from nestd.api.routes import (
 )
 from nestd.api.static import install_static
 from nestd.context import AppContext
+from nestd.perf.build import ready_ms
+from nestd.perf.timing import TimingMiddleware
 from nestd.service.restart import Restarter
 
 
@@ -94,11 +97,14 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
             await ctx.usage_warnings.start()
             if loops:
                 await ctx.configuration_watcher.start()
+            # Last, so the start's time covers everything before serving (B115).
+            await ctx.perf.started(ready_ms())
             yield
         finally:
             # First, so nothing asks for the token from a daemon that is going away.
             if ctx.token_socket is not None:
                 await ctx.token_socket.stop()
+            await ctx.perf.stop()
             await ctx.configuration_watcher.stop()
             await ctx.archiver.stop()
             await ctx.usage_warnings.stop()
@@ -132,6 +138,8 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
     app.state.ctx = ctx
     app.state.restart = restart
     app.add_middleware(HostCheckMiddleware, allowed=lambda: ctx.settings.server.allowed_hosts)
+    # Outside the host check: a refused request has no route, so it is not timed.
+    app.add_middleware(TimingMiddleware, timings=ctx.perf_timings)
     install_error_handlers(app)
     for module in (
         health,
@@ -175,6 +183,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         extensions,
         configuration,
         features,
+        perf,
     ):
         app.include_router(module.router)
     # The engines reach local models' servers through it (B106); not under device auth.
@@ -187,4 +196,6 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
     )
     # Last, so every /api route matches first.
     install_static(app, ctx.paths.web_dist)
+    # Settings > Performance loads what the apps load from this app, in-process (B115).
+    ctx.perf_fetch.attach(app)
     return app
