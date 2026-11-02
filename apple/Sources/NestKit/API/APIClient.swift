@@ -434,6 +434,23 @@ public struct APIClient: NestAPI {
         try await call("POST", ["features", "seen"], body: FeaturesSeenRequest(ids: ids))
     }
 
+    public func perf() async throws -> PerfView {
+        try await get("perf")
+    }
+
+    public func runPerf(sections: [String]) async throws -> PerfView {
+        try await call("POST", ["perf", "runs"], body: PerfRunRequest(sections: sections))
+    }
+
+    public func recordPerf(section: String, metrics: [String: Double]) async throws -> PerfView {
+        try await call(
+            "POST", ["perf", "client"], body: PerfClientRequest(section: section, metrics: metrics))
+    }
+
+    public func clearPerf() async throws -> PerfView {
+        try await call("POST", ["perf", "clear"])
+    }
+
     // MARK: Settings (B81)
 
     public func repoBranches(_ name: String) async throws -> [String] {

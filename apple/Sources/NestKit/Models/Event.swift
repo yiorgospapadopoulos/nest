@@ -136,6 +136,8 @@ public enum EventType {
     public static let runChanged = "run.changed"
     /// The next piece of a folder's run output, raw, maybe mid-line (B108); not stored.
     public static let runOutput = "run.output"
+    /// A performance run started or finished (B115); not stored.
+    public static let perfRun = "perf.run"
 }
 
 public enum EventBody: Sendable, Hashable {

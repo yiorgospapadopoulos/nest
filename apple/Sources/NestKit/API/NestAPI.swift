@@ -243,6 +243,15 @@ public protocol NestAPI: Sendable {
     /// Reports the features this device shows; only the first report of each counts.
     /// Answers the catalog as `features()` would.
     func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog
+    /// Settings > Performance (B115): the latest and previous results of every section.
+    func perf() async throws -> PerfView
+    /// Starts a run of the daemon's sections (none: all of them) in the background; a 409
+    /// while one runs.
+    func runPerf(sections: [String]) async throws -> PerfView
+    /// Records a section this device measured itself, such as the Mac app's (C14).
+    func recordPerf(section: String, metrics: [String: Double]) async throws -> PerfView
+    /// Keeps each section's two latest runs and deletes the rest.
+    func clearPerf() async throws -> PerfView
 
     // MARK: Settings (B81)
 
