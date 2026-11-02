@@ -4,7 +4,7 @@ It checks when the daemon starts, every hour and when the setting is saved. Pinn
 chats in a turn or waiting on the user, and chats paused at the usage limit are kept. Each
 archive goes through the same path as the user's Archive, so it is announced the same way.
 The Claude Code chats Nest lists go into Nest's own archive for them (D040), unless open in
-Claude Code right now (D133).
+Claude Code right now (D133); the Codex chats it lists are archived in Codex (B113).
 """
 
 import asyncio

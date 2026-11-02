@@ -1,0 +1,14 @@
+{
+  "id": "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b",
+  "repo": "todo-ui",
+  "title": "Tidy the footer links",
+  "cwd": "/Users/example/.codex/worktrees/a1b2/todo-ui",
+  "worktree": "a1b2",
+  "created_at": "2026-10-26T09:00:00Z",
+  "last_activity_at": "2026-10-26T09:30:00Z",
+  "message_count": 4,
+  "open_in_claude_code": false,
+  "automated": false,
+  "archived": true,
+  "engine": "codex"
+}

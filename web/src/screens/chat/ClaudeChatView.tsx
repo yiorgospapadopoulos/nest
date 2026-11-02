@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { NestEvent } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { outsideEngineName } from "../../store/selectors.ts";
 import { buildTranscript, type TranscriptItem } from "../../transcript/build.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { Frame } from "./Frame.tsx";
@@ -20,7 +21,7 @@ const isMessage = (item: TranscriptItem): item is MessageEntry =>
   item.kind !== "card" &&
   item.kind !== "artifact";
 
-/** A Claude Code chat's history, read only, until the user continues it in Nest. */
+/** A Claude Code or Codex chat's history, read only, until the user continues it in Nest. */
 export function ClaudeChatView({ id, onBack, onOpen }: Props) {
   const { state, actions } = useStore();
   const chat = state.claudeChats[id];
@@ -35,7 +36,7 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
 
   useEffect(() => {
     if (chat !== undefined) return;
-    // Continued in Nest (here or on another device), or gone from Claude Code.
+    // Continued in Nest (here or on another device), or gone from its engine.
     const adopted = Object.values(state.sessions).find((s) => s.provider_session_id === id);
     if (adopted === undefined) onBack();
     else onOpen(adopted.id);
@@ -57,7 +58,7 @@ export function ClaudeChatView({ id, onBack, onOpen }: Props) {
       status={
         open
           ? { tone: "run", label: "Open in Claude Code", plain: true }
-          : { tone: "idle", label: "Claude Code chat" }
+          : { tone: "idle", label: `${outsideEngineName(chat)} chat` }
       }
       back={chat.repo}
       onBack={onBack}

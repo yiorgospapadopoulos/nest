@@ -4,6 +4,8 @@ A repo's chats are those Claude Code ran in the repo folder or in one of its own
 (`<repo>/.claude/worktrees/<name>`). Chats Nest owns are left out: those it runs or
 adopted (by session id) and those in its own worktrees (`nest-*`, `harness-*` before B43),
 even once deleted. Archived chats stay in the list, marked; the archive is Nest's own state (D040).
+The list also holds the Codex chats of the repos (`codex_chats`, B113), whose archive is
+Codex's own.
 """
 
 import asyncio
@@ -25,6 +27,7 @@ from nestd.claude_sessions.live import LiveChats
 from nestd.claude_sessions.location import candidate_dirs
 from nestd.claude_sessions.models import ClaudeChat
 from nestd.claude_sessions.transcript import Transcript, read_transcript
+from nestd.codex_chats.catalog import CodexChats
 from nestd.config.models import RepoConfig
 from nestd.events import types
 from nestd.events.bus import EventBus
@@ -41,7 +44,7 @@ POLL_INTERVAL = timedelta(seconds=10)
 AUTOMATED_PREFIX = "sdk"
 _SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 
-type _Signature = tuple[tuple[str, str, datetime, int, bool, bool], ...]
+type _Signature = tuple[tuple[str, str, str, datetime, int, bool, bool], ...]
 # Told the whole list after every scan, such as to index the chats' titles.
 type ChatsListener = Callable[[list[ClaudeChat]], Awaitable[None]]
 
@@ -86,8 +89,10 @@ class ClaudeChats:
         live: LiveChats,
         interval: timedelta = POLL_INTERVAL,
         on_refresh: ChatsListener | None = None,
+        codex: CodexChats | None = None,
     ) -> None:
         self._on_refresh = on_refresh
+        self._codex = codex
         self._projects = None if claude_dir is None else claude_dir / "projects"
         self._repos = repos
         self._store = store
@@ -121,14 +126,23 @@ class ClaudeChats:
         raise ClaudeChatNotFoundError(msg)
 
     async def set_archived(self, chat_id: str, *, archived: bool) -> ClaudeChat:
-        """Archive or restore the chat in Nest; a change is announced like any other."""
-        await self.get(chat_id)
-        await self._archive.set(chat_id, archived=archived)
+        """Archive or restore the chat in Nest, or a Codex chat in Codex; a change is
+        announced like any other.
+        """
+        chat = await self.get(chat_id)
+        if self._codex is not None and chat.engine == "codex":
+            await self._codex.set_archived(chat_id, archived=archived)
+        else:
+            await self._archive.set(chat_id, archived=archived)
         return await self.get(chat_id)
 
     async def history(self, chat_id: str) -> list[Event]:
         """The transcript as Nest session events, numbered from 1."""
-        chat, transcript = await self._read(chat_id)
+        chat = await self.get(chat_id)
+        if self._codex is not None and chat.engine == "codex":
+            history = await self._codex.history(chat)
+        else:
+            history = (await self._read(chat)).history
         return [
             Event(
                 id=index,
@@ -137,12 +151,15 @@ class ClaudeChats:
                 session_id=chat.id,
                 payload=item.payload,
             )
-            for index, item in enumerate(transcript.history, start=1)
+            for index, item in enumerate(history, start=1)
         ]
 
     async def importable(self, chat_id: str) -> ChatImport:
         """Everything a Nest session needs to continue the chat."""
-        chat, transcript = await self._read(chat_id)
+        chat = await self.get(chat_id)
+        if self._codex is not None and chat.engine == "codex":
+            return await self._codex.importable(chat)
+        transcript = await self._read(chat)
         return ChatImport(
             repo=chat.repo,
             title=chat.title,
@@ -168,11 +185,17 @@ class ClaudeChats:
                 if kept is None or item.modified > kept.modified:
                     newest[item.chat_id] = item
             self._files = {chat_id: item.path for chat_id, item in newest.items()}
+            codex = [] if self._codex is None else await self._codex.chats(repos, owned)
             chats = sorted(
-                (
-                    _chat(item, running=item.chat_id in running, archived=item.chat_id in archived)
-                    for item in newest.values()
-                ),
+                [
+                    *(
+                        _chat(
+                            item, running=item.chat_id in running, archived=item.chat_id in archived
+                        )
+                        for item in newest.values()
+                    ),
+                    *codex,
+                ],
                 key=lambda chat: (chat.last_activity_at, chat.id),
                 reverse=True,
             )
@@ -202,20 +225,19 @@ class ClaudeChats:
                 logger.exception("reading Claude Code chats failed")
             await asyncio.sleep(self._interval.total_seconds())
 
-    async def _read(self, chat_id: str) -> tuple[ClaudeChat, Transcript]:
-        chat = await self.get(chat_id)
+    async def _read(self, chat: ClaudeChat) -> Transcript:
         try:
-            transcript = await asyncio.to_thread(read_transcript, self._files[chat_id])
+            return await asyncio.to_thread(read_transcript, self._files[chat.id])
         except OSError as error:
-            msg = f"the Claude Code chat {chat_id!r} can no longer be read"
+            msg = f"the Claude Code chat {chat.id!r} can no longer be read"
             raise ClaudeChatNotFoundError(msg) from error
-        return chat, transcript
 
     def _note_changes(self, repos: list[RepoConfig], chats: list[ClaudeChat]) -> list[str]:
         signatures = {
             repo.name: tuple(
                 (
                     c.id,
+                    c.engine,
                     c.title,
                     c.last_activity_at,
                     c.message_count,

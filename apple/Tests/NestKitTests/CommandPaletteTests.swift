@@ -138,6 +138,7 @@ import Testing
                 .openMessage(project: "todo-ui", pane: "s1", event: 14),
                 .openMessage(project: "map-viewer", pane: "claude-code:cc-1", event: nil),
                 .openMessage(project: "todo-ui", pane: "s2", event: 3),
+                .openMessage(project: "todo-ui", pane: "claude-code:cx-1", event: nil),
             ])
         let hit = palette.messages[1]
         #expect(hit.title == "Validate the form")
@@ -145,6 +146,7 @@ import Testing
         #expect(hit.glyph == .message(.assistant))
         #expect(hit.snippet.filter(\.matched).map(\.text) == ["form", "JSON"])
         #expect(palette.messages[2].subtitle == "map-viewer · Claude Code chat")
+        #expect(palette.messages[4].subtitle == "todo-ui · Codex chat")
         // A Codex chat's answers say Codex (B91).
         var codex = palette
         codex.show(SearchFixture.results, for: "form") { $0 == "s1" ? "Codex" : "Claude" }
@@ -164,7 +166,7 @@ import Testing
 
         palette.show(SearchFixture.results, for: "form")
         palette.search("forms")
-        #expect(palette.messages.count == 4)
+        #expect(palette.messages.count == 5)
         palette.search("f")
         #expect(!palette.searchesMessages)
         #expect(palette.messages.isEmpty)

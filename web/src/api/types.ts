@@ -124,9 +124,11 @@ export interface Session {
   limit_pause: LimitPause | null;
 }
 
-/** A Claude Code chat of a registered repo that Nest does not own (D028). */
+/** A Claude Code or Codex chat of a registered repo that Nest does not own (D028, B113). */
 export interface ClaudeChat {
   id: string;
+  // Missing means "claude" (daemons before B113).
+  engine?: "claude" | "codex";
   repo: string;
   title: string;
   cwd: string;
@@ -633,11 +635,12 @@ export type NotifyKind =
   | "pixie_report"
   | "usage_limit";
 
-export type SearchHitKind = "title" | "user" | "assistant" | "tool" | "tool_result" | "claude_chat";
+export type SearchHitKind =
+  "title" | "user" | "assistant" | "tool" | "tool_result" | "claude_chat" | "codex_chat";
 
 /** A chat title or message matching a search (D035). */
 export interface SearchHit {
-  // A Nest session, or a Claude Code chat id for kind "claude_chat".
+  // A Nest session, or an outside chat's id for kind "claude_chat" or "codex_chat".
   session_id: string;
   repo: string;
   title: string;

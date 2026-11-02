@@ -99,6 +99,8 @@ from nestd.worktrees.setup import LinkResult
 # following Claude Code's own mode showed until the engine reported it.
 DEFAULT_MODE: PermissionMode = "default"
 AUTO: PermissionMode = "auto"
+# The engine of the Claude Code chats Nest continues (D028); Codex's are `codex` (B113).
+CLAUDE_CHATS = "claude"
 
 # How often the daemon checks for chats whose usage limit pause is over (B78).
 LIMIT_TICK = timedelta(seconds=5)
@@ -569,7 +571,8 @@ class SessionManager:
             live.rotate = True
 
     async def adopt(self, chat: ChatImport) -> Session:
-        """Continue a Claude Code chat as an idle in-place session in the chat's own folder.
+        """Continue a Claude Code or Codex chat as an idle in-place session in the chat's
+        own folder.
 
         Its history is copied into the session's events; the next message resumes the
         chat through the engine. Nest never removes that folder (no worktree is set).
@@ -583,11 +586,17 @@ class SessionManager:
             msg = f"the folder of this chat no longer exists: {chat.cwd}"
             raise NoWorkspaceError(msg)
         defaults = self._defaults()
-        engine = self._engines.default
-        # The defaults apply when they are Claude's; else Claude's own default model.
+        claude = chat.provider == CLAUDE_CHATS
+        engine = self._engines.default if claude else self._engines.named(chat.provider)
+        if not claude:
+            # Also brings Codex's model list.
+            await engine.require_ready()
+        # The defaults apply when they are the engine's; else its own default model.
         own = engine is self._defaults_engine(defaults)
-        model = (defaults.model if own else None) or await engine.default_model()
-        mode = defaults.permission_mode if own else None
+        listed = chat.model if await engine.find(chat.model) is not None else None
+        model = listed or (defaults.model if own else None) or await engine.default_model()
+        # Another engine's chat takes the default mode as a new chat on it does.
+        mode = defaults.permission_mode if own or not claude else None
         if await self._mode_problem(engine, model, mode):
             mode = None
         created = await self._store.create(

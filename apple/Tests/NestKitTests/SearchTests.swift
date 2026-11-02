@@ -57,7 +57,9 @@ enum SearchFixture {
           {"session_id": "cc-1", "repo": "map-viewer", "title": "Form scraper", "event_id": null,
            "ts": "2026-10-06T09:02:00Z", "kind": "claude_chat", "snippet": "[[Form]] scraper"},
           {"session_id": "s2", "repo": "todo-ui", "title": "Other", "event_id": 3,
-           "ts": "2026-10-06T09:03:00Z", "kind": "subagent", "snippet": "a [[form]]"}
+           "ts": "2026-10-06T09:03:00Z", "kind": "subagent", "snippet": "a [[form]]"},
+          {"session_id": "cx-1", "repo": "todo-ui", "title": "Form footer", "event_id": null,
+           "ts": "2026-10-06T09:04:00Z", "kind": "codex_chat", "snippet": "[[Form]] footer"}
         ], "indexing": true}
         """
 
@@ -68,7 +70,7 @@ enum SearchFixture {
     @Test func decodesHitsWithTheirPanes() {
         let results = SearchFixture.results
         #expect(results.indexing)
-        #expect(results.hits.count == 5)
+        #expect(results.hits.count == 6)
         let hit = results.hits[1]
         #expect(hit.sessionID == "s1")
         #expect(hit.repo == "todo-ui")
@@ -82,16 +84,19 @@ enum SearchFixture {
         #expect(results.hits[3].pane == "claude-code:cc-1")
         #expect(ClaudeChat.chatID(ofPane: results.hits[3].pane) == "cc-1")
         #expect(results.hits[4].kind == .unknown)
+        // A Codex chat from outside Nest opens like a Claude Code one, by its id.
+        #expect(results.hits[5].kind == .codexChat)
+        #expect(results.hits[5].pane == "claude-code:cx-1")
     }
 
     @Test func kindsHaveLabels() {
         let kinds: [SearchHitKind] = [
-            .title, .user, .assistant, .tool, .toolResult, .claudeChat, .unknown,
+            .title, .user, .assistant, .tool, .toolResult, .claudeChat, .codexChat, .unknown,
         ]
         #expect(
             kinds.map(\.label) == [
                 "Title", "You", "Claude", "Tool call", "Tool output", "Claude Code chat",
-                "Message",
+                "Codex chat", "Message",
             ])
         // An answer is its chat's engine's (B91).
         #expect(SearchHitKind.assistant.label(agent: "Codex") == "Codex")

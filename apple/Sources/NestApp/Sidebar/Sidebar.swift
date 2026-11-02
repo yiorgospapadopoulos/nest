@@ -278,15 +278,15 @@ private struct RailChat: View {
     }
 
     private var status: String {
-        if case .session(let session) = entry {
-            return shell.statusLabel(of: session)
+        switch entry {
+        case .session(let session): shell.statusLabel(of: session)
+        case .claudeChat(let chat): "\(chat.engineName) chat"
         }
-        return "Claude Code chat"
     }
 
     private var help: String {
-        if case .claudeChat = entry {
-            return "\(entry.title) (Claude Code)"
+        if case .claudeChat(let chat) = entry {
+            return "\(entry.title) (\(chat.engineName))"
         }
         return entry.title
     }
