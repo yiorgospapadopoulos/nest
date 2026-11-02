@@ -94,6 +94,12 @@ export function fakeApi(): FakeApi {
     approve: vi.fn<Api["approve"]>().mockResolvedValue(session({ state: "idle" })),
     feedback: vi.fn<Api["feedback"]>().mockResolvedValue(session({ state: "running" })),
     ciFeedback: vi.fn<Api["ciFeedback"]>().mockResolvedValue(null),
+    refreshPr: vi.fn<Api["refreshPr"]>().mockResolvedValue(session()),
+    reviewFeedback: vi
+      .fn<Api["reviewFeedback"]>()
+      .mockResolvedValue({ ...session({ state: "running" }), queued_message: null }),
+    setReviewAutoSend: vi.fn<Api["setReviewAutoSend"]>().mockResolvedValue(session()),
+    issues: vi.fn<Api["issues"]>().mockResolvedValue({ available: true, show: "all", issues: [] }),
     rewindPreview: vi.fn<Api["rewindPreview"]>().mockResolvedValue({
       can_rewind: true,
       files_changed: ["app/form.tsx", "app/schema.ts"],
@@ -149,6 +155,29 @@ export function fakeApi(): FakeApi {
     saveEngineKey: vi.fn<Api["saveEngineKey"]>().mockResolvedValue({}),
     removeEngineKey: vi.fn<Api["removeEngineKey"]>().mockResolvedValue({}),
     installEngine: vi.fn<Api["installEngine"]>().mockResolvedValue({}),
+    accounts: vi.fn<Api["accounts"]>().mockResolvedValue({ accounts: [] }),
+    refreshAccounts: vi.fn<Api["refreshAccounts"]>().mockResolvedValue({ accounts: [] }),
+    addAccount: vi.fn<Api["addAccount"]>(),
+    signInAccount: vi.fn<Api["signInAccount"]>(),
+    cancelAccountSignIn: vi.fn<Api["cancelAccountSignIn"]>().mockResolvedValue(null),
+    signOutAccount: vi.fn<Api["signOutAccount"]>(),
+    renameAccount: vi.fn<Api["renameAccount"]>(),
+    activateAccount: vi.fn<Api["activateAccount"]>().mockResolvedValue({ accounts: [] }),
+    removeAccount: vi.fn<Api["removeAccount"]>().mockResolvedValue({ accounts: [] }),
+    bankedResets: vi.fn<Api["bankedResets"]>().mockResolvedValue({ available: 0, credits: [] }),
+    useBankedReset: vi.fn<Api["useBankedReset"]>(),
+    localModels: vi
+      .fn<Api["localModels"]>()
+      .mockResolvedValue({ models: [], engine: "claude", local_only: false }),
+    findLocalModels: vi
+      .fn<Api["findLocalModels"]>()
+      .mockResolvedValue({ running: [], downloaded: [] }),
+    checkLocalServer: vi.fn<Api["checkLocalServer"]>(),
+    addLocalModels: vi.fn<Api["addLocalModels"]>().mockResolvedValue({ models: [] }),
+    removeLocalModel: vi.fn<Api["removeLocalModel"]>().mockResolvedValue(null),
+    setLocalEngine: vi.fn<Api["setLocalEngine"]>().mockResolvedValue(null),
+    startLocalServer: vi.fn<Api["startLocalServer"]>().mockResolvedValue(null),
+    localUsage: vi.fn<Api["localUsage"]>().mockResolvedValue({ today_tokens: 0, models: [] }),
     account: vi.fn<Api["account"]>().mockResolvedValue(account()),
     agentDefaults: vi.fn<Api["agentDefaults"]>().mockResolvedValue(agentDefaults()),
     saveAgentDefaults: vi

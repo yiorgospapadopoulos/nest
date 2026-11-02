@@ -4,6 +4,13 @@ import type { NestEvent } from "./types.ts";
 export const UNAUTHENTICATED = 4401;
 export const FORBIDDEN_ORIGIN = 4403;
 
+// Global events settings screens reload on (daemon/src/nestd/events/types.py). Every engine
+// account after any change (B98), with `GET /api/accounts`'s body (`accountsOf` reads it).
+export const ACCOUNTS_CHANGED = "accounts.changed";
+// Local models were added or removed, or their engine changed (B106); `{}`, so clients
+// fetch `GET /api/local/models` again.
+export const LOCAL_MODELS_CHANGED = "local_models.changed";
+
 export interface SocketLike {
   onopen: (() => void) | null;
   onmessage: ((message: { data: unknown }) => void) | null;

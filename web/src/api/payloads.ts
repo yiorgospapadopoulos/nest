@@ -1,9 +1,14 @@
+import { ApiError } from "./client.ts";
 import type {
   Approval,
   ArtifactStorageChange,
   ContextUsage,
+  EngineAccount,
   JsonObject,
   JsonValue,
+  LocalApp,
+  LocalModelNotLoaded,
+  LocalServerDown,
   PrStatus,
   QueuedAttachment,
   QueuedMessage,
@@ -253,4 +258,78 @@ export function storageChangeOf(p: JsonObject): ArtifactStorageChange | null {
   );
   const remove = list(p.remove).filter((key): key is string => typeof key === "string");
   return { artifact_id: id, set, remove, clear: p.clear === true };
+}
+
+/** The pixie call an approval was raised in (B114), by tool use id. */
+export interface PixieCallRef {
+  // The caller chat's group slot: a team member's is its leader's call.
+  call: string;
+  // The innermost call, the member's own.
+  agent: string;
+}
+
+/** Where an approval came from inside a pixie call, or null outside one (B114). */
+export function pixieCallOf(approval: Approval): PixieCallRef | null {
+  const call = str(approval.payload.call);
+  const agent = str(approval.payload.agent);
+  return call === null || agent === null ? null : { call, agent };
+}
+
+/** An `accounts.changed` payload's accounts (B98), or null when it is not one. */
+export function accountsOf(p: JsonObject): EngineAccount[] | null {
+  return Array.isArray(p.accounts) ? (p.accounts as unknown as EngineAccount[]) : null;
+}
+
+// A chat's model `local:<id>` runs that local model (B106).
+export const LOCAL_MODEL_PREFIX = "local:";
+
+export function localModelValue(id: string): string {
+  return `${LOCAL_MODEL_PREFIX}${id}`;
+}
+
+export function isLocalModel(model: string | null): boolean {
+  return model?.startsWith(LOCAL_MODEL_PREFIX) === true;
+}
+
+export const LOCAL_SERVER_DOWN = "local_server_down";
+export const LOCAL_MODEL_NOT_LOADED = "local_model_not_loaded";
+const LOCAL_APPS: readonly string[] = ["lmstudio", "ollama"] satisfies LocalApp[];
+
+function text(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function serverDown(p: Record<string, unknown>): LocalServerDown {
+  const start = text(p.start);
+  return {
+    code: LOCAL_SERVER_DOWN,
+    app: text(p.app),
+    address: text(p.address),
+    start: start !== null && LOCAL_APPS.includes(start) ? (start as LocalApp) : null,
+  };
+}
+
+/**
+ * Why a local chat's turn failed, from the top of its `session.state` payload (D129): its
+ * server went away, or LM Studio could not load the model. Null for anything else.
+ */
+export function localFailureOf(p: JsonObject): LocalServerDown | LocalModelNotLoaded | null {
+  if (p.code === LOCAL_SERVER_DOWN) return serverDown(p);
+  if (p.code !== LOCAL_MODEL_NOT_LOADED) return null;
+  return {
+    code: LOCAL_MODEL_NOT_LOADED,
+    detail: text(p.detail) ?? "",
+    app: text(p.app),
+    address: text(p.address),
+    model: text(p.model),
+  };
+}
+
+/**
+ * The server a refused create, send or add names: a 409 `local_server_down`, whose message
+ * was not taken. Null for any other error.
+ */
+export function serverDownOf(error: unknown): LocalServerDown | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  return error.code === LOCAL_SERVER_DOWN ? serverDown(error.data) : null;
 }
