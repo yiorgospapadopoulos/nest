@@ -8,13 +8,15 @@ import pytest
 
 from nestd.artifacts.tools import ARTIFACT_NOTE
 from nestd.errors import InvalidInputError
+from nestd.events import types
 from nestd.providers.base import ModelOption
 from nestd.providers.codex import CODEX_UNSUPPORTED, CodexNotSignedInError
 from nestd.sessions.engines import Engine, Engines
 from nestd.sessions.errors import TaskNotFoundError, UnsupportedFeatureError
-from nestd.sessions.models import CreateSession, NewSession, SessionState, UpdateSession
+from nestd.sessions.models import ChatImport, CreateSession, NewSession, SessionState, UpdateSession
 from nestd.sessions.turns import CODEX_GUARDED_PROMPT, CODEX_PLAIN_FOLDER_PROMPT, CODEX_PROMPT
 from nestd.storage.db import Database
+from tests.async_support import until
 from tests.fake_provider import FakeProvider, reply
 from tests.fakes import FakeClock
 from tests.session_support import Env
@@ -213,3 +215,46 @@ def test_engines_by_name_and_by_session() -> None:
     assert engines.of(session("codex")).provider is codex.provider
     # An engine not set up here, such as a chat from another setup, runs on the default.
     assert engines.of(session("gemini")).provider is claude
+
+
+def codex_chat(env: Env, model: str | None, thread: str = "thread-9") -> ChatImport:
+    return ChatImport(
+        repo="repo",
+        title="Fix it",
+        prompt="Fix it please",
+        cwd=env.repo_path.resolve(),
+        provider_session_id=thread,
+        history=[(types.SESSION_USER_MESSAGE, {"text": "Fix it please", "attachments": []})],
+        provider="codex",
+        model=model,
+    )
+
+
+async def test_an_adopted_codex_chat_continues_its_thread_on_codex(env: Env, codex: Codex) -> None:
+    """B113: bound to the thread, on its model when Codex lists it, with Codex's defaults."""
+    session = await env.manager.adopt(codex_chat(env, "gpt-5.5"))
+
+    assert (session.provider, session.provider_session_id) == ("codex", "thread-9")
+    assert (session.model, session.permission_mode) == ("gpt-5.5", "acceptEdits")
+    codex.provider.script(reply("Again", provider_session_id="thread-9"))
+    await env.manager.send(session.id, "Continue", [])
+
+    async def answered() -> bool:
+        return await env.states(session.id) == ["idle", "running", "idle"]
+
+    await until(answered)
+    (run,) = codex.provider.runs
+    assert run.spec.resume_id == "thread-9"
+    assert env.provider.runs == []
+    # A model Codex no longer lists: its own default instead.
+    other = await env.manager.adopt(codex_chat(env, "gpt-4-retired", thread="thread-8"))
+    assert other.model is None
+
+
+async def test_adopting_a_codex_chat_needs_codex_signed_in(env: Env, codex: Codex) -> None:
+    codex.signed_in = False
+
+    with pytest.raises(CodexNotSignedInError):
+        await env.manager.adopt(codex_chat(env, None))
+
+    assert await env.manager.list_sessions() == []

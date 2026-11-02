@@ -39,6 +39,7 @@ from nestd.claude_sessions.archive import ChatArchive
 from nestd.claude_sessions.catalog import ClaudeChats
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
+from nestd.codex_chats.catalog import CodexChats
 from nestd.composer.service import ComposerActions
 from nestd.config.errors import ConfigError
 from nestd.config.loader import (
@@ -335,6 +336,12 @@ class AppContext:
         store = SessionStore(db, clock)
         live_chats = LiveChats(paths.claude_dir)
         search = SearchIndex(db)
+        codex_home = paths.codex_home
+
+        def codex_launch(env: Mapping[str, str]) -> CodexLaunch:
+            """An app-server on an account's Codex home: `env` names an added one's."""
+            return app_server_launch(bundled_binary(), os.environ, codex_home, env)
+
         claude_chats = ClaudeChats(
             claude_dir=paths.claude_dir,
             repos=repos,
@@ -343,6 +350,13 @@ class AppContext:
             bus=bus,
             live=live_chats,
             on_refresh=search.sync_claude_chats,
+            # The chats of the Codex home the user's own `codex` uses (B113).
+            codex=CodexChats(
+                codex_home=codex_home,
+                transport=codex_transport,
+                launch=lambda: codex_launch({}),
+                clock=clock,
+            ),
         )
         commands = CommandStore(db, clock)
         where = _locations(paths)
@@ -378,11 +392,6 @@ class AppContext:
             settings_file=None if paths.claude_dir is None else paths.claude_dir / "settings.json",
             on_signed_in=lambda: signed_in(CLAUDE),
         )
-        codex_home = paths.codex_home
-
-        def codex_launch(env: Mapping[str, str]) -> CodexLaunch:
-            """An app-server on an account's Codex home: `env` names an added one's."""
-            return app_server_launch(bundled_binary(), os.environ, codex_home, env)
 
         async def active_codex() -> CodexLaunch:
             return codex_launch((await active.prepare(CODEX_ACCOUNTS)).env)

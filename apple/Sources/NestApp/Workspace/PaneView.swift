@@ -222,7 +222,8 @@ private struct PaneHeader: View {
         .accessibilityElement(children: .contain)
         // No visible tag says so any more; VoiceOver still hears whose history this is.
         .accessibilityLabel(
-            shell.isClaudeChatPane(chat) && session == nil ? "\(title), Claude Code chat" : title)
+            shell.isClaudeChatPane(chat) && session == nil
+                ? "\(title), \(claudeChat?.engineName ?? "Claude Code") chat" : title)
     }
 }
 
@@ -319,8 +320,8 @@ private struct NewChatPlaceholder: View {
     }
 }
 
-/// In place of the composer for a Claude Code chat: what it is, whether Claude Code has
-/// it open, and Continue in Nest.
+/// In place of the composer for a Claude Code or Codex chat: what it is, whether Claude
+/// Code has it open, and Continue in Nest.
 private struct ContinueBar: View {
     let pane: String
     @Environment(Shell.self) private var shell
@@ -331,7 +332,7 @@ private struct ContinueBar: View {
         let adopting = chat.map { shell.adopting.contains($0.id) } ?? false
         let shape = RoundedRectangle.rounded(Radius.card)
         VStack(alignment: .leading, spacing: 8) {
-            if chat?.openInClaudeCode == true {
+            if chat?.isOpenInClaudeCode == true {
                 Label {
                     Text("Open in Claude Code right now. Close it there before sending from here.")
                 } icon: {
@@ -342,14 +343,11 @@ private struct ContinueBar: View {
                 .labelStyle(TightLabelStyle())
             }
             HStack(spacing: 10) {
-                Text(
-                    chat == nil
-                        ? "This Claude Code chat is no longer listed."
-                        : "Started in Claude Code. Read-only until you continue it here."
-                )
-                .font(.ui(TypeSize.ui))
-                .foregroundStyle(Palette.t2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // A chat no longer listed has no engine to name.
+                Text(chat?.readOnlyNote ?? "This chat is no longer listed.")
+                    .font(.ui(TypeSize.ui))
+                    .foregroundStyle(Palette.t2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     shell.continueInNest(pane)
                 } label: {

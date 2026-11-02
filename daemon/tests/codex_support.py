@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections import deque
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import cast
 
 from pydantic import JsonValue
@@ -233,3 +234,79 @@ def item(phase: str, body: JsonObject, at_ms: int = 0) -> JsonObject:
 async def answered(waiting: Awaitable[JsonObject]) -> JsonValue:
     """The `result` of a client's answer to a server request."""
     return (await waiting).get("result")
+
+
+class CodexThreads:
+    """Codex's threads as its app-server lists them, one per `thread/list` page, with their
+    turns; `thread/archive` and `thread/unarchive` move them between the two lists.
+    """
+
+    def __init__(self, server: FakeAppServer) -> None:
+        self.active: list[JsonObject] = []
+        self.archived: list[JsonObject] = []
+        self.turns: dict[str, list[JsonObject]] = {}
+        server.answers["thread/list"] = self._list
+        server.answers["thread/turns/list"] = self._turns
+        server.answers["thread/archive"] = lambda params: self._move(params, archive=True)
+        server.answers["thread/unarchive"] = lambda params: self._move(params, archive=False)
+
+    def add(
+        self,
+        thread_id: str,
+        cwd: Path,
+        *,
+        archived: bool = False,
+        turns: list[JsonObject] | None = None,
+        **fields: JsonValue,
+    ) -> JsonObject:
+        thread: JsonObject = {
+            "id": thread_id,
+            "name": None,
+            "preview": "Fix the login bug please",
+            "cwd": str(cwd),
+            "createdAt": 1790000000,
+            "updatedAt": 1790003600,
+            "source": "cli",
+            "originator": "codex_cli_rs",
+            "parentThreadId": None,
+            "ephemeral": False,
+            "model": "gpt-5.5",
+            "turns": [],
+            **fields,
+        }
+        (self.archived if archived else self.active).append(thread)
+        self.turns[thread_id] = turns if turns is not None else [exchange()]
+        return thread
+
+    def _list(self, params: JsonObject) -> JsonObject:
+        threads = self.archived if params.get("archived") is True else self.active
+        cursor = params.get("cursor")
+        index = int(cursor) if isinstance(cursor, str) else 0
+        more = index + 1 < len(threads)
+        page: list[JsonValue] = [*threads[index : index + 1]]
+        return {"data": page, "nextCursor": str(index + 1) if more else None}
+
+    def _turns(self, params: JsonObject) -> JsonObject:
+        turns: list[JsonValue] = [*self.turns.get(str(params.get("threadId")), [])]
+        return {"data": turns, "nextCursor": None}
+
+    def _move(self, params: JsonObject, *, archive: bool) -> JsonObject:
+        source, target = (self.active, self.archived) if archive else (self.archived, self.active)
+        thread = next(t for t in source if t["id"] == params["threadId"])
+        source.remove(thread)
+        target.append(thread)
+        return {}
+
+
+def exchange(prompt: str = "Fix the login bug please", answer: str = "Fixed it.") -> JsonObject:
+    """A finished turn: the user's message and the agent's reply."""
+    return {
+        "id": "turn-1",
+        "status": "completed",
+        "startedAt": 1790000000,
+        "completedAt": 1790000060,
+        "items": [
+            {"type": "userMessage", "id": "u1", "content": [{"type": "text", "text": prompt}]},
+            {"type": "agentMessage", "id": "a1", "text": answer},
+        ],
+    }

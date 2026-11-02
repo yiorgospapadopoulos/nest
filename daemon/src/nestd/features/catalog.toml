@@ -109,10 +109,11 @@ block = "B46"
 id = "outside-chats"
 group = "around"
 name = "Chats from outside Nest"
-text = "Agent chats started in a terminal or another app show up here, and you can continue them."
+text = "Agent chats started in a terminal or another app show up here, marked with the agent that ran them. Continue them in Nest or archive them."
 where = "Sidebar"
 added = 2026-10-07
 block = "B21"
+changed = 2026-10-27
 
 [[features]]
 id = "folding-sidebars"

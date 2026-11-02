@@ -1,9 +1,9 @@
 import NestKit
 import SwiftUI
 
-/// A Claude Code chat in the sidebar's Idle group: status dot and title over where it
-/// works (its worktree, or the project folder's current branch) and whether Claude Code has
-/// it open. Click opens its read-only history; drag splits.
+/// A Claude Code or Codex chat in the sidebar's Idle group: status dot and title over where
+/// it works (its worktree, or the project folder's current branch) and whether Claude Code
+/// has it open. Click opens its read-only history; drag splits.
 struct ClaudeChatRow: View {
     let chat: ClaudeChat
     @Environment(Shell.self) private var shell
@@ -26,12 +26,18 @@ struct ClaudeChatRow: View {
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(rowState.titleColor)
                     .lineLimit(1)
-                if place != nil || chat.openInClaudeCode {
+                if place != nil || chat.isOpenInClaudeCode || chat.rowLabel != nil {
                     HStack(spacing: 4) {
                         if let place {
                             PlaceMark(place: place, project: chat.repo)
                         }
-                        if chat.openInClaudeCode {
+                        if let label = chat.rowLabel {
+                            if place != nil {
+                                Text("·")
+                            }
+                            Text(label)
+                        }
+                        if chat.isOpenInClaudeCode {
                             if place != nil {
                                 Text("·")
                             }
@@ -69,10 +75,10 @@ struct ClaudeChatRow: View {
         }
         .contextMenu { ClaudeChatActions(chat: chat) }
         .opacity(shell.dragging == .chat(pane) ? 0.45 : 1)
-        .help(chat.openInClaudeCode ? "Open in Claude Code right now" : "Started in Claude Code")
+        .help(chat.help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(chat.title), Claude Code chat\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(chat.openInClaudeCode ? ", open in Claude Code" : "")\(isOpen ? ", open" : "")"
+            "\(chat.title), \(chat.engineName) chat\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(chat.isOpenInClaudeCode ? ", open in Claude Code" : "")\(isOpen ? ", open" : "")"
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { shell.openChat(pane) }

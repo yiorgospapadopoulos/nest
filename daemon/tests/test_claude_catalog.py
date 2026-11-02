@@ -117,6 +117,7 @@ async def test_lists_chats_of_the_repo_and_its_claude_worktrees(setup: Setup) ->
             "entrypoint": None,
             "automated": False,
             "archived": False,
+            "engine": "claude",
         },
         {
             "id": CHAT_A,
@@ -131,6 +132,7 @@ async def test_lists_chats_of_the_repo_and_its_claude_worktrees(setup: Setup) ->
             "entrypoint": None,
             "automated": False,
             "archived": False,
+            "engine": "claude",
         },
     ]
 

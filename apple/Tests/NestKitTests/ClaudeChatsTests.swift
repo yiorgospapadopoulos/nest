@@ -38,6 +38,34 @@ import Testing
         #expect(Fixture.claudeChat("c", archived: true).archived)
     }
 
+    @Test func codexChatsAreReadAndAChatWithoutAnEngineIsClaudeCodes() {
+        let codex = Fixture.decode(ClaudeChat.self, "codex_chat")
+        #expect(codex.engine == .codex)
+        #expect(codex.archived)
+        #expect(codex.worktree == "a1b2")
+        #expect(codex.paneID == "claude-code:019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b")
+        // Older daemons send no engine: those are all Claude Code chats.
+        #expect(Fixture.claudeChats.map(\.engine) == [.claude, .claude])
+    }
+
+    @Test func aCodexChatIsNamedCodexAndHasNoClaudeCodeState() {
+        var codex = Fixture.decode(ClaudeChat.self, "codex_chat")
+        // Even if a daemon said so, Claude Code cannot have a Codex chat open.
+        codex.openInClaudeCode = true
+        #expect(codex.engineName == "Codex")
+        #expect(codex.rowLabel == "Codex")
+        #expect(Fixture.claudeChats[0].rowLabel == nil)
+        #expect(!codex.isOpenInClaudeCode)
+        #expect(codex.help == "Started in Codex")
+        #expect(codex.readOnlyNote == "Started in Codex. Read-only until you continue it here.")
+
+        let claude = Fixture.claudeChats[0]
+        #expect(claude.engineName == "Claude Code")
+        #expect(claude.isOpenInClaudeCode)
+        #expect(claude.help == "Open in Claude Code right now")
+        #expect(Fixture.claudeChats[1].help == "Started in Claude Code")
+    }
+
     @Test func paneIDsAreTheirOwnNamespace() {
         let chat = Fixture.claudeChat("abc")
         #expect(chat.paneID == "claude-code:abc")

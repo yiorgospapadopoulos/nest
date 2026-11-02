@@ -294,3 +294,49 @@ describe("Claude Code chats", () => {
     expect(screen.queryByText("Tune the hero section")).not.toBeInTheDocument();
   });
 });
+
+describe("Codex chats started outside Nest (B113)", () => {
+  const codex = (overrides: Partial<ClaudeChat> = {}) =>
+    claudeChat({ id: "x1", title: "Port the parser", engine: "codex", ...overrides });
+
+  it("are rows named Codex, with no Claude Code wording, archived like the others", async () => {
+    const { user, api } = await setup([codex()]);
+    api.setClaudeChatArchived.mockResolvedValue(codex({ archived: true }));
+
+    const row = screen.getByRole("button", { name: "Port the parser, Codex chat, on main" });
+    expect(row.firstElementChild).toHaveClass("dot s-idle");
+    expect(within(row).getByText("Codex")).toBeInTheDocument();
+    expect(screen.queryByText(/Claude Code/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Actions for Port the parser" }));
+    const sheet = screen.getByRole("dialog", { name: "Actions for Port the parser" });
+    expect(within(sheet).queryByText(/Claude Code/)).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("menuitem", { name: "Archive" }));
+
+    expect(api.setClaudeChatArchived).toHaveBeenLastCalledWith("x1", true);
+    expect(await screen.findByText("Archived Port the parser")).toBeInTheDocument();
+  });
+
+  it("show their history read only, naming Codex, and continue in Nest", async () => {
+    const { user, api } = await setup([codex()]);
+    const adopted = session({ id: "s8", title: "Port the parser", provider_session_id: "x1" });
+    api.adoptClaudeChat.mockResolvedValue(adopted);
+    api.session.mockResolvedValue(detail(adopted));
+
+    await user.click(screen.getByRole("button", { name: /Port the parser, Codex chat/ }));
+    const region = await screen.findByRole("region", { name: "Port the parser" });
+    const view = within(region);
+
+    expect(await view.findByText("Make the hero taller")).toBeInTheDocument();
+    expect(view.getByRole("img", { name: "Codex chat" })).toHaveClass("dot s-idle");
+    expect(view.getByText(/Read only/)).toBeInTheDocument();
+    expect(region).not.toHaveTextContent(/Claude Code/);
+    expect(api.claudeChatEvents).toHaveBeenCalledWith("x1");
+
+    await user.click(view.getByRole("button", { name: "Continue in Nest" }));
+
+    expect(api.adoptClaudeChat).toHaveBeenCalledWith("x1");
+    const chat = await screen.findByRole("region", { name: "Port the parser" });
+    expect(await within(chat).findByLabelText("Message")).toBeInTheDocument();
+  });
+});

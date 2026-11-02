@@ -27,7 +27,9 @@ BATCH = 200
 INTERVAL = timedelta(seconds=5)
 _SNIPPET_TOKENS = 12
 
-type _ChatRow = tuple[str, str, str]  # repo, title, ts
+type _ChatRow = tuple[str, str, str, str]  # kind, repo, title, ts
+# The kinds of the outside chats' title entries (B21, B113), kept apart from the sessions'.
+_CHAT_KINDS = "('claude_chat', 'codex_chat')"
 
 _SEARCH = f"""
 SELECT search_index.session_id AS session_id, kind, event_id, search_index.ts AS ts,
@@ -36,11 +38,14 @@ SELECT search_index.session_id AS session_id, kind, event_id, search_index.ts AS
     snippet(search_index, 0, '[[', ']]', '…', {_SNIPPET_TOKENS}) AS snippet
 FROM search_index LEFT JOIN sessions ON sessions.id = search_index.session_id
 WHERE search_index MATCH ?
-    AND (sessions.id IS NOT NULL OR kind = 'claude_chat')
+    AND (sessions.id IS NOT NULL OR kind IN {_CHAT_KINDS})
     AND (? IS NULL OR COALESCE(sessions.repo, search_index.repo) = ?)
 ORDER BY bm25(search_index), search_index.ts DESC
 LIMIT ?
 """  # noqa: S608 (constants only)
+_CHAT_ROWS = (
+    f"SELECT session_id, kind, repo, text, ts FROM search_index WHERE kind IN {_CHAT_KINDS}"  # noqa: S608 (constants only)
+)
 
 
 class SearchIndex:
@@ -49,7 +54,7 @@ class SearchIndex:
         self._batch = batch
         self._interval = interval
         self._caught_up = False
-        # The Claude Code chats in the index, loaded on first use.
+        # The Claude Code and Codex chats in the index, loaded on first use.
         self._chats: dict[str, _ChatRow] | None = None
         self._task: asyncio.Task[None] | None = None
         self._rebuilds: set[asyncio.Task[None]] = set()
@@ -68,7 +73,7 @@ class SearchIndex:
 
     async def rebuild(self) -> None:
         """Clear the index and index every stored event again, in the background (D104).
-        Claude Code chat titles come back with the next refresh of their list.
+        Outside chat titles come back with the next refresh of their list.
         """
         async with self._db.transaction() as tx:
             await tx.execute("DELETE FROM search_index")
@@ -128,17 +133,25 @@ class SearchIndex:
         return SearchResults(hits=hits, indexing=not self._caught_up)
 
     async def sync_claude_chats(self, chats: list[ClaudeChat]) -> None:
-        """Index the titles of the listed Claude Code chats, automated ones left out."""
+        """Index the titles of the listed Claude Code and Codex chats, automated ones left
+        out.
+        """
         wanted = {
-            chat.id: (chat.repo, chat.title, chat.last_activity_at.isoformat())
+            chat.id: (
+                f"{chat.engine}_chat",
+                chat.repo,
+                chat.title,
+                chat.last_activity_at.isoformat(),
+            )
             for chat in chats
             if not chat.automated
         }
         if self._chats is None:
-            rows = await self._db.fetch_all(
-                "SELECT session_id, repo, text, ts FROM search_index WHERE kind = 'claude_chat'"
-            )
-            self._chats = {row["session_id"]: (row["repo"], row["text"], row["ts"]) for row in rows}
+            rows = await self._db.fetch_all(_CHAT_ROWS)
+            self._chats = {
+                row["session_id"]: (row["kind"], row["repo"], row["text"], row["ts"])
+                for row in rows
+            }
         known = self._chats
         if wanted == known:
             return
@@ -148,7 +161,7 @@ class SearchIndex:
             for chat_id, row in wanted.items():
                 if known.get(chat_id) != row:
                     await _delete_chat(tx, chat_id)
-                    await _insert(tx, row[1], "claude_chat", chat_id, row[2], repo=row[0])
+                    await _insert(tx, row[2], row[0], chat_id, row[3], repo=row[1])
         self._chats = wanted
 
     async def _loop(self) -> None:
@@ -166,7 +179,8 @@ async def _index(tx: Transaction, row: sqlite3.Row) -> None:
     if event_type == types.SESSION_DELETED:
         deleted = json.loads(row["payload"]).get("session_id")
         await tx.execute(
-            "DELETE FROM search_index WHERE session_id = ? AND kind != 'claude_chat'", (deleted,)
+            f"DELETE FROM search_index WHERE session_id = ? AND kind NOT IN {_CHAT_KINDS}",  # noqa: S608 (constants only)
+            (deleted,),
         )
         return
     if session_id is None:
@@ -216,5 +230,6 @@ async def _insert(
 
 async def _delete_chat(tx: Transaction, chat_id: str) -> None:
     await tx.execute(
-        "DELETE FROM search_index WHERE session_id = ? AND kind = 'claude_chat'", (chat_id,)
+        f"DELETE FROM search_index WHERE session_id = ? AND kind IN {_CHAT_KINDS}",  # noqa: S608 (constants only)
+        (chat_id,),
     )

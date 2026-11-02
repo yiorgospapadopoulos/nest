@@ -216,6 +216,10 @@ export type ChatEntry =
 
 export const CLAUDE_CHAT_STATUS: ChatStatus = { tone: "idle", label: "Claude Code" };
 
+/** The engine an outside chat ran on, by name (B113). */
+export const outsideEngineName = (chat: Pick<ClaudeChat, "engine">): string =>
+  chat.engine === "codex" ? "Codex" : "Claude Code";
+
 /** When the chat was last active, for its row's time and the list's order (B102). */
 export function lastActivity(entry: ChatEntry): string {
   return entry.session === undefined ? entry.chat.last_activity_at : entry.session.updated_at;

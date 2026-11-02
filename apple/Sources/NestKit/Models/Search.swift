@@ -9,6 +9,8 @@ public enum SearchHitKind: String, UnknownSafeEnum {
     case toolResult = "tool_result"
     /// The title of a Claude Code chat Nest does not own.
     case claudeChat = "claude_chat"
+    /// The title of a Codex chat Nest does not own (B113); it opens the same way.
+    case codexChat = "codex_chat"
     case unknown
 
     /// The palette's words for where the match is, in a chat on Claude.
@@ -24,6 +26,7 @@ public enum SearchHitKind: String, UnknownSafeEnum {
         case .tool: "Tool call"
         case .toolResult: "Tool output"
         case .claudeChat: "Claude Code chat"
+        case .codexChat: "Codex chat"
         case .unknown: "Message"
         }
     }
@@ -31,7 +34,7 @@ public enum SearchHitKind: String, UnknownSafeEnum {
 
 /// One match of `GET /api/search`.
 public struct SearchHit: Decodable, Sendable, Hashable {
-    /// The Nest session, or the Claude Code chat id for `claudeChat` hits.
+    /// The Nest session, or the outside chat's id for `claudeChat` and `codexChat` hits.
     public var sessionID: String
     public var repo: String
     /// The chat's current title.
@@ -51,7 +54,7 @@ public struct SearchHit: Decodable, Sendable, Hashable {
 
     /// The pane that shows the hit's chat.
     public var pane: String {
-        kind == .claudeChat ? ClaudeChat.panePrefix + sessionID : sessionID
+        kind == .claudeChat || kind == .codexChat ? ClaudeChat.panePrefix + sessionID : sessionID
     }
 }
 
