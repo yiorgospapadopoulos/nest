@@ -1,14 +1,8 @@
-import { useState } from "react";
-import type {
-  ClaudeAccount,
-  CodexAccount,
-  EngineState,
-  GithubAccount,
-  GithubState,
-  ProviderInfo,
-} from "../../api/types.ts";
+import { useEffect, useState } from "react";
+import type { EngineState, GithubAccount, GithubState, ProviderInfo } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
-import { Confirm } from "../pixies/Confirm.tsx";
+import { EngineAccounts, Mark } from "./AccountRows.tsx";
+import { LocalModels } from "./LocalModels.tsx";
 import { Loading, Row, Section, Status, type StatusTone } from "./rows.tsx";
 
 const GITHUB: Record<GithubState, { tone: StatusTone; label: string }> = {
@@ -21,36 +15,34 @@ const GITHUB: Record<GithubState, { tone: StatusTone; label: string }> = {
 const OWN_SECTIONS = new Set(["claude", "codex"]);
 
 /**
- * Claude Code's login, Codex's (B94), the other engines' (B107) and the GitHub login, as
- * the Mac has them; Nest keeps only an engine's API key, in the Mac's Keychain.
+ * Each engine's accounts (B98, D124), the other engines (B107), the local models (B106),
+ * first when the user chose them only, and the GitHub login, as the Mac has them. Adding an
+ * account and signing in happen on the Mac; Nest keeps only an engine's API key, in its
+ * Keychain.
  */
 export function AccountsPage() {
-  const { state } = useStore();
-  const { claude, codex, github } = state.settings;
+  const { state, actions } = useStore();
+  const { github } = state.settings;
   const engines = (state.providers ?? []).filter((p) => !OWN_SECTIONS.has(p.name));
+  const local = state.local.list;
+  // With local models, signing in to an engine is a choice, not a need (B106).
+  const optional = local !== null && (local.local_only || local.models.length > 0);
+  const localFirst = local?.local_only === true;
+
+  useEffect(() => {
+    void actions.loadAccounts();
+    void actions.loadLocalModels();
+  }, [actions]);
+
   return (
     <>
-      {claude === null ? <Loading title="Claude" /> : <Claude account={claude} />}
-      {codex === null ? <Loading title="Codex" /> : <Codex account={codex} />}
+      {localFirst && <LocalModels />}
+      <EngineAccounts provider="claude" optional={optional} />
+      <EngineAccounts provider="codex" optional={optional} />
       {engines.length > 0 && <MoreEngines engines={engines} />}
+      {!localFirst && <LocalModels />}
       {github === null ? <Loading title="GitHub" /> : <GitHub account={github} />}
     </>
-  );
-}
-
-// Each section's mark, as the More engines design has it (B107): short letters in a chip.
-const MARKS: Record<string, string> = {
-  claude: "CL",
-  codex: "CX",
-  more: "+",
-  gh: "gh",
-};
-
-function Mark({ name }: { name: string }) {
-  return (
-    <span className="acct-mark" aria-hidden="true">
-      {MARKS[name] ?? name.slice(0, 2).toUpperCase()}
-    </span>
   );
 }
 
@@ -259,131 +251,6 @@ const CODEX_STATE = {
   false: { tone: "wait", label: "Signed out" },
   null: { tone: "idle", label: "Not checked" },
 } as const;
-
-/**
- * Codex's ChatGPT sign-in (B102 item 26): its callback is local to the Mac, so the phone
- * shows the status, signs out, and says where to sign in.
- */
-function Codex({ account }: { account: CodexAccount }) {
-  const { actions } = useStore();
-  const [asking, setAsking] = useState(false);
-  const status = CODEX_STATE[String(account.signed_in) as keyof typeof CODEX_STATE];
-  const email = account.email === null || account.email === "" ? null : account.email;
-  return (
-    <Section title="Codex" className="acct" mark={<Mark name="codex" />}>
-      <Row
-        label={
-          <>
-            <span>{email ?? "Codex"}</span>
-            {account.plan !== null && <span className="hint">{account.plan}</span>}
-          </>
-        }
-      >
-        <Status tone={status.tone} label={status.label} />
-        {account.signed_in === true && (
-          <button
-            className="b"
-            aria-label="Sign out of Codex"
-            onClick={() => {
-              setAsking(true);
-            }}
-          >
-            Sign out
-          </button>
-        )}
-      </Row>
-      {account.signed_in === false && (
-        <p className="srow note">Sign in to Codex on the Mac, in Settings &gt; Accounts.</p>
-      )}
-      {typeof account.error === "string" && (
-        <p className="srow note" role="alert">
-          {account.error}
-        </p>
-      )}
-      {asking && (
-        <Confirm
-          title="Sign out of Codex?"
-          about="Codex on this Mac signs out too. Codex chats cannot run until you sign in again."
-          action="Sign out"
-          onConfirm={() => void actions.codexLogout()}
-          onClose={() => {
-            setAsking(false);
-          }}
-        />
-      )}
-    </Section>
-  );
-}
-
-function Claude({ account }: { account: ClaudeAccount }) {
-  const { state, actions } = useStore();
-  const [showEmail, setShowEmail] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const name = state.account?.display_name ?? "Claude account";
-  return (
-    <Section title="Claude" className="acct" mark={<Mark name="claude" />}>
-      {account.signed_in ? (
-        <>
-          <Row label={name}>
-            <Status tone="ok" label="Signed in" />
-            <button
-              className="b"
-              onClick={() => {
-                setAsking(true);
-              }}
-            >
-              Sign out
-            </button>
-          </Row>
-          {account.plan !== null && (
-            <Row label="Plan">
-              <span className="sval">{account.plan}</span>
-            </Row>
-          )}
-          {account.email !== null && (
-            <Row label="Email">
-              {showEmail ? (
-                <span className="sval">{account.email}</span>
-              ) : (
-                <button
-                  className="b"
-                  aria-label="Show email"
-                  onClick={() => {
-                    setShowEmail(true);
-                  }}
-                >
-                  Show
-                </button>
-              )}
-            </Row>
-          )}
-        </>
-      ) : (
-        <Row label="Not signed in">
-          <button className="b b-pri" onClick={() => void actions.claudeLogin()}>
-            Sign in
-          </button>
-        </Row>
-      )}
-      {typeof account.error === "string" && (
-        <p className="srow note" role="alert">
-          {account.error}
-        </p>
-      )}
-      {asking && (
-        <Confirm
-          title="Sign out of Claude?"
-          about="Agents cannot run until you sign in again."
-          action="Sign out"
-          onConfirm={() => void actions.claudeLogout()}
-          onClose={() => {
-            setAsking(false);
-          }}
-        />
-      )}
-    </Section>
-  );
-}
 
 function GitHub({ account }: { account: GithubAccount }) {
   const { actions } = useStore();

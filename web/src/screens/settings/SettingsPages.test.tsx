@@ -1,9 +1,10 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import type { EngineItem, UsageLimits, UsagePeriod } from "../../api/types.ts";
+import type { AccountList, AccountWindow, EngineItem, UsagePeriod } from "../../api/types.ts";
 import { STORAGE_KEY } from "../../appearance/appearance.ts";
 import { RESTART_POLL_MS, RESTART_POLLS } from "../../store/actions.ts";
+import { accountWindow, engineAccount } from "../../test/accounts.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { configurationPage, connector, engineSection, usagePeriod } from "../../test/fixtures.ts";
 import { memoryStorage, renderApp } from "../../test/render.tsx";
@@ -56,73 +57,72 @@ describe("usage", () => {
     vi.useRealTimers();
   });
 
+  // Claude's account in use with these windows (B98).
+  const withWindows = (limits: AccountWindow[], api = fakeApi()) => {
+    api.accounts.mockResolvedValue({ accounts: [engineAccount({ limits })] });
+    return api;
+  };
+
   it("shows the limit windows with their resets and when they were reported", async () => {
-    const api = fakeApi();
     const resets = new Date(TODAY);
     resets.setHours(23, 30, 0, 0);
-    api.usageLimits.mockResolvedValue({
-      five_hour: {
-        utilization: 0.3,
-        resets_at: resets.toISOString(),
-        updated_at: minutesAgo(2).toISOString(),
-      },
-      seven_day: null,
-    });
-    await openUsage(api);
+    await openUsage(
+      withWindows([
+        accountWindow({
+          utilization: 0.3,
+          resets_at: resets.toISOString(),
+          updated_at: minutesAgo(2).toISOString(),
+        }),
+      ]),
+    );
 
-    const meter = await screen.findByRole("meter", { name: "5 hour used" });
+    const meter = await screen.findByRole("meter", { name: "Claude · Personal 5 hour used" });
     expect(meter).toHaveAttribute("aria-valuenow", "30");
     expect(screen.getByText("Resets 23:30")).toBeInTheDocument();
-    expect(screen.getByText("Not reported yet")).toBeInTheDocument();
     const reported = screen.getByText(`as of ${clock(minutesAgo(2))}`);
     expect(reported).not.toHaveClass("stale");
   });
 
-  it("says when the older window was reported and dims it after 10 minutes", async () => {
-    const api = fakeApi();
-    api.usageLimits.mockResolvedValue({
-      five_hour: { utilization: 0.3, resets_at: null, updated_at: minutesAgo(2).toISOString() },
-      seven_day: { utilization: 0.1, resets_at: null, updated_at: minutesAgo(11).toISOString() },
-    });
-    await openUsage(api);
+  it("says when the windows were last reported and dims it after 10 minutes", async () => {
+    const at = minutesAgo(11).toISOString();
+    await openUsage(
+      withWindows([
+        accountWindow({ updated_at: at }),
+        accountWindow({ label: "Weekly", minutes: 10080, updated_at: at }),
+      ]),
+    );
 
     const stale = await screen.findByText(`as of ${clock(minutesAgo(11))}`);
     expect(stale).toHaveClass("stale");
     expect(stale).toHaveAttribute("title", "More than 10 minutes old");
-    expect(screen.queryByText(`as of ${clock(minutesAgo(2))}`)).not.toBeInTheDocument();
   });
 
   it("leaves the time out until a window is reported", async () => {
-    const api = fakeApi();
-    api.usageLimits.mockResolvedValue({ five_hour: null, seven_day: null });
-    await openUsage(api);
+    await openUsage(withWindows([]));
 
-    expect(await screen.findAllByText("Not reported yet")).toHaveLength(2);
+    expect(await screen.findByText("Not reported yet")).toBeInTheDocument();
     expect(screen.queryByText(/^as of/)).not.toBeInTheDocument();
   });
 
   it("refreshes the windows on request", async () => {
-    const api = fakeApi();
-    let finish: (value: UsageLimits) => void = () => undefined;
-    api.refreshUsage.mockReturnValueOnce(
+    const api = withWindows([accountWindow()]);
+    let finish: (value: AccountList) => void = () => undefined;
+    api.refreshAccounts.mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
       }),
     );
     const { user } = await openUsage(api);
-    await screen.findByRole("meter", { name: "5 hour used" });
+    await screen.findByRole("meter", { name: "Claude · Personal 5 hour used" });
 
     await user.click(screen.getByRole("button", { name: "Refresh usage" }));
     expect(screen.getByRole("button", { name: "Refresh usage" })).toBeDisabled();
     act(() => {
-      finish({
-        five_hour: { utilization: 0.8, resets_at: null, updated_at: TODAY.toISOString() },
-        seven_day: null,
-      });
+      finish({ accounts: [engineAccount({ limits: [accountWindow({ utilization: 0.8 })] })] });
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("meter", { name: "5 hour used" })).toHaveAttribute(
+      expect(screen.getByRole("meter", { name: "Claude · Personal 5 hour used" })).toHaveAttribute(
         "aria-valuenow",
         "80",
       );
@@ -131,8 +131,8 @@ describe("usage", () => {
   });
 
   it("explains a refresh that came too soon, and other failures", async () => {
-    const api = fakeApi();
-    api.refreshUsage
+    const api = withWindows([accountWindow()]);
+    api.refreshAccounts
       .mockRejectedValueOnce(new ApiError(429, "usage was refreshed moments ago"))
       .mockRejectedValueOnce(new ApiError(502, "Claude did not report the usage limits"));
     const { user } = await openUsage(api);
@@ -151,28 +151,6 @@ describe("usage", () => {
 
     expect(await screen.findByText("registry broke")).toBeInTheDocument();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
-  });
-
-  it("updates the limits live", async () => {
-    const { push } = await openUsage();
-    await screen.findByRole("meter", { name: "5 hour used" });
-
-    push({
-      id: 2,
-      type: "usage.updated",
-      payload: { five_hour: null, seven_day: { utilization: 0.5, resets_at: null } },
-    });
-
-    expect(screen.getByRole("meter", { name: "Weekly used" })).toHaveAttribute(
-      "aria-valuenow",
-      "50",
-    );
-    // The event left the 5 hour window out: its last report stays.
-    expect(screen.getByRole("meter", { name: "5 hour used" })).toHaveAttribute(
-      "aria-valuenow",
-      "30",
-    );
-    expect(screen.getAllByText("Reset time unknown")).toHaveLength(2);
   });
 });
 

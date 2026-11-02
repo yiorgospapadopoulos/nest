@@ -207,6 +207,10 @@
 .set .ueng:first-child {
   margin-top: 0;
 }
+/* Each account in use is its own group: space them apart (B116). */
+.set .pad > div + div > .ueng:first-child {
+  margin-top: 16px;
+}
 .ucheck {
   position: relative;
   width: 18px;
@@ -667,6 +671,211 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ft-cv {
+    transition: none;
+  }
+}
+
+/* Accounts (B98, B116 item 1): an account's check, initial, title over its plan and email,
+   its login and ⋯, then every window as a line over a thin bar. */
+.set .acrow {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+.set .acrow .slab {
+  max-width: none;
+}
+/* A long email ends in an ellipsis instead of running under the status. */
+.set .umrow .slab,
+.set .acrow .slab > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.set .acrow .sctl {
+  flex: none;
+  gap: 4px;
+}
+.acav {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--soft);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--t2);
+}
+.acmore {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  cursor: pointer;
+}
+.acwin {
+  grid-column: 3 / -1;
+  display: grid;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.acw {
+  display: grid;
+  gap: 3px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.set .slink .sval {
+  margin-left: auto;
+}
+.set .acwarn {
+  color: var(--wait);
+}
+/* A local model's row is one tap target opening its menu. */
+.set .acloc {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--div);
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.set .acloc .slab {
+  flex: 1;
+  max-width: none;
+}
+.set .acadd .cn {
+  gap: 8px;
+  color: var(--t1);
+}
+.set .acadd .ic {
+  width: 16px;
+  height: 16px;
+}
+
+/* Usage (B98): "in use" after an account, and "Top bar shows" rows with a drag handle. */
+.uinuse {
+  margin-left: 2px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.set .umrow {
+  justify-content: flex-start;
+  background: var(--bg);
+  transition: transform 0.18s var(--motion-easing-glide);
+}
+.set .umrow.drag {
+  position: relative;
+  z-index: 1;
+  transition: none;
+  box-shadow:
+    0 1px 0 var(--div),
+    0 -1px 0 var(--div);
+}
+.set .umrow .slab {
+  flex: 1;
+  max-width: none;
+}
+.set .umrow .sctl {
+  flex: none;
+}
+.umgrip {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 44px;
+  margin-left: -8px;
+  border: 0;
+  background: transparent;
+  color: var(--t3);
+  cursor: grab;
+  touch-action: none;
+}
+.umgrip .ic {
+  width: 16px;
+  height: 16px;
+}
+
+/* Add local model (B106): its tabs, the Find note, the address form and the models. */
+.set.addloc {
+  margin-top: 4px;
+}
+.addseg {
+  display: flex;
+  margin: 4px 16px 8px;
+}
+.addseg button {
+  flex: 1;
+}
+.addnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.addnote .lnk {
+  flex: none;
+  min-height: 44px;
+}
+.set .addrow {
+  justify-content: flex-start;
+}
+.set .addrow .slab {
+  flex: 1;
+  max-width: none;
+}
+.set .addrow .dim {
+  color: var(--t2);
+}
+.ucheck.off {
+  opacity: 0.4;
+  cursor: default;
+}
+.ucheck:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.addform {
+  display: grid;
+  gap: 6px;
+  margin: 4px 16px 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.addform .cfg-search {
+  margin: 0 0 6px;
+}
+.addfield {
+  display: flex;
+  gap: 8px;
+}
+.addfield .cfg-search {
+  flex: 1;
+  min-width: 0;
+}
+.addline {
+  margin: 6px 16px 10px;
+  font-size: var(--fs-meta);
+}
+.addline.ok {
+  color: var(--ok);
+}
+.addline.bad {
+  color: var(--bad);
+}
+@media (prefers-reduced-motion: reduce) {
+  .set .umrow {
     transition: none;
   }
 }

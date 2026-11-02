@@ -74,9 +74,14 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
       permission_mode: permission === "auto" && !supportsAuto(own, chosen) ? "default" : permission,
     });
   };
-  const items = (models: ModelOption[], engine: string) =>
+  // A stopped server's local models show, not choosable (B116).
+  const items = (models: ModelOption[], engine: string, unavailable: string[] = []) =>
     models.map((m) => (
-      <option key={m.value} value={choiceOf(engine, m.value)}>
+      <option
+        key={m.value}
+        value={choiceOf(engine, m.value)}
+        disabled={unavailable.includes(m.value)}
+      >
         {m.display_name}
       </option>
     ));
@@ -99,13 +104,13 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
               </Fragment>
             ) : (
               <optgroup
-                key={section.provider}
+                key={section.local === true ? "local" : section.provider}
                 disabled={!section.available}
                 label={
                   section.detail === "" ? section.title : `${section.title} · ${section.detail}`
                 }
               >
-                {items(section.catalog.models, section.provider)}
+                {items(section.catalog.models, section.provider, section.unavailable)}
               </optgroup>
             ),
           )}
