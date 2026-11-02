@@ -164,6 +164,30 @@ private let tuesday = Date(timeIntervalSince1970: 1_791_288_000)
         #expect(NotificationPolicy.visibleChats(app: app, windowFocused: true).isEmpty)
     }
 
+    /// A pixie's call counts as seen only in the chat the user focused, not in any pane on
+    /// screen (B114, user 2026-11-02).
+    @Test func focusedChatIsTheFocusedPaneOnly() async throws {
+        let api = FakeAPI()
+        let app = AppStore(api: api, store: MemoryStore())
+        try await app.loadRepos()
+        let size = CGSize(width: 1200, height: 800)
+        app.update { state in
+            state.openChat("a", in: size)
+            state.openChat("b", in: size)
+            state.focusPane("a")
+        }
+        func focused(_ windowFocused: Bool = true) -> String? {
+            NotificationPolicy.focusedChat(
+                app: app, pixies: [], pixiesOpen: false, windowFocused: windowFocused)
+        }
+        #expect(focused() == "a")
+        #expect(focused(false) == nil)
+        app.update { $0.focusPane("b") }
+        #expect(focused() == "b")
+        app.update { $0.view = .board }
+        #expect(focused() == nil)
+    }
+
     @Test func dockBadge() {
         #expect(NotificationPolicy.badge(pending: 0) == nil)
         #expect(NotificationPolicy.badge(pending: 3) == "3")
