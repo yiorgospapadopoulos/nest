@@ -43,6 +43,15 @@ added = 2026-10-17
 block = "B77"
 
 [[features]]
+id = "performance-page"
+group = "around"
+name = "Performance"
+text = "Measure Nest on this Mac with one button: what a new chat costs in context, how fast turns and chats open, and what changed since the last run."
+where = "Settings > Performance"
+added = 2026-11-02
+block = "B115"
+
+[[features]]
 id = "split-workspace"
 group = "around"
 name = "Split workspace"

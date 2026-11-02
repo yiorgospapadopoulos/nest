@@ -438,6 +438,9 @@ class SessionSpec:
     # Added to the agent's own environment, so what it starts sees them too, such as its
     # folder's ports (B108).
     env: Mapping[str, str] = field(default_factory=dict[str, str])
+    # False: a one-off run the engine keeps no history of, so it never shows in Claude
+    # Code's or Codex's own chat lists (B115's performance check).
+    keep_history: bool = True
 
 
 @dataclass(frozen=True)

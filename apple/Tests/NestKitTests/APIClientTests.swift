@@ -831,6 +831,19 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
             "POST", "/api/features/seen", body: #"{"ids":["branch-map","review"]}"#,
             response: Fixture.text("features")
         ) { _ = try await $0.markFeaturesShown(["branch-map", "review"]) },
+        // B115: Settings > Performance.
+        RouteCase("GET", "/api/perf", response: Fixture.text("perf")) { _ = try await $0.perf() },
+        RouteCase(
+            "POST", "/api/perf/runs", body: #"{"sections":["load"]}"#,
+            response: Fixture.text("perf")
+        ) { _ = try await $0.runPerf(sections: ["load"]) },
+        RouteCase(
+            "POST", "/api/perf/client", body: #"{"metrics":{"layout_ms":812},"section":"mac"}"#,
+            response: Fixture.text("perf")
+        ) { _ = try await $0.recordPerf(section: "mac", metrics: ["layout_ms": 812]) },
+        RouteCase("POST", "/api/perf/clear", response: Fixture.text("perf")) {
+            _ = try await $0.clearPerf()
+        },
         RouteCase("GET", "/api/repos/todo-ui/commands", response: commandsJSON) {
             _ = try await $0.repoCommands("todo-ui")
         },

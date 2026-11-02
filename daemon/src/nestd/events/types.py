@@ -199,3 +199,6 @@ ARTIFACT_STORAGE: Final = "artifact.storage"
 # `state` `started` or `finished`, `remaining` the asks it has left today of `limit` a day;
 # readers show it working.
 ARTIFACT_ASK: Final = "artifact.ask"
+# Settings > Performance (B115): a run started or finished, `{id, state}` with `state`
+# `running`, `done` or `failed`; ephemeral and global. Open pages read `GET /api/perf`.
+PERF_RUN: Final = "perf.run"

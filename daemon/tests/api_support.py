@@ -4,6 +4,7 @@ from datetime import UTC
 from pathlib import Path
 
 import httpx
+from claude_agent_sdk import ClaudeAgentOptions
 
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.configuration.engines import CodexLocations
@@ -11,6 +12,7 @@ from nestd.context import AppContext
 from nestd.gitops.runner import CommandRunner, run_command
 from nestd.local.service import LocalSetup
 from nestd.paths import AppPaths
+from nestd.perf.collectors.context import ContextClient
 from nestd.providers.acp_process import AcpTransportFactory
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
@@ -121,7 +123,14 @@ async def build_context(
         port_probe=nothing_listening,
         # Never real npm, engine processes, PATH or home (B107).
         acp_setup=acp_setup(tmp_path, npm, acp),
+        # Never a real Claude turn for Settings > Performance (B115).
+        perf_client=no_context_client,
     )
+
+
+def no_context_client(_options: ClaudeAgentOptions) -> ContextClient:
+    msg = "a test reached the performance context run's Claude client"
+    raise AssertionError(msg)
 
 
 async def fake_machine_name() -> str:

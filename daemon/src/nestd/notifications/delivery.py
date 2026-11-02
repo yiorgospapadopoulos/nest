@@ -6,9 +6,11 @@ and sends in background tasks, so a slow push service never holds up the daemon.
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import Callable, Coroutine, Mapping
 from contextlib import aclosing, suppress
 from datetime import time, tzinfo
+from time import perf_counter
 
 import httpx
 from pydantic import JsonValue
@@ -21,13 +23,29 @@ from nestd.events.bus import EventBus, SubscriptionOverflowError
 from nestd.notifications.messages import TEST_NOTICE, Notice, notice_from_event
 from nestd.notifications.ntfy import NtfyChannel
 from nestd.notifications.rules import in_quiet_hours, should_send
-from nestd.notifications.subscriptions import PushSubscriptionStore
+from nestd.notifications.subscriptions import PushSubscription, PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
 from nestd.notifications.webpush import PushReport, WebPushChannel
 
 HTTP_TIMEOUT_SECONDS = 15
+# How many of the latest web push send times are kept for Settings > Performance (B115).
+KEPT_SEND_TIMES = 200
 
 logger = logging.getLogger(__name__)
+
+
+class SendTimes:
+    """How long the latest web pushes took until the push service accepted them, since
+    the daemon started (B115)."""
+
+    def __init__(self) -> None:
+        self._ms: deque[float] = deque(maxlen=KEPT_SEND_TIMES)
+
+    def record(self, ms: float) -> None:
+        self._ms.append(ms)
+
+    def all(self) -> list[float]:
+        return list(self._ms)
 
 
 class NotificationDelivery:
@@ -57,6 +75,7 @@ class NotificationDelivery:
         self._ntfy = NtfyChannel(self._http)
         self._follower: asyncio.Task[None] | None = None
         self._sends: set[asyncio.Task[None]] = set()
+        self.send_times = SendTimes()
 
     async def start(self) -> None:
         # Everything published from here on is delivered, even before the task first runs.
@@ -108,9 +127,17 @@ class NotificationDelivery:
     async def _send(self, notice: Notice, settings: NotificationSettings) -> None:
         subscriptions = await self.subscriptions.active()
         await asyncio.gather(
-            self._webpush.send(notice, subscriptions, settings.vapid_subject),
+            self._timed_webpush(notice, subscriptions, settings.vapid_subject),
             self._ntfy.send(notice, settings.ntfy),
         )
+
+    async def _timed_webpush(
+        self, notice: Notice, subscriptions: list[PushSubscription], subject: str
+    ) -> None:
+        started = perf_counter()
+        report = await self._webpush.send(notice, subscriptions, subject)
+        if report.sent:
+            self.send_times.record((perf_counter() - started) * 1000)
 
     async def _follow(self, after: int) -> None:
         while True:

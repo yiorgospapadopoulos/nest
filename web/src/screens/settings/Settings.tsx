@@ -13,6 +13,7 @@ import { newCount } from "./featureNew.ts";
 import { FeaturesPage } from "./FeaturesPage.tsx";
 import { GeneralPage } from "./GeneralPage.tsx";
 import { NotificationsPage } from "./NotificationsPage.tsx";
+import { PerformancePage } from "./PerformancePage.tsx";
 import { PixiesPage } from "./PixiesPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { LinkRow, PageFrame } from "./rows.tsx";
@@ -26,6 +27,7 @@ const PAGES: Record<SettingsPageId, { title: string; icon: IconName }> = {
   notifications: { title: "Notifications", icon: "bell" },
   agents: { title: "Agents", icon: "bot" },
   usage: { title: "Usage", icon: "chart" },
+  performance: { title: "Performance", icon: "gauge" },
   storage: { title: "Storage", icon: "drive" },
   pixies: { title: "Pixies", icon: "pixie" },
   accounts: { title: "Accounts", icon: "user" },
@@ -150,6 +152,7 @@ function SettingsBody({ page, onPage, back, onBack, onOpenPixie }: Props) {
         }}
       />
     ),
+    performance: () => <PerformancePage />,
     storage: () => <StoragePage />,
     pixies: () => <PixiesPage onOpenPixie={onOpenPixie} />,
     accounts: () => <AccountsPage />,

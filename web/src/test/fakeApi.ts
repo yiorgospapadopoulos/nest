@@ -15,6 +15,7 @@ import {
   NOW,
   pluginDetails,
   pixieDefaults,
+  perfView,
   storageUsage,
   stuckSettings,
   usageSettings,
@@ -238,6 +239,9 @@ export function fakeApi(): FakeApi {
     largeAttachments: vi.fn<Api["largeAttachments"]>().mockResolvedValue([]),
     deleteAttachment: vi.fn<Api["deleteAttachment"]>().mockResolvedValue(null),
     rebuildSearch: vi.fn<Api["rebuildSearch"]>().mockResolvedValue(null),
+    perf: vi.fn<Api["perf"]>().mockResolvedValue(perfView()),
+    runPerf: vi.fn<Api["runPerf"]>().mockResolvedValue(perfView()),
+    clearPerf: vi.fn<Api["clearPerf"]>().mockResolvedValue(perfView()),
     usageSettings: vi.fn<Api["usageSettings"]>().mockResolvedValue(usageSettings()),
     saveUsageSettings: vi
       .fn<Api["saveUsageSettings"]>()

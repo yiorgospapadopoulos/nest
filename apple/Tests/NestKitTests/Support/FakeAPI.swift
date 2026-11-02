@@ -148,6 +148,9 @@ final class FakeAPI: NestAPI {
         var setup = SetupState(firstRun: false, localOnly: false)
         /// Settings > Features (B103); a seen report answers it as it is then.
         var features = FeaturesCatalog(groups: [], newCount: 0)
+        /// Settings > Performance (B115). A run marks its sections running; a recorded
+        /// client section counts one more run.
+        var perf = PerfView()
         /// Each chat's run (B108), by session id. Start and restart begin a new run (a
         /// later start time), stop stops it; output answers `runOutputs` by session id.
         var runs: [String: RunStatus] = [:]
@@ -1156,6 +1159,35 @@ final class FakeAPI: NestAPI {
 
     func markFeaturesShown(_ ids: [String]) async throws -> FeaturesCatalog {
         try call("markFeaturesShown", ids.joined(separator: ",")) { $0.features }
+    }
+
+    func perf() async throws -> PerfView {
+        try call("perf") { $0.perf }
+    }
+
+    func runPerf(sections: [String]) async throws -> PerfView {
+        await pass("runPerf")
+        return try call("runPerf", sections.joined(separator: ",")) { state in
+            let ids =
+                sections.isEmpty
+                ? state.perf.sections.filter { $0.runner == .daemon }.map(\.id) : sections
+            state.perf.running = PerfRunning(
+                id: "run-\(state.perf.runs + 1)", sections: ids,
+                startedAt: Date(timeIntervalSince1970: 0))
+            return state.perf
+        }
+    }
+
+    func recordPerf(section: String, metrics: [String: Double]) async throws -> PerfView {
+        let detail = metrics.keys.sorted().joined(separator: ",")
+        return try call("recordPerf", "\(section) \(detail)") { state in
+            state.perf.runs += 1
+            return state.perf
+        }
+    }
+
+    func clearPerf() async throws -> PerfView {
+        try call("clearPerf") { $0.perf }
     }
 
     // MARK: Settings (B81)

@@ -23,6 +23,8 @@
         private var shownFeatures: Set<String> = []
         private var featureReportsHeld = false
         private var heldFeatureReports: Set<String> = []
+        /// Settings > Performance's results (B115); nil until first read.
+        private var perfView: PerfView?
         private var usage = UsageSettings(refreshMinutes: 3)
         /// Chats' runs and their output, by session id (B108).
         private var runs: [String: RunStatus] = [:]
@@ -1337,6 +1339,46 @@
                 }
                 return SampleFeatures.catalog(shown: shownFeatures)
             }
+        }
+
+        func perf() async throws -> PerfView {
+            lock.withLock { currentPerf() }
+        }
+
+        func runPerf(sections: [String]) async throws -> PerfView {
+            lock.withLock {
+                var view = currentPerf()
+                guard view.running == nil else { return view }
+                let ids =
+                    sections.isEmpty
+                    ? view.sections.filter { $0.runner == .daemon }.map(\.id) : sections
+                view.running = PerfRunning(id: "sample-run", sections: ids, startedAt: now)
+                perfView = view
+                return view
+            }
+        }
+
+        func recordPerf(section: String, metrics: [String: Double]) async throws -> PerfView {
+            lock.withLock { currentPerf() }
+        }
+
+        func clearPerf() async throws -> PerfView {
+            lock.withLock { currentPerf() }
+        }
+
+        /// Replaces the results, such as with none for a page never run.
+        func setPerf(_ view: PerfView) {
+            lock.withLock { perfView = view }
+        }
+
+        /// Call with the lock held.
+        private func currentPerf() -> PerfView {
+            if let perfView {
+                return perfView
+            }
+            let view = SamplePerformance.view(now: now)
+            perfView = view
+            return view
         }
 
         /// While held, the features' seen reports wait: each snapshot renders in a fresh

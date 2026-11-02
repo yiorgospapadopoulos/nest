@@ -85,6 +85,11 @@ from nestd.notifications.notifier import Notifier
 from nestd.notifications.subscriptions import PushSubscriptionStore
 from nestd.notifications.vapid import VapidKeys
 from nestd.paths import AppPaths
+from nestd.perf.collectors.context import ContextClientFactory
+from nestd.perf.collectors.load import InProcess
+from nestd.perf.service import Perf
+from nestd.perf.timing import RouteTimings
+from nestd.perf.wiring import PerfSetup, build_perf
 from nestd.pixies.activity import ActivityStore
 from nestd.pixies.agents import PixieAgents, native_subagents
 from nestd.pixies.call_runs import PixieCallRuns
@@ -127,7 +132,7 @@ from nestd.prs.monitor import PrMonitor
 from nestd.prs.service import PullRequests
 from nestd.reactions import SessionReactions, StateFollower
 from nestd.repos.branch_watch import BranchWatch
-from nestd.repos.service import RepoService
+from nestd.repos.service import GENERAL, RepoService
 from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
 from nestd.review.watch import ReviewWatcher
@@ -138,8 +143,10 @@ from nestd.search.index import SearchIndex
 from nestd.sessions.commands import CommandStore
 from nestd.sessions.engines import Engine
 from nestd.sessions.manager import SessionManager
+from nestd.sessions.models import Session
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.store import SessionStore
+from nestd.sessions.turns import PLAIN_FOLDER_PROMPT
 from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
@@ -149,7 +156,7 @@ from nestd.usage.refresher import UsageRefresher
 from nestd.usage.store import UsageStore
 from nestd.usage.visibility import ClientVisibility
 from nestd.usage.warnings import UsageWarnings
-from nestd.worktrees.manager import WorktreeManager
+from nestd.worktrees.manager import WORKTREE_PREFIX, WorktreeManager, claude_worktrees_dir
 
 # How long signing in to Claude or installing Claude Code may take (D104).
 LONG_COMMAND_SECONDS = 900.0
@@ -230,6 +237,11 @@ class AppContext:
     local: LocalModels
     # Each folder's ports and dev server (B108).
     runs: RunManager
+    # Settings > Performance (B115): its runs, the API's route times, and the client its
+    # load section calls the API with once the app exists.
+    perf: Perf
+    perf_timings: RouteTimings
+    perf_fetch: InProcess
     # The port `nestd serve --port` gave, which wins over the settings' one.
     port_flag: int | None = None
 
@@ -260,6 +272,7 @@ class AppContext:
         local_setup: LocalSetup | None = None,
         port_probe: PortProbe = listening_ports,
         acp_setup: AcpSetup | None = None,
+        perf_client: ContextClientFactory = ClaudeSDKClient,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -277,7 +290,8 @@ class AppContext:
         may be. `machine` reads the machine's name, once. `local_setup` is what local
         models reach: the network and the apps' folders. `port_probe` reads the ports a dev
         server run listens on (lsof). `acp_setup` is what the ACP engines reach: npm, their
-        processes, the environment they start from (B107).
+        processes, the environment they start from (B107). `perf_client` is the one-off
+        Claude client of Settings > Performance's context run (B115).
         """
         paths.ensure()
         settings = load_settings(paths)
@@ -757,6 +771,31 @@ class AppContext:
                 local_in_use=local.in_use,
             ),
         )
+        machine_name_text = await machine()
+        perf_timings = RouteTimings()
+        perf, perf_fetch = build_perf(
+            PerfSetup(
+                paths=paths,
+                db=db,
+                bus=bus,
+                clock=clock,
+                zone=zone,
+                machine=machine_name_text,
+                timings=perf_timings,
+                send_times=notifications.send_times.all,
+                worktree_folders=lambda: _worktree_folders(paths, repos),
+                local_token=devices.ensure_local_device,
+                general_prompt=PLAIN_FOLDER_PROMPT,
+                general_tools=artifact_tools(artifacts, _general_stand_in(clock)),
+                shell_env=shell_env,
+                claude_account=lambda: active.prepare(CLAUDE_ACCOUNTS),
+                claude_signed_in=logins.claude,
+                context_client=perf_client,
+                engines=lambda: sessions.engines,
+                codex=codex,
+                acp=acp,
+            )
+        )
         context = cls(
             paths=paths,
             settings=settings,
@@ -856,9 +895,12 @@ class AppContext:
             token_socket=None
             if paths.token_socket is None
             else TokenSocket(paths.token_socket, devices.ensure_local_device),
-            machine=await machine(),
+            machine=machine_name_text,
             local=local,
             runs=runs,
+            perf=perf,
+            perf_timings=perf_timings,
+            perf_fetch=perf_fetch,
         )
         return context
 
@@ -932,6 +974,29 @@ def _locations(paths: AppPaths) -> Locations | None:
     if paths.claude_dir is None or paths.claude_account_file is None or paths.codex_home is None:
         return None
     return Locations(paths.claude_dir, paths.claude_account_file, paths.codex_home)
+
+
+def _worktree_folders(paths: AppPaths, repos: RepoService) -> list[Path]:
+    """Where Nest's worktrees are: each repo's `.claude/worktrees/nest-*`, and the old folder."""
+    # The old folder counts only while it still holds a worktree.
+    folders = [paths.worktrees_dir] if any(paths.worktrees_dir.glob("*")) else []
+    for repo in repos.list_repos():
+        folders += claude_worktrees_dir(repo.path).glob(f"{WORKTREE_PREFIX}*")
+    return folders
+
+
+def _general_stand_in(clock: Clock) -> Session:
+    """A new General chat, only for the Nest tools a chat gets (B115): the performance
+    run lists them to the engine but never calls them."""
+    now = clock.now()
+    return Session.model_construct(
+        id="perf-context",
+        repo=GENERAL,
+        title="Performance check",
+        pixie_id=None,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 async def _engine_of(store: SessionStore, session_id: str) -> str:

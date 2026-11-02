@@ -90,6 +90,8 @@ const PATHS = {
     </>
   ),
   chart: <path d="M4 20h16M7 16.5v-5M12 16.5v-10M17 16.5v-8" />,
+  // Settings > Performance (B115): a speed dial.
+  gauge: <path d="M4.2 17.5a8.5 8.5 0 1 1 15.6 0M12 14.5l4-5M12 14.5h.01" />,
   list: (
     <path d="M4 6.5l1.3 1.3 2.5-2.5M4 12.5l1.3 1.3 2.5-2.5M4.8 18h2M11 6.5h9M11 12.5h9M11 18h9" />
   ),

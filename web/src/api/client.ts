@@ -106,6 +106,7 @@ import type {
   PairingCode,
   PixieDefaults,
   StorageSettings,
+  PerfView,
   StorageUsage,
   StoredAttachment,
   StuckSettings,
@@ -293,6 +294,12 @@ export interface Api {
   deleteAttachment(id: string): Promise<null>;
   // 202 at once; the index is rebuilt in the background.
   rebuildSearch(): Promise<unknown>;
+  // Settings > Performance (B115).
+  perf(): Promise<PerfView>;
+  // Starts a run of `sections`, every daemon section when empty; 409 while one runs.
+  runPerf(sections: string[]): Promise<PerfView>;
+  // Keeps each section's two latest runs.
+  clearPerf(): Promise<PerfView>;
   usageSettings(): Promise<UsageSettings>;
   saveUsageSettings(settings: UsageSettings): Promise<UsageSettings>;
   stuckSettings(): Promise<StuckSettings>;
@@ -924,6 +931,18 @@ export class HttpApi implements Api {
 
   rebuildSearch() {
     return this.json<unknown>("POST", "/api/search/rebuild");
+  }
+
+  perf() {
+    return this.json<PerfView>("GET", "/api/perf");
+  }
+
+  runPerf(sections: string[]) {
+    return this.json<PerfView>("POST", "/api/perf/runs", { sections });
+  }
+
+  clearPerf() {
+    return this.json<PerfView>("POST", "/api/perf/clear");
   }
 
   usageSettings() {
