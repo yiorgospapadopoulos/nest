@@ -403,6 +403,8 @@ class CodexProvider:
         )
         if instructions:
             params["developerInstructions"] = instructions
+        if not spec.keep_history:
+            params["ephemeral"] = True
         if spec.resume_id is not None:
             response = await rpc.request("thread/resume", {"threadId": spec.resume_id, **params})
         else:

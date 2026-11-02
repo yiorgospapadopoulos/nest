@@ -3,6 +3,8 @@ import Foundation
 /// A page of the Settings window (B81).
 public enum SettingsPage: Sendable, Hashable {
     case general, appearance, notifications, agents, usage, storage, pixies, accounts
+    /// How fast and how costly Nest is, run on request (B115).
+    case performance
     case devices
     case shortcuts
     /// What the agents read, shared and per engine (B97); replaces Extensions.
@@ -15,7 +17,7 @@ public enum SettingsPage: Sendable, Hashable {
 
     /// The pages before the projects, in order.
     public static let fixed: [SettingsPage] = [
-        .general, .appearance, .notifications, .agents, .usage, .storage, .pixies,
+        .general, .appearance, .notifications, .agents, .usage, .performance, .storage, .pixies,
         .accounts, .devices, .shortcuts, .configuration, .features,
     ]
 
@@ -26,6 +28,7 @@ public enum SettingsPage: Sendable, Hashable {
         case .notifications: "Notifications"
         case .agents: "Agents"
         case .usage: "Usage"
+        case .performance: "Performance"
         case .storage: "Storage"
         case .pixies: "Pixies"
         case .accounts: "Accounts"
@@ -92,6 +95,11 @@ public enum SettingsPage: Sendable, Hashable {
                 "Permission rules", "Settings file", "Rules", "config.toml",
             ]
         case .devices: ["Pair a device", "Revoke", "iPhone"]
+        case .performance:
+            [
+                "Run all", "Clear old runs", "Context cost", "Turn speed and cache", "Load speed",
+                "Waiting on you", "Activity", "Advanced", "Mac app", "What changed",
+            ]
         // The groups' and features' names come from the daemon, through `listed`.
         case .features: ["New"]
         case .shortcuts:

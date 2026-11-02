@@ -216,6 +216,18 @@ def test_a_run_on_an_added_account_points_claude_code_at_its_profile(tmp_path: P
     assert options.env["HOME"] == "/Users/me"
 
 
+def test_a_run_without_history_leaves_no_claude_code_transcript(tmp_path: Path) -> None:
+    """B115: the performance check's tiny turns stay out of Claude Code's chat history."""
+    handler = ScriptedHandler(PermissionDecision("allow"))
+    kept = build_options(SessionSpec(cwd=tmp_path, permission_mode=None), handler, tmp_path)
+    once = build_options(
+        SessionSpec(cwd=tmp_path, permission_mode=None, keep_history=False), handler, tmp_path
+    )
+
+    assert "no-session-persistence" not in kept.extra_args
+    assert "no-session-persistence" in once.extra_args
+
+
 def test_a_runs_folder_ports_reach_claude_code_over_the_shells(tmp_path: Path) -> None:
     """B108: what the agent starts gets the folder's ports too."""
     options = build_options(

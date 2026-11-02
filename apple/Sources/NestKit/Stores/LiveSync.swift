@@ -26,6 +26,8 @@ public final class LiveSync {
     let runs: RunStore
     /// The island around the notch (B114), set by the app model.
     var island: IslandStore?
+    /// Settings > Performance (B115), set by the app model.
+    var performance: PerformanceStore?
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -153,6 +155,7 @@ public final class LiveSync {
         branchMaps.apply(event)
         runs.apply(event)
         island?.apply(event)
+        performance?.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -228,6 +231,8 @@ public final class AppModel {
     public let configuration: ConfigurationStore
     /// Settings > Features (B103).
     public let features: FeaturesStore
+    /// Settings > Performance (B115).
+    public let performance: PerformanceStore
     public let shortcuts: ShortcutsStore
     /// Artifacts the chats saved and the Artifacts view (B79).
     public let artifacts: ArtifactsStore
@@ -290,6 +295,7 @@ public final class AppModel {
         extensions = ExtensionsStore(api: api)
         configuration = ConfigurationStore(api: api)
         features = FeaturesStore(api: api, store: preferences)
+        performance = PerformanceStore(api: api)
         shortcuts = ShortcutsStore(store: preferences)
         artifacts = ArtifactsStore(api: api)
         branchMaps = BranchMapStore(api: api)
@@ -307,6 +313,7 @@ public final class AppModel {
             api: api, store: preferences, sessions: sessions, approvals: approvals,
             activity: activity, chatPixies: chatPixies, pixies: pixies, now: now)
         live.island = island
+        live.performance = performance
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [weak self, visibility] in
             visibility.resend()

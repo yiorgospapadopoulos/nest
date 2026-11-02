@@ -153,6 +153,19 @@ async def test_a_guarded_run_has_no_git_credentials_in_codex_or_its_commands(
     await run.close()
 
 
+async def test_a_run_without_history_starts_an_ephemeral_thread(tmp_path: Path) -> None:
+    """B115: the performance check's tiny turns stay out of Codex's own thread list."""
+    server, run, _, _ = await opened(tmp_path)
+    once_server, once, _, _ = await opened(tmp_path, keep_history=False)
+
+    [start] = server.requests("thread/start")
+    [once_start] = once_server.requests("thread/start")
+    assert "ephemeral" not in start
+    assert once_start["ephemeral"] is True
+    await run.close()
+    await once.close()
+
+
 async def test_a_runs_folder_ports_reach_codex_and_its_commands(tmp_path: Path) -> None:
     """B108: set for the commands too, whatever the user's environment policy passes on."""
     ports = {"NEST_PORT": "41020", "NEST_PORT_1": "41021"}

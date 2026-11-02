@@ -1,7 +1,7 @@
 """Command line entry point.
 
 `nestd serve | service install|uninstall|status | pair | design generate|check|icon |
-gates changed | engines install`.
+gates changed|record | engines install`.
 """
 
 import argparse
@@ -33,6 +33,7 @@ from nestd.gates.errors import GatesError
 from nestd.gates.rules import ALL_PARTS, Selection, select
 from nestd.logging_setup import configure_logging
 from nestd.paths import AppPaths
+from nestd.perf.gate_times import GateRun, GateTimes, stage_times
 from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.shell_env import LoginShellEnv, login_shell
 from nestd.runtime import Runtime, default_runtime
@@ -102,6 +103,15 @@ def _parser() -> argparse.ArgumentParser:
     changed.add_argument("--base", default="main", help="base ref (default: main)")
     changed.add_argument("--root", type=Path, help="repository root (default: from git)")
     changed.set_defaults(handler=_gates_changed)
+    record = gates_actions.add_parser(
+        "record",
+        help="add a passing check's times to gate-times.jsonl in Nest's data folder",
+    )
+    record.add_argument("--total", type=int, required=True, help="the whole check, in ms")
+    record.add_argument(
+        "stages", nargs="+", metavar="part=ms", help="one per stage; summed per part"
+    )
+    record.set_defaults(handler=_gates_record)
 
     engines = commands.add_parser("engines", help="manage the engines Nest installs itself")
     engines_actions = engines.add_subparsers(required=True, metavar="action")
@@ -273,6 +283,18 @@ def _gates_changed(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> i
     for line in _explain(selection):
         print(line, file=rt.err)
     print(" ".join(selection.parts), file=rt.out)
+    return 0
+
+
+def _gates_record(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
+    """`make check` times each part's stages (B115); Settings > Performance shows them."""
+    try:
+        parts = stage_times(args.stages)
+    except ValueError as error:
+        raise GatesError(str(error)) from error
+    GateTimes.in_folder(paths.data_dir).record(
+        GateRun(at=rt.clock.now(), parts=parts, total_ms=args.total)
+    )
     return 0
 
 

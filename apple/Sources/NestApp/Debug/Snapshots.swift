@@ -269,6 +269,10 @@
                 try await renderIsland(controller, folder)
                 return
             }
+            if only == "b115" {
+                try await renderPerformance(model, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -432,6 +436,27 @@
             store.beginVisit()
             try await store.load()
             try await pairSettings(controller, .features, "b103-after-close", folder)
+        }
+
+        /// B115: Settings > Performance after a run, with a section that failed; while a run
+        /// runs; and before anything ran.
+        private static func renderPerformance(
+            _ model: AppModel, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            try await pairSettings(controller, .performance, "b115-finished", folder, height: 1_700)
+            _ = try await sample.runPerf(sections: [])
+            try await pairSettings(controller, .performance, "b115-running", folder, height: 1_700)
+            sample.setPerf(
+                PerfView(
+                    sections: SamplePerformance.view(now: Date()).sections.map { section in
+                        var never = section
+                        never.ranAt = nil
+                        never.error = nil
+                        return never
+                    }))
+            try await pairSettings(
+                controller, .performance, "b115-never-run", folder, height: 1_000)
         }
 
         /// B101: the start screen's open issues, and its draft once one is clicked; a chat

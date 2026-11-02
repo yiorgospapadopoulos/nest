@@ -296,7 +296,11 @@ def build_options(
         # Files can be restored to before a user message; the echo of each message the
         # run is sent carries the id to restore to (IMP-02).
         enable_file_checkpointing=True,
-        extra_args={"replay-user-messages": None, "thinking-display": "summarized"},
+        extra_args={
+            "replay-user-messages": None,
+            "thinking-display": "summarized",
+            **({} if spec.keep_history else {"no-session-persistence": None}),
+        },
     )
 
 
