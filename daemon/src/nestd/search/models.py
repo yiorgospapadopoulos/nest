@@ -3,11 +3,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-type HitKind = Literal["title", "user", "assistant", "tool", "tool_result", "claude_chat"]
+type HitKind = Literal[
+    "title", "user", "assistant", "tool", "tool_result", "claude_chat", "codex_chat"
+]
 
 
 class SearchHit(BaseModel):
-    # A Nest session, or a Claude Code chat Nest does not own (kind claude_chat).
+    # A Nest session, or a Claude Code or Codex chat Nest does not own (kind claude_chat
+    # or codex_chat).
     session_id: str
     repo: str
     # The chat's current title.
