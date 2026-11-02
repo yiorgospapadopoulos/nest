@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from nestd.cli import main
+from nestd.perf.collectors.gates import Gates
+from nestd.perf.gate_times import GateTimes
 from nestd.runtime import default_runtime
 from tests.git_support import git
 
@@ -154,3 +156,20 @@ def test_outside_a_repository_it_fails(tmp_path: Path, monkeypatch: pytest.Monke
     result = changed()
     assert result.code == 1
     assert "nestd: git rev-parse --show-toplevel failed: " in result.err
+
+
+async def test_recorded_gate_times_reach_the_performance_page(tmp_path: Path) -> None:
+    """`make check` records each part's stages (B115); the gates section shows them."""
+    out, err = io.StringIO(), io.StringIO()
+    runtime = dataclasses.replace(
+        default_runtime(), env={"NEST_DATA_DIR": str(tmp_path)}, out=out, err=err
+    )
+    stages = ["daemon=1000", "web=400", "daemon=5000", "web=600", "daemon=200"]
+
+    assert main(["gates", "record", "--total", "7300", *stages], runtime) == 0
+    assert main(["gates", "record", "--total", "1", "daemon=x"], runtime) == 1
+
+    collected = await Gates(GateTimes.in_folder(tmp_path))()
+    values = {m.id: m.value for m in collected.metrics}
+    assert values == {"daemon": 6200, "web": 1000, "apple": None, "whole": 7300}
+    assert collected.metrics[-1].sub == "Daemon, iPhone web app"

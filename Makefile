@@ -35,10 +35,23 @@ check-changed:
 	}; \
 	$(MAKE) --no-print-directory gates PARTS="$$parts"
 
+# A passing run's times, each stage per part, go to gate-times.jsonl in Nest's data folder
+# (NEST_DATA_DIR when set) for Settings > Performance (B115); a failure to record is only
+# reported.
+NOW_MS = perl -MTime::HiRes=time -e 'printf "%d", time * 1000'
+
 gates:
-	@for stage in lint test audit; do \
-	  for part in $(PARTS); do $(MAKE) --no-print-directory $$stage-$$part || exit 1; done; \
-	done
+	@started=$$($(NOW_MS)); times=""; \
+	for stage in lint test audit; do \
+	  for part in $(PARTS); do \
+	    stage_started=$$($(NOW_MS)); \
+	    $(MAKE) --no-print-directory $$stage-$$part || exit 1; \
+	    times="$$times $$part=$$(( $$($(NOW_MS)) - stage_started ))"; \
+	  done; \
+	done; \
+	total=$$(( $$($(NOW_MS)) - started )); \
+	[ -z "$$times" ] || (cd daemon && uv run nestd gates record --total $$total $$times) \
+	  || echo "gates: could not record the gate times"
 
 check-daemon: lint-daemon test-daemon audit-daemon
 check-web: lint-web test-web audit-web
