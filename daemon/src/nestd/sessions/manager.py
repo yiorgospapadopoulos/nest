@@ -1262,7 +1262,12 @@ class SessionManager:
             await self._engine_mode(live, mode)
 
         return SessionPrompts(
-            live.session_id, self._approvals, self._store, self._on_waiting, on_mode
+            live.session_id,
+            self._approvals,
+            self._store,
+            self._on_waiting,
+            on_mode,
+            calls=self._calls,
         )
 
     async def _engine_mode(self, live: LiveSession, mode: PermissionMode) -> None:

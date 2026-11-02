@@ -1,5 +1,6 @@
 """The pixies each project chat calls: recorded calls, continuing them, the group (B46)."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import timedelta
@@ -8,6 +9,8 @@ from pathlib import Path
 import pytest
 from pydantic import JsonValue
 
+from nestd.approvals.models import ApprovalStatus
+from nestd.config.models import PermissionMode
 from nestd.context import AppContext
 from nestd.errors import NotFoundError
 from nestd.events import types
@@ -18,11 +21,22 @@ from nestd.pixies.files import PixieFiles
 from nestd.pixies.models import CreatePixie, CreateTeam, Pixie, UpdatePixie, WriteFile
 from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
-from nestd.providers.base import AgentTask, MessageBlock, TextBlock, ToolResultBlock, ToolUseBlock
+from nestd.providers.base import (
+    AgentTask,
+    MessageBlock,
+    PermissionRequest,
+    QuestionRequest,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
+from nestd.providers.claude_tools import CALL_TOOL
 from nestd.sessions.models import NewSession, Session, SessionState
+from nestd.sessions.prompts import SessionPrompts
 from nestd.sessions.store import SessionStore
 from nestd.sessions.subagents import ChatAgents
 from tests.api_support import build_context
+from tests.async_support import until
 from tests.fakes import FakeClock, FakeSecretStore
 
 
@@ -47,7 +61,9 @@ class Chat:
             await self.ctx.pixies.update(self.pixies[name].id, UpdatePixie(team_id=self.team.id))
         self.session = await self.new_session("web")
 
-    async def new_session(self, repo: str, pixie_id: str | None = None) -> Session:
+    async def new_session(
+        self, repo: str, pixie_id: str | None = None, called_by: str | None = None
+    ) -> Session:
         return await self.store.create(
             NewSession(
                 repo=repo,
@@ -61,6 +77,7 @@ class Chat:
                 # Claude's pixies are its own subagents (B112).
                 provider="claude",
                 pixie_id=pixie_id,
+                called_by=called_by,
             )
         )
 
@@ -649,3 +666,99 @@ async def test_a_call_whose_messages_are_gone_keeps_its_state(chat: Chat) -> Non
 
     assert (work.tool_use_id, work.state, work.agent_id) == ("a1", "running", None)
     assert (work.prompt, work.messages, work.report) == (None, [], None)
+
+
+async def _payloads(
+    chat: Chat, *asks: tuple[Session, PermissionRequest | QuestionRequest]
+) -> list[dict[str, JsonValue]]:
+    """The payload of each request's approval, asked through its session's prompts."""
+
+    async def on_waiting(_session_id: str, _waiting: bool) -> None:
+        pass
+
+    async def on_mode(_session_id: str, _mode: PermissionMode) -> None:
+        pass
+
+    async def created() -> bool:
+        return bool(await chat.ctx.approvals.list_approvals(ApprovalStatus.PENDING))
+
+    payloads: list[dict[str, JsonValue]] = []
+    for session, request in asks:
+        prompts = SessionPrompts(
+            session.id, chat.ctx.approvals, chat.store, on_waiting, on_mode, calls=chat.log
+        )
+        asking = asyncio.ensure_future(
+            prompts.decide(request)
+            if isinstance(request, PermissionRequest)
+            else prompts.ask(request)
+        )
+        await until(created)
+        (approval,) = await chat.ctx.approvals.list_approvals(ApprovalStatus.PENDING)
+        # A called pixie's approval is its caller's (B112).
+        assert approval.session_id == chat.session.id
+        await chat.ctx.approvals.resolve(approval.id, {"behavior": "deny"})
+        await asking
+        payloads.append(approval.payload)
+    return payloads
+
+
+def _origin(payload: dict[str, JsonValue]) -> tuple[JsonValue, JsonValue] | None:
+    if "call" not in payload and "agent" not in payload:
+        return None
+    return payload.get("call"), payload.get("agent")
+
+
+async def test_an_approval_inside_a_pixie_call_names_the_call(chat: Chat) -> None:
+    """B114: the island finds the pixie that needs the user by the call its approval
+    names; the main agent's and a plain subagent's approvals name none.
+    """
+    await chat.say(agent("a1", "scribe"), agent("x1", "Explore"))
+    await chat.task(AgentTask(task_id="ag-scribe", phase="started", tool_use_id="a1"))
+    await chat.task(AgentTask(task_id="ag-explore", phase="started", tool_use_id="x1"))
+
+    payloads = await _payloads(
+        chat,
+        (chat.session, PermissionRequest("Bash", {}, agent_id="ag-scribe")),
+        (chat.session, QuestionRequest((), "toolu_q", agent_id="ag-scribe")),
+        (chat.session, PermissionRequest("Bash", {})),
+        (chat.session, PermissionRequest("Bash", {}, agent_id="ag-explore")),
+    )
+
+    assert [_origin(p) for p in payloads] == [("a1", "a1"), ("a1", "a1"), None, None]
+
+
+async def test_a_team_members_approval_names_its_leaders_call(chat: Chat) -> None:
+    await chat.say(agent("l1", "lead"))
+    await chat.task(AgentTask(task_id="ag-lead", phase="started", tool_use_id="l1"))
+    await chat.sub("l1", agent("b1", "bugs"))
+    await chat.task(AgentTask(task_id="ag-bugs", phase="started", tool_use_id="b1"))
+
+    payloads = await _payloads(
+        chat,
+        (chat.session, PermissionRequest("Edit", {}, agent_id="ag-bugs")),
+        (chat.session, QuestionRequest((), agent_id="ag-lead")),
+    )
+
+    assert [_origin(p) for p in payloads] == [("l1", "b1"), ("l1", "l1")]
+
+
+async def test_a_called_sessions_approvals_name_its_call(chat: Chat) -> None:
+    """A pixie called with the call tool asks in a session of its own; a member its
+    leader calls there as a subagent is named under the leader's call, and any other
+    subagent of the called session as the call itself.
+    """
+    lead = await chat.new_session("web", called_by=chat.session.id)
+    await chat.say(ToolUseBlock(id="c1", name=CALL_TOOL, input={"pixie": "lead", "task": "t"}))
+    await chat.task(AgentTask(task_id=lead.id, phase="started", tool_use_id="c1"))
+    # The leader's work, relayed under its call: it calls a member as its own subagent.
+    await chat.sub("c1", agent("b1", "bugs"))
+    await chat.task(AgentTask(task_id="ag-bugs", phase="started", tool_use_id="b1"))
+
+    payloads = await _payloads(
+        chat,
+        (lead, PermissionRequest("Bash", {})),
+        (lead, PermissionRequest("Bash", {}, agent_id="ag-bugs")),
+        (lead, PermissionRequest("Bash", {}, agent_id="ag-plain")),
+    )
+
+    assert [_origin(p) for p in payloads] == [("c1", "c1"), ("c1", "b1"), ("c1", "c1")]

@@ -19,10 +19,11 @@ USER_INPUT = "item/tool/requestUserInput"
 NOTE = "user_note: "
 
 
-def question_request(params: JsonObject) -> QuestionRequest:
+def question_request(params: JsonObject, agent_id: str | None = None) -> QuestionRequest:
     return QuestionRequest(
         questions=tuple(_question(obj(raw)) for raw in items(params.get("questions"))),
         tool_use_id=text(params.get("itemId")) or None,
+        agent_id=agent_id,
     )
 
 

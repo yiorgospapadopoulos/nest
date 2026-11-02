@@ -3,7 +3,7 @@
 import hashlib
 import json
 import re
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from typing import Protocol
@@ -144,6 +144,17 @@ none to call. The session is the calling chat.
 """
 
 
+@dataclass(frozen=True)
+class CallOrigin:
+    """The pixie call an approval comes from, by tool use id as the chat's group lists
+    its calls (B114): `call` the group's slot (a team member's leader call), `agent` the
+    innermost call (the member's own).
+    """
+
+    call: str
+    agent: str
+
+
 class PixieCalls(Protocol):
     """Follows the pixies a project chat's run calls (B46), with the run's `agents`."""
 
@@ -166,6 +177,12 @@ class PixieCalls(Protocol):
         ...
 
     async def task(self, session_id: str, agents: ChatAgents, update: AgentTask) -> None: ...
+
+    async def origin(self, session_id: str, agent_ids: Sequence[str]) -> CallOrigin | None:
+        """The chat's running pixie call whose agent is the first of `agent_ids` it has
+        (engine subagent ids and called sessions, innermost first); None when none is.
+        """
+        ...
 
 
 class CallBridge(Protocol):

@@ -5,9 +5,9 @@ returns its report. Claude-to-Claude calls stay subagents.
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -222,6 +222,54 @@ async def test_a_team_member_is_called_only_by_its_leader(api: Api) -> None:
 
     assert "member is in a team and is called only by its leader" in outcome[0]
     assert await _call_sessions(api, member) == []
+
+
+async def test_a_called_pixies_approvals_name_the_call_in_the_caller(api: Api) -> None:
+    """B114: a permission and a question of a pixie called on Codex are the caller's, and
+    name the call as the caller's pixie group lists it.
+    """
+    coder = await _pixie(api, "Coder", provider="codex")
+    api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
+    outcome: list[str] = []
+    api.provider.script(calls("coder", "Take your time", outcome))
+    chat_id = str((await create(api, mode="in_place"))["id"])
+
+    async def called() -> bool:
+        return [s["state"] for s in await _call_sessions(api, coder)] == ["running"]
+
+    await until(called)
+    await until(lambda: any("turn/start" in t.methods for t in api.codex.transports))
+    # The called pixie's connection; the engine's short-lived ones may come after it.
+    run = next(t for t in api.codex.transports if "turn/start" in t.methods)
+    question: JsonObject = {"id": "q1", "header": "H", "question": "Which?", "options": []}
+    requests: list[tuple[str, JsonObject]] = [
+        ("item/commandExecution/requestApproval", {"itemId": "c1", "command": "npm test"}),
+        ("item/tool/requestUserInput", {"itemId": "u1", "questions": [question]}),
+    ]
+    asking = [
+        asyncio.create_task(api.codex.request(method, {"threadId": "thread-1", **params}, run))
+        for method, params in requests
+    ]
+
+    async def pending() -> list[dict[str, Any]]:
+        return (await api.http.get("/api/approvals", params={"status": "pending"})).json()
+
+    await until(lambda: _count(pending, 2))
+    group = (await api.http.get(f"/api/sessions/{chat_id}/pixies")).json()
+    [listed] = [call["tool_use_id"] for entry in group for call in entry["calls"]]
+    assert listed == "tu1"
+    assert sorted(
+        (a["kind"], a["session_id"], a["payload"]["call"], a["payload"]["agent"])
+        for a in await pending()
+    ) == [("permission", chat_id, "tu1", "tu1"), ("question", chat_id, "tu1", "tu1")]
+    await api.http.delete(f"/api/sessions/{chat_id}")
+    for task in asking:
+        task.cancel()
+    await asyncio.gather(*asking, return_exceptions=True)
+
+
+async def _count(read: Callable[[], Awaitable[list[dict[str, Any]]]], n: int) -> bool:
+    return len(await read()) == n
 
 
 async def test_a_called_pixie_that_fails_fails_the_call(api: Api) -> None:

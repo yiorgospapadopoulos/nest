@@ -317,7 +317,11 @@ class CodexProvider:
         try:
             run = CodexRun(spec, sink, tools)
             approvals = CodexApprovals(
-                handler, run.permissions, run.stream.file_changes.get, run.stream.mcp_call
+                handler,
+                run.permissions,
+                run.stream.file_changes.get,
+                run.stream.mcp_call,
+                subthread=lambda thread_id: run.stream.agents.thread(thread_id) is not None,
             )
             extra_env = {
                 **spec.env,

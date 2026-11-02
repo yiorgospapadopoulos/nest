@@ -466,6 +466,8 @@ class PermissionRequest:
     # suggests, else that exact call (B59). None when a provider has no rule to offer, and
     # "always" then allows the tool by name (IMP-06).
     always_rule: str | None = None
+    # The engine's id of the subagent that asks, as its task id; None for the main agent.
+    agent_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -498,6 +500,8 @@ class QuestionRequest:
 
     questions: tuple[Question, ...]
     tool_use_id: str | None = None
+    # The subagent that asks, as in `PermissionRequest`.
+    agent_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -513,6 +517,8 @@ class PlanRequest:
 
     plan: str
     tool_use_id: str | None = None
+    # The subagent that asks, as in `PermissionRequest`.
+    agent_id: str | None = None
 
 
 @dataclass(frozen=True)
