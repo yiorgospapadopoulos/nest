@@ -19,6 +19,7 @@ const KIND_LABELS: Record<SearchHit["kind"], string> = {
   tool: "Tool",
   tool_result: "Output",
   claude_chat: "Claude Code",
+  codex_chat: "Codex",
 };
 
 /** Text with the daemon's [[match]] markers shown highlighted. */
@@ -109,7 +110,7 @@ export function SearchResultsList({ query, onOpenChat, onOpenClaudeChat, onOpenP
   const open = (group: ChatHits, event: number | null) => {
     const pixie = pixieOf(group);
     if (pixie !== null) onOpenPixie(pixie);
-    else if (group.claude) onOpenClaudeChat(group.id);
+    else if (group.engine !== null) onOpenClaudeChat(group.id);
     else if (event === null) onOpenChat(group.id);
     else onOpenChat(group.id, event);
   };
@@ -138,8 +139,8 @@ export function SearchResultsList({ query, onOpenChat, onOpenClaudeChat, onOpenP
               <span className="rm">
                 {pixieId !== null
                   ? (pixie?.name ?? "Pixie")
-                  : group.claude
-                    ? `${group.repo} · Claude Code`
+                  : group.engine !== null
+                    ? `${group.repo} · ${group.engine}`
                     : projectName(group.repo)}
               </span>
             </button>

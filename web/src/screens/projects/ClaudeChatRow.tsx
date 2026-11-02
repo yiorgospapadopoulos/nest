@@ -1,6 +1,7 @@
 import type { ClaudeChat } from "../../api/types.ts";
 import { ago } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
+import { outsideEngineName } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { claudeChatPlace, placeLabel } from "../chat/place.ts";
@@ -14,7 +15,7 @@ interface Props {
 }
 
 /**
- * A Claude Code chat in the list, marked like a Nest chat by where it works (B55);
+ * A Claude Code or Codex chat in the list, marked like a Nest chat by where it works (B55);
  * tap opens its history, gestures its actions.
  */
 export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
@@ -29,7 +30,7 @@ export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
     <div className="lrow">
       <button
         className="row"
-        aria-label={`${chat.title}, Claude Code chat${open}${placeLabel(place)}`}
+        aria-label={`${chat.title}, ${outsideEngineName(chat)} chat${open}${placeLabel(place)}`}
         data-chat={chat.id}
         {...gestures}
       >
@@ -39,6 +40,12 @@ export function ClaudeChatRow({ chat, onOpen, onActions }: Props) {
           <span className="rt">{chat.title}</span>
           <span className="rsub">
             <PlaceMark place={place} />
+            {chat.engine === "codex" && (
+              <>
+                {place !== null && <span aria-hidden="true">·</span>}
+                <span>Codex</span>
+              </>
+            )}
           </span>
         </span>
         <span className="rtime">{ago(chat.last_activity_at, new Date())}</span>

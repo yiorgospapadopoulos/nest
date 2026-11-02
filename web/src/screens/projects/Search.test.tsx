@@ -156,6 +156,46 @@ describe("search", () => {
     expect(document.querySelector(".hit")).toBeNull();
   });
 
+  it("names Codex chats Codex and opens them read only (B113)", async () => {
+    const api = fakeApi();
+    api.repos.mockResolvedValue([repo("todo-ui")]);
+    api.claudeChats.mockResolvedValue([
+      claudeChat({ id: "x1", title: "Port the parser", engine: "codex" }),
+    ]);
+    api.claudeChatEvents.mockResolvedValue([]);
+    api.search.mockResolvedValue({
+      hits: [
+        hit({
+          session_id: "x1",
+          title: "Port the parser",
+          event_id: null,
+          kind: "codex_chat",
+          snippet: "Port the [[parser]]",
+        }),
+        hit({
+          session_id: "x1",
+          title: "Port the parser",
+          event_id: 2,
+          kind: "codex_chat",
+          snippet: "The [[parser]] reads tokens",
+        }),
+      ],
+      indexing: false,
+    });
+    const { user } = await renderApp({ api });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+
+    await user.type(field(), "parser");
+    const results = await screen.findByLabelText("Search results");
+    expect(within(results).queryByText(/Claude Code/)).not.toBeInTheDocument();
+    expect(
+      within(results).getByRole("button", { name: /^CodexThe parser reads tokens$/ }),
+    ).toBeInTheDocument();
+    await user.click(within(results).getByRole("button", { name: /todo-ui · Codex/ }));
+
+    expect(await screen.findByRole("button", { name: "Continue in Nest" })).toBeInTheDocument();
+  });
+
   it("names General's chats General (B110)", async () => {
     const { user } = await openProjects([
       hit({ repo: "general", title: "Disk", event_id: null, kind: "title", snippet: "[[Disk]]" }),
