@@ -13,6 +13,7 @@
         static let size = CGSize(width: 1440, height: 900)
 
         static func runIfRequested() {
+            IslandDemo.runIfRequested()
             let arguments = CommandLine.arguments
             guard
                 let index = arguments.firstIndex(where: {
@@ -262,6 +263,10 @@
             }
             if only == "b103" {
                 try await renderFeatures(model, shell, controller, folder)
+                return
+            }
+            if only == "b114" {
+                try await renderIsland(controller, folder)
                 return
             }
 
@@ -4053,6 +4058,23 @@
             )
             let shell = Shell(model: model)
             let controller = AppController(shell: shell, service: sampleService())
+            // The island first: the workspace opens a chat, which counts as seen.
+            await model.island.loadActivity(model.island.state())
+            let island = model.island.state()
+            for entry in island.list {
+                print("island: \(entry.label) \(entry.status) \"\(entry.activity)\" \(entry.id)")
+            }
+            print("island: left \(island.left.count), right \(island.right.count)")
+            print("island: nightshade \(String(describing: island.nightshade))")
+            try await snapIsland(
+                island, free: (left: 220, right: 150), pill: false, open: false,
+                name: "live-island", folder)
+            try await snapIsland(
+                island, free: (left: IslandLayout.smallest, right: IslandLayout.smallest),
+                pill: false, open: false, name: "live-island-smallest", folder)
+            try await snapIsland(
+                island, free: (left: 220, right: 150), pill: false, open: true,
+                name: "live-island-list", folder)
             try await snap(controller, "live-workspace", .aqua, folder)
             shell.show(.palette)
             print("palette entries: \(shell.palette.items.count)")
@@ -4152,6 +4174,173 @@
                 ]))
             try await pair(controller, "b81-usage-warning", folder)
             model.usage.dismissWarning()
+        }
+
+        /// B114: the island around the notch in its states, the smallest form, the pill on
+        /// a screen without a notch, the open list, and its settings.
+        private static func renderIsland(_ controller: AppController, _ folder: URL) async throws {
+            let now = Date()
+            func entry(
+                _ id: String, _ status: IslandStatus, _ minutes: Double, activity: String? = nil,
+                team: [String]? = nil
+            ) -> IslandEntry {
+                IslandSamples.entry(
+                    id, status, since: now.addingTimeInterval(-minutes * 60), activity: activity,
+                    team: team)
+            }
+            let docs = ["bluebell", "rose", "sprig", "star"]
+            let crowd = [
+                entry("brook", .working, 1, activity: "Running the tests"),
+                entry("firefly", .working, 2, activity: "Writing parser tests"),
+                entry("moth", .working, 3), entry("dragonfly", .working, 4),
+                entry("Docs team", .needsYou, 5, activity: "Permission · npm install", team: docs),
+                entry("frost", .done, 6), entry("rose", .seen, 7, activity: "Asks about a term"),
+                entry("sprig", .needsYou, 8), entry("star", .failed, 9, activity: "Failed"),
+            ]
+            let wide = (left: 220.0, right: 220.0)
+            let smallest = (left: IslandLayout.smallest, right: IslandLayout.smallest)
+            let cases: [(String, IslandState, (left: Double, right: Double), Bool, Bool)] = [
+                ("idle", IslandSamples.state([]), wide, false, false),
+                ("asleep", IslandSamples.state([], nightshade: .asleep), wide, false, false),
+                ("chat-working", IslandSamples.state([], nightshade: .working), wide, false, false),
+                ("working", IslandSamples.state([entry("brook", .working, 1)]), wide, false, false),
+                (
+                    "team", IslandSamples.state([entry("Docs team", .working, 1, team: docs)]),
+                    wide, false, false
+                ),
+                ("done", IslandSamples.state([entry("brook", .done, 1)]), wide, false, false),
+                (
+                    "needs-you",
+                    IslandSamples.state([
+                        entry("Docs team", .needsYou, 1, team: docs), entry("moth", .seen, 2),
+                    ]), wide, false, false
+                ),
+                ("crowded", IslandSamples.state(crowd), wide, false, false),
+                ("smallest", IslandSamples.state(crowd), smallest, false, false),
+                ("list", IslandSamples.state(crowd), wide, false, true),
+                ("list-empty", IslandSamples.state([]), wide, false, true),
+                ("pill-idle", IslandSamples.state([], pill: true), wide, true, false),
+                (
+                    "pill", IslandSamples.state(Array(crowd.prefix(6)), pill: true), wide, true,
+                    false
+                ),
+                (
+                    "pill-list", IslandSamples.state(Array(crowd.prefix(6)), pill: true), wide,
+                    true, true
+                ),
+            ]
+            for (name, state, free, pill, open) in cases {
+                try await snapIsland(
+                    state, free: free, pill: pill, open: open, name: "b114-\(name)", folder)
+            }
+            try await snapIsland(
+                IslandSamples.state(Array(crowd.prefix(6))), free: wide, pill: false, open: false,
+                reduceMotion: true, name: "b114-reduced", folder)
+            try await snapIsland(
+                IslandSamples.state(Array(crowd.prefix(6))), free: wide, pill: false, open: false,
+                layers: true, name: "b114-layers", folder)
+            try await pairSettings(controller, .appearance, "b114-settings", folder, height: 1_000)
+        }
+
+        /// The Core Animation part alone (the strip and glows) as the window composites it,
+        /// rendered from the window's top layer so every flip on the way down counts. AppKit's
+        /// drawn layers are left out: rendered this way their clear backing comes out opaque.
+        private static func snapLayers(
+            of island: NSView, size: CGSize, name: String, _ folder: URL
+        ) throws {
+            var top = island.layer
+            while let above = top?.superlayer { top = above }
+            guard let layer = top,
+                let context = CGContext(
+                    data: nil, width: Int(size.width * 2), height: Int(size.height * 2),
+                    bitsPerComponent: 8, bytesPerRow: 0,
+                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return }
+            context.setFillColor(CGColor(srgbRed: 0.08, green: 0.08, blue: 0.11, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: size.width * 2, height: size.height * 2))
+            context.scaleBy(x: 2, y: 2)
+            let appKit = (island.layer?.sublayers ?? []).filter { $0.contentsAreFlipped() }
+            for sub in appKit { sub.isHidden = true }
+            layer.render(in: context)
+            for sub in appKit { sub.isHidden = false }
+            guard let image = context.makeImage() else { return }
+            try NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: folder.appending(path: "\(name).png"))
+            print("wrote \(name).png")
+        }
+
+        /// The island over a dark desktop with a menu bar, drawn at rest at one moment.
+        private static func snapIsland(
+            _ state: IslandState, free: (left: Double, right: Double), pill: Bool, open: Bool,
+            reduceMotion: Bool = false, layers: Bool = false, name: String, _ folder: URL
+        ) async throws {
+            let bar = 37.0
+            let size = CGSize(width: 640, height: open ? 340 : 110)
+            let notch = 200.0
+            let geometry =
+                pill
+                ? IslandGeometry(
+                    pill: true, notchMinX: size.width / 2 - IslandLayout.pillGap,
+                    notchMaxX: size.width / 2 + IslandLayout.pillGap, top: bar + 6, height: 34)
+                : IslandGeometry(
+                    pill: false, notchMinX: (size.width - notch) / 2,
+                    notchMaxX: (size.width + notch) / 2, top: 0, height: bar)
+            let desktop = NSView(frame: CGRect(origin: .zero, size: size))
+            let island = IslandView(geometry: geometry)
+            island.frame = desktop.bounds
+            island.scene.reduceMotion = reduceMotion
+            island.scene.wantsOpen = open
+            desktop.addSubview(island)
+            let window = NSWindow(
+                contentRect: CGRect(origin: CGPoint(x: -30_000, y: -30_000), size: size),
+                styleMask: [.borderless], backing: .buffered, defer: false)
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+            window.contentView = desktop
+            island.show(
+                state, fit: IslandLayout.fit(state, left: free.left, right: free.right, pill: pill))
+            island.hold(at: 1_000_000, usesLayers: layers)
+            desktop.layoutSubtreeIfNeeded()
+            island.display()
+            try await Task.sleep(for: .milliseconds(400))
+            desktop.display()
+            if layers {
+                // The live path: the strip, glows and rings as Core Animation shows them.
+                try snapLayers(of: island, size: size, name: name, folder)
+                window.contentView = nil
+                return
+            }
+            guard let bitmap = desktop.bitmapImageRepForCachingDisplay(in: desktop.bounds) else {
+                return
+            }
+            desktop.cacheDisplay(in: desktop.bounds, to: bitmap)
+            // The island over a dark desktop and its menu bar, drawn under it here.
+            guard
+                let image = NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: bitmap.pixelsWide,
+                    pixelsHigh: bitmap.pixelsHigh, bitsPerSample: 8, samplesPerPixel: 4,
+                    hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0,
+                    bitsPerPixel: 0)
+            else { return }
+            let pixels = CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+            let scale = Double(bitmap.pixelsHigh) / size.height
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: image)
+            NSColor(srgbRed: 0.08, green: 0.08, blue: 0.11, alpha: 1).setFill()
+            pixels.fill()
+            NSColor(srgbRed: 0.16, green: 0.16, blue: 0.2, alpha: 1).setFill()
+            CGRect(
+                x: 0, y: pixels.height - bar * scale, width: pixels.width, height: bar * scale
+            ).fill()
+            bitmap.draw(
+                in: pixels, from: .zero, operation: .sourceOver, fraction: 1,
+                respectFlipped: false, hints: nil)
+            NSGraphicsContext.restoreGraphicsState()
+            try image.representation(using: .png, properties: [:])?
+                .write(to: folder.appending(path: "\(name).png"))
+            window.contentView = nil
+            print("wrote \(name).png")
         }
 
         /// The same state in light and dark.
