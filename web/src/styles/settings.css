@@ -670,3 +670,250 @@
     transition: none;
   }
 }
+
+/* Performance (B115): the last run and the buttons, four top numbers, then a card per
+   section with each metric's previous and latest run as two thin bars. */
+.pf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 12px 16px 0;
+}
+.pf-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+.pf-btns {
+  display: flex;
+  gap: 8px;
+}
+.pf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 14px 16px 0;
+}
+.pf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--r-phone);
+  background: var(--soft);
+}
+.pf-wide {
+  grid-column: 1 / -1;
+}
+.pf-cl,
+.pf-kv {
+  font-size: var(--fs-label);
+  color: var(--t2);
+}
+.pf-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.pf-kv b,
+.pf-key b {
+  font-weight: 400;
+  color: var(--t1);
+}
+.pf-hl {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.pf-big {
+  font-size: 1.2941rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.pf-stack {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+.pf-stack i {
+  display: block;
+  flex: 0 1 0;
+  min-width: 3px;
+  border-radius: 2px;
+  background: var(--c);
+}
+.pf-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-label);
+  color: var(--t2);
+}
+.pf-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pf-key i,
+.pf-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c);
+}
+.pf-p0 {
+  --c: var(--lane-root);
+}
+.pf-p1 {
+  --c: var(--lane-blue);
+}
+.pf-p2 {
+  --c: var(--lane-orange);
+}
+.pf-p3 {
+  --c: var(--lane-teal);
+}
+.pf-p4 {
+  --c: var(--lane-violet);
+}
+.pf-p5 {
+  --c: var(--lane-pink);
+}
+.pf-p6 {
+  --c: var(--lane-lime);
+}
+.pf-p7 {
+  --c: var(--lane-yellow);
+}
+.pf-rest {
+  --c: var(--fill2);
+}
+.pf-legend {
+  display: flex;
+  gap: 14px;
+  margin: 14px 16px 0;
+  font-size: var(--fs-label);
+  color: var(--t2);
+}
+.pf-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pf-prev {
+  --c: var(--fill2);
+}
+.pf-now {
+  --c: var(--run);
+}
+.pf-sh h2 {
+  margin: 0;
+  font: inherit;
+}
+.set .pf-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.set .pf-tools .lnk {
+  margin-left: 0;
+  max-width: none;
+}
+.set .pf-tools .sst {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pf-live {
+  font-weight: 500;
+  color: var(--wait);
+}
+/* A metric: its label, value and change on a line, the two bars under them. */
+.set .srow.pf-m {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(3.5em, auto);
+  gap: 5px 12px;
+  align-items: baseline;
+  padding: 8px 16px;
+}
+.pf-v,
+.pf-c {
+  text-align: right;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pf-c {
+  color: var(--t3);
+}
+.pf-c.pf-better {
+  color: var(--ok);
+}
+.pf-c.pf-worse {
+  color: var(--bad);
+}
+.pf-bars {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+}
+.pf-bars i {
+  display: block;
+  height: 4px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--c);
+}
+.pf-busy .lgrp {
+  opacity: 0.55;
+}
+.set .pf-err {
+  color: var(--bad);
+}
+.set .srow.pf-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 64px;
+  padding: 10px 16px;
+}
+.pf-days i {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--run) 55%, transparent);
+}
+.pf-adv {
+  margin: 14px 16px 0;
+  border-top: 1px solid var(--div);
+}
+.pf-adv .pf-sec {
+  margin: 0 -16px;
+}
+.pf-tdot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--t3);
+}
+.pf-tdot.pf-better {
+  background: var(--ok);
+}
+.pf-tdot.pf-worse {
+  background: var(--bad);
+}
+.set .srow.pf-change {
+  justify-content: flex-start;
+}

@@ -1087,6 +1087,69 @@ export interface StoredAttachment {
   created_at: string;
 }
 
+/** How a metric is measured (B115); the daemon formats every value as text too. */
+export type PerfUnit = "tokens" | "ms" | "bytes" | "percent" | "count";
+
+/** Whether a change is good news: better, worse, or neither. */
+export type PerfTone = "better" | "worse" | "same";
+
+/** A metric's change against the previous run, as the daemon writes it ("▼ 25%"). */
+export interface PerfChange {
+  text: string;
+  direction: string;
+  tone: PerfTone;
+}
+
+export interface PerfPart {
+  label: string;
+  value: number;
+  text: string;
+}
+
+/** One measured number of a Performance section, with the previous run's beside it. */
+export interface PerfMetric {
+  id: string;
+  label: string;
+  sub: string | null;
+  value: number | null;
+  unit: PerfUnit;
+  text: string;
+  previous: number | null;
+  previous_text: string | null;
+  change: PerfChange | null;
+  parts: PerfPart[] | null;
+}
+
+export interface PerfSeries {
+  label: string;
+  points: { day: string; value: number }[];
+}
+
+/** A section of Settings > Performance; `runner` "mac" is measured by the Mac app only. */
+export interface PerfSection {
+  id: string;
+  title: string;
+  advanced: boolean;
+  runner: "daemon" | "mac";
+  // A run spends usage.
+  live: boolean;
+  ran_at: string | null;
+  error: string | null;
+  note: string | null;
+  metrics: PerfMetric[];
+  series: PerfSeries | null;
+}
+
+/** Settings > Performance (`GET /api/perf`, B115). */
+export interface PerfView {
+  running: { id: string; sections: string[]; started_at: string } | null;
+  last_run: { finished_at: string; duration_ms: number } | null;
+  cards: PerfMetric[];
+  sections: PerfSection[];
+  changes: { text: string; tone: PerfTone }[];
+  runs: number;
+}
+
 /** The [usage] section; PUT sends it back whole. */
 export interface UsageSettings {
   // 0 turns the refresh off.

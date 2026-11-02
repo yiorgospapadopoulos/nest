@@ -19,6 +19,7 @@ import type {
   Marketplace,
   PluginDetails,
   PairingCode,
+  PerfView,
   RepoConfig,
   RepoPatch,
   StorageUsage,
@@ -195,6 +196,20 @@ export function settingsActions(api: Api, { dispatch, attempt, quietly, toast }:
       if ((await attempt(() => api.rebuildSearch().then(() => true))) !== null) {
         toast("Rebuilding the search index");
       }
+    },
+
+    /** Settings > Performance (B115): the latest runs; null, after a toast, when it cannot load. */
+    perf(): Promise<PerfView | null> {
+      return attempt(() => api.perf());
+    },
+
+    /** Starts a run of `sections`, every one the Mac's daemon runs when empty. */
+    runPerf(sections: string[]): Promise<PerfView | null> {
+      return attempt(() => api.runPerf(sections));
+    },
+
+    clearPerf(): Promise<PerfView | null> {
+      return attempt(() => api.clearPerf());
     },
 
     /** The daemon's version; quiet, as the page works without it. */

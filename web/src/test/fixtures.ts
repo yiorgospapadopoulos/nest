@@ -44,6 +44,9 @@ import type {
   Marketplace,
   PluginDetails,
   PixieDefaults,
+  PerfMetric,
+  PerfSection,
+  PerfView,
   StorageUsage,
   StoredAttachment,
   StuckSettings,
@@ -717,6 +720,163 @@ export function storageUsage(overrides: Partial<StorageUsage> = {}): StorageUsag
     other_bytes: 0,
     ...overrides,
   };
+}
+
+export function perfMetric(overrides: Partial<PerfMetric> = {}): PerfMetric {
+  return {
+    id: "biggest_chat",
+    label: "Biggest chat",
+    sub: "2.1 MB",
+    value: 1800,
+    unit: "ms",
+    text: "1.8 s",
+    previous: 2400,
+    previous_text: "2.4 s",
+    change: { text: "▼ 25%", direction: "down", tone: "better" },
+    parts: null,
+    ...overrides,
+  };
+}
+
+export function perfSection(overrides: Partial<PerfSection> = {}): PerfSection {
+  return {
+    id: "load",
+    title: "Load speed",
+    advanced: false,
+    runner: "daemon",
+    live: false,
+    ran_at: NOW,
+    error: null,
+    note: null,
+    metrics: [
+      perfMetric({
+        id: "open_app",
+        label: "Open the app",
+        sub: null,
+        value: 420,
+        text: "0.42 s",
+        previous: 480,
+        previous_text: "0.48 s",
+        change: { text: "▼ 12%", direction: "down", tone: "better" },
+      }),
+      perfMetric(),
+      perfMetric({
+        id: "slow_network",
+        label: "Slow phone network",
+        sub: null,
+        value: 6000,
+        text: "6 s",
+        previous: 5000,
+        previous_text: "5 s",
+        change: { text: "▲ 20%", direction: "up", tone: "worse" },
+      }),
+    ],
+    series: null,
+    ...overrides,
+  };
+}
+
+/** Settings > Performance after a finished run (B115). */
+export function perfView(overrides: Partial<PerfView> = {}): PerfView {
+  return {
+    running: null,
+    last_run: { finished_at: NOW, duration_ms: 102_000 },
+    cards: [
+      perfMetric({
+        id: "context_total",
+        label: "Context cost of a new chat",
+        sub: "20% of the context window",
+        value: 39_700,
+        unit: "tokens",
+        text: "39.7k",
+        previous: 38_500,
+        previous_text: "38.5k",
+        change: { text: "▲ 1.2k", direction: "up", tone: "worse" },
+        parts: [
+          { label: "System prompt", value: 23_000, text: "23k" },
+          { label: "Tools", value: 5_200, text: "5.2k" },
+          { label: "Nest tools", value: 6_200, text: "6.2k" },
+        ],
+      }),
+      perfMetric({
+        id: "cache_hit",
+        label: "Cache hit rate",
+        sub: null,
+        value: 91,
+        unit: "percent",
+        text: "91%",
+        previous: 97,
+        previous_text: "97%",
+        change: { text: "▼ 6%", direction: "down", tone: "worse" },
+        parts: [
+          { label: "Claude", value: 93, text: "93%" },
+          { label: "Codex", value: 74, text: "74%" },
+        ],
+      }),
+    ],
+    sections: [
+      perfSection({
+        id: "context",
+        title: "Context cost",
+        live: true,
+        metrics: [
+          perfMetric({
+            id: "tool_search_on",
+            label: "Tool search on",
+            sub: null,
+            value: 39_700,
+            unit: "tokens",
+            text: "39.7k",
+            previous: 38_500,
+            previous_text: "38.5k",
+            change: { text: "▲ 1.2k", direction: "up", tone: "worse" },
+          }),
+        ],
+      }),
+      perfSection(),
+      perfSection({
+        id: "activity",
+        title: "Activity",
+        metrics: [
+          perfMetric({
+            id: "turns_per_day",
+            label: "Turns per day",
+            sub: null,
+            value: 212,
+            unit: "count",
+            text: "212",
+            previous: 180,
+            previous_text: "180",
+            change: { text: "▲ 18%", direction: "up", tone: "same" },
+          }),
+        ],
+        series: {
+          label: "Turns per day",
+          points: [
+            { day: "2026-10-04", value: 100 },
+            { day: "2026-10-05", value: 50 },
+            { day: "2026-10-06", value: 0 },
+          ],
+        },
+      }),
+      perfSection({ id: "daemon", title: "Daemon", advanced: true }),
+      perfSection({ id: "mac", title: "Mac app", advanced: true, runner: "mac" }),
+    ],
+    changes: [{ text: "Context +1.2k: new MCP server linear", tone: "worse" }],
+    runs: 3,
+    ...overrides,
+  };
+}
+
+/** Settings > Performance before its first run. */
+export function perfNeverRun(): PerfView {
+  return perfView({
+    last_run: null,
+    cards: [],
+    changes: [],
+    runs: 0,
+    sections: perfView().sections.map((s) => ({ ...s, ran_at: null, metrics: [], series: null })),
+  });
 }
 
 export function storedAttachment(overrides: Partial<StoredAttachment> = {}): StoredAttachment {

@@ -498,6 +498,10 @@ const calls: Call[] = [
     undefined,
   ],
   ["rebuild search", (a) => a.rebuildSearch(), "POST", "/api/search/rebuild", undefined],
+  ["perf", (a) => a.perf(), "GET", "/api/perf", undefined],
+  ["run all perf", (a) => a.runPerf([]), "POST", "/api/perf/runs", { sections: [] }],
+  ["run perf", (a) => a.runPerf(["load"]), "POST", "/api/perf/runs", { sections: ["load"] }],
+  ["clear perf", (a) => a.clearPerf(), "POST", "/api/perf/clear", undefined],
   ["usage settings", (a) => a.usageSettings(), "GET", "/api/usage/settings", undefined],
   [
     "save usage settings",

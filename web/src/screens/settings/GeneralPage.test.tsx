@@ -23,6 +23,7 @@ describe("settings list", () => {
       "Notifications",
       "Agents",
       "Usage",
+      "Performance",
       "Storage",
       "Pixies",
       "Accounts",
