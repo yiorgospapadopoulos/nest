@@ -96,6 +96,60 @@
   text-overflow: ellipsis;
 }
 
+/* The usage beside the +, as the Mac's tab strip chip (B116): each account a thin bar and
+   "63% 2h". The entries wrap inside one 44 point line, so one without room hides. */
+.uchip {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  justify-content: flex-end;
+  height: 44px;
+  min-width: 0;
+  /* Only the room the project's name and branch leave, so they never give way to it. */
+  flex: 1 1 0;
+  overflow: hidden;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-micro);
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.uchip + .bar-add {
+  margin-left: 0;
+}
+.uce {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  white-space: nowrap;
+}
+.ucm {
+  font-family: var(--mono);
+  color: var(--t3);
+}
+.ucbar {
+  position: relative;
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fill);
+  overflow: hidden;
+}
+.ucbar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--t2);
+}
+.uce.warn .ucbar i {
+  background: var(--wait);
+}
+.uce.bad .ucbar i {
+  background: var(--fail-t);
+}
+
 /* A small grey section label with its count, as the Mac sidebar's (B102 item 16). */
 .lbl {
   display: flex;
@@ -2808,4 +2862,192 @@ div.pxr:active {
   display: block;
   font: 0.7059rem/1.4 var(--mono);
   color: var(--lane-blue);
+}
+
+/* GitHub issues and review comments on the phone (B116 item 3, B101). */
+/* Needs you: an item raised in a pixie call names the pixie first (B114). */
+.npix {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: -2px;
+}
+.npix svg {
+  flex: none;
+}
+/* A review comment's place with its own Send. */
+.rch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rch .rcp {
+  flex: 1;
+  min-width: 0;
+}
+.rch .lnk {
+  flex: none;
+  min-height: 44px;
+  margin: -12px 0;
+}
+/* "#47" after the place on a chat row. */
+.rsub > .rissue:not(:first-child)::before {
+  content: "\00b7";
+  margin-right: 4px;
+  color: var(--t3);
+}
+.rissue {
+  font-variant-numeric: tabular-nums;
+}
+/* The issue or review comments Nest wrote into a user bubble: quieter lines after the
+   user's own text, as the Mac's bubble. */
+.ghp {
+  display: grid;
+  gap: 2px;
+}
+.m-u > .ghp:not(:first-child) {
+  margin-top: 8px;
+}
+.ghq {
+  font-size: var(--fs-meta);
+  opacity: 0.72;
+}
+.ghm {
+  font-family: var(--mono);
+}
+.ghx {
+  font-size: var(--fs-meta);
+  opacity: 0.88;
+}
+.ghi {
+  display: grid;
+  gap: 1px;
+}
+/* "Review on #49: 3 comments. See Needs you" under the latest reply. */
+.rvwait {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+/* The start screen's Open issues: All · Mine on the label, the line under the title. */
+.nc-il {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nc-sw {
+  display: flex;
+  gap: 2px;
+}
+.nc-sw button {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -14px 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-label);
+  color: var(--t3);
+  cursor: pointer;
+}
+.nc-sw button[aria-pressed="true"] {
+  color: var(--t1);
+  font-weight: 500;
+}
+.nc-i .nc-m {
+  grid-column: 1;
+}
+/* The issue the new chat starts from, above the field. */
+.nc-is {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 4px 16px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+  flex: none;
+}
+.nc-is span {
+  flex: 1;
+  min-width: 0;
+}
+/* The pull request's details sheet, as the Mac's PR popover. */
+.prs {
+  display: grid;
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+.prs-t {
+  display: block;
+  min-height: 44px;
+  padding: 10px 0 0;
+  font-weight: 600;
+  color: var(--t1);
+  text-decoration: none;
+}
+.prs-n {
+  font-weight: 400;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+.prs-c {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.prs-c .ic {
+  width: 12px;
+  height: 12px;
+}
+.prs-s {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.prs-k {
+  display: grid;
+  margin: 0;
+  padding: 2px 12px;
+  list-style: none;
+  border-radius: var(--r-inner);
+  background: var(--soft);
+}
+.prs-k li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.prs-k li + li {
+  border-top: 1px solid var(--div);
+}
+.prs-kn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prs-kv {
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.prs-a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.prs-al {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+}
+.prs-al small {
+  font-size: var(--fs-meta);
+  color: var(--t2);
 }

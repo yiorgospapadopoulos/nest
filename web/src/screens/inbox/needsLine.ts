@@ -1,6 +1,7 @@
 import {
   mergeOf,
   obj,
+  pixieCallOf,
   planOf,
   questionsOf,
   reviewCommentsDetail,
@@ -8,7 +9,7 @@ import {
   str,
   toolArg,
 } from "../../api/payloads.ts";
-import type { Approval, StuckFlag, StuckReason } from "../../api/types.ts";
+import type { Approval, GroupEntry, Pixie, StuckFlag, StuckReason } from "../../api/types.ts";
 
 /** What needs the user, in the one grey line under a Needs you row (B77, NestKit's NeedsYouLine). */
 export interface NeedsLine {
@@ -70,6 +71,24 @@ const STUCK_REASONS: Record<StuckReason, string> = {
   repeating: "Repeating a call",
   long_turn: "Very long turn",
 };
+
+/**
+ * The pixie an approval was raised by inside a pixie call (B114): the call of `agent`, the
+ * member's own, else the group slot's `call`, among the chat's pixie calls. Null outside a
+ * call or when the chat's calls do not name it.
+ */
+export function approvalPixie(
+  approval: Approval,
+  groups: GroupEntry[] | undefined,
+  pixies: Record<string, Pixie>,
+): Pixie | null {
+  const ref = pixieCallOf(approval);
+  if (ref === null || groups === undefined) return null;
+  const calls = groups.flatMap((entry) => entry.calls);
+  const call =
+    calls.find((c) => c.tool_use_id === ref.agent) ?? calls.find((c) => c.tool_use_id === ref.call);
+  return call === undefined ? null : (pixies[call.pixie_id] ?? null);
+}
 
 /** A chat that looks stuck, with the reason. */
 export function stuckLine(stuck: StuckFlag): NeedsLine {

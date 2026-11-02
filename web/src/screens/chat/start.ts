@@ -6,7 +6,7 @@ import {
   reviewCommentsDetail,
   reviewOf,
 } from "../../api/payloads.ts";
-import type { Approval, Session } from "../../api/types.ts";
+import type { Approval, IssueSummary, Session } from "../../api/types.ts";
 import { ciFailure, pendingFor, stuckChats, type Tone } from "../../store/selectors.ts";
 import type { State } from "../../store/state.ts";
 
@@ -154,4 +154,19 @@ export function startLists(state: State, repo: string): StartLists {
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id))
     .slice(0, RECENT);
   return { waiting, recent };
+}
+
+// Read again this often while the start screen shows, as the Mac does (D127).
+export const ISSUES_EVERY_MS = 60_000;
+
+/** "#47 · PR #49 · bug, ui · 3 comments", as NestKit's IssueSummary.line. */
+export function issueLine(issue: IssueSummary): string {
+  const parts = [`#${String(issue.number)}`];
+  if (issue.prs.length > 0)
+    parts.push(`PR ${issue.prs.map((p) => `#${String(p.number)}`).join(", ")}`);
+  if (issue.labels.length > 0) parts.push(issue.labels.join(", "));
+  if (issue.comments > 0) {
+    parts.push(issue.comments === 1 ? "1 comment" : `${String(issue.comments)} comments`);
+  }
+  return parts.join(" · ");
 }

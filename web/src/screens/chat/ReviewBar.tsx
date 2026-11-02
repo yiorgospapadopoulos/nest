@@ -4,7 +4,7 @@ import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { pendingFor } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
-import { DiffSheet } from "../approvals/DiffSheet.tsx";
+import { ApproveButtons, DiffSheet } from "../approvals/DiffSheet.tsx";
 import { useReview } from "../approvals/hooks.ts";
 import { RemoteConfirmation } from "../approvals/ReviewGuards.tsx";
 
@@ -70,15 +70,7 @@ function ReviewSheet({ approval, session, onClose }: SheetProps) {
       <DiffSheet
         review={review}
         onClose={onClose}
-        footer={
-          <button
-            className="b b-ok"
-            disabled={review.busy || !review.ready}
-            onClick={() => void review.approve(review.title)}
-          >
-            {review.approveLabel}
-          </button>
-        }
+        footer={<ApproveButtons review={review} message={review.title} primary="b-ok" />}
       />
       <RemoteConfirmation review={review} />
     </>

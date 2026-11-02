@@ -100,49 +100,86 @@ function useDiff(approval: Approval, session: Session | undefined) {
   };
 }
 
+/**
+ * A worktree chat's open pull request, which Approve pushes to (B101): its number as Nest
+ * last read it, or from its address before Nest read it. As NestKit's PublishForm.
+ */
+export function openPullRequest(session: Session | undefined): number | null {
+  if (session === undefined || session.mode === "in_place" || session.pr_url === null) return null;
+  if (session.pr === null) {
+    const last = Number(session.pr_url.split("/").pop());
+    return Number.isInteger(last) && last > 0 ? last : null;
+  }
+  return session.pr.state === "open" ? session.pr.number : null;
+}
+
+/** "Also replies on 2 review threads with the commit, without resolving them." */
+export function replyNote(session: Session | undefined): string | null {
+  const review = session?.review;
+  if (openPullRequest(session) === null || review == null) return null;
+  const sent = new Set(review.sent);
+  const replied = new Set(review.replied);
+  const threads = review.items.filter(
+    (item) => item.kind === "thread" && sent.has(item.id) && !replied.has(item.id),
+  ).length;
+  if (threads === 0) return null;
+  const noun = threads === 1 ? "thread" : "threads";
+  return `Also replies on ${String(threads)} review ${noun} with the commit, without resolving them.`;
+}
+
+export const COMMIT_TITLE = "Approve and commit";
+
 export function useReview(approval: Approval, session: Session | undefined) {
   const { actions } = useStore();
   const { busy, run } = useBusy();
   const { diff, loading, failed, loadDiff } = useDiff(approval, session);
   // Publishing waits for the push address to be confirmed, with the message it was for.
-  const [remote, setRemote] = useState<(RemotePrompt & { message: string }) | null>(null);
+  const [remote, setRemote] = useState<
+    (RemotePrompt & { message: string; commitOnly: boolean }) | null
+  >(null);
   const view = reviewOf(approval);
   const inPlace = session?.mode === "in_place";
-  // Only a worktree chat without a pull request yet pushes (and opens one); the others
-  // commit and leave pushing to the user (B56).
-  const commitOnly = inPlace || session?.pr_url != null;
+  // A worktree chat without a pull request pushes to open one; one whose pull request is
+  // open pushes to it, unless the user picks Approve and commit (B101); otherwise Approve
+  // commits and leaves pushing to the user (B56).
+  const pushTo = openPullRequest(session);
+  const commitOnly = pushTo === null && (inPlace || session?.pr_url != null);
   // Approving sends what the user saw, so it waits for the diff, and for any reload of it.
   const ready = diff !== null && !loading;
-  const publish = async (message: string, confirmUrl?: string) => {
+  const publish = async (message: string, onlyCommit: boolean, confirmUrl?: string) => {
     // Every Approve is disabled until `ready`; the hook still never publishes unseen changes.
     if (diff === null || loading) return;
+    const noPush = commitOnly || onlyCommit;
     await run(async () => {
       const result = await actions.approveReview(
         approval,
         {
-          ...body(diff, message.trim() || approval.title),
+          ...body(diff, message.trim() || approval.title, noPush),
           ...(confirmUrl === undefined ? {} : { confirm_remote_url: confirmUrl }),
         },
-        approved(diff),
+        approved(diff, noPush),
       );
-      if (typeof result === "object") setRemote({ ...result.remote, message });
+      if (typeof result === "object") {
+        setRemote({ ...result.remote, message, commitOnly: onlyCommit });
+      }
       // Refused: show the branch as it is now.
       if (result === "refused" || typeof result === "object") loadDiff();
       return result === "approved";
     });
   };
   // What the toast says once approved.
-  const approved = (seen: SessionDiff): string => {
-    if (!commitOnly) return "Pull request opened";
+  const approved = (seen: SessionDiff, noPush: boolean): string => {
+    if (!noPush) return pushTo === null ? "Pull request opened" : `Pushed to #${String(pushTo)}`;
     return seen.head.branch === null
       ? "Committed, not pushed"
       : `Committed to ${seen.head.branch}, not pushed`;
   };
-  const body = (seen: SessionDiff, message: string): ApproveBody => ({
+  const body = (seen: SessionDiff, message: string, noPush: boolean): ApproveBody => ({
     commit_message: message,
     // In-place work commits only the changed files.
     ...(inPlace ? { files: view.paths } : {}),
-    ...(commitOnly ? { open_pr: false, push: false } : {}),
+    // Pushing to the open pull request's branch opens none.
+    ...(noPush ? { open_pr: false, push: false } : pushTo === null ? {} : { open_pr: false }),
     // Publish exactly what was reviewed, or be told it changed.
     expected_fingerprint: seen.fingerprint,
     ...(seen.head.commit === null ? {} : { expected_head: seen.head.commit }),
@@ -153,19 +190,29 @@ export function useReview(approval: Approval, session: Session | undefined) {
     commitOnly,
     ready,
     title: session?.title ?? approval.title,
-    approveLabel: commitOnly ? "Approve and commit" : "Approve and open PR",
+    approveLabel:
+      pushTo !== null
+        ? `Approve and push to #${String(pushTo)}`
+        : commitOnly
+          ? COMMIT_TITLE
+          : "Approve and open PR",
+    // "Approve and commit" beside "Approve and push to #N", which commits only.
+    offersCommitOnly: pushTo !== null,
+    replyNote: replyNote(session),
     diff,
     diffFailed: failed,
     loadDiff,
-    approve: (message: string) => publish(message),
+    approve: (message: string) => publish(message, false),
+    approveCommitOnly: (message: string) => publish(message, true),
     remote,
     cancelRemote: () => {
       setRemote(null);
     },
     // Approves again with the same message, pushing to the one address origin has now.
     pushThere: (message: string, url: string) => {
+      const onlyCommit = remote?.commitOnly ?? false;
       setRemote(null);
-      return publish(message, url);
+      return publish(message, onlyCommit, url);
     },
     feedback: (text: string) => run(() => actions.feedback(approval, text)),
   };

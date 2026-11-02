@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState, type KeyboardEvent } from "react";
-import type { RepoConfig, Session, SessionMode } from "../../api/types.ts";
+import type { IssueRef, RepoConfig, Session, SessionMode } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { projectName, repoNamed } from "../../store/general.ts";
 import { Dot } from "../../ui/bits.tsx";
@@ -7,6 +7,7 @@ import { Icon } from "../../ui/Icon.tsx";
 import { RepoIcon } from "../projects/ProjectHeader.tsx";
 import type { ChatNav } from "./CommandSheets.tsx";
 import { Composer, type NewChatPlace } from "./Composer.tsx";
+import { IssuesSection } from "./IssuesSection.tsx";
 import type { Option } from "./options.ts";
 import { PickerSheet } from "./PickerSheet.tsx";
 import { age, question, questions, startLists, type Waiting } from "./start.ts";
@@ -39,6 +40,8 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
   const [typed, setTyped] = useState("");
   const worktree = workIn.mode === "worktree";
   const branch = typed.trim();
+  // The issue the chat starts from, its first message (B101).
+  const [issue, setIssue] = useState<IssueRef | null>(null);
   const choose = useCallback((place: NewChatPlace) => {
     setWorkIn(place);
   }, []);
@@ -85,6 +88,7 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
             )}
           </section>
         )}
+        <IssuesSection repo={name} onOpen={onOpen} onStart={setIssue} />
         {recent.length > 0 && (
           <section className="nc-l" aria-label="Recent">
             <h3 className="lbl">Recent</h3>
@@ -108,6 +112,20 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
         </div>
         <h2 className="nc-q">{question(asked, projectName(name))}</h2>
       </div>
+      {issue !== null && (
+        <div className="nc-is">
+          <span>Issue #{issue.number} will be the first message. Add anything, or press send</span>
+          <button
+            className="ib"
+            aria-label={`Remove issue #${String(issue.number)}`}
+            onClick={() => {
+              setIssue(null);
+            }}
+          >
+            <Icon name="x" />
+          </button>
+        </div>
+      )}
       {worktree && (
         <div className="nc-n">
           <BranchName value={typed} onChange={setTyped} />
@@ -115,7 +133,11 @@ export function NewChat({ repo: name, onBack, onCreated, nav, onOpen }: Props) {
       )}
       <Composer
         repo={name}
-        workIn={worktree && branch !== "" ? { ...workIn, branch } : workIn}
+        workIn={{
+          ...workIn,
+          ...(worktree && branch !== "" ? { branch } : {}),
+          ...(issue === null ? {} : { issue: issue.number }),
+        }}
         place={repo?.git === true && <PlaceChoice repo={repo} onChange={choose} />}
         placeholder="Ask, build, / for commands…"
         onCreated={onCreated}

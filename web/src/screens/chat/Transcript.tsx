@@ -39,6 +39,7 @@ import { mentionColors, mentionParts } from "../../transcript/mentions.ts";
 import type { DiffLine, EditDiff } from "../../transcript/edits.ts";
 import { outputPreview } from "../../transcript/output.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import { GitHubText, ReviewWaitingLine } from "./GitHubParts.tsx";
 import { toolIcon } from "../../ui/toolIcon.ts";
 import { usePageVisible } from "../../ui/visible.ts";
 import { workRoot } from "../approvals/hooks.ts";
@@ -270,6 +271,7 @@ export function Transcript({
           {runs.map((run) => (
             <LocalBash key={run.id} run={run} />
           ))}
+          <ReviewWaitingLine sessionId={session.id} />
           {working && <WorkingLine thinking={thinking} thought={thought} start={start} />}
         </div>
       </div>
@@ -543,6 +545,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
       const bubble = (
         <div className="m-u" data-ev={ev}>
           <UserText text={item.text} />
+          {item.github !== undefined && <GitHubText part={item.github} />}
           {item.attachments.length > 0 && <small>{item.attachments.join(", ")}</small>}
         </div>
       );

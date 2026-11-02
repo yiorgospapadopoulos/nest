@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { isLocalModel } from "../../api/payloads.ts";
 import type { Pixie, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
+import { localModelOf } from "../../store/local.ts";
+import { LocalTag } from "./LocalCards.tsx";
 import { projectName, repoNamed } from "../../store/general.ts";
 import { chatStatus, exchangeBackground, pendingFor } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -16,7 +19,7 @@ import { LimitBar } from "./LimitBar.tsx";
 import { NewChat } from "./NewChat.tsx";
 import { sessionPlace } from "./place.ts";
 import { PlaceChip } from "./PlaceMarks.tsx";
-import { PrChip } from "./PrChip.tsx";
+import { IssueChip, PrChip } from "./PrChip.tsx";
 import { ReviewBar } from "./ReviewBar.tsx";
 import { RunButton, RunLine, RunSheet } from "./RunControl.tsx";
 import { Transcript } from "./Transcript.tsx";
@@ -188,6 +191,10 @@ function SessionChat({
       }
       tools={
         <>
+          {isLocalModel(session.model) && (
+            <LocalTag name={localModelOf(state.local, session.model)?.name ?? "a local model"} />
+          )}
+          <IssueChip session={session} />
           <PrChip session={session} />
           {run !== null && <RunButton sessionId={id} status={run} onOpen={showOutput} />}
           <ArtifactsButton scopes={chatScopes(session)} />

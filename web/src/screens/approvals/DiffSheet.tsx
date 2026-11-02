@@ -3,7 +3,7 @@ import type { FileDiff, SessionDiff } from "../../api/types.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
-import type { Review } from "./hooks.ts";
+import { COMMIT_TITLE, type Review } from "./hooks.ts";
 
 interface Props {
   review: Review;
@@ -55,6 +55,42 @@ export function ReviewSummary({ review }: { review: Review }) {
         Try again
       </button>
     </p>
+  );
+}
+
+/**
+ * Approve, and beside "Approve and push to #N" the plain "Approve and commit" that only
+ * commits (B101).
+ */
+export function ApproveButtons({
+  review,
+  message,
+  primary = "b-pri",
+}: {
+  review: Review;
+  message: string;
+  primary?: string;
+}) {
+  const disabled = review.busy || !review.ready;
+  return (
+    <>
+      <button
+        className={`b ${primary}`}
+        disabled={disabled}
+        onClick={() => void review.approve(message)}
+      >
+        {review.approveLabel}
+      </button>
+      {review.offersCommitOnly && (
+        <button
+          className="b"
+          disabled={disabled}
+          onClick={() => void review.approveCommitOnly(message)}
+        >
+          {COMMIT_TITLE}
+        </button>
+      )}
+    </>
   );
 }
 

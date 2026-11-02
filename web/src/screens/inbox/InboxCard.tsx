@@ -4,13 +4,14 @@ import type { Approval, Session } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import { DiffStats } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
-import { DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
+import { ApproveButtons, DiffSheet, ReviewSummary } from "../approvals/DiffSheet.tsx";
 import { usePermission, useReview, workRoot } from "../approvals/hooks.ts";
 import { PlanForm } from "../approvals/PlanForm.tsx";
 import { QuestionForm } from "../approvals/QuestionForm.tsx";
 import { RemoteConfirmation } from "../approvals/ReviewGuards.tsx";
 import { FoldRow } from "./FoldRow.tsx";
-import { approvalLine, lineText } from "./needsLine.ts";
+import { approvalLine, approvalPixie, lineText } from "./needsLine.ts";
+import { Sprite } from "../pixies/Sprite.tsx";
 import { MergeDetail } from "./PrCards.tsx";
 
 interface Props {
@@ -32,6 +33,21 @@ export function InboxCard({ approval, onOpenChat }: Props) {
   const { state } = useStore();
   const session = state.sessions[approval.session_id];
   const green = approval.kind === "review" || approval.kind === "merge";
+  const text = lineText(approvalLine(approval, workRoot(session)));
+  // Raised inside a pixie call: the pixie's sprite and name before the kind (B114).
+  const pixie = approvalPixie(approval, state.pixieGroups[approval.session_id], state.pixies);
+  const line =
+    pixie === null ? (
+      text
+    ) : (
+      <>
+        <span className="npix">
+          <Sprite mascot={pixie.mascot} color={pixie.color} size={12} phaseKey={pixie.id} />
+          {pixie.name}
+        </span>
+        {` · ${text}`}
+      </>
+    );
   return (
     <FoldRow
       label={`${KIND_LABELS[approval.kind]}: ${approval.title}`}
@@ -40,7 +56,7 @@ export function InboxCard({ approval, onOpenChat }: Props) {
       onOpen={() => {
         onOpenChat(approval.session_id);
       }}
-      line={lineText(approvalLine(approval, workRoot(session)))}
+      line={line}
     >
       <ApprovalDetail approval={approval} session={session} />
     </FoldRow>
@@ -69,28 +85,60 @@ function ApprovalDetail({ approval, session }: DetailProps): ReactNode {
   }
 }
 
-/** Each comment's place over its text, and the pull request; sending comes later (B101). */
+/**
+ * The pull request, each comment's place with Send for it alone over its text, then Send all
+ * to agent and Open on GitHub (B101). After a partial send the daemon replaces the approval
+ * with one of the rest, so the row stays with those.
+ */
 function ReviewCommentsDetail({ approval }: { approval: Approval }) {
+  const { actions } = useStore();
+  const [sending, setSending] = useState<string | null>(null);
   const view = reviewCommentsOf(approval);
+  const send = async (key: string, ids?: string[]) => {
+    setSending(key);
+    await actions.sendReviewComments(approval, ids);
+    setSending(null);
+  };
+  const busy = sending !== null;
   return (
     <>
+      <div className="why">
+        #{view.number}
+        {view.changesRequested && " · Changes requested"}
+      </div>
       <ul className="rclist">
         {view.comments.map((comment) => (
           <li key={comment.id}>
-            <span className="rcp" title={commentPlace(comment)}>
-              {commentPlace(comment, true)}
+            <span className="rch">
+              <span className="rcp" title={commentPlace(comment)}>
+                {commentPlace(comment, true)}
+              </span>
+              <button
+                className="lnk"
+                disabled={busy}
+                aria-label={`Send ${commentPlace(comment, true)}`}
+                onClick={() => void send(comment.id, [comment.id])}
+              >
+                Send
+              </button>
             </span>
             <span className="rcb">{comment.body}</span>
           </li>
         ))}
       </ul>
-      {view.url !== "" && (
-        <div className="acts">
+      <div className="acts">
+        {view.comments.length > 0 && (
+          <button className="b b-pri" disabled={busy} onClick={() => void send("all")}>
+            <Icon name="send" />
+            Send all to agent
+          </button>
+        )}
+        {view.url !== "" && (
           <a className="b qb2" href={view.url} target="_blank" rel="noreferrer">
             Open on GitHub
           </a>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 }
@@ -155,13 +203,7 @@ function ReviewDetail({ approval, session }: DetailProps) {
             }}
           />
           <div className="acts">
-            <button
-              className="b b-pri"
-              disabled={review.busy || !review.ready}
-              onClick={() => void review.approve(message)}
-            >
-              {review.approveLabel}
-            </button>
+            <ApproveButtons review={review} message={message} />
             <button
               className="b qb2"
               onClick={() => {
@@ -171,6 +213,7 @@ function ReviewDetail({ approval, session }: DetailProps) {
               Feedback
             </button>
           </div>
+          {review.replyNote !== null && <div className="why">{review.replyNote}</div>}
         </>
       ) : (
         <form
@@ -216,15 +259,7 @@ function ReviewDetail({ approval, session }: DetailProps) {
           onClose={() => {
             setDiffOpen(false);
           }}
-          footer={
-            <button
-              className="b b-pri"
-              disabled={review.busy || !review.ready}
-              onClick={() => void review.approve(message)}
-            >
-              {review.approveLabel}
-            </button>
-          }
+          footer={<ApproveButtons review={review} message={message} />}
         />
       )}
       <RemoteConfirmation review={review} />
