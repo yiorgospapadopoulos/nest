@@ -12,9 +12,10 @@ router = APIRouter(prefix="/api/claude-chats", dependencies=[RequireDevice])
 async def list_claude_chats(
     ctx: Context, repo: str | None = None, include_automated: bool = False
 ) -> list[ClaudeChat]:
-    """Claude Code chats of the registered repos (or one) that Nest does not own.
+    """Claude Code and Codex chats of the registered repos (or one) that Nest does not own.
 
-    Chats a program started through an Agent SDK are left out unless include_automated.
+    Chats a program started (through an Agent SDK, or Codex's non-interactive sources) are
+    left out unless include_automated.
     """
     return await ctx.claude_chats.list_chats(repo, include_automated)
 
@@ -28,7 +29,9 @@ async def get_claude_chat(chat_id: str, ctx: Context) -> ClaudeChat:
 async def set_claude_chat_archived(
     chat_id: str, request: SetChatArchived, ctx: Context
 ) -> ClaudeChat:
-    """Archive or restore the chat in Nest only (D040); it stays listed, marked."""
+    """Archive or restore the chat in Nest only (D040), or a Codex chat in Codex (B113); it
+    stays listed, marked.
+    """
     return await ctx.claude_chats.set_archived(chat_id, archived=request.archived)
 
 
@@ -46,6 +49,6 @@ async def adopt_claude_chat(chat_id: str, ctx: Context, response: Response) -> S
         response.status_code = status.HTTP_200_OK
         return existing
     session = await ctx.sessions.adopt(await ctx.claude_chats.importable(chat_id))
-    # It is Nest's now, so it leaves the Claude Code list.
+    # It is Nest's now, so it leaves the list.
     await ctx.claude_chats.refresh()
     return session
