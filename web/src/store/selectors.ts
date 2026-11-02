@@ -14,8 +14,10 @@ import type {
   StuckFlag,
   TrackedAgent,
   TrackedTask,
+  LocalModel,
 } from "../api/types.ts";
-import { list, obj, str } from "../api/payloads.ts";
+import { isLocalModel, list, localModelValue, obj, str } from "../api/payloads.ts";
+import { isWeak, LOCAL_DETAIL, LOCAL_TITLE, localOptions } from "./local.ts";
 import {
   CLAUDE,
   type ModelCatalog,
@@ -541,11 +543,14 @@ export function engineDetail(provider: ProviderInfo): string {
 export function catalogFor(state: State, provider: string | null | undefined): ModelCatalog {
   const engine = provider ?? CLAUDE;
   const list = state.modelLists[engine];
+  // Any engine knows the local models, so their names and thinking read right (B116).
+  const options = localOptions(state.local.list);
+  const local = options.length === 0 ? {} : { local: options };
   if (list !== undefined) {
-    return { models: realModels(list.models), defaultModel: list.default_model };
+    return { models: realModels(list.models), defaultModel: list.default_model, ...local };
   }
   const old = engine === CLAUDE ? (state.models ?? []) : [];
-  return { models: realModels(old), defaultModel: null };
+  return { models: realModels(old), defaultModel: null, ...local };
 }
 
 /** One engine's part of the model menu. */
@@ -558,6 +563,34 @@ export interface ModelSection {
   catalog: ModelCatalog;
   // False when a new chat cannot start on it (B107): its models show, not choosable.
   available: boolean;
+  // The local models' section (B116), whose `provider` is the engine they run on.
+  local?: boolean;
+  // Models shown but not choosable, such as a stopped server's local models.
+  unavailable?: string[];
+  // Local models weak at tools, whose line reads as a warning.
+  weak?: string[];
+}
+
+/**
+ * The local models under "Local", chosen on `engine` (D129: a new chat's is the "Local chats
+ * run on" engine, an open chat's its own); none without any.
+ */
+function localSection(state: State, engine: string): ModelSection[] {
+  const models = state.local.list?.models ?? [];
+  if (models.length === 0) return [];
+  const values = (pick: LocalModel[]) => pick.map((m) => localModelValue(m.id));
+  return [
+    {
+      provider: engine,
+      title: LOCAL_TITLE,
+      detail: LOCAL_DETAIL,
+      catalog: { models: localOptions(state.local.list), defaultModel: null },
+      available: true,
+      local: true,
+      unavailable: values(models.filter((m) => !m.running)),
+      weak: values(models.filter((m) => m.running && isWeak(m))),
+    },
+  ];
 }
 
 /**
@@ -571,6 +604,12 @@ export function modelSections(
   provider: string | null,
   isDraft: boolean,
 ): ModelSection[] {
+  const own = provider ?? CLAUDE;
+  const local = localSection(state, isDraft ? (state.local.list?.engine ?? CLAUDE) : own);
+  return [...engineSections(state, own, isDraft), ...local];
+}
+
+function engineSections(state: State, own: string, isDraft: boolean): ModelSection[] {
   if (!offersEngineChoice(state)) {
     return [
       {
@@ -582,7 +621,6 @@ export function modelSections(
       },
     ];
   }
-  const own = provider ?? CLAUDE;
   if (!isDraft) {
     const listed = engineList(state).find((p) => p.name === own);
     return [
@@ -611,6 +649,8 @@ export function modelTitle(
   provider: string | null | undefined,
 ): string {
   const name = modelLabel(catalogFor(state, provider), model);
+  // A local model goes by its own name on any engine (B116).
+  if (isLocalModel(model)) return name;
   const engine = provider ?? CLAUDE;
   return engine === CLAUDE ? name : `${engineName(state, engine)} · ${name}`;
 }

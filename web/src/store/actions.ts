@@ -28,6 +28,8 @@ import type {
   Habit,
   HabitBody,
   HabitRun,
+  IssueList,
+  IssueShow,
   NestEvent,
   JsonObject,
   PeriodUnit,
@@ -63,10 +65,12 @@ import type {
 import {
   loadFeatureGroups,
   loadFoldedTeams,
+  loadIssueShow,
   loadShowAutomated,
   loadUsageBarHidden,
   saveFeatureGroups,
   saveFoldedTeams,
+  saveIssueShow,
   saveMachine,
   saveShowAutomated,
   saveUsageBarHidden,
@@ -76,6 +80,8 @@ import { storageChangeOf } from "../api/payloads.ts";
 import { isoDay } from "../format.ts";
 import { filterKey } from "./artifacts.ts";
 import { nudgeText } from "./selectors.ts";
+import { accountActions } from "./accountActions.ts";
+import { localActions } from "./localActions.ts";
 import { settingsActions } from "./settingsActions.ts";
 import { draftKey, type Action, type Toast } from "./state.ts";
 
@@ -460,9 +466,19 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
   }
 
   const settings = settingsActions(api, { dispatch, attempt, quietly, toast });
+  const local = localActions(api, { dispatch, attempt, quietly, storage });
+  const accounts = accountActions(api, storage, {
+    dispatch,
+    attempt,
+    quietly,
+    toast,
+    loadLocalModels: local.loadLocalModels,
+  });
 
   return {
     ...settings,
+    ...local,
+    ...accounts,
     /** This device's id, when it was paired since B81. */
     toast,
     dismissToast: () => {
@@ -659,6 +675,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         for (const arrived of arriving) arrived.push(event);
       }
       dispatch({ type: "event", event });
+      local.receiveLocal(event);
+      accounts.accountEvent(event);
       for (const listener of [...eventListeners]) listener(event);
       if (event.type === "artifact.storage") {
         const change = storageChangeOf(event.payload);
@@ -909,6 +927,48 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       return true;
     },
 
+    /**
+     * Sends a pull request's waiting review comments to the agent (B101): those of `ids`, or
+     * all. After a partial send the daemon replaces the approval with one of the rest.
+     */
+    async sendReviewComments(approval: Approval, ids?: string[]): Promise<boolean> {
+      const sent = await attempt(() => api.reviewFeedback(approval.session_id, ids));
+      if (sent === null) return false;
+      toast(ids?.length === 1 ? "Comment sent to the agent" : "Review comments sent to the agent");
+      return true;
+    },
+
+    /** Reads the chat's pull request from GitHub now. */
+    async refreshPr(sessionId: string): Promise<boolean> {
+      const updated = await attempt(() => api.refreshPr(sessionId));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /** Whether new review comments go to the agent as they arrive (B101). */
+    async setReviewAutoSend(sessionId: string, autoSend: boolean): Promise<boolean> {
+      const updated = await attempt(() => api.setReviewAutoSend(sessionId, autoSend));
+      if (updated === null) return false;
+      dispatch({ type: "session", session: updated });
+      return true;
+    },
+
+    /**
+     * A project's open GitHub issues (B101): All or Mine as chosen on this device, else as
+     * the project's setting says. Null when GitHub cannot be read; no toast, the start
+     * screen leaves the section out.
+     */
+    issues(repo: string): Promise<IssueList | null> {
+      const show = loadIssueShow(storage, repo) ?? undefined;
+      return quietly(() => api.issues(repo, show));
+    },
+
+    /** Remembers a project's All or Mine choice for its issues on this device (B101). */
+    chooseIssueShow(repo: string, show: IssueShow): void {
+      saveIssueShow(storage, repo, show);
+    },
+
     /** Stops a stuck chat's turn and starts it again with a nudge to change course. */
     async nudge(sessionId: string, details: string): Promise<boolean> {
       const text = nudgeText(details);
@@ -961,12 +1021,15 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     async send(id: string, text: string, attachmentIds: string[]): Promise<SendResult> {
       try {
         await api.sendMessage(id, text, attachmentIds);
+        local.localFailed(id, null);
         return "sent";
       } catch (error) {
         if (error instanceof ApiError && error.code === OPEN_ELSEWHERE) return "elsewhere";
         if (error instanceof ApiError && error.code === PIXIE_IN_TEAM) {
           return { refused: error.message };
         }
+        // The chat's local server is down: its card says so, the message stays (B116).
+        if (local.sendRefusedLocally(id, error)) return "failed";
         report(error);
         return "failed";
       }
@@ -1414,6 +1477,8 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
         quietly(() => api.providers(false)),
         quietly(() => api.models()),
         quietly(() => api.agentDefaults()),
+        // The model menus' Local section (B116).
+        local.loadLocalModels(),
       ]);
       if (found !== null) dispatch({ type: "providers", providers: found.providers });
       if (list !== null) dispatch({ type: "modelList", provider: CLAUDE, list });

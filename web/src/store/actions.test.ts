@@ -608,7 +608,9 @@ describe("engines (B102)", () => {
 
     expect(api.models).toHaveBeenCalledWith();
     expect(api.models).toHaveBeenCalledWith("codex");
-    expect(dispatched).toEqual([
+    // The model menus' Local section loads with them (B116).
+    expect(dispatched[0]?.type).toBe("local");
+    expect(dispatched.slice(1)).toEqual([
       { type: "providers", providers: [claudeProvider(), codexProvider()] },
       { type: "modelList", provider: "claude", list: modelList() },
       { type: "agentDefaults", defaults: agentDefaults() },
@@ -621,6 +623,7 @@ describe("engines (B102)", () => {
     api.providers.mockRejectedValueOnce(new Error("old daemon"));
     api.models.mockRejectedValueOnce(new Error("down"));
     api.agentDefaults.mockRejectedValueOnce(new Error("down"));
+    api.localModels.mockRejectedValueOnce(new Error("down"));
     await actions.loadChoices();
     expect(dispatched).toEqual([]);
 
