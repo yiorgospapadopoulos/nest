@@ -663,6 +663,7 @@ final class Shell {
 
     /// Opens a habit run's transcript, read-only.
     func openHabitRun(_ session: String) {
+        model.island.markSeen(chat: session)
         withAnimation(.smooth(duration: 0.18)) { overlay = .habitRun(session) }
     }
 

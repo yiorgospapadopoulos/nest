@@ -22,6 +22,8 @@ final class AppController {
     let daemons: DaemonList
     /// Settings > Devices' Pair a daemon sheet while it is open.
     var pairing: DaemonPairing?
+    /// The pixies around the notch (B114), for the window's daemon.
+    private(set) var island: IslandController?
     /// The device token is being asked for, for the first start.
     @ObservationIgnored private var starting = false
     @ObservationIgnored private var notifier: Notifier?
@@ -111,7 +113,8 @@ final class AppController {
     }
 
     /// Puts a new model in the window. The old one stops first: its live sync, its
-    /// notifications and its visibility reports, and its terminal and browser panes end.
+    /// notifications, its visibility reports and its island, and its terminal and browser
+    /// panes end.
     /// The Settings window keeps its page.
     private func install(_ model: AppModel) {
         let shell = Shell(model: model)
@@ -126,6 +129,9 @@ final class AppController {
         notifier?.start()
         visibility = VisibilityMonitor(reporter: model.visibility)
         visibility?.start()
+        island?.stop()
+        island = IslandController(shell: shell)
+        island?.start()
     }
 
     /// Connect, Pair and connect, Use This Mac and Remove of the selected daemon: the
