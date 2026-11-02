@@ -1,5 +1,6 @@
-import type { Attachment } from "../api/types.ts";
+import type { Attachment, IssueShow } from "../api/types.ts";
 import type { Draft } from "./state.ts";
+import type { UsageMeterChoice } from "./usageMeter.ts";
 
 // Choices remembered on this device only. Storage can be unavailable (private browsing,
 // blocked site data); the choice then lasts until the app is reloaded.
@@ -68,6 +69,60 @@ export function loadUsageBarHidden(storage: () => Storage): string[] {
 export function saveUsageBarHidden(storage: () => Storage, names: string[]): void {
   try {
     storage().setItem(USAGE_BAR_HIDDEN_KEY, JSON.stringify(names));
+  } catch {
+    // Not remembered.
+  }
+}
+
+// The accounts "Top bar shows" checks, in their order (B98): `{order, shown}`, `shown` null
+// until the user checks or unchecks one. Until then the engines unchecked in
+// `nest.usageBarHidden` start unchecked; the first check replaces that key.
+export const USAGE_METER_KEY = "nest.usageMeter";
+
+const ids = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+
+export function loadUsageMeter(storage: () => Storage): UsageMeterChoice {
+  let saved: unknown;
+  try {
+    saved = JSON.parse(storage().getItem(USAGE_METER_KEY) ?? "{}");
+  } catch {
+    saved = {};
+  }
+  const choice = (typeof saved === "object" && saved !== null ? saved : {}) as Record<
+    string,
+    unknown
+  >;
+  const shown = Array.isArray(choice.shown) ? ids(choice.shown) : null;
+  return {
+    order: ids(choice.order),
+    shown,
+    hiddenEngines: shown === null ? loadUsageBarHidden(storage) : [],
+  };
+}
+
+export function saveUsageMeter(storage: () => Storage, choice: UsageMeterChoice): void {
+  try {
+    storage().setItem(
+      USAGE_METER_KEY,
+      JSON.stringify({ order: choice.order, shown: choice.shown }),
+    );
+    if (choice.shown !== null) storage().removeItem(USAGE_BAR_HIDDEN_KEY);
+  } catch {
+    // Not remembered.
+  }
+}
+
+// The local models whose weak-at-tools bar was dismissed with Don't show again (B116), by id.
+export const WEAK_DISMISSED_KEY = "nest.local.weakDismissed";
+
+export function loadWeakDismissed(storage: () => Storage): string[] {
+  return loadNames(storage, WEAK_DISMISSED_KEY);
+}
+
+export function saveWeakDismissed(storage: () => Storage, ids: string[]): void {
+  try {
+    storage().setItem(WEAK_DISMISSED_KEY, JSON.stringify(ids));
   } catch {
     // Not remembered.
   }
@@ -146,5 +201,26 @@ export function saveDrafts(storage: () => Storage, drafts: Record<string, Draft>
     storage().setItem(DRAFTS_KEY, JSON.stringify(drafts));
   } catch {
     // Not saved; the drafts last until the app is closed.
+  }
+}
+
+// Each project's All or Mine choice for its open issues on the start screen (B101), as the
+// Mac keeps it per project; without one the daemon's per-repo default applies.
+const ISSUE_SHOW_KEY = (repo: string) => `nest.issues.show.${repo}`;
+
+export function loadIssueShow(storage: () => Storage, repo: string): IssueShow | null {
+  try {
+    const saved = storage().getItem(ISSUE_SHOW_KEY(repo));
+    return saved === "all" || saved === "mine" ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveIssueShow(storage: () => Storage, repo: string, show: IssueShow): void {
+  try {
+    storage().setItem(ISSUE_SHOW_KEY(repo), show);
+  } catch {
+    // Not remembered.
   }
 }

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import type { LimitWindow, UsageSettings } from "../../api/types.ts";
-import { clockTime, percent, resetLabel } from "../../format.ts";
+import { useEffect, useState, type PointerEvent } from "react";
+import type { AccountWindow, UsageSettings } from "../../api/types.ts";
+import { clockTime } from "../../format.ts";
 import { useStore } from "../../store/context.ts";
-import { engineList, meteredOthers, usageBarChoices } from "../../store/selectors.ts";
+import { limitGroups, meterEntries, movedTo, type MeterAccount } from "../../store/usageMeter.ts";
+import { Icon } from "../../ui/Icon.tsx";
+import { resetLine, used } from "./accountText.ts";
 import { Loading, Section, SelectRow, SwitchRow } from "./rows.tsx";
 import { withCurrent } from "./choices.ts";
 import { UsagePeriodCard } from "./UsagePeriodCard.tsx";
@@ -21,37 +23,34 @@ function refreshLabel(minutes: number): string {
 }
 
 /**
- * The subscription windows Claude reports, then each other signed-in engine's (B102 item
- * 23), the periods Nest counted itself (B84), which engines the top bar shows (item 29),
- * and when the Mac checks the windows and warns (D104).
+ * The limits of each account the top bar shows (B98: by default the account in use of each
+ * engine), the periods Nest counted itself (B84), which accounts the top bar shows and in
+ * which order, and when the Mac checks the windows and warns (D104). Every account's windows
+ * come with `GET /api/accounts`, so none waits for the engine list (I-B111-1).
  */
 export function UsageLimits({ onDetails }: { onDetails: () => void }) {
   const { state, actions } = useStore();
   const [refreshing, setRefreshing] = useState(false);
-  const limits = state.limits;
+  const { accounts, usageMeter } = state.settings;
   const settings = state.settings.usage;
   const now = new Date();
-  const others = meteredOthers(state);
+  const groups = accounts === null ? [] : limitGroups(accounts, usageMeter);
 
   useEffect(() => {
-    void actions.loadEngineLimits();
+    void actions.loadAccounts();
   }, [actions]);
 
-  // Refresh asks every engine shown (item 7).
   const refresh = async () => {
     setRefreshing(true);
-    await Promise.all([
-      actions.refreshUsage(),
-      ...others.map((engine) => actions.refreshUsage(engine.name)),
-    ]);
+    await actions.refreshAccounts();
     setRefreshing(false);
   };
 
-  // One time for both windows: the older report, so a stale one shows.
-  const reported = [limits?.five_hour, limits?.seven_day]
-    .filter((w): w is LimitWindow => w != null)
+  // The newest report of the windows shown.
+  const reported = groups
+    .flatMap((g) => g.limits)
     .map((w) => new Date(w.updated_at))
-    .sort((a, b) => a.getTime() - b.getTime())[0];
+    .sort((a, b) => b.getTime() - a.getTime())[0];
   const stale = reported !== undefined && now.getTime() - reported.getTime() > STALE_MS;
 
   return (
@@ -80,27 +79,30 @@ export function UsageLimits({ onDetails }: { onDetails: () => void }) {
         }
       >
         <div className="pad">
-          {others.length > 0 && <h3 className="ueng">{engineList(state)[0]?.display_name}</h3>}
-          <Meter label="5 hour" window={limits?.five_hour ?? null} now={now} />
-          <Meter label="Weekly" window={limits?.seven_day ?? null} now={now} />
-          {others.map((engine) => {
-            const windows = state.engineLimits[engine.name]?.windows ?? [];
-            return (
-              <div key={engine.name}>
-                <h3 className="ueng">{engine.display_name}</h3>
-                {windows.length === 0 && <Meter label="Usage" window={null} now={now} />}
-                {windows.map((w) => (
-                  <Meter
-                    key={w.label}
-                    label={w.label}
-                    name={`${engine.display_name} ${w.label}`}
-                    window={w}
-                    now={now}
-                  />
-                ))}
-              </div>
-            );
-          })}
+          {accounts === null && <p className="note">Loading...</p>}
+          {groups.map((group) => (
+            <div key={group.id}>
+              <h3 className="ueng">
+                {group.title}
+                {group.active && (
+                  <>
+                    {" "}
+                    <span className="uinuse">in use</span>
+                  </>
+                )}
+              </h3>
+              {group.limits.length === 0 && <Meter label="Usage" window={null} now={now} />}
+              {group.limits.map((w) => (
+                <Meter
+                  key={w.label}
+                  label={w.label}
+                  name={`${group.title} ${w.label}`}
+                  window={w}
+                  now={now}
+                />
+              ))}
+            </div>
+          ))}
         </div>
       </Section>
       <UsagePeriodCard onDetails={onDetails} />
@@ -154,29 +156,137 @@ function Checks({ settings }: { settings: UsageSettings }) {
   );
 }
 
-/** Which engines the usage bar shows, on this device only: a checkmark per engine. */
+// A drag starts moving its row past this many pixels.
+const DRAG_SLOP = 4;
+
+/**
+ * Which accounts the top bar shows and in which order, on this device only (B98): a check
+ * per account; its handle drags it, or the arrow keys move it while the handle has focus.
+ */
 function TopBar() {
   const { state, actions } = useStore();
+  const { accounts, usageMeter } = state.settings;
+  const entries = accounts === null ? [] : meterEntries(accounts, usageMeter);
+  const ids = entries.map((e) => e.id);
+  // The row being dragged: where it started, the pointer's start and travel, a row's height.
+  const [drag, setDrag] = useState<{
+    id: string;
+    from: number;
+    startY: number;
+    dy: number;
+    step: number;
+  } | null>(null);
+
+  const target = (from: number, dy: number, step: number) =>
+    Math.max(0, Math.min(ids.length - 1, from + Math.round(dy / step)));
+
+  const move = (from: number, to: number) => {
+    if (from !== to) actions.orderUsageMeter(movedTo(ids, from, to));
+  };
+
+  const onDown = (event: PointerEvent<HTMLButtonElement>, id: string, from: number) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const step = event.currentTarget.closest(".srow")?.getBoundingClientRect().height ?? 0;
+    setDrag({ id, from, startY: event.clientY, dy: 0, step: step > 0 ? step : 44 });
+  };
+  const onMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (drag === null) return;
+    setDrag({ ...drag, dy: event.clientY - drag.startY });
+  };
+  const onUp = () => {
+    if (drag === null) return;
+    if (Math.abs(drag.dy) > DRAG_SLOP) move(drag.from, target(drag.from, drag.dy, drag.step));
+    setDrag(null);
+  };
+
+  // The rows the dragged one passes slide aside by one row.
+  const offset = (index: number) => {
+    if (drag === null) return 0;
+    if (index === drag.from) return drag.dy;
+    const to = target(drag.from, drag.dy, drag.step);
+    if (drag.from < index && index <= to) return -drag.step;
+    if (to <= index && index < drag.from) return drag.step;
+    return 0;
+  };
+
+  if (accounts === null) return <Loading title="Top bar shows" />;
   return (
     <Section title="Top bar shows">
-      {usageBarChoices(state).map((engine) => (
-        <div key={engine.provider} className="srow">
-          <span className="slab">{engine.name}</span>
-          <div className="sctl">
-            {engine.detail !== "" && <span className="sval">{engine.detail}</span>}
-            <button
-              className="ucheck"
-              role="checkbox"
-              aria-checked={engine.shown}
-              aria-label={`Show ${engine.name} in the top bar`}
-              onClick={() => {
-                actions.setUsageBarEngine(engine.provider, !engine.shown);
-              }}
-            />
-          </div>
-        </div>
+      {entries.map((entry, index) => (
+        <MeterRow
+          key={entry.id}
+          entry={entry}
+          dragged={drag?.id === entry.id}
+          offset={offset(index)}
+          onDown={(event) => {
+            onDown(event, entry.id, index);
+          }}
+          onMove={onMove}
+          onUp={onUp}
+          onStep={(step) => {
+            move(index, Math.max(0, Math.min(ids.length - 1, index + step)));
+          }}
+          onToggle={() => {
+            actions.setUsageMeterShown(entry.id, !entry.shown, entries);
+          }}
+        />
       ))}
     </Section>
+  );
+}
+
+function MeterRow({
+  entry,
+  dragged,
+  offset,
+  onDown,
+  onMove,
+  onUp,
+  onStep,
+  onToggle,
+}: {
+  entry: MeterAccount;
+  dragged: boolean;
+  offset: number;
+  onDown: (event: PointerEvent<HTMLButtonElement>) => void;
+  onMove: (event: PointerEvent<HTMLButtonElement>) => void;
+  onUp: () => void;
+  onStep: (step: -1 | 1) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      className={dragged ? "srow umrow drag" : "srow umrow"}
+      style={offset === 0 ? undefined : { transform: `translateY(${String(offset)}px)` }}
+    >
+      <button
+        className="umgrip"
+        aria-label={`Move ${entry.name}`}
+        aria-description="Drag, or use the up and down arrow keys"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+          event.preventDefault();
+          onStep(event.key === "ArrowUp" ? -1 : 1);
+        }}
+      >
+        <Icon name="lines" />
+      </button>
+      <span className="slab">{entry.name}</span>
+      <div className="sctl">
+        {entry.detail !== "" && <span className="sval">{entry.detail}</span>}
+        <button
+          className="ucheck"
+          role="checkbox"
+          aria-checked={entry.shown}
+          aria-label={`Show ${entry.name} in the top bar`}
+          onClick={onToggle}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -187,9 +297,9 @@ function Meter({
   now,
 }: {
   label: string;
-  // The meter's accessible name before "used"; another engine's starts with its name.
+  // The meter's accessible name before "used", starting with the account's.
   name?: string;
-  window: LimitWindow | null;
+  window: AccountWindow | null;
   now: Date;
 }) {
   if (window === null) {
@@ -202,24 +312,24 @@ function Meter({
       </div>
     );
   }
-  const used = percent(window.utilization);
+  const percent = used(window);
   return (
     <div className="urow">
       <div className="u1">
         <span>{label}</span>
-        <b>{used}%</b>
+        <b>{percent}%</b>
       </div>
       <div
         className="meter sm ink"
         role="meter"
         aria-label={`${name} used`}
-        aria-valuenow={used}
+        aria-valuenow={percent}
         aria-valuemin={0}
         aria-valuemax={100}
       >
-        <i style={{ width: `${String(used)}%` }} />
+        <i style={{ width: `${String(percent)}%` }} />
       </div>
-      <div className="u2">{resetLabel(window.resets_at, now)}</div>
+      <div className="u2">{resetLine(window, now)}</div>
     </div>
   );
 }

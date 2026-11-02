@@ -752,9 +752,7 @@ describe("pull request", () => {
   ])("shows a chip with the checks state %#", async (pr, tone, label) => {
     await openChat({ chat: session({ pr_url: url, pr }) });
 
-    const chip = screen.getByRole("link", { name: `Pull request ${label}` });
-    expect(chip).toHaveAttribute("href", url);
-    expect(chip).toHaveAttribute("target", "_blank");
+    const chip = screen.getByRole("button", { name: `Pull request ${label}` });
     // Running checks show the fireflies; any other state its dot (B80).
     expect(chip.firstElementChild).toHaveClass(tone);
   });
@@ -762,7 +760,7 @@ describe("pull request", () => {
   it("has no chip without a pull request", async () => {
     await openChat();
 
-    expect(screen.queryByRole("link", { name: /Pull request/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pull request/ })).not.toBeInTheDocument();
   });
 
   it("updates the chip from session.pr events", async () => {
@@ -776,7 +774,41 @@ describe("pull request", () => {
     });
 
     expect(
-      await screen.findByRole("link", { name: "Pull request #7, checks failed" }),
+      await screen.findByRole("button", { name: "Pull request #7, checks failed" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the pull request's details: the issue it closes and sending review comments on their own", async () => {
+    const issue = {
+      number: 47,
+      title: "Theme is forgotten",
+      url: "https://github.com/me/todo-ui/issues/47",
+    };
+    const chat = session({ pr_url: url, pr: prStatus(), issue });
+    const { user, api } = await openChat({ chat });
+    api.setReviewAutoSend.mockResolvedValueOnce({
+      ...chat,
+      review: { items: [], sent: [], changes_requested: false, auto_send: true, replied: [] },
+    });
+
+    expect(screen.getByRole("link", { name: "Issue #47, Theme is forgotten" })).toHaveAttribute(
+      "href",
+      issue.url,
+    );
+    await user.click(screen.getByRole("button", { name: "Pull request #7, checks passed" }));
+    const sheet = screen.getByRole("dialog", { name: "Pull request #7" });
+    expect(within(sheet).getByText("Closes #47 on merge")).toBeInTheDocument();
+    expect(within(sheet).getByRole("link", { name: "Open on GitHub" })).toHaveAttribute(
+      "href",
+      url,
+    );
+    const toggle = within(sheet).getByRole("switch", { name: "Send review comments on their own" });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+    expect(api.setReviewAutoSend).toHaveBeenCalledWith("s1", true);
+    expect(
+      await within(sheet).findByText("New comments go to the agent as they arrive"),
     ).toBeInTheDocument();
   });
 

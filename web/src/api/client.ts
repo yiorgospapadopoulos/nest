@@ -1,5 +1,20 @@
 import type {
   AccountInfo,
+  AccountList,
+  AccountProvider,
+  AccountSignIn,
+  AddedLocalModels,
+  BankedResets,
+  BankedResetUsed,
+  CheckResult,
+  EngineAccount,
+  FoundModels,
+  IssueList,
+  IssueShow,
+  LocalApp,
+  LocalEngine,
+  LocalModelList,
+  LocalUsage,
   AgentDefaults,
   CodexAccount,
   CodexMarketplace,
@@ -175,6 +190,16 @@ export interface Api {
   feedback(sessionId: string, text: string): Promise<Session>;
   // The daemon reads the failing checks' logs with its own GitHub login and sends them in.
   ciFeedback(sessionId: string): Promise<unknown>;
+  // Reads the chat's pull request from GitHub now.
+  refreshPr(sessionId: string): Promise<Session>;
+  // Sends the pull request's waiting review comments to the agent and marks them sent
+  // (B101): those of `ids`, or all without; 409 `no_review_comments` when none waits.
+  reviewFeedback(sessionId: string, ids?: string[]): Promise<SendResponse>;
+  // Whether new review comments go to the agent as they arrive (B101).
+  setReviewAutoSend(sessionId: string, autoSend: boolean): Promise<Session>;
+  // The project's open GitHub issues (B101); without `show`, as the project's setting says.
+  // 502 when GitHub cannot be read.
+  issues(repo: string, show?: IssueShow, refresh?: boolean): Promise<IssueList>;
   rewindPreview(sessionId: string, eventId: number, restore?: Restore): Promise<RewindPreview>;
   // Restores the files, the conversation or both to before the user message `eventId`.
   rewind(sessionId: string, eventId: number, restore?: Restore): Promise<RewindReply>;
@@ -294,6 +319,40 @@ export interface Api {
   // account id such as "gemini-main". Removing it signs the engine out.
   saveEngineKey(account: string, key: string): Promise<unknown>;
   removeEngineKey(account: string): Promise<unknown>;
+  // Every engine's accounts (B98, D124); `accounts.changed` carries the same body.
+  accounts(): Promise<AccountList>;
+  // New usage windows for every signed-in account; 429 within 20 s of the last.
+  refreshAccounts(): Promise<AccountList>;
+  // Adds an account after the engine's others and starts signing in to it (202); 409 while
+  // another sign in of the engine runs.
+  addAccount(provider: AccountProvider): Promise<AccountSignIn>;
+  signInAccount(id: string): Promise<AccountSignIn>;
+  cancelAccountSignIn(id: string): Promise<null>;
+  signOutAccount(id: string): Promise<EngineAccount>;
+  // 1 to 40 characters; null or "" clears it.
+  renameAccount(id: string, name: string | null): Promise<EngineAccount>;
+  // The engine's turns start on it from now; 409 unless signed in.
+  activateAccount(id: string): Promise<AccountList>;
+  // 409 for the engine's first account.
+  removeAccount(id: string): Promise<AccountList>;
+  // A Codex account's banked resets with each credit; 409 for a Claude account.
+  bankedResets(id: string): Promise<BankedResets>;
+  // 409 unless a signed-in Codex account, 502 when Codex fails.
+  useBankedReset(id: string, creditId: string): Promise<BankedResetUsed>;
+  // Local models (B106, D129); `local_models.changed` says to list them again.
+  localModels(): Promise<LocalModelList>;
+  // Servers on this Mac's usual ports and the models downloaded on it.
+  findLocalModels(): Promise<FoundModels>;
+  // 422 for an address that is none.
+  checkLocalServer(address: string, key: string | null): Promise<CheckResult>;
+  // 409 `local_server_down` when the server does not answer, 422 for a model it does not
+  // serve; a key goes to the Mac's Keychain.
+  addLocalModels(address: string, key: string | null, models: string[]): Promise<AddedLocalModels>;
+  removeLocalModel(id: string): Promise<null>;
+  setLocalEngine(engine: LocalEngine): Promise<null>;
+  // 202 at once; 404 when the app is not installed.
+  startLocalServer(app: LocalApp): Promise<null>;
+  localUsage(): Promise<LocalUsage>;
   // 202 at once; `engine.state` events follow.
   installEngine(engine: string): Promise<unknown>;
   // 202 at once; `claude_code.install` events follow.
@@ -389,6 +448,9 @@ const server = (name: string) => `${CONFIGURATION}/mcp-servers/${encodeURICompon
 const codexPlugin = (id: string) => `${CONFIGURATION}/codex/plugins/${encodeURIComponent(id)}`;
 const CODEX_MARKETPLACES = `${CONFIGURATION}/codex/marketplaces`;
 const engineQuery = (provider: string) => `provider=${encodeURIComponent(provider)}`;
+const ACCOUNTS = "/api/accounts";
+const account = (id: string) => `${ACCOUNTS}/${encodeURIComponent(id)}`;
+const LOCAL = "/api/local";
 
 /** The daemon's REST API; the device token travels in the same-origin cookie. */
 export class HttpApi implements Api {
@@ -537,6 +599,29 @@ export class HttpApi implements Api {
 
   ciFeedback(sessionId: string) {
     return this.json<unknown>("POST", `${session(sessionId)}/ci-feedback`);
+  }
+
+  refreshPr(sessionId: string) {
+    return this.json<Session>("POST", `${session(sessionId)}/pr/refresh`);
+  }
+
+  reviewFeedback(sessionId: string, ids?: string[]) {
+    const body = ids === undefined ? undefined : { ids };
+    return this.json<SendResponse>("POST", `${session(sessionId)}/pr/review-feedback`, body);
+  }
+
+  setReviewAutoSend(sessionId: string, autoSend: boolean) {
+    return this.json<Session>("PATCH", `${session(sessionId)}/pr/review`, {
+      auto_send: autoSend,
+    });
+  }
+
+  issues(name: string, show?: IssueShow, refresh = false) {
+    const query = new URLSearchParams();
+    if (show !== undefined) query.set("show", show);
+    if (refresh) query.set("refresh", "true");
+    const text = query.toString();
+    return this.json<IssueList>("GET", `${repo(name)}/issues${text ? `?${text}` : ""}`);
   }
 
   rewindPreview(sessionId: string, eventId: number, restore: Restore = "code") {
@@ -1027,6 +1112,84 @@ export class HttpApi implements Api {
 
   removeEngineKey(account: string) {
     return this.json<unknown>("DELETE", `/api/accounts/${encodeURIComponent(account)}/key`);
+  }
+
+  accounts() {
+    return this.json<AccountList>("GET", ACCOUNTS);
+  }
+
+  refreshAccounts() {
+    return this.json<AccountList>("POST", `${ACCOUNTS}/refresh`);
+  }
+
+  addAccount(provider: AccountProvider) {
+    return this.json<AccountSignIn>("POST", `${ACCOUNTS}/${encodeURIComponent(provider)}`);
+  }
+
+  signInAccount(id: string) {
+    return this.json<AccountSignIn>("POST", `${account(id)}/login`);
+  }
+
+  cancelAccountSignIn(id: string) {
+    return this.json<null>("POST", `${account(id)}/login/cancel`);
+  }
+
+  signOutAccount(id: string) {
+    return this.json<EngineAccount>("POST", `${account(id)}/logout`);
+  }
+
+  renameAccount(id: string, name: string | null) {
+    return this.json<EngineAccount>("PUT", `${account(id)}/name`, { name });
+  }
+
+  activateAccount(id: string) {
+    return this.json<AccountList>("PUT", `${account(id)}/active`);
+  }
+
+  removeAccount(id: string) {
+    return this.json<AccountList>("DELETE", account(id));
+  }
+
+  bankedResets(id: string) {
+    return this.json<BankedResets>("GET", `${account(id)}/banked-resets`);
+  }
+
+  useBankedReset(id: string, creditId: string) {
+    return this.json<BankedResetUsed>("POST", `${account(id)}/banked-resets/use`, {
+      credit_id: creditId,
+    });
+  }
+
+  localModels() {
+    return this.json<LocalModelList>("GET", `${LOCAL}/models`);
+  }
+
+  findLocalModels() {
+    return this.json<FoundModels>("GET", `${LOCAL}/find`);
+  }
+
+  checkLocalServer(address: string, key: string | null) {
+    return this.json<CheckResult>("POST", `${LOCAL}/check`, { address, key });
+  }
+
+  addLocalModels(address: string, key: string | null, models: string[]) {
+    return this.json<AddedLocalModels>("POST", `${LOCAL}/models`, { address, key, models });
+  }
+
+  removeLocalModel(id: string) {
+    return this.json<null>("DELETE", `${LOCAL}/models/${encodeURIComponent(id)}`);
+  }
+
+  setLocalEngine(engine: LocalEngine) {
+    return this.json<null>("PUT", `${LOCAL}/engine`, { engine });
+  }
+
+  startLocalServer(app: LocalApp) {
+    return this.json<null>("POST", `${LOCAL}/start`, { app });
+  }
+
+  localUsage() {
+    return this.json<LocalUsage>("GET", `${LOCAL}/usage`);
   }
 
   installEngine(engine: string) {

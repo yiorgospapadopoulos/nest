@@ -28,8 +28,7 @@ interface Props {
   // A subagent's transcript, or a pixie's or team's work, in a chat (B46).
   onOpenAgent: (sessionId: string, toolUseId: string) => void;
   onOpenWork: (sessionId: string, who: WorkOf) => void;
-  // The project's page in Settings (B81).
-  onOpenSettings: (repo: string) => void;
+  onUsage: () => void;
 }
 
 /**
@@ -48,7 +47,7 @@ export function Projects({
   onOpenPixie,
   onOpenAgent,
   onOpenWork,
-  onOpenSettings,
+  onUsage,
 }: Props) {
   const { state, actions } = useStore();
   const [showArchived, setShowArchived] = useState(false);
@@ -164,7 +163,7 @@ export function Projects({
                 onNewChat(repo.name);
               }
         }
-        onSettings={onOpenSettings}
+        onUsage={onUsage}
       />
       {/* The Mac's Pixies tab has no search over chats. */}
       {!pixies && <SearchField query={query} onQuery={setQuery} />}

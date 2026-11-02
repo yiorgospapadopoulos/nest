@@ -1,7 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { approval, mergeApproval, question, review, reviewComments } from "../../test/fixtures.ts";
-import { approvalLine, checksFailedLine, lineText, stuckLine } from "./needsLine.ts";
+import {
+  approval,
+  callEntry,
+  groupEntry,
+  mergeApproval,
+  pixie,
+  question,
+  review,
+  reviewComments,
+} from "../../test/fixtures.ts";
+import { approvalLine, approvalPixie, checksFailedLine, lineText, stuckLine } from "./needsLine.ts";
 
 // The grey line under each Needs you row, worded as NestKit's NeedsYouLine (B77).
 describe("the Needs you line", () => {
@@ -43,6 +52,33 @@ describe("the Needs you line", () => {
       "Plan · Search page",
     );
     expect(lineText(approvalLine(plan("  \n#\n"), null))).toBe("Plan");
+  });
+
+  it("names the pixie whose call raised an item, its own call before its team slot's", () => {
+    const pixies = {
+      p1: pixie(),
+      p2: pixie({ id: "p2", name: "Reviewer" }),
+    };
+    // A team's calls: the leader's slot a1, the member's own call a2.
+    const groups = [
+      groupEntry({
+        kind: "team",
+        pixie_id: null,
+        team_id: "t1",
+        calls: [callEntry(), callEntry({ id: "c2", pixie_id: "p2", tool_use_id: "a2" })],
+      }),
+    ];
+    const raised = (payload: object) => approval({ payload: { tool: "Bash", ...payload } });
+
+    expect(approvalPixie(raised({ call: "a1", agent: "a2" }), groups, pixies)?.name).toBe(
+      "Reviewer",
+    );
+    expect(approvalPixie(raised({ call: "a1", agent: "inner" }), groups, pixies)?.name).toBe(
+      "Tester",
+    );
+    expect(approvalPixie(raised({ call: "zz", agent: "zz" }), groups, pixies)).toBeNull();
+    expect(approvalPixie(raised({ call: "a1", agent: "a2" }), undefined, pixies)).toBeNull();
+    expect(approvalPixie(raised({}), groups, pixies)).toBeNull();
   });
 
   it("names failing checks, and why a chat looks stuck", () => {

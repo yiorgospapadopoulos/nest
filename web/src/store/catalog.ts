@@ -17,6 +17,9 @@ export interface ModelCatalog {
   models: ModelOption[];
   // The model the engine runs when none is named; null while unknown.
   defaultModel: string | null;
+  // The local models (`local:<id>`), which run on any engine (B106): known for names and
+  // thinking, listed in their own Local section.
+  local?: ModelOption[];
 }
 
 /** The list without the engine's default entry, which is never offered (B94). */
@@ -39,6 +42,7 @@ export function modelInfo(catalog: ModelCatalog, model: string | null): ModelOpt
   const alias = value.toLowerCase();
   return (
     catalog.models.find((m) => m.value === value) ??
+    catalog.local?.find((m) => m.value === value) ??
     catalog.models.find((m) => m.resolved_model === value) ??
     (ALIAS.test(alias) ? catalog.models.find((m) => id(m).includes(alias)) : undefined)
   );

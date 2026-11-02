@@ -32,7 +32,8 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
   const label =
     `${session.title}, ${status.label}${startedBy}` +
     `${session.stuck !== null ? ", stuck" : ""}${session.pinned ? ", pinned" : ""}` +
-    placeLabel(place);
+    placeLabel(place) +
+    (session.issue === null ? "" : `, issue #${String(session.issue.number)}`);
   return (
     <div className="lrow">
       <button className="row" aria-label={label} data-chat={session.id} {...gestures}>
@@ -41,6 +42,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
           <span className="rt">{session.title}</span>
           <span className="rsub">
             <PlaceMark place={place} />
+            {session.issue !== null && <span className="rissue">#{session.issue.number}</span>}
             {starter !== null && <StartedBy id={starter} className="rby" />}
             {session.stuck !== null && (
               <span className="rstuck" title={session.stuck.details}>

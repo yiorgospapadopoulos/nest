@@ -20,10 +20,8 @@ export function Shell() {
   const [project, setProject] = useState<string | null>(null);
   // The Chats tab shows the pixies instead of a project (B102).
   const [pixies, setPixies] = useState(false);
-  // The Settings page open, and whether it was opened from the Projects tab (its gear),
-  // where its back button returns.
+  // The Settings page open.
   const [settings, setSettings] = useState<SettingsPage | null>(initial.settings ?? null);
-  const [fromProjects, setFromProjects] = useState(false);
   const [chat, setChat] = useState<ChatTarget | null>(() => routeTarget(initial));
   // The chosen project while it is still registered, else the first one, else General.
   const currentRepo =
@@ -42,15 +40,9 @@ export function Shell() {
     if (window.location.pathname !== path) window.history.replaceState(null, "", path);
   }, [tab, chat, settings]);
 
-  const openSettings = useCallback((page: SettingsPage | null) => {
-    setFromProjects(false);
-    setSettings(page);
-  }, []);
   const closeSettings = useCallback(() => {
-    if (fromProjects) setTab("projects");
-    setFromProjects(false);
     setSettings(null);
-  }, [fromProjects]);
+  }, []);
 
   // What had focus when a chat opened over the tabs, to get it back when the chat closes.
   const opener = useRef<Element | null>(null);
@@ -69,7 +61,6 @@ export function Shell() {
     if (worker === undefined) return;
     const go = (route: Route) => {
       setTab(route.tab);
-      setFromProjects(false);
       setSettings(route.settings ?? null);
       show(routeTarget(route));
     };
@@ -153,35 +144,40 @@ export function Shell() {
               show({ agentOf, call });
             }}
             onOpenWork={openWork}
-            onOpenSettings={(name) => {
+            onUsage={() => {
               setTab("settings");
-              setSettings({ project: name });
-              setFromProjects(true);
+              setSettings({ page: "usage" });
             }}
           />
         )}
         {tab === "settings" && (
           <Settings
             page={settings}
-            onPage={openSettings}
-            back={fromProjects ? "Chats" : "Settings"}
+            onPage={setSettings}
+            back="Settings"
             onBack={closeSettings}
             onOpenPixie={openPixie}
           />
         )}
       </div>
-      {chat === null ? (
+      {/* A new chat keeps the tab bar, its composer docked above it; an open chat hides it. */}
+      {(chat === null || "draft" in chat) && (
         <TabBar
           tab={tab}
           onTab={(next) => {
             // Settings opens on its list again, as a tab does when tapped.
-            if (next === "settings" && tab === "settings") openSettings(null);
-            if (fromProjects) openSettings(null);
+            if (next === "settings" && tab === "settings") setSettings(null);
+            // A tab leaves a new chat that was never sent; its draft stays.
+            if (chat !== null) {
+              opener.current = null;
+              setChat(null);
+            }
             setTab(next);
           }}
           badge={needsCount(state)}
         />
-      ) : (
+      )}
+      {chat !== null && (
         <ChatView
           // A different chat is a fresh view: no state of the last one is carried over.
           key={chatKey(chat)}

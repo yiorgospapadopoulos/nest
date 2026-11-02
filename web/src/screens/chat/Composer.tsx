@@ -39,6 +39,8 @@ import { ConnectorsSheet, ResumeSheet, type ChatNav } from "./CommandSheets.tsx"
 import { ContextMeter } from "./ContextMeter.tsx";
 import { prepareImage } from "./images.ts";
 import { localCommand, namedModel, type LocalCommand } from "./localCommands.ts";
+import { LocalAttachSheet, LocalFailureCard, WeakToolsBar } from "./LocalCards.tsx";
+import { localModelOf, weakWarning } from "../../store/local.ts";
 import { ModelSheet } from "./ModelSheet.tsx";
 import { effortLabel, effortOptions, PERMISSIONS, PICKER_TITLES } from "./options.ts";
 import { Pending } from "./Pending.tsx";
@@ -79,7 +81,8 @@ function modeOf(text: string, shell: boolean, memory: boolean): "bash" | "memory
   return null;
 }
 
-export type NewChatPlace = Pick<CreateSessionBody, "mode" | "base" | "branch">;
+// With `issue`, the GitHub issue is the first message, so it may go without text (B101).
+export type NewChatPlace = Pick<CreateSessionBody, "mode" | "base" | "branch" | "issue">;
 
 type Props =
   | {
@@ -162,6 +165,8 @@ export function Composer({
   >(null);
   // Set when the last send was refused because Claude Code has the chat open.
   const [elsewhere, setElsewhere] = useState(false);
+  // A local chat's + offers files and says what the model cannot take (B116).
+  const [attachMenu, setAttachMenu] = useState(false);
   // A new chat's choices once the user changed one; until then the agent defaults (B102).
   const [draft, setDraft] = useState<NewChatChoices | null>(null);
   const [caret, setCaret] = useState(0);
@@ -209,9 +214,18 @@ export function Composer({
         };
   const catalog = catalogFor(state, choices?.provider);
   const levels = thinkingLevels(catalog, choices?.model ?? null);
+  // The local model the chat runs, its server's failure and its weak-at-tools bar (B116).
+  const localModel = localModelOf(state.local, choices?.model ?? null);
+  const failure = session === undefined ? undefined : state.local.failures[session.id];
+  const weak = pixie === undefined ? weakWarning(state.local, choices?.model ?? null) : null;
   // A project chat calls a team's pixie only with its team (B46).
   const member = pixie === undefined ? memberCall(state, text) : null;
-  const canSend = text.trim() !== "" && !sending && uploads === 0 && !closed && member === null;
+  const canSend =
+    (text.trim() !== "" || workIn?.issue !== undefined) &&
+    !sending &&
+    uploads === 0 &&
+    !closed &&
+    member === null;
   // A new chat's engine that said it is not signed in (B91).
   const hint =
     session === undefined && choices !== null ? signInHint(state, choices.provider) : null;
@@ -428,13 +442,16 @@ export function Composer({
         className="qt"
         aria-haspopup="dialog"
         aria-expanded={picker === kind}
-        aria-label={`${PICKER_TITLES[kind]}: ${label}`}
+        // "Thinking: not available" names its menu already (B116).
+        aria-label={
+          label.startsWith(`${PICKER_TITLES[kind]}:`) ? label : `${PICKER_TITLES[kind]}: ${label}`
+        }
         disabled={closed || unavailable}
         onClick={() => {
           setPicker(kind);
         }}
       >
-        {label}
+        <span className="qtl">{label}</span>
       </button>
     );
   };
@@ -442,6 +459,33 @@ export function Composer({
   return (
     <>
       {live !== undefined && <Pending session={live} draft={key} />}
+      {failure !== undefined && (
+        <LocalFailureCard
+          failure={failure}
+          canRetry={canSend}
+          starting={
+            failure.code === "local_server_down" &&
+            failure.start !== null &&
+            state.local.starting.includes(failure.start)
+          }
+          onRetry={() => void send()}
+          onStart={(app) => void actions.startLocalServer(app)}
+          onChangeModel={() => {
+            setPicker("model");
+          }}
+        />
+      )}
+      {weak !== null && (
+        <WeakToolsBar
+          model={weak}
+          onChangeModel={() => {
+            setPicker("model");
+          }}
+          onDismiss={() => {
+            actions.dismissWeak(weak.id);
+          }}
+        />
+      )}
       {/* In the column just above the composer, like the background bar. */}
       {suggest.items.length > 0 && (
         <Suggestions
@@ -559,8 +603,12 @@ export function Composer({
               <button
                 className="qb"
                 aria-label="Attach"
+                aria-haspopup={localModel === null ? undefined : "dialog"}
                 disabled={closed}
-                onClick={() => fileInput.current?.click()}
+                onClick={() => {
+                  if (localModel === null) fileInput.current?.click();
+                  else setAttachMenu(true);
+                }}
               >
                 <Icon name="plus" />
               </button>
@@ -581,7 +629,8 @@ export function Composer({
             <>
               {selector("model", modelLabel(catalog, choices.model))}
               {levels.length === 0
-                ? selector("effort", "No thinking", true)
+                ? // The phone's row is too narrow for the Mac's "Thinking: not available".
+                  selector("effort", "No thinking", true)
                 : selector(
                     "effort",
                     choices.effort === null ? "Thinking" : effortLabel(choices.effort),
@@ -601,6 +650,15 @@ export function Composer({
             />
           )}
         </div>
+        {attachMenu && localModel !== null && (
+          <LocalAttachSheet
+            model={localModel}
+            onAttach={() => fileInput.current?.click()}
+            onClose={() => {
+              setAttachMenu(false);
+            }}
+          />
+        )}
         {sheet?.kind === "memory" && live !== undefined && (
           <ActionSheet
             label="Save to memory"

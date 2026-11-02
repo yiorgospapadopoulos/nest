@@ -271,6 +271,7 @@ name = "Issues become chats"
 text = "Start a chat from an open issue, with its own branch and a pull request that closes it."
 where = "Start screen"
 added = 2026-10-21
+changed = 2026-11-02
 block = "B101"
 
 [[features]]
@@ -280,7 +281,7 @@ name = "Feedback back to the agent"
 text = "Failed checks and reviewers' comments go to the chat in one click."
 where = "Needs you"
 added = 2026-10-14
-changed = 2026-10-21
+changed = 2026-11-02
 block = "B101"
 
 # Pixies
@@ -495,7 +496,18 @@ name = "Several accounts"
 text = "Add more subscriptions for an engine and choose which one is used."
 where = "Settings › Accounts"
 added = 2026-10-21
+changed = 2026-11-02
 block = "B98"
+
+[[features]]
+id = "local-models"
+group = "engines"
+name = "Local models"
+text = "Models running on your Mac or network work like a subscription, free and with no sign in."
+where = "Settings › Accounts"
+added = 2026-10-21
+changed = 2026-11-02
+block = "B106"
 
 [[features]]
 id = "shared-setup"
@@ -510,7 +522,8 @@ block = "B97"
 id = "iphone"
 group = "engines"
 name = "Your iPhone"
-text = "Nest on your phone over your private network, with push notifications."
+text = "Nest on your phone over your private network, with push notifications, accounts, issues and local models."
 where = "Settings › Devices"
 added = 2026-10-07
+changed = 2026-11-02
 block = "B10"

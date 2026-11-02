@@ -206,33 +206,19 @@ describe("Projects", () => {
     expect(screen.getByRole("button", { name: "Project: Pixies" })).toBeInTheDocument();
   });
 
-  it("opens the project's settings from the menu and comes back to Chats", async () => {
+  // The user removed "Settings for {repo}" (B116 item 5): the project page is under Settings.
+  it("ends the projects menu with the projects", async () => {
     const { user } = await openProjects([]);
 
     await user.click(screen.getByRole("button", { name: "Project: todo-ui" }));
-    await user.click(screen.getByRole("menuitem", { name: "Settings for todo-ui" }));
-    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
-    // The project's own page (B81).
-    expect(await screen.findByRole("heading", { level: 1, name: "todo-ui" })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/settings/projects/todo-ui");
-    await user.click(screen.getByRole("button", { name: "Back to Chats" }));
 
-    expect(screen.getByRole("tab", { name: "Chats" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("button", { name: "Project: todo-ui" })).toBeInTheDocument();
-    // Settings opens on its list again afterwards.
-    await user.click(screen.getByRole("tab", { name: "Settings" }));
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
-  });
-
-  it("leaves the project's settings by another tab, Settings then opening on its list", async () => {
-    const { user } = await openProjects([]);
-    await user.click(screen.getByRole("button", { name: "Project: todo-ui" }));
-    await user.click(screen.getByRole("menuitem", { name: "Settings for todo-ui" }));
-
-    await user.click(screen.getByRole("tab", { name: "Needs you" }));
-    await user.click(screen.getByRole("tab", { name: "Settings" }));
-
-    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    const menu = screen.getByRole("menu");
+    expect([...menu.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
+      "Pixies",
+      "General",
+      "TUtodo-ui",
+      "Nnarwhal",
+    ]);
   });
 
   it("closes the menu without switching", async () => {

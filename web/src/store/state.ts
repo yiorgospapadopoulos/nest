@@ -44,6 +44,9 @@ import type {
   FeaturesCatalog,
   ProviderInfo,
 } from "../api/types.ts";
+import { NO_LOCAL, type LocalFailure, type LocalState } from "./local.ts";
+import { NO_METER_CHOICE, type UsageMeterChoice } from "./usageMeter.ts";
+import type { BankedResets, EngineAccount } from "../api/types.ts";
 
 /**
  * The usage period shown in Settings, shared by the Agents page and its breakdown (B84):
@@ -127,9 +130,18 @@ export interface SettingsState {
   projectConfiguration: Record<string, ProjectConfiguration>;
   // Settings > Features (B103), loaded with the settings and refreshed by each report.
   features: FeaturesCatalog | null;
+  // Every engine's accounts (B98), once asked; kept current by `accounts.changed`.
+  accounts: EngineAccount[] | null;
+  // A Codex account's banked resets with each credit, by account id, once the list opened.
+  bankedResets: Record<string, BankedResets>;
+  // The accounts "Top bar shows" checks and their order, on this device (B98).
+  usageMeter: UsageMeterChoice;
 }
 
 export const NO_SETTINGS: SettingsState = {
+  accounts: null,
+  bankedResets: {},
+  usageMeter: NO_METER_CHOICE,
   usage: null,
   stuck: null,
   storage: null,
@@ -222,6 +234,8 @@ export interface State {
   runs: Record<string, RunStatus>;
   // The output of the runs whose sheet is open, by folder, raw; live from `run.output`.
   runOutput: Record<string, string>;
+  // Local models, their failures in chats and what this device dismissed (B106, B116).
+  local: LocalState;
   toast: Toast | null;
 }
 
@@ -269,6 +283,7 @@ export const initialState: State = {
   unseenArtifacts: 0,
   runs: {},
   runOutput: {},
+  local: NO_LOCAL,
   toast: null,
 };
 
@@ -349,4 +364,7 @@ export type Action =
   | { type: "run"; id: string; status: RunStatus }
   // The output of a folder's run as the sheet opened (or it started again), or closed (null).
   | { type: "runOutput"; folder: string; text: string | null }
+  | { type: "local"; change: Partial<LocalState> }
+  // A local chat's server did not answer or its model did not load; null once it ran.
+  | { type: "localFailure"; id: string; failure: LocalFailure | null }
   | { type: "toast"; toast: Toast | null };

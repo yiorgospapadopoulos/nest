@@ -115,6 +115,8 @@ export function session(overrides: Partial<Session> = {}): Session {
     started_by_pixie: null,
     habit_run_id: null,
     limit_pause: null,
+    issue: null,
+    review: null,
     ...overrides,
   };
 }

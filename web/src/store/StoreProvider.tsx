@@ -10,6 +10,8 @@ import {
   loadMachine,
   loadShowAutomated,
   loadUsageBarHidden,
+  loadUsageMeter,
+  loadWeakDismissed,
   saveDrafts,
 } from "./devicePrefs.ts";
 import { StoreContext } from "./context.ts";
@@ -40,6 +42,8 @@ export function StoreProvider({
     usageBarHidden: loadUsageBarHidden(from),
     drafts: loadDrafts(from),
     machine: loadMachine(from),
+    local: { ...initialState.local, weakDismissed: loadWeakDismissed(from) },
+    settings: { ...initialState.settings, usageMeter: loadUsageMeter(from) },
   }));
   const actions = useMemo(() => createActions(api, dispatch, storage), [api, storage]);
   const ready = state.auth === "ready";

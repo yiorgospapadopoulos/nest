@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { accountList } from "../test/accounts.ts";
 import { fakeApi } from "../test/fakeApi.ts";
 import {
   detail,
@@ -306,8 +307,11 @@ describe("tap targets", () => {
   });
 
   it("are at least 44 points on the Accounts page", async () => {
-    await openSettings("Accounts");
-    reach(await screen.findByRole("button", { name: "Show email" }), "height");
+    const api = fakeApi();
+    api.accounts.mockResolvedValue({ accounts: accountList() });
+    await openSettings("Accounts", { api });
+    reach(await screen.findByRole("button", { name: "Banked resets" }), "height");
+    reach(screen.getByRole("button", { name: "Add local model" }), "height");
   });
 
   it("are at least 44 points on the Storage page (B86)", async () => {

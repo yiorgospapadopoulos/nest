@@ -10,8 +10,11 @@ import {
   queuedMessage,
   review,
 } from "../test/fixtures.ts";
+import { ApiError } from "./client.ts";
 import {
   contextOf,
+  localFailureOf,
+  serverDownOf,
   mergeOf,
   num,
   permissionOf,
@@ -222,5 +225,47 @@ describe("stuckOf", () => {
     expect(stuckOf({ reason: "bored", since })).toBeNull();
     expect(stuckOf({ since })).toBeNull();
     expect(stuckOf({ reason: "silent" })).toBeNull();
+  });
+});
+
+describe("local model failures", () => {
+  const down = { app: "LM Studio", address: "http://127.0.0.1:1234", start: "lmstudio" };
+
+  it("reads a refused send's server, and nothing from other refusals", () => {
+    const refused = new ApiError(409, "LM Studio is not running", "local_server_down", {
+      code: "local_server_down",
+      ...down,
+    });
+    expect(serverDownOf(refused)).toEqual({ code: "local_server_down", ...down });
+    expect(serverDownOf(new ApiError(409, "Busy", "turn_running", down))).toBeNull();
+    expect(serverDownOf(new ApiError(502, "x", "local_server_down", down))).toBeNull();
+    expect(serverDownOf(new Error("offline"))).toBeNull();
+  });
+
+  it("reads a failed turn's state, offering only an app Nest can start", () => {
+    const state = { state: "failed", error: "gone", code: "local_server_down" };
+    expect(localFailureOf({ ...state, ...down, start: "vllm" })).toEqual({
+      code: "local_server_down",
+      app: "LM Studio",
+      address: "http://127.0.0.1:1234",
+      start: null,
+    });
+    expect(
+      localFailureOf({
+        state: "failed",
+        code: "local_model_not_loaded",
+        detail: "LM Studio could not load gpt-oss-20b",
+        app: "LM Studio",
+        address: "http://127.0.0.1:1234",
+        model: "gpt-oss-20b",
+      }),
+    ).toEqual({
+      code: "local_model_not_loaded",
+      detail: "LM Studio could not load gpt-oss-20b",
+      app: "LM Studio",
+      address: "http://127.0.0.1:1234",
+      model: "gpt-oss-20b",
+    });
+    expect(localFailureOf({ state: "failed", error: "boom" })).toBeNull();
   });
 });

@@ -1,15 +1,22 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api/client.ts";
-import { USAGE_BAR_HIDDEN_KEY } from "../../store/devicePrefs.ts";
+import { ACCOUNTS_CHANGED } from "../../api/events.ts";
+import { USAGE_BAR_HIDDEN_KEY, USAGE_METER_KEY } from "../../store/devicePrefs.ts";
+import { accountList, accountWindow, codexAccount, engineAccount } from "../../test/accounts.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { claudeProvider, codexProvider, usagePeriod, usageSettings } from "../../test/fixtures.ts";
 import { memoryStorage } from "../../test/render.tsx";
 import { openSettings } from "../../test/settings.ts";
 
-// Clicked through from the list: opened from its address, the page asks for other engines'
-// limits before the engines have loaded, and Codex's never show (I-note, B111).
-async function openUsage(api = fakeApi()) {
+/** The fake API with Claude's Personal (in use) and Work, and Codex's own login. */
+function usageApi(accounts = accountList()) {
+  const api = fakeApi();
+  api.accounts.mockResolvedValue({ accounts });
+  return api;
+}
+
+async function openUsage(api = usageApi()) {
   const rendered = await openSettings(null, { api });
   await rendered.user.click(await screen.findByRole("button", { name: "Usage" }));
   return rendered;
@@ -22,7 +29,7 @@ describe("usage page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Usage" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/settings/usage");
     await screen.findByLabelText("Check limits");
-    const limits = screen.getByRole("meter", { name: "5 hour used" });
+    const limits = await screen.findByRole("meter", { name: "Claude · Personal 5 hour used" });
     const period = screen.getByRole("group", { name: "Period" });
     const checks = screen.getByLabelText("Check limits");
     const follows = (before: Node, after: Node) =>
@@ -79,11 +86,13 @@ describe("usage limit settings", () => {
   });
 
   it("waits for the settings", async () => {
-    const api = fakeApi();
+    const api = usageApi();
     api.usageSettings.mockReturnValue(new Promise(() => undefined));
     await openUsage(api);
 
-    expect(await screen.findByRole("meter", { name: "5 hour used" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("meter", { name: "Claude · Personal 5 hour used" }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Check limits")).not.toBeInTheDocument();
   });
 
@@ -108,85 +117,158 @@ function withCodex(api = fakeApi(), signedIn = true) {
   return api;
 }
 
-describe("usage per engine", () => {
-  it("shows Codex's windows under Claude's, and refreshes both", async () => {
-    const api = withCodex();
+describe("usage per account (B98)", () => {
+  it("shows the account in use of each engine, and refreshes every account", async () => {
+    const api = usageApi();
+    api.refreshAccounts.mockResolvedValue({ accounts: accountList() });
     const { user } = await openUsage(api);
 
     const limits = await screen.findByRole("region", { name: /^Limits/ });
-    expect(await within(limits).findByRole("meter", { name: "Codex 5 hour used" })).toHaveAttribute(
-      "aria-valuenow",
-      "20",
-    );
-    expect(within(limits).getByRole("meter", { name: "Codex Weekly used" })).toHaveAttribute(
-      "aria-valuenow",
-      "45",
-    );
-    expect(within(limits).getByRole("meter", { name: "5 hour used" })).toBeInTheDocument();
-    expect(within(limits).getByText("Claude")).toBeInTheDocument();
-    expect(within(limits).getByText("Codex")).toBeInTheDocument();
-    expect(api.engineLimits).toHaveBeenCalledWith("codex");
+    expect(
+      await within(limits).findByRole("meter", { name: "Claude · Personal Weekly used" }),
+    ).toHaveAttribute("aria-valuenow", "81");
+    expect(
+      within(limits).getByRole("meter", { name: "Codex · me@example.com 30 day used" }),
+    ).toHaveAttribute("aria-valuenow", "4");
+    expect(within(limits).getAllByText("in use")).toHaveLength(2);
+    expect(within(limits).queryByText(/Claude · Work/)).toBeNull();
 
     await user.click(within(limits).getByRole("button", { name: "Refresh usage" }));
-    expect(api.refreshUsage).toHaveBeenCalled();
-    expect(api.refreshEngineUsage).toHaveBeenCalledWith("codex");
+    expect(api.refreshAccounts).toHaveBeenCalled();
   });
 
-  it("follows Codex's windows live, and waits for a first report", async () => {
-    const api = withCodex();
-    api.engineLimits.mockRejectedValue(new ApiError(502, "codex is down"));
-    const { push } = await openUsage(api);
+  it("follows accounts.changed, and says a window past its reset reads 0", async () => {
+    const { push } = await openUsage();
     const limits = await screen.findByRole("region", { name: /^Limits/ });
-    await within(limits).findByText("Codex");
-    expect(within(limits).getByText("Usage").nextElementSibling).toHaveTextContent(
-      "Not reported yet",
-    );
+    await within(limits).findByText("Claude · Personal");
 
     push({
-      type: "usage.provider_updated",
+      type: ACCOUNTS_CHANGED,
       payload: {
-        provider: "codex",
-        windows: [{ utilization: 0.6, resets_at: null, minutes: 43200, label: "30 day" }],
-      },
+        accounts: [
+          engineAccount({ limits: [accountWindow({ utilization: 0.9, reset: true })] }),
+          codexAccount({ limits: [] }),
+        ],
+      } as never,
     });
-    expect(within(limits).getByRole("meter", { name: "Codex 30 day used" })).toHaveAttribute(
-      "aria-valuenow",
-      "60",
-    );
+
+    const meter = within(limits).getByRole("meter", { name: "Claude · Personal 5 hour used" });
+    expect(meter).toHaveAttribute("aria-valuenow", "0");
+    expect(within(limits).getByText("Reset")).toBeInTheDocument();
+    expect(within(limits).getByText("Not reported yet")).toBeInTheDocument();
   });
 
-  it("leaves out an engine that is not signed in, and its refresh", async () => {
-    const api = withCodex(fakeApi(), false);
+  it("says when refreshing again is too soon", async () => {
+    const api = usageApi();
+    api.refreshAccounts.mockRejectedValue(new ApiError(429, "Too soon"));
     const { user } = await openUsage(api);
-    const limits = await screen.findByRole("region", { name: /^Limits/ });
-    await waitFor(() => {
-      expect(api.providers).toHaveBeenCalled();
-    });
 
-    expect(within(limits).queryByText("Codex")).toBeNull();
-    expect(within(limits).queryByText("Claude")).toBeNull();
-    await user.click(within(limits).getByRole("button", { name: "Refresh usage" }));
-    expect(api.refreshEngineUsage).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Refresh usage" }));
+
+    expect(await screen.findByText("Usage was refreshed moments ago")).toBeInTheDocument();
   });
 });
 
-describe("top bar shows", () => {
-  it("checks an engine per row, kept on this device", async () => {
+describe("top bar shows (B98)", () => {
+  const rows = () =>
+    within(screen.getByRole("region", { name: "Top bar shows" }))
+      .getAllByRole("checkbox")
+      .map((box) => [box.getAttribute("aria-label"), box.getAttribute("aria-checked")]);
+
+  it("lists accounts, checks the account in use of each engine at first, and keeps a change", async () => {
     const storage = memoryStorage();
-    const api = withCodex(fakeApi(), false);
-    const { user } = await openSettings("Usage", { api, storage });
+    const { user } = await openSettings("Usage", { api: usageApi(), storage });
 
-    const bar = await screen.findByRole("region", { name: "Top bar shows" });
-    const codex = await within(bar).findByRole("checkbox", { name: "Show Codex in the top bar" });
-    expect(codex).toBeChecked();
-    expect(within(bar).getByText("Not signed in")).toBeInTheDocument();
-    expect(within(bar).getByRole("checkbox", { name: "Show Claude in the top bar" })).toBeChecked();
+    await within(await screen.findByRole("region", { name: "Top bar shows" })).findByText(
+      "Claude · Work",
+    );
+    expect(rows()).toEqual([
+      ["Show Claude · Personal in the top bar", "true"],
+      ["Show Claude · Work in the top bar", "false"],
+      ["Show Codex · me@example.com in the top bar", "true"],
+    ]);
+    expect(screen.getByText("Max 20x · in use")).toBeInTheDocument();
 
-    await user.click(codex);
-    expect(codex).not.toBeChecked();
-    expect(storage.getItem(USAGE_BAR_HIDDEN_KEY)).toBe(JSON.stringify(["codex"]));
-    await user.click(codex);
-    expect(codex).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Show Claude · Work in the top bar" }));
+
+    expect(JSON.parse(storage.getItem(USAGE_METER_KEY) ?? "null")).toEqual({
+      order: [],
+      shown: ["claude-main", "codex-main", "claude-work"],
+    });
+    const limits = screen.getByRole("region", { name: /^Limits/ });
+    expect(within(limits).getByText("Claude · Work")).toBeInTheDocument();
+  });
+
+  it("starts an engine unchecked before (nest.usageBarHidden) unchecked, then drops that key", async () => {
+    const storage = memoryStorage();
+    storage.setItem(USAGE_BAR_HIDDEN_KEY, JSON.stringify(["codex"]));
+    const { user } = await openSettings("Usage", { api: usageApi(), storage });
+
+    await within(await screen.findByRole("region", { name: "Top bar shows" })).findByText(
+      "Claude · Work",
+    );
+    expect(rows()).toEqual([
+      ["Show Claude · Personal in the top bar", "true"],
+      ["Show Claude · Work in the top bar", "false"],
+      ["Show Codex · me@example.com in the top bar", "false"],
+    ]);
+    const limits = screen.getByRole("region", { name: /^Limits/ });
+    expect(within(limits).queryByText(/Codex/)).toBeNull();
+
+    await user.click(screen.getByRole("checkbox", { name: "Show Claude · Work in the top bar" }));
+    expect(storage.getItem(USAGE_BAR_HIDDEN_KEY)).toBeNull();
+    expect(JSON.parse(storage.getItem(USAGE_METER_KEY) ?? "null")).toEqual({
+      order: [],
+      shown: ["claude-main", "claude-work"],
+    });
+  });
+
+  it("moves an account by its handle, kept on this device and read back on the next start", async () => {
+    const storage = memoryStorage();
+    const first = await openSettings("Usage", { api: usageApi(), storage });
+
+    const grip = await screen.findByRole("button", { name: "Move Codex · me@example.com" });
+    grip.focus();
+    await first.user.keyboard("{ArrowUp}{ArrowUp}");
+
+    expect(rows().map(([label]) => label)).toEqual([
+      "Show Codex · me@example.com in the top bar",
+      "Show Claude · Personal in the top bar",
+      "Show Claude · Work in the top bar",
+    ]);
+    expect(JSON.parse(storage.getItem(USAGE_METER_KEY) ?? "null")).toEqual({
+      order: ["codex-main", "claude-main", "claude-work"],
+      shown: null,
+    });
+    first.unmount();
+
+    await openSettings("Usage", { api: usageApi(), storage });
+    await within(await screen.findByRole("region", { name: "Top bar shows" })).findByText(
+      "Claude · Work",
+    );
+    expect(rows()[0]?.[0]).toBe("Show Codex · me@example.com in the top bar");
+    const groups = within(screen.getByRole("region", { name: /^Limits/ }))
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent);
+    expect(groups).toEqual(["Codex · me@example.com in use", "Claude · Personal in use"]);
+  });
+
+  it("drags an account by its handle", async () => {
+    const storage = memoryStorage();
+    await openSettings("Usage", { api: usageApi(), storage });
+
+    const grip = await screen.findByRole("button", { name: "Move Claude · Personal" });
+    // jsdom has no pointer capture.
+    grip.setPointerCapture = () => undefined;
+    fireEvent.pointerDown(grip, { pointerId: 1, clientY: 100 });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientY: 190 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientY: 190 });
+
+    expect(rows().map(([label]) => label)).toEqual([
+      "Show Claude · Work in the top bar",
+      "Show Codex · me@example.com in the top bar",
+      "Show Claude · Personal in the top bar",
+    ]);
   });
 });
 
@@ -217,5 +299,18 @@ describe("usage details by engine", () => {
 
     await screen.findByRole("region", { name: "By who" });
     expect(screen.queryByRole("region", { name: "By engine" })).toBeNull();
+  });
+});
+
+describe("I-B111-1: opened from its address", () => {
+  it("shows Codex's limits after a reload", async () => {
+    const api = withCodex();
+    api.accounts.mockResolvedValue({ accounts: accountList() });
+    await openSettings("Usage", { api });
+
+    const limits = await screen.findByRole("region", { name: /^Limits/ });
+    expect(
+      await within(limits).findByRole("meter", { name: /^Codex.* used$/ }),
+    ).toBeInTheDocument();
   });
 });

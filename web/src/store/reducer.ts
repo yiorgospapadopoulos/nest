@@ -306,6 +306,17 @@ export function reduce(state: State, action: Action): State {
       return action.text === null
         ? { ...state, runOutput: omit(state.runOutput, action.folder) }
         : withRunOutput(state, action.folder, action.text);
+    case "local":
+      return { ...state, local: { ...state.local, ...action.change } };
+    case "localFailure": {
+      const { failures } = state.local;
+      if (action.failure === null && !(action.id in failures)) return state;
+      const next =
+        action.failure === null
+          ? omit(failures, action.id)
+          : { ...failures, [action.id]: action.failure };
+      return { ...state, local: { ...state.local, failures: next } };
+    }
     case "toast":
       return { ...state, toast: action.toast };
   }

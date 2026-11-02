@@ -173,7 +173,6 @@ describe("Needs you rows (B102 item 10)", () => {
       "href",
       "https://github.com/me/todo-ui/pull/7",
     );
-    expect(within(item).queryByRole("button", { name: /Send/ })).not.toBeInTheDocument();
 
     await user.click(within(item).getByRole("button", { name: "Validate contact form" }));
     expect(
@@ -187,6 +186,31 @@ describe("Needs you rows (B102 item 10)", () => {
     const item = card(/^Review comments/);
     expect(line(item)).toBe("Review comments · 0 on #0");
     expect(within(item).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("send one review comment by its id, or all of them", async () => {
+    const api = withItems([reviewComments()]);
+    const { user } = await renderInbox({ api });
+    const item = card(/^Review comments/);
+
+    expect(within(item).getByText("#7 · Changes requested")).toBeInTheDocument();
+    await user.click(within(item).getByRole("button", { name: "Send validate.ts:12" }));
+    expect(api.reviewFeedback).toHaveBeenLastCalledWith("s1", ["c1"]);
+    // The daemon replaces the approval by its events; until then the row stays.
+    expect(card(/^Review comments/)).toBeInTheDocument();
+
+    await user.click(within(item).getByRole("button", { name: "Send all to agent" }));
+    expect(api.reviewFeedback).toHaveBeenLastCalledWith("s1", undefined);
+  });
+
+  it("show why sending review comments failed", async () => {
+    const api = withItems([reviewComments()]);
+    api.reviewFeedback.mockRejectedValueOnce(new ApiError(409, "No review comments wait"));
+    const { user } = await renderInbox({ api });
+
+    await user.click(screen.getByRole("button", { name: "Send all to agent" }));
+    expect(await screen.findByText("No review comments wait")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send all to agent" })).toBeEnabled();
   });
 
   it("open a plan in place, named by its first line", async () => {
@@ -595,24 +619,71 @@ describe("review cards", () => {
     expect(await screen.findByText("Committed, not pushed")).toBeInTheDocument();
   });
 
-  it("only commit a worktree chat whose pull request is already open", async () => {
+  it("push to a worktree chat's open pull request, or only commit with Approve and commit", async () => {
     const url = "https://github.com/me/todo-ui/pull/7";
-    const api = withItems([review()], [session({ pr_url: url })]);
-    api.approve.mockResolvedValueOnce(session({ pr_url: url }));
+    const sent = { kind: "thread" as const, path: "a.ts", line: 1, outdated: false };
+    const chat = session({
+      pr_url: url,
+      pr: prStatus(),
+      review: {
+        items: [
+          { ...sent, id: "t1", author: "o", body: "x", url, created_at: null },
+          { ...sent, id: "t2", author: "o", body: "y", url, created_at: null },
+          { ...sent, id: "t3", author: "o", body: "z", url, created_at: null },
+        ],
+        sent: ["t1", "t2", "t3"],
+        changes_requested: false,
+        auto_send: false,
+        replied: ["t3"],
+      },
+    });
+    const api = withItems([review(), review({ id: "q9" })], [chat]);
+    api.approve.mockResolvedValue(chat);
     const { user } = await renderInbox({ api });
 
-    expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
-    expect(screen.queryByText(/Pushes to/)).not.toBeInTheDocument();
-    await user.click(await reviewLoaded("Approve and commit"));
+    expect(
+      screen.getAllByText(
+        "Also replies on 2 review threads with the commit, without resolving them.",
+      )[0],
+    ).toBeInTheDocument();
+    await user.click(await reviewLoaded("Approve and push to #7"));
+    expect(api.approve).toHaveBeenLastCalledWith("s1", {
+      commit_message: "Validate contact form",
+      open_pr: false,
+      ...SEEN,
+    });
+    expect(await screen.findByText("Pushed to #7")).toBeInTheDocument();
 
-    expect(api.approve).toHaveBeenCalledWith("s1", {
+    await user.click(await reviewLoaded("Approve and commit"));
+    expect(api.approve).toHaveBeenLastCalledWith("s1", {
       commit_message: "Validate contact form",
       open_pr: false,
       push: false,
       ...SEEN,
     });
-    expect(await screen.findByText("Committed to agent/contact, not pushed")).toBeInTheDocument();
-    expect(screen.queryByText("Pull request opened")).not.toBeInTheDocument();
+  });
+
+  it("only commit a worktree chat whose pull request was merged or closed", async () => {
+    const url = "https://github.com/me/todo-ui/pull/7";
+    for (const state of ["merged", "closed"] as const) {
+      const api = withItems([review()], [session({ pr_url: url, pr: prStatus({ state }) })]);
+      api.approve.mockResolvedValueOnce(session({ pr_url: url }));
+      const { user, unmount } = await renderInbox({ api });
+
+      expect(await screen.findByText("Commits to agent/contact, not pushed")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /push to/ })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Approve and commit" })).toHaveLength(1);
+      await user.click(await reviewLoaded("Approve and commit"));
+
+      expect(api.approve).toHaveBeenCalledWith("s1", {
+        commit_message: "Validate contact form",
+        open_pr: false,
+        push: false,
+        ...SEEN,
+      });
+      expect(await screen.findByText("Committed to agent/contact, not pushed")).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("stay up for review when approving or sending feedback fails", async () => {

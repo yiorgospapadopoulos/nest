@@ -12,6 +12,7 @@ import type {
 import { permissionOf } from "../api/payloads.ts";
 import { CALL_TOOL, turnLabel } from "./activity.ts";
 import { editDiff, type EditDiff } from "./edits.ts";
+import { githubPartOf, type GitHubPart } from "./github.ts";
 import { agentReport } from "./report.ts";
 
 export interface ToolItem {
@@ -129,7 +130,15 @@ export interface PixieResultItem {
 export type TranscriptItem =
   | PixieResultItem
   // `from`: the pixie that sent it into this chat (B41).
-  | { kind: "user"; key: string; text: string; attachments: string[]; from?: string }
+  // `github`: the issue or review comments Nest wrote into it (B101), after `text`.
+  | {
+      kind: "user";
+      key: string;
+      text: string;
+      attachments: string[];
+      from?: string;
+      github?: GitHubPart;
+    }
   // What Nest tells a pixie once the chats it started have finished (B41), or after a
   // habit run reported (B42, titled "Habit report").
   | { kind: "report"; key: string; text: string; title?: string }
@@ -455,6 +464,11 @@ function userItems(key: string, p: JsonObject): TranscriptItem[] {
   // Its first line names the habit and the report; the report card shows the details.
   if (p.origin === "report") {
     return [{ kind: "report", key, title: "Habit report", text: text.replace(/\n[\s\S]*$/, "") }];
+  }
+  const github = githubPartOf(p);
+  if (github !== null) {
+    const attached = list(p.attachments).map((a) => str(obj(a).filename) ?? "file");
+    return [{ kind: "user", key, text: github.own, attachments: attached, github: github.part }];
   }
   const { commands, rest } = bashBlocks(text);
   const bash = commands.map((c, index): BashItem => ({

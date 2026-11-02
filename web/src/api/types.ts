@@ -122,6 +122,10 @@ export interface Session {
   habit_run_id: string | null;
   // Set while the chat waits for a usage limit to reset (B78); the chat is idle meanwhile.
   limit_pause: LimitPause | null;
+  // The GitHub issue the chat was started from (B101).
+  issue: IssueRef | null;
+  // The pull request's review comments and which went to the agent (B101); null until read.
+  review: PrReview | null;
 }
 
 /** A Claude Code or Codex chat of a registered repo that Nest does not own (D028, B113). */
@@ -481,7 +485,10 @@ export interface NestEvent {
 
 export interface CreateSessionBody {
   repo: string;
+  // May be "" with `issue`: the issue is then the first message (B101).
   prompt: string;
+  // The number of an open GitHub issue of the repo that the chat starts from (B101).
+  issue?: number;
   // The engine (B91); left out, the agent defaults' engine.
   provider?: string;
   model?: string;
@@ -1572,3 +1579,292 @@ export interface FeaturesCatalog {
   groups: FeatureGroup[];
   new_count: number;
 }
+
+// GitHub issues and pull request review comments (B101, D127).
+
+/** Which issues a project lists: all open ones, or those assigned to the user. */
+export type IssueShow = "all" | "mine";
+
+/** The issue a chat was started from. */
+export interface IssueRef {
+  number: number;
+  title: string;
+  url: string;
+}
+
+export interface LinkedPr {
+  number: number;
+  url: string;
+}
+
+/** An open issue as `GET /api/repos/{name}/issues` lists it. */
+export interface IssueSummary extends IssueRef {
+  labels: string[];
+  // Comments by people; bots' are not counted.
+  comments: number;
+  updated_at: string;
+  // Pull requests of the same repository that close the issue, in GitHub's order.
+  prs: LinkedPr[];
+  // The newest open chat of the project started from the issue.
+  chat: string | null;
+}
+
+export interface IssueList {
+  // False when the project has no GitHub remote.
+  available: boolean;
+  show: IssueShow;
+  // Newest updated first.
+  issues: IssueSummary[];
+}
+
+export type ReviewCommentKind = "thread" | "review";
+
+/** Feedback a reviewer left on the pull request, as untrusted text from GitHub. */
+export interface ReviewComment {
+  // A thread's id with its last comment's, so a new reply makes it new again.
+  id: string;
+  kind: ReviewCommentKind;
+  path: string | null;
+  // The line now, or for an outdated thread the line it was on.
+  line: number | null;
+  outdated: boolean;
+  author: string;
+  // A thread's comments by people, in order, each as `author: text`.
+  body: string;
+  url: string;
+  created_at: string | null;
+}
+
+/** The review comments on a pull request Nest opened; resolved threads are gone. */
+export interface PrReview {
+  items: ReviewComment[];
+  // Ids of the items that went to the agent.
+  sent: string[];
+  changes_requested: boolean;
+  // New comments go to the agent as they arrive, instead of waiting in Needs you.
+  auto_send: boolean;
+  // Thread items Nest replied on after pushing the agent's work for them.
+  replied: string[];
+}
+
+// Engine accounts (B98, D124): several per engine, one active.
+
+/** The engines an account can be added for. */
+export type AccountProvider = "claude" | "codex" | "opencode" | "gemini";
+
+/** One of an account's usage windows. */
+export interface AccountWindow {
+  label: string;
+  // Claude's five-hour window is 300, its weekly one 10080; null when not known.
+  minutes: number | null;
+  // A fraction: 0.3 is 30%.
+  utilization: number;
+  resets_at: string | null;
+  updated_at: string;
+  // Its reset time passed since the last report: it reads as 0 until the next one.
+  reset: boolean;
+}
+
+/** One of Codex's banked resets: using it resets the account's limits. */
+export interface BankedCredit {
+  id: string;
+  title: string | null;
+  description: string | null;
+  // Null when it does not expire.
+  expires_at: string | null;
+}
+
+/** The resets a Codex account has banked. */
+export interface BankedResets {
+  available: number;
+  // Null until the details were read; only the ones still available.
+  credits: BankedCredit[] | null;
+}
+
+/** An engine account as Settings > Accounts lists it; never a token. */
+export interface EngineAccount {
+  id: string;
+  // The engine, such as "claude" or "codex".
+  provider: string;
+  // The user's own name for it.
+  name: string | null;
+  // The name, else the email, else the engine's name.
+  title: string;
+  email: string | null;
+  // As the engine names the plan, such as "Claude Max" or "ChatGPT Plus".
+  plan: string | null;
+  // Null when the engine could not be asked.
+  signed_in: boolean | null;
+  // The account the engine's turns run on; exactly one per engine.
+  active: boolean;
+  // The user's own login, never removable.
+  first: boolean;
+  signing_in: boolean;
+  // Why the last sign in failed, or why the engine could not be asked.
+  error: string | null;
+  limits: AccountWindow[];
+  checked_at: string | null;
+  // Codex only; null before Codex said.
+  banked_resets: BankedResets | null;
+}
+
+/** `GET /api/accounts` and the `accounts.changed` event: Claude's, then Codex's, and so on. */
+export interface AccountList {
+  accounts: EngineAccount[];
+}
+
+/** An account being signed in to. */
+export interface AccountSignIn {
+  account: EngineAccount;
+  // Codex's sign-in page, which the client opens; null for Claude, which opens it on the Mac.
+  auth_url: string | null;
+  // For an engine signed in in Terminal (B107): the command the user runs there.
+  login_command: string | null;
+}
+
+export type ResetOutcome = "reset" | "nothing_to_reset" | "no_credit" | "already_redeemed";
+
+/** What using a banked reset did, and the accounts after. */
+export interface BankedResetUsed {
+  outcome: ResetOutcome;
+  accounts: EngineAccount[];
+}
+
+// Local models (B106, D129). A chat names one as `local:<id>`.
+
+export type ToolsRating = "good" | "weak" | "none" | "unknown";
+/** The apps Nest can start: LM Studio's server and Ollama. */
+export type LocalApp = "lmstudio" | "ollama";
+/** The engine local chats run on. */
+export type LocalEngine = "claude" | "codex";
+
+export interface LocalModel {
+  id: string;
+  server_id: string;
+  // The server's own id for it.
+  model: string;
+  name: string;
+  address: string;
+  // The serving app's label, such as "LM Studio"; null when not known.
+  app: string | null;
+  context: number | null;
+  tools: ToolsRating;
+  // Why it is weak at tools, and how to fix it.
+  weak_reason: string | null;
+  vision: boolean;
+  thinking: boolean;
+  // Whether its server answers now.
+  running: boolean;
+  has_key: boolean;
+  // When it takes much of this Mac's memory, one sentence saying so.
+  memory_warning: string | null;
+}
+
+export interface LocalModelList {
+  models: LocalModel[];
+  engine: LocalEngine;
+  local_only: boolean;
+}
+
+/** A model a server serves, as found or checked; `added` when Nest has it already. */
+export interface FoundModel {
+  address: string;
+  app: string | null;
+  model: string;
+  name: string;
+  context: number | null;
+  tools: ToolsRating;
+  weak_reason: string | null;
+  vision: boolean;
+  thinking: boolean;
+  added: boolean;
+  memory_warning: string | null;
+}
+
+/** A model on disk that no running server serves. */
+export interface DownloadedModel {
+  name: string;
+  // Where it was found, such as "LM Studio" or "Hugging Face".
+  source: string;
+  path: string;
+  // What to do to use it, in one sentence.
+  hint: string;
+  // The app Nest can start to serve it.
+  start: LocalApp | null;
+}
+
+/** `GET /api/local/find`: servers on this Mac's usual ports and the models on its disk. */
+export interface FoundModels {
+  running: FoundModel[];
+  downloaded: DownloadedModel[];
+}
+
+export interface LocalServerInfo {
+  address: string;
+  app: string | null;
+  // Which APIs it answers: Anthropic Messages, OpenAI Responses, Chat Completions.
+  messages: boolean;
+  responses: boolean;
+  chat: boolean;
+}
+
+export type CheckError = "unreachable" | "no_tools" | "no_models";
+
+/** `POST /api/local/check`: what the server at an address is and serves. */
+export interface CheckResult {
+  ok: boolean;
+  error: CheckError | null;
+  server: LocalServerInfo | null;
+  models: FoundModel[];
+}
+
+export interface AddedLocalModels {
+  models: LocalModel[];
+}
+
+export interface LocalModelUsage {
+  id: string;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+/** Today's tokens on local models, by the Mac's local day; never a cost. */
+export interface LocalUsage {
+  today_tokens: number;
+  models: LocalModelUsage[];
+}
+
+/**
+ * A local chat's server does not answer: a 409 `local_server_down` on create or send (the
+ * message is not taken), or a failed turn's `session.state` payload.
+ */
+export interface LocalServerDown {
+  code: "local_server_down";
+  // The serving app's label, such as "LM Studio".
+  app: string | null;
+  address: string | null;
+  // The app Nest can start (`POST /api/local/start`), else null.
+  start: LocalApp | null;
+}
+
+/** LM Studio could not load the model with enough context; the turn failed. */
+export interface LocalModelNotLoaded {
+  code: "local_model_not_loaded";
+  // The sentence to show.
+  detail: string;
+  app: string | null;
+  address: string | null;
+  // The model's name.
+  model: string | null;
+}
+
+/** What engines note in a transcript besides messages (`session.notice` `kind`). */
+export type NoticeKind =
+  | "compacted"
+  | "cleared"
+  | "model_fallback"
+  | "api_retry"
+  | "command_output"
+  | "files_restored"
+  // Nest has LM Studio load the local model with enough context (B106); `text` says so.
+  | "loading_model";

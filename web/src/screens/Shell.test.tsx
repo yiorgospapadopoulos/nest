@@ -106,3 +106,25 @@ describe("deep links", () => {
     expect(window.location.pathname).toBe("/inbox");
   });
 });
+
+describe("the tab bar", () => {
+  // B116 item 7: a new chat keeps the tabs under its composer; an open chat hides them.
+  it("stays under a new chat, leaves it from a tab, and hides in an open chat", async () => {
+    const { user } = await renderApp({ api: apiWithChat() });
+    const tabs = () => screen.queryByRole("tablist", { name: "Sections" });
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+
+    await user.click(screen.getByRole("button", { name: /^New chat in / }));
+    expect(screen.getByRole("region", { name: "New chat" })).toBeInTheDocument();
+    expect(tabs()).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Needs you" }));
+    expect(screen.queryByRole("region", { name: "New chat" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Needs you" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("tab", { name: "Chats" }));
+    await user.click(screen.getByRole("button", { name: /^Fix login,/ }));
+    expect(await screen.findByRole("region", { name: "Fix login" })).toBeInTheDocument();
+    expect(tabs()).not.toBeInTheDocument();
+  });
+});

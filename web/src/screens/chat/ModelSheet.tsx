@@ -18,6 +18,8 @@ interface Props {
  * models under its name, with its plan or why it cannot run ("Not signed in", "Not
  * installed"; its models then not choosable, B107), and choosing a model chooses its
  * engine; an open chat lists only its own engine's. Real models only, no default entry.
+ * The local models follow under "Local" (B116): a stopped server's greyed with why, the
+ * ones weak at tools with a warning.
  */
 export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props) {
   const { state } = useStore();
@@ -25,7 +27,12 @@ export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props)
   return (
     <ActionSheet label="Model" onClose={onClose}>
       {sections.map((section) => (
-        <div key={section.provider} className="asec" role="group" aria-label={section.title}>
+        <div
+          key={section.local === true ? "local" : section.provider}
+          className="asec"
+          role="group"
+          aria-label={section.title}
+        >
           <div className="ash" aria-hidden="true">
             <b>{section.title}</b>
             {section.detail !== "" && <small>{section.detail}</small>}
@@ -38,13 +45,14 @@ export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props)
           {section.catalog.models.map((option) => {
             const checked =
               section.provider === provider && isSelected(section.catalog, option, model);
+            const weak = section.weak?.includes(option.value) === true;
             return (
               <button
                 key={option.value}
                 className="asi"
                 role="menuitemradio"
                 aria-checked={checked}
-                disabled={!section.available}
+                disabled={!section.available || section.unavailable?.includes(option.value)}
                 data-autofocus={checked ? true : undefined}
                 onClick={() => {
                   onPick(option.value, section.provider);
@@ -53,7 +61,9 @@ export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props)
               >
                 <span>
                   <span>{option.display_name}</span>
-                  {option.description !== "" && <small>{option.description}</small>}
+                  {option.description !== "" && (
+                    <small className={weak ? "wn" : undefined}>{option.description}</small>
+                  )}
                 </span>
                 <Icon name="check" className="ck2" />
               </button>

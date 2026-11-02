@@ -158,7 +158,12 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
         const mine = section.provider === own;
         const choosable = pixieCanRunOn(state, section.provider);
         return (
-          <div key={section.provider} role="group" aria-label={section.title} className="msec">
+          <div
+            key={section.local === true ? "local" : section.provider}
+            role="group"
+            aria-label={section.title}
+            className="msec"
+          >
             <div className="msec-h">
               <span>{section.title}</span>
               {section.detail !== "" && <small>{section.detail}</small>}
@@ -176,7 +181,8 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
                   className="asi"
                   role="menuitemradio"
                   aria-checked={checked}
-                  disabled={!choosable}
+                  // A stopped server's local models show, not choosable (B116).
+                  disabled={!choosable || section.unavailable?.includes(option.value)}
                   data-autofocus={checked ? true : undefined}
                   onClick={() => {
                     save(
@@ -189,7 +195,11 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
                 >
                   <span>
                     <span>{option.display_name}</span>
-                    <small>{option.description}</small>
+                    <small
+                      className={section.weak?.includes(option.value) === true ? "wn" : undefined}
+                    >
+                      {option.description}
+                    </small>
                   </span>
                   <Icon name="check" className="ck2" />
                 </button>
