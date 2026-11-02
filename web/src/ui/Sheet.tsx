@@ -127,7 +127,8 @@ export function ActionSheet({
         aria-label={label}
         onKeyDown={onKeyDown}
       >
-        <div className="asg" role={role === "dialog" ? "menu" : undefined}>
+        {/* The choices scroll within the screen's safe area (asl), Cancel stays below. */}
+        <div className="asg asl" role={role === "dialog" ? "menu" : undefined}>
           {title !== undefined && <div className="ast">{title}</div>}
           {children}
         </div>
