@@ -33,6 +33,9 @@ public final class ChatPixiesStore {
         groups[id] ?? []
     }
 
+    /// Every chat's group that is not empty, by chat session id.
+    public var allGroups: [String: [ChatPixieEntry]] { groups }
+
     /// The pixie, or the team with its members, leaves the chat's group; the next call
     /// starts fresh.
     public func sendAway(_ entry: ChatPixieEntry, session id: String) async throws {
