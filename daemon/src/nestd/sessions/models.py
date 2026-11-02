@@ -284,7 +284,7 @@ class UpdateSession(BaseModel):
 
 @dataclass(frozen=True)
 class ChatImport:
-    """A Claude Code chat to continue as a Nest session (D028)."""
+    """A Claude Code or Codex chat to continue as a Nest session (D028, B113)."""
 
     repo: str
     title: str
@@ -293,3 +293,7 @@ class ChatImport:
     provider_session_id: str
     # Its messages as session events (type and payload), oldest first.
     history: list[tuple[str, dict[str, JsonValue]]]
+    # The engine it continues on.
+    provider: str = "claude"
+    # The model it last ran on, kept when the engine lists it.
+    model: str | None = None
