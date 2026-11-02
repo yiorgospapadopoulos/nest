@@ -185,7 +185,7 @@ private struct PaletteRow: View {
         case .assistant: Icon.spark
         case .tool: "wrench.and.screwdriver"
         case .toolResult: "text.alignleft"
-        case .claudeChat: Icon.terminal
+        case .claudeChat, .codexChat: Icon.terminal
         case .unknown: "text.quote"
         }
     }
