@@ -1,7 +1,7 @@
 """A chat's run reports its pixie calls, and pixies tagged again get their note (B46)."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,7 +11,7 @@ from nestd.errors import NestError
 from nestd.providers.base import AgentTask, MessageBlock, Subagent, TextBlock, ToolUseBlock
 from nestd.sessions.errors import PixieInTeamError
 from nestd.sessions.models import NewSession
-from nestd.sessions.subagents import ChatAgents, OfferedPixie, TeamCall
+from nestd.sessions.subagents import CallOrigin, ChatAgents, OfferedPixie, TeamCall
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeRun, Turn, messages, reply, tasks
@@ -54,6 +54,9 @@ class Calls:
 
     async def task(self, session_id: str, agents: ChatAgents, update: AgentTask) -> None:
         self.seen.append(("task", update.task_id))
+
+    async def origin(self, session_id: str, agent_ids: Sequence[str]) -> CallOrigin | None:
+        return None
 
 
 async def source(session: NewSession) -> ChatAgents:

@@ -331,6 +331,15 @@ added = 2026-10-27
 block = "B112"
 
 [[features]]
+id = "notch-island"
+group = "pixies"
+name = "Pixies in the notch"
+text = "On the Mac, the pixies at work sit beside the camera notch: working ones on the left, finished ones and those that need you on the right. Hover for the list, click to open the chat they work in."
+where = "Menu bar"
+added = 2026-10-27
+block = "B114"
+
+[[features]]
 id = "pixie-teams"
 group = "pixies"
 name = "Teams"

@@ -23,11 +23,14 @@ DISMISSED_REASON = "The user dismissed the question."
 _RECOMMENDED = re.compile(r"\s*\(recommended\)\s*$", re.IGNORECASE)
 
 
-def parse_questions(tool_input: dict[str, Any], tool_use_id: str | None) -> QuestionRequest:
+def parse_questions(
+    tool_input: dict[str, Any], tool_use_id: str | None, agent_id: str | None = None
+) -> QuestionRequest:
     """The tool's questions; Claude marks its preferred option with "(Recommended)"."""
     return QuestionRequest(
         questions=tuple(_question(q) for q in _dicts(tool_input.get("questions"))),
         tool_use_id=tool_use_id,
+        agent_id=agent_id,
     )
 
 
@@ -44,7 +47,9 @@ class QuestionBridge:
             return {}
         tool_input = input_data["tool_input"]
         call_id = input_data["tool_use_id"]
-        answer = await self._handler.ask(parse_questions(tool_input, call_id))
+        # Named only inside a subagent.
+        agent_id = input_data.get("agent_id")
+        answer = await self._handler.ask(parse_questions(tool_input, call_id, agent_id))
         if answer.answers is None:
             return {
                 "hookSpecificOutput": {

@@ -146,6 +146,24 @@ public enum NotificationPolicy {
             AppStore.chats(of: layout.maximized.map { [$0] } ?? layout.leaves, among: pixies))
     }
 
+    /// The chat the user is on: the focused pane of the current project's workspace, or of
+    /// the Pixies tab, in the focused window (B114).
+    @MainActor
+    public static func focusedChat(
+        app: AppStore, pixies: [Pixie], pixiesOpen: Bool, windowFocused: Bool
+    ) -> String? {
+        guard windowFocused else { return nil }
+        if pixiesOpen {
+            let layout = app.pixieState.layout
+            guard let pane = layout.maximized ?? layout.focused else { return nil }
+            return AppStore.chats(of: [pane], among: pixies).first
+        }
+        guard let project = app.currentProject else { return nil }
+        let state = app.state(of: project)
+        guard state.view == .workspace else { return nil }
+        return state.layout.maximized ?? state.layout.focused
+    }
+
     /// The Dock badge: everything that needs the user (`SessionsStore.attention()`) and
     /// the unread reports that need action (B42), or none.
     public static func badge(pending: Int, unreadActions: Int = 0) -> String? {

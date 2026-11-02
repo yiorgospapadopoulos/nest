@@ -92,6 +92,8 @@ class FakeTransport:
         self.server = server
         self.launch = launch
         self.closed = False
+        # The methods the client called on this connection, in order.
+        self.methods: list[str] = []
         self._out: asyncio.Queue[bytes] = asyncio.Queue()
 
     async def write(self, line: bytes) -> None:
@@ -171,17 +173,25 @@ class FakeAppServer:
     def notify(self, method: str, params: JsonObject) -> None:
         self.transport.push({"method": method, "params": params})
 
-    async def request(self, method: str, params: JsonObject) -> JsonObject:
-        """A server request; returns the client's whole answer message."""
+    async def request(
+        self, method: str, params: JsonObject, transport: FakeTransport | None = None
+    ) -> JsonObject:
+        """A server request, on the latest connection unless `transport` is given;
+        returns the client's whole answer message.
+        """
         self._next_id += 1
         answer = asyncio.get_running_loop().create_future()
         self._waiting[self._next_id] = answer
-        self.transport.push({"id": self._next_id, "method": method, "params": params})
+        (transport or self.transport).push(
+            {"id": self._next_id, "method": method, "params": params}
+        )
         return await answer
 
     async def receive(self, transport: FakeTransport, message: JsonObject) -> None:
         self.sent.append(message)
         method = message.get("method")
+        if isinstance(method, str):
+            transport.methods.append(method)
         request_id = message.get("id")
         if not isinstance(method, str):
             if isinstance(request_id, int) and request_id in self._waiting:

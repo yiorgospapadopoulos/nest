@@ -58,7 +58,9 @@ public enum SettingsPage: Sendable, Hashable {
         case .appearance:
             [
                 "Mode", "Auto", "Light", "Dark", "Accent colour", "Chat background", "Image",
-                "Visibility when empty", "Visibility with chats", "Grain",
+                "Visibility when empty", "Visibility with chats", "Grain", "Island settings",
+                "Show the island", "Order", "Newest first", "Oldest first",
+                "Use the free menu bar space",
             ]
         case .notifications:
             ["Notify me about", "Delivery", "Sound"]

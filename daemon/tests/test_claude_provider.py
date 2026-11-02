@@ -75,12 +75,14 @@ class ScriptedHandler:
         self.plan = plan
         self.requests: list[PermissionRequest] = []
         self.plans: list[PlanRequest] = []
+        self.questions: list[QuestionRequest] = []
 
     async def decide(self, request: PermissionRequest) -> PermissionDecision:
         self.requests.append(request)
         return self.decision
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
+        self.questions.append(request)
         return QuestionAnswer({"Which?": "A"})
 
     async def review_plan(self, request: PlanRequest) -> PlanDecision:
@@ -419,6 +421,38 @@ async def test_questions_are_answered_by_the_hook_and_never_prompt(tmp_path: Pat
 
     assert result == PermissionResultAllow(updated_input={**tool_input, "answers": {"Which?": "A"}})
     assert handler.requests == []
+
+
+async def test_a_subagents_requests_name_it(tmp_path: Path) -> None:
+    """B114: an approval raised inside a subagent (a pixie call) names its agent id."""
+    handler = ScriptedHandler(PermissionDecision("allow"), PlanDecision(approved=True))
+    _, client = await Opened(tmp_path).open(SessionSpec(tmp_path, "default"), handler)
+    assert client.options.can_use_tool is not None
+    assert client.options.hooks is not None
+    hook = client.options.hooks["PreToolUse"][1].hooks[0]
+    inside = ToolPermissionContext(tool_use_id="t1", agent_id="ag-scribe")
+
+    await client.options.can_use_tool("Bash", {"command": "ls"}, inside)
+    await client.options.can_use_tool("ExitPlanMode", {"plan": "P"}, inside)
+    await client.options.can_use_tool("Bash", {"command": "pwd"}, ToolPermissionContext())
+    await hook(
+        {
+            "hook_event_name": "PreToolUse",
+            "session_id": "sdk-1",
+            "transcript_path": "/t",
+            "cwd": str(tmp_path),
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [{"question": "Which?", "options": []}]},
+            "tool_use_id": "toolu_q",
+            "agent_id": "ag-scribe",
+        },
+        "toolu_q",
+        {"signal": None},
+    )
+
+    assert [r.agent_id for r in handler.requests] == ["ag-scribe", None]
+    assert [p.agent_id for p in handler.plans] == ["ag-scribe"]
+    assert [q.agent_id for q in handler.questions] == ["ag-scribe"]
 
 
 @pytest.mark.parametrize(

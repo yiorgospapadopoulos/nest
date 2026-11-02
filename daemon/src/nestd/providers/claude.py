@@ -204,11 +204,11 @@ def build_options(
         if tool_name == ASK_USER_QUESTION:
             return questions.permission(tool_input, context.tool_use_id)
         if tool_name == EXIT_PLAN_MODE:
-            return await _review_plan(handler, tool_input, context.tool_use_id)
+            return await _review_plan(handler, tool_input, context)
         reason = context.decision_reason or context.blocked_path
         updates, rule = always_updates(tool_name, tool_input, context.suggestions)
         decision = await handler.decide(
-            PermissionRequest(tool_name, tool_input, context.title, reason, rule)
+            PermissionRequest(tool_name, tool_input, context.title, reason, rule, context.agent_id)
         )
         if decision.behavior == "allow":
             if decision.always:
@@ -452,12 +452,12 @@ class ClaudeProvider:
 
 
 async def _review_plan(
-    handler: ApprovalHandler, tool_input: dict[str, JsonValue], tool_use_id: str | None
+    handler: ApprovalHandler, tool_input: dict[str, JsonValue], context: ToolPermissionContext
 ) -> PermissionResult:
     """The plan goes to the user as a plan to approve; an approval may switch the mode."""
     plan = tool_input.get("plan")
     decision = await handler.review_plan(
-        PlanRequest(plan if isinstance(plan, str) else "", tool_use_id)
+        PlanRequest(plan if isinstance(plan, str) else "", context.tool_use_id, context.agent_id)
     )
     if not decision.approved:
         return PermissionResultDeny(message=decision.message or KEEP_PLANNING_MESSAGE)

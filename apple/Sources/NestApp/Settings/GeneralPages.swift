@@ -302,6 +302,37 @@ struct AppearancePage: View {
         }
         AccentPreview()
         ChatBackgroundSection()
+        IslandSection()
+    }
+}
+
+/// The pixies around the notch (B114): shown or not and their order, and while
+/// Accessibility is not granted, the ask for it so the wings can use the free menu bar.
+private struct IslandSection: View {
+    @Environment(Shell.self) private var shell
+    @Environment(AppController.self) private var controller
+
+    var body: some View {
+        let island = shell.model.island
+        SettingsSection(title: "Island settings") {
+            SettingsRow(label: "Show the island") {
+                Switch(isOn: island.shown) { island.shown.toggle() }
+            }
+            SettingsRow(label: "Order") {
+                Segmented(
+                    options: [
+                        (IslandOrder.newestFirst, "Newest first"), (.oldestFirst, "Oldest first"),
+                    ],
+                    selection: island.order
+                ) { island.order = $0 }
+            }
+            if controller.island?.trusted != true {
+                SettingsRow(label: "Use the free menu bar space") {
+                    Button("Allow") { controller.island?.allowAccessibility() }
+                        .buttonStyle(.nest(.soft))
+                }
+            }
+        }
     }
 }
 

@@ -12,6 +12,8 @@ from nestd.providers.base import (
     AgentTask,
     CallRules,
     PlanStep,
+    QuestionAnswer,
+    QuestionRequest,
     Subagent,
     TextBlock,
     ToolResultBlock,
@@ -398,6 +400,43 @@ async def test_a_subagents_approvals_follow_its_own_mode(tmp_path: Path) -> None
     # A read-only pixie edits nothing.
     assert edit["result"] == {"decision": "decline"}
     assert handler.requests == []
+    await run.close()
+
+
+class Asking(Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.questions: list[QuestionRequest] = []
+
+    async def ask(self, request: QuestionRequest) -> QuestionAnswer:
+        self.questions.append(request)
+        return QuestionAnswer(None)
+
+
+async def test_a_subagents_requests_name_its_thread(tmp_path: Path) -> None:
+    """B114: what a subagent asks names its thread, its Agent call's id; the main
+    thread's requests name none.
+    """
+    server = FakeAppServer()
+    handler = Asking()
+    run = await provider(tmp_path, server).open(
+        spec(tmp_path, subagents={"lead": LEAD}), handler, RecordingSink()
+    )
+    spawn(server, role="lead")
+    await until(lambda: run.stream.agents.thread(AGENT) is not None)
+    question: JsonObject = {"id": "q1", "header": "H", "question": "Which?", "options": []}
+
+    for thread in (AGENT, MAIN):
+        await server.request(
+            "item/commandExecution/requestApproval",
+            {"threadId": thread, "itemId": "c1", "command": "npm test"},
+        )
+    await server.request(
+        "item/tool/requestUserInput", {"threadId": AGENT, "itemId": "u1", "questions": [question]}
+    )
+
+    assert [r.agent_id for r in handler.requests] == [AGENT, None]
+    assert [q.agent_id for q in handler.questions] == [AGENT]
     await run.close()
 
 

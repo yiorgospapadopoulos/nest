@@ -24,6 +24,8 @@ public final class LiveSync {
     let configuration: ConfigurationStore
     let branchMaps: BranchMapStore
     let runs: RunStore
+    /// The island around the notch (B114), set by the app model.
+    var island: IslandStore?
     /// Called for each `usage.warning` event, for a notification (B81).
     public var onUsageWarning: ((UsageWarning) -> Void)?
     let artifacts: ArtifactsStore
@@ -120,6 +122,7 @@ public final class LiveSync {
         await chatPixies.load()
         await branchMaps.reload()
         await runs.reload()
+        await island?.refresh()
     }
 
     /// The engines' logins and models, and the defaults the daemon may now resolve.
@@ -149,6 +152,7 @@ public final class LiveSync {
         artifacts.apply(event)
         branchMaps.apply(event)
         runs.apply(event)
+        island?.apply(event)
         switch event.body {
         case .usageWarning(let warning):
             onUsageWarning?(warning)
@@ -233,6 +237,8 @@ public final class AppModel {
     public let issues: IssuesStore
     /// The chats' folders' runs (B108).
     public let runs: RunStore
+    /// The island around the notch (B114).
+    public let island: IslandStore
     public let live: LiveSync
     /// Where `local()` got the device token, to ask again.
     var tokens: (store: any TokenStore, token: DeviceToken)?
@@ -297,6 +303,10 @@ public final class AppModel {
             habits: habits, chatPixies: chatPixies, accounts: accounts, extensions: extensions,
             configuration: configuration, artifacts: artifacts, branchMaps: branchMaps,
             runs: runs)
+        island = IslandStore(
+            api: api, store: preferences, sessions: sessions, approvals: approvals,
+            activity: activity, chatPixies: chatPixies, pixies: pixies, now: now)
+        live.island = island
         // A restarted daemon has forgotten that this app is on screen.
         live.onConnected = { [weak self, visibility] in
             visibility.resend()

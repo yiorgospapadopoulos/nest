@@ -19,6 +19,7 @@ from nestd.providers.base import (
     QuestionRequest,
 )
 from nestd.sessions.store import SessionStore
+from nestd.sessions.subagents import PixieCalls
 
 # Told whether the session still has a run waiting on the user, after each change.
 type WaitingCallback = Callable[[str, bool], Awaitable[None]]
@@ -51,7 +52,10 @@ class SessionPrompts:
         store: SessionStore,
         on_waiting: WaitingCallback,
         on_mode: ModeCallback,
+        calls: PixieCalls | None = None,
     ) -> None:
+        """`calls` names the pixie call an approval comes from (B114)."""
+        self._calls = calls
         self._session_id = session_id
         self._queue = queue
         self._store = store
@@ -66,7 +70,7 @@ class SessionPrompts:
             return PermissionDecision("allow")
         if session.called_by is not None:
             # What the caller allows for good, its subagents may do (B112).
-            caller = await self._store.get(await self._owner())
+            caller = await self._store.get((await self._chain())[-1])
             if request.tool_name in caller.allowed_tools:
                 return PermissionDecision("allow")
         approval = await self._wait(
@@ -79,6 +83,7 @@ class SessionPrompts:
                 "always_rule": request.always_rule,
             },
             request.title or f"Allow {request.tool_name}?",
+            request.agent_id,
         )
         resolution = approval.resolution or {}
         if approval.status is not ApprovalStatus.RESOLVED:
@@ -100,6 +105,7 @@ class SessionPrompts:
                 "questions": [_question(q) for q in request.questions],
             },
             request.questions[0].question if request.questions else DEFAULT_QUESTION_NOTICE,
+            request.agent_id,
         )
         resolution = approval.resolution or {}
         answers = resolution.get("answers")
@@ -114,6 +120,7 @@ class SessionPrompts:
             ApprovalKind.PLAN,
             {"plan": request.plan, "tool_use_id": request.tool_use_id},
             PLAN_NOTICE,
+            request.agent_id,
         )
         resolution = approval.resolution or {}
         if approval.status is not ApprovalStatus.RESOLVED:
@@ -128,13 +135,23 @@ class SessionPrompts:
         return PlanDecision(approved=True, mode=mode)
 
     async def _wait(
-        self, kind: ApprovalKind, payload: dict[str, JsonValue], notice: str
+        self,
+        kind: ApprovalKind,
+        payload: dict[str, JsonValue],
+        notice: str,
+        agent_id: str | None,
     ) -> Approval:
         """A called pixie's item is its caller's, listed and notified as the caller's own,
-        as a subagent's is (B112); its own run waits on it, and both show waiting.
+        as a subagent's is (B112); its own run waits on it, and both show waiting. An item
+        from inside a pixie call names the call (B114).
         """
-        owner = await self._owner()
+        *called, owner = await self._chain()
         sessions = dict.fromkeys((self._session_id, owner))
+        agent_ids = ([agent_id] if agent_id is not None else []) + called
+        if self._calls is not None and agent_ids:
+            origin = await self._calls.origin(owner, agent_ids)
+            if origin is not None:
+                payload = {**payload, "call": origin.call, "agent": origin.agent}
 
         async def on_waiting(_waiting: bool) -> None:
             for session_id in sessions:
@@ -144,14 +161,18 @@ class SessionPrompts:
             owner, kind, payload, notice, on_waiting, run_session_id=self._session_id
         )
 
-    async def _owner(self) -> str:
-        """The chat the session's calls began in: itself unless a pixie it called."""
+    async def _chain(self) -> list[str]:
+        """The session, then each chat that called it, ending with the chat the calls
+        began in (the session itself unless a pixie called it).
+        """
         session = await self._store.get(self._session_id)
+        chain = [session.id]
         for _ in range(_MAX_CALL_DEPTH):
             if session.called_by is None:
                 break
             session = await self._store.get(session.called_by)
-        return session.id
+            chain.append(session.id)
+        return chain
 
     async def _allow_always(self, tool_name: str) -> None:
         async with self._rules:

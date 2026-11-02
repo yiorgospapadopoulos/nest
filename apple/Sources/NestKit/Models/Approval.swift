@@ -66,6 +66,12 @@ public struct Approval: Codable, Sendable, Hashable, Identifiable {
         kind == .reviewComments ? try? payload.decode(ReviewCommentsRequest.self) : nil
     }
 
+    /// The pixie call it was raised in: the tool use id the caller chat's pixie group lists
+    /// for that call (a team member's is its leader's). Nil outside a pixie call (B114).
+    public var call: String? {
+        payload["call"]?.stringValue
+    }
+
     /// Its Needs you row's key for staying open: a chat's review comments keep one row
     /// while the daemon supersedes them with the rest after each send (B101).
     public var foldKey: String {

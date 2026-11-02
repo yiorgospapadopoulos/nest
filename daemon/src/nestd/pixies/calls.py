@@ -14,7 +14,7 @@ messages; every other subagent's calls are left alone.
 
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal, cast
 
 from pydantic import JsonValue
@@ -46,7 +46,7 @@ from nestd.providers.base import (
 from nestd.providers.claude_tools import CALL_TOOL
 from nestd.sessions.errors import AgentCallNotFoundError
 from nestd.sessions.models import Session, SessionState
-from nestd.sessions.subagents import ChatAgents, OfferedPixie
+from nestd.sessions.subagents import CallOrigin, ChatAgents, OfferedPixie
 from nestd.tracking.transcripts import ASYNC_LAUNCH, SEND_MESSAGE, AgentWork, agent_work
 
 # Checked live (B46): with this note the chat continued the agent instead of a new one.
@@ -156,6 +156,18 @@ class PixieCallLog:
             changed = await self._task_finished(session_id, update)
         if changed:
             await self._announce(session_id)
+
+    async def origin(self, session_id: str, agent_ids: Sequence[str]) -> CallOrigin | None:
+        """A call's agent is the engine's subagent (its task id), or for a call made with
+        the call tool its called session; a continued agent's latest call is its own. A
+        team member's slot in the group is its leader's call.
+        """
+        for agent_id in agent_ids:
+            call = await self._store.by_agent(session_id, agent_id, running=True)
+            if call is not None:
+                leader = await self._leader_call(session_id, call)
+                return CallOrigin(call=(leader or call).tool_use_id, agent=call.tool_use_id)
+        return None
 
     async def state_changed(self, session: Session) -> None:
         """A turn cut off ends its calls; background ones go on until the chat closes."""
@@ -388,6 +400,19 @@ class PixieCallLog:
             return False
         await self._store.finish(call.id, _ENDED.get(update.status, "interrupted"))
         return True
+
+    async def _leader_call(self, session_id: str, call: PixieCall) -> PixieCall | None:
+        """The running call of the leader of the member's team; None for a solo pixie or
+        a leader.
+        """
+        if call.team_id is None:
+            return None
+        teams = await self._teams.list_teams()
+        leader_id = next((t.leader_id for t in teams if t.id == call.team_id), None)
+        if leader_id is None or leader_id == call.pixie_id:
+            return None
+        calls = await self._store.in_group(session_id, leader_id)
+        return next((c for c in calls if c.team_id == call.team_id and c.state == "running"), None)
 
     async def _members(self, team: PixieTeam, calls: list[PixieCall]) -> list[TeamMember]:
         """Its pixies now, then any it called that left it; each with its latest state."""

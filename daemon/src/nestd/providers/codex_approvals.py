@@ -75,34 +75,42 @@ class CodexApprovals:
         permissions: Callable[[str], RunPermissions],
         file_changes: Callable[[str], JsonObject | None],
         mcp_calls: Callable[[str, str], JsonObject | None],
+        subthread: Callable[[str], bool] = lambda _thread_id: False,
     ) -> None:
         """`permissions` gives a thread's, by thread id; `file_changes` finds the file
         change item an approval is for, by item id; `mcp_calls` the MCP tool call in
-        progress, by server and turn.
+        progress, by server and turn; `subthread` tells a subagent's thread from the run's.
         """
+        self._subthread = subthread
         self._handler = handler
         self._permissions = permissions
         self._file_changes = file_changes
         self._mcp_calls = mcp_calls
 
     async def handle(self, method: str, params: JsonObject) -> JsonValue:
-        permissions = self._permissions(text(params.get("threadId")))
+        thread_id = text(params.get("threadId"))
+        permissions = self._permissions(thread_id)
         if permissions.refused:
             return _refusal(method)
+        # A subagent's thread id is its task's and its Agent call's (B114).
+        agent_id = thread_id if self._subthread(thread_id) else None
         if method == COMMAND_APPROVAL:
-            return {"decision": await self._command(params, permissions)}
+            return {"decision": await self._command(params, permissions, agent_id)}
         if method == FILE_APPROVAL:
-            return {"decision": await self._file_change(params, permissions)}
+            return {"decision": await self._file_change(params, permissions, agent_id)}
         if method == PERMISSIONS_APPROVAL:
             return _NO_PERMISSIONS
         if method == ELICITATION:
-            return await self._elicitation(params, permissions)
+            return await self._elicitation(params, permissions, agent_id)
         if method == USER_INPUT:
-            return user_input_answer(params, await self._handler.ask(question_request(params)))
+            asked = question_request(params, agent_id)
+            return user_input_answer(params, await self._handler.ask(asked))
         msg = f"Nest does not answer {method}"
         raise CodexRpcError(METHOD_NOT_FOUND, msg)
 
-    async def _command(self, params: JsonObject, permissions: RunPermissions) -> str:
+    async def _command(
+        self, params: JsonObject, permissions: RunPermissions, agent_id: str | None
+    ) -> str:
         command = text(params.get("command"))
         auto = command_decision(command, permissions.mode, permissions.guarded)
         if auto is not None:
@@ -120,11 +128,14 @@ class CodexApprovals:
                 tool_input=tool_input,
                 reason=text(params.get("reason")) or None,
                 always_rule=f"Bash({shown})",
+                agent_id=agent_id,
             )
         )
         return _answer(decision.behavior == "allow", decision.always)
 
-    async def _file_change(self, params: JsonObject, permissions: RunPermissions) -> str:
+    async def _file_change(
+        self, params: JsonObject, permissions: RunPermissions, agent_id: str | None
+    ) -> str:
         if permissions.read_only:
             return "decline"
         item = self._file_changes(text(params.get("itemId"))) or {}
@@ -143,11 +154,14 @@ class CodexApprovals:
                 tool_name="Edit",
                 tool_input=tool_input,
                 reason=text(params.get("reason")) or None,
+                agent_id=agent_id,
             )
         )
         return _answer(decision.behavior == "allow", decision.always)
 
-    async def _elicitation(self, params: JsonObject, permissions: RunPermissions) -> JsonValue:
+    async def _elicitation(
+        self, params: JsonObject, permissions: RunPermissions, agent_id: str | None
+    ) -> JsonValue:
         """An MCP tool call approval is decided like a tool permission; any other question
         an MCP server asks is declined.
         """
@@ -172,6 +186,7 @@ class CodexApprovals:
                 tool_name=name,
                 tool_input=dict(tool_input),
                 reason=message or None,
+                agent_id=agent_id,
             )
         )
         return _ACCEPT if decision.behavior == "allow" else _DECLINE
