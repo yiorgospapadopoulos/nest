@@ -141,9 +141,7 @@ public struct IslandSnapshot: Sendable {
     public var now: Date
     /// The island is turned on in its settings.
     public var shown: Bool
-    /// A full-screen app is in front.
-    public var fullScreen: Bool
-    /// No notch: the pill below the menu bar.
+    /// No notch: the pill in the menu bar.
     public var pill: Bool
     /// When the island started: Nightshade stays awake for a while after it.
     public var awakeSince: Date?
@@ -153,7 +151,7 @@ public struct IslandSnapshot: Sendable {
         approvals: [Approval] = [], habitRuns: [HabitRun] = [], pixies: [Pixie] = [],
         teams: [PixieTeam] = [], chats: [String: IslandChat] = [:], seen: [String: Date] = [:],
         installedAt: Date, order: IslandOrder = .newestFirst, now: Date, shown: Bool = true,
-        fullScreen: Bool = false, pill: Bool = false, awakeSince: Date? = nil
+        pill: Bool = false, awakeSince: Date? = nil
     ) {
         self.groups = groups
         self.agents = agents
@@ -168,7 +166,6 @@ public struct IslandSnapshot: Sendable {
         self.order = order
         self.now = now
         self.shown = shown
-        self.fullScreen = fullScreen
         self.pill = pill
     }
 }
@@ -221,12 +218,6 @@ public struct IslandState: Sendable, Hashable {
         let list = sorted(entries, snapshot.order)
         let left = list.filter { $0.status == .working }
         let right = list.filter { $0.status != .working }
-        if snapshot.fullScreen {
-            let needs = right.filter { $0.status == .needsYou }
-            return IslandState(
-                left: [], right: needs, list: list, nightshade: nil, restingBluebell: false,
-                isHidden: needs.isEmpty)
-        }
         return IslandState(
             left: left, right: right, list: list,
             nightshade: left.isEmpty ? nightshade(snapshot, entries: entries) : nil,

@@ -99,14 +99,14 @@ enum Island {
         groups: [String: [ChatPixieEntry]] = [:], agents: [String: [TrackedAgent]] = [:],
         approvals: [Approval] = [], runs: [HabitRun] = [], chats: [IslandChat] = [],
         seen: [String: Date] = [:], order: IslandOrder = .newestFirst, now: Double = 10,
-        fullScreen: Bool = false, pill: Bool = false, pixies: [Pixie] = Island.pixies,
+        pill: Bool = false, pixies: [Pixie] = Island.pixies,
         teams: [PixieTeam] = [], awake: Double? = nil
     ) -> IslandSnapshot {
         IslandSnapshot(
             groups: groups, agents: agents, approvals: approvals, habitRuns: runs, pixies: pixies,
             teams: teams,
             chats: Dictionary(uniqueKeysWithValues: chats.map { ($0.id, $0) }), seen: seen,
-            installedAt: t0, order: order, now: at(now), fullScreen: fullScreen, pill: pill,
+            installedAt: t0, order: order, now: at(now), pill: pill,
             awakeSince: awake.map(at))
     }
 }
@@ -330,9 +330,8 @@ enum Island {
         #expect(tied.left.map(\.id) == ["s1/pixie:p1", "s1/pixie:p2"])
     }
 
-    /// In full screen only what needs the user shows, on the right; with nothing the island
-    /// and its hover target are gone. Turned off, nothing shows.
-    @Test func fullScreenShowsOnlyNeedsYouAndOffShowsNothing() {
+    /// Turned off, nothing shows.
+    @Test func offShowsNothing() {
         let groups = [
             "s1": [
                 I.solo("p1", I.call("tu1", state: .running, started: 1)),
@@ -341,17 +340,6 @@ enum Island {
             ]
         ]
         let approvals = [I.approval("a1", call: "tu3", created: 3)]
-        let full = IslandState.make(
-            I.snapshot(groups: groups, approvals: approvals, fullScreen: true))
-        #expect(full.left.isEmpty)
-        #expect(full.nightshade == nil)
-        #expect(full.right.map(\.id) == ["s1/pixie:p3"])
-        #expect(!full.isHidden)
-        #expect(full.list.count == 3)
-
-        let nothing = IslandState.make(I.snapshot(groups: groups, fullScreen: true))
-        #expect(nothing.isHidden)
-
         var off = I.snapshot(groups: groups, approvals: approvals)
         off.shown = false
         #expect(IslandState.make(off) == .empty)

@@ -118,27 +118,4 @@ enum MenuBarSpace {
                 && rect.minY >= barTop - 1 && rect.minY < barTop + barHeight
         }
     }
-
-    /// The front app shows a window covering the whole screen: a full-screen app. Window
-    /// bounds and owners need no permission.
-    static func isFullScreen(_ pid: pid_t, on screen: NSScreen) -> Bool {
-        guard
-            let windows = CGWindowListCopyWindowInfo(
-                [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]]
-        else { return false }
-        let primaryTop = NSScreen.screens.first?.frame.maxY ?? 0
-        let frame = screen.frame
-        let target = CGRect(
-            x: frame.minX, y: primaryTop - frame.maxY, width: frame.width, height: frame.height)
-        return windows.contains { window in
-            guard (window[kCGWindowOwnerPID as String] as? pid_t) == pid,
-                (window[kCGWindowLayer as String] as? Int) == 0,
-                let bounds = window[kCGWindowBounds as String],
-                let rect = CGRect(dictionaryRepresentation: bounds as! CFDictionary)
-            else { return false }
-            return abs(rect.minX - target.minX) < 1 && abs(rect.minY - target.minY) < 1
-                && abs(rect.width - target.width) < 1 && abs(rect.height - target.height) < 1
-        }
-    }
 }

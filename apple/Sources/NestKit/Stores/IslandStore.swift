@@ -69,10 +69,9 @@ public final class IslandStore {
         }
     }
 
-    /// What the island shows now; `fullScreen` while a full-screen app is in front, `pill`
-    /// on a screen without a notch.
-    public func state(fullScreen: Bool = false, pill: Bool = false) -> IslandState {
-        IslandState.make(snapshot(fullScreen: fullScreen, pill: pill))
+    /// What the island shows now; `pill` on a main display without a notch.
+    public func state(pill: Bool = false) -> IslandState {
+        IslandState.make(snapshot(pill: pill))
     }
 
     /// The chat was seen: its done pixies leave and the ones that need the user turn calm.
@@ -152,7 +151,7 @@ public final class IslandStore {
         }
     }
 
-    func snapshot(fullScreen: Bool, pill: Bool) -> IslandSnapshot {
+    func snapshot(pill: Bool) -> IslandSnapshot {
         let groups = chatPixies.allGroups
         let habitRuns = Array(runs.values)
         var agents: [String: [TrackedAgent]] = [:]
@@ -163,7 +162,7 @@ public final class IslandStore {
             groups: groups, agents: agents, approvals: approvals.pending, habitRuns: habitRuns,
             pixies: pixies.pixies, teams: pixies.teams, chats: chats(), seen: seen,
             installedAt: installedAt, order: order, now: now(), shown: shown,
-            fullScreen: fullScreen, pill: pill, awakeSince: startedAt)
+            pill: pill, awakeSince: startedAt)
     }
 
     /// Project chats and pixies' own chats count as normal (C4); habit runs and called

@@ -39,7 +39,6 @@ final class IslandController {
     @ObservationIgnored private var placement: Placement?
     @ObservationIgnored private let scanner = MenuBarScanner()
     @ObservationIgnored private var menuBar = MenuBarScanner.Items(menus: [], extras: [])
-    @ObservationIgnored private var fullScreen = false
     @ObservationIgnored private var observers: [(NotificationCenter, any NSObjectProtocol)] = []
     @ObservationIgnored private var monitors: [Any] = []
     @ObservationIgnored private var timer: Timer?
@@ -146,20 +145,9 @@ final class IslandController {
         add(app, NSWindow.didBecomeMainNotification) { $0.scheduleRefresh() }
         add(app, NSWindow.didChangeOcclusionStateNotification) { $0.scheduleRefresh() }
         let workspace = NSWorkspace.shared.notificationCenter
-        add(workspace, NSWorkspace.didActivateApplicationNotification) {
-            $0.checkFullScreen()
-            $0.scan(full: false)
-        }
+        add(workspace, NSWorkspace.didActivateApplicationNotification) { $0.scan(full: false) }
         add(workspace, NSWorkspace.didLaunchApplicationNotification) { $0.scan(full: false) }
         add(workspace, NSWorkspace.didTerminateApplicationNotification) { $0.scan(full: false) }
-        add(workspace, NSWorkspace.activeSpaceDidChangeNotification) { controller in
-            controller.checkFullScreen()
-            // The window list lags behind the space's animation.
-            Task { @MainActor [weak controller] in
-                try? await Task.sleep(for: .milliseconds(700))
-                controller?.checkFullScreen()
-            }
-        }
         add(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) {
             $0.scheduleRefresh()
         }
@@ -210,11 +198,12 @@ final class IslandController {
 
     // MARK: Screen
 
-    /// The screen with the notch whenever one is connected (answer 2), else the pill on
-    /// the main screen, just below its menu bar (C7).
+    /// Always the main display set in System Settings, the one with the menu bar, and the
+    /// same in full-screen apps (user 2026-11-02): around its notch when it has one, else
+    /// the pill in its menu bar.
     private func place() {
         guard let panel, let view else { return }
-        if let screen = NSScreen.screens.first(where: { $0.auxiliaryTopLeftArea != nil }),
+        if let screen = NSScreen.screens.first,
             let leftArea = screen.auxiliaryTopLeftArea,
             let rightArea = screen.auxiliaryTopRightArea
         {
@@ -236,18 +225,19 @@ final class IslandController {
         } else if let screen = NSScreen.screens.first {
             let frame = screen.frame
             let menuBar = frame.maxY - screen.visibleFrame.maxY
-            let bar = menuBar > 0 ? menuBar : NSStatusBar.system.thickness
+            // As tall as the menu bar, but never shorter than a pixie and its margin.
+            let bar = max(menuBar > 0 ? menuBar : NSStatusBar.system.thickness, 30)
             let width = 560.0
-            let height = 6 + 34 + 280.0
+            let height = bar + 280
             let panelFrame = CGRect(
-                x: (frame.midX - width / 2).rounded(), y: frame.maxY - bar - height, width: width,
+                x: (frame.midX - width / 2).rounded(), y: frame.maxY - height, width: width,
                 height: height)
             let gap = IslandLayout.pillGap
             placement = Placement(
                 screen: screen, frame: panelFrame,
                 geometry: IslandGeometry(
-                    pill: true, notchMinX: width / 2 - gap, notchMaxX: width / 2 + gap, top: 6,
-                    height: 34),
+                    pill: true, notchMinX: width / 2 - gap, notchMaxX: width / 2 + gap, top: 0,
+                    height: bar),
                 notchMinX: frame.midX - gap, notchMaxX: frame.midX + gap)
         } else {
             placement = nil
@@ -256,18 +246,7 @@ final class IslandController {
         panel.setFrame(placement.frame, display: false)
         view.frame = CGRect(origin: .zero, size: placement.frame.size)
         view.scene.geometry = placement.geometry
-        checkFullScreen()
         scheduleRefresh()
-    }
-
-    /// The front app fills the island's screen (answer 3).
-    private func checkFullScreen() {
-        guard let placement, let front = NSWorkspace.shared.frontmostApplication else { return }
-        let full = MenuBarSpace.isFullScreen(front.processIdentifier, on: placement.screen)
-        if full != fullScreen {
-            fullScreen = full
-            scheduleRefresh()
-        }
     }
 
     /// Reads the menu bar's items with Accessibility, away from the main thread.
@@ -326,7 +305,7 @@ final class IslandController {
         var focused: String?
         state = withObservationTracking {
             focused = focusedChat()
-            return island.state(fullScreen: fullScreen, pill: pill)
+            return island.state(pill: pill)
         } onChange: { [weak self] in
             Task { @MainActor in self?.scheduleRefresh() }
         }
