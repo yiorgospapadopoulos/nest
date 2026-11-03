@@ -1,4 +1,5 @@
-"""Moves the config and data folders from their names before the rename to Nest (B43).
+"""Moves the config and data folders from their names before the rename to Nest (B43),
+on macOS only, where harness ran.
 
 On start, when a default folder of Nest is missing and harness's is there, the old folder
 is copied (links kept as links, permissions kept, the SQLite database with its -wal and
@@ -21,14 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nestd.auth.token_socket import SOCKET_NAME
-from nestd.paths import (
-    CONFIG_DIR_ENV,
-    DATA_DIR_ENV,
-    DB_NAME,
-    default_config_dir,
-    default_data_dir,
-    env_value,
-)
+from nestd.paths import CONFIG_DIR_ENV, DATA_DIR_ENV, DB_NAME, env_value
+from nestd.platform import Platform
 from nestd.service.launchd import LEGACY_LABEL
 
 LEGACY_NAME = "harness"
@@ -65,13 +60,20 @@ def answers(path: Path) -> bool:
     return True
 
 
-def legacy_moves(env: Mapping[str, str], home: Path) -> list[FolderMove]:
-    """The default folders to move; a folder named by a variable (new or old name) stays."""
+def legacy_moves(env: Mapping[str, str], home: Path, platform: Platform) -> list[FolderMove]:
+    """The default folders to move; a folder named by a variable (new or old name) stays.
+    None where harness never ran."""
+    if not platform.moves_legacy_folders:
+        return []
     moves: list[FolderMove] = []
     if env_value(env, CONFIG_DIR_ENV) is None:
-        moves.append(FolderMove(default_config_dir(home, LEGACY_NAME), default_config_dir(home)))
+        moves.append(
+            FolderMove(platform.config_dir(home, env, LEGACY_NAME), platform.config_dir(home, env))
+        )
     if env_value(env, DATA_DIR_ENV) is None:
-        moves.append(FolderMove(default_data_dir(home, LEGACY_NAME), default_data_dir(home)))
+        moves.append(
+            FolderMove(platform.data_dir(home, env, LEGACY_NAME), platform.data_dir(home, env))
+        )
     return moves
 
 

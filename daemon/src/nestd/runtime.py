@@ -9,10 +9,11 @@ from typing import TextIO
 
 from fastapi import FastAPI
 
-from nestd.auth.secrets import KeychainSecretStore, SecretStore
+from nestd.auth.secrets import KeyringSecretStore, SecretStore
 from nestd.clock import Clock, SystemClock
+from nestd.platform import Platform, current_platform
 from nestd.server import run_uvicorn
-from nestd.service.launchd import CommandRunner, run_command
+from nestd.service.base import CommandRunner, run_command
 from nestd.service.restart import Restarter, terminate_self
 
 type ServeRunner = Callable[[FastAPI, int], Awaitable[None]]
@@ -24,6 +25,7 @@ class Runtime:
     home: Path
     uid: int
     executable: str
+    platform: Platform
     secrets: SecretStore
     clock: Clock
     run_command: CommandRunner
@@ -34,12 +36,14 @@ class Runtime:
 
 
 def default_runtime() -> Runtime:
+    platform = current_platform()
     return Runtime(
         env=os.environ,
         home=Path.home(),
         uid=os.getuid(),
         executable=sys.executable,
-        secrets=KeychainSecretStore(),
+        platform=platform,
+        secrets=KeyringSecretStore(platform.secret_store_help),
         clock=SystemClock(),
         run_command=run_command,
         serve=run_uvicorn,

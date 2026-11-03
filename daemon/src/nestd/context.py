@@ -112,6 +112,7 @@ from nestd.pixies.store import PixieStore
 from nestd.pixies.team_store import TeamStore
 from nestd.pixies.teams import TeamService
 from nestd.pixies.triggers import HabitTriggers
+from nestd.platform import Platform, current_platform
 from nestd.providers.acp import AcpProvider
 from nestd.providers.acp_engines import ACP_ENGINES, AcpEngine
 from nestd.providers.base import AgentProvider, EngineDetails, UsageInfo
@@ -137,7 +138,8 @@ from nestd.review.actions import ReviewActions
 from nestd.review.publish import GitPublisher
 from nestd.review.watch import ReviewWatcher
 from nestd.runs.blocks import PortBlocks
-from nestd.runs.listening import PortProbe, listening_ports
+from nestd.runs.listening import PortProbe
+from nestd.runs.listening import port_probe as find_port_probe
 from nestd.runs.manager import RunManager
 from nestd.search.index import SearchIndex
 from nestd.sessions.commands import CommandStore
@@ -242,6 +244,8 @@ class AppContext:
     perf: Perf
     perf_timings: RouteTimings
     perf_fetch: InProcess
+    # The system the daemon runs on (B117).
+    platform: Platform
     # The port `nestd serve --port` gave, which wins over the settings' one.
     port_flag: int | None = None
 
@@ -270,15 +274,17 @@ class AppContext:
         codex_locations: CodexLocations | None = None,
         machine: Callable[[], Awaitable[str]] = machine_name,
         local_setup: LocalSetup | None = None,
-        port_probe: PortProbe = listening_ports,
+        port_probe: PortProbe | None = None,
         acp_setup: AcpSetup | None = None,
         perf_client: ContextClientFactory = ClaudeSDKClient,
+        platform: Platform | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
         `runner` runs the git and gh commands of approved work and reads pull requests
         (tests fake gh with it),
-        `opener` the macOS `open` commands that launch local apps. `zone` decides which
+        `opener` the commands that launch local apps (macOS `open`, or the apps' own
+        commands on Linux). `zone` decides which
         day a turn's usage counts for and when quiet hours are; None is the system's time
         zone. `push_transport` replaces the network for web push and ntfy in tests, and
         `probe_factory` the Claude client of the usage probe and `engine_factory` the one
@@ -289,10 +295,13 @@ class AppContext:
         (tests use an in-memory one), and `codex_locations` says where a standalone Codex
         may be. `machine` reads the machine's name, once. `local_setup` is what local
         models reach: the network and the apps' folders. `port_probe` reads the ports a dev
-        server run listens on (lsof). `acp_setup` is what the ACP engines reach: npm, their
+        server run listens on (lsof, or /proc on Linux without it); None is the platform's.
+        `acp_setup` is what the ACP engines reach: npm, their
         processes, the environment they start from (B107). `perf_client` is the one-off
-        Claude client of Settings > Performance's context run (B115).
+        Claude client of Settings > Performance's context run (B115). `platform` is the
+        system the daemon runs on (B117); None is the current one.
         """
+        system = platform or current_platform()
         paths.ensure()
         settings = load_settings(paths)
         db = await Database.open(paths.db_path)
@@ -315,7 +324,7 @@ class AppContext:
             bus=bus,
             clock=clock,
             port=lambda: context.serving_port(),
-            setup=local_setup or LocalSetup.default(Path.home(), os.environ),
+            setup=local_setup or LocalSetup.default(Path.home(), os.environ, system),
             zone=zone,
             signed_in=logins.any,
             claude_signed_in=logins.claude,
@@ -458,7 +467,11 @@ class AppContext:
             repos=repos,
             clock=clock,
             logs_dir=paths.logs_dir,
-            probe=port_probe,
+            probe=port_probe
+            or find_port_probe(
+                system,
+                ":".join((os.environ.get("PATH", ""), system.service_path(Path.home()))),
+            ),
             shell_env=shell_env,
             base_env=os.environ,
         )
@@ -602,6 +615,7 @@ class AppContext:
             activity=activity,
             clock=clock,
             zone=zone,
+            machine=system.machine_noun,
         )
         teams = TeamService(team_store, pixie_store, bus)
         pixies = PixieService(
@@ -650,7 +664,11 @@ class AppContext:
             push_level=lambda: context.settings.notifications.pixie_report_level,
         )
         habit_tools = PixieHabitTools(
-            habits=habits, store=habit_store, reports=reports, activity=activity
+            habits=habits,
+            store=habit_store,
+            reports=reports,
+            activity=activity,
+            machine=system.machine_noun,
         )
         # Typed here: the session manager's `extras` above names it, and inferring it would
         # loop through the context the artifact asks read their settings from.
@@ -706,9 +724,9 @@ class AppContext:
             transport=push_transport,
             zone=zone,
         )
-        devices = DeviceService(db, clock, secrets)
+        devices = DeviceService(db, clock, secrets, f"This {system.machine_noun}")
         claude_code = ClaudeCli(
-            locations=claude_locations or ClaudeLocations.default(Path.home(), os.environ),
+            locations=claude_locations or ClaudeLocations.default(Path.home(), os.environ, system),
             run=claude_runner or run_command,
             # Signing in waits on the user in the browser; installing downloads.
             run_long=claude_runner or partial(run_command, time_limit=LONG_COMMAND_SECONDS),
@@ -760,7 +778,9 @@ class AppContext:
                 claude_cli=claude_code,
                 codex=codex,
                 codex_locations=codex_locations
-                or CodexLocations.default(Path.home(), os.environ, bundled_binary().executable),
+                or CodexLocations.default(
+                    Path.home(), os.environ, bundled_binary().executable, system
+                ),
                 run=runner,
                 cwd=paths.data_dir,
                 extensions=extensions,
@@ -794,10 +814,12 @@ class AppContext:
                 engines=lambda: sessions.engines,
                 codex=codex,
                 acp=acp,
+                machine_noun=system.machine_noun,
             )
         )
         context = cls(
             paths=paths,
+            platform=system,
             settings=settings,
             db=db,
             bus=bus,
@@ -812,7 +834,7 @@ class AppContext:
             reviews=reviews,
             usage=usage,
             connectors=connectors,
-            local_apps=LocalApps(opener, paths.launchers_dir),
+            local_apps=LocalApps(opener, paths.launchers_dir, system),
             notifications=notifications,
             claude_chats=claude_chats,
             branch_watch=BranchWatch(repos=repos, bus=bus),
@@ -890,7 +912,9 @@ class AppContext:
             configuration_watcher=ConfigurationWatcher(
                 bus, where, lambda: {repo.name: repo.path for repo in repos.list_repos()}
             ),
-            features=Features(FeatureStore(db, clock), clock, zone, packaged_catalog()),
+            features=Features(
+                FeatureStore(db, clock), clock, zone, packaged_catalog().for_platform(system.name)
+            ),
             # Each request gets the current token: a revoked local device is given a new one.
             token_socket=None
             if paths.token_socket is None
