@@ -356,6 +356,28 @@
   flex-direction: column;
   gap: var(--tr-gap);
 }
+/* A long chat's items, only those near the screen drawn (B117). The list keeps the
+   reader's place itself, so the browser's own scroll anchoring would move it twice. */
+.ch-tx.virt {
+  overflow-anchor: none;
+}
+.tx-v {
+  position: relative;
+  flex: none;
+}
+.tx-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tr-gap);
+  padding-bottom: var(--tr-gap);
+}
+.tx-row.end {
+  padding-bottom: 0;
+}
 /* An answer to a question Claude asked: the question, quiet, over the user's bubble (B60). */
 .m-ans {
   align-self: flex-end;

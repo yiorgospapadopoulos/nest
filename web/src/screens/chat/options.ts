@@ -26,6 +26,21 @@ const EFFORT_LABELS: Record<string, string> = {
   max: "Max",
 };
 
+const SHORT_LABELS: Record<string, string> = {
+  Medium: "Med",
+  "Extra high": "X-high",
+  "Accept edits": "Edits",
+};
+
+/**
+ * A selector's label in a narrow pane, as the Mac's PaneFit: a model without its version
+ * ("Sonnet" for "Sonnet 5.5"), and "Med", "X-high", "Edits"; the label itself otherwise.
+ */
+export function shortChoiceLabel(kind: keyof typeof PICKER_TITLES, label: string): string {
+  if (kind === "model") return label.split(" ")[0] ?? label;
+  return SHORT_LABELS[label] ?? label;
+}
+
 // Every mode; "auto" only for the models that take it.
 export const PERMISSIONS: Option<PermissionMode>[] = [
   { value: "default", label: "Ask", hint: "Asks before edits and commands" },
