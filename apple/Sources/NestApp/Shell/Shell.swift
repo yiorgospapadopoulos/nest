@@ -834,12 +834,15 @@ final class Shell {
     /// Opens an empty composer pane; the chat is created with its first message.
     @discardableResult
     func newChat() -> ComposerDraft {
-        pixiesOpen = false
         draftCount += 1
         let id = "\(Self.draftPrefix)\(draftCount)"
         let draft = draft(for: id)
         takeDefaults(draft)
+        draft.wantsFocus = true
         openChat(id)
+        // After the pane exists: leaving the Pixies tab first showed the empty project's start
+        // screen, and the pane never came up.
+        pixiesOpen = false
         return draft
     }
 
@@ -878,7 +881,6 @@ final class Shell {
         let draft = newChat()
         draft.text = GitInit.prompt
         draft.selection = TextSelection(insertionPoint: draft.text.endIndex)
-        draft.wantsFocus = true
     }
 
     /// Cmd-W: closes the open sheet, else the focused pane (a chat's or a pixie's), else
