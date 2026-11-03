@@ -1,0 +1,681 @@
+/* Settings > Configuration and a project's Configuration tab (B97), as ConfigurationView.swift
+   and ConfigurationSheets.swift; also the status label and confirmation Accounts use. */
+.dkc-page {
+  font-size: 12px;
+}
+.dkc-intro {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--t2);
+}
+.dkc-loading {
+  padding: 24px 0;
+}
+.dkc-label {
+  margin: 0;
+  padding: 22px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dkc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 8px 0;
+  box-sizing: border-box;
+  border-top: 1px solid var(--dk-line);
+  font-size: 12px;
+}
+.dkc-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding-left: 30px;
+  box-sizing: border-box;
+  border-top: 1px solid color-mix(in srgb, var(--dk-line) 60%, transparent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.dkc-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.dkc-title {
+  font-weight: 500;
+}
+.dkc-line {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--t3);
+}
+.dkc-file,
+.dkc-count {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.dkc-file {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.dkc-count {
+  font-variant-numeric: tabular-nums;
+}
+.dkc-page .mono,
+.dkc-form .mono,
+.dkc-details .mono {
+  font-family: var(--mono);
+}
+.dkc-name {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 500;
+}
+.dkc-name b {
+  font-weight: 500;
+}
+.dkc-fill {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dkc-dim {
+  color: var(--t3);
+  font-weight: 400;
+}
+.dkc-dim2 {
+  color: var(--t2);
+}
+.dkc-plain {
+  margin-left: 4px;
+}
+.dkc-clip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dkc-chip {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--soft);
+  font-size: 10.5px;
+  color: var(--t2);
+  white-space: nowrap;
+}
+.dkc-codex {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dkc-toggle {
+  color: var(--t2);
+  font-size: 11px;
+}
+.dkc-toggle:hover {
+  color: var(--t1);
+}
+.dkc-foot {
+  margin: 0;
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--t3);
+}
+.dkc-glyph {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dkc-icon {
+  width: 16px;
+  height: 16px;
+  padding: 0 1px;
+  color: var(--t2);
+}
+.dkc-chev {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--t3);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+.dkc-chev.on {
+  transform: none;
+}
+
+/* An engine's fold-open section. */
+.dkc-engine {
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--soft) 35%, transparent);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.dkc-engine-h {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 14px;
+}
+.dkc-engine-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+.dkc-engine-t b {
+  font-weight: 500;
+}
+.dkc-engine-t .dkc-dim {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dkc-engine-note {
+  margin: -8px 14px 8px 55px;
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dkc-engine-b {
+  padding: 0 16px 10px;
+}
+.dkc-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--soft);
+}
+.dkc-done > .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+.dkc-done > span {
+  flex: 1;
+}
+.dkc-standalone,
+.dkc-installing {
+  flex: none;
+  max-width: 55%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dkc-installing {
+  color: var(--t3);
+}
+.dkc-uses {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.dkc-uses b {
+  font-weight: 500;
+}
+.dkc-use {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dkc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  border-top: 1px solid var(--dk-line);
+  white-space: nowrap;
+}
+.dkc-item-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  text-align: left;
+}
+.dkc-item-gap {
+  flex: none;
+  width: 10px;
+}
+.dkc-item-t {
+  display: inline-flex;
+  gap: 6px;
+}
+.dkc-item-t b {
+  font-weight: 500;
+}
+.dkc-item .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+.dkc-indent {
+  padding: 0 0 8px 30px;
+}
+.dkc-list {
+  border-top: 1px solid var(--dk-line);
+}
+.dkc-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 10px 0;
+}
+.dkc-empty {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--t3);
+  border-bottom: 1px solid var(--dk-line);
+}
+.dkc-more {
+  margin-top: 10px;
+}
+.dkc-add {
+  display: flex;
+  gap: 6px;
+  padding-top: 10px;
+}
+.dkc-add .dk-field {
+  flex: 1;
+}
+.dkc-details {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 8px 36px;
+  border-bottom: 1px solid var(--dk-line);
+  font-size: 11px;
+  color: var(--t2);
+}
+.dkc-details p {
+  margin: 0;
+}
+.dkc-select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Connectors. */
+.dkc-conn-none {
+  margin: 0;
+  padding: 28px 0;
+  text-align: center;
+  color: var(--t3);
+}
+.dkc-conn-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 0 2px;
+  font-size: 11px;
+  color: var(--t3);
+  text-align: left;
+}
+.dkc-conn-h .dkc-chev {
+  width: 8px;
+  height: 8px;
+}
+.dkc-conn-h .num {
+  font-variant-numeric: tabular-nums;
+}
+.dkc-conn {
+  padding: 7px 0;
+}
+.dkc-conn + .dkc-conn {
+  border-top: 1px solid var(--dk-line);
+}
+.dkc-conn-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dkc-conn-i {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--soft);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dkc-conn-e {
+  font-size: 11px;
+  color: var(--bad);
+}
+.dkc-conn-hint {
+  margin: 4px 0 0 28px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+/* StatusLabel. */
+.dkc-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.dkc-status i {
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dkc-status i.hollow {
+  background: transparent;
+  border: 1.5px solid currentColor;
+}
+.dkc-status.t-review {
+  color: var(--ok);
+}
+.dkc-status.t-waiting {
+  color: var(--wait);
+}
+.dkc-status.t-failed {
+  color: var(--bad);
+}
+.dkc-status.t-running {
+  color: var(--run);
+}
+.dkc-status.t-done {
+  color: var(--t3);
+}
+
+/* The editor sheet. */
+.dkc-ed-path {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dkc-ed-path .mono {
+  font-family: var(--mono);
+}
+.dkc-ed-path .mono:first-child {
+  color: var(--t2);
+}
+.dkc-ed-path .dk-btn {
+  flex: none;
+  margin: -4px 0 -4px auto;
+}
+.dkc-disk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--wait) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 35%, transparent);
+}
+.dkc-disk i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wait);
+}
+.dkc-disk span {
+  flex: 1;
+}
+.dkc-ed-text {
+  display: block;
+  width: 100%;
+  height: 420px;
+  margin: 12px 0 0;
+  padding: 10px;
+  box-sizing: border-box;
+  resize: none;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+  color: var(--t1);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  outline: none;
+}
+.dkc-ed-text:focus {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.dkc-ed-foot {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  font-size: 11px;
+  color: var(--t3);
+}
+.dkc-ed-foot.bad {
+  color: var(--bad);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* The forms. */
+.dkc-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+.dkc-form-about {
+  margin: 0;
+  color: var(--t2);
+}
+.dkc-form-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.dkc-form-line > span {
+  flex: none;
+  width: 92px;
+  color: var(--t2);
+}
+.dkc-form-line > div {
+  flex: 1;
+  min-width: 0;
+}
+.dkc-form-line .dk-field {
+  width: 100%;
+  box-sizing: border-box;
+}
+.dkc-form-bad {
+  margin: 0;
+  font-size: 11px;
+  color: var(--bad);
+}
+.dkc-lines {
+  display: block;
+  width: 100%;
+  height: 62px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  resize: none;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  color: var(--t1);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+}
+.dkc-lines::placeholder {
+  font-family: var(--sf, inherit);
+  color: var(--t3);
+}
+.dkc-foot-start {
+  margin-right: auto;
+}
+.dkc-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+}
+.dkc-seg button {
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--t2);
+}
+.dkc-seg button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+.dkc-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--t1);
+}
+.dkc-checkbox i {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 3.5px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.dkc-checkbox svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+.dkc-checkbox.on i {
+  background: var(--accent);
+  box-shadow: none;
+}
+.dkc-checkbox.on svg {
+  opacity: 1;
+}
+
+/* The copy popup. */
+.dkc-copy-intro {
+  margin: 10px 0 8px;
+  color: var(--t2);
+}
+.dkc-part {
+  display: flex;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--dk-line);
+}
+.dkc-part h3 {
+  flex: none;
+  width: 130px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+.dkc-part > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.dkc-part p {
+  margin: 0;
+}
+.dkc-part b {
+  font-weight: 600;
+}
+.dkc-part .dim {
+  color: var(--t3);
+}
+.dkc-part .warn {
+  color: var(--wait);
+}
+.dkc-copy-acts {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 6px;
+}
+.dkc-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-top: 8px;
+}
+.dkc-pane h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--t2);
+}
+.dkc-pane pre {
+  height: 180px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dkc-pane pre.empty {
+  color: var(--t3);
+}
+
+/* The confirmation, as the Mac's confirmationDialog. */

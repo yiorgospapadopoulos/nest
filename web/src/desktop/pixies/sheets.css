@@ -1,0 +1,29 @@
+/* The habit run sheet (HabitRunSheet): a grey line with the chat's title and Read-only,
+   then its transcript. The work sheet draws the chat's own work views. */
+.pw-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 0 14px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.pw-sub-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-rows {
+  display: grid;
+  gap: 12px;
+}
+.pw-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--t3);
+}

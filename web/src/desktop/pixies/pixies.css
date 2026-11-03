@@ -1,0 +1,417 @@
+/* The Pixies tab's list (PixieList.swift): rows 30 high inset 16, team headers 28 high,
+   the reports inbox on top, the hidden toggle at the bottom. */
+.pxg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dk-side.dk-pxside {
+  padding: 8px 0;
+}
+.px-title {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.px-new {
+  display: flex;
+  padding: 2px 0 8px;
+}
+.px-newb {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px 0 16px;
+  color: var(--t2);
+  font-size: var(--fs-body);
+  white-space: nowrap;
+  text-align: left;
+}
+.px-newb:hover {
+  background: var(--mac-sidebar-row-open);
+}
+.px-newb .pxg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.5;
+}
+.px-scroll {
+  padding-bottom: 0;
+}
+
+/* The ⋯ of a row: 20 square on the soft fill. */
+.px-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  color: var(--t2);
+}
+.px-more .pxg {
+  width: 13px;
+  height: 13px;
+}
+.px-count {
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+}
+.px-count.urgent {
+  color: var(--wait);
+}
+.px-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.px-dot.hollow {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--c);
+}
+
+/* Reports. */
+.px-inbox {
+  display: grid;
+  gap: 6px;
+  padding: 0 6px 12px;
+}
+.px-inbox-h {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.px-report {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.px-report-by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.px-report-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--t2);
+}
+.px-report-at {
+  font-variant-numeric: tabular-nums;
+}
+.px-report-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--t1);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.px-report-acts {
+  display: flex;
+  gap: 4px;
+  padding-top: 1px;
+}
+
+/* Teams. */
+.px-team {
+  padding-bottom: 6px;
+}
+.px-thead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+.px-thead:hover,
+.px-thead.menu {
+  background: var(--mac-sidebar-row-open);
+}
+.px-thead.targeted,
+.px-nohead.targeted {
+  background: var(--sel);
+}
+.px-tbtn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 9px 0 10px;
+  white-space: nowrap;
+  text-align: left;
+  font-size: var(--fs-body);
+}
+.px-tchev {
+  width: 18px;
+  height: 10px;
+  color: var(--t3);
+  stroke-width: 1.8;
+  transition: transform 0.2s;
+}
+.px-tbtn[aria-expanded="false"] .px-tchev {
+  transform: rotate(-90deg);
+}
+.px-tname {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--t2);
+}
+.px-thandle {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--t3);
+}
+.px-trename {
+  flex: 1;
+  font-weight: 600;
+}
+.px-tacts,
+.px-racts {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  display: none;
+  transform: translateY(-50%);
+}
+.px-thead:hover .px-tacts,
+.px-thead.menu .px-tacts,
+.px-thead:focus-within .px-tacts {
+  display: flex;
+}
+.px-dragnote {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  margin: 0;
+  padding-left: 41px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.px-nohead {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-left: 41px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--t3);
+}
+
+/* Pixie rows. */
+.px-row {
+  position: relative;
+  height: 30px;
+}
+.px-row:hover,
+.px-row.open,
+.px-row.menu {
+  background: var(--mac-sidebar-row-open);
+}
+.px-row.focused {
+  background: var(--mac-sidebar-row-focused);
+}
+.px-row.dragging {
+  opacity: 0.45;
+}
+.px-row.drop-above::before,
+.px-row.drop-below::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.px-row.drop-above::before {
+  top: -1px;
+}
+.px-row.drop-below::after {
+  bottom: -1px;
+}
+.px-rowbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px 0 15px;
+  font-size: var(--fs-body);
+  text-align: left;
+}
+.px-row:hover .px-rowbtn,
+.px-row.menu .px-rowbtn {
+  padding-right: 37px;
+}
+.px-sprite {
+  display: flex;
+  justify-content: center;
+  width: 18px;
+  flex: none;
+}
+.px-row.hidden .px-sprite {
+  opacity: 0.5;
+}
+/* Whether the handle shows is rowFit.ts's rule; a hidden one stays measurable. */
+.px-label {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  column-gap: 6px;
+  height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.px-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 18px;
+  color: var(--mac-sidebar-text-closed);
+}
+.px-row.open .px-name {
+  color: var(--mac-sidebar-text-open);
+}
+.px-row.focused .px-name {
+  color: var(--t1);
+}
+.px-row.hidden .px-name {
+  color: var(--t2);
+}
+.px-leader {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-mac-chip);
+  background: var(--soft);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--t2);
+}
+.px-slug {
+  flex: none;
+  line-height: 18px;
+  color: var(--t3);
+}
+.px-slug.gone {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.px-trail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: var(--run);
+}
+.px-row:hover .px-trail,
+.px-row.menu .px-trail {
+  display: none;
+}
+.px-row:hover .px-racts,
+.px-row.menu .px-racts,
+.px-row:focus-within .px-racts {
+  display: flex;
+}
+.px-hidden {
+  flex: none;
+  padding: 4px 0 0 10px;
+}
+
+/* New team and Change handle (PixiePromptSheet): 320 wide, its field selected. */
+.px-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+  background: var(--surface-scrim);
+}
+.px-prompt {
+  display: grid;
+  gap: 10px;
+  width: 320px;
+  padding: 18px;
+  border-radius: var(--radius-mac-sheet);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  color: var(--t1);
+  box-shadow:
+    0 0 0 1px var(--mac-divider),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+}
+.px-prompt h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.px-prompt-field {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-mac-button);
+  background: var(--bg);
+  color: var(--t1);
+  font-size: 13.5px;
+  outline: none;
+}
+.px-prompt-field:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.px-prompt-note {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.px-prompt-b {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+}

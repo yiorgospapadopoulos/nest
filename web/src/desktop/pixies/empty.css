@@ -1,0 +1,90 @@
+/* The Pixies tab with no pixies (NoPixiesView) and its empty workspace (NoPixiePanes). */
+.px-none {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.px-none-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 400px;
+  padding: 28px 32px;
+  text-align: center;
+}
+.px-none-box > .pxs {
+  margin-bottom: 16px;
+}
+.px-none-box h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.px-none-box p {
+  margin: 6px 0 0;
+  font-size: var(--fs-body);
+  color: var(--t2);
+}
+.px-none-box > .px-es-new {
+  margin-top: 16px;
+}
+.px-none-hint {
+  margin-top: 16px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.px-none-box .px-es-row {
+  margin-top: 8px;
+}
+.px-es-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.px-es-row .dk-btn.large {
+  height: 26px;
+  gap: 8px;
+}
+.px-none-box .px-es-new.large {
+  height: 26px;
+}
+/* Over the whole workspace, which places its panes absolutely. */
+.px-panes-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+.px-panes-empty h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--t1);
+}
+.px-panes-empty p {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--t2);
+}
+.px-panes-empty > .px-es-row {
+  margin-top: 4px;
+}
+.px-es-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--t3);
+  stroke-width: 1;
+}
+.px-es-icon.small {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.2;
+}
