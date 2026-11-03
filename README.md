@@ -22,6 +22,7 @@ Nest was called harness until B43 (D080). Its daemon and command line tool are `
 | `daemon/` | Python daemon (FastAPI, websockets, Claude Agent SDK, Codex app-server, SQLite). Runs on the Mac as a background service. |
 | `web/` | iPhone PWA (React, TypeScript, Vite), served by the daemon. |
 | `apple/` | Native Mac app: a Swift package with the `NestKit` logic library and the `NestApp` SwiftUI executable (D024). |
+| `desktop/` | Linux desktop app (Tauri 2, Rust) around the web UI's desktop layout (`web/desktop.html`), built in Docker (D144). The Windows block adds `src-tauri/src/platform/windows.rs`. |
 | `design/` | `tokens.toml`, the design tokens shared by both clients (`make tokens` regenerates the CSS and Swift outputs). Both clients use the `[colors.mac]` palette and lane colours; the Mac also its `mac_*` radii and spacing (Swift `DesignTokens.Colors.Mac`), the iPhone its `phone_*` type sizes, row height and card radius (CSS `--typography-size-phone-*`, `--spacing-phone-row`, `--radius-phone-card`). The iPhone no longer offers glass themes or wallpapers (D126); their token tables are still generated but unused. See D039 and D073. |
 
 ## Prerequisites
@@ -82,6 +83,35 @@ The Mac's chat sidebar is one list, newest activity first, whatever each chat's 
 
 For visual review, a debug build renders the window offscreen without showing it: `cd apple && swift build && "$(swift build --show-bin-path)/NestApp" --render-snapshots <folder>` (sample data) or `--render-live <folder>` (the local daemon, read-only).
 
+## Linux desktop app
+
+On Linux, Nest is a desktop app that looks and works like the Mac app: the Pixies and project tabs across the top (the tab strip is the window's title bar, with minimise, maximise and close at its right end), the chat sidebar, a workspace of up to four panes (chat, terminal, browser, run) with focus dim, the right panel with Needs you and Goals, the board, the Pixies tab, Settings (shown inside the main window, with the Mac's pages) and the Ctrl+K palette. Every screen is a desktop component ported from the Mac app (`web/src/desktop/`), with anchored menus and popovers, right-click menus at the pointer, inline rename and details that expand in place; nothing in it comes from the iPhone screens, which an eslint rule enforces. The smallest window is 1000 by 640, as on the Mac. Mac shortcuts use Ctrl for Cmd (Ctrl+N new chat, Ctrl+W close the pane, Ctrl+1 to Ctrl+9 tabs, Ctrl+K, Ctrl+, settings); inside a terminal pane plain Ctrl keys go to the shell, and Ctrl+Shift+C and Ctrl+Shift+V copy and paste. It is a Tauri 2 app (`desktop/`) whose window shows the web UI's desktop layout (`web/desktop.html`, `web/src/desktop/`), bundled in the app, and it talks to the daemon on `127.0.0.1` like the Mac app: it reads this user's device token from the daemon's `token.sock` and sends it as a Bearer token. See D144.
+
+- Terminal panes run your login shell in a real pseudo-terminal (portable-pty) drawn by xterm.js. Shell command blocks in chats offer Run in terminal, as on the Mac.
+- Links (pull requests, issues, checks, chat links) open in the system browser; pages on this computer's dev servers open in a Nest browser window. Add folder (the + after the tabs) and Save as file use the system's file dialogs.
+- On a 2x screen Nest reads GNOME's monitor scale and draws at full sharpness through XWayland; fractional scales look slightly soft there, as for every X11 app on GNOME 46. GTK dialogs draw their text through `GDK_RENDERING=image`, which some virtual and older graphics need, at no measured cost.
+- There is no dictation on Linux for now (no mic button).
+- Browser panes open the page in a small window of its own for now, because Tauri cannot place several web views inside one window on Linux yet (tauri#10420). Pages there can call nothing in Nest.
+- The pixie pill floats at the top centre of the screen, always on top, with the same states as the Mac's notch island (B114). Ubuntu's Wayland session does not let apps keep a window on top or place it, nor take shortcuts while another app is focused, so Nest runs through XWayland by default; Settings > General > Linux > Keep the pixie pill on top turns that off (after a restart, the pill is then an ordinary window).
+- The pill never takes the keyboard: clicking it, the tray's Open Nest or a notification gives the focus to Nest's main window.
+- The tray icon (AppIndicator, shown by Ubuntu's top bar) has Open Nest, New chat, Settings and Quit. Closing the window keeps Nest in the tray; Ctrl+Alt+N or launching Nest again brings it back (one copy runs at a time).
+- Notifications go through the desktop's notification service as Nest, with the Mac's rules; clicking one about a chat opens that chat. While the pill is on, nothing it already shows (a pixie that needs you) is also sent as a system banner; a minimised or hidden Nest counts as not looking.
+- Settings > Appearance > Island settings: Show the island and Order (newest or oldest first), kept on this device, as on the Mac.
+- Start Nest when I log in (Settings > General > Linux) adds an autostart entry.
+- Artifacts open in a frame served from Nest's own `nest-artifact:` address with the artifact rules as a response header, once per view, so the app window keeps its strict rules and artifact pages never reach Nest's commands.
+
+Build and install (Docker on any machine, linux/arm64 here; nothing needs Rust on the host):
+
+```bash
+cd web && npm ci && npx vite build && cd ..
+desktop/docker/build.sh test     # cargo tests
+desktop/docker/build.sh lint     # cargo fmt --check and clippy
+desktop/docker/build.sh bundle   # .deb and AppImage under desktop/target/linux-arm64/bundle
+sudo apt install ./desktop/target/linux-arm64/bundle/deb/Nest_0.1.0_arm64.deb
+```
+
+The app needs WebKitGTK 4.1 (Ubuntu 22.04 or later) and the AppIndicator library; the `.deb` pulls both in.
+
 ## Running the daemon
 
 ```bash
@@ -96,6 +126,7 @@ uv run nestd pair               # print a one-time pairing code for a new device
 - Config: `~/.config/nest/` (override with `NEST_CONFIG_DIR`). A default `settings.toml` is written on first run.
 - Data and logs: `~/Library/Application Support/nest/` (override with `NEST_DATA_DIR`), with the database `nest.db`; the service logs to `logs/daemon.log` there, including what Claude Code writes to stderr (at debug level, credentials in URLs removed).
 - The launchd service is `com.nest.daemon` (`~/Library/LaunchAgents/com.nest.daemon.plist`), running `daemon/.venv/bin/python3 -m nestd serve`.
+- On Linux (D144): config in `$XDG_CONFIG_HOME/nest` (default `~/.config/nest`), data and logs in `$XDG_DATA_HOME/nest` (default `~/.local/share/nest`), `NEST_*` still overriding them. `nestd service install` writes the systemd user unit `~/.config/systemd/user/nest.service` (`Restart=always`, so Restart Nest works, and `KillMode=process`, so stopping the service leaves the terminals and editors Nest opened for you running) and runs `systemctl --user daemon-reload`, `enable` and `restart`; `status` and `uninstall` use `systemctl --user` too. To keep it running while you are logged out, run `loginctl enable-linger` yourself. Secrets go to the Secret Service through the keyring (gnome-keyring on Ubuntu); with no Secret Service or a locked keyring, `nestd serve` stops with one line saying what to do. Open in VS Code, the file manager and a terminal use `code`, `xdg-open` and `x-terminal-emulator` (else `gnome-terminal`). The move from the old harness folders happens only on macOS.
 - The Mac's own device token lives in the macOS Keychain (service `nest`, account `local-device-token`). The daemon hands it to the Mac app over a Unix socket, `token.sock` in the data folder: the folder is 0700, the socket 0600, and a process running as another user is refused. Any process running as you can ask for it (D075). The Mac app looks in the default data folder, or in `NEST_DATA_DIR` when it is launched with that set; `NEST_DAEMON_URL` (an http or https loopback URL such as `http://127.0.0.1:8812`, anything else is ignored) points it at a test daemon instead of `127.0.0.1:8765`. Both are read once at launch.
 
 ## Renamed from harness
@@ -428,7 +459,7 @@ In the Mac app, Cmd+K also searches messages across all chats (a "Messages" sect
 
 ## API overview
 
-All routes need a device token (`Authorization: Bearer <token>` or the `nest_token` cookie; the `harness_token` cookie from before the rename is still accepted), except `GET /api/health` and `POST /api/pairing/redeem`.
+All routes need a device token (`Authorization: Bearer <token>` or the `nest_token` cookie; the `harness_token` cookie from before the rename is still accepted), except `GET /api/health` and `POST /api/pairing/redeem`. The event socket also takes the token as the WebSocket subprotocol pair `nest`, `nest.token.<token>` (a browser page cannot set headers there; only `nest` is echoed back). Pages from the desktop app (`tauri://localhost`, and `http://tauri.localhost` for the Windows block) and from `server.allowed_origins` get CORS headers for the Authorization and Content-Type headers, without credentials; preflights need no token, and other origins get none (D144).
 
 | Area | Routes |
 |---|---|
