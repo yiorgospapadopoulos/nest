@@ -5,6 +5,7 @@ import httpx
 from nestd.local.discovery import PORTS, ModelFolders, downloaded, found_models, running
 from nestd.local.models import DownloadedModel, FoundModel
 from nestd.local.probe import ProbedModel, ProbedServer, ServerAddress
+from nestd.platform import LINUX, MACOS
 from tests.local_support import Network, lm_studio, ollama
 
 
@@ -27,7 +28,7 @@ def touch(path: Path) -> Path:
 def test_the_default_folders_follow_the_apps_and_their_variables(tmp_path: Path) -> None:
     home = tmp_path / "home"
 
-    assert ModelFolders.default(home, {}) == ModelFolders(
+    assert ModelFolders.default(home, {}, MACOS) == ModelFolders(
         lmstudio_models=home / ".lmstudio" / "models",
         lms=home / ".lmstudio" / "bin" / "lms",
         ollama_models=home / ".ollama" / "models",
@@ -35,12 +36,21 @@ def test_the_default_folders_follow_the_apps_and_their_variables(tmp_path: Path)
         llama_cpp=home / "Library" / "Caches" / "llama.cpp",
     )
     moved = ModelFolders.default(
-        home, {"OLLAMA_MODELS": "/m/ollama", "HF_HOME": "/m/hf", "HF_HUB_CACHE": ""}
+        home, {"OLLAMA_MODELS": "/m/ollama", "HF_HOME": "/m/hf", "HF_HUB_CACHE": ""}, MACOS
     )
     assert (moved.ollama_models, moved.huggingface_hub) == (Path("/m/ollama"), Path("/m/hf/hub"))
-    assert ModelFolders.default(home, {"HF_HUB_CACHE": "/c", "HF_HOME": "/m"}).huggingface_hub == (
-        Path("/c")
-    )
+    assert ModelFolders.default(
+        home, {"HF_HUB_CACHE": "/c", "HF_HOME": "/m"}, MACOS
+    ).huggingface_hub == (Path("/c"))
+
+
+def test_linux_keeps_llama_cpps_downloads_in_the_xdg_cache(tmp_path: Path) -> None:
+    """B117: llama.cpp caches under ~/.cache on Linux, not ~/Library/Caches."""
+    home = tmp_path / "home"
+
+    assert ModelFolders.default(home, {}, LINUX).llama_cpp == home / ".cache" / "llama.cpp"
+    moved = ModelFolders.default(home, {"XDG_CACHE_HOME": "/c"}, LINUX)
+    assert moved.llama_cpp == Path("/c/llama.cpp")
 
 
 async def test_running_servers_are_found_on_the_known_ports() -> None:

@@ -14,6 +14,7 @@ from nestd.local.memory import memory_warning
 from nestd.local.models import DownloadedModel, FoundModel, StartApp
 from nestd.local.probe import ProbedServer, normalise, probe
 from nestd.local.weak import rate
+from nestd.platform import Platform
 
 # LM Studio, Ollama, llama.cpp (before and since 2026-10-09), vLLM and Lemonade, and
 # KoboldCpp-style servers.
@@ -42,14 +43,14 @@ class ModelFolders:
     llama_cpp: Path
 
     @classmethod
-    def default(cls, home: Path, env: Mapping[str, str]) -> Self:
+    def default(cls, home: Path, env: Mapping[str, str], platform: Platform) -> Self:
         hf_home = Path(env.get("HF_HOME") or home / ".cache" / "huggingface")
         return cls(
             lmstudio_models=home / ".lmstudio" / "models",
             lms=home / ".lmstudio" / "bin" / "lms",
             ollama_models=Path(env.get("OLLAMA_MODELS") or home / ".ollama" / "models"),
             huggingface_hub=Path(env.get("HF_HUB_CACHE") or hf_home / "hub"),
-            llama_cpp=home / "Library" / "Caches" / "llama.cpp",
+            llama_cpp=platform.llama_cpp_cache(home, env),
         )
 
 
@@ -62,7 +63,10 @@ async def running(client: httpx.AsyncClient) -> list[ProbedServer]:
 
 
 def found_models(
-    server: ProbedServer, added: Collection[tuple[str, str]], memory: int | None = None
+    server: ProbedServer,
+    added: Collection[tuple[str, str]],
+    memory: int | None = None,
+    machine: str = "Mac",
 ) -> list[FoundModel]:
     """The server's models, rated; `added` holds the (address, model) pairs Nest has, and
     `memory` is this Mac's in bytes.
@@ -89,7 +93,7 @@ def found_models(
                 vision=model.vision,
                 thinking=model.thinking,
                 added=(address, model.model) in added,
-                memory_warning=memory_warning(model.size, memory),
+                memory_warning=memory_warning(model.size, memory, machine),
             )
         )
     return found
