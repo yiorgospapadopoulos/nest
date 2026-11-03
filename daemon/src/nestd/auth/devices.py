@@ -38,8 +38,16 @@ class PairingLockedError(Exception):
 
 
 class DeviceService:
-    def __init__(self, db: Database, clock: Clock, secrets: SecretStore) -> None:
+    def __init__(
+        self,
+        db: Database,
+        clock: Clock,
+        secrets: SecretStore,
+        local_name: str = LOCAL_DEVICE_NAME,
+    ) -> None:
+        """`local_name` names the device of the machine the daemon runs on."""
         self._db = db
+        self._local_name = local_name
         self._clock = clock
         self._secrets = secrets
         # Failed redemption times inside the current window, oldest first: all of them,
@@ -68,7 +76,7 @@ class DeviceService:
             await self._db.execute(
                 "INSERT INTO devices (id, name, token_hash, is_local, created_at)"
                 " VALUES (?, ?, ?, 1, ?)",
-                (uuid4().hex, LOCAL_DEVICE_NAME, _hash(token), self._clock.now().isoformat()),
+                (uuid4().hex, self._local_name, _hash(token), self._clock.now().isoformat()),
             )
         else:
             await self._db.execute(
