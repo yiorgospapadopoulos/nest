@@ -76,7 +76,9 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section("daemon", "Daemon", advanced=True, note="Routes since the daemon started."),
     Section("worktrees", "Worktrees", advanced=True, note="Worktree chats of the last 30 days."),
-    Section("gates", "Quality gates", advanced=True, note="Recorded by make check on this Mac."),
+    Section(
+        "gates", "Quality gates", advanced=True, note="Recorded by make check on this {machine}."
+    ),
 )
 
 BY_ID = {section.id: section for section in SECTIONS}

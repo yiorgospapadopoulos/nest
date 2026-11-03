@@ -6,6 +6,8 @@
 # A feature: a unique kebab-case `id`, its `group`, a short `name`, one or two plain sentences
 # of `text` (`backticks` show as code), `where` to find it, the date it was `added`, the
 # `block` that added it, and an optional `changed` date that shows it as new again.
+# A `[features.linux]` table right after an entry gives the `name`, `text` or `where` it
+# shows on Linux instead.
 
 [[groups]]
 id = "around"
@@ -50,6 +52,8 @@ text = "Measure Nest on this Mac with one button: what a new chat costs in conte
 where = "Settings > Performance"
 added = 2026-11-02
 block = "B115"
+[features.linux]
+text = "Measure Nest on this computer with one button: what a new chat costs in context, how fast turns and chats open, and what changed since the last run."
 
 [[features]]
 id = "split-workspace"
@@ -150,6 +154,8 @@ text = "Open a project in your editor, Finder or Terminal."
 where = "Project menu"
 added = 2026-10-06
 block = "B20"
+[features.linux]
+text = "Open a project in your editor, file manager or terminal."
 
 [[features]]
 id = "search-commands"
@@ -348,6 +354,10 @@ text = "On the Mac, the pixies at work sit beside the camera notch: working ones
 where = "Menu bar"
 added = 2026-10-27
 block = "B114"
+[features.linux]
+name = "Pixies at the top"
+text = "The pixies at work float at the top centre of the screen: working ones on the left, finished ones and those that need you on the right. Hover for the list, click to open the chat they work in."
+where = "Top of the screen"
 
 [[features]]
 id = "pixie-teams"
@@ -508,6 +518,8 @@ where = "Settings › Accounts"
 added = 2026-10-21
 changed = 2026-11-02
 block = "B106"
+[features.linux]
+text = "Models running on your computer or network work like a subscription, free and with no sign in."
 
 [[features]]
 id = "shared-setup"
@@ -517,6 +529,15 @@ text = "Instructions, skills and tool servers are shared by every engine."
 where = "Settings › Configuration"
 added = 2026-10-20
 block = "B97"
+
+[[features]]
+id = "linux-app"
+group = "engines"
+name = "Nest on Linux"
+text = "A Linux desktop app that looks and works like the Mac app, with real terminals, the pixie pill, a tray icon and a background service."
+where = "Linux"
+added = 2026-11-03
+block = "B117"
 
 [[features]]
 id = "iphone"

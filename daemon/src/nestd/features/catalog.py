@@ -10,6 +10,8 @@ from typing import Annotated, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints, ValidationError
 
+from nestd.platform import PlatformName
+
 PACKAGED = files("nestd.features") / "catalog.toml"
 
 
@@ -37,6 +39,14 @@ class Group(_Strict):
     name: Text
 
 
+class PlatformCopy(_Strict):
+    """What a feature says on one platform instead, where the default copy is Mac's."""
+
+    name: Text | None = None
+    text: Text | None = None
+    where: Text | None = None
+
+
 class Feature(_Strict):
     id: Id
     group: str
@@ -48,6 +58,15 @@ class Feature(_Strict):
     block: Annotated[str, StringConstraints(pattern=r"^B[0-9]+$")]
     # Shows the feature as new again from this day.
     changed: date | None = None
+    # A `[features.linux]` table: the copy on Linux (B117).
+    linux: PlatformCopy | None = None
+
+    def for_platform(self, platform: PlatformName) -> Self:
+        copy = self.linux if platform == "linux" else None
+        if copy is None:
+            return self
+        changes = copy.model_dump(exclude_none=True)
+        return self.model_copy(update={**changes, "linux": None})
 
     @property
     def day(self) -> date:
@@ -58,6 +77,11 @@ class Feature(_Strict):
 class Catalog(_Strict):
     groups: list[Group]
     features: list[Feature]
+
+    def for_platform(self, platform: PlatformName) -> Self:
+        """The catalog as it reads on `platform`."""
+        features = [feature.for_platform(platform) for feature in self.features]
+        return self.model_copy(update={"features": features})
 
     def problems(self) -> list[str]:
         """The rules across entries that the fields alone do not check."""
