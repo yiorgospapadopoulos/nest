@@ -136,6 +136,9 @@ struct BackdropImage: View {
                 }
             }
             .clipped()
+            // Clipping hides the overflow of a filled image but it still takes clicks, which
+            // left the rows above a settings preview dead (user, 2026-11-03).
+            .allowsHitTesting(false)
             .task(id: key) {
                 guard let image = await BackdropRenderer.shared.image(for: key) else { return }
                 withAnimation(reduceMotion ? nil : ChatBackdrop.easing(0.12)) {
