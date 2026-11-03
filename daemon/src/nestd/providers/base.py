@@ -294,6 +294,9 @@ class ModelOption(BaseModel):
     # The thinking level Claude Code uses for this model when none is chosen, from your
     # Claude Code settings (IMP-07); None when they set none. Read when served, not stored.
     claude_code_effort: str | None = None
+    # Runs on the user's own server, though the engine lists it with its hosted models.
+    # Worked out when served, not stored.
+    local: bool = False
 
 
 class AccountInfo(BaseModel):

@@ -67,6 +67,7 @@ async def test_before_the_engine_reported_the_aliases_and_an_empty_account_show(
         "supports_auto_mode": False,
         "resolved_model": None,
         "claude_code_effort": None,
+        "local": False,
     }
     assert account == {"display_name": None, "email": None, "plan": None, "organization": None}
 
@@ -89,6 +90,7 @@ async def test_the_engine_list_and_account_are_served_in_claude_codes_order(api:
         "supports_auto_mode": False,
         "resolved_model": None,
         "claude_code_effort": None,
+        "local": False,
     }
     assert account == {
         "display_name": None,

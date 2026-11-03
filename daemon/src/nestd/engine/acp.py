@@ -36,6 +36,7 @@ from nestd.engine.acp_install import (
     run_npm,
 )
 from nestd.engine.models import ENGINE_DEFAULT, ModelList, engine_default, listed_models
+from nestd.engine.opencode_local import is_local_model, local_providers
 from nestd.engine.store import EngineInfoStore
 from nestd.providers.acp import AcpNotReadyError, AcpProbe, probe
 from nestd.providers.acp_engines import (
@@ -229,7 +230,19 @@ class AcpEngineService:
         if listed is None:
             await self.status()
             listed = await self._store.models()
-        return listed_models(listed or ModelList(models=[], updated_at=None))
+        served = listed_models(listed or ModelList(models=[], updated_at=None))
+        return await self._marked_local(served) if self.engine.id == "opencode" else served
+
+    async def _marked_local(self, listed: ModelList) -> ModelList:
+        """OpenCode's list with the models of the user's own servers marked."""
+        env = await self._env()
+        config = env.get("XDG_CONFIG_HOME") or str(self.install.home / ".config")
+        providers = await asyncio.to_thread(local_providers, Path(config) / "opencode")
+        models = [
+            model.model_copy(update={"local": is_local_model(model.value, providers)})
+            for model in listed.models
+        ]
+        return listed.model_copy(update={"models": models})
 
     async def find(self, model: str | None) -> ModelOption | None:
         listed = await self._store.models()

@@ -23,7 +23,7 @@ from nestd.providers.acp_engines import (
     AcpEngine,
 )
 from nestd.providers.acp_process import AcpLaunch, AcpTransportFactory
-from nestd.providers.base import RunAccount
+from nestd.providers.base import ModelOption, RunAccount
 from nestd.storage.db import Database
 from tests.acp_engine_support import FREE_MODELS, FakeNpm, no_engine_process, preinstall
 from tests.fakes import FakeClock, FakeSecretStore
@@ -231,6 +231,40 @@ async def test_the_model_list_comes_from_a_probe_and_is_kept(
     assert await service.default_model() == "opencode/big-pickle"
     assert again is status
     assert len(seen) == 1
+
+
+async def test_opencode_marks_the_models_of_the_users_local_servers(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preinstall(rig.tmp_path / "engines", OPENCODE)
+    opencode_login(rig.tmp_path / "home" / ".local" / "share", '{"opencode": {"type": "api"}}')
+    rig.active = RunAccount("opencode-main")
+    config = rig.tmp_path / "home" / ".config" / "opencode"
+    config.mkdir(parents=True)
+    (config / "opencode.jsonc").write_text(
+        """{
+          // A tunnel to the user's own box.
+          "provider": {
+            "mine": {"options": {"baseURL": "http://127.0.0.1:18080/v1"}},
+            "hosted": {"options": {"baseURL": "https://api.example.com/v1"}},
+          },
+        }"""
+    )
+    values = ("lmstudio/ornith", "mine//opt/model.gguf", "hosted/big", "opencode/big-pickle")
+    answer = AcpProbe(
+        models=[ModelOption(value=value, display_name=value, description="") for value in values],
+        signed_in=True,
+        agent_version="1.19.5",
+        mcp_http=True,
+    )
+    fake_probe(monkeypatch, answer, [])
+
+    listed = await rig.service(OPENCODE).models()
+
+    assert [model.value for model in listed.models if model.local] == [
+        "lmstudio/ornith",
+        "mine//opt/model.gguf",
+    ]
 
 
 async def test_a_failed_probe_logs_no_key(
