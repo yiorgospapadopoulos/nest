@@ -876,12 +876,13 @@ class SessionManager:
         require_workspace(session)
         await self._require_not_open_elsewhere(session)
         live = self._live.setdefault(session_id, LiveSession(session_id))
-        problem = self._restore_problem(session, live)
-        if problem is not None:
-            raise SessionBusyError(problem)
-        if dry_run:
-            return await self._rewinds.preview(live, session, message, checkpoint, restore)
-        return await self._rewinds.rewind(live, session, message, checkpoint, restore)
+        async with live.rewinding:
+            problem = self._restore_problem(session, live)
+            if problem is not None:
+                raise SessionBusyError(problem)
+            if dry_run:
+                return await self._rewinds.preview(live, session, message, checkpoint, restore)
+            return await self._rewinds.rewind(live, session, message, checkpoint, restore)
 
     async def fork(self, session_id: str, event_id: int) -> ForkReply:
         """A new chat whose conversation is this one's up to before the user message of
