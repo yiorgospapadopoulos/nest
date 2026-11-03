@@ -13,6 +13,7 @@ from nestd.gitops.runner import CommandRunner, run_command
 from nestd.local.service import LocalSetup
 from nestd.paths import AppPaths
 from nestd.perf.collectors.context import ContextClient
+from nestd.platform import MACOS
 from nestd.providers.acp_process import AcpTransportFactory
 from nestd.providers.base import AgentProvider
 from nestd.providers.shell_env import no_shell_env
@@ -125,6 +126,8 @@ async def build_context(
         acp_setup=acp_setup(tmp_path, npm, acp),
         # Never a real Claude turn for Settings > Performance (B115).
         perf_client=no_context_client,
+        # The same apps and folders on every system the tests run on (B117).
+        platform=MACOS,
     )
 
 

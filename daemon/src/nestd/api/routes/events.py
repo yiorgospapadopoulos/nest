@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Query, WebSocket
 
-from nestd.api.deps import Context, authenticated_device
+from nestd.api.cors import DESKTOP_ORIGINS, normalized_origin
+from nestd.api.deps import NEST_SUBPROTOCOL, Context, authenticated_device
 from nestd.events import types
 from nestd.events.bus import EventBus, SubscriptionOverflowError
 
@@ -30,8 +31,11 @@ async def events(
         origin, websocket.headers.get("host"), ctx.settings.server.allowed_origins
     )
     device = await authenticated_device(websocket, ctx)
-    # Accept first so the client sees the 44xx close code rather than a bare 403.
-    await websocket.accept()
+    # Accept first so the client sees the 44xx close code rather than a bare 403. A
+    # browser that offered "nest" (the desktop app, B117) fails a socket that does not
+    # pick it; the token it offered next to it is never echoed.
+    offered = websocket.scope.get("subprotocols", [])
+    await websocket.accept(NEST_SUBPROTOCOL if NEST_SUBPROTOCOL in offered else None)
     if not allowed:
         await websocket.close(FORBIDDEN_ORIGIN_CLOSE_CODE, "origin not allowed")
         return
@@ -47,11 +51,14 @@ async def events(
 
 
 def origin_allowed(origin: str | None, host: str | None, allowed: Sequence[str]) -> bool:
-    """No Origin (a native client), the request's own host, or an origin from settings."""
+    """No Origin (a native client), the request's own host, the desktop app's page (B117)
+    or an origin from settings."""
     if origin is None:
         return True
-    normalized = origin.rstrip("/").lower()
-    if normalized in (entry.rstrip("/").lower() for entry in allowed):
+    normalized = normalized_origin(origin)
+    if normalized in DESKTOP_ORIGINS or normalized in (
+        normalized_origin(entry) for entry in allowed
+    ):
         return True
     parts = urlsplit(normalized)
     return parts.scheme in ("http", "https") and host is not None and parts.netloc == host.lower()

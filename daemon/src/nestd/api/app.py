@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from nestd import __version__
+from nestd.api.cors import DesktopCorsMiddleware
 from nestd.api.errors import install_error_handlers
 from nestd.api.hosts import HostCheckMiddleware
 from nestd.api.routes import (
@@ -137,6 +138,8 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
     )
     app.state.ctx = ctx
     app.state.restart = restart
+    # Inside the host check, so a refused host never gets CORS headers.
+    app.add_middleware(DesktopCorsMiddleware, allowed=lambda: ctx.settings.server.allowed_origins)
     app.add_middleware(HostCheckMiddleware, allowed=lambda: ctx.settings.server.allowed_hosts)
     # Outside the host check: a refused request has no route, so it is not timed.
     app.add_middleware(TimingMiddleware, timings=ctx.perf_timings)
@@ -193,6 +196,7 @@ def create_app(ctx: AppContext, *, restart: Restarter, loops: bool = True) -> Fa
         resolve=ctx.local.resolve,
         key=ctx.local.translator_key,
         transport=ctx.local.transport,
+        machine=ctx.platform.machine_noun,
     )
     # Last, so every /api route matches first.
     install_static(app, ctx.paths.web_dist)
