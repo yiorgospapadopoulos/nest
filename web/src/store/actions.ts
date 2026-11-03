@@ -752,6 +752,9 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
       ]);
     },
 
+    /** Reads one chat's run again, as when its folder or its project's run command changed. */
+    loadRun,
+
     /** After any reconnect: run events are not stored, so a dev server may have changed. */
     async reloadRuns(): Promise<void> {
       await Promise.all([...onScreen].map(loadRun));

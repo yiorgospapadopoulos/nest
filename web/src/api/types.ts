@@ -499,6 +499,27 @@ export interface CreateSessionBody {
   // Worktree chats only (B55): the local branch to start from, and the new branch's name.
   base?: string;
   branch?: string;
+  // An existing linked worktree to work in, or an existing branch to work on itself (B96).
+  worktree_path?: string;
+  on_branch?: string;
+}
+
+/** A git project's branch map (B96): each branch under the branch it comes from. */
+export interface BranchMap {
+  default_branch: string | null;
+  // Null when the project folder is on a detached HEAD.
+  current_branch: string | null;
+  // Depth first from the root, siblings by name.
+  branches: BranchMapBranch[];
+}
+
+export interface BranchMapBranch {
+  name: string;
+  // Null for the root only.
+  parent: string | null;
+  worktree: { path: string; owner: "nest" | "claude" | "other" } | null;
+  // The branch the project folder is on.
+  here: boolean;
 }
 
 export interface UpdateSessionBody {
@@ -530,6 +551,9 @@ export interface ApproveBody {
   open_pr?: boolean;
   // False commits without pushing, as for in-place chats (B56); the daemon pushes by default.
   push?: boolean;
+  // With open_pr: the pull request's title and description; the daemon has defaults.
+  pr_title?: string;
+  pr_body?: string;
   // The HEAD the user reviewed; the daemon refuses with `head_changed` if it moved.
   expected_head?: string;
   // The reviewed diff's fingerprint; the daemon refuses with `review_changed` if it differs.

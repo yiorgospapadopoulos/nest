@@ -20,6 +20,23 @@ export interface SocketLike {
 
 export type SocketFactory = (url: string) => SocketLike;
 
+/**
+ * The subprotocols that carry a device token to the event socket (B117), since a browser
+ * socket cannot send headers: the daemon answers with "nest" and reads the token from the
+ * second. Only for a daemon at another origin; the phone app's cookie needs none.
+ */
+export function tokenProtocols(token: string): string[] {
+  return ["nest", `nest.token.${token}`];
+}
+
+/** Browser sockets that send `token` as a subprotocol, or none without one. */
+export function browserSockets(token: string | null): SocketFactory {
+  return (url) =>
+    (token === null
+      ? new WebSocket(url)
+      : new WebSocket(url, tokenProtocols(token))) as unknown as SocketLike;
+}
+
 export interface StreamHandlers {
   onEvent(event: NestEvent): void;
   // `resumed` is false when events may have been missed, so snapshots should be reloaded.
