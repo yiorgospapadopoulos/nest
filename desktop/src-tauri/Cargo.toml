@@ -1,0 +1,41 @@
+[package]
+name = "nest-desktop"
+version = "0.1.0"
+description = "Nest for the Linux desktop"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+default-run = "nest-desktop"
+
+[lib]
+name = "nest_desktop_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "=2.4.1"
+tauri-plugin-single-instance = "=2.5.5"
+tauri-plugin-window-state = "=2.5.0"
+tauri-plugin-autostart = "=2.7.0"
+tauri-plugin-dialog = "=2.8.3"
+tauri-plugin-opener = "=2.7.2"
+base64 = "=0.23.1"
+portable-pty = "=0.9.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+# Already in Tauri's tree: the GTK bindings, to present a window with the X server's time
+# and shape the pill's input, and the D-Bus library, to send notifications as Nest.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "=0.18.2"
+gdkx11 = "=0.18.2"
+# The Xlib gdkx11 already builds on, linked for platform::activate's window manager request.
+x11 = { version = "=2.21.0", features = ["xlib"] }
+zbus = "=5.19.0"
+
+# Linux sends notifications itself (platform/linux.rs); the Windows layer can use the plugin.
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-notification = "=2.8.0"

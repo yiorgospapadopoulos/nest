@@ -1,0 +1,29 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app",
+  "description": "The main window and the pill, on the bundled UI only (no remote URLs). Browser windows get no capability, so their pages cannot call anything.",
+  "windows": ["main", "pill"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    "allow-get-daemon",
+    "allow-pty-spawn",
+    "allow-pty-write",
+    "allow-pty-resize",
+    "allow-pty-kill",
+    "allow-open-browser-window",
+    "allow-pick-folder",
+    "allow-stage-artifact",
+    "allow-release-artifact",
+    "allow-notify",
+    "allow-window-control",
+    "allow-is-maximized",
+    "allow-show-main",
+    "allow-pill-update",
+    "allow-pill-pointer",
+    "allow-get-settings",
+    "allow-set-settings"
+  ]
+}
