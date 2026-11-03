@@ -80,7 +80,7 @@ async def test_installing_from_settings_announces_each_state(api: Api) -> None:
     assert started.status_code == 202
     assert cursor.status_code == 409
     assert unknown.status_code == 404
-    assert api.npm.installs() == ["opencode-ai@1.19.4"]
+    assert api.npm.installs() == ["opencode-ai@1.19.5"]
 
 
 async def test_an_engine_not_ready_is_not_offered_for_a_new_chat(api: Api, tmp_path: Path) -> None:
@@ -124,7 +124,7 @@ async def test_a_ready_signed_in_engine_takes_a_new_chat_on_its_default_model(
     )
 
     assert (listed["opencode"]["state"], listed["opencode"]["signed_in"]) == ("ready", True)
-    assert listed["opencode"]["version"] == "1.19.4"
+    assert listed["opencode"]["version"] == "1.19.5"
     assert created.status_code == 201, created.text
     assert (created.json()["provider"], created.json()["model"]) == (
         "opencode",

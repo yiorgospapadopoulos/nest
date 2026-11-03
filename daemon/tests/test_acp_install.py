@@ -45,17 +45,17 @@ async def test_a_missing_engine_installs_its_pinned_version_and_drops_old_ones(
     assert before.state == "not_installed"
     assert [state.state for state in seen] == ["installing", "ready"]
     assert after.state == "ready"
-    assert after.version == "1.19.4"
+    assert after.version == "1.19.5"
     # The platform package's binary: the `.bin` entry is a placeholder its script replaces.
-    assert after.program == program_path(OPENCODE, folder / "1.19.4")
+    assert after.program == program_path(OPENCODE, folder / "1.19.5")
     args, _cwd, _env = npm.calls[0]
     assert args[0] == "install"
     assert "--ignore-scripts" in args
     assert "-g" not in args
     assert "--global" not in args
-    assert args[-1] == "opencode-ai@1.19.4"
+    assert args[-1] == "opencode-ai@1.19.5"
     assert sorted(entry.name for entry in folder.iterdir()) == [
-        "1.19.4",
+        "1.19.5",
         PROBE_FOLDER,
         "system-settings.json",
     ]
