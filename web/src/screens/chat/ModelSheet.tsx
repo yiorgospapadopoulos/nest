@@ -1,6 +1,6 @@
 import { isSelected } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { modelSections } from "../../store/selectors.ts";
+import { modelSections, sectionKey } from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 
@@ -27,12 +27,7 @@ export function ModelSheet({ provider, model, isDraft, onPick, onClose }: Props)
   return (
     <ActionSheet label="Model" onClose={onClose}>
       {sections.map((section) => (
-        <div
-          key={section.local === true ? "local" : section.provider}
-          className="asec"
-          role="group"
-          aria-label={section.title}
-        >
+        <div key={sectionKey(section)} className="asec" role="group" aria-label={section.title}>
           <div className="ash" aria-hidden="true">
             <b>{section.title}</b>
             {section.detail !== "" && <small>{section.detail}</small>}

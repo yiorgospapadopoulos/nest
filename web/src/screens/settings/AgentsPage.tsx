@@ -16,7 +16,7 @@ import {
   type ModelCatalog,
 } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { catalogFor, modelSections } from "../../store/selectors.ts";
+import { catalogFor, modelSections, sectionKey } from "../../store/selectors.ts";
 import { effortLabel, PERMISSIONS } from "../chat/options.ts";
 import { Loading, Section, SegRow, type Choice } from "./rows.tsx";
 import { StuckChats } from "./StuckChats.tsx";
@@ -99,12 +99,12 @@ function Choices({ defaults }: { defaults: AgentDefaults }) {
         >
           {sections.map((section) =>
             sections.length === 1 ? (
-              <Fragment key={section.provider}>
+              <Fragment key={sectionKey(section)}>
                 {items(section.catalog.models, section.provider)}
               </Fragment>
             ) : (
               <optgroup
-                key={section.local === true ? "local" : section.provider}
+                key={sectionKey(section)}
                 disabled={!section.available}
                 label={
                   section.detail === "" ? section.title : `${section.title} · ${section.detail}`

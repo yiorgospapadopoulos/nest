@@ -9,7 +9,13 @@ import type {
 } from "../../api/types.ts";
 import { CLAUDE, isSelected, supportsAuto, thinkingLevels } from "../../store/catalog.ts";
 import { useStore } from "../../store/context.ts";
-import { catalogFor, modelSections, modelTitle, pixieCanRunOn } from "../../store/selectors.ts";
+import {
+  catalogFor,
+  modelSections,
+  modelTitle,
+  pixieCanRunOn,
+  sectionKey,
+} from "../../store/selectors.ts";
 import { Icon } from "../../ui/Icon.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { effortLabel, NO_THINKING, PERMISSIONS, type Option } from "../chat/options.ts";
@@ -158,12 +164,7 @@ function ModelSheet({ pixie, save, onClose }: Props & { onClose: () => void }) {
         const mine = section.provider === own;
         const choosable = pixieCanRunOn(state, section.provider);
         return (
-          <div
-            key={section.local === true ? "local" : section.provider}
-            role="group"
-            aria-label={section.title}
-            className="msec"
-          >
+          <div key={sectionKey(section)} role="group" aria-label={section.title} className="msec">
             <div className="msec-h">
               <span>{section.title}</span>
               {section.detail !== "" && <small>{section.detail}</small>}

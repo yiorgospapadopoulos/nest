@@ -17,7 +17,7 @@ import type {
   LocalModel,
 } from "../api/types.ts";
 import { isLocalModel, list, localModelValue, obj, str } from "../api/payloads.ts";
-import { isWeak, LOCAL_DETAIL, LOCAL_TITLE, localOptions } from "./local.ts";
+import { isWeak, LOCAL_DETAIL, LOCAL_TITLE, localDetail, localOptions } from "./local.ts";
 import {
   CLAUDE,
   type ModelCatalog,
@@ -565,6 +565,8 @@ export interface ModelSection {
   available: boolean;
   // The local models' section (B116), whose `provider` is the engine they run on.
   local?: boolean;
+  // An engine's own models on the user's servers, listed apart from its hosted ones.
+  engineLocal?: boolean;
   // Models shown but not choosable, such as a stopped server's local models.
   unavailable?: string[];
   // Local models weak at tools, whose line reads as a warning.
@@ -606,7 +608,33 @@ export function modelSections(
 ): ModelSection[] {
   const own = provider ?? CLAUDE;
   const local = localSection(state, isDraft ? (state.local.list?.engine ?? CLAUDE) : own);
-  return [...engineSections(state, own, isDraft), ...local];
+  const engines = engineSections(state, own, isDraft);
+  return [...engines.map(hostedPart), ...engines.flatMap(localPart), ...local];
+}
+
+/** A section's unique key: an engine's name can head its local models' section too. */
+export function sectionKey(section: ModelSection): string {
+  if (section.local === true) return "local";
+  return section.engineLocal === true ? `local:${section.provider}` : section.provider;
+}
+
+function hostedPart(section: ModelSection): ModelSection {
+  const models = section.catalog.models.filter((m) => m.local !== true);
+  return { ...section, catalog: { ...section.catalog, models } };
+}
+
+function localPart(section: ModelSection): ModelSection[] {
+  const models = section.catalog.models.filter((m) => m.local === true);
+  if (models.length === 0) return [];
+  return [
+    {
+      ...section,
+      title: LOCAL_TITLE,
+      detail: localDetail(section.title),
+      catalog: { ...section.catalog, models },
+      engineLocal: true,
+    },
+  ];
 }
 
 function engineSections(state: State, own: string, isDraft: boolean): ModelSection[] {

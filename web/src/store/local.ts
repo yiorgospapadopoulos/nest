@@ -36,6 +36,11 @@ export const NO_LOCAL: LocalState = {
 
 export const LOCAL_TITLE = "Local";
 export const LOCAL_DETAIL = "On this Mac, free, no limits";
+
+/** The section of an engine's own local models. */
+export function localDetail(engine: string): string {
+  return `Run by ${engine}`;
+}
 export const NO_IMAGES = "This model can't read images";
 export const NO_WEB_SEARCH = "Not available on local models";
 

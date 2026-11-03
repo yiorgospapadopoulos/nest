@@ -44,6 +44,7 @@ import {
   lastActivity,
   modelSections,
   modelTitle,
+  sectionKey,
   newChatDefaults,
   offersEngineChoice,
   signInHint,
@@ -784,6 +785,22 @@ describe("engines (B102 items 22, 25, 27, 28, as NestKit ProvidersStore)", () =>
     expect(modelSections(engines(), null, false).map((s) => s.provider)).toEqual(["claude"]);
     const alone = modelSections({ ...engines(), providers: [claudeProvider()] }, null, true);
     expect(alone.map((s) => [s.provider, s.title, s.detail])).toEqual([["claude", "Model", ""]]);
+  });
+
+  it("lists an engine's local models apart from its own, still run by that engine", () => {
+    const hosted = { ...gpt, value: "opencode/big" };
+    const local = { ...gpt, value: "lmstudio/ornith", local: true };
+    const state = engines({ providers: [claudeProvider(), acpProvider()] });
+    state.modelLists = { ...state.modelLists, opencode: modelList({ models: [hosted, local] }) };
+    const sections = modelSections(state, null, true);
+    expect(sections.map((s) => [s.provider, s.title])).toEqual([
+      ["claude", "Claude"],
+      ["opencode", "OpenCode"],
+      ["opencode", "Local"],
+    ]);
+    expect(sections[1]?.catalog.models).toEqual([hosted]);
+    expect(sections[2]?.catalog.models).toEqual([local]);
+    expect(new Set(sections.map(sectionKey)).size).toBe(3);
   });
 
   it("offers a new chat only the engines that can run now (B107)", () => {

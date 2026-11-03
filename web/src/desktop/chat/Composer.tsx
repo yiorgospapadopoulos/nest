@@ -482,7 +482,9 @@ export function Composer({ target }: { target: ComposerTarget }) {
     const sections = modelSections(state, choices?.provider ?? null, session === undefined);
     const entries: MenuEntry[] = [];
     for (const section of sections) {
-      if (entries.length > 0 && section.local === true) entries.push({ type: "separator" });
+      if (entries.length > 0 && (section.local === true || section.engineLocal === true)) {
+        entries.push({ type: "separator" });
+      }
       entries.push({ type: "section", title: section.title });
       if (section.detail !== "") entries.push({ type: "note", text: section.detail });
       if (section.catalog.models.length === 0) {

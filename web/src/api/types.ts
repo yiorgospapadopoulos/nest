@@ -743,6 +743,8 @@ export interface ModelOption {
   resolved_model?: string | null;
   // The thinking level Claude Code's own settings give it, when they set one.
   claude_code_effort: string | null;
+  // Runs on the user's own server, though its engine lists it with its hosted models.
+  local?: boolean;
 }
 
 export interface ModelList {
