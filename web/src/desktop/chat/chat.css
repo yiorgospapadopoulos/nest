@@ -1,0 +1,2693 @@
+/* The chat pane (B117 wave 2A), as the Mac's PaneView, TranscriptView and Composer: the
+   Mac's sizes (TypeSize ui 12, reading 12.5, meta 11; Inter runs as wide as SF at a size),
+   flat soft fills, 1 px dividers and the accent bubble. */
+html.desk {
+  --dc-read: 12.5px;
+  --dc-ui: 12px;
+  --dc-meta: 11px;
+  --dc-micro: 10px;
+  --dc-row: 21px;
+}
+
+/* The pane: its header, then the body, which fades while another pane has the focus (B93). */
+.dk-pane.dim:has(> .dc-pane)::after {
+  display: none;
+}
+.dc-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--mac-chat-pane);
+  color: var(--t1);
+}
+.dc-pane.dimmed {
+  background: var(--mac-unfocused-pane);
+}
+.dc-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dc-pane.dimmed > .dc-body {
+  opacity: 0.5;
+}
+.dc-g {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dc-disc {
+  color: var(--t3);
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+.dc-disc.open {
+  transform: none;
+}
+.dc-t3 {
+  color: var(--t3);
+}
+.dc-wait {
+  color: var(--wait);
+}
+.dc-ok {
+  color: var(--ok);
+}
+.dc-int {
+  color: var(--int-t);
+}
+.dc-bad {
+  color: var(--bad);
+  font-size: var(--dc-meta);
+}
+.dc-quiet {
+  color: var(--t3);
+  font-size: var(--dc-meta);
+}
+.dc-quiet.pad {
+  padding: 8px;
+}
+.dc-mono {
+  font-family: var(--mono);
+}
+.dc-label {
+  display: block;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  margin-bottom: 4px;
+}
+.dc-linkbtn {
+  color: var(--link);
+  font-size: var(--dc-ui);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.dc-linkbtn:hover {
+  text-decoration: underline;
+}
+.dc-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--wait);
+  flex: none;
+}
+
+/* Header (PaneHeader): grip, title, status; chips, run, maximise and close at the end. */
+.dc-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--spacing-mac-header-height);
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--div);
+  min-width: 0;
+}
+.dc-grip {
+  flex: none;
+  width: 14px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--t3);
+  cursor: grab;
+}
+.dc-grip svg {
+  width: 7px;
+  height: 11px;
+  fill: currentColor;
+}
+.dc-htitle {
+  margin: 0;
+  min-width: 24px;
+  flex: 0 1 auto;
+  font-size: var(--dc-ui);
+  font-weight: 500;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-pane.dimmed .dc-htitle {
+  color: var(--t2);
+}
+.dc-hstatus {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.dc-hmeta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dc-hstarted {
+  flex: 0 1 auto;
+  max-width: 160px;
+  min-width: 0;
+}
+.dc-hstarted > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-hlocal {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dc-hlocalt {
+  font-size: var(--dc-micro);
+  color: var(--t2);
+  padding: 0 5px;
+  border: 1px solid var(--t3);
+  border-radius: 4px;
+  line-height: 15px;
+}
+.dc-hchip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-mac-chip);
+  background: var(--soft);
+  color: var(--t2);
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.dc-hchip:hover,
+.dc-hchip.open {
+  background: var(--sel);
+}
+.dc-stuck {
+  flex: none;
+  font-size: var(--dc-meta);
+  font-weight: 500;
+  color: var(--wait);
+}
+.dc-pbtn {
+  color: var(--t3);
+}
+.dc-run {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-mac-button);
+  color: var(--t2);
+  font-size: var(--dc-ui);
+}
+.dc-run:hover {
+  background: var(--mac-hover);
+  color: var(--t1);
+}
+.dc-run.bad {
+  color: var(--bad);
+}
+.dc-spin {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--t3);
+  border-right-color: transparent;
+  animation: dc-spin 0.9s linear infinite;
+}
+@keyframes dc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.dc-runports {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dc-port {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-mac-chip);
+  background: var(--soft);
+  color: var(--t1);
+  font: 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.dc-port:hover:not(:disabled) {
+  background: var(--sel);
+}
+.dc-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 15%, transparent);
+}
+.dc-portmore {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-runstop {
+  width: 20px !important;
+  height: 20px;
+}
+
+/* The PR chip's popover (PRDetails). */
+.dc-prd {
+  width: 300px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--dc-ui);
+}
+.dc-prline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--t1);
+  text-decoration: none;
+}
+.dc-prline > .dc-g {
+  color: var(--t2);
+  align-self: center;
+}
+.dc-prn {
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.dc-prt {
+  font-weight: 500;
+}
+.dc-prline:hover .dc-prt {
+  text-decoration: underline;
+}
+.dc-prcloses {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-prstatus {
+  padding-left: 20px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-prchecks {
+  list-style: none;
+  margin: 2px 0;
+  padding: 2px 0;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.dc-prchecks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--spacing-mac-row-height);
+  padding: 0 8px;
+}
+.dc-prcn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-prcv {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-prauto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dc-praut {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+}
+.dc-praut small {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-practs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+a.dk-btn {
+  text-decoration: none;
+}
+
+/* Transcript. */
+.dc-txw {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dc-tx {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 18px 20px 12px;
+  overflow-anchor: none;
+}
+.dc-tx.from-end {
+  display: flex;
+  flex-direction: column-reverse;
+}
+.dc-tx::-webkit-scrollbar {
+  width: 8px;
+}
+.dc-tx::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--t1) 18%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.dc-txin {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  font-size: var(--dc-read);
+  line-height: 1.5;
+}
+.dc-tx.virt .dc-txin {
+  gap: 0;
+}
+.dc-tx.virt .dc-txin > :not(.dc-tx-v) {
+  margin-top: 14px;
+}
+.dc-tx-v {
+  position: relative;
+  width: 100%;
+}
+.dc-tx-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 14px;
+}
+.dc-item {
+  min-width: 0;
+}
+.dc-empty {
+  margin: 0;
+  padding: 60px 0;
+  text-align: center;
+  color: var(--t3);
+  font-size: var(--dc-ui);
+}
+.dc-loading {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+.dc-sys {
+  margin: 0;
+  padding: 2px 10px;
+  text-align: center;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-hit {
+  animation: dc-hit 2.4s ease-out;
+  border-radius: var(--radius-mac-card);
+}
+@keyframes dc-hit {
+  0%,
+  40% {
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* The user's message: the accent bubble at the trailing edge, its actions on hover. */
+.dc-urow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.dc-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-ucol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  padding-left: 48px;
+  max-width: 100%;
+}
+.dc-ubub-w {
+  position: relative;
+  max-width: 100%;
+}
+.dc-ubub {
+  padding: 7px 11px;
+  border-radius: var(--radius-mac-bubble);
+  background: var(--bubble);
+  color: var(--on-bubble);
+  font-size: var(--dc-read);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-ubub b {
+  font-weight: 600;
+}
+.dc-mact {
+  position: absolute;
+  top: 50%;
+  left: -30px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-mac-button);
+  color: var(--t3);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.dc-ubub-w:hover .dc-mact,
+.dc-mact.open,
+.dc-mact:focus-visible {
+  opacity: 1;
+}
+.dc-mact:hover,
+.dc-mact.open {
+  background: var(--mac-hover);
+  color: var(--t2);
+}
+.dc-gh {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dc-gh.after {
+  margin-top: 12px;
+}
+.dc-ghq {
+  font-size: var(--dc-meta);
+  opacity: 0.72;
+}
+.dc-ghq.mono {
+  font-family: var(--mono);
+}
+.dc-ght {
+  font-weight: 500;
+}
+.dc-ghx {
+  font-size: var(--dc-ui);
+  opacity: 0.88;
+}
+.dc-ghi {
+  display: flex;
+  flex-direction: column;
+}
+.dc-answer {
+  gap: 4px;
+}
+.dc-aq {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  text-align: right;
+}
+.dc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: var(--dc-meta);
+  color: var(--t2);
+}
+.dc-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The reply: one selectable text, with Copy over its top trailing corner on hover. */
+.dc-md {
+  min-width: 0;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-md .md {
+  font-size: var(--dc-read);
+  line-height: 1.5;
+}
+.dc-md .md p {
+  white-space: pre-wrap;
+}
+.dc-md .md code {
+  font-size: 0.88em;
+  background: var(--raised);
+  border-radius: var(--radius-mac-chip);
+  padding: 1px 4px;
+}
+.dc-md .md pre {
+  background: var(--soft);
+  border-radius: var(--radius-mac-card);
+  padding: 8px 10px;
+  font-size: var(--dc-meta);
+}
+.dc-md .md pre code {
+  background: none;
+  padding: 0;
+}
+.dc-md .md h1,
+.dc-md .md h2,
+.dc-md .md h3,
+.dc-md .md h4 {
+  font-size: var(--dc-read);
+  font-weight: 650;
+}
+.dc-hcopy {
+  position: relative;
+  padding-right: 28px;
+}
+.dc-copy {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  color: var(--t3) !important;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.dc-hcopy:hover > .dc-copy,
+.dc-copy:focus-visible {
+  opacity: 1;
+}
+.dc-segs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dc-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.dc-cmd code {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  font: var(--dc-meta) / 1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-cmd .dc-copy {
+  position: static;
+  opacity: 1;
+}
+
+/* Quiet lines that open in place: thinking, tool groups, tools, hooks. */
+.dc-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: var(--dc-row);
+  min-width: 0;
+  width: 100%;
+  font-size: var(--dc-ui);
+  color: var(--t2);
+  text-align: left;
+}
+.dc-line.quiet {
+  color: var(--t3);
+}
+.dc-line.small {
+  font-size: var(--dc-meta);
+  min-height: 0;
+  width: auto;
+}
+.dc-line.tool.open-able,
+button.dc-line:not(:disabled) {
+  cursor: pointer;
+}
+button.dc-line:disabled {
+  opacity: 1;
+}
+.dc-ti {
+  width: 12px;
+  color: var(--t3);
+}
+.dc-tn {
+  flex: none;
+  font-weight: 500;
+  color: var(--t1);
+}
+.dc-ta {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dc-meta) var(--mono);
+  color: var(--t2);
+}
+.dc-ta.link {
+  color: var(--link);
+}
+.dc-ta.plain {
+  font: var(--dc-ui) var(--sf);
+}
+.dc-tr {
+  flex: none;
+  white-space: nowrap;
+  color: var(--t3);
+}
+.dc-tr.bad {
+  color: var(--bad);
+}
+.dc-tr.plain {
+  color: var(--t2);
+}
+.dc-gsum {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t2);
+}
+.dc-shimmer {
+  background: linear-gradient(
+      90deg,
+      currentColor 0%,
+      currentColor 40%,
+      color-mix(in srgb, currentColor 35%, transparent) 50%,
+      currentColor 60%,
+      currentColor 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: dc-shimmer 1.8s linear infinite;
+}
+@keyframes dc-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+.dc-group,
+.dc-tool,
+.dc-hook,
+.dc-pxcall,
+.dc-bash {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dc-gitems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+}
+.dc-think {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dc-thought {
+  margin: 0;
+  font-size: var(--dc-ui);
+  font-style: italic;
+  color: var(--t2);
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-live {
+  margin: 0;
+  padding-left: 19px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.dc-live.italic {
+  padding-left: 0;
+  font-style: italic;
+}
+.dc-ds {
+  flex: none;
+  display: inline-flex;
+  gap: 4px;
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+}
+.dc-ds .add {
+  color: var(--ok);
+}
+.dc-ds .del {
+  color: var(--bad);
+}
+.dc-dsf {
+  color: var(--t3);
+}
+.dc-stop {
+  width: 20px !important;
+  height: 20px;
+  margin-left: 2px;
+}
+.dc-diff {
+  margin-left: 19px;
+  padding: 4px 0;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  overflow: hidden;
+  font: var(--dc-meta) / 1.55 var(--mono);
+}
+.dc-dl {
+  display: flex;
+  gap: 6px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.dc-dl.add {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.dc-dl.del {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+.dc-dm {
+  flex: none;
+  width: 8px;
+  color: var(--t3);
+}
+.dc-dl.add .dc-dm {
+  color: var(--ok);
+}
+.dc-dl.del .dc-dm {
+  color: var(--bad);
+}
+.dc-dt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--t2);
+}
+.dc-dl.add .dc-dt,
+.dc-dl.del .dc-dt {
+  color: var(--t1);
+}
+.dc-dgap {
+  padding: 1px 8px;
+  color: var(--t3);
+}
+.dc-more {
+  align-self: flex-start;
+  padding: 6px 8px 2px;
+  font: var(--dc-meta) var(--sf);
+  color: var(--link);
+}
+.dc-more:hover {
+  text-decoration: underline;
+}
+.dc-out {
+  margin-left: 19px;
+  padding: 8px 32px 8px 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dc-out pre {
+  margin: 0;
+  font: var(--dc-meta) / 1.6 var(--mono);
+  color: var(--t2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dc-out .dc-more {
+  padding: 0;
+}
+.dc-hook .dc-line {
+  color: var(--t3);
+}
+.dc-hook.bad .dc-line {
+  color: var(--wait);
+}
+.dc-hookt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-hookt.wrap {
+  white-space: normal;
+}
+.dc-bang {
+  width: 12px;
+  font: 600 var(--dc-meta) var(--mono);
+  color: var(--wait);
+}
+.dc-bc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dc-meta) var(--mono);
+  color: var(--t1);
+}
+.dc-bfail {
+  margin: 0 0 0 19px;
+  font-size: var(--dc-meta);
+  color: var(--bad);
+}
+.dc-turn {
+  margin: 0;
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+.dc-turn.shown {
+  opacity: 1;
+}
+.dc-note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-size: var(--dc-meta);
+  color: var(--t2);
+  text-align: left;
+  width: 100%;
+}
+.dc-note.col {
+  flex-direction: column;
+  gap: 4px;
+}
+.dc-note.link:hover {
+  background: var(--sel);
+}
+.dc-noteh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.dc-notet {
+  color: var(--t3);
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-notet.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dc-pxwho {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dc-pxwho:hover .dc-tn {
+  text-decoration: underline;
+}
+.dc-team {
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 1px;
+}
+.dc-pxtask {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+.dc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 6px;
+  padding-left: 13px;
+  border-left: 1px solid var(--div);
+}
+.dc-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--t3);
+  font: var(--dc-meta) var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dc-step > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-imgs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 19px;
+}
+.dc-imgs.flush {
+  padding-left: 0;
+}
+.dc-thumb {
+  align-self: flex-start;
+  max-width: 320px;
+  border-radius: var(--radius-mac-card);
+  overflow: hidden;
+}
+.dc-thumb img {
+  display: block;
+  max-width: 100%;
+}
+.dc-imgfull {
+  display: grid;
+  place-items: center;
+}
+.dc-imgfull img {
+  max-width: 100%;
+  max-height: calc(100vh - 160px);
+  border-radius: var(--radius-mac-card);
+}
+.dc-working {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--t3);
+}
+.dc-wline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -6px;
+  padding: 3px 6px;
+  border-radius: var(--radius-mac-row);
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+  background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--accent) 10%, transparent),
+      transparent
+    )
+    0 0 / 50% 100% no-repeat;
+  animation: dc-glow 2.6s ease-in-out infinite;
+  text-align: left;
+}
+.dc-wline.static {
+  margin: 0;
+  padding: 0;
+  background: none;
+  animation: none;
+  font-size: var(--dc-ui);
+}
+@keyframes dc-glow {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+.dc-rvwait {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-down {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--fail-soft);
+  font-size: var(--dc-ui);
+}
+.dc-down b {
+  display: block;
+  color: var(--bad);
+  font-weight: 600;
+}
+.dc-down p {
+  margin: 8px 0;
+}
+.dc-down-b {
+  display: flex;
+  gap: 8px;
+}
+.dc-jump {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--radius-mac-card);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 4px 12px rgba(0, 0, 0, 0.12);
+  font-size: var(--dc-ui);
+  color: var(--t1);
+  z-index: 3;
+}
+.dc-txbottom {
+  flex: none;
+}
+
+/* Cards in the transcript: soft fills. */
+.dc-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-size: var(--dc-ui);
+}
+.dc-card.col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.dc-cardb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dc-cardt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-cardt.strong {
+  font-weight: 600;
+  white-space: normal;
+}
+.dc-cardt.gone {
+  color: var(--t3);
+}
+.dc-cardm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-cardbody {
+  color: var(--t2);
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--dc-meta);
+}
+.dc-status.ok {
+  color: var(--ok);
+}
+.dc-arti {
+  width: 16px;
+  height: 16px;
+  color: var(--t2);
+}
+.dc-rep {
+  position: relative;
+}
+.dc-rep:not(.sev-info)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--wait);
+}
+.dc-rep.sev-action::before {
+  background: var(--bad);
+}
+.dc-rephead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: var(--dc-meta);
+}
+.dc-rephead.quiet {
+  color: var(--t3);
+  font-weight: 500;
+}
+.dc-sev {
+  font-weight: 500;
+  color: var(--t3);
+}
+.dc-rep.sev-warning .dc-sev {
+  color: var(--wait);
+}
+.dc-rep.sev-action .dc-sev {
+  color: var(--bad);
+}
+.dc-replink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  font-size: var(--dc-meta);
+  color: var(--link);
+  text-decoration: none;
+}
+.dc-replink > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dc-cardact {
+  padding-top: 2px;
+}
+
+/* Approvals in the transcript (ApprovalCard, inline). */
+.dc-ask {
+  display: flex;
+  flex-direction: column;
+  padding: 11px 13px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-size: var(--dc-ui);
+  line-height: normal;
+  color: var(--t1);
+}
+.dc-ask.panel {
+  padding: 10px 12px;
+}
+.dc-ask-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--dc-meta);
+  color: var(--wait);
+}
+.dc-ask-l.ok {
+  color: var(--ok);
+}
+.dc-ask-l.ok .dc-dot {
+  background: var(--ok);
+}
+.dc-cmdbox {
+  margin: 7px 0 5px;
+  padding: 5px 8px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  font: var(--dc-ui) / 1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-ask-t {
+  margin: 0;
+  color: var(--t2);
+  line-height: 1.45;
+}
+.dc-ask-t.strong {
+  margin-top: 6px;
+  color: var(--t1);
+  font-weight: 500;
+}
+.dc-flist {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dc-flist li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.dc-flist .dc-g {
+  flex: none;
+  color: var(--t3);
+}
+.dc-flistp {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dc-meta) var(--mono);
+  color: var(--link);
+}
+.dc-flistm {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-ask-why {
+  margin: 2px 0 0;
+  color: var(--t3);
+  line-height: 1.45;
+}
+.dc-ask-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.dc-always {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-q {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.dc-qt {
+  padding: 6px 0 2px;
+  font-size: var(--dc-read);
+  font-weight: 500;
+}
+.dc-qopts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.dc-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-mac-row);
+  background: var(--soft);
+  text-align: left;
+  color: var(--t1);
+}
+.dc-opt:hover {
+  background: var(--sel);
+}
+.dc-opt.on {
+  background: var(--dk-asel);
+}
+.dc-mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  border-radius: 6px;
+  border: 1.2px solid var(--t3);
+}
+.dc-mark.multi {
+  border-radius: 3px;
+}
+.dc-opt.on .dc-mark {
+  border: 4px solid var(--accent);
+}
+.dc-optb {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.dc-optl {
+  display: flex;
+  gap: 6px;
+  font-weight: 500;
+}
+.dc-rec {
+  font-size: var(--dc-meta);
+  font-weight: 400;
+  color: var(--ok);
+}
+.dc-optd {
+  font-size: var(--dc-meta);
+  color: var(--t2);
+}
+.dc-cfield {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--div);
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  font-size: var(--dc-ui);
+  color: var(--t1);
+  outline: none;
+}
+.dc-cfield:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dc-cfield::placeholder {
+  color: var(--t3);
+}
+.dc-plan {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: var(--radius-mac-row);
+  background: var(--soft);
+  font-size: var(--dc-read);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-plan .md {
+  font-size: var(--dc-read);
+}
+.dc-plan.scroll {
+  max-height: 260px;
+  overflow: auto;
+}
+.dc-ask-seg {
+  margin-top: 8px;
+}
+.dc-ask-ck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--t2);
+}
+.dc-ask-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 4px;
+}
+.dc-ask-fb {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.dc-dbar {
+  display: inline-flex;
+  gap: 1.5px;
+}
+.dc-dbar span {
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  background: var(--bad);
+}
+.dc-dbar span.add {
+  background: var(--ok);
+}
+
+/* Bars above the composer. */
+.dc-bar {
+  margin: 0 12px 6px;
+  border-radius: var(--radius-mac-card);
+  font-size: var(--dc-ui);
+}
+.dc-bg {
+  background: var(--soft);
+  overflow: hidden;
+}
+.dc-bgsum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 12px;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+.dc-bgsum:hover {
+  background: var(--mac-hover);
+}
+.dc-bglist {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--div);
+}
+.dc-bglist ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dc-bglist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dc-bglist b {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.dc-bgdesc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dc-meta) var(--mono);
+  color: var(--t3);
+}
+.dc-bgtime {
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+}
+.dc-line-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px 0 12px;
+  box-shadow: inset 0 0 0 1px var(--div);
+  min-width: 0;
+}
+/* As the Mac's PendingReviewBar: the files line gives way, the counts and buttons keep
+   their size, so Review is never cut under what is beside the pane. */
+.dc-line-bar > * {
+  flex: none;
+}
+.dc-line-bar > .grow {
+  flex: 1 1 4px;
+}
+.dc-barl {
+  color: var(--t2);
+  white-space: nowrap;
+}
+.dc-line-bar > .dc-barl {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-limit {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 4px 7px 12px;
+  box-shadow: inset 0 0 0 1px var(--div);
+}
+.dc-limit > .dc-g {
+  margin-top: 2px;
+}
+.dc-limitt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dc-limitt b {
+  font-size: var(--dc-ui);
+  font-weight: 500;
+  color: var(--t1);
+}
+.dc-limitt span {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-readonly {
+  margin: 0;
+  padding: 10px 14px 14px;
+  text-align: center;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+
+/* Composer. */
+.dc-comp {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 6px;
+  position: relative;
+}
+.dc-comp.start {
+  padding: 0;
+}
+.dc-pending {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dc-pend {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-mac-bubble);
+  background: var(--raised);
+}
+.dc-pendt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dc-pendm {
+  font-size: var(--dc-ui);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-pendc {
+  font: var(--dc-meta) var(--mono);
+  color: var(--t3);
+}
+.dc-pendatt {
+  display: flex;
+  gap: 4px;
+}
+.dc-pendn {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-penda {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dc-blocked {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-size: var(--dc-ui);
+}
+.dc-blocked > span {
+  flex: 1;
+}
+.dc-xs {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--t3);
+}
+.dc-xs:hover {
+  background: var(--sel);
+  color: var(--t1);
+}
+.dc-signin {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  padding: 2px 12px;
+  font-size: var(--dc-meta);
+  color: var(--t2);
+}
+.dc-weak {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 11px;
+  border-radius: var(--radius-mac-button);
+  background: var(--wait-soft);
+  font-size: var(--dc-meta);
+}
+.dc-weak > span {
+  flex: 1;
+}
+.dc-picklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius-mac-card);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 6px 16px rgba(0, 0, 0, 0.14);
+}
+.dc-pickh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-pickh.sec {
+  height: var(--spacing-mac-row-height);
+  align-items: flex-end;
+}
+.dc-sugs {
+  max-height: calc(var(--spacing-mac-row-height) * 7);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.dc-sugi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--spacing-mac-row-height);
+  padding: 0 8px;
+  border-radius: var(--radius-mac-row);
+  font-size: var(--dc-ui);
+  text-align: left;
+  color: var(--t1);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.dc-sugi.on,
+.dc-sugi:hover {
+  background: var(--accent-soft);
+}
+.dc-sugm {
+  display: inline-flex;
+  gap: 1px;
+  min-width: 16px;
+}
+.dc-sugl {
+  /* The name gives way last, as the Mac's layoutPriority(1). */
+  flex: 0 0 auto;
+  max-width: 70%;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-sugl.mono {
+  font: var(--dc-meta) var(--mono);
+}
+/* One line, as the Mac's lineLimit(1): the name keeps its room, the hint and detail give way. */
+.dc-sugh {
+  flex: 0 1 auto;
+  min-width: 0;
+  font: var(--dc-meta) var(--mono);
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-sugd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t3);
+}
+.dc-ck {
+  color: var(--t1);
+}
+.dc-ck.off {
+  opacity: 0;
+}
+.dc-wcrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+.dc-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 0 5px 0 13px;
+  border-radius: 19px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--div);
+  cursor: text;
+}
+.dc-comp.start .dc-field {
+  background:
+    linear-gradient(var(--soft), var(--soft)),
+    color-mix(in srgb, var(--mac-window-opaque) 85%, transparent);
+}
+.dc-field.focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dc-field.bash {
+  box-shadow: inset 0 0 0 1px var(--wait);
+}
+.dc-fieldc {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dc-fieldc textarea {
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  max-height: 160px;
+  padding: 10px 5px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: var(--dc-read) / 1.4 var(--sf);
+  color: var(--t1);
+  overflow-y: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-fieldc textarea::placeholder {
+  color: var(--t3);
+}
+.dc-mode {
+  padding: 6px 5px 0;
+  font-size: var(--dc-meta);
+  font-weight: 500;
+  color: var(--t3);
+}
+.dc-mode.bash {
+  color: var(--wait);
+}
+.dc-atts {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  overflow-x: auto;
+}
+.dc-chip.att {
+  flex: none;
+  height: 22px;
+  padding: 0 3px 0 8px;
+  border-radius: var(--radius-mac-button);
+  background: var(--sel);
+}
+.dc-imgchip {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: 2px 0;
+  border-radius: var(--radius-mac-button);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--div);
+}
+.dc-imgchip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dc-imgchip .dc-xs {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--sheet);
+}
+.dc-fhint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px 5px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-send {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: var(--sel);
+  color: var(--t2);
+}
+.dc-send.ready {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.dc-send.ready .ff {
+  color: var(--on-accent);
+}
+.dc-send .dc-g {
+  stroke-width: 1.9;
+}
+.dc-send.stop {
+  color: var(--t1);
+}
+.dc-send:disabled {
+  cursor: default;
+}
+.dc-crow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 4px;
+  min-width: 0;
+}
+.dc-comp.start .dc-crow {
+  padding: 0;
+}
+.dc-attach {
+  color: var(--t3) !important;
+}
+.dc-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  min-width: 0;
+  margin-left: 4px;
+  font: var(--dc-meta) var(--mono);
+  color: var(--t3);
+}
+.dc-place > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Labels stay whole (wholeItems.ts): a selector without room leaves the row instead. */
+.dc-crow .dk-quiet {
+  flex: none;
+}
+.dc-crow .dk-quiet-t {
+  overflow: visible;
+  text-overflow: clip;
+}
+.dc-crow {
+  overflow: hidden;
+}
+.dc-dropi {
+  display: inline-flex;
+  flex: none;
+}
+.dc-dropi[data-dropped] {
+  display: none;
+}
+.dc-ctx {
+  flex: none;
+  height: var(--spacing-mac-button-height);
+  padding: 0 5px;
+  border-radius: var(--radius-mac-button);
+  font-size: var(--dc-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dc-ctx:hover,
+.dc-ctx[aria-expanded="true"] {
+  background: var(--soft);
+  color: var(--t2);
+}
+.dc-ctx.high {
+  color: var(--wait);
+}
+.dc-startplace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  min-width: 0;
+}
+
+/* Where a new chat works: the capsule in the pane, plain text in the start view. */
+.dc-workon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 300px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--t1) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1) 10%, transparent);
+  color: color-mix(in srgb, var(--t1) 75%, transparent);
+  font-size: var(--dc-ui);
+}
+.dc-workon:hover,
+.dc-workon.open {
+  background: color-mix(in srgb, var(--t1) 8%, transparent);
+  color: var(--t1);
+}
+.dc-workon.quiet {
+  gap: 4px;
+  height: var(--spacing-mac-button-height);
+  padding: 0 6px;
+  border-radius: var(--radius-mac-button);
+  background: transparent;
+  box-shadow: none;
+  color: var(--t2);
+}
+.dc-workon.quiet:hover,
+.dc-workon.quiet.open {
+  background: var(--soft);
+  color: var(--t1);
+}
+.dc-workon.lane .dc-workont {
+  font: var(--dc-meta) var(--mono);
+}
+.dc-workont {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-workonc {
+  stroke-width: 1.8;
+  opacity: 0.5;
+}
+.dc-workon.quiet .dc-workonc {
+  opacity: 1;
+}
+.dc-branchf {
+  flex: 0 1 200px;
+  min-width: 90px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 99px;
+  /* Cut with an ellipsis where the pane is narrow, as the Mac's one-line placeholder. */
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--t1) 4%, transparent);
+}
+.dc-branchf:focus {
+  background: color-mix(in srgb, var(--t1) 8%, transparent);
+  box-shadow: none;
+}
+.dc-branchf::placeholder {
+  color: color-mix(in srgb, var(--t1) 40%, transparent);
+}
+.dc-placepop {
+  width: 300px;
+}
+.dc-placel {
+  padding: 6px 4px 6px 6px;
+}
+.dc-placeh {
+  display: block;
+  padding: 4px 8px 6px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-placerows {
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.dc-placediv {
+  position: relative;
+}
+.dc-placediv::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 1px;
+  background: var(--div);
+}
+.dc-placer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding-right: 10px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: var(--dc-ui);
+  color: var(--t1);
+}
+.dc-placer:hover:not(.on) {
+  background: var(--mac-hover);
+}
+.dc-lanes {
+  flex: none;
+}
+.dc-placet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-placer.folder .dc-placet {
+  font-weight: 600;
+}
+.dc-placer.worktree .dc-placet {
+  font: var(--dc-meta) var(--mono);
+}
+.dc-placer.newWorktree .dc-placet {
+  color: var(--t2);
+}
+.dc-placed {
+  flex: none;
+  font-size: var(--dc-micro);
+  color: var(--t3);
+}
+.dc-placeck {
+  display: inline-flex;
+}
+
+/* A new chat's pane, and a Claude Code chat's Continue in Nest. */
+.dc-newph {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  font-size: var(--dc-ui);
+  color: var(--t3);
+}
+.dc-continue {
+  flex: none;
+  margin: 0 12px 6px;
+  padding: 10px 10px 10px 13px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dc-cwarn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dc-meta);
+  color: var(--wait);
+}
+.dc-crow2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dc-cnote {
+  flex: 1;
+  font-size: var(--dc-ui);
+  color: var(--t2);
+}
+
+/* Read-only work (WorkSheet's content). */
+.dc-work {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dc-workhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-workhead .dc-linkbtn {
+  font-size: var(--dc-meta);
+}
+.dc-asked {
+  padding: 9px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.dc-call {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dc-call.sep {
+  padding-top: 14px;
+  border-top: 1px solid var(--div);
+}
+.dc-callh {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.dc-callby {
+  font-size: var(--dc-ui);
+  font-weight: 500;
+}
+.dc-cont {
+  padding: 1px 5px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  font-size: var(--dc-micro);
+  font-weight: 500;
+  color: var(--t2);
+}
+
+/* Sheets over the window (SheetFrame). */
+.dc-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 70px 24px 24px;
+  background: var(--surface-scrim);
+}
+.dc-scrim.large {
+  align-items: stretch;
+  padding: 40px 48px;
+}
+.dc-sheet {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  max-height: min(700px, calc(100vh - 94px));
+  border-radius: var(--radius-mac-sheet);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 12px 32px rgba(0, 0, 0, 0.22);
+  color: var(--t1);
+  outline: none;
+  overflow: hidden;
+}
+.dc-sheet.large {
+  width: 100%;
+  max-width: 1180px;
+  max-height: none;
+  margin: 0 auto;
+}
+.dc-sheet-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 10px 0 18px;
+  border-bottom: 1px solid var(--div);
+}
+.dc-sheet-h h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dc-sheet-b {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 18px 16px;
+  font-size: var(--dc-ui);
+}
+.dc-sheet-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 16px;
+}
+.dc-alert {
+  margin: 14px 0 0;
+  color: var(--t2);
+  line-height: 1.45;
+}
+.dc-rw {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dc-rwq {
+  margin: 14px 0 0;
+  font-weight: 500;
+}
+.dc-rwload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--t3);
+}
+.dc-rwopts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dc-rwopt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-mac-button);
+  text-align: left;
+  color: var(--t1);
+}
+.dc-rwopt.on {
+  background: var(--soft);
+}
+.dc-rwopt:disabled {
+  color: var(--t3);
+}
+.dc-radio {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 99px;
+  border: 1.2px solid var(--t3);
+  transform: translateY(1px);
+}
+.dc-rwopt.on .dc-radio {
+  border: 3.5px solid var(--t1);
+}
+.dc-rwoptb {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dc-rwwhy {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-rwfiles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 27px;
+  font: var(--dc-meta) var(--mono);
+}
+.dc-rwsum {
+  font-weight: 500;
+}
+.dc-rwpath {
+  color: var(--link);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-rwscope {
+  margin: 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+
+/* The review's changes (DiffSheet) and Approve (PublishSheet). */
+.dc-diffh {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px 9px 18px;
+  border-bottom: 1px solid var(--div);
+}
+.dc-diffht {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dc-diffht h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dc-diffht span {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-diffb {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dc-diffnote {
+  margin: 0;
+  padding: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--t3);
+  font-size: var(--dc-ui);
+}
+.dc-diffnote.bad {
+  color: var(--bad);
+}
+.dc-difff {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 9px 16px 10px;
+  border-top: 1px solid var(--div);
+}
+.dc-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-dfile {
+  flex: none;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  overflow: hidden;
+}
+.dc-dfileh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px;
+  text-align: left;
+}
+.dc-dfileh:hover {
+  background: var(--mac-hover);
+}
+.dc-dfilen {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dc-meta) var(--mono);
+  color: var(--link);
+}
+.dc-dfiles {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-dfileb {
+  border-top: 1px solid var(--div);
+}
+.dc-dnote {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--t3);
+  font-size: var(--dc-ui);
+}
+.dc-dhh {
+  padding: 3px 12px;
+  background: var(--soft);
+  font: var(--dc-meta) var(--mono);
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dc-dhunk {
+  padding: 1px 0;
+  font: var(--dc-meta) / 1.6 var(--mono);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dc-drow {
+  display: flex;
+}
+.dc-drow.add,
+.dc-dcell.add {
+  background: var(--add-bg);
+}
+.dc-drow.delete,
+.dc-dcell.delete {
+  background: var(--del-bg);
+}
+.dc-drow.add :is(.dc-dsign, .dc-dtext),
+.dc-dcell.add :is(.dc-dsign, .dc-dtext) {
+  color: var(--add-fg);
+}
+.dc-drow.delete :is(.dc-dsign, .dc-dtext),
+.dc-dcell.delete :is(.dc-dsign, .dc-dtext) {
+  color: var(--del-fg);
+}
+.dc-dn {
+  flex: none;
+  width: 44px;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--t3);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dc-dsign {
+  flex: none;
+  width: 14px;
+  color: var(--t3);
+}
+.dc-dtext {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-right: 12px;
+}
+.dc-dsplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.dc-dcell {
+  display: flex;
+  min-width: 0;
+}
+.dc-dcell + .dc-dcell {
+  border-left: 1px solid var(--div);
+}
+.dc-pub {
+  display: flex;
+  flex-direction: column;
+}
+.dc-pubh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+}
+.dc-pubt {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-pub .dc-target {
+  padding-top: 10px;
+}
+.dc-pubnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-pubnote.bad {
+  color: var(--bad);
+}
+.dc-flabel {
+  margin: 14px 0 5px;
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-sfield {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--div);
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  font: var(--dc-ui) / 1.45 var(--sf);
+  color: var(--t1);
+  outline: none;
+  resize: vertical;
+}
+.dc-sfield:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dc-remote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--wait-soft);
+}
+.dc-remote span {
+  color: var(--t2);
+}
+.dc-remote code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--dc-meta) var(--mono);
+  user-select: text;
+}
+.dc-pubrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--div);
+}
+.dc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.dc-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dc-steph {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dc-stepm {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+}
+.dc-stepdot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--t3);
+  border-radius: 50%;
+}
+.dc-stepl,
+.dc-stepn {
+  font-size: var(--dc-meta);
+  color: var(--t3);
+}
+.dc-stepn {
+  margin: 0;
+}
+.dc-stepn.bad {
+  font-size: var(--dc-ui);
+  color: var(--bad);
+}
+.dc-stepo {
+  margin: 0;
+  padding-left: 20px;
+  font: var(--dc-meta) / 1.4 var(--mono);
+  color: var(--bad);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-shimmer,
+  .dc-wline,
+  .dc-spin,
+  .dc-hit {
+    animation: none;
+  }
+  .dc-shimmer {
+    -webkit-text-fill-color: currentColor;
+  }
+}
