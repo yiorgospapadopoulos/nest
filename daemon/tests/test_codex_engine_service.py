@@ -1,13 +1,18 @@
+import logging
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
+from nestd.accounts.codex import read_status
 from nestd.engine.codex import STORE_PREFIX, CodexEngine
 from nestd.engine.store import EngineInfoStore
 from nestd.providers.base import AccountInfo, EngineDetails, EngineWindow, ModelOption, UsageInfo
 from nestd.providers.codex import CodexNotSignedInError
-from nestd.providers.codex_engine import CodexDetails, CodexFetchError, CodexLogin
+from nestd.providers.codex_engine import CodexDetails, CodexFetchError, CodexLogin, fetch_codex
+from nestd.providers.codex_process import CodexLaunch
 from nestd.storage.db import Database
+from tests.codex_support import FakeAppServer
 from tests.fakes import FakeClock
 
 MODELS = [
@@ -179,3 +184,36 @@ async def test_usage_that_cannot_be_read_is_none_and_logged(
 
     assert await codex.usage() is None
     assert "could not ask Codex for its usage: CodexRpcError" in caplog.text
+
+
+async def test_a_missing_codex_home_is_not_signed_in_and_starts_no_codex(
+    db: Database, clock: FakeClock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B117: without ~/.codex (Codex never used, as on a fresh Linux install) Codex reads as
+    not signed in, like a Mac without a login: no failure, no warning, and no app-server
+    started on every check; once the folder appears, Codex is asked."""
+    home = tmp_path / "codex-home"
+    server = FakeAppServer()
+    launch = CodexLaunch(("codex", "app-server"), {"CODEX_HOME": str(home)})
+    codex = CodexEngine(
+        EngineInfoStore(db, clock, STORE_PREFIX),
+        lambda: fetch_codex(server, launch),
+        clock,
+        FetchUsage(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        first = await codex.status()
+        clock.advance(timedelta(minutes=5))
+        again = await codex.status(refresh=True)
+        account = await read_status(server, launch, clock)
+
+    assert (first.signed_in, first.error) == (False, None)
+    assert (again.signed_in, again.error) == (False, None)
+    assert (account.signed_in, account.error) == (False, None)
+    assert server.launches == []
+    assert caplog.text == ""
+
+    home.mkdir()
+    assert (await codex.status(refresh=True)).signed_in is True
+    assert len(server.launches) == 1

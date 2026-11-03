@@ -46,7 +46,12 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.base import BankedResets, EngineWindow, UsageInfo, UsageWindow
-from nestd.providers.codex_engine import CodexFetchError, ask_codex, fetch_codex_usage
+from nestd.providers.codex_engine import (
+    CodexFetchError,
+    CodexHomeMissingError,
+    ask_codex,
+    fetch_codex_usage,
+)
 from nestd.providers.codex_limits import consume_reset, read_limits
 from nestd.providers.codex_process import CodexLaunch, TransportFactory
 from nestd.usage.publish import publish_usage
@@ -486,6 +491,8 @@ class Accounts:
     async def _codex_usage(self, account: StoredAccount) -> UsageInfo | None:
         try:
             return await fetch_codex_usage(self._codex_transport, await self._launch_on(account))
+        except CodexHomeMissingError:
+            return None
         except CodexFetchError as error:
             logger.warning("could not ask a Codex account for its usage: %s", error)
             return None

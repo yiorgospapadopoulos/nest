@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import get_args
 
 from pydantic import JsonValue
@@ -18,7 +19,7 @@ from nestd.config.models import Effort
 from nestd.providers.base import AccountInfo, ModelOption, UsageInfo
 from nestd.providers.codex_items import items, obj, text
 from nestd.providers.codex_limits import read_usage
-from nestd.providers.codex_process import CodexLaunch, TransportFactory
+from nestd.providers.codex_process import CODEX_HOME_ENV, CodexLaunch, TransportFactory
 from nestd.providers.codex_rpc import CodexRpc, JsonObject
 
 FETCH_TIMEOUT = timedelta(seconds=60)
@@ -58,6 +59,16 @@ class CodexDetails:
 
 class CodexFetchError(Exception):
     """Codex could not be asked; the message never quotes what it printed."""
+
+
+class CodexHomeMissingError(CodexFetchError):
+    """The Codex home is not there: Codex was never used here, so nobody is signed in.
+    Codex refuses to start on a CODEX_HOME that does not exist (B117)."""
+
+
+def home_missing(launch: CodexLaunch) -> bool:
+    home = launch.env.get(CODEX_HOME_ENV)
+    return home is not None and not Path(home).exists()
 
 
 async def initialize(rpc: CodexRpc, experimental: bool = False) -> None:
@@ -180,6 +191,9 @@ async def ask_codex[T](
     async def refuse(_method: str, _params: JsonObject) -> JsonValue:
         return {}
 
+    if home_missing(launch):
+        msg = "no Codex home"
+        raise CodexHomeMissingError(msg)
     try:
         async with asyncio.timeout(time_limit.total_seconds()):
             rpc = CodexRpc(await factory(launch), ignore, refuse)

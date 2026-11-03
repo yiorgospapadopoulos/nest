@@ -16,6 +16,7 @@ from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.events.models import Event
 from nestd.gitops.runner import CommandError
+from nestd.platform import MACOS
 from nestd.storage.db import Database
 from tests.configuration_support import locations, skill
 from tests.fakes import FakeClock
@@ -167,7 +168,7 @@ async def test_codex_locations(tmp_path: Path) -> None:
     bundled.write_text("#!/bin/sh\n", encoding="utf-8")
     bundled.chmod(0o755)
 
-    found = CodexLocations.default(tmp_path, {"PATH": str(bundled.parent)}, bundled)
+    found = CodexLocations.default(tmp_path, {"PATH": str(bundled.parent)}, bundled, MACOS)
 
     assert found.bundled_version is not None
     assert found.search_path == str(bundled.parent)
@@ -194,4 +195,4 @@ async def test_codex_locations_without_the_package(
 
     monkeypatch.setattr(importlib.metadata, "version", missing)
 
-    assert CodexLocations.default(tmp_path, {}, None).bundled_version is None
+    assert CodexLocations.default(tmp_path, {}, None, MACOS).bundled_version is None

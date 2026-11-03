@@ -18,7 +18,12 @@ from nestd.engine.models import ModelList, engine_default, listed_models
 from nestd.engine.store import EngineInfoStore
 from nestd.providers.base import AccountInfo, EngineDetails, ModelOption, UsageInfo
 from nestd.providers.codex import CodexNotSignedInError
-from nestd.providers.codex_engine import DEFAULT_MODEL, CodexDetails, CodexFetchError
+from nestd.providers.codex_engine import (
+    DEFAULT_MODEL,
+    CodexDetails,
+    CodexFetchError,
+    CodexHomeMissingError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +123,9 @@ class CodexEngine:
     async def _ask(self, now: datetime) -> CodexStatus:
         try:
             details = await self._fetch()
+        except CodexHomeMissingError:
+            # Checked again when the answer is old: one look for the folder, no process.
+            return CodexStatus(signed_in=False, checked_at=now)
         except CodexFetchError as error:
             logger.warning("could not ask Codex for its models and login: %s", error)
             return CodexStatus(signed_in=None, checked_at=now, error=str(error))

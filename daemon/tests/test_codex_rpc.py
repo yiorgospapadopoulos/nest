@@ -1,4 +1,5 @@
 import asyncio
+import gc
 
 import pytest
 from pydantic import JsonValue
@@ -262,3 +263,46 @@ async def test_an_answer_just_before_the_end_still_reaches_its_request() -> None
 
     assert await waiting == {"data": []}
     await rpc.close()
+
+
+class DyingTransport:
+    """A server that exits while a request is being written: its output ends, then the
+    write fails with a broken pipe."""
+
+    def __init__(self) -> None:
+        self.ended = asyncio.Event()
+
+    async def write(self, line: bytes) -> None:
+        self.ended.set()
+        await asyncio.sleep(0.01)
+        msg = "the server exited"
+        raise BrokenPipeError(msg)
+
+    async def readline(self) -> bytes:
+        await self.ended.wait()
+        return b""
+
+    async def close(self) -> None:
+        return None
+
+    def stderr(self) -> str:
+        return ""
+
+
+async def test_a_server_dying_mid_request_leaves_no_unread_failure() -> None:
+    """B117: on Linux a Codex that exited at once logged "Future exception was never
+    retrieved" for every check."""
+    loop = asyncio.get_running_loop()
+    unhandled: list[str] = []
+    loop.set_exception_handler(lambda _loop, context: unhandled.append(context["message"]))
+    recorder = Recorder()
+    rpc = CodexRpc(DyingTransport(), recorder.on_notification, recorder.on_request)
+
+    with pytest.raises(BrokenPipeError):
+        await rpc.request("initialize", {})
+    await rpc.close()
+    del rpc
+    gc.collect()
+    await asyncio.sleep(0)
+
+    assert unhandled == []
