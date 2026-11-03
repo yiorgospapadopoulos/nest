@@ -13,7 +13,9 @@ from pathlib import Path
 
 from nestd.accounts.profiles import drop_leaked_env
 from nestd.api.app import create_app
+from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
 from nestd.auth.models import PairingCode
+from nestd.auth.secrets import SecretStoreUnavailableError
 from nestd.config.errors import ConfigError
 from nestd.context import AppContext
 from nestd.design.errors import DesignError
@@ -37,7 +39,9 @@ from nestd.perf.gate_times import GateRun, GateTimes, stage_times
 from nestd.providers.acp_engines import ACP_ENGINES
 from nestd.providers.shell_env import LoginShellEnv, login_shell
 from nestd.runtime import Runtime, default_runtime
-from nestd.service.launchd import LEGACY_LABEL, LaunchdService, ServiceError, build_path_env
+from nestd.service.base import ServiceError, ServiceManager
+from nestd.service.launchd import LEGACY_LABEL
+from nestd.service.manager import service_manager
 from nestd.storage.errors import DatabaseError
 
 type Handler = Callable[[argparse.Namespace, AppPaths, Runtime], int]
@@ -50,13 +54,14 @@ def main(argv: list[str] | None = None, runtime: Runtime | None = None) -> int:
     args = _parser().parse_args(argv)
     handler: Handler = args.handler
     try:
-        return handler(args, AppPaths.from_env(rt.env, rt.home), rt)
+        return handler(args, AppPaths.from_env(rt.env, rt.home, rt.platform), rt)
     except (
         ConfigError,
         DatabaseError,
         DesignError,
         FolderMoveError,
         GatesError,
+        SecretStoreUnavailableError,
         ServiceError,
     ) as error:
         print(f"nestd: {error}", file=rt.err)
@@ -71,7 +76,9 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, help="override the port from settings.toml")
     serve.set_defaults(handler=_serve)
 
-    service = commands.add_parser("service", help="manage the launchd service")
+    service = commands.add_parser(
+        "service", help="manage the background service (launchd on macOS, systemd on Linux)"
+    )
     actions = service.add_subparsers(required=True, metavar="action")
     for name, handler, help_text in (
         ("install", _service_install, "install and start the service"),
@@ -123,8 +130,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def _move_folders(paths: AppPaths, rt: Runtime) -> list[str]:
     """Move the folders from before the rename to Nest (B43) before anything opens them;
-    what was done."""
-    notes = [note for move in legacy_moves(rt.env, rt.home) if (note := move_folder(move))]
+    what was done. Only on macOS, where harness ran."""
+    if not rt.platform.moves_legacy_folders:
+        return []
+    notes = [
+        note for move in legacy_moves(rt.env, rt.home, rt.platform) if (note := move_folder(move))
+    ]
     if adopt_legacy_database(paths.data_dir):
         notes.append(f"Renamed {LEGACY_DB_NAME} to {paths.db_path.name} in {paths.data_dir}")
     return notes
@@ -136,12 +147,15 @@ def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
     drop_leaked_env(os.environ)
     for note in _move_folders(paths, rt):
         logger.info(note)
+    # The server reads its token at startup; a missing or locked secret store stops here
+    # with what to do, not with a traceback from inside the server.
+    rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
     asyncio.run(_run_server(paths, rt, args.port))
     return 0
 
 
 async def _run_server(paths: AppPaths, rt: Runtime, port: int | None) -> None:
-    ctx = await AppContext.build(paths, rt.secrets, rt.clock)
+    ctx = await AppContext.build(paths, rt.secrets, rt.clock, platform=rt.platform)
     ctx.port_flag = port
     try:
         app = create_app(ctx, restart=rt.restart)
@@ -150,40 +164,41 @@ async def _run_server(paths: AppPaths, rt: Runtime, port: int | None) -> None:
         await ctx.close()
 
 
-def _launchd(paths: AppPaths, rt: Runtime) -> LaunchdService:
-    return LaunchdService(
-        paths=paths,
-        launch_agents_dir=rt.home / "Library" / "LaunchAgents",
-        uid=rt.uid,
-        runner=rt.run_command,
-        program_args=[rt.executable, "-m", "nestd", "serve"],
-        path_env=build_path_env(rt.home),
+def _service(paths: AppPaths, rt: Runtime) -> ServiceManager:
+    return service_manager(
+        rt.platform,
+        paths,
+        rt.home,
+        rt.env,
+        rt.uid,
+        rt.run_command,
+        [rt.executable, "-m", "nestd", "serve"],
     )
 
 
 def _service_install(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
-    service = _launchd(paths, rt)
-    # The old daemon stops before its folders move, and they move before the plist's
-    # log folder is made.
+    service = _service(paths, rt)
+    # The old daemon stops before its folders move, and they move before the service
+    # file's log folder is made.
     if service.remove_legacy():
         print(f"Removed the service from before the rename ({LEGACY_LABEL})", file=rt.out)
     for note in _move_folders(paths, rt):
         print(note, file=rt.out)
     service.install()
-    print(f"Installed and started {service.plist_path.stem} ({service.plist_path})", file=rt.out)
+    print(f"Installed and started {service.unit_path.stem} ({service.unit_path})", file=rt.out)
     print(f"Logs: {paths.logs_dir / 'daemon.log'}", file=rt.out)
     return 0
 
 
 def _service_uninstall(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
-    service = _launchd(paths, rt)
+    service = _service(paths, rt)
     service.uninstall()
-    print(f"Stopped and removed {service.plist_path.stem}", file=rt.out)
+    print(f"Stopped and removed {service.unit_path.stem}", file=rt.out)
     return 0
 
 
 def _service_status(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
-    status = _launchd(paths, rt).status()
+    status = _service(paths, rt).status()
     print(f"installed: {'yes' if status.installed else 'no'}", file=rt.out)
     print(f"loaded: {'yes' if status.loaded else 'no'}", file=rt.out)
     print(status.detail.rstrip(), file=rt.out)
@@ -200,7 +215,7 @@ def _pair(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
 
 
 async def _create_pairing_code(paths: AppPaths, rt: Runtime) -> PairingCode:
-    ctx = await AppContext.build(paths, rt.secrets, rt.clock)
+    ctx = await AppContext.build(paths, rt.secrets, rt.clock, platform=rt.platform)
     try:
         return await ctx.devices.create_pairing_code()
     finally:

@@ -1,42 +1,17 @@
-"""Install, remove and inspect the daemon's launchd user agent."""
+"""Install, remove and inspect the daemon's launchd user agent (macOS)."""
 
 import plistlib
-import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from nestd.paths import CONFIG_DIR_ENV, DATA_DIR_ENV, AppPaths
+from nestd.service.base import CommandRunner, ServiceError, ServiceStatus
 
 LABEL = "com.nest.daemon"
 # The service before the rename to Nest (B43), removed when the new one is installed.
 LEGACY_LABEL = "com.harness.daemon"
 LAUNCHCTL = "/bin/launchctl"
-SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
-
-
-class ServiceError(Exception):
-    """A launchctl command failed."""
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-type CommandRunner = Callable[[Sequence[str]], CommandResult]
-
-
-def run_command(args: Sequence[str]) -> CommandResult:
-    completed = subprocess.run(args, capture_output=True, text=True, check=False)  # noqa: S603
-    return CommandResult(completed.returncode, completed.stdout, completed.stderr)
-
-
-def build_path_env(home: Path) -> str:
-    """PATH for the service so `claude`, `git`, `gh` and `uv` resolve as in a login shell."""
-    return ":".join((str(home / ".local" / "bin"), "/opt/homebrew/bin", *SYSTEM_PATH))
 
 
 def render_plist(program_args: Sequence[str], paths: AppPaths, path_env: str) -> str:
@@ -58,13 +33,6 @@ def render_plist(program_args: Sequence[str], paths: AppPaths, path_env: str) ->
 
 
 @dataclass(frozen=True)
-class ServiceStatus:
-    installed: bool
-    loaded: bool
-    detail: str
-
-
-@dataclass(frozen=True)
 class LaunchdService:
     paths: AppPaths
     launch_agents_dir: Path
@@ -76,6 +44,10 @@ class LaunchdService:
     @property
     def plist_path(self) -> Path:
         return self.launch_agents_dir / f"{LABEL}.plist"
+
+    @property
+    def unit_path(self) -> Path:
+        return self.plist_path
 
     @property
     def _domain(self) -> str:

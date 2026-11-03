@@ -1,1 +1,1 @@
-"""Running the daemon as a launchd user agent."""
+"""Running the daemon as a background service: launchd on macOS, systemd on Linux."""

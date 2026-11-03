@@ -7,16 +7,9 @@ from typing import Any
 import pytest
 
 from nestd.paths import AppPaths
-from nestd.service.launchd import (
-    LABEL,
-    LEGACY_LABEL,
-    CommandResult,
-    LaunchdService,
-    ServiceError,
-    build_path_env,
-    render_plist,
-    run_command,
-)
+from nestd.platform import LINUX, MACOS
+from nestd.service.base import CommandResult, ServiceError, run_command
+from nestd.service.launchd import LABEL, LEGACY_LABEL, LaunchdService, render_plist
 
 
 class FakeRunner:
@@ -46,10 +39,14 @@ def make_service(paths: AppPaths, tmp_path: Path, runner: FakeRunner) -> Launchd
 
 
 def test_path_env_resolves_user_and_homebrew_tools() -> None:
-    entries = build_path_env(Path("/Users/me")).split(":")
+    entries = MACOS.service_path(Path("/Users/me")).split(":")
+    linux = LINUX.service_path(Path("/home/me")).split(":")
 
     assert entries[:2] == ["/Users/me/.local/bin", "/opt/homebrew/bin"]
     assert {"/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"} <= set(entries)
+    assert linux[0] == "/home/me/.local/bin"
+    assert "/opt/homebrew/bin" not in linux
+    assert {"/usr/local/bin", "/usr/bin", "/bin"} <= set(linux)
 
 
 def test_render_plist(paths: AppPaths) -> None:
