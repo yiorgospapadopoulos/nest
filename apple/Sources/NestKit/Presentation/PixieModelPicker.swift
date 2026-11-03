@@ -13,10 +13,9 @@ public struct PixieModelPicker {
         /// Its plan, or "Not signed in"; empty for none.
         public let detail: String
         public let entries: [Entry]
+        public let id: String
         /// The engine's list is not loaded: the picker says models are unavailable.
         public var unavailable: Bool { entries.isEmpty }
-
-        public var id: String { provider }
     }
 
     public struct Entry: Identifiable {
@@ -55,7 +54,7 @@ public struct PixieModelPicker {
         self.sections = sections.map { section in
             Section(
                 provider: section.provider, title: section.title, detail: section.detail,
-                entries: Self.entries(of: section, pixie: pixie))
+                entries: Self.entries(of: section, pixie: pixie), id: section.id)
         }
         value = providers.modelTitle(pixie.model, on: engine, claude: claude)
     }

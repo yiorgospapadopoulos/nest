@@ -85,12 +85,14 @@ public struct ModelSection: Sendable, Hashable, Identifiable {
     public let catalog: ModelCatalog
     /// The local models' section, which any engine's chat may choose from.
     public var local = false
+    /// An engine's own models on the user's servers, listed apart from its hosted ones.
+    public var engineLocal = false
     /// Models greyed out: their server does not answer.
     public var unavailable: Set<String> = []
     /// Models whose line is a warning: weak at tools.
     public var weak: Set<String> = []
 
-    public var id: String { local ? "local" : provider }
+    public var id: String { local ? "local" : engineLocal ? "local:\(provider)" : provider }
 
     /// Whether the chat on `provider` (nil: Claude) with `model` is on this entry; a local
     /// model whatever the engine.

@@ -6,6 +6,11 @@ public enum LocalModelText {
     public static let sectionTitle = "Local models"
     public static let menuTitle = "Local"
     public static let menuDetail = "On this Mac, free, no limits"
+
+    /// The section of an engine's own local models.
+    public static func menuDetail(engine: String) -> String {
+        "Run by \(engine)"
+    }
     public static let addTitle = "Add local model"
     public static let findTitle = "Find on this Mac"
     public static let addressTitle = "Enter address"

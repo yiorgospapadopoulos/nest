@@ -158,6 +158,26 @@ import Testing
         #expect(existing.map(\.id) == ["opencode"])
     }
 
+    /// An engine's own local models leave its section for a Local one, still run by it.
+    @Test func anEnginesLocalModelsListApartFromItsOwn() async {
+        var local = ModelInfo(
+            value: "lmstudio/ornith", displayName: "Ornith", description: "", effortLevels: [],
+            supportsEffort: false)
+        local.local = true
+        let models = [free, local]
+        api.set { $0.providerModels["opencode"] = models }
+        let store = ProvidersStore(api: api)
+        await store.load()
+        let sections = store.modelSections(claude: claude, provider: nil, isDraft: true)
+        let opencode = sections.first { $0.id == "opencode" }
+        let apart = sections.first { $0.id == "local:opencode" }
+        #expect(opencode?.catalog.models.contains(local) == false)
+        #expect(apart?.catalog.models == [local])
+        #expect(apart?.provider == "opencode")
+        #expect(apart?.title == "Local")
+        #expect(Set(sections.map(\.id)).count == sections.count)
+    }
+
     /// A pixie's picker offers only ready engines Nest can block git on, since the daemon
     /// refuses the others; a pixie already on one still shows its engine.
     @Test func aPixieCannotChooseAnEngineWithoutGitGuardOrNotReady() async {

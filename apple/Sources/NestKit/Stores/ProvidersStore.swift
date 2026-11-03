@@ -158,7 +158,29 @@ public final class ProvidersStore {
                 ModelSection(
                     provider: ProviderInfo.claude, title: "Model", detail: "", catalog: claude)
             ]
-        return engines + localSection(engine: isDraft ? local.engine : own)
+        return engines.map(hostedPart) + engines.compactMap(localPart)
+            + localSection(engine: isDraft ? local.engine : own)
+    }
+
+    private func hostedPart(of section: ModelSection) -> ModelSection {
+        guard section.catalog.models.contains(where: \.local) else { return section }
+        var catalog = section.catalog
+        catalog.models.removeAll(where: \.local)
+        return ModelSection(
+            provider: section.provider, title: section.title, detail: section.detail,
+            catalog: catalog, unavailable: section.unavailable)
+    }
+
+    /// The engine's models on the user's own servers, which the engine still runs.
+    private func localPart(of section: ModelSection) -> ModelSection? {
+        let models = section.catalog.models.filter(\.local)
+        guard !models.isEmpty else { return nil }
+        var catalog = section.catalog
+        catalog.models = models
+        return ModelSection(
+            provider: section.provider, title: LocalModelText.menuTitle,
+            detail: LocalModelText.menuDetail(engine: displayName(section.provider)),
+            catalog: catalog, engineLocal: true, unavailable: section.unavailable)
     }
 
     /// The local models under "Local" (B106), chosen on `engine`; none without any.

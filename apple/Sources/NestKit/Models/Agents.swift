@@ -12,6 +12,8 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
     public var supportsEffort: Bool
     /// The model offers Claude Code's Auto permission mode.
     public var supportsAutoMode: Bool
+    /// Runs on the user's own server, though its engine lists it with its hosted models.
+    public var local = false
 
     public var id: String { value }
 
@@ -43,10 +45,11 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
         // Older daemons do not send it.
         supportsAutoMode =
             try container.decodeIfPresent(Bool.self, forKey: .supportsAutoMode) ?? false
+        local = try container.decodeIfPresent(Bool.self, forKey: .local) ?? false
     }
 
     enum CodingKeys: String, CodingKey {
-        case value, description
+        case value, description, local
         case displayName = "display_name"
         case effortLevels = "effort_levels"
         case supportsEffort = "supports_effort"
