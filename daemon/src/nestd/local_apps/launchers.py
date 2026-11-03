@@ -1,4 +1,5 @@
-"""`.command` files: Terminal runs them when opened, which needs no Automation permission."""
+"""Launcher scripts a terminal runs: `.command` files on macOS, which Terminal runs when
+opened, `.sh` files on Linux."""
 
 import shlex
 from pathlib import Path

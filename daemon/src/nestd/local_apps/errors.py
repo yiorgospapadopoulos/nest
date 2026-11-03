@@ -6,6 +6,6 @@ class AppNotInstalledError(NestError):
 
 
 class LocalAppError(NestError):
-    """`open` failed for another reason."""
+    """Opening the app failed for another reason."""
 
     status_code = 502

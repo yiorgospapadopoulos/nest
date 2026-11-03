@@ -12,6 +12,7 @@ import pytest
 from nestd.claude_code.cli import INSTALL_COMMAND, ClaudeLocations
 from nestd.events import types
 from nestd.gitops.runner import CommandError
+from nestd.platform import MACOS
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_claude import install_standalone, locations
@@ -244,7 +245,7 @@ def test_the_path_search_and_files_that_are_not_programs(tmp_path: Path) -> None
 
 
 def test_default_locations(tmp_path: Path) -> None:
-    where = ClaudeLocations.default(tmp_path, {"PATH": "/usr/bin"})
+    where = ClaudeLocations.default(tmp_path, {"PATH": "/usr/bin"}, MACOS)
 
     assert where.search_path == "/usr/bin"
     assert where.candidates[:2] == (
@@ -254,7 +255,7 @@ def test_default_locations(tmp_path: Path) -> None:
     assert where.bundled.name == "claude"
     assert where.bundled.parent.name == "_bundled"
     assert where.bundled_version.count(".") == 2
-    assert ClaudeLocations.default(tmp_path, {}).search_path == ""
+    assert ClaudeLocations.default(tmp_path, {}, MACOS).search_path == ""
 
 
 async def test_install_runs_the_official_installer_and_announces_the_result(
