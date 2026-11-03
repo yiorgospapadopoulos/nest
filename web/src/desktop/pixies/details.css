@@ -1,0 +1,699 @@
+/* The Pixies tab's right panel (PixieDetails.swift): 320 wide on the side surface, its
+   content inset 6 and its rows 8 more, 28 high; lines run across the whole panel. */
+.pd-panel {
+  flex: none;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--dk-side);
+  border-left: 1px solid var(--dk-line);
+  color: var(--t1);
+  font-size: var(--fs-body);
+}
+.pd-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pd-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 6px 14px;
+  scrollbar-width: none;
+}
+.pd-scroll::-webkit-scrollbar {
+  display: none;
+}
+.pd-scroll.pd-details {
+  padding-top: 18px;
+}
+.pd-select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.pd-break {
+  margin: 8px -6px;
+  border: 0;
+  border-top: 1px solid var(--dk-line);
+}
+.pd-sep {
+  margin: 0 8px;
+  border: 0;
+  border-top: 1px solid var(--dk-line);
+}
+.pd-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 14px;
+  margin: 0;
+  padding: 2px 2px 4px 8px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.pd-heading.first {
+  padding-top: 12px;
+}
+.pd-heading > span:first-child {
+  flex: 1;
+}
+.pd-add {
+  margin: -4px 0;
+}
+.pd-note {
+  margin: 0;
+  padding: 2px 8px 0;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.pd-line {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  color: var(--t1);
+}
+.pd-line.dim {
+  color: var(--t3);
+}
+.pd-chev {
+  width: 11px;
+  height: 11px;
+  color: var(--t2);
+  stroke-width: 1.8;
+}
+.pd-drill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+}
+.pd-drill:hover {
+  background: var(--soft);
+}
+.pd-drill-t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.pd-drill-t small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.pd-drill-v {
+  flex: none;
+  color: var(--t2);
+}
+.pd-danger {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+  color: var(--bad);
+}
+.pd-danger small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.pd-danger:hover {
+  background: var(--fail-soft);
+}
+.pd-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+}
+.pd-picker:hover:not(:disabled),
+.pd-picker[aria-expanded="true"] {
+  background: var(--soft);
+}
+.pd-picker-t {
+  flex: 1;
+  color: var(--t1);
+}
+.pd-picker-v {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--t2);
+}
+.pd-updown {
+  width: 10px;
+  height: 10px;
+  color: var(--t2);
+  stroke-width: 1.8;
+}
+.pd-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-mac-row);
+  outline: none;
+}
+.pd-stepper:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.pd-stepper-t {
+  flex: 1;
+}
+.pd-stepper-v {
+  font-variant-numeric: tabular-nums;
+  color: var(--t2);
+}
+.pd-steps {
+  display: grid;
+  width: 13px;
+  height: 20px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  overflow: hidden;
+}
+.pd-steps button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t2);
+}
+.pd-steps button:hover:not(:disabled) {
+  background: var(--soft);
+}
+.pd-steps button:disabled {
+  opacity: 0.35;
+}
+.pd-steps svg {
+  width: 8px;
+  height: 5px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pd-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 8px;
+}
+.pd-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: var(--t2);
+}
+.pd-remove:hover {
+  background: var(--mac-hover);
+  color: var(--t1);
+}
+.pd-remove .pxg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 2;
+}
+
+/* Identity and look. */
+.pd-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.pd-big {
+  position: relative;
+  margin-bottom: 10px;
+}
+.pd-bigdot {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+}
+.pd-editable {
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: var(--radius-mac-button);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pd-editable:hover {
+  background: var(--soft);
+}
+.pd-editable.name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.pd-editable.slug {
+  color: var(--t3);
+}
+.pd-inline.dk-rename {
+  width: auto;
+  max-width: 100%;
+  height: 24px;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  text-align: center;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.pd-inline.name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.pd-refused {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--bad);
+  text-align: center;
+}
+.pd-look {
+  display: grid;
+  gap: 10px;
+  padding: 12px 8px 0;
+}
+.pd-mascots {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+.pd-mascots button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border-radius: var(--radius-mac-row);
+}
+.pd-mascots button:hover {
+  background: var(--soft);
+}
+.pd-mascots button.on {
+  background: var(--sel);
+}
+.pd-colors {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+.pd-color {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 50%;
+}
+.pd-color > span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.pd-color.on {
+  box-shadow: inset 0 0 0 1px var(--t2);
+}
+.pd-custom > span {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+.pd-custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+}
+
+/* Skills. */
+.pd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px;
+}
+.pd-allskills {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  color: var(--t3);
+}
+.pd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 2px 0 7px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+}
+.pd-chip > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A page's header: back on the left, the title centred, an action on the right. */
+.pd-pagehead {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--dk-head);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.pd-pagehead h2 {
+  position: absolute;
+  left: 84px;
+  right: 84px;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  pointer-events: none;
+}
+.pd-pagehead-r {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.pd-pagehead .pxg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.7;
+}
+
+/* File pages. */
+.pd-editor {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 14px;
+  border: 0;
+  resize: none;
+  background: transparent;
+  color: var(--t1);
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  line-height: 1.75;
+  outline: none;
+}
+.pd-stale {
+  display: grid;
+  gap: 6px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.pd-stale-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--wait);
+}
+.pd-stale p {
+  margin: 0;
+}
+.pd-stale-b {
+  display: flex;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+/* Memory. */
+.pd-field {
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  color: var(--t1);
+  font-size: var(--fs-body);
+  outline: none;
+}
+.pd-field::placeholder {
+  color: var(--t3);
+}
+.pd-field:focus {
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.pd-addfact {
+  margin-bottom: 6px;
+}
+.pd-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 8px;
+}
+.pd-fact-t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.pd-fact-t small {
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+}
+.pd-noterow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+}
+.pd-noterow:hover {
+  background: var(--soft);
+}
+.pd-noterow > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pd-noteicon {
+  width: 11px;
+  height: 11px;
+  color: var(--t3);
+}
+.pd-hits {
+  padding-top: 6px;
+}
+.pd-hit {
+  margin: 0;
+  padding: 5px 8px;
+}
+
+/* Activity. */
+.pd-activity {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+}
+.pd-activity-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.pd-activity-tool {
+  font-weight: 500;
+}
+.pd-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--link);
+  text-align: left;
+}
+.pd-link:hover {
+  text-decoration: underline;
+}
+.pd-link.small {
+  justify-self: start;
+  font-size: var(--fs-meta);
+}
+.pd-activity-gone {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--t3);
+}
+.pd-time {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+}
+.pd-activity-s {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+
+/* Habits. */
+.pd-habit {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: var(--radius-mac-row);
+}
+.pd-habit:hover,
+.pd-habit.menu {
+  background: var(--soft);
+}
+.pd-habit-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pd-habit-n {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.pd-habit-n.off {
+  color: var(--t2);
+}
+.pd-habit-s {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}
+.pd-habit-runs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--t3);
+}
+.pd-habit-b {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 2px 0 0 -6px;
+}
+.pd-habit-b .pxg {
+  width: 11px;
+  height: 11px;
+}
+.pd-name {
+  height: 26px;
+}
+.pd-prompt {
+  display: block;
+  height: 110px;
+  padding: 4px 8px;
+  resize: none;
+  line-height: 1.4;
+}
+.pd-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  text-align: left;
+}
+.pd-timerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 8px;
+}
+.pd-timefield {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pd-time-field {
+  width: 52px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--t1);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+}
+.pd-time-field:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.pd-problem {
+  margin: 0;
+  padding: 12px 8px 0;
+  font-size: var(--fs-meta);
+  color: var(--wait);
+}
+.pd-run {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+}
+.pd-run-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pd-run-o {
+  font-weight: 500;
+}
+.pd-run-d {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--t2);
+}

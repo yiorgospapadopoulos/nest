@@ -2,9 +2,15 @@ import logging
 
 import keyring
 import pytest
-from keyring.errors import PasswordDeleteError, PasswordSetError
+from keyring.errors import KeyringLocked, NoKeyringError, PasswordDeleteError, PasswordSetError
 
-from nestd.auth.secrets import LEGACY_SERVICE_NAME, SERVICE_NAME, KeychainSecretStore
+from nestd.auth.secrets import (
+    LEGACY_SERVICE_NAME,
+    SERVICE_NAME,
+    KeyringSecretStore,
+    SecretStoreUnavailableError,
+)
+from nestd.platform import LINUX
 
 
 class MemoryKeyring:
@@ -32,7 +38,7 @@ def fake_keyring(monkeypatch: pytest.MonkeyPatch) -> MemoryKeyring:
 
 
 def test_keychain_store_uses_the_nest_service(fake_keyring: MemoryKeyring) -> None:
-    store = KeychainSecretStore()
+    store = KeyringSecretStore()
 
     assert store.get("token") is None
     store.set("token", "s3cret")
@@ -48,7 +54,7 @@ def test_an_item_under_the_old_harness_service_is_copied_forward(
     """B43: a token saved before the rename is read once and written under `nest`; the old
     item stays."""
     fake_keyring.values[(LEGACY_SERVICE_NAME, "token")] = "old-s3cret"
-    store = KeychainSecretStore()
+    store = KeyringSecretStore()
 
     assert store.get("token") == "old-s3cret"
 
@@ -63,7 +69,7 @@ def test_the_new_service_wins_over_the_old_one(fake_keyring: MemoryKeyring) -> N
     fake_keyring.values[(LEGACY_SERVICE_NAME, "token")] = "old"
     fake_keyring.values[(SERVICE_NAME, "token")] = "new"
 
-    assert KeychainSecretStore().get("token") == "new"
+    assert KeyringSecretStore().get("token") == "new"
     assert fake_keyring.values[(LEGACY_SERVICE_NAME, "token")] == "old"
 
 
@@ -77,7 +83,7 @@ def test_a_failed_copy_forward_still_returns_the_old_secret(
         raise PasswordSetError("Can't store password on keychain: (-60006, 'Unknown Error')")
 
     monkeypatch.setattr(keyring, "set_password", refuse)
-    store = KeychainSecretStore()
+    store = KeyringSecretStore()
 
     with caplog.at_level(logging.WARNING, logger="nestd.auth.secrets"):
         assert store.get("token") == "old-s3cret"
@@ -92,10 +98,43 @@ def test_a_failed_copy_forward_still_returns_the_old_secret(
 
 
 def test_an_item_is_deleted_and_a_missing_one_is_no_error(fake_keyring: MemoryKeyring) -> None:
-    store = KeychainSecretStore()
+    store = KeyringSecretStore()
     store.set("local-server:ls_1", "k")
 
     store.delete("local-server:ls_1")
     store.delete("local-server:ls_1")
 
     assert fake_keyring.values == {}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        NoKeyringError("No recommended backend was available."),
+        KeyringLocked("Failed to unlock the collection!"),
+    ],
+)
+def test_a_missing_or_locked_secret_service_says_what_to_do(
+    fake_keyring: MemoryKeyring, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    """B117: on Linux without a running, unlocked Secret Service the daemon cannot keep its
+    token; it stops with what to do instead of a traceback."""
+
+    def unavailable(*_args: str) -> None:
+        raise error
+
+    for name in ("get_password", "set_password", "delete_password"):
+        monkeypatch.setattr(keyring, name, unavailable)
+    store = KeyringSecretStore(LINUX.secret_store_help)
+
+    for attempt in (
+        lambda: store.get("token"),
+        lambda: store.set("token", "s3cret"),
+        lambda: store.delete("token"),
+    ):
+        with pytest.raises(SecretStoreUnavailableError) as caught:
+            attempt()
+        assert str(error) in str(caught.value)
+        assert "install gnome-keyring" in str(caught.value).lower()
+        assert "unlock the login keyring" in str(caught.value)
+        assert "s3cret" not in str(caught.value)

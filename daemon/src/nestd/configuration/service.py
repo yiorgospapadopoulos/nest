@@ -46,6 +46,7 @@ from nestd.configuration.skills import (
     valid_name,
 )
 from nestd.errors import ConflictError, InvalidInputError
+from nestd.providers.codex_engine import CodexHomeMissingError
 from nestd.providers.codex_rpc import CodexRpc, JsonObject
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,9 @@ class Configuration:
         try:
             return await self.codex.ask(read)
         except CodexSetupError as error:
-            logger.warning("could not ask Codex for its setup: %s", error)
+            # Codex never used here (B117): nothing to read, nothing wrong.
+            if not isinstance(error.__cause__, CodexHomeMissingError):
+                logger.warning("could not ask Codex for its setup: %s", error)
             return CodexView()
 
     # Files

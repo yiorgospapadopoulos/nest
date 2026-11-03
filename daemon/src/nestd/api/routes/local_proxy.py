@@ -56,6 +56,7 @@ class _Settings:
     resolve: Resolve
     key: str
     transport: httpx.AsyncBaseTransport | None
+    machine: str
 
 
 def configure(
@@ -64,10 +65,11 @@ def configure(
     resolve: Resolve,
     key: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    machine: str = "Mac",
 ) -> None:
     """`resolve(server_id)` gives where the server is and whether it speaks Messages, or
     None for an unknown server; `transport` replaces the network in tests."""
-    app.state.local_proxy = _Settings(resolve, key, transport)
+    app.state.local_proxy = _Settings(resolve, key, transport, machine)
 
 
 class _Reply(Protocol):
@@ -140,7 +142,10 @@ def is_local(request: Request) -> bool:
 
 def _require_local(request: Request) -> None:
     if not is_local(request):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "only this Mac can use the translator")
+        settings = getattr(request.app.state, "local_proxy", None)
+        machine = settings.machine if isinstance(settings, _Settings) else "Mac"
+        msg = f"only this {machine} can use the translator"
+        raise HTTPException(status.HTTP_403_FORBIDDEN, msg)
 
 
 def _authorize(request: Request) -> _Settings:

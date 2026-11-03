@@ -23,7 +23,7 @@ from nestd.events.bus import EventBus
 from nestd.pixies import digest
 from nestd.pixies.activity import ActivityStore
 from nestd.pixies.habit_models import HabitIdea, problems
-from nestd.pixies.habit_tools import HABIT_FIELDS
+from nestd.pixies.habit_tools import HABIT_FIELDS, schedule_field
 from nestd.pixies.models import Autonomy, Pixie
 from nestd.pixies.store import PixieStore
 from nestd.providers.base import AgentTool, ToolRefusedError
@@ -92,8 +92,11 @@ class PixieNest:
         activity: ActivityStore,
         clock: Clock,
         zone: tzinfo | None,
+        machine: str = "Mac",
     ) -> None:
-        """`zone` decides when a day's start limit resets; None is the system's zone."""
+        """`zone` decides when a day's start limit resets; None is the system's zone.
+        `machine` names the machine whose clock habit schedules follow."""
+        self.machine = machine
         self.pixies = pixies
         self.sessions = sessions
         self.store = store
@@ -186,7 +189,7 @@ class _Tools:
                         },
                         "name": HABIT_FIELDS["name"],
                         "prompt": HABIT_FIELDS["prompt"],
-                        "schedule": HABIT_FIELDS["schedule"],
+                        "schedule": schedule_field(h._h.machine),
                         "triggers": HABIT_FIELDS["triggers"],
                     },
                     "required": ["kind"],

@@ -31,6 +31,7 @@ import type {
   ProviderList,
   SharedItem,
   AgentWork,
+  BranchMap,
   Artifact,
   ArtifactAnswer,
   AskStatus,
@@ -113,6 +114,10 @@ import type {
   UsageSettings,
 } from "./types.ts";
 
+// The apps a project's folder opens in (daemon/src/nestd/local_apps/openers.py): VS Code, the
+// file manager ("finder" on every platform) and a terminal.
+export type RepoApp = "vscode" | "finder" | "terminal";
+
 // The daemon's code for a message refused because Claude Code has the chat open.
 export const OPEN_ELSEWHERE = "open_in_claude_code";
 
@@ -149,9 +154,17 @@ export interface Api {
   redeem(code: string, deviceName: string): Promise<RedeemResponse>;
   repos(): Promise<RepoConfig[]>;
   repo(name: string): Promise<RepoConfig>;
+  // Registers a folder as a project, named after the folder unless `name` is given.
+  registerRepo(path: string, name?: string): Promise<RepoConfig>;
   // Unregisters the project (its folder stays); `purge` deletes its chats first.
   removeRepo(name: string, purge: boolean): Promise<null>;
   updateRepo(name: string, patch: RepoPatch): Promise<RepoConfig>;
+  // Saves the project order every client shows (D090); announced as `repos.reordered`.
+  reorderRepos(order: string[]): Promise<RepoConfig[]>;
+  // Opens the project's folder in an app on the daemon's machine, as the Mac's project menu.
+  openRepo(name: string, app: RepoApp): Promise<null>;
+  // Gitignored files in the project's checkout worth linking into its worktrees.
+  linkSuggestions(name: string): Promise<string[]>;
   sessions(archived: boolean): Promise<Session[]>;
   session(id: string): Promise<SessionDetail>;
   sessionEvents(id: string): Promise<NestEvent[]>;
@@ -165,6 +178,9 @@ export interface Api {
     interrupt?: boolean,
   ): Promise<SendResponse>;
   interrupt(id: string): Promise<null>;
+  // Opens the chat in Claude Code in a terminal on the daemon's machine; `warning` is set
+  // when Nest runs the chat too.
+  openInClaudeCode(id: string): Promise<{ launcher: string; warning: string | null }>;
   // Stops one background task or subagent, by its task id or the tool use id that started it.
   stopTask(id: string, taskId: string): Promise<null>;
   // Takes back a message Claude has not read; 409 `message_taken` once it has.
@@ -234,6 +250,8 @@ export interface Api {
   subscribePush(subscription: PushSubscriptionBody): Promise<null>;
   unsubscribePush(endpoint: string): Promise<null>;
   testPush(): Promise<PushReport>;
+  // How many devices that are not revoked receive push notifications.
+  pushStatus(): Promise<{ devices: number }>;
   notificationSettings(): Promise<NotificationSettings>;
   saveNotificationSettings(settings: NotificationSettings): Promise<NotificationSettings>;
   // Claude's models, or with `provider` that engine's (Codex's is empty until it answers).
@@ -286,6 +304,8 @@ export interface Api {
   agentTranscript(sessionId: string, toolUseId: string): Promise<AgentWork>;
   // Settings (B81, D104).
   branches(repo: string): Promise<{ branches: string[] }>;
+  // The project's branches and worktrees, each under the branch it comes from (B96).
+  branchMap(repo: string): Promise<BranchMap>;
   storage(): Promise<StorageUsage>;
   storageSettings(): Promise<StorageSettings>;
   saveStorageSettings(settings: StorageSettings): Promise<StorageSettings>;
@@ -452,12 +472,36 @@ const ACCOUNTS = "/api/accounts";
 const account = (id: string) => `${ACCOUNTS}/${encodeURIComponent(id)}`;
 const LOCAL = "/api/local";
 
-/** The daemon's REST API; the device token travels in the same-origin cookie. */
+/**
+ * A daemon reached at another origin, as the desktop app does (B117): requests go to `base`
+ * (such as "http://127.0.0.1:8765") with the token as a Bearer header and no cookies.
+ */
+export interface DaemonEndpoint {
+  base: string;
+  token: string;
+}
+
+/**
+ * The daemon's REST API. In the phone app the device token travels in the same-origin
+ * cookie; with an endpoint it is sent as a Bearer token instead.
+ */
 export class HttpApi implements Api {
   private readonly fetchFn: typeof fetch;
+  private readonly endpoint: DaemonEndpoint | null;
 
-  constructor(fetchFn: typeof fetch = (input, init) => fetch(input, init)) {
+  constructor(
+    fetchFn: typeof fetch = (input, init) => fetch(input, init),
+    endpoint: DaemonEndpoint | null = null,
+  ) {
     this.fetchFn = fetchFn;
+    this.endpoint = endpoint;
+  }
+
+  private request(path: string, init: RequestInit): Promise<Response> {
+    if (this.endpoint === null) return this.fetchFn(path, { ...init, credentials: "same-origin" });
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${this.endpoint.token}`);
+    return this.fetchFn(`${this.endpoint.base}${path}`, { ...init, headers, credentials: "omit" });
   }
 
   redeem(code: string, deviceName: string) {
@@ -475,12 +519,32 @@ export class HttpApi implements Api {
     return this.json<RepoConfig>("GET", repo(name));
   }
 
+  registerRepo(path: string, name?: string) {
+    return this.json<RepoConfig>(
+      "POST",
+      "/api/repos",
+      name === undefined ? { path } : { path, name },
+    );
+  }
+
   removeRepo(name: string, purge: boolean) {
     return this.json<null>("DELETE", `${repo(name)}?purge_sessions=${String(purge)}`);
   }
 
   updateRepo(name: string, patch: RepoPatch) {
     return this.json<RepoConfig>("PATCH", repo(name), patch);
+  }
+
+  reorderRepos(order: string[]) {
+    return this.json<RepoConfig[]>("PUT", "/api/repos/order", { order });
+  }
+
+  openRepo(name: string, app: RepoApp) {
+    return this.json<null>("POST", `${repo(name)}/open`, { app });
+  }
+
+  linkSuggestions(name: string) {
+    return this.json<string[]>("GET", `${repo(name)}/link-suggestions`);
   }
 
   sessions(archived: boolean) {
@@ -509,6 +573,13 @@ export class HttpApi implements Api {
 
   interrupt(id: string) {
     return this.json<null>("POST", `${session(id)}/interrupt`);
+  }
+
+  openInClaudeCode(id: string) {
+    return this.json<{ launcher: string; warning: string | null }>(
+      "POST",
+      `${session(id)}/open-in-claude-code`,
+    );
   }
 
   stopTask(id: string, taskId: string) {
@@ -652,7 +723,7 @@ export class HttpApi implements Api {
 
   async attachment(id: string) {
     const path = `/api/attachments/${encodeURIComponent(id)}`;
-    const response = await this.fetchFn(path, { credentials: "same-origin" });
+    const response = await this.request(path, {});
     if (!response.ok) throw failure(response.status, parse(await response.text()));
     return response.blob();
   }
@@ -730,6 +801,10 @@ export class HttpApi implements Api {
 
   testPush() {
     return this.json<PushReport>("POST", "/api/push/test");
+  }
+
+  pushStatus() {
+    return this.json<{ devices: number }>("GET", "/api/push/status");
   }
 
   notificationSettings() {
@@ -907,6 +982,10 @@ export class HttpApi implements Api {
 
   branches(name: string) {
     return this.json<{ branches: string[] }>("GET", `${repo(name)}/branches`);
+  }
+
+  branchMap(name: string) {
+    return this.json<BranchMap>("GET", `${repo(name)}/branch-map`);
   }
 
   storage() {
@@ -1327,7 +1406,7 @@ export class HttpApi implements Api {
   }
 
   private async send<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await this.fetchFn(path, { ...init, credentials: "same-origin" });
+    const response = await this.request(path, init);
     const text = await response.text();
     const data: unknown = text ? parse(text) : null;
     if (!response.ok) throw failure(response.status, data);

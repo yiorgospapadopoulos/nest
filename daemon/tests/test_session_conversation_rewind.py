@@ -68,6 +68,24 @@ async def texts(env: Env, session_id: str) -> list[str]:
     return shown
 
 
+async def test_the_code_and_conversation_previews_can_be_asked_at_once(env: Env) -> None:
+    """The Rewind sheet asks for both together; the code preview holding the run made the
+    conversation one fail as busy, every time right after a turn."""
+    session_id, _, second = await two_turns(env)
+
+    code, conversation, again = await asyncio.gather(
+        env.manager.rewind(session_id, second, dry_run=True, restore="code"),
+        env.manager.rewind(session_id, second, dry_run=True, restore="conversation"),
+        env.manager.rewind(session_id, second, dry_run=True, restore="code"),
+    )
+
+    assert code.can_rewind
+    assert code.files_changed == ["a.py"]
+    assert conversation == RewindReply(can_rewind=True, restore="conversation", text="second")
+    assert again == code
+    assert not env.manager.busy(session_id)
+
+
 async def test_rewinding_the_last_message_drops_it_and_continues_from_before_it(
     env: Env,
 ) -> None:

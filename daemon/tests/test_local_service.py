@@ -21,6 +21,7 @@ from nestd.local.run import PLACEHOLDER_KEY
 from nestd.local.service import LocalModels, LocalSetup, key_account, launch_detached
 from nestd.local.store import LocalStore, model_id, server_id
 from nestd.local.translate.upstream import Upstream
+from nestd.platform import MACOS
 from nestd.providers.base import TokenUsage
 from nestd.storage.db import Database
 from tests.fakes import FakeClock, FakeSecretStore
@@ -600,8 +601,8 @@ async def test_without_sign_in_sources_nothing_counts_as_signed_in(env: Env) -> 
 
 
 def test_the_default_setup_reaches_the_network_and_the_users_folders(tmp_path: Path) -> None:
-    setup = LocalSetup.default(tmp_path, {})
+    setup = LocalSetup.default(tmp_path, {}, MACOS)
 
-    assert setup.folders == ModelFolders.default(tmp_path, {})
+    assert setup.folders == ModelFolders.default(tmp_path, {}, MACOS)
     assert setup.transport is None
     assert setup.launch is launch_detached

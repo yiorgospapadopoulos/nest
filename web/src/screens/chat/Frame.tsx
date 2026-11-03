@@ -1,7 +1,8 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { use, type KeyboardEvent, type ReactNode } from "react";
 import type { ChatStatus } from "../../store/selectors.ts";
 import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
+import { FrameChrome } from "./frameChrome.ts";
 
 interface FrameProps {
   title: string;
@@ -37,8 +38,9 @@ export function Frame({
   details,
   children,
 }: FrameProps) {
+  const chrome = use(FrameChrome);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") onBack();
+    if (event.key === "Escape" && chrome === null) onBack();
   };
   const name = (
     <>
@@ -55,9 +57,13 @@ export function Frame({
     <section className="push" aria-label={title} onKeyDown={onKeyDown}>
       <header className="ch-h">
         <div className="ch-r1">
-          <button className="back" aria-label={`Back to ${back}`} onClick={onBack} autoFocus>
-            <Icon name="chevl" />
-          </button>
+          {chrome === null ? (
+            <button className="back" aria-label={`Back to ${back}`} onClick={onBack} autoFocus>
+              <Icon name="chevl" />
+            </button>
+          ) : (
+            chrome.lead
+          )}
           <div className="ch-t">
             {subtitle === undefined ? (
               name
@@ -69,6 +75,7 @@ export function Frame({
             )}
           </div>
           {tools}
+          {chrome?.trail}
         </div>
         {details}
       </header>

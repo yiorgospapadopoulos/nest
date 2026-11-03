@@ -21,6 +21,7 @@ from nestd.errors import ConflictError, NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandError, CommandRunner
+from nestd.platform import Platform
 
 # Runs a command with variables set: an added account's commands carry its profile (B98).
 ENV_PROGRAM = "/usr/bin/env"
@@ -50,17 +51,12 @@ class ClaudeLocations:
     bundled_version: str
 
     @classmethod
-    def default(cls, home: Path, env: Mapping[str, str]) -> Self:
+    def default(cls, home: Path, env: Mapping[str, str], platform: Platform) -> Self:
         package = Path(claude_agent_sdk.__file__).parent
         version: object = importlib.import_module("claude_agent_sdk._cli_version").__cli_version__
         return cls(
             search_path=env.get("PATH", ""),
-            candidates=(
-                home / ".local" / "bin" / "claude",
-                home / ".claude" / "local" / "claude",
-                Path("/opt/homebrew/bin/claude"),
-                Path("/usr/local/bin/claude"),
-            ),
+            candidates=platform.claude_candidates(home),
             bundled=package / "_bundled" / "claude",
             bundled_version=str(version),
         )

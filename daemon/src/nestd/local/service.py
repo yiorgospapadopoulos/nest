@@ -53,6 +53,7 @@ from nestd.local.probe import ProbedServer, normalise, probe, reachable
 from nestd.local.run import LocalRun, RunServer, local_run
 from nestd.local.store import LocalStore, StoredModel, StoredServer, model_id, server_id
 from nestd.local.translate.upstream import Upstream
+from nestd.platform import Platform
 from nestd.providers.base import TokenUsage
 
 # How long a server's answer to "are you there" holds.
@@ -93,10 +94,12 @@ class LocalSetup:
     launch: Launch = launch_detached
     # This Mac's memory in bytes, for the memory warning.
     memory: Callable[[], int | None] = mac_memory
+    # The machine in that warning's text.
+    machine: str = "Mac"
 
     @classmethod
-    def default(cls, home: Path, env: Mapping[str, str]) -> Self:
-        return cls(ModelFolders.default(home, env))
+    def default(cls, home: Path, env: Mapping[str, str], platform: Platform) -> Self:
+        return cls(ModelFolders.default(home, env, platform), machine=platform.machine_noun)
 
 
 async def _never() -> bool:
@@ -134,6 +137,7 @@ class LocalModels:
         self._which = setup.which
         self._launch = setup.launch
         self._memory = setup.memory
+        self._machine = setup.machine
         self._zone = zone
         self._signed_in = signed_in
         self._claude_signed_in = claude_signed_in
@@ -193,7 +197,13 @@ class LocalModels:
         memory = self._memory()
         return LocalModelList(
             models=[
-                _view(model, servers[model.server_id], running[model.server_id], memory)
+                _view(
+                    model,
+                    servers[model.server_id],
+                    running[model.server_id],
+                    memory,
+                    self._machine,
+                )
                 for model in await self._store.models()
             ],
             engine=await self.engine(),
@@ -205,7 +215,11 @@ class LocalModels:
         added = await self._added()
         servers = await running_servers(self._client)
         memory = self._memory()
-        found = [model for server in servers for model in found_models(server, added, memory)]
+        found = [
+            model
+            for server in servers
+            for model in found_models(server, added, memory, self._machine)
+        ]
         served = {model.model for model in found}
         apps = {server.app for server in servers}
         on_disk = await asyncio.to_thread(downloaded, self._folders, self._which, served, apps)
@@ -224,7 +238,7 @@ class LocalModels:
             responses=server.responses,
             chat=server.chat,
         )
-        models = found_models(server, await self._added(), self._memory())
+        models = found_models(server, await self._added(), self._memory(), self._machine)
         error = (
             "no_models"
             if not models
@@ -523,7 +537,11 @@ def _stored_model(found: FoundModel, sid: str, size: int | None, now: datetime) 
 
 
 def _view(
-    model: StoredModel, server: StoredServer, running: bool, memory: int | None
+    model: StoredModel,
+    server: StoredServer,
+    running: bool,
+    memory: int | None,
+    machine: str,
 ) -> LocalModel:
     return LocalModel(
         id=model.id,
@@ -539,5 +557,5 @@ def _view(
         thinking=model.thinking,
         running=running,
         has_key=server.has_key,
-        memory_warning=memory_warning(model.size, memory),
+        memory_warning=memory_warning(model.size, memory, machine),
     )

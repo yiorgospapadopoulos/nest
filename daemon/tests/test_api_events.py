@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
 
@@ -249,3 +250,95 @@ def test_origin_rules(
     origin: str | None, host: str | None, allowed: list[str], expected: bool
 ) -> None:
     assert origin_allowed(origin, host, allowed) is expected
+
+
+# B117: the desktop app's page cannot set headers on a WebSocket, so it sends its token
+# as a subprotocol next to "nest".
+EVENTS_URL = "ws://127.0.0.1:8765/api/events"
+TAURI_ORIGINS = ["tauri://localhost", "http://tauri.localhost"]
+
+
+def token_protocols(token: str) -> list[str]:
+    return ["nest", f"nest.token.{token}"]
+
+
+@pytest.mark.parametrize("origin", TAURI_ORIGINS)
+def test_the_desktop_app_authenticates_with_its_token_as_a_subprotocol(
+    client: TestClient,
+    ctx: AppContext,
+    secrets: FakeSecretStore,
+    origin: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    token = local_token(secrets)
+
+    with (
+        caplog.at_level(logging.DEBUG),
+        client.websocket_connect(
+            EVENTS_URL, headers={"Origin": origin}, subprotocols=token_protocols(token)
+        ) as ws,
+    ):
+        live = publish(client, ctx, "desktop.app")
+        assert ws.receive_json()["id"] == live.id
+        # Only "nest" is echoed back: the token never travels back or into a log.
+        assert ws.accepted_subprotocol == "nest"
+
+    assert token not in caplog.text
+
+
+@pytest.mark.parametrize("origin", TAURI_ORIGINS)
+def test_the_desktop_apps_origins_are_allowed_with_a_bearer_token(
+    client: TestClient, ctx: AppContext, secrets: FakeSecretStore, origin: str
+) -> None:
+    headers = {"Authorization": f"Bearer {local_token(secrets)}", "Origin": origin}
+
+    with client.websocket_connect(EVENTS_URL, headers=headers) as ws:
+        live = publish(client, ctx, "desktop.bearer")
+        assert ws.receive_json()["id"] == live.id
+        assert ws.accepted_subprotocol is None
+
+
+def expect_protocol_close(
+    client: TestClient, protocols: list[str], code: int, origin: str = "tauri://localhost"
+) -> str | None:
+    with client.websocket_connect(
+        EVENTS_URL, headers={"Origin": origin}, subprotocols=protocols
+    ) as ws:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == code
+        return ws.accepted_subprotocol
+
+
+def test_a_wrong_subprotocol_token_closes_with_4401(client: TestClient) -> None:
+    assert expect_protocol_close(client, token_protocols("wrong"), 4401) == "nest"
+    assert expect_protocol_close(client, ["nest"], 4401) == "nest"
+    assert expect_protocol_close(client, ["nest", "nest.token."], 4401) == "nest"
+
+
+def test_a_token_without_the_nest_subprotocol_is_ignored(
+    client: TestClient, secrets: FakeSecretStore
+) -> None:
+    """Accepting it would mean echoing the token protocol back."""
+    protocols = [f"nest.token.{local_token(secrets)}"]
+
+    assert expect_protocol_close(client, protocols, 4401) is None
+
+
+def test_a_revoked_devices_subprotocol_token_closes_with_4401(
+    client: TestClient, secrets: FakeSecretStore
+) -> None:
+    local = {"Authorization": f"Bearer {local_token(secrets)}"}
+    phone_id, phone_token = paired_phone(client, local)
+    assert client.delete(f"/api/devices/{phone_id}", headers=local).status_code == 204
+
+    assert expect_protocol_close(client, token_protocols(phone_token), 4401) == "nest"
+
+
+def test_a_foreign_origin_with_a_valid_subprotocol_token_closes_with_4403(
+    client: TestClient, secrets: FakeSecretStore
+) -> None:
+    protocols = token_protocols(local_token(secrets))
+
+    assert expect_protocol_close(client, protocols, 4403, "https://evil.example") == "nest"
+    assert expect_protocol_close(client, protocols, 4403, "tauri://evil") == "nest"

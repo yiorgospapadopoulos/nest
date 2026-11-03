@@ -1,0 +1,434 @@
+/* Settings in the window (B117 wave 2C), as the Mac's SettingsWindow.swift: a 216 px
+   sidebar, then the page's header and a body up to 720 px wide. */
+.dks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--bg);
+  color: var(--t1);
+}
+.dks-side {
+  flex: none;
+  width: 216px;
+  display: flex;
+  flex-direction: column;
+  background: var(--dk-side);
+  border-right: 1px solid var(--dk-line);
+}
+.dks-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  margin: 12px 10px 8px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--soft);
+}
+.dks-search .ic {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--t3);
+}
+.dks-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+}
+.dks-search input::placeholder {
+  color: var(--t3);
+}
+.dks-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px 8px;
+  scrollbar-width: none;
+}
+.dks-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--t1);
+}
+.dks-item:hover {
+  background: var(--mac-hover);
+}
+.dks-item.on {
+  background: var(--dk-sel);
+}
+.dks-item > .ic,
+.dks-head > .ic {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--t2);
+}
+.dks-item > svg {
+  flex: none;
+}
+/* A project's initials at the icon size, as the Mac's ProjectIcon at 16 points. */
+.dks-item > .pico,
+.dks-head > .pico {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 7.5px;
+}
+.dks-head > .pico {
+  width: 18px;
+  height: 18px;
+  font-size: 8.5px;
+}
+.dks-itemt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dks-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--run);
+}
+.dks-new i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dks-group {
+  margin: 0;
+  padding: 12px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--t3);
+}
+.dks-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-top: 1px solid var(--dk-line);
+  font-size: 11px;
+  color: var(--t2);
+  white-space: nowrap;
+}
+.dks-foot i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.dks-foot i.wait {
+  background: var(--wait);
+}
+.dks-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dks-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 16px 12px 28px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dks-headt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.dks-head h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.dks-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dks-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dks-page {
+  max-width: calc(720px + 2 * 28px);
+  padding: 6px 28px 40px;
+}
+
+/* Rows (rows.tsx), as SettingsSection, SettingsRow and SettingsListRow. */
+.dks-sec {
+  padding-top: 18px;
+}
+.dks-sech {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
+  margin-bottom: 6px;
+  color: var(--t3);
+}
+.dks-sech h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dks-hint {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.dks-hint .ic {
+  width: 10px;
+  height: 10px;
+}
+.dks-tools {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dks-hint + .dks-tools {
+  margin-left: 8px;
+}
+.dks-rows {
+  border-top: 1px solid var(--dk-line);
+}
+.dks-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 36px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--dk-line);
+  box-sizing: border-box;
+}
+.dks-lab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.dks-ctl {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+}
+.dks-lrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dks-ltext {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.dks-ltitle {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dks-lrename {
+  max-width: 220px;
+}
+.dks-ldetail {
+  font-size: 11px;
+  color: var(--t3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dks-ldetail.mono,
+.dks-val.mono {
+  font-family: var(--mono);
+}
+.dks-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--wait);
+}
+.dks-warn svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+/* The Mac's Checkbox (ConfigurationSheets.swift): 14 points, the soft fill with a divider
+   edge, and the accent with its tick when on. */
+.dks-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 3.5px;
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+.dks-check svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+.dks-check.on {
+  background: var(--accent);
+  box-shadow: none;
+}
+.dks-check.on svg {
+  opacity: 1;
+}
+.dks-badge {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--soft);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dks-badge .ic {
+  width: 13px;
+  height: 13px;
+}
+.dks-val {
+  font-size: 12px;
+  color: var(--t2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dks-val.mono {
+  font-size: 11px;
+}
+.dks-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 4px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dks-tabs button {
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--t2);
+  box-shadow: inset 0 -2px transparent;
+}
+.dks-tabs button.on {
+  color: var(--t1);
+  box-shadow: inset 0 -2px var(--t1);
+}
+.dks-fail {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 11px;
+  color: var(--bad);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dks-note {
+  margin: 0;
+  padding: 9px 0;
+  font-size: 12px;
+  color: var(--t3);
+  border-bottom: 1px solid var(--dk-line);
+}
+/* The Mac's DropdownMenu. */
+.dks-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: var(--w);
+  height: var(--spacing-mac-button-height);
+  padding: 0 8px 0 9px;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  color: var(--t1);
+  font-size: 11.5px;
+  text-align: left;
+}
+.dks-drop > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dks-drop svg {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: var(--t2);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dks-drop:hover,
+.dks-drop[aria-expanded="true"] {
+  background: var(--dk-sel);
+}
+.dks-drop:disabled {
+  opacity: 0.5;
+}

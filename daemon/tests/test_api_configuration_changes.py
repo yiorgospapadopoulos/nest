@@ -339,7 +339,7 @@ async def test_codex_plugins_and_marketplaces(api: Api, codex: FakeCodexSetup) -
     assert api.codex.requests("marketplace/remove") == [{"marketplaceName": "openai-curated"}]
 
 
-async def test_codex_that_cannot_start_is_502(api: Api) -> None:
+async def test_codex_that_cannot_start_is_502(api: Api, where: Locations) -> None:
     api.codex.spawn_error = OSError("no binary")
 
     response = await api.http.get("/api/configuration/codex/plugins")

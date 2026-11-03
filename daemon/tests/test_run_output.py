@@ -1,11 +1,13 @@
 """A run's output buffer and the listening ports lsof reports (B108)."""
 
 import logging
+from functools import partial
 from pathlib import Path
 
 import pytest
 
-from nestd.runs.listening import listening_ports, parse_ports
+from nestd.platform import LINUX, MACOS
+from nestd.runs.listening import listening_ports, parse_ports, port_probe, proc_listening_ports
 from nestd.runs.output import OutputBuffer
 
 
@@ -77,3 +79,68 @@ async def test_lsof_missing_or_hanging_means_no_ports(
     assert (missing, slow) == ([], [])
     assert "could not run lsof" in caplog.text
     assert "lsof took longer than 0.05s" in caplog.text
+
+
+# B117: Ubuntu keeps lsof in /usr/bin, and a Linux box may have none at all.
+TCP_HEADER = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when uid inode\n"
+
+
+def tcp_line(local: str, state: str, inode: int) -> str:
+    return (
+        f"   0: {local} 00000000:0000 {state} 00000000:00000000 00:00000000 00000000"
+        f"  1000        0 {inode} 1 0 0\n"
+    )
+
+
+def fake_process(proc: Path, pid: int, group: int, inodes: list[int]) -> None:
+    folder = proc / str(pid)
+    (folder / "fd").mkdir(parents=True)
+    # A name with spaces and parentheses, as a process may have.
+    stat = f"{pid} (node (dev) x) S 1 {group} {group} 0 -1\n"
+    (folder / "stat").write_text(stat, encoding="utf-8")
+    for fd, inode in enumerate(inodes, start=3):
+        (folder / "fd" / str(fd)).symlink_to(f"socket:[{inode}]")
+    (folder / "fd" / "0").symlink_to("/dev/null")
+
+
+async def test_without_lsof_linux_reads_the_groups_listening_sockets_from_proc(
+    tmp_path: Path,
+) -> None:
+    proc = tmp_path / "proc"
+    fake_process(proc, 100, 4242, [501, 502])
+    fake_process(proc, 101, 4242, [504])
+    fake_process(proc, 200, 9999, [601])
+    (proc / "self").mkdir()
+    (proc / "net").mkdir()
+    (proc / "net" / "tcp").write_text(
+        TCP_HEADER
+        # 127.0.0.1:41000 listening; an established socket; another group's 8080.
+        + tcp_line("0100007F:A028", "0A", 501)
+        + tcp_line("0100007F:A029", "01", 502)
+        + tcp_line("00000000:1F90", "0A", 601),
+        encoding="utf-8",
+    )
+    (proc / "net" / "tcp6").write_text(
+        TCP_HEADER + tcp_line("00000000000000000000000001000000:A02A", "0A", 504),
+        encoding="utf-8",
+    )
+
+    assert await proc_listening_ports(4242, proc) == [41000, 41002]
+    assert await proc_listening_ports(1, tmp_path / "missing") == []
+
+
+def test_the_probe_finds_lsof_where_the_system_keeps_it() -> None:
+    def which(name: str, path: str | None = None) -> str | None:
+        assert path == "/home/me/.local/bin:/usr/bin"
+        return "/usr/bin/lsof" if name == "lsof" else None
+
+    def nowhere(_name: str, path: str | None = None) -> str | None:
+        return None
+
+    linux = port_probe(LINUX, "/home/me/.local/bin:/usr/bin", which)
+
+    assert isinstance(linux, partial)
+    assert linux.keywords == {"lsof": Path("/usr/bin/lsof")}
+    assert port_probe(LINUX, "/usr/bin", nowhere) is proc_listening_ports
+    # macOS keeps lsof at /usr/sbin/lsof, as before.
+    assert port_probe(MACOS, "", which) is listening_ports

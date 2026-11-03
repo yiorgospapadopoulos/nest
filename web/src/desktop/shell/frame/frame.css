@@ -1,0 +1,1819 @@
+/* The frame's menus and rows (B117 wave 2B), as the Mac's TabStrip, Sidebar, RightPanel,
+   StatusBar and Board draw them. */
+
+/* Engine marks. */
+.fr-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+.fr-mark .ic {
+  width: 100%;
+  height: 100%;
+}
+
+/* The usage chip: text at 55 percent, full over a 10 percent fill while hovered. */
+.fr-uchip {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 4px;
+  margin-right: 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--t1) 55%, transparent);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fr-uchip.stacked {
+  height: 30px;
+  font-size: 10px;
+}
+.fr-uchip:hover,
+.fr-uchip[aria-expanded="true"] {
+  color: var(--t1);
+  background: color-mix(in srgb, var(--t1) 10%, transparent);
+}
+.fr-uchip:active {
+  transform: scale(0.97);
+}
+.fr-uline1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fr-uline1 > span + span:not(.fr-ubar) {
+  margin-left: -2px;
+}
+.fr-udot {
+  color: color-mix(in srgb, var(--t1) 25%, transparent);
+}
+.fr-udots {
+  color: color-mix(in srgb, var(--t1) 35%, transparent);
+}
+/* Each column starts at its left edge, as the Mac's Grid(alignment: .leading). */
+.fr-ugrid {
+  display: grid;
+  grid-template-columns: auto auto auto auto auto;
+  column-gap: 5px;
+  align-items: center;
+  justify-items: start;
+  text-align: left;
+  grid-auto-rows: 13px;
+}
+.fr-ugrid:has(.fr-utitle) {
+  grid-template-columns: auto auto auto auto auto auto;
+}
+.fr-udots.wide {
+  grid-column: span 4;
+}
+.fr-utitle {
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-ubar {
+  position: relative;
+  width: 32px;
+  height: 4px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--t1) 10%, transparent);
+  overflow: hidden;
+  flex: none;
+}
+.stacked .fr-ubar {
+  height: 3px;
+}
+.fr-ubar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--t1) 45%, transparent);
+}
+.fr-ubar.amber > i {
+  background: #fbbf24;
+}
+.fr-ubar.red > i {
+  background: #f87171;
+}
+
+/* The usage popover and panel. */
+.fr-upop {
+  width: 340px;
+  padding: 14px;
+}
+.fr-usage {
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+}
+.fr-uhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  margin-bottom: 12px;
+}
+.fr-uhead > b:first-child {
+  flex: 1;
+  font-weight: 600;
+}
+.fr-uhead.back {
+  margin-left: -6px;
+}
+.fr-uhead.back > b:nth-child(2) {
+  flex: 1;
+  font-weight: 600;
+}
+.fr-uright {
+  font-weight: 600;
+}
+.fr-urefresh {
+  gap: 5px;
+}
+.fr-urefresh .ic {
+  width: 11px;
+  height: 11px;
+}
+.fr-urefresh .stale {
+  opacity: 0.6;
+}
+.fr-ugroup h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+/* The account's title gives way; "in use" stays whole beside it. */
+.fr-ugroup h3 > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-ugroup h3 > :not(span) {
+  flex: none;
+}
+.fr-ugroup h3 small {
+  white-space: nowrap;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.fr-ulimit {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.fr-ugroup .fr-ulimit:last-child {
+  margin-bottom: 14px;
+}
+.fr-ulimit > div {
+  display: flex;
+  justify-content: space-between;
+}
+.fr-ulimit > div > span {
+  color: var(--t2);
+}
+.fr-ulimit > div > b {
+  font-weight: 500;
+}
+.fr-ulimit small,
+.fr-unote {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-umeter {
+  position: relative;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--fill);
+  overflow: hidden;
+}
+.fr-umeter > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--t1);
+  border-radius: inherit;
+}
+.fr-umeter.soft > i {
+  background: var(--t2);
+}
+.fr-usep {
+  margin: 0 0 12px;
+  border: 0;
+  border-top: 1px solid var(--dk-line);
+}
+.fr-usage .dk-segc {
+  display: flex;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.fr-usage .dk-segc > button {
+  flex: 1;
+}
+.fr-unav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.fr-unav > b {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+.fr-unav .ic,
+.fr-uhead .ic {
+  width: 11px;
+  height: 11px;
+}
+.fr-ubars {
+  position: relative;
+}
+.fr-ucols {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 68px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.fr-ucol {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.fr-ucol > i {
+  width: 100%;
+  border-radius: 1px;
+  background: var(--dk-line);
+}
+.fr-ucol > i.on {
+  background: var(--t2);
+}
+.fr-ucol > i.fut {
+  background: transparent;
+}
+.fr-ucol.dim > i {
+  opacity: 0.55;
+}
+.fr-uticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: var(--fs-micro);
+  color: var(--t3);
+}
+.fr-utip {
+  position: absolute;
+  top: -26px;
+  transform: translateX(-50%);
+  padding: 5px 8px;
+  border-radius: var(--radius-mac-card);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 4px 10px rgba(0, 0, 0, 0.14);
+  font-size: var(--fs-meta);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.fr-utot {
+  margin-top: 10px;
+}
+.fr-uline {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-weight: 500;
+  border-bottom: 1px solid var(--dk-line);
+}
+.fr-uline > span {
+  color: var(--t2);
+}
+.fr-uline.total {
+  padding: 6px 0;
+  font-weight: 600;
+  border-bottom: 0;
+  border-top: 1px solid color-mix(in srgb, var(--t3) 50%, transparent);
+  margin-top: -1px;
+}
+.fr-uline.total > span {
+  color: var(--t1);
+}
+.fr-udet {
+  margin: 4px 0 0 -8px;
+  gap: 4px;
+}
+.fr-udet .ic {
+  width: 9px;
+  height: 9px;
+}
+.fr-uh {
+  margin: 0 0 4px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.fr-ushare {
+  margin-bottom: 14px;
+}
+.fr-ushare > div {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+}
+.fr-ushare > div + div {
+  border-top: 1px solid var(--dk-line);
+}
+.fr-ushare span {
+  flex: 1;
+}
+.fr-ushare b {
+  width: 60px;
+  text-align: right;
+  font-weight: 400;
+}
+.fr-ushare small {
+  width: 48px;
+  text-align: right;
+  font-size: inherit;
+  color: var(--t3);
+}
+.fr-uprojects {
+  display: grid;
+  gap: 7px;
+}
+.fr-uprojects > div {
+  display: grid;
+  gap: 3px;
+}
+.fr-uprojects > div > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fr-uprojects b {
+  font-weight: 400;
+}
+
+/* The + popover (AddProjectPopover): 280 px of rows. */
+.fr-add {
+  width: 280px;
+  padding: 10px;
+  display: grid;
+  gap: 2px;
+}
+.fr-add hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--dk-line);
+}
+.fr-add h3 {
+  margin: 0;
+  padding: 0 9px 6px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.fr-addrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--radius-mac-row);
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+}
+.fr-addrow:hover,
+.fr-addrow:focus-visible {
+  background: var(--mac-hover);
+  outline: none;
+}
+.fr-addi {
+  width: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--t2);
+}
+.fr-addi .ic {
+  width: 12px;
+  height: 12px;
+}
+.fr-addi .ricon,
+.fr-addi .dk-pmark {
+  transform: scale(0.875);
+}
+.fr-addt {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.fr-addt small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-addt small.path {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* The sidebar's header (ProjectHeader): 30 px, the name's menu, the branch, Init, Live. */
+.fr-side {
+  padding-top: 8px;
+}
+.fr-phead {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px 0 14px;
+  min-width: 0;
+}
+.fr-phead .grow {
+  flex: 1;
+}
+.fr-pmenu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  min-width: 0;
+}
+.fr-pmenu:hover,
+.fr-pmenu[aria-expanded="true"] {
+  background: var(--mac-soft);
+}
+.fr-pname {
+  font-size: calc(var(--fs-body) + 0.5px);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The Mac's ProjectIcon: 15 points here, 13 in a project tab, its initials at half that. */
+.fr-pmenu > .pico,
+.dk-tab .pico {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  font-size: 7.5px;
+  font-weight: 700;
+}
+.dk-tab .pico {
+  width: 13px;
+  height: 13px;
+  border-radius: 3.5px;
+  font-size: 6.5px;
+}
+/* The project's name comes first, then the branch, then the Live word (the Mac's layout
+   priorities): the name shrinks only once the branch has no room left. */
+.fr-pmenu {
+  flex: 0 0 auto;
+  max-width: calc(100% + 6px);
+}
+.fr-phead > .fr-pbranch {
+  flex: 0 1000 auto;
+  min-width: 0;
+}
+.fr-pchev {
+  width: 8px;
+  height: 8px;
+  color: var(--t3);
+  flex: none;
+}
+.fr-pbranch,
+.fr-init {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  margin-left: -7px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: transparent;
+  color: var(--t3);
+  font: inherit;
+  font-size: var(--fs-meta);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.fr-pbranch > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-pbranch .dk-fork,
+.fr-init .dk-fork {
+  stroke: currentColor;
+  width: 9px;
+  height: 9px;
+}
+.fr-pbchev {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  opacity: 0.6;
+}
+.fr-pbranch:hover {
+  color: var(--t2);
+  background: var(--mac-soft);
+}
+.fr-pbranch:hover .fr-pbchev {
+  opacity: 1;
+}
+.fr-pbranch.on {
+  --lane: var(--t1);
+  color: var(--lane);
+  background: color-mix(in srgb, var(--lane) 16%, transparent);
+}
+.fr-pbranch.on .fr-pbchev {
+  opacity: 1;
+  transform: rotate(180deg);
+}
+.fr-init {
+  margin-left: 0;
+  color: var(--t2);
+  background: var(--mac-soft);
+  flex: none;
+}
+.fr-init:hover {
+  color: var(--t1);
+  background: var(--mac-selection);
+}
+.fr-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  font-size: var(--fs-micro);
+  color: var(--t3);
+  flex: none;
+}
+.fr-live > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--st-review);
+  animation: fr-blink 1.6s ease-in-out infinite alternate;
+}
+/* The word goes first when the header is short of room, as the Mac's ViewThatFits. */
+@container (max-width: 280px) {
+  .fr-live > span {
+    display: none;
+  }
+}
+@keyframes fr-blink {
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* The branch map under the header (BranchMapPanel). */
+.fr-bmap {
+  margin: 6px 8px 2px;
+  border-radius: 8px;
+  background:
+    linear-gradient(var(--mac-composer), var(--mac-composer)),
+    color-mix(in srgb, var(--bg) 65%, transparent);
+  overflow: hidden;
+}
+.fr-bmap > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--dk-line);
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-bmap > header > span {
+  flex: 1 0 auto;
+  white-space: nowrap;
+}
+.fr-bmap > header small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+}
+.fr-bmrows {
+  overflow-y: auto;
+  padding: 2px 0;
+}
+.fr-bmrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mac-sidebar-text-open);
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+}
+.fr-bmrow:hover {
+  background: var(--mac-hover);
+  padding-right: 6px;
+}
+.fr-bmrow svg {
+  flex: none;
+  overflow: visible;
+}
+.fr-bmrow .grow {
+  flex: 1;
+}
+.fr-bmname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.fr-bmname.here {
+  color: var(--t1);
+  font-weight: 600;
+}
+.fr-bmrow small {
+  font-size: var(--fs-micro);
+  color: var(--t3);
+}
+.fr-pulse {
+  fill: none;
+  stroke-width: 1.4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fr-pulse 2s ease-out infinite;
+}
+@keyframes fr-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-pulse {
+    display: none;
+  }
+  .fr-live > i {
+    animation: none;
+  }
+}
+.fr-bmnew {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--dk-sel);
+  color: var(--t1);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  flex: none;
+}
+.fr-bmnew .ic {
+  width: 8px;
+  height: 8px;
+}
+.fr-bmdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.fr-bmdot.running {
+  background: var(--st-review);
+}
+.fr-bmdot.needsYou {
+  background: var(--st-wait);
+}
+.fr-bmdot.idle {
+  box-shadow: inset 0 0 0 1px var(--t3);
+}
+
+/* Sidebar groups and rows. */
+.fr-h {
+  padding: 12px 16px 4px;
+  color: var(--t3);
+}
+.fr-gap {
+  height: 6px;
+}
+.fr-row {
+  position: relative;
+}
+.fr-row .dk-row {
+  padding-right: 16px;
+}
+.fr-row:hover .dk-row,
+.fr-row.menu .dk-row {
+  padding-right: 36px;
+}
+.fr-row:hover .dk-row:not(.focused):not(.open) {
+  background: var(--dk-open);
+}
+.fr-row .dk-row.finished {
+  color: var(--t2);
+}
+.fr-row > .dk-hacts {
+  right: 3px;
+}
+.fr-more {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: var(--mac-soft);
+  color: var(--t2);
+}
+.fr-more .ic {
+  width: 12px;
+  height: 12px;
+}
+.fr-more:hover,
+.fr-more.on {
+  color: var(--t1);
+}
+.fr-place {
+  --lane: var(--t3);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.fr-place .dk-fork {
+  width: 9px;
+  height: 9px;
+  stroke: var(--t3);
+}
+.fr-place > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--lane);
+}
+.fr-row .dk-rb {
+  color: var(--t3);
+}
+.fr-num {
+  font-variant-numeric: tabular-nums;
+}
+.fr-stuck {
+  color: var(--st-wait);
+  font-weight: 500;
+}
+.fr-starter {
+  display: inline-flex;
+  align-items: center;
+}
+.fr-starter .ic {
+  width: 9px;
+  height: 9px;
+}
+.fr-renamerow {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  background: var(--mac-soft);
+  /* The Mac's accent.focus: the accent at 60%. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* A plain field in the row, as the Mac's .plain TextField: no box of its own. */
+.fr-renamerow .dk-rename {
+  margin: 0;
+  background: transparent;
+  padding: 0;
+  font-size: var(--fs-body);
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.dk-rail[role="button"] {
+  cursor: default;
+  outline: none;
+}
+.dk-rdot:not(.open):hover {
+  background: var(--mac-soft);
+}
+
+/* The tree under a chat (ChatTreeView). */
+.fr-tree {
+  padding: 0 0 2px 17.5px;
+}
+.fr-tline {
+  display: flex;
+  align-items: stretch;
+}
+.fr-guides {
+  flex: none;
+}
+.fr-guides line,
+.fr-guides path {
+  stroke: var(--mac-divider);
+  stroke-width: 1;
+  fill: none;
+}
+.fr-tgroup {
+  display: flex;
+  align-items: center;
+  padding: 0 3px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-trow {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  border-radius: var(--radius-mac-row);
+  margin-right: 8px;
+}
+.fr-trow.on {
+  background: var(--mac-soft);
+}
+.fr-tb {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fr-trow.on:has(.fr-tacts) .fr-tb {
+  padding-right: 25px;
+}
+.fr-tb .grow {
+  flex: 1;
+  min-width: 4px;
+}
+.fr-tic {
+  width: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.fr-tic .ic {
+  width: 10px;
+  height: 10px;
+}
+.fr-tname {
+  flex: 0 1 auto;
+  min-width: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-tname.team {
+  font-weight: 500;
+}
+.fr-tdetail,
+.fr-tword {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-tdetail {
+  flex: 0 1000 auto;
+  min-width: 0;
+  font-family: var(--mono);
+}
+.fr-tword.bad {
+  color: var(--st-fail);
+}
+.fr-lead {
+  padding: 1px 4px;
+  border-radius: var(--radius-mac-button);
+  background: var(--mac-soft);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--t2);
+}
+.fr-tacts {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+}
+.fr-trow.on .fr-tacts,
+.fr-trow:focus-within .fr-tacts {
+  display: flex;
+}
+.fr-stop {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-mac-chip);
+  background: transparent;
+  color: var(--t3);
+}
+.fr-stop:hover {
+  color: var(--t1);
+  background: var(--mac-selection);
+}
+.fr-stop:disabled {
+  opacity: 0.4;
+}
+.fr-stop .ic {
+  width: 9px;
+  height: 9px;
+}
+
+/* The activity panel (RightPanel, FoldRow, ActivityCards). */
+.fr-right {
+  display: flex;
+  flex-direction: column;
+}
+.fr-pcard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.fr-pcard.open {
+  flex: 1;
+}
+.fr-pcard + .fr-pcard {
+  border-top: 1px solid var(--dk-line);
+}
+.fr-pch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--dk-head);
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--t3);
+  font: inherit;
+  font-size: var(--fs-meta);
+  text-align: left;
+  flex: none;
+}
+.fr-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--t3);
+}
+.fr-count.urgent {
+  color: var(--st-wait);
+}
+.fr-pcv {
+  margin-left: auto;
+  width: 10px;
+  height: 10px;
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+}
+.fr-pch:hover .fr-pcv {
+  color: var(--t1);
+}
+.fr-pch[aria-expanded="true"] .fr-pcv {
+  transform: none;
+}
+.fr-pcb {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 0 8px 10px;
+}
+.fr-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -8px;
+  padding: 8px 14px;
+  font-size: var(--fs-body);
+  color: var(--t3);
+}
+.fr-empty .ic {
+  width: 10px;
+  height: 10px;
+}
+.fr-empty .t-rev {
+  color: var(--st-review);
+}
+.fr-foldrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0 6px 6px;
+  border-radius: var(--radius-mac-row);
+}
+.fr-foldrow:hover {
+  background: var(--mac-soft);
+}
+.fr-foldrow > .dot {
+  margin-top: 5px;
+  flex: none;
+}
+.fr-foldbody {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.fr-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-link:hover {
+  text-decoration: underline;
+}
+.fr-foldline {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fr-npix {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: bottom;
+}
+.fr-foldchev {
+  width: 28px;
+  align-self: stretch;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t3);
+}
+.fr-foldrow:hover .fr-foldchev {
+  color: var(--t1);
+}
+.fr-foldchev .ic {
+  width: 10px;
+  height: 10px;
+  transform: rotate(-90deg);
+  transition: transform 0.2s;
+}
+.fr-foldchev[aria-expanded="true"] .ic {
+  transform: none;
+}
+.fr-folddetail {
+  padding: 0 0 8px 26px;
+}
+.fr-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--mac-soft);
+  font-size: var(--fs-body);
+  color: var(--t1);
+}
+.fr-card .dk-field {
+  width: 100%;
+}
+.fr-cmd {
+  display: block;
+  padding: 6px 8px;
+  border-radius: var(--radius-mac-row);
+  background: var(--surface-code);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.fr-why,
+.fr-cq {
+  margin: 0;
+  color: var(--t2);
+  line-height: 1.4;
+}
+.fr-cq {
+  color: var(--t1);
+  font-weight: 500;
+}
+.fr-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fr-always {
+  justify-self: start;
+  margin-left: -8px;
+}
+.fr-q {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fr-q legend {
+  padding: 0 0 4px;
+  font-weight: 500;
+}
+.fr-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-mac-row);
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  text-align: left;
+}
+.fr-opt:hover {
+  background: var(--mac-hover);
+}
+.fr-opt > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+.fr-opt b {
+  font-weight: 400;
+}
+.fr-opt small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-rec {
+  margin-left: 6px;
+  color: var(--st-review) !important;
+}
+.fr-mark-radio,
+.fr-mark-checkbox {
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.3px var(--t3);
+}
+.fr-mark-checkbox {
+  border-radius: 3px;
+}
+.fr-opt[aria-checked="true"] .fr-mark-radio,
+.fr-opt[aria-checked="true"] .fr-mark-checkbox {
+  background: var(--accent);
+  box-shadow:
+    inset 0 0 0 3px var(--accent),
+    inset 0 0 0 6px var(--on-accent);
+}
+.fr-opt[aria-checked="true"] .fr-mark-checkbox {
+  box-shadow: none;
+}
+.fr-plan {
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: var(--fs-body);
+}
+.fr-card .dk-segc {
+  justify-self: start;
+}
+.fr-diff {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fr-changes {
+  justify-self: start;
+  margin-left: -8px;
+  gap: 3px;
+}
+.fr-changes .ic {
+  width: 9px;
+  height: 9px;
+}
+.fr-remote {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dk-line);
+}
+.fr-remote p {
+  margin: 0;
+  color: var(--t2);
+}
+.fr-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--t2);
+}
+.fr-comments {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fr-comments li > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fr-comments code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-comments p {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+}
+.fr-checks {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--t2);
+}
+.fr-stuckhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.fr-stuckhead b {
+  font-weight: 500;
+}
+.fr-stuckhead small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.fr-track {
+  position: relative;
+  width: 54px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--mac-soft);
+  overflow: hidden;
+}
+.fr-track > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+.fr-steps {
+  margin: 0;
+  padding: 0 6px 0 0;
+  list-style: none;
+}
+.fr-steps li {
+  font-size: var(--fs-body);
+  font-weight: 400;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 0;
+}
+.fr-stepmark {
+  width: 10px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  color: var(--st-review);
+}
+.fr-stepmark .ic {
+  width: 9px;
+  height: 9px;
+}
+.fr-stepmark > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--t3);
+}
+.fr-stepn {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t3);
+}
+.fr-stept {
+  display: grid;
+  gap: 1px;
+}
+.fr-steps li.fr-stepdone .fr-stept {
+  color: var(--t3);
+}
+.fr-stept small {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--st-run);
+}
+.fr-rrail {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--dk-line);
+  background: var(--dk-side);
+}
+.fr-rrail > i {
+  width: 2px;
+  background: var(--accent);
+}
+
+/* The status bar (StatusBar): 20 px footer buttons at 55 percent, the views centred. */
+.fr-status {
+  position: relative;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+.fr-status .grow {
+  flex: 1;
+}
+.fr-fbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--t1) 55%, transparent);
+  font: inherit;
+  white-space: nowrap;
+}
+.fr-fbtn .ic {
+  width: 11px;
+  height: 11px;
+}
+.fr-fbtn:hover {
+  color: var(--t1);
+  background: color-mix(in srgb, var(--t1) 10%, transparent);
+}
+.fr-fbtn.on {
+  color: var(--t1);
+  background: var(--mac-selection);
+}
+.fr-squeeze svg {
+  width: 8.5px;
+  height: 8.5px;
+  fill: currentColor;
+}
+.fr-views {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 2px;
+}
+.fr-unseen {
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 9px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The pull request's chip and popover (PRChip, PRDetails). */
+.fr-bpr {
+  display: flex;
+}
+.fr-prchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-mac-chip);
+  background: var(--mac-soft);
+  color: var(--t2);
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+.fr-prchip:hover {
+  color: var(--t1);
+}
+.fr-prchip .dot.hollow {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.3px var(--c);
+}
+.fr-prglyph {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 11;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fr-prglyph[viewBox="0 0 12 12"] {
+  stroke-width: 1.3;
+}
+.fr-prglyph .fill {
+  fill: currentColor;
+  stroke: none;
+}
+.fr-prpop {
+  width: 300px;
+  padding: 14px;
+}
+.fr-prd {
+  display: grid;
+  gap: 10px;
+  font-size: var(--fs-body);
+}
+.fr-prhead {
+  display: grid;
+  gap: 4px;
+}
+.fr-prline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--t1);
+  text-decoration: none;
+}
+.fr-prmark {
+  width: 12px;
+  flex: none;
+  color: var(--t2);
+  align-self: center;
+}
+.fr-prnum {
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.fr-prtitle {
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fr-prline:hover .fr-prtitle {
+  text-decoration: underline;
+}
+.fr-prcloses {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 0;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-prcloses > span {
+  width: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+.fr-prstatus {
+  padding-left: 20px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-prchecks {
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  border-radius: var(--radius-mac-card);
+  background: var(--mac-soft);
+}
+.fr-prchecks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+}
+.fr-prcn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-prcv {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-prauto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fr-prauto > span {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+}
+.fr-prauto small {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.fr-prbtns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fr-prbtns .grow {
+  flex: 1;
+}
+.fr-prbtns .ic {
+  width: 11px;
+  height: 11px;
+}
+.fr-bwait .ic {
+  width: 10px;
+  height: 10px;
+  color: var(--t3);
+  flex: none;
+}
+
+/* A tab shows its hover only while the pointer is really on it (TabStrip useHoverMarks):
+   WebKitGTK can keep :hover on a tab the pointer left. */
+.dk-tabs .dk-tab:not(.on):hover:not([data-hover]) {
+  background: transparent;
+}
+.dk-tabs .dk-tab:hover:not([data-hover]) .dk-tclose.hover {
+  visibility: hidden;
+}
+.dk-tabs .dk-tab:hover:not([data-hover]) .dk-tabb > :last-child:not(.dk-tname) {
+  visibility: visible;
+}
+
+/* A terminal pane's screen, kept while its view is away (toolSessions.ts); FitAddon
+   measures this box. */
+.dk-term > .dk-term-host {
+  width: 100%;
+  height: 100%;
+}
+
+/* The Pixies tab, its divider and General stay put; the other project tabs scroll when
+   they do not fit (TabStrip.tsx). */
+.dk-tabs > .dk-tleft > .dk-tabset {
+  display: flex;
+  align-self: stretch;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.dk-tabset > .dk-sep {
+  align-self: center;
+}
+.dk-tabset > .dk-tablist {
+  align-self: stretch;
+  align-items: flex-end;
+  flex: 0 1 auto;
+}
+/* What follows the name keeps its size; the name gives way first. */
+.dk-tabb > :not(.dk-tname) {
+  flex: none;
+}
+/* A narrow tab's parts sit closer, so its count still fits beside its icon. */
+.dk-proj.narrow .dk-tabb {
+  gap: 4px;
+  padding-left: 8px;
+}
+.dk-proj.narrow .dk-tcount {
+  gap: 3px;
+}
+
+/* A browser pane (ToolPanes.tsx, the Mac's BrowserPane): back, forward, reload, the
+   address and the local servers, then where the page is. */
+.dk-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+.dk-btool {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dk-btool > .ib {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-mac-button);
+  background: transparent;
+  color: var(--t3);
+}
+.dk-btool > .ib:hover:not(:disabled) {
+  background: var(--mac-hover);
+}
+.dk-btool > .ib:disabled {
+  opacity: 0.35;
+}
+.dk-btool > .ib .ic {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dk-btool > .dk-url {
+  flex: 1;
+  min-width: 60px;
+  height: 24px;
+  margin: 0 2px 0 4px;
+  padding: 0 9px;
+  border-radius: var(--radius-mac-row);
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px transparent;
+}
+.dk-btool > .dk-url:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dk-btool > .dk-url input {
+  font-size: 12px;
+}
+.dk-bstart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  overflow: auto;
+  text-align: center;
+  color: var(--t2);
+}
+.dk-bstart > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--t3);
+}
+.dk-bstart > p {
+  margin: 0;
+  font-size: 12px;
+}
+.dk-bstart > .dk-baddr {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dk-bstart-list {
+  width: min(300px, 100%);
+  padding: 8px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  text-align: left;
+}
+.dk-servers-pop {
+  width: 260px;
+  padding: 8px;
+}
+.dk-servers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dk-servers-h {
+  margin: 0;
+  padding: 0 8px 4px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--t3);
+}
+.dk-servers-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.dk-server {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--spacing-mac-row-height);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-mac-row);
+  background: transparent;
+  text-align: left;
+}
+.dk-server:hover {
+  background: var(--mac-hover);
+}
+.dk-server > svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  color: var(--t3);
+}
+.dk-server-port {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--link);
+}
+.dk-server-proc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12px;
+  color: var(--t3);
+}
+/* xterm.css paints its viewport black, and xterm.js 6 colours only the rows it draws: the
+   strip under the last row showed as a dark bar. The pane's own colour shows there. */
+.dk-term .xterm .xterm-viewport {
+  background-color: transparent;
+}

@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 from collections.abc import Awaitable, Callable, Iterator, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -12,10 +13,14 @@ from fastapi import FastAPI
 
 from nestd.accounts.profiles import LEAKED_ENV
 from nestd.auth.devices import LOCAL_DEVICE_ACCOUNT
+from nestd.auth.secrets import SecretStoreUnavailableError
 from nestd.cli import main
 from nestd.paths import AppPaths
+from nestd.platform import LINUX, MACOS, Platform
 from nestd.runtime import Runtime
-from nestd.service.launchd import LABEL, CommandResult
+from nestd.service.base import CommandResult
+from nestd.service.launchd import LABEL
+from nestd.service.systemd import UNIT_NAME
 from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
 
 
@@ -44,13 +49,19 @@ class Recorder:
                 await action(app)
 
 
+class LockedSecretStore(FakeSecretStore):
+    def get(self, account: str) -> str | None:
+        msg = "the secret store is not available (locked). Unlock the login keyring."
+        raise SecretStoreUnavailableError(msg)
+
+
 class Rig:
-    def __init__(self, home: Path, env: dict[str, str]) -> None:
+    def __init__(self, home: Path, env: dict[str, str], platform: Platform = MACOS) -> None:
         self.home = home
         self.env = env
-        self.paths = AppPaths.from_env(self.env, self.home)
+        self.paths = AppPaths.from_env(self.env, self.home, platform)
         self.recorder = Recorder()
-        self.secrets = FakeSecretStore()
+        self.secrets: FakeSecretStore = FakeSecretStore()
         self.restart = RecordingRestart()
         self.out = io.StringIO()
         self.err = io.StringIO()
@@ -59,6 +70,7 @@ class Rig:
             home=self.home,
             uid=501,
             executable="/venv/bin/python",
+            platform=platform,
             secrets=self.secrets,
             clock=FakeClock(),
             run_command=self.recorder.run,
@@ -280,6 +292,61 @@ def test_service_install_replaces_the_harness_service_and_moves_the_folders(movi
     output = moving.out.getvalue()
     assert "Removed the service from before the rename (com.harness.daemon)" in output
     assert f"Moved {data / 'harness'} to {data / 'nest'}" in output
+
+
+def test_a_locked_secret_store_stops_serve_with_what_to_do(cli: Rig) -> None:
+    """B117: a missing or locked Secret Service on Linux is one clear line, not a
+    traceback from inside the server's startup."""
+    runtime = replace(cli.runtime, secrets=LockedSecretStore())
+
+    assert main(["serve"], runtime) == 1
+
+    assert cli.err.getvalue() == (
+        "nestd: the secret store is not available (locked). Unlock the login keyring.\n"
+    )
+    assert cli.recorder.served == []
+
+
+@pytest.fixture
+def linux(tmp_path: Path) -> Rig:
+    """B117: Linux with no variables, so the XDG defaults under home are used."""
+    return Rig(tmp_path / "home", {}, LINUX)
+
+
+def test_linux_service_install_status_and_uninstall_use_systemd(linux: Rig) -> None:
+    unit = linux.home / ".config" / "systemd" / "user" / UNIT_NAME
+
+    assert linux.run("service", "install") == 0
+    assert linux.run("service", "status") == 0
+    assert linux.run("service", "uninstall") == 0
+
+    assert linux.recorder.commands == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", UNIT_NAME],
+        ["systemctl", "--user", "restart", UNIT_NAME],
+        ["systemctl", "--user", "status", "--no-pager", UNIT_NAME],
+        ["systemctl", "--user", "disable", "--now", UNIT_NAME],
+        ["systemctl", "--user", "daemon-reload"],
+    ]
+    assert not unit.exists()
+    output = linux.out.getvalue()
+    assert f"Installed and started nest ({unit})" in output
+    assert f"Logs: {linux.home / '.local' / 'share' / 'nest' / 'logs' / 'daemon.log'}" in output
+    assert "Stopped and removed nest" in output
+
+
+def test_linux_leaves_folders_named_harness_alone(linux: Rig) -> None:
+    old_config = linux.home / ".config" / "harness"
+    old_config.mkdir(parents=True)
+    old_data = linux.home / ".local" / "share" / "harness"
+    old_data.mkdir(parents=True)
+
+    assert linux.run("pair") == 0
+
+    assert old_config.is_dir()
+    assert not old_config.is_symlink()
+    assert not old_data.is_symlink()
+    assert "Moved" not in linux.out.getvalue()
 
 
 def test_pair_moves_the_folders_first(moving: Rig) -> None:

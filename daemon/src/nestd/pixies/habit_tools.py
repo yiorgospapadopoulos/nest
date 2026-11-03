@@ -35,12 +35,17 @@ SUMMARY_CHARS = 120
 type Args = dict[str, JsonValue]
 type Handler = Callable[[Args], Awaitable[str]]
 
-SCHEDULE: dict[str, JsonValue] = {
-    "type": "object",
-    "description": 'When it runs, in the Mac\'s local time: {"kind": "hourly", "minute": 0-59},'
-    ' {"kind": "daily", "time": "HH:MM"}, {"kind": "weekdays", "time": "HH:MM"} (Monday to'
-    ' Friday) or {"kind": "weekly", "weekday": 0-6 (Monday is 0), "time": "HH:MM"}.',
-}
+
+def schedule_field(machine: str) -> dict[str, JsonValue]:
+    return {
+        "type": "object",
+        "description": f"When it runs, in the {machine}'s local time:"
+        ' {"kind": "hourly", "minute": 0-59},'
+        ' {"kind": "daily", "time": "HH:MM"}, {"kind": "weekdays", "time": "HH:MM"} (Monday to'
+        ' Friday) or {"kind": "weekly", "weekday": 0-6 (Monday is 0), "time": "HH:MM"}.',
+    }
+
+
 TRIGGER_LIST: dict[str, JsonValue] = {
     "type": "array",
     "items": {"type": "string", "enum": list(TRIGGERS)},
@@ -54,7 +59,7 @@ HABIT_FIELDS: dict[str, JsonValue] = {
         "type": "string",
         "description": "What to check and what is worth reporting, at most 4000 characters.",
     },
-    "schedule": SCHEDULE,
+    "schedule": schedule_field("Mac"),
     "triggers": TRIGGER_LIST,
     "max_minutes": {
         "type": "integer",
@@ -63,12 +68,25 @@ HABIT_FIELDS: dict[str, JsonValue] = {
 }
 
 
+def habit_fields(machine: str) -> dict[str, JsonValue]:
+    """The fields with the schedule in `machine`'s time, in the same order."""
+    return {**HABIT_FIELDS, "schedule": schedule_field(machine)}
+
+
 class PixieHabitTools:
     """What a pixie's report and habit tools act through; one per daemon."""
 
     def __init__(
-        self, *, habits: HabitService, store: HabitStore, reports: Reports, activity: ActivityStore
+        self,
+        *,
+        habits: HabitService,
+        store: HabitStore,
+        reports: Reports,
+        activity: ActivityStore,
+        machine: str = "Mac",
     ) -> None:
+        """`machine` names the machine whose clock the schedules follow."""
+        self.machine = machine
         self.habits = habits
         self.store = store
         self.reports = reports
@@ -123,7 +141,7 @@ class _Tools:
                 " schedule, on events, or both, speaking only through report.",
                 {
                     "type": "object",
-                    "properties": HABIT_FIELDS,
+                    "properties": habit_fields(self._o.machine),
                     "required": ["name", "prompt"],
                 },
                 self.habit_create,
@@ -135,7 +153,7 @@ class _Tools:
                     "type": "object",
                     "properties": {
                         "id": {"type": "string", "description": "From habit_list."},
-                        **HABIT_FIELDS,
+                        **habit_fields(self._o.machine),
                     },
                     "required": ["id"],
                 },

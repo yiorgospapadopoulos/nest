@@ -61,6 +61,8 @@ class PerfSetup:
     engines: Callable[[], ChatEngines]
     codex: CodexEngine
     acp: Mapping[str, AcpEngineService]
+    # The machine in text for people, as in "this Mac".
+    machine_noun: str = "Mac"
 
 
 def build_perf(setup: PerfSetup) -> tuple[Perf, InProcess]:
@@ -104,7 +106,15 @@ def build_perf(setup: PerfSetup) -> tuple[Perf, InProcess]:
         "worktrees": Worktrees(setup.db, setup.clock),
         "gates": Gates(GateTimes.in_folder(paths.data_dir)),
     }
-    return Perf(store, setup.bus, setup.clock, collectors, current_build(), setup.machine), fetch
+    return Perf(
+        store,
+        setup.bus,
+        setup.clock,
+        collectors,
+        current_build(),
+        setup.machine,
+        setup.machine_noun,
+    ), fetch
 
 
 async def _targets(setup: PerfSetup) -> list[Target]:

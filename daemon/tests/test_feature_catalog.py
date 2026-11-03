@@ -78,6 +78,29 @@ def test_a_valid_catalog_keeps_groups_and_features_in_file_order(tmp_path: Path)
     assert second.where == "Needs you"
 
 
+def test_a_feature_can_read_differently_on_linux(tmp_path: Path) -> None:
+    """B117: a `[features.linux]` table replaces what it names on Linux only."""
+    linux_copy = '[features.linux]\nname = "Needs you here"\nwhere = "Top bar"\n'
+    text = GROUPS + FEATURES.replace('block = "B77"\n', 'block = "B77"\n' + linux_copy)
+    catalog = load_catalog(write(tmp_path, text))
+
+    linux = catalog.for_platform("linux").features[0]
+    mac = catalog.for_platform("macos").features[0]
+
+    assert (linux.name, linux.text, linux.where) == (
+        "Needs you here",
+        "Everything waiting on you in one list.",
+        "Top bar",
+    )
+    assert (mac.name, mac.where) == ("Needs you", "Right panel")
+    assert "linux" in failure(tmp_path, text.replace('"Top bar"', '" "'))
+    shipped = packaged_catalog().for_platform("linux")
+    copy = " ".join(f"{f.name} {f.text} {f.where}" for f in shipped.features)
+    assert "this Mac" not in copy
+    assert "Finder" not in copy
+    assert "notch" not in copy
+
+
 def test_the_shipped_catalog_loads_and_is_cached() -> None:
     catalog = packaged_catalog()
 

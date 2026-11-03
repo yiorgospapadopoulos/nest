@@ -12,6 +12,8 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         index: fileURLToPath(new URL("./index.html", import.meta.url)),
+        // The desktop app's window (B117), bundled into the Tauri app.
+        desktop: fileURLToPath(new URL("./desktop.html", import.meta.url)),
         sw: fileURLToPath(new URL("./src/pwa/sw.ts", import.meta.url)),
       },
       output: {

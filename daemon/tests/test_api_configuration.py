@@ -5,6 +5,8 @@ Every engine folder is in `tmp_path`; Codex is the in-memory app-server answerin
 """
 
 import json
+import logging
+import shutil
 from pathlib import Path
 
 import pytest
@@ -260,6 +262,23 @@ async def test_codex_that_cannot_be_asked_shows_an_empty_section(
 
     assert skills(body)["yours:release"]["codex_enabled"] is None
     assert engine(body, "codex")["missing_from_shared"]["skills"] == []
+
+
+async def test_without_a_codex_home_codex_is_not_asked_nor_warned_about(
+    api: Api, where: Locations, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B117: no ~/.codex (as on a fresh Linux install) while local models make the Codex
+    section show: the page is read again and again without starting Codex or warning."""
+    await api.ctx.local.use_local_only()
+    shutil.rmtree(where.codex_home)
+    started = len(api.codex.launches)
+    caplog.set_level(logging.WARNING)
+
+    for _ in range(3):
+        assert "codex" in [section["id"] for section in (await page(api))["engines"]]
+
+    assert len(api.codex.launches) == started
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 
 async def test_claude_and_codex_own_instructions(api: Api, where: Locations) -> None:

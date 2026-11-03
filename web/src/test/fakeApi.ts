@@ -65,8 +65,12 @@ export function fakeApi(): FakeApi {
       const listed = await defined(fake.repos.getMockImplementation())();
       return defined(listed.find((r) => r.name === name));
     }),
+    registerRepo: vi.fn<Api["registerRepo"]>().mockResolvedValue(repo("todo-ui")),
     removeRepo: vi.fn<Api["removeRepo"]>().mockResolvedValue(null),
     updateRepo: vi.fn<Api["updateRepo"]>().mockResolvedValue(repo("todo-ui")),
+    reorderRepos: vi.fn<Api["reorderRepos"]>().mockResolvedValue([repo("todo-ui")]),
+    openRepo: vi.fn<Api["openRepo"]>().mockResolvedValue(null),
+    linkSuggestions: vi.fn<Api["linkSuggestions"]>().mockResolvedValue([]),
     sessions: vi.fn<Api["sessions"]>().mockResolvedValue([]),
     session: vi.fn<Api["session"]>().mockResolvedValue(detail()),
     sessionEvents: vi.fn<Api["sessionEvents"]>().mockResolvedValue([]),
@@ -75,6 +79,9 @@ export function fakeApi(): FakeApi {
       .fn<Api["sendMessage"]>()
       .mockResolvedValue({ ...session({ state: "running" }), queued_message: null }),
     interrupt: vi.fn<Api["interrupt"]>().mockResolvedValue(null),
+    openInClaudeCode: vi
+      .fn<Api["openInClaudeCode"]>()
+      .mockResolvedValue({ launcher: "terminal", warning: null }),
     stopTask: vi.fn<Api["stopTask"]>().mockResolvedValue(null),
     cancelQueued: vi.fn<Api["cancelQueued"]>().mockResolvedValue(null),
     sendNow: vi.fn<Api["sendNow"]>().mockResolvedValue(null),
@@ -138,6 +145,7 @@ export function fakeApi(): FakeApi {
     subscribePush: vi.fn<Api["subscribePush"]>().mockResolvedValue(null),
     unsubscribePush: vi.fn<Api["unsubscribePush"]>().mockResolvedValue(null),
     testPush: vi.fn<Api["testPush"]>().mockResolvedValue({ sent: 1, failed: 0, removed: 0 }),
+    pushStatus: vi.fn<Api["pushStatus"]>().mockResolvedValue({ devices: 0 }),
     notificationSettings: vi
       .fn<Api["notificationSettings"]>()
       .mockResolvedValue(notificationSettings()),
@@ -229,6 +237,9 @@ export function fakeApi(): FakeApi {
       .fn<Api["agentTranscript"]>()
       .mockResolvedValue({ tool_use_id: "a1", prompt: null, messages: [], report: null }),
     branches: vi.fn<Api["branches"]>().mockResolvedValue({ branches: ["develop", "main"] }),
+    branchMap: vi
+      .fn<Api["branchMap"]>()
+      .mockImplementation(() => Promise.reject(new Error("no branch map"))),
     storage: vi.fn<Api["storage"]>().mockResolvedValue(storageUsage()),
     storageSettings: vi
       .fn<Api["storageSettings"]>()

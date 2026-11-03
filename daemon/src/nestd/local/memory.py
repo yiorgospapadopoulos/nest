@@ -17,11 +17,11 @@ def mac_memory() -> int | None:
         return None
 
 
-def memory_warning(size: int | None, total: int | None) -> str | None:
+def memory_warning(size: int | None, total: int | None, machine: str = "Mac") -> str | None:
     """One sentence when the model's `size` on disk is over WARN_SHARE of `total`."""
     if size is None or total is None or size <= total * WARN_SHARE:
         return None
     return (
-        f"Needs about {round(size / _GB)} GB of this Mac's {round(total / _GB)} GB:"
-        " other work may slow down or the Mac may stall."
+        f"Needs about {round(size / _GB)} GB of this {machine}'s {round(total / _GB)} GB:"
+        f" other work may slow down or the {machine} may stall."
     )

@@ -1,0 +1,553 @@
+/* Settings' General to Features pages (B117 wave 2C), as the Mac's GeneralPages.swift,
+   AgentPages.swift, UsagePage.swift, UsagePopover.swift, PerformancePage.swift and
+   FeaturesPage.swift. */
+
+/* DropdownMenu: a soft button of a fixed width, the value and a chevron. */
+.dks-off {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Appearance's accent swatches: 16 px circles, the chosen one ringed. */
+.dks-swatches {
+  display: inline-flex;
+  gap: 4px;
+}
+.dks-swatch {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+}
+.dks-swatch i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--l);
+  box-shadow: inset 0 0 0 1px var(--dk-line);
+}
+:root[data-theme="dark"] .dks-swatch i {
+  background: var(--d);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dks-swatch i {
+    background: var(--d);
+  }
+}
+.dks-swatch[aria-checked="true"] {
+  border-color: var(--t2);
+}
+
+/* Storage's ledger and attachments. */
+.dks-ledger {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dks-ledgert {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.dks-ledgert b {
+  font-size: 21px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dks-ledgert span {
+  font-size: 11px;
+  color: var(--t3);
+}
+.dks-sbar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+.dks-sbar i {
+  flex: none;
+  border-radius: 2px;
+}
+.dks-ledgerl {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.dks-ledgerr {
+  display: grid;
+  grid-template-columns: 8px 1fr auto minmax(28px, auto);
+  align-items: center;
+  gap: 10px;
+}
+.dks-ledgerr i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dks-ledgers {
+  color: var(--t3);
+  text-align: right;
+}
+.p-chats {
+  background: var(--run);
+}
+.p-attachments {
+  background: var(--wait);
+}
+.p-artifacts {
+  background: var(--ok);
+}
+.p-other {
+  background: var(--dk-sel);
+}
+.dks-attach {
+  padding-left: 12px;
+}
+.dks-attachnone {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+/* Keyboard shortcuts: the keys in mono on a soft fill. */
+.dks-kbd {
+  min-width: 44px;
+  padding: 2px 7px;
+  box-sizing: border-box;
+  border-radius: 5px;
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--t1);
+}
+.dks-kbd.recording {
+  color: var(--t2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.dks-refused {
+  font-size: 11px;
+  color: var(--bad);
+  white-space: nowrap;
+}
+.dks-restore {
+  padding-top: 14px;
+}
+
+/* Usage: the panel at the page's width, then Top bar shows. */
+.dks-usage {
+  padding-top: 18px;
+}
+.dks-meterrow {
+  position: relative;
+  background: var(--bg);
+  outline: none;
+  cursor: default;
+}
+.dks-meterrow.sliding {
+  transition: transform 0.18s ease;
+}
+.dks-meterrow.moving {
+  z-index: 1;
+}
+.dks-meterrow:focus-visible .dks-lab > span:last-child {
+  text-decoration: underline;
+}
+.dks-grip {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 20px;
+  cursor: grab;
+  touch-action: none;
+}
+.dks-grip svg {
+  width: 10px;
+  height: 8px;
+  fill: none;
+  stroke: var(--t3);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+.dks-meterd {
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dks-meterrow.sliding {
+    transition: none;
+  }
+}
+
+/* Performance: the header, the cards, the sections' cards and what changed. */
+.dkp {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.dkp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 16px;
+}
+.dkp-head > span {
+  flex: 1;
+  min-width: 0;
+  color: var(--t2);
+}
+.dkp-loading,
+.dkf-loading {
+  padding: 24px 0;
+}
+.dkp-never {
+  margin: 18px 0 0;
+  color: var(--t2);
+}
+.dkp-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 18px;
+}
+.dkp-card,
+.dkp-box,
+.dkp-fold {
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.dkp-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+}
+.dkp-cardl {
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dkp-cardv {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dkp-cardv b {
+  font-size: 24px;
+  font-weight: 600;
+}
+.dkp-cardv .dkp-sub {
+  margin-left: auto;
+}
+.dkp-sub {
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dkp-part {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.dkp-part span:first-child {
+  color: var(--t2);
+}
+.dkp-change {
+  white-space: nowrap;
+  color: var(--t3);
+}
+.dkp-change.better {
+  color: var(--ok);
+}
+.dkp-change.worse {
+  color: var(--bad);
+}
+.dkp-legend {
+  display: flex;
+  gap: 14px;
+  padding-top: 18px;
+  font-size: 11px;
+  color: var(--t2);
+}
+.dkp-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dkp-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.dkp .prev {
+  background: color-mix(in srgb, var(--t3) 45%, transparent);
+}
+.dkp .now {
+  background: var(--accent);
+}
+.dkp-sec {
+  display: grid;
+  gap: 6px;
+  padding-top: 18px;
+}
+.dkp-sech {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+.dkp-sech h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dkp-sech .dk-btn,
+.dkp-sech .ff {
+  margin-left: auto;
+}
+.dkp-sech .dk-btn .ic {
+  width: 10px;
+  height: 10px;
+}
+.dkp-live svg {
+  display: block;
+  width: 9px;
+  height: 11px;
+  fill: none;
+  stroke: var(--t3);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.dkp-error {
+  margin: 0;
+  padding: 14px;
+  font-size: 11px;
+  color: var(--bad);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dkp-empty {
+  margin: 0;
+  padding: 14px;
+  font-size: 11px;
+  color: var(--t3);
+}
+.dkp-empty.ui {
+  font-size: 11px;
+}
+.dkp-note {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--t3);
+}
+.dkp-compare {
+  display: grid;
+  grid-template-columns: 200px 1fr minmax(64px, auto) minmax(56px, auto);
+  column-gap: 14px;
+  row-gap: 10px;
+  padding: 14px;
+}
+.dkp-crow {
+  display: contents;
+}
+.dkp-clab {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.dkp-bars {
+  display: grid;
+  gap: 3px;
+  align-content: center;
+}
+.dkp-bars i {
+  height: 7px;
+  border-radius: 3px;
+}
+.dkp-val {
+  text-align: right;
+  white-space: nowrap;
+}
+.dkp-cc {
+  text-align: right;
+}
+.dkp-plain div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--dk-line);
+}
+.dkp-plain div > span:first-child {
+  flex: 1;
+}
+.dkp-plain .dkp-change {
+  min-width: 56px;
+  text-align: right;
+}
+.dkp-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 48px;
+  box-sizing: content-box;
+  padding: 14px 14px 10px;
+}
+.dkp-days i {
+  flex: 1;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.dkp-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin-top: 18px;
+  padding: 0 14px;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--t1);
+}
+.dkp-fold .ic,
+.dkf-cv {
+  width: 10px;
+  height: 10px;
+  color: var(--t3);
+  transition: transform 0.2s ease;
+}
+.dkp-fold .ic.open,
+.dkf-cv.open {
+  transform: rotate(90deg);
+}
+.dkp-changed {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 14px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dkp-changed + .dkp-changed {
+  border-top: 1px solid var(--dk-line);
+}
+.dkp-changed i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t3);
+  transform: translateY(-1px);
+}
+.dkp-changed i.better {
+  background: var(--ok);
+}
+.dkp-changed i.worse {
+  background: var(--bad);
+}
+
+/* Features: the intro, a fold-open row per group, the footer. */
+.dkf {
+  font-size: 11px;
+}
+.dkf-intro {
+  margin: 14px 0 0;
+  color: var(--t2);
+}
+.dkf-groups {
+  margin-top: 18px;
+  border-top: 1px solid var(--dk-line);
+}
+.dkf-group {
+  border-bottom: 1px solid var(--dk-line);
+}
+.dkf-row {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  box-sizing: border-box;
+  text-align: left;
+  color: var(--t1);
+}
+.dkf-name {
+  flex: 1;
+  font-weight: 500;
+}
+.dkf-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--run);
+}
+.dkf-count {
+  color: var(--t3);
+}
+.dkf-body {
+  padding: 0 0 6px 16px;
+}
+.dkf-feature {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--dk-line);
+}
+.dkf-feature p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.dkf-feature b {
+  font-weight: 500;
+}
+.dkf-text {
+  color: var(--t2);
+}
+.dkf-text code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.dkf-new {
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--run) 12%, transparent);
+  color: var(--run);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.dkf-where {
+  flex: none;
+  font-size: 11px;
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dkf-footer {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--t3);
+}

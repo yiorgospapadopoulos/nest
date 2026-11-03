@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Self
 
 from nestd.auth.token_socket import SOCKET_NAME
+from nestd.platform import Platform, current_platform
 
 CONFIG_DIR_ENV = "NEST_CONFIG_DIR"
 DATA_DIR_ENV = "NEST_DATA_DIR"
@@ -28,14 +29,6 @@ def env_value(env: Mapping[str, str], name: str) -> str | None:
     return env.get(name) or env.get(legacy) or None
 
 
-def default_config_dir(home: Path, name: str = "nest") -> Path:
-    return home / ".config" / name
-
-
-def default_data_dir(home: Path, name: str = "nest") -> Path:
-    return home / "Library" / "Application Support" / name
-
-
 @dataclass(frozen=True)
 class AppPaths:
     config_dir: Path
@@ -56,9 +49,11 @@ class AppPaths:
     token_socket: Path | None = None
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str], home: Path) -> Self:
-        config_dir = env_value(env, CONFIG_DIR_ENV) or default_config_dir(home)
-        data_dir = env_value(env, DATA_DIR_ENV) or default_data_dir(home)
+    def from_env(cls, env: Mapping[str, str], home: Path, platform: Platform | None = None) -> Self:
+        """`platform` decides the default folders; None is the one the daemon runs on."""
+        system = platform or current_platform()
+        config_dir = env_value(env, CONFIG_DIR_ENV) or system.config_dir(home, env)
+        data_dir = env_value(env, DATA_DIR_ENV) or system.data_dir(home, env)
         web_dist = env_value(env, WEB_DIST_ENV) or DEFAULT_WEB_DIST
         claude_config = env.get(CLAUDE_CONFIG_DIR_ENV)
         claude_dir = claude_config or home / ".claude"
@@ -107,7 +102,7 @@ class AppPaths:
 
     @property
     def launchers_dir(self) -> Path:
-        """`.command` files that open a session's conversation in Terminal."""
+        """Launcher scripts that open a session's conversation in a terminal."""
         return self.data_dir / "launchers"
 
     @property

@@ -42,7 +42,13 @@ import { localCommand, namedModel, type LocalCommand } from "./localCommands.ts"
 import { LocalAttachSheet, LocalFailureCard, WeakToolsBar } from "./LocalCards.tsx";
 import { localModelOf, weakWarning } from "../../store/local.ts";
 import { ModelSheet } from "./ModelSheet.tsx";
-import { effortLabel, effortOptions, PERMISSIONS, PICKER_TITLES } from "./options.ts";
+import {
+  effortLabel,
+  effortOptions,
+  PERMISSIONS,
+  PICKER_TITLES,
+  shortChoiceLabel,
+} from "./options.ts";
 import { Pending } from "./Pending.tsx";
 import { PickerSheet } from "./PickerSheet.tsx";
 import { Suggestions, type Suggestion } from "./Suggestions.tsx";
@@ -451,7 +457,15 @@ export function Composer({
           setPicker(kind);
         }}
       >
-        <span className="qtl">{label}</span>
+        {/* The narrow desktop pane's label (B117); the phone never shows it. */}
+        <span
+          className="qtl"
+          data-short={
+            shortChoiceLabel(kind, label) === label ? undefined : shortChoiceLabel(kind, label)
+          }
+        >
+          {label}
+        </span>
       </button>
     );
   };

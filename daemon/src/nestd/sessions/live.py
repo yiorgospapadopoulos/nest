@@ -113,6 +113,9 @@ class LiveSession:
     # Cleared while `hold` keeps the session busy (restoring files): a turn the agent
     # starts on its own waits, and Stop or a nudge leaves the hold alone (BUG-88, BUG-89).
     unheld: asyncio.Event = field(default_factory=_set_event)
+    # Rewinds and their previews take turns: a code preview holds the run, which another
+    # one asked at the same time would take for a running turn.
+    rewinding: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @property
     def busy(self) -> bool:

@@ -38,6 +38,7 @@ class Perf:
         collectors: Mapping[str, Collector],
         build: Build,
         machine: str,
+        machine_noun: str = "Mac",
     ) -> None:
         """`collectors` has one per daemon section; a section without one reports that
         it cannot be measured here."""
@@ -47,6 +48,7 @@ class Perf:
         self.collectors = dict(collectors)
         self._build = build
         self._machine = machine
+        self._machine_noun = machine_noun
         self._task: asyncio.Task[None] | None = None
         self._starting = asyncio.Lock()
 
@@ -116,7 +118,10 @@ class Perf:
         running = await self._store.running()
         done = await self._store.done()
         measured = {section.id: _measurement(section.id, done) for section in SECTIONS}
-        sections = [_section_view(s, measured[s.id], _error(s.id, done)) for s in SECTIONS]
+        sections = [
+            _section_view(s, measured[s.id], _error(s.id, done), self._machine_noun)
+            for s in SECTIONS
+        ]
         views = {s.id: {m.id: m for m in s.metrics} for s in sections}
         cards = [views[c.section].get(c.metric.id) or _unmeasured(c.metric) for c in CARDS]
         # The header's last run is the daemon's: a client's result takes no time here.
@@ -195,11 +200,15 @@ def _error(section: str, done: list[PerfRun]) -> tuple[str, datetime] | None:
 
 
 def _section_view(
-    section: Section, measurement: Measurement | None, error: tuple[str, datetime] | None
+    section: Section,
+    measurement: Measurement | None,
+    error: tuple[str, datetime] | None,
+    machine_noun: str,
 ) -> SectionView:
     metrics: list[MetricView] = []
     ran_at: datetime | None = None
-    note = section.note
+    # A section's note may name the machine as {machine}.
+    note = section.note.format(machine=machine_noun) if section.note else section.note
     series = None
     if measurement is not None:
         before = by_id(measurement.previous)

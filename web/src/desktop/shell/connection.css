@@ -1,0 +1,131 @@
+/* The connection banner and the service note under the tab strip (RootView.swift), with the
+   toasts below them in the same column. */
+.dk-banners {
+  position: fixed;
+  top: calc(var(--dk-tabs, 40px) + 12px);
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.dk-banners > * {
+  pointer-events: auto;
+}
+.dk-banners > .dk-toasts {
+  position: static;
+  pointer-events: none;
+}
+.dk-cbanner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  animation: dk-toast-in 0.25s ease;
+}
+.dk-cline,
+.dk-cnote {
+  border-radius: var(--radius-mac-card);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  color: var(--t1);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+}
+.dk-cline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 6px 0 16px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.dk-cline > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-cline .dk-btn {
+  height: 24px;
+}
+.dk-cwarn {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--wait-t);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dk-cnote {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 14px;
+  text-align: left;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dk-cnote p {
+  margin: 0;
+}
+.dk-cnote-t {
+  font-size: 12px;
+  font-weight: 500;
+}
+.dk-cnote-m {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.dk-ccmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dk-ccmd code {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
+}
+.dk-cfail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fail-t);
+}
+.dk-cfail .dk-cwarn {
+  stroke: var(--fail-t);
+}
+.dk-connecting {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--t1);
+}
+.dk-connecting .ic {
+  width: 26px;
+  height: 26px;
+  color: var(--t2);
+}
+.dk-connecting p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}

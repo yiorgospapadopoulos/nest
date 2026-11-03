@@ -1,8 +1,11 @@
 from datetime import UTC, timedelta
 from pathlib import Path
 
+import pytest
+
 from nestd.clock import SystemClock
 from nestd.paths import AppPaths
+from nestd.platform import LINUX, MACOS, UnsupportedPlatformError, current_platform
 
 
 def test_system_clock_returns_utc_aware_time() -> None:
@@ -14,10 +17,41 @@ def test_system_clock_returns_utc_aware_time() -> None:
 
 
 def test_paths_default_to_user_locations(tmp_path: Path) -> None:
-    paths = AppPaths.from_env({}, home=tmp_path)
+    paths = AppPaths.from_env({}, home=tmp_path, platform=MACOS)
 
     assert paths.config_dir == tmp_path / ".config" / "nest"
     assert paths.data_dir == tmp_path / "Library" / "Application Support" / "nest"
+
+
+def test_linux_paths_follow_the_xdg_folders(tmp_path: Path) -> None:
+    """B117: the XDG defaults, the XDG variables (a relative one is ignored, as the spec
+    says), and Nest's own variables over both."""
+    xdg = {"XDG_CONFIG_HOME": str(tmp_path / "xc"), "XDG_DATA_HOME": str(tmp_path / "xd")}
+    nest = {**xdg, "NEST_CONFIG_DIR": str(tmp_path / "cfg"), "NEST_DATA_DIR": str(tmp_path / "dat")}
+
+    default = AppPaths.from_env({}, home=tmp_path, platform=LINUX)
+    moved = AppPaths.from_env(xdg, home=tmp_path, platform=LINUX)
+    relative = AppPaths.from_env({"XDG_DATA_HOME": "rel"}, home=tmp_path, platform=LINUX)
+    overridden = AppPaths.from_env(nest, home=tmp_path, platform=LINUX)
+
+    assert (default.config_dir, default.data_dir) == (
+        tmp_path / ".config" / "nest",
+        tmp_path / ".local" / "share" / "nest",
+    )
+    assert default.token_socket == tmp_path / ".local" / "share" / "nest" / "token.sock"
+    assert (moved.config_dir, moved.data_dir) == (
+        tmp_path / "xc" / "nest",
+        tmp_path / "xd" / "nest",
+    )
+    assert relative.data_dir == tmp_path / ".local" / "share" / "nest"
+    assert (overridden.config_dir, overridden.data_dir) == (tmp_path / "cfg", tmp_path / "dat")
+
+
+def test_the_platform_is_chosen_from_the_system() -> None:
+    assert current_platform("darwin") is MACOS
+    assert current_platform("linux") is LINUX
+    with pytest.raises(UnsupportedPlatformError, match="win32"):
+        current_platform("win32")
 
 
 def test_paths_honour_environment_overrides(tmp_path: Path) -> None:
@@ -87,7 +121,7 @@ def test_the_token_socket_lives_in_the_data_folder(tmp_path: Path) -> None:
     """The Mac app reads its token there (D075); paths built in tests serve none."""
     env = {"NEST_DATA_DIR": str(tmp_path / "dat")}
 
-    assert AppPaths.from_env({}, home=tmp_path).token_socket == (
+    assert AppPaths.from_env({}, home=tmp_path, platform=MACOS).token_socket == (
         tmp_path / "Library" / "Application Support" / "nest" / "token.sock"
     )
     assert AppPaths.from_env(env, home=tmp_path).token_socket == tmp_path / "dat" / "token.sock"

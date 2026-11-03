@@ -1,0 +1,322 @@
+/* Settings > Accounts (B98, B106, B107), as AccountsPage.swift and LocalModelsSection.swift. */
+.dka-page > .dks-sec {
+  padding-top: 26px;
+}
+.dka-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.dka-head .fr-mark {
+  flex: none;
+}
+.dka-symbol {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.4;
+}
+.dka-rows {
+  border-top: 1px solid var(--dk-line);
+}
+.dka-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+}
+.dka-tools.first {
+  padding-top: 0;
+}
+.dka-tools .dk-btn .ic {
+  width: 11px;
+  height: 11px;
+}
+.dka-note {
+  margin: 0;
+  padding-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--t3);
+}
+.dka-row {
+  outline: none;
+  cursor: default;
+}
+.dka-row:focus-visible .dks-lrow {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 6px;
+}
+.dka-row .dks-lrow {
+  gap: 10px;
+}
+.dka-row .dks-ctl,
+.dka-rows .dks-ctl {
+  max-width: none;
+  gap: 8px;
+}
+.dka-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--dk-sel);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.dka-tile {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--t2);
+}
+.dka-meta {
+  font-size: 11px;
+  color: var(--t3);
+}
+.dka-meta.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dka-limits {
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+}
+.dka-limit {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dka-meter {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.dka-meter i {
+  display: block;
+  height: 100%;
+  background: var(--t1);
+}
+.dka-menu {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-mac-button);
+  background: var(--soft);
+  color: var(--t2);
+}
+.dka-menu:hover,
+.dka-menu[aria-expanded="true"] {
+  background: var(--dk-sel);
+}
+.dka-menu:disabled {
+  opacity: 0.4;
+}
+.dka-more {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+.dka-anchor {
+  display: inline-flex;
+}
+.dka-anchor .dkc-chev {
+  width: 8px;
+  height: 8px;
+  stroke: var(--t2);
+}
+.dka-banked {
+  width: 300px;
+  padding: 0 14px 14px;
+  box-sizing: border-box;
+}
+.dka-none {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+/* More engines. */
+.dka-engine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dka-engine-t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.dka-engine-n {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.dka-engine-n b {
+  font-weight: 500;
+}
+.dka-label {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--soft);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--t2);
+}
+.dka-warnmark {
+  position: relative;
+  display: inline-grid;
+  color: var(--wait);
+}
+.dka-warnmark svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dka-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -10px;
+  z-index: 20;
+  width: 240px;
+  padding: 10px;
+  border-radius: var(--radius-mac-sheet);
+  background: linear-gradient(var(--sheet), var(--sheet)), var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--t1);
+}
+.dka-version {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t3);
+}
+.dka-engine-c {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dka-key {
+  display: inline-flex;
+  gap: 6px;
+}
+.dka-key .dk-field {
+  width: 220px;
+}
+
+/* Add local model. */
+.dka-add {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+.dka-add > .dkc-seg {
+  justify-self: start;
+}
+.dka-add-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--t2);
+}
+.dka-add-note > span {
+  flex: 1;
+}
+.dka-add-h {
+  margin: 4px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.dka-add-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--dk-line);
+  text-align: left;
+  font-size: 12px;
+  color: var(--t1);
+}
+.dka-add-row.none {
+  font-size: 11px;
+  color: var(--t3);
+}
+.dka-add-row.pick:disabled {
+  opacity: 1;
+}
+.dka-add-row .dks-check {
+  margin-top: 1px;
+}
+.dka-off {
+  opacity: 0.4;
+}
+.dka-add-t {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.dka-add-t .dim {
+  color: var(--t2);
+}
+.dka-add .meta {
+  font-size: 11px;
+  color: var(--t3);
+}
+.dka-add .good {
+  font-size: 11px;
+  color: var(--ok);
+}
+.dka-add-field {
+  display: grid;
+  gap: 4px;
+}
+.dka-add-label {
+  font-size: 11px;
+  color: var(--t2);
+}
+.dka-add-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dka-add-field .dk-field {
+  flex: 1;
+}

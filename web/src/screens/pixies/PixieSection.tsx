@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
-import type { Mascot, Pixie, PixieTeam } from "../../api/types.ts";
+import type { Pixie, PixieTeam } from "../../api/types.ts";
 import { useStore } from "../../store/context.ts";
 import {
   pixieList,
@@ -19,28 +19,8 @@ import { PixieActions } from "./PixieActions.tsx";
 import type { PixieTab } from "./PixieView.tsx";
 import { Sprite } from "./Sprite.tsx";
 import { TeamActions } from "./TeamActions.tsx";
+import { DEFAULT_COLOR, TEMPLATES } from "./templates.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
-
-// One-tap starters while the user has no pixies; nothing is created without the tap (D072).
-const TEMPLATES: readonly { name: string; mascot: Mascot; soul: string }[] = [
-  {
-    name: "Reviewer",
-    mascot: "moth",
-    soul:
-      "You review code changes. Look for bugs, missing tests and unclear names first, " +
-      "style last. Say what you checked, then list problems by severity with file and line.",
-  },
-  {
-    name: "Tester",
-    mascot: "star",
-    soul:
-      "You test changes. Find how the project runs its tests, run them, add missing " +
-      "cases for the change, and report what passed, what failed and why.",
-  },
-];
-
-// The colour a new pixie gets.
-const DEFAULT_COLOR = "#8B7CF6";
 
 interface Props {
   onOpen: (id: string, tab: PixieTab) => void;

@@ -1,0 +1,90 @@
+/* Settings > Pixies, Devices and Add project (B117 wave 2C), as PixiesPage.swift,
+   DevicesPage.swift and ProjectPage.swift's AddProjectPage. */
+
+/* A list's top line, as the Mac's Separator over the list. */
+.dks3-list {
+  border-top: 1px solid var(--dk-line);
+}
+.dks3-after {
+  margin-top: 10px;
+}
+.dks3-after.wide {
+  margin-top: 12px;
+}
+.dks3-plain {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dks3-plain:disabled {
+  opacity: 0.5;
+}
+
+/* A pixie's sprite on a soft tile, as in the Mac's list. */
+.dks3-sprite {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--soft);
+}
+.dks3-sprite.hidden {
+  opacity: 0.5;
+}
+.dks-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.dks3-note {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+/* The one-time code, large, with its countdown and where to enter it. */
+.dks3-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--soft);
+  text-align: center;
+}
+.dks3-code b {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dks3-code p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.dks3-code p.gone {
+  color: var(--bad);
+}
+.dks3-code .dks3-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.dks3-folder {
+  width: 260px;
+}

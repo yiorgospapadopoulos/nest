@@ -1,0 +1,276 @@
+/* The Artifacts view (B79), as the Mac's ArtifactsView.swift: a 290 point list, a hairline,
+   then the reader. */
+.da-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background-image: var(--dk-scan);
+  background-size: var(--dk-scan-size);
+}
+.da-g {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.da-sep {
+  flex: none;
+  width: 1px;
+  background: var(--dk-line);
+}
+
+/* The list. */
+.da-list {
+  flex: none;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.da-lhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--spacing-mac-header-height);
+  padding: 0 8px;
+  font-size: var(--fs-meta);
+}
+.da-scopes {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+}
+.da-scope,
+.da-row {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.da-scope {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-mac-button);
+  color: var(--t3);
+}
+.da-scope[aria-pressed="true"] {
+  background: var(--sel);
+  color: var(--t1);
+  font-weight: 500;
+}
+.da-label {
+  flex: 1;
+  padding-left: 6px;
+  color: var(--t3);
+}
+.da-count {
+  padding-right: 6px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.da-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 10px;
+  scrollbar-width: none;
+}
+.da-rows [role="list"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.da-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+}
+.da-row:hover {
+  background: var(--mac-hover);
+}
+.da-row[aria-current="true"] {
+  background: var(--sel);
+}
+.da-rkind {
+  width: 14px;
+  height: 12px;
+  margin-top: 3px;
+  color: var(--t3);
+}
+.da-rtext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.da-rt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-body);
+  color: var(--t1);
+}
+.da-rt.new {
+  font-weight: 500;
+}
+.da-rm {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.da-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.da-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  text-align: center;
+}
+.da-empty p {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--t2);
+}
+.da-empty span {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.da-empty .dk-btn {
+  margin-top: 4px;
+}
+.da-lfail {
+  margin: 0;
+  padding: 12px;
+  font-size: var(--fs-meta);
+  color: var(--bad);
+}
+
+/* The reader. */
+.da-reader,
+.da-none {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.da-none {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--fs-body);
+  color: var(--t2);
+}
+.da-none .da-g {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1;
+  color: var(--t3);
+}
+.da-rhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.da-rtitle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.da-rtitle h2,
+.da-rtitle p {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.da-rtitle h2 {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--t1);
+}
+.da-rtitle p {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.da-asking {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.da-versions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--t2);
+}
+.da-step {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.6;
+}
+.da-rhead .dk-btn.icon.k-plain {
+  color: var(--t3);
+}
+.da-rhead .da-versions .dk-btn.icon.k-plain {
+  color: var(--t1);
+}
+.da-doc {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.da-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: Canvas;
+}
+.da-failed {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--t2);
+}
+.da-confirm {
+  margin: 12px 0 0;
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--t2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}

@@ -21,6 +21,7 @@ from nestd.folder_move import (
     legacy_moves,
     move_folder,
 )
+from nestd.platform import LINUX, MACOS
 
 
 @pytest.fixture
@@ -104,10 +105,18 @@ def test_the_default_folders_move_unless_a_variable_names_one(tmp_path: Path) ->
         tmp_path / "Library" / "Application Support" / "nest",
     )
 
-    assert legacy_moves({}, tmp_path) == [config, data]
-    assert legacy_moves({"NEST_CONFIG_DIR": "/c"}, tmp_path) == [data]
-    assert legacy_moves({"HARNESS_DATA_DIR": "/d"}, tmp_path) == [config]
-    assert legacy_moves({"NEST_DATA_DIR": "/d", "HARNESS_CONFIG_DIR": "/c"}, tmp_path) == []
+    assert legacy_moves({}, tmp_path, MACOS) == [config, data]
+    assert legacy_moves({"NEST_CONFIG_DIR": "/c"}, tmp_path, MACOS) == [data]
+    assert legacy_moves({"HARNESS_DATA_DIR": "/d"}, tmp_path, MACOS) == [config]
+    assert legacy_moves({"NEST_DATA_DIR": "/d", "HARNESS_CONFIG_DIR": "/c"}, tmp_path, MACOS) == []
+
+
+def test_nothing_moves_on_linux(tmp_path: Path) -> None:
+    """B117: harness only ever ran on macOS; a `harness` folder on Linux is someone else's."""
+    (tmp_path / ".config" / "harness").mkdir(parents=True)
+    (tmp_path / ".local" / "share" / "harness").mkdir(parents=True)
+
+    assert legacy_moves({}, tmp_path, LINUX) == []
 
 
 def test_a_folder_is_copied_then_kept_as_a_backup_with_a_link_at_its_place(root: Path) -> None:

@@ -246,6 +246,36 @@ async def test_a_failing_codex_keeps_the_last_list_and_warns_once(
     assert warnings == ["reading Codex chats failed (Codex could not be asked (CodexRpcError))"]
 
 
+async def test_without_a_codex_home_there_are_no_codex_chats_and_no_warning(
+    setup: Setup, clock: FakeClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B117: Codex never used here (no ~/.codex, as on a fresh Linux install) is not a
+    failure: nothing is asked and nothing is logged, however often chats are listed."""
+    missing = setup.home.parent / "no-codex"
+    setup.chats = ClaudeChats(
+        claude_dir=None,
+        repos=setup.repos,
+        store=setup.store,
+        archive=setup.archive,
+        bus=setup.bus,
+        live=LiveChats(None),
+        codex=CodexChats(
+            codex_home=missing,
+            transport=setup.server,
+            launch=lambda: CodexLaunch(("codex", "app-server"), {"CODEX_HOME": str(missing)}),
+            clock=clock,
+        ),
+    )
+    caplog.set_level(logging.WARNING)
+
+    for _ in range(3):
+        clock.advance(timedelta(minutes=5))
+        assert await setup.chats.list_chats() == []
+
+    assert setup.server.launches == []
+    assert caplog.records == []
+
+
 async def test_history_and_import_of_a_codex_chat(setup: Setup) -> None:
     setup.threads.add(THREAD_A, setup.root, model="gpt-5.5")
 

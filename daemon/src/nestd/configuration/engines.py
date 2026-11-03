@@ -17,6 +17,7 @@ from nestd.configuration.files import read_text
 from nestd.configuration.locations import Locations
 from nestd.configuration.models import EngineItem, Standalone
 from nestd.gitops.runner import CommandError, CommandRunner
+from nestd.platform import Platform
 
 CODEX_PACKAGE = "openai-codex-cli-bin"
 
@@ -58,18 +59,16 @@ class CodexLocations:
     bundled_version: str | None
 
     @classmethod
-    def default(cls, home: Path, env: Mapping[str, str], bundled: Path | None) -> Self:
+    def default(
+        cls, home: Path, env: Mapping[str, str], bundled: Path | None, platform: Platform
+    ) -> Self:
         try:
             version: str | None = importlib.metadata.version(CODEX_PACKAGE)
         except importlib.metadata.PackageNotFoundError:
             version = None
         return cls(
             search_path=env.get("PATH", ""),
-            candidates=(
-                Path("/opt/homebrew/bin/codex"),
-                Path("/usr/local/bin/codex"),
-                home / ".local" / "bin" / "codex",
-            ),
+            candidates=platform.codex_candidates(home),
             bundled=bundled,
             bundled_version=version,
         )

@@ -95,6 +95,9 @@ class CodexChats:
         """The Codex chats of `repos`, `owned` thread ids left out."""
         if self._home is None:
             return []
+        # Codex never used here (B117): no chats, and nothing to ask.
+        if not await asyncio.to_thread(self._home.is_dir):
+            return []
         async with self._lock:
             home = self._home
             stamp = await asyncio.to_thread(_stamp, home)

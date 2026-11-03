@@ -1,4 +1,4 @@
-"""Logging to stderr; under launchd, stderr is redirected to the daemon log file."""
+"""Logging to stderr; under launchd or systemd, stderr goes to the daemon log file."""
 
 import logging
 from typing import TextIO
@@ -6,7 +6,8 @@ from typing import TextIO
 FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 # httpx and httpcore log every request URL at INFO; web push endpoint URLs are secrets.
-QUIET_LOGGERS = ("httpx", "httpcore")
+# websockets logs a handshake's headers at debug level, tokens included (B117).
+QUIET_LOGGERS = ("httpx", "httpcore", "websockets")
 # What Claude Code writes to stderr (MCP, hook and CLI warnings), logged at debug level and
 # kept in the daemon log while the rest logs at `level` (BUG-82).
 ENGINE_STDERR_LOGGER = "nestd.engine_stderr"

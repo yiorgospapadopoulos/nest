@@ -336,6 +336,43 @@ function fileBlob({ content, encoding }: FileToSave): Blob {
   return new Blob([bytes], { type: "application/octet-stream" });
 }
 
+/**
+ * In the desktop app the page is served from its own nest-artifact: address: a srcdoc frame
+ * would inherit the app's stricter policy, under which the page's scripts cannot run.
+ * Undefined elsewhere (the frame uses srcdoc), null while the page is staged; if staging
+ * fails, srcdoc again.
+ */
+function useStagedPage(page: string): string | null | undefined {
+  const tauri = window.__TAURI__;
+  const [staged, setStaged] = useState<{ page: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (tauri === undefined) return;
+    const release = (url: string) => {
+      tauri.core.invoke("release_artifact", { url }).catch(() => undefined);
+    };
+    let live = true;
+    let url: string | null = null;
+    tauri.core.invoke("stage_artifact", { html: page }).then(
+      (result) => {
+        url = String(result);
+        if (live) setStaged({ page, url });
+        else release(url);
+      },
+      () => {
+        if (live) setStaged({ page, url: null });
+      },
+    );
+    return () => {
+      live = false;
+      // The page is served once; this drops it if the frame went before loading it.
+      if (url !== null) release(url);
+    };
+  }, [tauri, page]);
+  if (tauri === undefined) return undefined;
+  if (staged?.page !== page) return null;
+  return staged.url ?? undefined;
+}
+
 /** One frame and its bridge; a question it asked goes when the frame does. */
 function BridgedFrame({
   frame,
@@ -502,6 +539,8 @@ function BridgedFrame({
     },
   };
   useArtifactBridge(frame, handlers);
+  const page = withCsp(content.page);
+  const staged = useStagedPage(page);
   return (
     <>
       <iframe
@@ -511,7 +550,7 @@ function BridgedFrame({
         sandbox={PRINTABLE.has(content.kind) ? "allow-scripts allow-modals" : "allow-scripts"}
         referrerPolicy="no-referrer"
         style={{ colorScheme: scheme }}
-        srcDoc={withCsp(content.page)}
+        {...(staged === undefined ? { srcDoc: page } : staged === null ? {} : { src: staged })}
       />
       {asking !== null && (
         <Confirm

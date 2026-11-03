@@ -14,6 +14,8 @@ interface Props {
   working?: boolean;
   // Sets where in its cycle the sprite starts, such as the pixie's id.
   phaseKey?: string;
+  // Blinks now and then while it sits still, as the desktop pill's idle Nightshade (B117).
+  blink?: boolean;
 }
 
 // A row's run of cells of one code, drawn as one rect so no seams show between them.
@@ -42,9 +44,17 @@ function runsOf(rows: readonly string[]): Run[] {
  * At work it hops a cell up and blinks on the stylesheet's step keyframes, drawing the
  * hop above its box so nothing around it moves; a blink covers the eyes in the body colour.
  */
-export function Sprite({ mascot, color, size, working = false, phaseKey = "" }: Props) {
+export function Sprite({
+  mascot,
+  color,
+  size,
+  working = false,
+  phaseKey = "",
+  blink = false,
+}: Props) {
   const reduced = useReducedMotion();
   const moving = working && !reduced;
+  const blinking = blink && !moving && !reduced;
   const runs = runsOf(MASCOT_SPRITES[mascot]);
   const rect = ({ x, y, width }: Run, fill: string, opacity: number) => (
     <rect
@@ -64,7 +74,7 @@ export function Sprite({ mascot, color, size, working = false, phaseKey = "" }: 
   const lids = runs.filter((run) => run.code === "e").map((run) => rect(run, color, 1));
   return (
     <svg
-      className={moving ? "pxs pxwork" : "pxs"}
+      className={moving ? "pxs pxwork" : blinking ? "pxs pxblinks" : "pxs"}
       style={
         moving ? ({ "--pxph": `-${String(phaseOffset(phaseKey))}ms` } as CSSProperties) : undefined
       }
@@ -78,7 +88,7 @@ export function Sprite({ mascot, color, size, working = false, phaseKey = "" }: 
     >
       <g className="pxhop">
         {cells}
-        {moving && <g className="pxlid">{lids}</g>}
+        {(moving || blinking) && <g className="pxlid">{lids}</g>}
       </g>
     </svg>
   );

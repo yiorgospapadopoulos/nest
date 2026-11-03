@@ -1,0 +1,1963 @@
+/* The desktop window (B117): the Mac's layout and sizes (plans/b117/mockup) over the phone
+   app's components and the generated tokens. The phone's sizes are in rem of a 17 px root;
+   a smaller root brings its text to the Mac's 13 px, and the variables below the rest. */
+html.desk {
+  font-size: 13.6px;
+  --sf: "Inter Variable", Inter, "Ubuntu", Cantarell, system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Ubuntu Mono", "DejaVu Sans Mono", ui-monospace, monospace;
+  --fs-title: 13px;
+  --fs-body: 12px;
+  --fs-meta: 11px;
+  --fs-label: 11.5px;
+  --fs-micro: 10px;
+  --row: 28px;
+  --sat: 0px;
+  --sab: 0px;
+  --dk-tabs: 40px;
+  --dk-status: 30px;
+  --dk-head: 40px;
+  --dk-line: var(--mac-divider);
+  --dk-sel: var(--mac-sidebar-row-focused);
+  --dk-open: var(--mac-sidebar-row-open);
+  --dk-side: color-mix(in srgb, var(--bg) 96%, var(--t1));
+  /* The Mac's scanlines (Theme/Surfaces.swift): a 1 point line every 3 points. One tile
+     per period, a whole number of device pixels each, so the lines stay crisp; a repeating
+     gradient blurred into soft bands in WebKit. */
+  --dk-scan: linear-gradient(var(--scan) 0 var(--dk-scan-line), transparent var(--dk-scan-line));
+  --dk-scan-line: 1px;
+  --dk-scan-size: 100% calc(var(--dk-scan-line) * 3);
+  --dk-dim: color-mix(in srgb, var(--bg) 45%, transparent);
+  /* Selected tabs and segments (AccentColors.selection): graphite's own fill, another
+     accent at 16 percent. */
+  --dk-asel: var(--mac-selection);
+}
+html.desk[data-accent]:not([data-accent="graphite"]) {
+  --dk-asel: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* At a fractional scale a point is no whole number of device pixels: a 1 device pixel line,
+   about 3 points apart. */
+@media (min-resolution: 1.2dppx) and (max-resolution: 1.3dppx) {
+  html.desk {
+    --dk-scan-line: 0.8px;
+    --dk-scan-size: 100% 3.2px;
+  }
+}
+@media (min-resolution: 1.4dppx) and (max-resolution: 1.6dppx) {
+  html.desk {
+    --dk-scan-line: calc(2px / 3);
+    --dk-scan-size: 100% calc(10px / 3);
+  }
+}
+@media (min-resolution: 1.7dppx) and (max-resolution: 1.8dppx) {
+  html.desk {
+    --dk-scan-line: calc(4px / 7);
+    --dk-scan-size: 100% calc(20px / 7);
+  }
+}
+html.desk body {
+  background: var(--bg);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Text people read or type can be selected; the window's chrome cannot. */
+html.desk :is(.tr, .md, input, textarea, pre, code, .dk-run, .xterm, .nexp) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dk,
+.dk-win,
+.dk-notice {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+}
+.dk-notice .center {
+  flex: 1;
+}
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+}
+html.desk button {
+  cursor: default;
+}
+/* WebKitGTK draws an unstyled button with the GTK theme's bevel. Every button starts
+   flat; :where keeps this below any component's own class. */
+:where(html.desk) :where(button, input, select, textarea) {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  color: inherit;
+}
+:where(html.desk) :where(button) {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+/* A pane's fit (layout/paneFit.ts): the composer's place shows its icon only, the context
+   goes, then the selectors take short labels; none ever truncates to a stub. */
+.dk-pane .crow .qt {
+  flex: none;
+}
+.dk-pane[data-fit-place="icon"] .crow .chip > span {
+  display: none;
+}
+.dk-pane[data-fit-context="hidden"] .crow .qt.ctx {
+  display: none;
+}
+.dk-pane[data-fit-pr="hidden"] .ch-h .prchip {
+  display: none;
+}
+.dk-pane[data-fit-compact] .qtl[data-short] {
+  font-size: 0;
+}
+.dk-pane[data-fit-compact] .qtl[data-short]::after {
+  content: attr(data-short);
+  font-size: var(--fs-meta);
+}
+
+/* Tab strip: the window's title bar (frame A). */
+.dk-tabs {
+  height: var(--dk-tabs);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--dk-line);
+  background: var(--bg);
+}
+/* Each side of the strip (layout/stripFit.ts): the right keeps its size and always shows;
+   the left's tabs shrink, keep left of the pill while there is room, and then scroll. */
+.dk-tleft,
+.dk-tright {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+/* The Mac's tabs stand on the strip's bottom edge (TabStrip.swift); the rest is centred on
+   them. */
+.dk-tabs > .dk-tleft,
+.dk-tabs > .dk-tright {
+  align-self: stretch;
+  padding-top: calc(var(--dk-tabs) - 1px - 30px);
+}
+.dk-tabs > .dk-tleft > .dk-tablist {
+  align-self: stretch;
+  align-items: flex-end;
+}
+.dk-tablist > .dk-sep {
+  align-self: center;
+}
+.dk-tleft {
+  overflow: hidden;
+}
+.dk-tright {
+  flex: none;
+}
+.dk-tablist {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+.dk-tablist.scrolls {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dk-tablist.scrolls::-webkit-scrollbar {
+  display: none;
+}
+/* An end with more tabs beyond it fades out. */
+.dk-tablist.scrolls[data-more-right] {
+  mask-image: linear-gradient(to left, transparent, #000 28px);
+}
+.dk-tablist.scrolls[data-more-left] {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+.dk-tablist.scrolls[data-more-left][data-more-right] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 28px,
+    #000 calc(100% - 28px),
+    transparent
+  );
+}
+.dk-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-mac-row) var(--radius-mac-row) 0 0;
+  background: transparent;
+  color: var(--t2);
+  font-size: var(--fs-body);
+  white-space: nowrap;
+  flex: none;
+}
+.dk-tab:hover {
+  background: var(--mac-soft);
+}
+.dk-tab.on {
+  background: var(--dk-asel);
+  color: var(--t1);
+}
+.dk-proj.dk-tab,
+.dk-tab.dk-proj {
+  width: 180px;
+  padding: 0 10px 0 0;
+  position: relative;
+  transition: transform 0.15s;
+}
+.dk-tabb {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 0 0 10px;
+  /* At the smallest width what does not fit is cut, not drawn over the close button. */
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.dk-tname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-proj .dk-tname {
+  flex: 1;
+  text-align: left;
+}
+.dk-tcount {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--wait);
+  font-weight: 600;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+.dk-tclose {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--t3);
+}
+.dk-tclose .ic {
+  width: 11px;
+  height: 11px;
+}
+.dk-tclose.hover {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  visibility: hidden;
+}
+.dk-tab:hover .dk-tclose.hover {
+  visibility: visible;
+}
+.dk-tab:hover:has(.dk-tclose.hover) .dk-tabb > :last-child:not(.dk-tname) {
+  visibility: hidden;
+}
+.dk-tclose:hover {
+  background: var(--fill);
+}
+.dk-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--dk-line);
+  margin: 0 6px;
+  flex: none;
+}
+.dk-tadd {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  flex: none;
+}
+.dk-tadd:hover {
+  background: var(--mac-hover);
+}
+.dk-tadd .ic {
+  width: 13px;
+  height: 13px;
+}
+.dk-tabs .uchip {
+  margin-right: 10px;
+}
+.dk-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-mac-card);
+  background: var(--fill);
+  color: var(--t3);
+  font-size: 11.5px;
+  flex: none;
+}
+.dk-search .ic {
+  width: 14px;
+  height: 14px;
+}
+.dk-search kbd {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11px;
+}
+.dk-wbtns {
+  display: flex;
+  gap: 10px;
+  margin-left: 12px;
+  flex: none;
+}
+.dk-wbtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 99px;
+  border: 0;
+  padding: 0;
+  background: var(--fill);
+  color: var(--t1);
+  display: grid;
+  place-items: center;
+}
+.dk-wbtn:hover {
+  background: var(--fill-strong);
+}
+.dk-wbtn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+.dk-wbtn .ic {
+  width: 12px;
+  height: 12px;
+}
+
+/* The body: sidebar, workspace or board, activity panel. */
+.dk-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.dk-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+/* Sidebar. */
+.dk-side {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 0;
+  background: var(--dk-side);
+  border-right: 1px solid var(--dk-line);
+  overflow: hidden;
+}
+.dk-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 8px;
+}
+.dk-scroll::-webkit-scrollbar {
+  display: none;
+}
+.dk-proj {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  min-width: 0;
+}
+.dk-pname {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.dk-pbranch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--t2);
+  font-size: 11.5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dk-fork {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  fill: none;
+  stroke: var(--t3);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.dk-act {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--t1);
+  font-size: var(--fs-body);
+  text-align: left;
+}
+.dk-act:hover {
+  background: var(--mac-hover);
+}
+.dk-act .ic {
+  width: 12px;
+  height: 12px;
+  color: var(--t2);
+}
+.dk-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 16px 4px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t2);
+}
+.dk-h > span {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.dk-fold {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.dk-fold .ic {
+  width: 11px;
+  height: 11px;
+  transition: transform 0.2s;
+}
+.dk-fold[aria-expanded="true"] .ic {
+  transform: rotate(90deg);
+}
+.dk-row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 5px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--mac-sidebar-text-closed);
+  font-size: var(--fs-body);
+  text-align: left;
+}
+/* Hover takes the open fill, as the Mac's sidebarRow. */
+.dk-row:hover {
+  background: var(--dk-open);
+}
+.dk-row.focused {
+  background: var(--dk-sel);
+  color: var(--t1);
+}
+.dk-row.open {
+  background: var(--dk-open);
+  color: var(--mac-sidebar-text-open);
+}
+.dk-row > .dot {
+  margin-top: 6px;
+}
+.dk-rbody {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.dk-rt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-rb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--t2);
+}
+.dk-br {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: color-mix(in srgb, var(--lane) 85%, var(--t1));
+}
+.dk-pin {
+  width: 11px;
+  height: 11px;
+  color: var(--t3);
+  margin-left: 4px;
+}
+.dk-note {
+  color: var(--t3);
+  white-space: nowrap;
+}
+.dk-empty {
+  margin: 0;
+  padding: 18px 16px;
+  color: var(--t3);
+  font-size: var(--fs-meta);
+  text-align: center;
+}
+/* The chat's tree (ChatTree): the phone's lines at the Mac's row height. */
+.dk-side .ctree {
+  margin: -2px 0 2px;
+  padding-left: 23px;
+  --ct-mid: 13px;
+}
+.dk-side .ctree::before {
+  left: 23px;
+  top: -6px;
+  height: 6px;
+}
+.dk-side .ctree li li {
+  --ct-mid: 13px;
+}
+.dk-side .ctg {
+  line-height: 22px;
+  font-size: var(--fs-meta);
+}
+.dk-side .ctb {
+  min-height: 24px;
+  font-size: 11.5px;
+  padding-right: 8px;
+}
+.dk-side .ctb:last-child {
+  padding-right: 8px;
+}
+.dk-side .ctd,
+.dk-side .ctw {
+  font-size: 11px;
+}
+.dk-side .ctd {
+  font-family: var(--mono);
+}
+.dk-side .ctm {
+  width: 24px;
+  height: 24px;
+  visibility: hidden;
+}
+.dk-side .ctr:hover .ctm {
+  visibility: visible;
+}
+.dk-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 3;
+}
+.dk-rail {
+  flex: none;
+  width: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 10px 0 0;
+  border: 0;
+  border-right: 1px solid var(--dk-line);
+  background: var(--dk-side);
+}
+.dk-rrail {
+  border-right: 0;
+  border-left: 1px solid var(--dk-line);
+}
+.dk-rdot {
+  height: 14px;
+  margin: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-mac-chip);
+}
+.dk-rdot.open {
+  background: var(--dk-sel);
+}
+
+/* Workspace. */
+.dk-work {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background-image: var(--dk-scan);
+  background-size: var(--dk-scan-size);
+}
+.dk-pane {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dk-pane.dim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--dk-dim);
+  pointer-events: none;
+  z-index: 5;
+}
+.dk-pane .push,
+.dk-start .push {
+  position: absolute;
+  inset: 0;
+  z-index: auto;
+  padding: 0;
+  animation: none;
+  background: transparent;
+}
+.dk-pane .ch-h {
+  padding: 0 8px 0 4px;
+  background: transparent;
+  border-bottom-color: var(--dk-line);
+}
+.dk-pane .ch-r1 {
+  min-height: var(--dk-head);
+  gap: 6px;
+}
+.dk-pane .ch-t h2 {
+  font-size: var(--fs-body);
+}
+.dk-pane .ch-h .ib {
+  width: 26px;
+  height: 26px;
+}
+.dk-pane .ch-h .ib .ic {
+  width: 15px;
+  height: 15px;
+}
+.dk-ticon {
+  width: 14px;
+  height: 14px;
+  color: var(--t3);
+  flex: none;
+}
+/* A new chat's own bar has the phone's Back, which the pane does not need. */
+.dk-pane .nc > .ch-h .back,
+.dk-start .nc > .ch-h .back {
+  display: none;
+}
+.dk-start {
+  position: absolute;
+  inset: 0;
+}
+/* Linux has no system dictation yet: no mic anywhere in the app (user, 2026-11-03). */
+.dk button.qb[aria-label="Dictate"] {
+  display: none;
+}
+
+/* The empty workspace (StartSession): docked at the bottom, 28 from the sides and 18 from
+   the bottom; the column beside it from 760 wide. */
+.dk-startv {
+  position: absolute;
+  inset: 0;
+  container-type: inline-size;
+  overflow: hidden;
+}
+.dk-startv-in {
+  position: absolute;
+  inset: auto 28px 18px;
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+.dk-startv-main {
+  flex: 1;
+  min-width: 0;
+}
+.dk-startv-main .comp {
+  padding: 0;
+  background: transparent;
+}
+.dk-startv-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 6px;
+  font-size: var(--fs-label);
+  color: var(--t2);
+}
+.dk-startv-q {
+  margin: 0;
+  padding: 0 12px 16px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+  color: var(--t1);
+  text-wrap: balance;
+}
+.dk-startv-col {
+  flex: none;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+}
+@container (max-width: 759px) {
+  .dk-startv-col {
+    display: none;
+  }
+}
+.dk-startv-lbl {
+  margin: 0;
+  padding: 0 8px 5px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t3);
+}
+.dk-startv-row + .dk-startv-lbl {
+  padding-top: 14px;
+}
+.dk-startv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-mac-row);
+  text-align: left;
+  color: var(--t1);
+}
+.dk-startv-row:hover {
+  background: var(--soft);
+}
+.dk-startv-row > .dot {
+  margin-top: 6px;
+  flex: none;
+}
+.dk-startv-t {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.dk-startv-t > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dk-startv-m,
+.dk-startv-a {
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.dk-startv-a {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+/* The Pixies tab's empty workspace (PixiesView.swift). */
+.dk-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--t2);
+}
+.dk-empty-state h2,
+.dk-empty-state h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--t1);
+}
+.dk-empty-state p {
+  margin: 0;
+  max-width: 340px;
+}
+.dk-first {
+  gap: 0;
+}
+.dk-first h2 {
+  margin-top: 16px;
+}
+.dk-first p {
+  margin-top: 6px;
+}
+.dk-first > .b {
+  margin-top: 16px;
+}
+.dk-es-hint {
+  margin-top: 16px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.dk-first .dk-es-row {
+  margin-top: 8px;
+}
+.dk-es-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.dk-es-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--t3);
+}
+/* The starters show in the empty workspace, as on the Mac, not in the list too. */
+.dk-pxside .pxtpl {
+  display: none;
+}
+.dk-gutter {
+  position: absolute;
+  background: var(--dk-line);
+  pointer-events: none;
+}
+.dk-grab {
+  position: absolute;
+  z-index: 6;
+}
+.dk-grab.row {
+  cursor: col-resize;
+}
+.dk-grab.col {
+  cursor: row-resize;
+}
+.dk-drop {
+  position: absolute;
+  z-index: 7;
+  border-radius: var(--radius-mac-card);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+  pointer-events: none;
+}
+
+/* Tool panes. */
+.dk-tool {
+  display: flex;
+  flex-direction: column;
+}
+/* xterm.js fills the pane inside its padding; FitAddon measures this box. */
+.dk-term {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 4px 6px 14px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.dk-term .xterm {
+  height: 100%;
+}
+.dk-term .xterm-viewport {
+  scrollbar-width: thin;
+}
+.dk-run {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font: 12px/1.45 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--t1);
+  background: var(--bg);
+  outline: none;
+}
+.dk-pmenu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t1);
+}
+.dk-pmenu:hover {
+  background: var(--mac-hover);
+}
+.dk-pchev {
+  width: 11px;
+  height: 11px;
+  color: var(--t3);
+}
+.dk-browser {
+  padding: 10px 12px;
+}
+.dk-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-mac-card);
+  background: var(--fill);
+}
+.dk-url input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 11.5px;
+}
+.dk-url .ib {
+  width: 24px;
+  height: 24px;
+}
+.dk-url .ib .ic {
+  width: 14px;
+  height: 14px;
+}
+
+/* The phone's controls at desktop sizes. */
+html.desk .b {
+  height: 26px;
+  min-width: 0;
+  padding: 0 11px;
+  font-size: 11.5px;
+}
+html.desk .b::before {
+  height: 100%;
+}
+html.desk .ib {
+  width: 30px;
+  height: 30px;
+}
+html.desk .ib .ic {
+  width: 16px;
+  height: 16px;
+}
+
+/* Activity panel. */
+.dk-right {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--dk-side);
+  border-left: 1px solid var(--dk-line);
+  overflow: hidden;
+}
+.dk-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dk-card.open {
+  flex: 1 1 0;
+}
+.dk-card + .dk-card {
+  border-top: 1px solid var(--dk-line);
+}
+.dk-ch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  font-size: var(--fs-meta);
+  text-align: left;
+}
+.dk-n {
+  font-variant-numeric: tabular-nums;
+}
+.dk-n.wait {
+  color: var(--wait);
+  font-weight: 600;
+}
+.dk-cv {
+  margin-left: auto;
+  width: 12px;
+  height: 12px;
+  color: var(--t3);
+  transform: rotate(-90deg);
+}
+.dk-ch[aria-expanded="true"] .dk-cv {
+  transform: none;
+}
+.dk-cb {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.dk-right .nrow {
+  grid-template-columns: 7px minmax(0, 1fr) 22px;
+  gap: 0 9px;
+  min-height: 0;
+  padding: 6px 4px 6px 14px;
+}
+.dk-right .nrow > .dot {
+  margin-top: 6px;
+}
+.dk-right .nbody {
+  padding-top: 0;
+}
+.dk-right .nname {
+  font-weight: 600;
+}
+.dk-right .nname::before {
+  height: 100%;
+}
+.dk-right .nchev {
+  width: 22px;
+  height: 22px;
+  margin-top: 0;
+}
+.dk-right .nchev .ic {
+  width: 12px;
+  height: 12px;
+}
+.dk-right .nexp {
+  margin: 0 14px 8px 30px;
+}
+.dk-card-goals .goals {
+  margin-top: 0;
+}
+.dk-card-goals .goals > .lbl {
+  display: none;
+}
+.dk-right .steps {
+  margin-left: 30px;
+}
+/* A done step also matches the sheets' Done button (chat.css .done); keep it a step. */
+.steps li.done {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* Status bar. */
+.dk-status {
+  height: var(--dk-status);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-top: 1px solid var(--dk-line);
+  color: var(--t2);
+  font-size: 11.5px;
+  background: var(--bg);
+}
+.dk-tri,
+.dk-sbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--t2);
+  font-size: 11.5px;
+}
+.dk-tri .ic {
+  width: 10px;
+  height: 10px;
+}
+.dk-sbtn .ic {
+  width: 13px;
+  height: 13px;
+}
+.dk-tri:hover,
+.dk-sbtn:hover {
+  background: var(--mac-hover);
+}
+.dk-seg {
+  display: flex;
+  gap: 2px;
+  margin: 0 auto;
+}
+.dk-seg button {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  font-size: 11.5px;
+}
+.dk-seg button.on {
+  background: var(--fill);
+  color: var(--t1);
+}
+.dk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--t1);
+  color: var(--bg);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Board. */
+.dk-board {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  background-image: var(--dk-scan);
+  background-size: var(--dk-scan-size);
+}
+.dk-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dk-col + .dk-col {
+  border-left: 1px solid var(--dk-line);
+}
+.dk-colh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin: 0;
+  padding: 0 14px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  color: var(--t2);
+}
+.dk-colh .dot.s-run {
+  animation: none;
+}
+.dk-colb {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 10px 10px;
+}
+.dk-bcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+.dk-bst {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.t-wait {
+  color: var(--wait-t);
+}
+.t-rev {
+  color: var(--rev-t);
+}
+.t-fail {
+  color: var(--fail-t);
+}
+.dk-bt {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.dk-bline,
+.dk-bs,
+.dk-bpr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.dk-bline {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.dk-bopen {
+  margin-top: 3px;
+}
+
+/* Overlays: settings window and palette. */
+.dk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 25%, transparent);
+}
+.dk-setwin {
+  width: min(1000px, calc(100vw - 80px));
+  height: min(680px, calc(100vh - 80px));
+  display: flex;
+  border-radius: var(--radius-mac-sheet);
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 18px 50px rgba(0, 0, 0, 0.3);
+}
+.dk-snav {
+  width: 250px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  background: var(--dk-side);
+  border-right: 1px solid var(--dk-line);
+  overflow-y: auto;
+}
+.dk-sfield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-mac-card);
+  background: var(--fill);
+  color: var(--t3);
+}
+.dk-sfield .ic {
+  width: 13px;
+  height: 13px;
+}
+.dk-sfield input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 11.5px;
+}
+.dk-si {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t1);
+  font-size: 14px;
+  text-align: left;
+}
+.dk-si:hover {
+  background: var(--mac-hover);
+}
+.dk-si.on {
+  background: var(--dk-sel);
+}
+.dk-si .ic {
+  width: 17px;
+  height: 17px;
+  color: var(--t2);
+  flex: none;
+}
+.dk-snew {
+  margin-left: auto;
+  color: var(--link);
+  font-size: 11px;
+}
+.dk-sh {
+  margin: 12px 10px 4px;
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--t2);
+}
+.dk-smain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dk-shead {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 0 24px;
+  border-bottom: 1px solid var(--dk-line);
+}
+.dk-shead h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.dk-shead > .ic {
+  width: 18px;
+  height: 18px;
+  color: var(--t2);
+}
+.dk-sbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px 24px;
+}
+.dk-kbd {
+  font: 12px var(--sf);
+  color: var(--t2);
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--fill);
+}
+.dk-palo {
+  place-items: start center;
+  padding-top: 96px;
+}
+.dk-palette {
+  width: min(620px, calc(100vw - 60px));
+  max-height: min(520px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-mac-sheet);
+  overflow: hidden;
+  background: var(--sheet);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 18px 50px rgba(0, 0, 0, 0.3);
+}
+.dk-pfield {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--dk-line);
+  color: var(--t3);
+}
+.dk-pfield .ic {
+  width: 15px;
+  height: 15px;
+}
+.dk-pfield input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+}
+.dk-plist {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.dk-pg {
+  margin: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--t3);
+}
+.dk-pi {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-mac-row);
+  background: transparent;
+  text-align: left;
+}
+.dk-pi.on {
+  background: var(--dk-asel);
+}
+.dk-pglyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--t2);
+}
+.dk-pglyph .ic {
+  width: 13px;
+  height: 13px;
+}
+.dk-phit {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.dk-phit .dk-psnip {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.dk-phit .dk-psnip b {
+  font-weight: 600;
+}
+.dk-phit .dk-ps {
+  margin: 0;
+  max-width: none;
+}
+.dk-pt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-ps {
+  margin-left: auto;
+  flex: none;
+  max-width: 45%;
+  color: var(--t3);
+  font-size: var(--fs-meta);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The phone's sheets and action sheets as the Mac's centred sheets and menus. */
+html.desk .scrim {
+  background: color-mix(in srgb, var(--bg) 25%, transparent);
+}
+html.desk .sheet {
+  left: 50%;
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  width: min(640px, calc(100vw - 80px));
+  max-height: calc(100vh - 80px);
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-mac-sheet);
+  padding-bottom: 0;
+  animation: none;
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 18px 50px rgba(0, 0, 0, 0.3);
+}
+html.desk .sheet.full {
+  top: 50%;
+  width: min(1000px, calc(100vw - 80px));
+  height: calc(100vh - 80px);
+  border-radius: var(--radius-mac-sheet);
+}
+html.desk .grab {
+  display: none;
+}
+html.desk .asheet {
+  left: 50%;
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  width: 320px;
+  transform: translate(-50%, -50%);
+  animation: none;
+}
+html.desk .asi {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: var(--fs-body);
+}
+
+/* The pixie pill's window (desktop.html?view=pill), as the Mac's pill (B114): even sides
+   and a dot in the middle. Motion is hard steps like the sprites', and none under Reduce
+   Motion. */
+html.pill-page,
+html.pill-page body {
+  background: transparent;
+}
+.dk-pill {
+  --pill-orange: #f5a524;
+  --pill-green: #4cc27e;
+  --pill-spark: #ffe08a;
+  position: fixed;
+  inset: 0 0 auto;
+  margin: 0 auto;
+  border-radius: 17px;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  /* The strip grows into the list in place on the Mac's curve (pillMotion.ts, inline). */
+}
+.dk-pill.open {
+  border-radius: 20px;
+}
+/* The whole strip takes clicks (IslandView.mouseUp): a figure, else the strip. Its sides
+   keep their place while the pill widens into the list, as the Mac's. The scene places
+   each sprite (pillScene.ts): its button is the Mac's hit, a slot wide and the strip's
+   height, from 1 px left of the sprite. */
+.dk-pstrip {
+  position: relative;
+  height: 34px;
+  margin: 0 auto;
+}
+.dk-pdot {
+  position: absolute;
+  left: calc(50% - 2px);
+  top: 15px;
+  width: 4px;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.dk-pfig {
+  position: absolute;
+  top: 0;
+  width: 30px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.dk-pspr {
+  position: absolute;
+  left: 1px;
+  width: 28px;
+  height: 28px;
+  transform-origin: 50% 50%;
+}
+.dk-pspr > svg {
+  display: block;
+}
+/* Flights under the strip, from the pill's centre, and the sparks and trails over all. */
+.dk-pfree {
+  position: fixed;
+  left: 50%;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.dk-pfree .dk-pspr {
+  left: auto;
+}
+.dk-pparticles {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* The Mac's badge: 9 px, centred 3 px in from the sprite's right and 4 px up from its
+   foot, moving with it; white on orange or green. */
+.dk-pbang,
+.dk-ptick {
+  position: absolute;
+  left: 20.5px;
+  top: 19.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 7px;
+  line-height: 1;
+  font-weight: 800;
+  color: #fff;
+  background: var(--pill-orange);
+}
+.dk-ptick {
+  background: #2f9e44;
+}
+/* Under Reduce Motion a working pixie keeps still, with fireflies at its foot. */
+.dk-prun {
+  position: absolute;
+  right: -1px;
+  bottom: 0;
+  display: flex;
+}
+.dk-prun:empty {
+  display: none;
+}
+/* The +N beside a side's shown pixies (IslandScene.drawCounts), its hit the strip's height. */
+.dk-pmore {
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 34px;
+  padding: 0 0 0 3px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: 700 11px/1 var(--mono);
+  color: #d8d8de;
+}
+.dk-pmore.alert {
+  color: var(--pill-orange);
+}
+.dk-pteam {
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+}
+/* Each state's motion, from the Mac's IslandScene.pose (a unit is 2 px at 28 px).
+   Needs you, failed or interrupted: two quick jumps every 1.5 s and a blink after them, an
+   orange glow pulsing behind, and a ring growing from the badge every 1.4 s. */
+.dk-pfig.alert .dk-pspr > svg,
+.dk-pfig.alert .dk-pspr > .dk-pteam {
+  animation: dk-alert 1.5s linear infinite;
+}
+.dk-pfig.alert .dk-pspr::before {
+  content: "";
+  position: absolute;
+  left: -8.5px;
+  top: -7px;
+  width: 45px;
+  height: 45px;
+  border-radius: 99px;
+  background: radial-gradient(closest-side, rgba(245, 165, 36, 0.44), rgba(245, 165, 36, 0));
+  animation: dk-glow 754ms ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.dk-pfig.alert .dk-pbang::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.3px solid var(--pill-orange);
+  border-radius: 99px;
+  animation: dk-ring 1.4s linear infinite;
+}
+@keyframes dk-alert {
+  0%,
+  20%,
+  40%,
+  100% {
+    transform: none;
+    animation-timing-function: ease-out;
+  }
+  10%,
+  30% {
+    transform: translateY(-3px);
+    animation-timing-function: ease-in;
+  }
+}
+@keyframes dk-glow {
+  from {
+    opacity: 0.36;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dk-ring {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.33);
+    opacity: 0;
+  }
+}
+/* Seen: calm, a pixel up and down every 600 ms. */
+.dk-pfig.s-seen .dk-pspr > svg,
+.dk-pfig.s-seen .dk-pspr > .dk-pteam {
+  animation: dk-seen 1.2s step-end infinite;
+}
+@keyframes dk-seen {
+  0% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+/* Done: it lands with a spin (a flip every 130 ms, growing a little) and sparks, then hops
+   every 2.6 s with a sparkle while the green tick waits. */
+.dk-pfig.s-done .dk-pspr > svg,
+.dk-pfig.s-done .dk-pspr > .dk-pteam {
+  animation:
+    dk-land 520ms step-end 1,
+    dk-donehop 2.6s linear 520ms infinite;
+}
+.dk-psparks {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 2px;
+  height: 2px;
+  background: var(--pill-spark);
+  opacity: 0;
+  animation:
+    dk-sparks 520ms ease-out 1,
+    dk-sparkle 2.6s linear 520ms infinite;
+  pointer-events: none;
+}
+@keyframes dk-land {
+  0% {
+    transform: scale(1.05);
+  }
+  25% {
+    transform: scale(-1.11, 1.11);
+  }
+  50% {
+    transform: scale(1.11);
+  }
+  75% {
+    transform: scale(-1.05, 1.05);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes dk-donehop {
+  0%,
+  11.5%,
+  100% {
+    transform: none;
+    animation-timing-function: ease-out;
+  }
+  5.8% {
+    transform: translateY(-3px);
+    animation-timing-function: ease-in;
+  }
+}
+@keyframes dk-sparks {
+  0% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 0 var(--pill-spark),
+      0 0 0 0 var(--pill-spark),
+      0 0 0 0 var(--pill-spark),
+      0 0 0 0 var(--pill-spark);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      -12px -9px 0 0 var(--pill-spark),
+      12px -9px 0 0 var(--pill-spark),
+      -10px 7px 0 0 var(--pill-spark),
+      10px 7px 0 0 var(--pill-spark);
+  }
+}
+@keyframes dk-sparkle {
+  0%,
+  12%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+  3% {
+    opacity: 1;
+    transform: translate(-6px, -6px);
+  }
+  11% {
+    transform: translate(-6px, -9px);
+  }
+}
+/* Idle (Nightshade, or Bluebell at rest): a blink every 2.6 s, and every 7 s a short
+   lift. Asleep: eyes shut, a pixel up and down every 1.1 s. */
+.pxblinks .pxlid {
+  animation-name: dk-blink;
+  animation-duration: 2600ms;
+  animation-timing-function: step-end;
+  animation-iteration-count: infinite;
+}
+@keyframes dk-blink {
+  0% {
+    opacity: 1;
+  }
+  6.15% {
+    opacity: 0;
+  }
+}
+.dk-pfig.idle .dk-pspr > svg {
+  animation: dk-lift 7s step-end infinite;
+}
+@keyframes dk-lift {
+  0% {
+    transform: none;
+  }
+  88.6% {
+    transform: translateY(-2px);
+  }
+}
+.dk-pfig.asleep .pxlid {
+  animation: none;
+  opacity: 1;
+}
+.dk-pfig.asleep .dk-pspr > svg {
+  animation: dk-sleep 2.2s step-end infinite;
+}
+@keyframes dk-sleep {
+  0% {
+    transform: translateY(-1px);
+  }
+  50% {
+    transform: none;
+  }
+}
+/* Asleep: a small z floats up from Nightshade. */
+.dk-pz {
+  position: absolute;
+  left: 23px;
+  top: 3px;
+  font: normal 700 8px/1 var(--mono);
+  color: #c9c3ff;
+  animation: dk-z 2.4s steps(4) infinite;
+}
+.dk-pz::before {
+  content: "z";
+}
+@keyframes dk-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, -6px);
+  }
+}
+.dk-plist2 {
+  list-style: none;
+  margin: 0;
+  padding: 6px 10px 12px;
+  overflow-y: auto;
+  box-sizing: content-box;
+  /* The Mac's divider under the strip, 14 in from each side. */
+  background: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) 14px 0 /
+    calc(100% - 28px) 1px no-repeat;
+  /* Shows from 45% open, as the Mac's listAlpha (pillMotion.ts, inline). */
+  opacity: 0;
+}
+.dk-pill.open .dk-plist2 {
+  opacity: 1;
+}
+.dk-prow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 46px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.dk-prow:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+.dk-prb {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+/* The Mac's IslandRow: 13 point names, 12 point activity and status. */
+.dk-prn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4f4f7;
+}
+.dk-pra {
+  color: #8f8f99;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-prw {
+  color: #9a9aa6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* The row's status word in its colour, as the Mac's IslandRow. */
+.dk-prw.t-done {
+  color: #46a758;
+}
+.dk-prw.t-needsYou,
+.dk-prw.t-seen,
+.dk-prw.t-failed,
+.dk-prw.t-interrupted {
+  color: var(--pill-orange);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dk-pill,
+  .dk-pill .dk-plist2 {
+    transition: none !important;
+  }
+  .dk-pill *,
+  .dk-pill *::before,
+  .dk-pill *::after {
+    animation: none !important;
+  }
+}

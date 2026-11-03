@@ -109,6 +109,12 @@ class CodexRpc:
             return await answer
         finally:
             self._pending.pop(request_id, None)
+            # A server that ended while the request was written failed the answer too;
+            # the write's error is the one raised, so the answer's counts as read.
+            if answer.done() and not answer.cancelled():
+                answer.exception()
+            else:
+                answer.cancel()
 
     async def notify(self, method: str, params: JsonObject) -> None:
         await self._write({"method": method, "params": params})

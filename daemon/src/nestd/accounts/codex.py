@@ -18,15 +18,23 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from pydantic import BaseModel, JsonValue
 
 from nestd.clock import Clock
 from nestd.engine.codex import CodexStatus
 from nestd.errors import ConflictError, NestError
-from nestd.providers.codex_engine import CodexFetchError, ask_codex, initialize, read_login
+from nestd.providers.codex_engine import (
+    CodexFetchError,
+    CodexHomeMissingError,
+    ask_codex,
+    home_missing,
+    initialize,
+    read_login,
+)
 from nestd.providers.codex_items import text
-from nestd.providers.codex_process import CodexLaunch, TransportFactory
+from nestd.providers.codex_process import CODEX_HOME_ENV, CodexLaunch, TransportFactory
 from nestd.providers.codex_rpc import CodexClosedError, CodexRpc, CodexRpcError, JsonObject
 
 logger = logging.getLogger(__name__)
@@ -134,10 +142,15 @@ class CodexAccount:
             async def on_closed(_reason: str) -> None:
                 _end(outcome, ENDED)
 
+            launch = self._launch()
             try:
-                rpc = CodexRpc(
-                    await self._transport(self._launch()), on_notification, refuse, on_closed
-                )
+                if home_missing(launch):
+                    # The first sign in: Codex keeps the login there, but will not start
+                    # on a home that is not there yet.
+                    await asyncio.to_thread(
+                        Path(launch.env[CODEX_HOME_ENV]).mkdir, mode=0o700, parents=True
+                    )
+                rpc = CodexRpc(await self._transport(launch), on_notification, refuse, on_closed)
             except Exception as error:
                 msg = f"Codex could not start signing in ({type(error).__name__})"
                 raise CodexAccountError(msg) from error
@@ -234,6 +247,8 @@ async def read_status(
     """Ask a short-lived app-server on the account's home who is signed in (B98)."""
     try:
         login = await ask_codex(transport, launch, read_login)
+    except CodexHomeMissingError:
+        return CodexAccountStatus(signed_in=False, email=None, plan=None, checked_at=clock.now())
     except CodexFetchError as error:
         return CodexAccountStatus(
             signed_in=None, email=None, plan=None, checked_at=clock.now(), error=str(error)

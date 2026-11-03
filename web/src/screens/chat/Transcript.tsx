@@ -60,6 +60,8 @@ import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { ScrollFollow } from "./scrollFollow.ts";
+import { VirtualItems } from "./VirtualItems.tsx";
+import { nearestItem, VIRTUAL_FROM } from "./virtualRows.ts";
 
 const WORKING = new Set<Session["state"]>(["starting", "running"]);
 
@@ -139,6 +141,11 @@ export function Transcript({
   const start = useMemo(() => turnStart(events ?? []), [events]);
   const thinking = session.id in state.thinking;
   const focused = useRef<number | null>(null);
+  // A long chat draws only the items near the screen (B117). It switches only while the
+  // reader is at the end, so their place never moves, and stays switched once it has.
+  const [windowed, setWindowed] = useState(false);
+  const virtual = windowed || (items.length >= VIRTUAL_FROM && !away);
+  if (virtual && !windowed) setWindowed(true);
   const spoken = useAnnouncement(items, loaded);
   // The user message whose actions are open, being rewound to, or edited after files changed.
   const [sheet, setSheet] = useState<
@@ -192,21 +199,13 @@ export function Transcript({
   // Once the focused event is on screen, stop following and show it highlighted.
   useLayoutEffect(() => {
     const el = box.current;
-    if (focus === null || focused.current === focus || el === null) return;
+    if (virtual || focus === null || focused.current === focus || el === null) return;
     const target = nearestItem(el, focus);
     if (target === null) return;
     focused.current = focus;
     follow.current.hold();
-    target.scrollIntoView({ block: "center" });
-    target.classList.add("hit");
-    target.addEventListener(
-      "animationend",
-      () => {
-        target.classList.remove("hit");
-      },
-      { once: true },
-    );
-  }, [focus, items.length]);
+    showHit(target);
+  }, [focus, items.length, virtual]);
 
   const calls: CallControls = { agentLive, running, stopper };
 
@@ -216,10 +215,23 @@ export function Transcript({
     setJumps((n) => n + 1);
   };
 
+  const itemOf = (item: TranscriptItem) => (
+    <Item
+      key={item.key}
+      item={item}
+      session={session}
+      running={running}
+      onActions={onActions}
+      onOpenPixie={onOpenPixie}
+      onOpenWork={onOpenWork}
+      onOpenChat={onOpenChat}
+    />
+  );
+
   return (
     <div className="ch-txw">
       <div
-        className="ch-tx"
+        className={virtual ? "ch-tx virt" : "ch-tx"}
         ref={box}
         onScroll={(event) => {
           const el = event.currentTarget;
@@ -250,18 +262,18 @@ export function Transcript({
         {/* Not a live region: it holds the ticking timer and streamed text. */}
         <div className="tx">
           <CallContext value={calls}>
-            {items.map((item) => (
-              <Item
-                key={item.key}
-                item={item}
-                session={session}
-                running={running}
-                onActions={onActions}
-                onOpenPixie={onOpenPixie}
-                onOpenWork={onOpenWork}
-                onOpenChat={onOpenChat}
+            {virtual ? (
+              <VirtualItems
+                items={items}
+                follow={follow}
+                focus={focus}
+                focused={focused}
+                onHit={showHit}
+                renderItem={itemOf}
               />
-            ))}
+            ) : (
+              items.map(itemOf)
+            )}
           </CallContext>
           {live && (
             <div className="m-a">
@@ -418,17 +430,17 @@ function WorkingLine({ thinking, thought, start }: WorkingProps) {
   );
 }
 
-/**
- * The item shown for an event: the last one at or before it, since a tool result shows
- * with its call.
- */
-function nearestItem(box: HTMLElement, eventId: number): HTMLElement | null {
-  let found: HTMLElement | null = null;
-  for (const node of box.querySelectorAll<HTMLElement>("[data-ev]")) {
-    if (Number(node.dataset.ev) > eventId) break;
-    found = node;
-  }
-  return found;
+/** Centres a search hit and highlights it until its animation ends. */
+function showHit(target: HTMLElement): void {
+  target.scrollIntoView({ block: "center" });
+  target.classList.add("hit");
+  target.addEventListener(
+    "animationend",
+    () => {
+      target.classList.remove("hit");
+    },
+    { once: true },
+  );
 }
 
 interface ItemProps {
