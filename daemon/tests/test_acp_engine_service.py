@@ -140,7 +140,7 @@ async def test_a_missing_engine_is_refused_and_starts_installing(rig: Rig) -> No
     await service.install.install()
 
     assert (await service.install.current()).state == "ready"
-    assert rig.npm.installs() == ["opencode-ai@1.19.4"]
+    assert rig.npm.installs() == ["opencode-ai@1.19.5"]
 
 
 async def test_a_terminal_engine_signed_out_is_refused_with_its_login_command(
@@ -218,7 +218,7 @@ async def test_the_model_list_comes_from_a_probe_and_is_kept(
     opencode_login(rig.tmp_path / "home" / ".local" / "share", '{"opencode": {"type": "api"}}')
     rig.active = RunAccount("opencode-main")
     seen: list[AcpLaunch] = []
-    answer = AcpProbe(models=FREE_MODELS, signed_in=True, agent_version="1.19.4", mcp_http=True)
+    answer = AcpProbe(models=FREE_MODELS, signed_in=True, agent_version="1.19.5", mcp_http=True)
     fake_probe(monkeypatch, answer, seen)
     service = rig.service(OPENCODE)
 
@@ -226,7 +226,7 @@ async def test_the_model_list_comes_from_a_probe_and_is_kept(
     listed = await service.models()
     again = await service.status()
 
-    assert (status.state, status.signed_in, status.version) == ("ready", True, "1.19.4")
+    assert (status.state, status.signed_in, status.version) == ("ready", True, "1.19.5")
     assert [model.value for model in listed.models] == ["opencode/big-pickle"]
     assert await service.default_model() == "opencode/big-pickle"
     assert again is status
