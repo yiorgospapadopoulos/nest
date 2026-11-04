@@ -7,6 +7,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
+import { engineUpdates } from "../../test/fixtures.ts";
 import { memoryStorage } from "../../test/render.tsx";
 import { browserBridge, type Bridge, type DaemonConnection } from "../bridge.ts";
 import { DesktopRoot } from "../DesktopApp.tsx";
@@ -137,6 +138,36 @@ describe("a relaunch", () => {
 });
 
 describe("a daemon lost while running", () => {
+  it("warns of nothing during a relaunch this app asked for", async () => {
+    const sockets = socketFactory();
+    const api = fakeApi();
+    api.checkUpdates.mockResolvedValue(
+      engineUpdates({
+        state: "ready",
+        engines: [{ id: "claude", name: "Claude Code", current: "2.1.317", new: "2.1.318" }],
+      }),
+    );
+    render(
+      <DesktopRoot
+        bridge={bridgeWith(() => Promise.resolve(DAEMON))}
+        open={() => ({ api, connect: sockets.connect })}
+        storage={memoryStorage}
+      />,
+    );
+    const relaunch = await screen.findByRole("button", { name: "Relaunch to update" });
+    act(() => {
+      sockets.last().open();
+    });
+    fireEvent.click(relaunch);
+    await screen.findByRole("button", { name: "Relaunching..." });
+
+    act(() => {
+      sockets.last().drop(1006);
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows the banner with Retry and recovers when the daemon answers", async () => {
     const api = fakeApi();
     const sockets = socketFactory();

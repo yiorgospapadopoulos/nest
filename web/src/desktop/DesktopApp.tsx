@@ -6,6 +6,7 @@ import { useStore } from "../store/context.ts";
 import { DRAFTS_KEY } from "../store/devicePrefs.ts";
 import { deviceStorage } from "../store/legacyKeys.ts";
 import { StoreProvider } from "../store/StoreProvider.tsx";
+import { connectionLost } from "../store/updates.ts";
 import { DesktopToast } from "./ui/Toast.tsx";
 import type { Bridge, DaemonConnection } from "./bridge.ts";
 import { ApiContext, BridgeContext } from "./context.ts";
@@ -280,7 +281,7 @@ function Notice({
 function DaemonBanner({ api, refresh }: { api: Api; refresh: Refresh }) {
   const { state, actions } = useStore();
   const offline = state.auth === "offline";
-  const lost = state.auth === "ready" && state.reconnecting;
+  const lost = state.auth === "ready" && connectionLost(state);
   const reconnect = useReconnect(offline || lost, async () => {
     if ((await refresh()) === "changed") return true;
     if (!(await answers(api))) return false;
