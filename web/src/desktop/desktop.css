@@ -408,7 +408,7 @@ html.desk button {
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
-  padding-bottom: 8px;
+  padding-bottom: calc(8px + var(--update-strip));
 }
 .dk-scroll::-webkit-scrollbar {
   display: none;
@@ -619,6 +619,7 @@ html.desk button {
   z-index: 3;
 }
 .dk-rail {
+  position: relative;
   flex: none;
   width: 20px;
   display: flex;
