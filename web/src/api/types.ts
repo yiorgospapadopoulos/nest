@@ -82,6 +82,16 @@ export interface LimitPause {
   since: string;
 }
 
+/** A worktree a chat worked in before it moved (B119). */
+export interface EarlierWorktree {
+  path: string;
+  branch: string | null;
+  base_ref: string | null;
+  started_at: string;
+  ended_at: string;
+  state: "kept" | "deleted";
+}
+
 export interface Session {
   id: string;
   repo: string;
@@ -126,6 +136,12 @@ export interface Session {
   issue: IssueRef | null;
   // The pull request's review comments and which went to the agent (B101); null until read.
   review: PrReview | null;
+  // Whether the chat can change worktree (B119). The next three are missing on daemons
+  // before it.
+  movable?: boolean;
+  // Oldest first, never the current one.
+  earlier_worktrees?: EarlierWorktree[];
+  moved_at?: string | null;
 }
 
 /** A Claude Code or Codex chat of a registered repo that Nest does not own (D028, B113). */
@@ -1893,4 +1909,7 @@ export type NoticeKind =
   | "command_output"
   | "files_restored"
   // Nest has LM Studio load the local model with enough context (B106); `text` says so.
-  | "loading_model";
+  | "loading_model"
+  // A chat's worktree change, done or refused, at the end of its turn (B119).
+  | "worktree_changed"
+  | "worktree_failed";

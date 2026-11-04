@@ -4,6 +4,7 @@ import type {
   Artifact,
   BackgroundSummary,
   Connector,
+  EarlierWorktree,
   Goal,
   GroupEntry,
   Habit,
@@ -17,6 +18,7 @@ import type {
   PixieTeam,
   RepoConfig,
   Session,
+  SessionMode,
   TrackedAgent,
   TrackedTask,
   UsageLimits,
@@ -356,7 +358,17 @@ export function applyEvent(state: State, event: NestEvent): State {
       });
     }
     case "session.workspace":
-      return patchSession(next, id, { branch: str(p.branch), worktree_path: str(p.path) });
+      return patchSession(next, id, {
+        branch: str(p.branch),
+        // Only a chat's move says `worktree_path`: its `path` may be the project folder (B119).
+        ...(p.worktree_path === undefined
+          ? { worktree_path: str(p.path) }
+          : {
+              worktree_path: str(p.worktree_path),
+              mode: p.mode as SessionMode,
+              earlier_worktrees: list(p.earlier_worktrees) as unknown as EarlierWorktree[],
+            }),
+      });
     case "pr.opened":
       return patchSession(next, id, { pr_url: str(p.url) });
     case "session.pr":
