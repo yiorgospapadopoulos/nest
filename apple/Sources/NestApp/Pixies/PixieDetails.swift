@@ -281,6 +281,8 @@ struct InlineField: View {
     let done: (String?) -> Void
     @State private var text = ""
     @State private var ended = false
+    /// The field holds the keyboard for good; losing it before that does not end the edit.
+    @State private var claimed = false
     @State private var id = UUID()
     @FocusState private var focused: Bool
     @Environment(Shell.self) private var shell
@@ -298,9 +300,9 @@ struct InlineField: View {
                 RoundedRectangle.rounded(Radius.button).strokeBorder(accent.focus, lineWidth: 1)
             )
             .focused($focused)
+            .background(KeyboardClaim { claimed = true })
             .onAppear {
                 text = initial
-                focused = true
                 // A click outside it, or Escape wherever focus is, reaches it through the
                 // shell; a field still open is ended first.
                 shell.inlineEdit?.end(true)
@@ -319,7 +321,7 @@ struct InlineField: View {
             .onSubmit { end(text) }
             .onExitCommand { end(nil) }
             .onChange(of: focused) { _, now in
-                if !now {
+                if !now && claimed {
                     end(text)
                 }
             }
@@ -336,6 +338,62 @@ struct InlineField: View {
     private func release() {
         if shell.inlineEdit?.id == id {
             shell.inlineEdit = nil
+        }
+    }
+}
+
+/// Gives the text field it sits behind the keyboard through AppKit. Once a pixie's pane has
+/// been deleted, setting `@FocusState` lands in another pane's message box until the app
+/// restarts, so the letters typed go into the chat (user, 2026-11-04). It asks again for a
+/// moment in case the field was not ready.
+private struct KeyboardClaim: NSViewRepresentable {
+    let done: () -> Void
+
+    func makeNSView(context: Context) -> ClaimView { ClaimView(done: done) }
+    func updateNSView(_ view: ClaimView, context: Context) {}
+
+    final class ClaimView: NSView {
+        private static let retries: [Duration] = [.zero, .milliseconds(60), .milliseconds(100)]
+        private let done: () -> Void
+
+        init(done: @escaping () -> Void) {
+            self.done = done
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { nil }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            Task { [weak self] in
+                for wait in Self.retries {
+                    try? await Task.sleep(for: wait)
+                    self?.claim()
+                }
+                self?.done()
+            }
+        }
+
+        private func claim() {
+            guard let window, let content = window.contentView else { return }
+            let center = convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil)
+            guard let field = Self.textField(at: center, in: content) else { return }
+            if field.currentEditor() == nil || window.firstResponder !== field.currentEditor() {
+                window.makeFirstResponder(field)
+            }
+        }
+
+        private static func textField(at point: CGPoint, in view: NSView) -> NSTextField? {
+            if let field = view as? NSTextField, field.isEditable,
+                field.convert(field.bounds, to: nil).contains(point)
+            {
+                return field
+            }
+            return view.subviews.lazy.compactMap { textField(at: point, in: $0) }.first
         }
     }
 }
