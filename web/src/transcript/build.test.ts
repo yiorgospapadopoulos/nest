@@ -62,7 +62,15 @@ describe("buildTranscript", () => {
     );
 
     expect(items).toEqual([
-      { kind: "user", key: "1", text: "Fix it", attachments: ["a.png", "file"] },
+      {
+        kind: "user",
+        key: "1",
+        text: "Fix it",
+        attachments: [
+          { id: null, filename: "a.png", mediaType: null, size: null },
+          { id: null, filename: "file", mediaType: null, size: null },
+        ],
+      },
       { kind: "thinking", key: "2.0", text: "hmm", ms: null },
       { kind: "assistant", key: "2.1", text: "Reading." },
       {
@@ -1460,5 +1468,31 @@ describe("stage 4 cards and report rows (B42)", () => {
       null,
     );
     expect(item).toMatchObject({ habit: { schedule: expected } });
+  });
+});
+
+describe("sent files", () => {
+  it("keeps what a message's files need to be shown and opened", () => {
+    const sent = { id: "a1", filename: "shot.png", media_type: "image/png", size: 2048 };
+    const items = buildTranscript(
+      [
+        event({
+          id: 1,
+          type: "session.user_message",
+          payload: { text: "Look", attachments: [sent] },
+        }),
+      ],
+      {},
+      null,
+    );
+
+    expect(items).toEqual([
+      {
+        kind: "user",
+        key: "1",
+        text: "Look",
+        attachments: [{ id: "a1", filename: "shot.png", mediaType: "image/png", size: 2048 }],
+      },
+    ]);
   });
 });

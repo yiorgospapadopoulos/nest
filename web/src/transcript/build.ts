@@ -40,6 +40,14 @@ export interface ResultImage {
   mediaType: string;
 }
 
+/** A file or image sent with a message; older events may lack any of these details. */
+export interface SentFile {
+  id: string | null;
+  filename: string;
+  mediaType: string | null;
+  size: number | null;
+}
+
 /** A `!` command and its output, as Claude Code's bash mode shows them (B59). */
 export interface BashItem {
   kind: "bash";
@@ -135,7 +143,7 @@ export type TranscriptItem =
       kind: "user";
       key: string;
       text: string;
-      attachments: string[];
+      attachments: SentFile[];
       from?: string;
       github?: GitHubPart;
     }
@@ -467,7 +475,7 @@ function userItems(key: string, p: JsonObject): TranscriptItem[] {
   }
   const github = githubPartOf(p);
   if (github !== null) {
-    const attached = list(p.attachments).map((a) => str(obj(a).filename) ?? "file");
+    const attached = list(p.attachments).map(sentFile);
     return [{ kind: "user", key, text: github.own, attachments: attached, github: github.part }];
   }
   const { commands, rest } = bashBlocks(text);
@@ -476,12 +484,22 @@ function userItems(key: string, p: JsonObject): TranscriptItem[] {
     kind: "bash",
     key: `${key}.b${String(index)}`,
   }));
-  const attachments = list(p.attachments).map((a) => str(obj(a).filename) ?? "file");
+  const attachments = list(p.attachments).map(sentFile);
   // A message of commands only has no bubble.
   if (commands.length > 0 && rest === "" && attachments.length === 0) return bash;
   const item: TranscriptItem = { kind: "user", key, text: rest, attachments };
   const from = str(p.from_pixie);
   return [...bash, from === null ? item : { ...item, from }];
+}
+
+function sentFile(value: JsonValue): SentFile {
+  const file = obj(value);
+  return {
+    id: str(file.id),
+    filename: str(file.filename) ?? "file",
+    mediaType: str(file.media_type),
+    size: typeof file.size === "number" ? file.size : null,
+  };
 }
 
 // A `!` command a message carries before its text (B59), as Claude Code writes it.
