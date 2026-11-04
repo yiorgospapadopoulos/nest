@@ -8,6 +8,7 @@ import type {
   BankedResetUsed,
   CheckResult,
   EngineAccount,
+  EngineUpdates,
   FoundModels,
   IssueList,
   IssueShow,
@@ -245,6 +246,13 @@ export interface Api {
   refreshEngineUsage(provider: string): Promise<EngineLimits>;
   // 202 at once; the daemon then exits and launchd starts it again.
   restartService(): Promise<{ restarting: boolean }>;
+  updates(): Promise<EngineUpdates>;
+  // Starts a check unless one runs, and answers with the state so far.
+  checkUpdates(): Promise<EngineUpdates>;
+  // Both 202 at once, then the daemon exits as for a restart; 409 with nothing to do.
+  relaunchUpdate(): Promise<{ restarting: boolean }>;
+  undoUpdate(): Promise<{ restarting: boolean }>;
+  dismissUpdateNotice(): Promise<EngineUpdates>;
   health(): Promise<Health>;
   reportVisibility(visible: boolean): Promise<null>;
   vapidKey(): Promise<{ public_key: string }>;
@@ -786,6 +794,26 @@ export class HttpApi implements Api {
 
   restartService() {
     return this.json<{ restarting: boolean }>("POST", "/api/service/restart");
+  }
+
+  updates() {
+    return this.json<EngineUpdates>("GET", "/api/updates");
+  }
+
+  checkUpdates() {
+    return this.json<EngineUpdates>("POST", "/api/updates/check");
+  }
+
+  relaunchUpdate() {
+    return this.json<{ restarting: boolean }>("POST", "/api/updates/relaunch");
+  }
+
+  undoUpdate() {
+    return this.json<{ restarting: boolean }>("POST", "/api/updates/undo");
+  }
+
+  dismissUpdateNotice() {
+    return this.json<EngineUpdates>("POST", "/api/updates/dismiss");
   }
 
   health() {

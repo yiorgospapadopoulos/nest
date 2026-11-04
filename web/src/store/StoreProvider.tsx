@@ -67,6 +67,7 @@ export function StoreProvider({
       },
       onOpen: (resumed) => {
         dispatch({ type: "reconnecting", on: false });
+        void actions.loadUpdates();
         // Without a cursor, events between the snapshot and the socket may be missing,
         // including those of the chat on screen. The Claude Code chat list changes with
         // ephemeral events only, so it reloads either way, as does a chat on screen whose
@@ -105,6 +106,10 @@ export function StoreProvider({
     if (!ready) return;
     return reportVisibility({ document, report: (visible) => api.reportVisibility(visible) });
   }, [ready, api]);
+
+  useEffect(() => {
+    if (ready) void actions.checkUpdates();
+  }, [ready, actions]);
 
   // On launch and after pairing, so the daemon has this device's subscription.
   useEffect(() => {
