@@ -17,6 +17,7 @@
 //! | local_servers | none | [{ port, process }] of this user's localhost listeners, by port; main window only |
 //! | open_external | { url } (http, https or mailto) | null; main window only |
 //! | open_path | { path, reveal? } (in the home folder; a folder unless reveal) | null; main window only |
+//! | open_text_file | { path, root } (path untrusted: a regular file inside root, itself in the home folder) | null, in the default text editor, or shown in its folder without one; main window only |
 //! | save_file | { suggested_name, data_base64 or text } | the saved path, or null when cancelled; main window only |
 //! | stage_artifact | { html } | the address to give the artifact's frame as its src |
 //! | release_artifact | { url } | null |
@@ -242,6 +243,23 @@ pub async fn open_path(app: AppHandle, path: String, reveal: Option<bool>) -> Re
     app.opener()
         .open_path(path.to_string_lossy(), None::<&str>)
         .map_err(message)
+}
+
+/// A file a message names, in the app that opens text, never run and never through the
+/// generic opener, which would run a script. Without such an app it is shown in its folder.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn open_text_file(app: AppHandle, path: String, root: String) -> Result<(), String> {
+    let file = external::text_file_in(&path, &root, &env::home(&env::process)?)?;
+    let target = file.clone();
+    let opened =
+        tauri::async_runtime::spawn_blocking(move || crate::platform::open_in_text_editor(&target))
+            .await
+            .map_err(message)??;
+    if opened {
+        Ok(())
+    } else {
+        app.opener().reveal_item_in_dir(&file).map_err(message)
+    }
 }
 
 /// The save dialog over the calling window, then the file written where the user chose;

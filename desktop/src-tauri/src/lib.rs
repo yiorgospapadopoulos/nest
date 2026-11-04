@@ -207,6 +207,7 @@ pub fn run(prepared: Prepared) {
             commands::local_servers,
             commands::open_external,
             commands::open_path,
+            commands::open_text_file,
             commands::save_file,
             commands::stage_artifact,
             commands::release_artifact,

@@ -18,6 +18,7 @@
  *   pick_folder                                 -> the chosen folder's path, or null
  *   open_external { url }                       http, https or mailto, in the system's app
  *   open_path { path, reveal? }                 in the home folder: a folder, or reveal an item
+ *   open_text_file { path, root }               a regular file inside root, in the text editor
  *   save_file { suggested_name, data_base64 | text } -> the saved path, or null
  *   notify { title, body, chat?, sound? }       a click emits "nest://open" { chat } to main
  *   window_control { action: minimize | toggle_maximize | close | start_drag | quit }
@@ -102,6 +103,9 @@ export interface Bridge {
   openExternal(url: string): Promise<void>;
   // A folder in the file manager, or with `reveal` an item shown in its folder; home only.
   openPath(path: string, reveal?: boolean): Promise<void>;
+  // A regular file inside `root`, in the system's default text editor, never run. `path` is
+  // untrusted, from a message: the Tauri side checks it and rejects anything else.
+  openTextFile(path: string, root: string): Promise<void>;
   // The save dialog, then the file written there; the saved path, or null when cancelled.
   saveFile(
     suggestedName: string,
@@ -281,6 +285,9 @@ export function tauriBridge(tauri: TauriGlobal): Bridge {
     async openPath(path, reveal) {
       await invoke("open_path", reveal === undefined ? { path } : { path, reveal });
     },
+    async openTextFile(path, root) {
+      await invoke("open_text_file", { path, root });
+    },
     async saveFile(suggestedName, contents) {
       const data = "text" in contents ? { text: contents.text } : { data_base64: contents.base64 };
       return (await invoke("save_file", { suggested_name: suggestedName, ...data })) as
@@ -451,6 +458,7 @@ export function browserBridge(
       return Promise.resolve();
     },
     openPath: nothing,
+    openTextFile: () => Promise.reject(new Error("Files open in the desktop app")),
     saveFile: () => Promise.resolve(null),
     notify: nothing,
     minimize: nothing,

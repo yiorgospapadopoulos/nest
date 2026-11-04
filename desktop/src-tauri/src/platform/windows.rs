@@ -98,6 +98,10 @@ pub fn start_service() -> Result<&'static str, String> {
     unimplemented!()
 }
 
+pub fn open_in_text_editor(_file: &Path) -> Result<bool, String> {
+    unimplemented!()
+}
+
 pub fn custom_scheme_url(_scheme: &str, _path: &str) -> String {
     unimplemented!()
 }

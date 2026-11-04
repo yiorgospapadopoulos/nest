@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "local_servers",
     "open_external",
     "open_path",
+    "open_text_file",
     "save_file",
     "stage_artifact",
     "release_artifact",
