@@ -40,7 +40,7 @@ from nestd.review.publish import GitPublisher, PublishPlan, PullRequest
 from nestd.sessions.errors import SessionBusyError
 from nestd.sessions.manager import SessionManager
 from nestd.sessions.models import IN_FLIGHT, Session
-from nestd.sessions.rules import require_open, require_workspace
+from nestd.sessions.rules import pr_finished, require_open, require_workspace
 from nestd.tracking.service import Tracking
 
 
@@ -94,7 +94,7 @@ class ReviewActions:
             await self._require_committable(cwd, diff, plan)
             if plan.push:
                 plan = replace(plan, remote_url=await self._remote_url(session, request))
-            had_pr = session.pr_url is not None
+            had_pr = session.pr_url is not None and not pr_finished(session)
             session = await self._publisher.publish(session, plan)
             if plan.push and had_pr and session.commit_sha is not None:
                 # The agent's work for the review comments it was sent is on the pull

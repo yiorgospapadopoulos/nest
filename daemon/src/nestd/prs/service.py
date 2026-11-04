@@ -1,5 +1,5 @@
 """Pull requests Nest opened: listing, reading now, and merging after the user
-approves, which also closes the session (D034).
+approves, which also closes a session that is not movable (D034, B119).
 
 Only the daemon merges: agents stay blocked from `gh pr merge` by the git guard (D004).
 """
@@ -114,8 +114,9 @@ class PullRequests:
         return session
 
     async def merge(self, session_id: str, request: MergeRequest) -> Session:
-        """Merge with gh, then close the session and remove its worktree; its branch stays
-        (on GitHub too, unless the request asks gh to delete it).
+        """Merge with gh. A movable chat stays open with its worktree, which goes only when
+        the user asks (B119); any other session closes and its worktree is removed. The
+        branch stays (on GitHub too, unless the request asks gh to delete it).
 
         A failed merge changes nothing and can be retried; a merge that worked but whose
         worktree could not be removed leaves the session open to close again.
@@ -142,7 +143,7 @@ class PullRequests:
                     review.id, {"action": "merged", "method": request.method}
                 )
             session = await self._merged_status(session)
-            if session.state is SessionState.CLOSED:
+            if session.state is SessionState.CLOSED or session.movable:
                 return session
             try:
                 return await self._sessions.close(
