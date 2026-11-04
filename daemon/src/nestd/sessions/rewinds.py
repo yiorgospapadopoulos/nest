@@ -53,6 +53,10 @@ NO_PIXIE_RESTORE = (
     "A pixie's chat cannot be rewound: each of its runs starts fresh, so the earlier "
     "ones' checkpoints are gone."
 )
+NO_FILES_ACROSS_MOVE = (
+    "This chat moved to another folder after this message, so its files cannot be restored "
+    "here. The conversation can still be rewound."
+)
 NO_CONVERSATION_POINT = (
     "Claude Code's transcript of this chat does not have this message, so the "
     "conversation cannot be rewound to before it"
@@ -115,6 +119,8 @@ class Rewinds:
             return RewindReply(can_rewind=False, error=NO_CONVERSATION_POINT, restore=restore)
         if restore == "conversation":
             return reply
+        if _before_the_move(session, message):
+            return RewindReply(can_rewind=False, error=NO_FILES_ACROSS_MOVE, restore=restore)
         if live.run is None:
             return RewindReply(can_rewind=False, error=NO_RUN_TO_PREVIEW, restore=restore)
         files = _named_from(await self._turns.rewind(live, checkpoint, True), session)
@@ -131,6 +137,8 @@ class Rewinds:
         """Rewind; CannotRewindError when Claude Code cannot, with nothing changed (unless
         the files were restored and only the conversation then failed, which it says).
         """
+        if restore != "conversation" and _before_the_move(session, message):
+            raise CannotRewindError(NO_FILES_ACROSS_MOVE)
         point: ForkPoint | None = None
         if restore != "code":
             point = await self._point(session, checkpoint)
@@ -189,6 +197,7 @@ class Rewinds:
                 follows_claude_code_mode=source.follows_claude_code_mode,
                 provider=source.provider,
                 base_ref=await self._fork_base(source),
+                movable=True,
             )
         )
         keep = point.keep_through
@@ -262,9 +271,22 @@ class Rewinds:
     async def _point(self, session: Session, checkpoint: str) -> ForkPoint | None:
         if session.provider_session_id is None:
             return None
-        cwd = require_cwd(session)
         provider = self._engines.of(session).provider
-        return await provider.fork_point(cwd, session.provider_session_id, checkpoint)
+        for folder in self._transcript_folders(session):
+            point = await provider.fork_point(folder, session.provider_session_id, checkpoint)
+            if point is not None:
+                return point
+        return None
+
+    def _transcript_folders(self, session: Session) -> tuple[Path, ...]:
+        """Where to look for the engine's transcript. Claude Code leaves it under the folder
+        the conversation started in, also after a resume from elsewhere (B119), and the
+        project folder's search covers the worktrees inside it.
+        """
+        cwd = require_cwd(session)
+        if session.moved_at is None:
+            return (cwd,)
+        return tuple(dict.fromkeys((cwd, self._repos.get(session.repo).path)))
 
     async def _drops(self, session_id: str, message: Event, checkpoint: str) -> str | None:
         """The message whose turn the cut drops, so Claude Code checks it drops no more;
@@ -318,6 +340,13 @@ class Rewinds:
 
 
 _NO_FORK: dict[str, object] = {"fork_from": None, "fork_at": None, "fork_drops": None}
+
+
+def _before_the_move(session: Session, message: Event) -> bool:
+    """Whether the message was sent in a folder the chat has left: its checkpoint would
+    write the files back there, not here (B119).
+    """
+    return session.moved_at is not None and message.ts < session.moved_at
 
 
 def _message(message: Event) -> tuple[str, list[AttachmentSummary]]:
