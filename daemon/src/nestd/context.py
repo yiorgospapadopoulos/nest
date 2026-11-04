@@ -153,6 +153,7 @@ from nestd.storage.archiver import ChatArchiver
 from nestd.storage.db import Database
 from nestd.stuck.watcher import StuckWatcher
 from nestd.tracking.service import Tracking
+from nestd.updates.service import UpdateService, UpdateSetup
 from nestd.usage.probe import ProbeClientFactory, UsageProbe
 from nestd.usage.refresher import UsageRefresher
 from nestd.usage.store import UsageStore
@@ -246,6 +247,8 @@ class AppContext:
     perf_fetch: InProcess
     # The system the daemon runs on (B117).
     platform: Platform
+    # Following the newest engines without breaking this install.
+    updates: UpdateService
     # The port `nestd serve --port` gave, which wins over the settings' one.
     port_flag: int | None = None
 
@@ -278,6 +281,7 @@ class AppContext:
         acp_setup: AcpSetup | None = None,
         perf_client: ContextClientFactory = ClaudeSDKClient,
         platform: Platform | None = None,
+        update_setup: UpdateSetup | None = None,
     ) -> Self:
         """Create directories, load settings and open the database. Starts nothing.
 
@@ -299,7 +303,8 @@ class AppContext:
         `acp_setup` is what the ACP engines reach: npm, their
         processes, the environment they start from (B107). `perf_client` is the one-off
         Claude client of Settings > Performance's context run (B115). `platform` is the
-        system the daemon runs on (B117); None is the current one.
+        system the daemon runs on (B117); None is the current one. `update_setup` is what
+        the engine updates reach: the registries, uv, npm and the new environment's check.
         """
         system = platform or current_platform()
         paths.ensure()
@@ -459,6 +464,7 @@ class AppContext:
             active=active.prepare,
             on_change=engine_state,
             setup=acp_setup,
+            environments=paths.environments_dir,
         )
         runs = RunManager(
             bus=bus,
@@ -817,9 +823,19 @@ class AppContext:
                 machine_noun=system.machine_noun,
             )
         )
+        updates = UpdateService(
+            root=paths.environments_dir,
+            engines_dir=paths.engines_dir,
+            bus=bus,
+            shell_env=shell_env,
+            busy_chats=sessions.busy_count,
+            port=lambda: context.serving_port(),
+            setup=update_setup or UpdateSetup(),
+        )
         context = cls(
             paths=paths,
             platform=system,
+            updates=updates,
             settings=settings,
             db=db,
             bus=bus,

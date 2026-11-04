@@ -171,6 +171,9 @@ ACCOUNTS_CHANGED: Final = "accounts.changed"
 # An ACP engine's install changed (B107), ephemeral and global: `{name, state, version,
 # state_detail}` as in `GET /api/providers`. Clients load the providers again.
 ENGINE_STATE: Final = "engine.state"
+# The engine updates' state changed: a check or a prepare started or ended, an update is
+# ready, or a notice came or went; ephemeral and global, `GET /api/updates`'s body.
+UPDATES_CHANGED: Final = "updates.changed"
 # Installing Claude Code: `{state: "running" | "done" | "failed", message}`, then the new
 # `GET /api/claude-code` body as CLAUDE_CODE_UPDATED.
 CLAUDE_CODE_INSTALL: Final = "claude_code.install"
