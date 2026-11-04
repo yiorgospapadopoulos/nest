@@ -1,8 +1,9 @@
 // Regressions (B117 audit, P1): a new chat's draft pane could not be closed; Ctrl+W closed
-// the pane behind an open Settings window or palette; Ctrl+N did nothing in the Pixies tab.
+// the pane behind an open Settings panel or palette; Ctrl+N did nothing in the Pixies tab.
 // As the Mac's closeFocused, Ctrl+W closes the topmost overlay first, then the focused pane.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it } from "vitest";
+import { defined } from "../../test/defined.ts";
 import { fakeApi } from "../../test/fakeApi.ts";
 import { socketFactory } from "../../test/fakeSocket.ts";
 import { memoryStorage } from "../../test/render.tsx";
@@ -55,6 +56,61 @@ describe("a new chat's draft pane", () => {
     expect(within(pane).getByRole("textbox", { name: "Message" })).toBeInTheDocument();
     fireEvent.click(within(pane).getByRole("button", { name: "Close pane" }));
     expect(draft()).not.toBeInTheDocument();
+  });
+});
+
+describe("the Settings panel", () => {
+  const settings = () => screen.queryByRole("region", { name: "Settings" });
+
+  it("keeps the chat behind it, closes on the dim and gives the composer the keyboard", async () => {
+    await renderDesktop();
+    ctrl("n");
+    const pane = await screen.findByRole("region", { name: "New chat" });
+    const composer = within(pane).getByRole<HTMLTextAreaElement>("textbox", { name: "Message" });
+    fireEvent.change(composer, { target: { value: "half a thought" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(settings()).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "New chat" })).toBe(pane);
+    expect(composer.closest("[inert]")).not.toBeNull();
+
+    fireEvent.mouseDown(defined(document.querySelector(".dks-panel")));
+    expect(settings()).toBeInTheDocument();
+    fireEvent.mouseDown(defined(document.querySelector(".dks-scrim")));
+    await waitFor(() => {
+      expect(settings()).not.toBeInTheDocument();
+    });
+    expect(composer).toBeInTheDocument();
+    expect(composer.value).toBe("half a thought");
+    expect(composer.closest("[inert]")).toBeNull();
+    await waitFor(() => {
+      expect(composer).toHaveFocus();
+    });
+  });
+
+  it("closes a sheet of its pages first, by Ctrl+W and by Escape, then itself", async () => {
+    await renderDesktop();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const askToRestart = async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Restart" }));
+      return screen.findByRole("alertdialog", { name: "Restart Nest?" });
+    };
+    await askToRestart();
+    ctrl("w");
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(settings()).toBeInTheDocument();
+    await askToRestart();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(settings()).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(settings()).not.toBeInTheDocument();
+    });
   });
 });
 

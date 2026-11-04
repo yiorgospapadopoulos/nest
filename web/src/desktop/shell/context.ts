@@ -64,7 +64,7 @@ export interface Shell {
   toggleActivity: () => void;
   setSidebarWidth: (width: number) => void;
 
-  // The Settings page while Settings shows in the window, in place of the tab's content.
+  // The Settings page while the Settings panel shows over the chats.
   settings: SettingsPlace | null;
   // Opens Settings on a page or a project's page; General when neither is given.
   openSettings: (target?: SettingsTarget) => void;

@@ -1,5 +1,29 @@
-/* Settings in the window (B117 wave 2C), as the Mac's SettingsWindow.swift: a 216 px
-   sidebar, then the page's header and a body up to 720 px wide. */
+/* The Settings panel (B118), as the Mac's SettingsPanel.swift: over the dimmed chats, under
+   the tab strip so the window's buttons stay reachable, and under sheets and the palette. */
+.dks-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 48px;
+  background: var(--surface-scrim);
+}
+.dks-panel {
+  flex: 1;
+  min-width: 0;
+  max-width: 1080px;
+  height: 100%;
+  max-height: 820px;
+  display: flex;
+  overflow: hidden;
+  border-radius: var(--radius-mac-sheet);
+  box-shadow:
+    0 0 0 1px var(--mac-divider),
+    0 12px 32px rgba(0, 0, 0, 0.22);
+}
+/* A 216 px sidebar, then the page's header and a body up to 720 px wide. */
 .dks {
   flex: 1;
   min-height: 0;
@@ -53,6 +77,7 @@
   scrollbar-width: none;
 }
 .dks-item {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
