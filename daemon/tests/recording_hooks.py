@@ -24,6 +24,10 @@ class RecordingHooks:
         self.purges: list[str] = []
         self.starts: list[tuple[str, SessionState]] = []
         self.rewinds: list[tuple[str, bool, bool]] = []
+        self.moves: list[str] = []
+
+    async def moved(self, session: Session) -> None:
+        self.moves.append(session.id)
 
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))

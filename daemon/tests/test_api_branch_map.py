@@ -11,6 +11,7 @@ from pydantic import JsonValue
 
 from nestd.events import types
 from tests.api_client import Api, running_api
+from tests.api_support import as_old_chats
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
@@ -276,6 +277,7 @@ async def test_nest_announces_the_worktrees_it_creates_and_removes(
         ids.append(str(created.json()["id"]))
         await reach(api, ids[-1], "idle", results=1)
     assert announced.count(expected) >= 3
+    await as_old_chats(api.ctx, *ids)
     removals: list[tuple[str, dict[str, bool]]] = [
         (f"/api/sessions/{ids[0]}", {"remove_worktree": True}),
         (f"/api/sessions/{ids[1]}", {"purge": True}),

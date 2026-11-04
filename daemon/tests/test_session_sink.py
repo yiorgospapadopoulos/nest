@@ -476,6 +476,9 @@ class BrokenHooks:
     async def rewound(self, session: Session, *, conversation: bool, files: bool) -> None:
         raise LookupError("rewound")
 
+    async def moved(self, session: Session) -> None:
+        raise LookupError("moved")
+
 
 async def test_no_error_reaches_the_agent_run(
     db: Database, clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture

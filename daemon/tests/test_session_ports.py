@@ -12,6 +12,7 @@ import pytest
 from nestd.sessions.models import Session, SessionState
 from nestd.sessions.ports import FolderPorts
 from nestd.sessions.turns import NEST_PROMPT
+from nestd.sessions.worktree_tool import WORKTREE_NOTE
 from nestd.storage.db import Database
 from tests.fake_provider import reply
 from tests.fakes import FakeClock
@@ -43,7 +44,7 @@ async def test_the_agent_gets_its_folders_ports_and_hears_of_them(env: Env) -> N
 
     (run,) = env.provider.runs
     assert run.spec.env == {"NEST_PORT": "41020"}
-    assert run.spec.system_prompt_append == f"{NEST_PROMPT} {PORTS.prompt}"
+    assert run.spec.system_prompt_append == f"{NEST_PROMPT} {WORKTREE_NOTE} {PORTS.prompt}"
     assert [session.cwd for session in asked] == [env.repo_path]
 
 
@@ -64,5 +65,5 @@ async def test_without_its_ports_the_agent_runs_anyway(
 
     (run,) = env.provider.runs
     assert run.spec.env == {}
-    assert run.spec.system_prompt_append == NEST_PROMPT
+    assert run.spec.system_prompt_append == f"{NEST_PROMPT} {WORKTREE_NOTE}"
     assert "the folder's ports of session" in caplog.text

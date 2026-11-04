@@ -54,6 +54,27 @@ async def test_an_unexpected_diff_error_is_logged_and_gets_no_review(
     assert f"could not diff session {session.id} for review" in caplog.text
 
 
+async def test_changes_the_new_folder_already_holds_are_not_the_chats_work(
+    tmp_path: Path, db: Database, clock: FakeClock
+) -> None:
+    """B119: a chat that moved to the project folder finds its unrelated changes there."""
+    bus = EventBus(db, clock)
+    queue = ApprovalQueue(ApprovalStore(db, clock), bus, Notifier(bus))
+    watcher = ReviewWatcher(queue, Tracking(bus))
+    repo = init_repo(tmp_path / "repo")
+    other = init_repo(tmp_path / "worktree")
+    store = SessionStore(db, clock)
+    session = await store.create(new_session(cwd=other, base_ref="abc"))
+    await watcher.turn_started(session)
+    (repo / "unrelated.txt").write_text("the user's", encoding="utf-8")
+    moved = await store.update(session.id, cwd=repo)
+
+    await watcher.moved(moved)
+
+    assert await watcher.turn_ended(moved) is None
+    assert await queue.list_approvals() == []
+
+
 async def watched(
     tmp_path: Path, db: Database, clock: FakeClock
 ) -> tuple[ReviewWatcher, ApprovalQueue, Session, Path]:

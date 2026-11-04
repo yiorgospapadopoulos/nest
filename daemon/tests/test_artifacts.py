@@ -102,6 +102,7 @@ async def test_every_chat_run_gets_the_artifact_tools(
         "update_artifact",
         "read_artifact",
         "artifact_guide",
+        "worktree",
     ]
     assert run.spec.tools == ()
     assert ARTIFACT_NOTE in (run.spec.system_prompt_append or "")
@@ -550,7 +551,7 @@ async def test_a_chats_options_serve_and_allow_the_artifact_tools(
     assert config == {"mcpServers": {"nest": {"type": "sdk", "name": "nest"}}}
     # The user's own MCP servers still load: no strict MCP config.
     assert "--strict-mcp-config" not in command
-    assert options.allowed_tools == ALLOWED
+    assert options.allowed_tools == [*ALLOWED, "mcp__nest__worktree"]
     assert isinstance(from_subagent, PermissionResultAllow)
 
 

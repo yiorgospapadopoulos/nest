@@ -14,6 +14,7 @@ from nestd.sessions.models import NewSession
 from nestd.sessions.workspace import prepare_worktree
 from nestd.storage.db import Database
 from tests.api_client import Api, running_api
+from tests.api_support import as_old_chats
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import commit_file, git, init_repo
 from tests.session_support import Env
@@ -229,6 +230,7 @@ async def test_removing_the_worktree_keeps_the_branch(
     tip = git(repo, "rev-parse", "feat").strip()
     chat = await started(api, on_branch="feat")
     path = Path(str(chat["worktree_path"]))
+    await as_old_chats(api.ctx, chat["id"])
 
     await remove(api, chat)
 
@@ -275,6 +277,7 @@ async def test_nests_own_branch_is_kept_too(
     chat = await started(api, mode="worktree", branch="feat")
     generated = await started(api, mode="worktree")
     paths = [Path(str(c["worktree_path"])) for c in (chat, generated)]
+    await as_old_chats(api.ctx, chat["id"], generated["id"])
 
     # Removing the project removes both chats at once.
     for each in [chat] if remove is remove_repo else [chat, generated]:
