@@ -3,9 +3,10 @@
 A pinned engine lives in `<data_dir>/engines/<id>/<version>/`, an npm prefix made with
 `npm install --ignore-scripts`, never a global install: no package script runs. It is
 installed into a hidden folder first and moved into place when its program is there, so a
-version folder is always whole; older versions go once the pinned one is in place. An
-engine the user installs themselves (`user_install`) is looked for on the login shell's
-PATH and where its installer puts it.
+version folder is always whole; older versions go once the pinned one is in place, except
+those a prepared environment holds (`nestd/updates`). An engine the user installs
+themselves (`user_install`) is looked for on the login shell's PATH and where its
+installer puts it.
 
 The state is worked out from the folders each time, so a restart forgets nothing but why
 the last install failed.
@@ -17,13 +18,14 @@ import platform
 import shutil
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from nestd.errors import ConflictError
 from nestd.providers.acp_engines import AcpEngine
+from nestd.updates.environments import kept_versions
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +134,12 @@ class EngineInstall:
         env: EnvSource,
         home: Path,
         on_change: Callable[[InstallState], Awaitable[None]] | None = None,
+        environments: Path | None = None,
     ) -> None:
         """`root` is `<data_dir>/engines`; `home` is the user's home, which expands their own
         install paths;
-        `on_change` hears each state an install goes through.
+        `on_change` hears each state an install goes through; the versions the environments
+        in `environments` hold stay when older ones are cleared.
         """
         self.engine = engine
         self.folder = root / engine.id
@@ -143,6 +147,7 @@ class EngineInstall:
         self._env = env
         self.home = home
         self._on_change = on_change
+        self._environments = environments
         self._task: asyncio.Task[InstallState] | None = None
         self._failure: str | None = None
 
@@ -219,38 +224,17 @@ class EngineInstall:
     async def _install(self) -> InstallState:
         engine = self.engine
         version = engine.version
-        assert engine.package is not None  # noqa: S101 (a fetched engine's)
         assert version is not None  # noqa: S101 (a fetched engine's)
         self._failure = None
         await self._announce(InstallState("installing"))
-        target = self.folder / version
-        partial = self.folder / f".{version}.partial"
         try:
-            await asyncio.to_thread(_fresh_folder, partial)
-            await self._npm(
-                (
-                    "install",
-                    "--prefix",
-                    str(partial),
-                    "--no-fund",
-                    "--no-audit",
-                    "--ignore-scripts",
-                    f"{engine.package}@{version}",
-                ),
-                partial,
-                await self._env(),
-            )
-            if installed_program(engine, partial) is None:
-                msg = f"{engine.name}'s program was not found after installing it"
-                raise NpmError(msg)
-            await asyncio.to_thread(_move_into_place, partial, target)
+            await fetch_version(engine, self.folder, self._npm, await self._env())
         except (NpmError, OSError) as error:
-            await asyncio.to_thread(shutil.rmtree, partial, True)
             self._failure = str(error) or type(error).__name__
             logger.warning("could not install %s %s: %s", engine.id, version, self._failure)
             state = InstallState("install_failed", detail=self._failure)
         else:
-            await asyncio.to_thread(_remove_old, self.folder, version)
+            await asyncio.to_thread(self._clear_old, version)
             logger.info("installed %s %s", engine.id, version)
             state = InstallState("ready", version=version, program=self._pinned_program())
         finally:
@@ -258,9 +242,50 @@ class EngineInstall:
         await self._announce(state)
         return state
 
+    def _clear_old(self, version: str) -> None:
+        keep = {version}
+        if self._environments is not None:
+            keep |= kept_versions(self._environments, self.engine.id)
+        remove_old(self.folder, keep)
+
     async def _announce(self, state: InstallState) -> None:
         if self._on_change is not None:
             await self._on_change(state)
+
+
+async def fetch_version(
+    engine: AcpEngine, folder: Path, npm: NpmRunner, env: Mapping[str, str]
+) -> None:
+    """`engine.version` into `folder/<version>/`, whole or not at all; other versions stay.
+    Raises NpmError or OSError.
+    """
+    version = engine.version
+    assert engine.package is not None  # noqa: S101 (a fetched engine's)
+    assert version is not None  # noqa: S101 (a fetched engine's)
+    target = folder / version
+    partial = folder / f".{version}.partial"
+    try:
+        await asyncio.to_thread(_fresh_folder, partial)
+        await npm(
+            (
+                "install",
+                "--prefix",
+                str(partial),
+                "--no-fund",
+                "--no-audit",
+                "--ignore-scripts",
+                f"{engine.package}@{version}",
+            ),
+            partial,
+            env,
+        )
+        if installed_program(engine, partial) is None:
+            msg = f"{engine.name}'s program was not found after installing it"
+            raise NpmError(msg)
+        await asyncio.to_thread(_move_into_place, partial, target)
+    except (NpmError, OSError):
+        await asyncio.to_thread(shutil.rmtree, partial, True)
+        raise
 
 
 def _fresh_folder(folder: Path) -> None:
@@ -273,8 +298,16 @@ def _move_into_place(partial: Path, target: Path) -> None:
     partial.rename(target)
 
 
-def _remove_old(folder: Path, keep: str) -> None:
-    """Every other version folder; the probe folder and Nest's files beside them stay."""
+def remove_old(folder: Path, keep: Collection[str]) -> None:
+    """Every version folder not in `keep`; the probe folder, Nest's files beside them and
+    an install in progress stay.
+    """
     for entry in folder.iterdir():
-        if entry.is_dir() and not entry.is_symlink() and entry.name not in (keep, PROBE_FOLDER):
+        if (
+            entry.is_dir()
+            and not entry.is_symlink()
+            and not entry.name.startswith(".")
+            and entry.name != PROBE_FOLDER
+            and entry.name not in keep
+        ):
             shutil.rmtree(entry, ignore_errors=True)
