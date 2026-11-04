@@ -38,12 +38,13 @@ export function paneFolder(pane: string, data: FolderData): string | null {
 
 /**
  * Whether a chat's folder is still there. The disk is the daemon's, so this asks the
- * chats: a closed worktree chat's worktree was removed with its merge or discard.
+ * chats: a closed worktree chat's worktree was removed with its merge or discard, unless
+ * the chat is movable, whose worktrees stay until the user removes them (B119).
  */
 export function folderExists(data: FolderData): (folder: string) => boolean {
   const gone = new Set(
     Object.values(data.sessions).flatMap((s) =>
-      s.state === "closed" && s.mode === "worktree" && s.worktree_path !== null
+      s.state === "closed" && s.mode === "worktree" && s.worktree_path !== null && !s.movable
         ? [s.worktree_path]
         : [],
     ),

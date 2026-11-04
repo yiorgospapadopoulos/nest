@@ -69,6 +69,17 @@ describe("the Terminal button", () => {
     expect(terminalButtonTarget("wt", "todo-ui", data)).toEqual({ kind: "chat", folder: "/w/wt" });
     expect(folderExists(data)(project)).toBe(true);
   });
+
+  it("still opens in a worktree kept by a closed movable chat (B119)", () => {
+    const kept = session({
+      id: "closed",
+      state: "closed",
+      mode: "worktree",
+      worktree_path: "/w/kept",
+      movable: true,
+    });
+    expect(folderExists({ ...data, sessions: { closed: kept } })("/w/kept")).toBe(true);
+  });
 });
 
 describe("Run in terminal on a command from a chat", () => {
