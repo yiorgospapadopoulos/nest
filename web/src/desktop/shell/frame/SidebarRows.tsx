@@ -1,5 +1,6 @@
 import type { CSSProperties, DragEvent, ReactNode } from "react";
 import type { ClaudeChat, Session } from "../../../api/types.ts";
+import { earlierOf } from "../../../screens/chat/earlier.ts";
 import {
   claudeChatPlace,
   placeName,
@@ -20,6 +21,8 @@ import { ForkIcon, PANE_DRAG } from "../bits.tsx";
 import { useShell } from "../context.ts";
 import { claudePane } from "../panes.ts";
 import { useTap } from "../tap.ts";
+import { EarlierCount, EarlierWorktreesList } from "./EarlierWorktrees.tsx";
+import { useRowOpen } from "./foldRows.ts";
 import { placeColor } from "./projectMap.ts";
 import { endRename, useRenaming } from "./rename.ts";
 
@@ -70,6 +73,8 @@ interface FrameProps {
   // The second line: where it works and its marks; nothing when it has none.
   line: ReactNode;
   finished?: boolean;
+  // A control of its own at the row's right end, outside the row's button.
+  end?: ReactNode;
 }
 
 /**
@@ -78,7 +83,7 @@ interface FrameProps {
  * drags onto the workspace, a right click opens its menu at the pointer and on hover a
  * "…" opens it below.
  */
-function RowFrame({ pane, title, label, tone, items, line, finished = false }: FrameProps) {
+function RowFrame({ pane, title, label, tone, items, line, finished = false, end }: FrameProps) {
   const shell = useShell();
   const rowState = shell.state.layout.rowState(pane);
   const context = useContextMenu(`Actions for ${title}`, items);
@@ -111,6 +116,7 @@ function RowFrame({ pane, title, label, tone, items, line, finished = false }: F
           {line}
         </span>
       </button>
+      {end}
       <span className="dk-hacts" data-revealed={context.open || undefined}>
         <More title={title} items={items} />
       </span>
@@ -147,12 +153,14 @@ interface ChatRowProps {
 export function ChatRow({ session, status, map, items }: ChatRowProps) {
   const { state } = useStore();
   const renaming = useRenaming();
+  const [earlierOpen, toggleEarlier] = useRowOpen(`earlier-${session.id}`, false);
   if (renaming === session.id) return <RenameRow session={session} />;
   const repo = repoNamed(state.repos, session.repo);
   const place = sessionPlace(session, repo);
   const starter = session.started_by_pixie;
   const pixie = starter === null ? undefined : state.pixies[starter];
   const startedBy = starter === null ? null : `Started by ${pixie?.name ?? "a pixie"}`;
+  const earlier = earlierOf(session);
   const marks =
     place !== null || session.issue !== null || session.pinned || session.stuck !== null;
   const label = [
@@ -170,7 +178,7 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
   ]
     .filter(Boolean)
     .join(", ");
-  return (
+  const row = (
     <RowFrame
       pane={session.id}
       title={session.title}
@@ -178,6 +186,16 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
       tone={status.tone}
       items={items}
       finished={session.state === "closed"}
+      end={
+        earlier.length > 0 && (
+          <EarlierCount
+            title={session.title}
+            count={earlier.length}
+            open={earlierOpen}
+            onToggle={toggleEarlier}
+          />
+        )
+      }
       line={
         (marks || startedBy !== null) && (
           <span className="dk-rb">
@@ -210,6 +228,14 @@ export function ChatRow({ session, status, map, items }: ChatRowProps) {
         )
       }
     />
+  );
+  return earlier.length > 0 && earlierOpen ? (
+    <>
+      {row}
+      <EarlierWorktreesList worktrees={earlier} />
+    </>
+  ) : (
+    row
   );
 }
 
