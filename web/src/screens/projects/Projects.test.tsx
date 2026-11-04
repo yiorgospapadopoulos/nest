@@ -343,6 +343,33 @@ describe("Projects", () => {
     expect(screen.getByRole("button", { name: "New chat in todo-ui" })).toHaveFocus();
   });
 
+  it("folds out a chat's earlier worktrees with a tap that does not open it (B119)", async () => {
+    const { user } = await openProjects([
+      session({
+        id: "moved",
+        title: "Moved chat",
+        earlier_worktrees: [
+          {
+            path: "/w/kept",
+            branch: "agent/kept",
+            base_ref: null,
+            started_at: minutesAgo(90),
+            ended_at: minutesAgo(30),
+            state: "kept",
+          },
+        ],
+      }),
+    ]);
+    expect(screen.queryByText("kept")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Earlier worktrees of Moved chat" }));
+
+    expect(screen.getByText("kept")).toBeInTheDocument();
+    expect(screen.getByTitle("agent/kept")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Chats" })).toHaveAttribute("aria-selected", "true");
+    expect(row(/^Moved chat/)).toBeInTheDocument();
+  });
+
   it("opens actions with long-press, swipe, context menu and the dots button", async () => {
     const { user, api } = await openProjects([session()]);
     const target = row(/Validate contact form, Idle/);

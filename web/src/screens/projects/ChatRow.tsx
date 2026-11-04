@@ -5,10 +5,13 @@ import { Dot } from "../../ui/bits.tsx";
 import { Icon } from "../../ui/Icon.tsx";
 import { useStore } from "../../store/context.ts";
 import { repoNamed } from "../../store/general.ts";
+import { earlierOf } from "../chat/earlier.ts";
+import { EarlierList, EarlierToggle } from "../chat/EarlierWorktrees.tsx";
 import { placeLabel, sessionPlace } from "../chat/place.ts";
 import { PlaceMark } from "../chat/PlaceMarks.tsx";
 import { startedByText } from "../pixies/options.ts";
 import { StartedBy } from "../pixies/StartedBy.tsx";
+import { useEarlierOpen } from "./earlierFold.ts";
 import { useRowGestures } from "./rowGestures.ts";
 
 interface Props {
@@ -26,6 +29,8 @@ interface Props {
 export function ChatRow({ session, status, onOpen, onActions }: Props) {
   const { state } = useStore();
   const gestures = useRowGestures(onOpen, onActions);
+  const [earlierOpen, toggleEarlier] = useEarlierOpen(session.id);
+  const earlier = earlierOf(session);
   const starter = session.started_by_pixie;
   const startedBy = starter === null ? "" : `, ${startedByText(state.pixies[starter]?.name)}`;
   const place = sessionPlace(session, repoNamed(state.repos, session.repo));
@@ -34,7 +39,7 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
     `${session.stuck !== null ? ", stuck" : ""}${session.pinned ? ", pinned" : ""}` +
     placeLabel(place) +
     (session.issue === null ? "" : `, issue #${String(session.issue.number)}`);
-  return (
+  const row = (
     <div className="lrow">
       <button className="row" aria-label={label} data-chat={session.id} {...gestures}>
         <Dot tone={status.tone} />
@@ -57,6 +62,22 @@ export function ChatRow({ session, status, onOpen, onActions }: Props) {
       <button className="rmore" aria-label={`Actions for ${session.title}`} onClick={onActions}>
         <Icon name="dots" />
       </button>
+      {earlier.length > 0 && (
+        <EarlierToggle
+          title={session.title}
+          count={earlier.length}
+          open={earlierOpen}
+          onToggle={toggleEarlier}
+        />
+      )}
     </div>
+  );
+  return earlier.length > 0 && earlierOpen ? (
+    <>
+      {row}
+      <EarlierList worktrees={earlier} />
+    </>
+  ) : (
+    row
   );
 }
