@@ -4,13 +4,13 @@
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: calc(var(--sat) + 4px) calc(16px + var(--sar)) calc(var(--sab) + 64px)
-    calc(16px + var(--sal));
+  padding: calc(var(--sat) + 4px) calc(16px + var(--sar))
+    calc(var(--sab) + 64px + var(--update-strip)) calc(16px + var(--sal));
   scrollbar-width: none;
 }
 /* Needs you and Chats: flat sections edge to edge, as the Mac's panels (B102). */
 .view.flat {
-  padding: var(--sat) var(--sar) calc(var(--sab) + 64px) var(--sal);
+  padding: var(--sat) var(--sar) calc(var(--sab) + 64px + var(--update-strip)) var(--sal);
 }
 .flat .lgrp {
   border-radius: 0;
@@ -325,6 +325,66 @@
   color: var(--wait);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* The update strip, on the tab bar (see `.tabbar ~ .push` for its height), over the tab. */
+.upstrip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(51px + var(--sab));
+  z-index: 29;
+  padding: 6px calc(16px + var(--sar)) 6px calc(16px + var(--sal));
+  border-top: 1px solid var(--div);
+  background: linear-gradient(var(--side), var(--side)), var(--bg);
+  color: var(--t1);
+  font-size: var(--fs-meta);
+}
+.upstrip ul {
+  margin: 0;
+  padding: 4px 0 8px;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+.upstrip li + li {
+  margin-top: 4px;
+}
+.upstrip-row {
+  display: flex;
+  align-items: center;
+}
+.upstrip-more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -8px 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+.upstrip-hide {
+  margin-left: auto;
+  margin-right: -12px;
+}
+.upstrip-more .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--t2);
+}
+.upstrip-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: calc(4px + var(--sar));
+}
+.upstrip-notice p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 /* inbox */
@@ -2097,6 +2157,9 @@ div.pxr:active {
 .sval.mono {
   font-family: var(--mono);
   font-size: 0.7059rem;
+}
+.sval.lines {
+  white-space: pre-line;
 }
 .slink {
   width: 100%;
