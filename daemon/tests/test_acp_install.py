@@ -8,6 +8,7 @@ from pathlib import Path
 from nestd.engine.acp_install import PROBE_FOLDER, EngineInstall, InstallState
 from nestd.providers.acp_engines import CURSOR, GEMINI, OPENCODE
 from tests.acp_engine_support import FakeNpm, preinstall, program_path
+from tests.updates_support import make_environment
 
 
 def _env() -> Mapping[str, str]:
@@ -26,6 +27,33 @@ def _install(tmp_path: Path, npm: FakeNpm, seen: list[InstallState] | None = Non
     return EngineInstall(
         OPENCODE, tmp_path / "engines", npm, _env_source, tmp_path / "home", on_change=changed
     )
+
+
+async def test_an_install_keeps_the_versions_prepared_environments_hold(tmp_path: Path) -> None:
+    environments = tmp_path / "environments"
+    make_environment(environments, "aaaaaaaaaaaa", packages={"opencode": "1.20.0"})
+    make_environment(environments, "bbbbbbbbbbbb", packages={"opencode": "1.21.0"})
+    install = EngineInstall(
+        OPENCODE,
+        tmp_path / "engines",
+        FakeNpm(),
+        _env_source,
+        tmp_path / "home",
+        environments=environments,
+    )
+    folder = tmp_path / "engines" / "opencode"
+    for version in ("1.0.0", "1.20.0", "1.21.0"):
+        (folder / version).mkdir(parents=True)
+    (folder / ".1.22.0.partial").mkdir()
+
+    await install.install()
+
+    assert sorted(entry.name for entry in folder.iterdir()) == [
+        ".1.22.0.partial",
+        "1.19.5",
+        "1.20.0",
+        "1.21.0",
+    ]
 
 
 async def test_a_missing_engine_installs_its_pinned_version_and_drops_old_ones(

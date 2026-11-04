@@ -8,6 +8,7 @@ import SwiftUI
 /// team's header to join it, or onto No team to leave its team. Each pixie and team has
 /// a menu under ⋯ and on right-click.
 struct PixieList: View {
+    private static let bottomPadding = 8.0
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -32,32 +33,35 @@ struct PixieList: View {
             .padding(.top, 2)
             .padding(.bottom, 8)
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    // Its cards keep the bar's former inset; the rows fill it (B93).
-                    ReportsInbox().padding(.horizontal, 6)
-                    ForEach(sections.teams) { section in
-                        TeamSection(section: section)
+            VStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        // Its cards keep the bar's former inset; the rows fill it (B93).
+                        ReportsInbox().padding(.horizontal, 6)
+                        ForEach(sections.teams) { section in
+                            TeamSection(section: section)
+                        }
+                        LooseSection(pixies: sections.loose, titled: !sections.teams.isEmpty)
                     }
-                    LooseSection(pixies: sections.loose, titled: !sections.teams.isEmpty)
                 }
-            }
-            .scrollIndicators(.never)
+                .scrollIndicators(.never)
 
-            if hidden > 0 {
-                Button {
-                    shell.showsHiddenPixies.toggle()
-                } label: {
-                    Label(
-                        shell.showsHiddenPixies ? "Hide hidden" : "Show hidden (\(hidden))",
-                        systemImage: shell.showsHiddenPixies ? "eye.slash" : "eye")
+                if hidden > 0 {
+                    Button {
+                        shell.showsHiddenPixies.toggle()
+                    } label: {
+                        Label(
+                            shell.showsHiddenPixies ? "Hide hidden" : "Show hidden (\(hidden))",
+                            systemImage: shell.showsHiddenPixies ? "eye.slash" : "eye")
+                    }
+                    .buttonStyle(.nest(.plain))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 10)
                 }
-                .buttonStyle(.nest(.plain))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 10)
             }
+            .updateStrip(gap: Self.bottomPadding)
         }
-        .padding(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .padding(EdgeInsets(top: 8, leading: 0, bottom: Self.bottomPadding, trailing: 0))
         .frame(maxHeight: .infinity, alignment: .top)
         .sideSurface()
         .resizableSidebar()

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import NestKit
 import Observation
@@ -92,7 +93,11 @@ final class AppController {
     private func model(for choice: DaemonChoice) async throws -> AppModel {
         switch choice {
         case .local:
-            return try await Self.localModel(daemons.local)
+            let model = try await Self.localModel(daemons.local)
+            model.updates.reopen = { [daemon = daemons.local.baseURL] in
+                Self.reopen(daemon: daemon)
+            }
+            return model
         case .remote(let daemon):
             let model = try await AppModel.remote(daemon, tokens: daemons.tokens(for: daemon))
             model.link.onSeen = { [daemons] machine, date in
@@ -100,6 +105,16 @@ final class AppController {
             }
             return model
         }
+    }
+
+    /// Quits so the app reopens once `daemon` restarted. A reopen that cannot start leaves
+    /// the app running, which then reconnects.
+    private static func reopen(daemon: URL) {
+        let arguments = AppRelaunch.afterDaemonRestart(
+            appPath: Bundle.main.bundleURL.path, pid: getpid(), daemon: daemon,
+            environment: ProcessInfo.processInfo.environment)
+        guard (try? DetachedSpawner().spawn(AppRelaunch.shell, arguments)) != nil else { return }
+        NSApp.terminate(nil)
     }
 
     /// The model for This Mac's daemon: the default one, or the test daemon the

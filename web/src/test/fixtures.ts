@@ -56,6 +56,7 @@ import type {
   ConfigurationPage,
   CopyPreview,
   EngineLimits,
+  EngineUpdates,
   EngineSection,
   ProjectConfiguration,
   ProviderInfo,
@@ -1093,6 +1094,10 @@ export function codexAccount(overrides: Partial<CodexAccount> = {}): CodexAccoun
     checked_at: NOW,
     ...overrides,
   };
+}
+
+export function engineUpdates(overrides: Partial<EngineUpdates> = {}): EngineUpdates {
+  return { state: "none", engines: [], busy_chats: 0, can_undo: false, notice: null, ...overrides };
 }
 
 export function engineLimits(overrides: Partial<EngineLimits> = {}): EngineLimits {

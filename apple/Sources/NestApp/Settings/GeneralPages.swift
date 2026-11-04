@@ -18,6 +18,8 @@ struct GeneralPage: View {
         SettingsSection(title: "Nest") {
             SettingsRow(label: "Version") { SettingsValue(text: Self.version) }
             RestartRow()
+            UpdateRow()
+            UndoUpdateRow()
         }
     }
 
@@ -272,6 +274,47 @@ private struct RestartRow: View {
                 failure = "Could not restart Nest on \(shell.machineName): \(Shell.describe(error))"
             }
             restarting = false
+        }
+    }
+}
+
+/// The strip's update and button, here whether or not the strip was hidden (B121).
+private struct UpdateRow: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        if let ready = shell.updates.ready {
+            SettingsRow(label: "Update available") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    ForEach(ready.engines) { SettingsValue(text: $0.change) }
+                }
+                Button(ready.relaunching ? "Relaunching..." : "Relaunch to update") {
+                    shell.startRestart(.relaunch)
+                }
+                .buttonStyle(.nest(.soft))
+                .disabled(ready.relaunching)
+            }
+            .updateRestartAlert(.relaunch, inSettings: true)
+        }
+    }
+}
+
+/// Back to the engines before the last update, while there are any to go back to (B121).
+private struct UndoUpdateRow: View {
+    @Environment(Shell.self) private var shell
+
+    var body: some View {
+        let updates = shell.updates
+        if updates.offersUndo {
+            SettingsRow(label: "Undo update") {
+                if updates.restarting == .undo {
+                    Fireflies()
+                }
+                Button("Undo") { shell.startRestart(.undo) }
+                    .buttonStyle(.nest(.soft))
+                    .disabled(updates.restarting != nil)
+            }
+            .updateRestartAlert(.undo, inSettings: true)
         }
     }
 }

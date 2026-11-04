@@ -71,6 +71,8 @@ export function reduce(state: State, action: Action): State {
       return { ...state, auth: action.auth, reconnecting: false };
     case "reconnecting":
       return { ...state, reconnecting: action.on };
+    case "updates":
+      return { ...state, updates: { ...state.updates, ...action.change } };
     case "machine":
       return { ...state, machine: action.machine };
     case "loaded":

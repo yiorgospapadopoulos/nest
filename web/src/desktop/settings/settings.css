@@ -388,6 +388,10 @@
 .dks-val.mono {
   font-size: 11px;
 }
+.dks-val.lines {
+  white-space: pre-line;
+  text-align: right;
+}
 .dks-tabs {
   display: flex;
   gap: 4px;

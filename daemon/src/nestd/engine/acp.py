@@ -83,9 +83,11 @@ def build_acp_engines(
     active: Callable[[str], Awaitable[RunAccount]],
     on_change: Callable[[AcpEngine, InstallState], Awaitable[None]] | None,
     setup: AcpSetup,
+    environments: Path | None = None,
 ) -> dict[str, "AcpEngineService"]:
     """One service per engine Nest runs, in the catalogue's order; `root` is
-    `<data_dir>/engines` and `active` gives an engine's active account.
+    `<data_dir>/engines`, `active` gives an engine's active account, and `environments`
+    holds the prepared environments, whose engine versions stay.
     """
     base = os.environ if setup.base_env is None else setup.base_env
 
@@ -104,7 +106,13 @@ def build_acp_engines(
             return await active(engine.id)
 
         install = EngineInstall(
-            engine, root, setup.npm, env, setup.home or Path.home(), on_change=changed
+            engine,
+            root,
+            setup.npm,
+            env,
+            setup.home or Path.home(),
+            on_change=changed,
+            environments=environments,
         )
         services[engine.id] = AcpEngineService(
             engine,

@@ -14,6 +14,7 @@ import { ProjectHeader } from "./frame/ProjectHeader.tsx";
 import { useProjectMap } from "./frame/projectMap.ts";
 import { ChatRow, ClaudeChatRow, RailDot } from "./frame/SidebarRows.tsx";
 import { agentPane, claudePane, workPane } from "./panes.ts";
+import { UpdateRailDot, UpdateStrip } from "./UpdateStrip.tsx";
 
 // Archived stays open per project while the app runs, as the Mac's archivedOpen.
 const archivedOpen = new Set<string>();
@@ -49,6 +50,7 @@ export function Sidebar() {
             New chat
           </button>
           <ChatGroups map={map} menus={menus} />
+          <UpdateStrip />
           <ResizeHandle />
         </aside>
       )}
@@ -211,6 +213,7 @@ function Rail({ menus }: { menus: Menus }) {
           />
         );
       })}
+      <UpdateRailDot />
     </div>
   );
 }

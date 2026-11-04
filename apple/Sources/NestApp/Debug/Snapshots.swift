@@ -277,6 +277,10 @@
                 try await renderPerformance(model, controller, folder)
                 return
             }
+            if only == "b121" {
+                try await renderEngineUpdates(model, shell, controller, folder)
+                return
+            }
 
             model.app.update("todo-ui") { state in
                 state.openChat("c1", in: workspace)
@@ -644,6 +648,77 @@
                     }))
             try await pairSettings(
                 controller, .performance, "b115-never-run", folder, height: 1_000)
+        }
+
+        /// B121: the update strip over the chat list, closed and open and at the list's end;
+        /// relaunching; in the narrowest bar; a notice; the rail's dot; the Pixies list's
+        /// strip; and Undo update in Settings.
+        private static func renderEngineUpdates(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            guard let sample = model.api as? SampleAPI else { return }
+            let updates = model.updates
+            let ready = EngineUpdates(
+                state: .ready,
+                engines: [
+                    EngineUpdate(
+                        id: "claude", name: "Claude Code", current: "2.1.317", new: "2.1.318"),
+                    EngineUpdate(id: "codex", name: "Codex", current: "0.61.0", new: "0.62.0"),
+                ],
+                canUndo: true)
+            sample.setUpdates(ready)
+            await updates.load()
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.view = .workspace
+                state.leftCollapsed = false
+                state.openChat("c1", in: CGSize(width: 828, height: 790))
+            }
+            let short = CGSize(width: 1_000, height: 460)
+            let openStrip: (NSView) async -> Void = { host in
+                let more = CGPoint(x: 134, y: host.bounds.height - StatusBar.height - 18)
+                host.window?.makeKeyAndOrderFront(nil)
+                send(host, .mouseMoved, at: more)
+                try? await Task.sleep(for: .milliseconds(100))
+                send(host, .leftMouseDown, at: more)
+                try? await Task.sleep(for: .milliseconds(100))
+                send(host, .leftMouseUp, at: more)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            try await pair(controller, "b121-ready", folder)
+            try await pair(controller, "b121-ready-open", folder, prepare: openStrip)
+            try await pair(controller, "b121-list-end", folder, size: short) { host in
+                scrollToBottom(in: host)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            try await updates.run(.relaunch)
+            try await pair(controller, "b121-relaunching", folder)
+            await updates.connected()
+
+            sample.setUpdates(ready)
+            await updates.load()
+            let width = shell.settings.sidebarWidth
+            shell.settings.sidebarWidth = SidebarWidth.minimum
+            try await pair(controller, "b121-narrow", folder)
+            shell.settings.sidebarWidth = width
+
+            var notice = ready
+            notice.notice = "The newest engines failed to start, so Nest went back to the old ones."
+            sample.setUpdates(notice)
+            await updates.load()
+            try await pair(controller, "b121-notice", folder)
+            model.app.update("todo-ui") { $0.leftCollapsed = true }
+            try await pair(controller, "b121-rail", folder)
+            model.app.update("todo-ui") { $0.leftCollapsed = false }
+
+            sample.setUpdates(ready)
+            await updates.load()
+            try await pairSettings(controller, .general, "b121-settings", folder)
+
+            _ = try await sample.createPixie(CreatePixieRequest(name: "Reviewer"))
+            try await model.pixies.load()
+            shell.openPixies()
+            try await pair(controller, "b121-pixies", folder)
         }
 
         /// B101: the start screen's open issues, and its draft once one is clicked; a chat

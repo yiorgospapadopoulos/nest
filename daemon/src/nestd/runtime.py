@@ -15,6 +15,7 @@ from nestd.platform import Platform, current_platform
 from nestd.server import run_uvicorn
 from nestd.service.base import CommandRunner, run_command
 from nestd.service.restart import Restarter, terminate_self
+from nestd.updates.boot import ExecProgram, exec_program
 
 type ServeRunner = Callable[[FastAPI, int], Awaitable[None]]
 
@@ -25,6 +26,9 @@ class Runtime:
     home: Path
     uid: int
     executable: str
+    # This process's `sys.prefix`, which says the environment it runs in.
+    prefix: Path
+    exec_program: ExecProgram
     platform: Platform
     secrets: SecretStore
     clock: Clock
@@ -42,6 +46,8 @@ def default_runtime() -> Runtime:
         home=Path.home(),
         uid=os.getuid(),
         executable=sys.executable,
+        prefix=Path(sys.prefix),
+        exec_program=exec_program,
         platform=platform,
         secrets=KeyringSecretStore(platform.secret_store_help),
         clock=SystemClock(),

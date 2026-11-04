@@ -1407,6 +1407,82 @@ html.desk .ewl {
   background: var(--accent);
 }
 
+/* The update strip: pinned over the left bar's list, under its resize handle, which is what
+   --update-strip leaves room for. */
+.fr-update {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 6px 6px 6px 10px;
+  border-top: 1px solid var(--dk-line);
+  background: var(--dk-side);
+  color: var(--t2);
+  font-size: 11px;
+}
+.fr-update ul {
+  margin: 0;
+  padding: 2px 0 6px;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+}
+.fr-update li + li {
+  margin-top: 3px;
+}
+.fr-urow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+/* Small enough to share the row at the standard width; the narrowest bar wraps it. */
+.fr-urow .dk-btn:not(.icon) {
+  padding: 0 6px;
+  font-size: 11px;
+}
+.fr-umore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.fr-uhide {
+  margin-left: auto;
+}
+.fr-umore .ic {
+  width: 11px;
+  height: 11px;
+  color: var(--t2);
+}
+.fr-unotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.fr-unotice p {
+  flex: 1;
+  min-width: 0;
+  margin: 3px 0;
+  color: var(--t1);
+}
+.fr-udot {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--dk-side);
+}
+
 /* The status bar (StatusBar): 20 px footer buttons at 55 percent, the views centred. */
 .fr-status {
   position: relative;

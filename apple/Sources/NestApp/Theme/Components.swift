@@ -429,6 +429,8 @@ struct NestButtonStyle: ButtonStyle {
     var kind = Kind.soft
     var height: Double = Metrics.buttonHeight
     var iconOnly = false
+    /// Replaces the kind's side padding, for a text button in a tight row.
+    var sidePadding: Double?
     @Environment(\.accentColors) private var accent
     @Environment(\.isEnabled) private var isEnabled
 
@@ -438,7 +440,10 @@ struct NestButtonStyle: ButtonStyle {
                 .font(.ui(height > 26 ? TypeSize.ui : TypeSize.button, weight))
                 .labelStyle(TightLabelStyle())
                 .foregroundStyle(foreground)
-                .padding(.horizontal, iconOnly ? 0 : (kind == .plain || kind == .link ? 6 : 9))
+                .padding(
+                    .horizontal,
+                    iconOnly ? 0 : sidePadding ?? (kind == .plain || kind == .link ? 6 : 9)
+                )
                 .frame(width: iconOnly ? height : nil, height: height)
                 .background(background(hovering: hovering), in: .rounded(Radius.button))
                 .contentShape(.rounded(Radius.button))
@@ -477,9 +482,9 @@ struct NestButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == NestButtonStyle {
     static func nest(
         _ kind: NestButtonStyle.Kind = .soft, height: Double = Metrics.buttonHeight,
-        iconOnly: Bool = false
+        iconOnly: Bool = false, sidePadding: Double? = nil
     ) -> NestButtonStyle {
-        NestButtonStyle(kind: kind, height: height, iconOnly: iconOnly)
+        NestButtonStyle(kind: kind, height: height, iconOnly: iconOnly, sidePadding: sidePadding)
     }
 }
 

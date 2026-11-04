@@ -73,6 +73,8 @@
   /* In landscape, the side with the notch or the camera. */
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  /* The update strip's height while it floats over a list (useHeightVar sets it there). */
+  --update-strip: 0px;
 }
 /* Panels (D039) are flat since B102: they take the page, sheets the Mac's sheet colour,
    edges a divider, with no blur or shadow, and the Mac's radii. The transcript keeps its

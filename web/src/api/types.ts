@@ -1755,6 +1755,25 @@ export interface AccountList {
   accounts: EngineAccount[];
 }
 
+/** What a relaunch changes for one engine. */
+export interface EngineUpdate {
+  id: string;
+  name: string;
+  current: string;
+  new: string;
+}
+
+/** `GET /api/updates` and the `updates.changed` event. */
+export interface EngineUpdates {
+  state: "none" | "checking" | "preparing" | "ready";
+  // Only filled while `state` is ready.
+  engines: EngineUpdate[];
+  // Chats a relaunch would interrupt, pixie and habit runs included.
+  busy_chats: number;
+  can_undo: boolean;
+  notice: string | null;
+}
+
 /** An account being signed in to. */
 export interface AccountSignIn {
   account: EngineAccount;

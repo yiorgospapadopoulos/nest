@@ -1,9 +1,10 @@
-"""The engines Nest runs over the Agent Client Protocol (B107), each pinned to a tested version.
+"""The engines Nest runs over the Agent Client Protocol (B107).
 
 ACP is JSON-RPC 2.0 over the agent's stdin and stdout. Each engine here is one Nest engine
 on the generic ACP provider. An open one is fetched from npm into Nest's own folder with
 Nest's install (`bundled`); one that is not on npm runs from the user's own install of it
-(`user_install`). Updating a pinned version is a normal Nest change with its tests.
+(`user_install`). A fetched engine's version here is the one the base environment runs; a
+prepared environment (`nestd/updates`) names newer ones in its manifest, applied below.
 
 Nest makes each engine ask before shell commands, edits, access outside its folder and
 the user's own MCP tools, and answers every request itself (`git_guard`). Where the spike
@@ -31,11 +32,14 @@ MCP client's default of a minute is assumed.
 """
 
 import json
+import sys
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Literal
+
+from nestd.updates.manifest import read_manifest
 
 type Delivery = Literal["bundled", "user_install"]
 type SignIn = Literal["api_key", "terminal"]
@@ -181,7 +185,24 @@ CURSOR = AcpEngine(
     login_command="agent login",
     user_paths=("~/.local/bin/agent",),
 )
-ACP_ENGINES: tuple[AcpEngine, ...] = (OPENCODE, GEMINI, CURSOR)
+# As the base environment runs them.
+BASE_ENGINES: tuple[AcpEngine, ...] = (OPENCODE, GEMINI, CURSOR)
+
+
+def in_environment(engines: tuple[AcpEngine, ...], prefix: Path) -> tuple[AcpEngine, ...]:
+    """`engines` at the versions the environment at `prefix` holds; the base holds none."""
+    manifest = read_manifest(prefix)
+    if manifest is None:
+        return engines
+    return tuple(
+        replace(engine, version=manifest.packages.get(engine.id, engine.version))
+        if engine.delivery == "bundled"
+        else engine
+        for engine in engines
+    )
+
+
+ACP_ENGINES: tuple[AcpEngine, ...] = in_environment(BASE_ENGINES, Path(sys.prefix))
 ACP_ENGINE_IDS: frozenset[str] = frozenset(engine.id for engine in ACP_ENGINES)
 
 

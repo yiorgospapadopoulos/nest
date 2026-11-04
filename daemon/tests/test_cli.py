@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import tempfile
-from collections.abc import Awaitable, Callable, Iterator, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,17 +21,24 @@ from nestd.runtime import Runtime
 from nestd.service.base import CommandResult
 from nestd.service.launchd import LABEL
 from nestd.service.systemd import UNIT_NAME
+from nestd.updates.boot import installed_fingerprint
+from nestd.updates.state import BASE, StateFile, UpdateState
 from tests.fakes import FakeClock, FakeSecretStore, RecordingRestart
+from tests.updates_support import make_environment
 
 
 class Recorder:
     def __init__(self) -> None:
         self.commands: list[list[str]] = []
         self.served: list[int] = []
+        self.switched: list[list[str]] = []
         self.print_result = CommandResult(113, "", "Could not find service")
         self.bootstrap_result = CommandResult(0, "", "")
         # Called inside the served app, as a client would act while the daemon runs.
         self.while_serving: list[Callable[[FastAPI], Awaitable[None]]] = []
+
+    def exec_program(self, program: str, args: list[str], _env: Mapping[str, str]) -> None:
+        self.switched.append([program, *args[1:]])
 
     def run(self, args: Sequence[str]) -> CommandResult:
         self.commands.append(list(args))
@@ -70,6 +77,8 @@ class Rig:
             home=self.home,
             uid=501,
             executable="/venv/bin/python",
+            prefix=home / "venv",
+            exec_program=self.recorder.exec_program,
             platform=platform,
             secrets=self.secrets,
             clock=FakeClock(),
@@ -114,6 +123,18 @@ def moving() -> Iterator[Rig]:
     shutil.rmtree(home)
     root.handlers[:] = handlers
     root.setLevel(level)
+
+
+def test_serve_moves_to_the_environment_that_should_run(cli: Rig) -> None:
+    root = cli.paths.environments_dir
+    root.mkdir(parents=True)
+    make_environment(root, "aaaaaaaaaaaa", fingerprint=installed_fingerprint())
+    StateFile(root).save(UpdateState(current="aaaaaaaaaaaa", previous=BASE))
+
+    cli.run("serve", "--port", "9100")
+
+    python = str(root / "aaaaaaaaaaaa" / "bin" / "python")
+    assert cli.recorder.switched == [[python, "-m", "nestd", "serve", "--port", "9100"]]
 
 
 def test_serve_uses_configured_port_and_runs_the_app(cli: Rig) -> None:

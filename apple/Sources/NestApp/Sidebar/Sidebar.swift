@@ -56,6 +56,7 @@ struct Sidebar: View {
 }
 
 private struct SidebarFull: View {
+    private static let bottomPadding = 4.0
     @Environment(Shell.self) private var shell
 
     var body: some View {
@@ -102,9 +103,10 @@ private struct SidebarFull: View {
                 }
             }
             .scrollIndicators(.never)
+            .updateStrip(gap: Self.bottomPadding)
         }
         // Rows fill the bar's width (B93); their content keeps its own inset.
-        .padding(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
+        .padding(EdgeInsets(top: 8, leading: 0, bottom: Self.bottomPadding, trailing: 0))
     }
 }
 
@@ -221,6 +223,7 @@ private struct SidebarRail: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.never)
+        .safeAreaInset(edge: .bottom, spacing: 0) { UpdateRailDot() }
         .padding(.top, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())

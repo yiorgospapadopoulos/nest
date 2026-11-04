@@ -11,6 +11,7 @@ import type { WorkOf } from "./projects/ChatTree.tsx";
 import { Projects } from "./projects/Projects.tsx";
 import { Settings } from "./settings/Settings.tsx";
 import { TabBar } from "./TabBar.tsx";
+import { UpdateStrip } from "./UpdateStrip.tsx";
 
 /** The three tabs, with a chat pushed full screen over them; the address follows along. */
 export function Shell() {
@@ -177,6 +178,8 @@ export function Shell() {
           badge={needsCount(state)}
         />
       )}
+      {/* Over the tabs only: an open chat is full screen, a new chat's composer is here. */}
+      {chat === null && <UpdateStrip />}
       {chat !== null && (
         <ChatView
           // A different chat is a fresh view: no state of the last one is carried over.
