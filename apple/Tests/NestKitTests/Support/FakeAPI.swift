@@ -394,6 +394,10 @@ final class FakeAPI: NestAPI {
         try call("attachmentData", id) { _ in Data("image \(id)".utf8) }
     }
 
+    func checkAttachment(_ id: String) async throws {
+        try call("checkAttachment", id) { _ in () }
+    }
+
     func sendQueuedNow(_ id: String, queuedID: String) async throws {
         try call("sendQueuedNow", "\(id) \(queuedID)") { _ in }
     }

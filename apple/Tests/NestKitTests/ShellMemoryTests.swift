@@ -276,6 +276,63 @@ import Testing
         #expect(images.failed("gone"))
         #expect(!images.failed("img1"))
     }
+
+    @Test func aDeletedImageIsToldApartAndNotReadAgain() async {
+        let images = AttachmentImages(api: api)
+        api.fail("attachmentData", with: APIError.notFound("unknown attachment"))
+        await images.load("gone")
+        await images.load("gone")
+        #expect(images.deleted("gone"))
+        #expect(api.calls == ["attachmentData gone"])
+    }
+
+    /// A daemon that is away for a moment must not leave an image blank for good.
+    @Test func aFailedImageIsTriedAgainWhenItComesBackOnScreen() async {
+        let images = AttachmentImages(api: api)
+        api.set { $0.failNext["attachmentData"] = APIError.transport("offline") }
+        await images.load("img1")
+        #expect(images.failed("img1"))
+        #expect(!images.deleted("img1"))
+
+        await images.load("img1")
+        #expect(!images.failed("img1"))
+        #expect(images.data(for: "img1") != nil)
+    }
+
+    @Test func aSentFileIsCheckedOnceAndADeletedOneSavesNothing() async throws {
+        let images = AttachmentImages(api: api)
+        await images.check("doc")
+        await images.check("doc")
+        #expect(api.calls == ["checkAttachment doc"])
+        #expect(!images.deleted("doc"))
+
+        api.fail("checkAttachment", with: APIError.notFound("unknown attachment"))
+        await images.check("old")
+        #expect(images.deleted("old"))
+
+        api.fail("attachmentData", with: APIError.notFound("unknown attachment"))
+        #expect(try await images.file("older") == nil)
+        #expect(images.deleted("older"))
+
+        api.fail("attachmentData", with: APIError.server(status: 500, detail: "boom"))
+        await #expect(throws: APIError.self) { try await images.file("doc") }
+        #expect(!images.deleted("doc"))
+    }
+
+    @Test func onlyRasterImagesAreImagesAndTilesNameTheType() {
+        func file(_ name: String, _ type: String = "application/pdf") -> NestKit.Attachment {
+            NestKit.Attachment(id: "a", filename: name, mediaType: type, size: 1)
+        }
+        for type in ["image/png", "image/jpeg", "image/gif", "image/webp"] {
+            #expect(file("a", type).isImage)
+        }
+        #expect(!file("a.svg", "image/svg+xml").isImage)
+        #expect(!file("a.pdf").isImage)
+        #expect(file("Report.final.pdf").typeTag == "PDF")
+        #expect(file("noextension").typeTag == "FILE")
+        #expect(file(".env").typeTag == "FILE")
+        #expect(file("a.toolongext").typeTag == "FILE")
+    }
 }
 
 /// @ suggests files in every chat: plain folders and pixie chats too (B59).

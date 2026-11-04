@@ -48,6 +48,8 @@ public protocol NestAPI: Sendable {
         -> SavedMemory
     /// An attachment's bytes, such as a tool result's image.
     func attachmentData(_ id: String) async throws -> Data
+    /// Throws `notFound` when the attachment was deleted; reads only its first byte.
+    func checkAttachment(_ id: String) async throws
     func interrupt(_ id: String) async throws
     /// Ends a usage limit pause now; the chat goes on at once (B78).
     func resumeLimit(_ id: String) async throws -> Session

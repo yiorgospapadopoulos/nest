@@ -59,11 +59,7 @@ private struct PendingRow: View {
                     .truncationMode(.tail)
                     .textSelection(.enabled)
                 if !message.attachments.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(message.attachments) { attachment in
-                            Chip(icon: Icon.attach, text: attachment.filename)
-                        }
-                    }
+                    SentAttachments(attachments: message.attachments, alignment: .leading)
                 }
                 Text(note)
                     .font(.ui(TypeSize.meta))

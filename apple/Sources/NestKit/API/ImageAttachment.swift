@@ -61,9 +61,9 @@ public enum ImageAttachment {
             mediaType: target.mediaType, thumbnail: nil)
     }
 
-    /// A PNG at most `thumbnailEdge` pixels on its long edge; nil when not an image.
-    public static func thumbnail(_ data: Data) -> Data? {
-        guard let source = imageSource(data), let image = scaled(source, to: thumbnailEdge)
+    /// A PNG at most `edge` pixels on its long edge; nil when not an image.
+    public static func thumbnail(_ data: Data, edge: Int = thumbnailEdge) -> Data? {
+        guard let source = imageSource(data), let image = scaled(source, to: edge)
         else { return nil }
         return encode(image, as: .png)
     }

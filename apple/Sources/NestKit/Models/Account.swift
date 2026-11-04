@@ -310,6 +310,26 @@ public struct Attachment: Codable, Sendable, Hashable, Identifiable {
         case mediaType = "media_type"
         case createdAt = "created_at"
     }
+
+    /// The types the daemon serves inline; anything else downloads, so it shows as a file row.
+    private static let imageTypes: Set<String> = [
+        "image/png", "image/jpeg", "image/gif", "image/webp",
+    ]
+
+    public var isImage: Bool {
+        Self.imageTypes.contains(mediaType)
+    }
+
+    /// The short type a file row's tile shows: "PDF", or "FILE" with no usable extension.
+    public var typeTag: String {
+        guard let dot = filename.lastIndex(of: "."), dot != filename.startIndex else {
+            return "FILE"
+        }
+        let tag = filename[filename.index(after: dot)...]
+        let usable =
+            (1...4).contains(tag.count) && tag.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        return usable ? tag.uppercased() : "FILE"
+    }
 }
 
 /// The result of continuing a session in Claude Code.

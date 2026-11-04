@@ -474,6 +474,11 @@ import Testing
 
     @Test func plainAndStreamingMessagesStayMarkdown() {
         #expect(ShellCommand.segments("Just text") == [.markdown("Just text")])
+        // Under a list item it stays in the list, which a split would end.
+        let list = "1. Install:\n\n   ```sh\n   npm i\n   ```\n2. Run"
+        #expect(ShellCommand.segments(list) == [.markdown(list)])
+        #expect(
+            ShellCommand.segments("~~~sh\nnpm i\n```\n~~~") == [.command("npm i\n```")])
         #expect(ShellCommand.segments("") == [])
         #expect(
             ShellCommand.segments("Run:\n```bash\nnpm i") == [.markdown("Run:\n```bash\nnpm i")])
