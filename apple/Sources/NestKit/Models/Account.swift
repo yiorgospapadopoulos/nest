@@ -327,7 +327,8 @@ public struct Attachment: Codable, Sendable, Hashable, Identifiable {
         }
         let tag = filename[filename.index(after: dot)...]
         let usable =
-            (1...4).contains(tag.count) && tag.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+            (1...4).contains(tag.count)
+            && tag.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
         return usable ? tag.uppercased() : "FILE"
     }
 }

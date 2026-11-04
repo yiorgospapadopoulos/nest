@@ -216,7 +216,9 @@ import Testing
 
     @Test func columnsThatFitFillTheTableInProportion() {
         #expect(
-            TableColumns.widths(longest: [100, 300], longestWord: [50, 50], room: 800) == [200, 600])
+            TableColumns.widths(longest: [100, 300], longestWord: [50, 50], room: 800) == [
+                200, 600,
+            ])
     }
 
     /// In a narrow pane too the short columns keep their numbers on one line; the long one
@@ -233,11 +235,14 @@ import Testing
 
     @Test func tooManyColumnsShareByTheirLongestWord() {
         #expect(
-            TableColumns.widths(longest: [500, 500], longestWord: [300, 900], room: 600) == [150, 450]
+            TableColumns.widths(longest: [500, 500], longestWord: [300, 900], room: 600) == [
+                150, 450,
+            ]
         )
     }
 
     @Test func anEmptyTableStillFillsItsRoom() {
-        #expect(TableColumns.widths(longest: [0, 0], longestWord: [0, 0], room: 640) == [320, 320])
+        #expect(
+            TableColumns.widths(longest: [0, 0], longestWord: [0, 0], room: 640) == [320, 320])
     }
 }

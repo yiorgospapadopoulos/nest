@@ -298,12 +298,14 @@ import Testing
     }
 
     @Test func unevenRowsArePaddedOrCut() {
-        #expect(table("| a | b |\n|---|---|\n| 1 |\n| 2 | 3 | 4 |")?.rows == [["1", ""], ["2", "3"]])
+        #expect(
+            table("| a | b |\n|---|---|\n| 1 |\n| 2 | 3 | 4 |")?.rows == [["1", ""], ["2", "3"]])
     }
 
     @Test func aMalformedTableStaysText() {
         for text in [
-            "| a | b |\n| 1 | 2 |", "| a | b |\n|---|", "| a | b |\n|-x-|---|", "Use a | b for this",
+            "| a | b |\n| 1 | 2 |", "| a | b |\n|---|", "| a | b |\n|-x-|---|",
+            "Use a | b for this",
         ] {
             #expect(MarkdownBlock.parse(text) == [.paragraph(text)], "\(text)")
         }
@@ -328,7 +330,8 @@ import Testing
 @Suite struct MarkdownSweepTests {
     @Test func rulesInEachSpelling() {
         for text in ["---", "***", "___", "- - -", "  ***  "] {
-            #expect(MarkdownBlock.parse("a\n\(text)\nb") == [.paragraph("a"), .rule, .paragraph("b")])
+            #expect(
+                MarkdownBlock.parse("a\n\(text)\nb") == [.paragraph("a"), .rule, .paragraph("b")])
         }
     }
 
@@ -383,7 +386,9 @@ import Testing
         }
     }
 
-    @Test(arguments: ["1. one\n   - sub\n2. two", "- one\n    - sub\n- two", "- one\n  - sub\n- two"])
+    @Test(arguments: [
+        "1. one\n   - sub\n2. two", "- one\n    - sub\n- two", "- one\n  - sub\n- two",
+    ])
     func aSublistIsOneLevelDeeperAtAnyIndent(text: String) {
         #expect(levels(text) == [0, 1, 0])
     }
@@ -394,13 +399,14 @@ import Testing
 
     @Test func aFenceStaysUnderItsItemWithoutTheItemsIndent() {
         #expect(
-            MarkdownBlock.parse("1. Install:\n\n   ```sh\n   npm i\n     nested\n   ```\n2. Run") == [
-                .listItem(marker: "1.", level: 0, text: "Install:"),
-                .underItem(
-                    level: 0, marker: "1.",
-                    blocks: [.code(language: "sh", text: "npm i\n  nested")]),
-                .listItem(marker: "2.", level: 0, text: "Run"),
-            ])
+            MarkdownBlock.parse("1. Install:\n\n   ```sh\n   npm i\n     nested\n   ```\n2. Run")
+                == [
+                    .listItem(marker: "1.", level: 0, text: "Install:"),
+                    .underItem(
+                        level: 0, marker: "1.",
+                        blocks: [.code(language: "sh", text: "npm i\n  nested")]),
+                    .listItem(marker: "2.", level: 0, text: "Run"),
+                ])
     }
 
     @Test func anIndentedParagraphStaysUnderItsItemInOrder() {
@@ -420,7 +426,9 @@ import Testing
             blocks[1]
                 == .underItem(
                     level: 0, marker: "•",
-                    blocks: [.table(MarkdownTable(aligns: [.leading], header: ["a"], rows: [["1"]]))]))
+                    blocks: [
+                        .table(MarkdownTable(aligns: [.leading], header: ["a"], rows: [["1"]]))
+                    ]))
         #expect(blocks.count == 3)
     }
 
