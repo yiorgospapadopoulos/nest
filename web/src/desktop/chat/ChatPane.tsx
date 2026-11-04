@@ -5,6 +5,7 @@
 // shows read-only.
 import { useEffect, useState, type ReactNode } from "react";
 import type { Session } from "../../api/types.ts";
+import { workRoot } from "../../screens/approvals/hooks.ts";
 import { useStore } from "../../store/context.ts";
 import { outsideEngineName } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
@@ -17,6 +18,7 @@ import { claudePane } from "../shell/panes.ts";
 import { Button } from "../ui/controls.tsx";
 import { BackgroundBar, LimitBar, ReviewBar } from "./Bars.tsx";
 import { Composer } from "./Composer.tsx";
+import { FileLinks } from "./FileLinks.tsx";
 import { Glyph } from "./glyphs.tsx";
 import { ChatHeaderParts, HeaderFrame, HeaderTitle } from "./PaneHeader.tsx";
 import { RunControlView } from "./RunControl.tsx";
@@ -103,7 +105,11 @@ export function ChatPane({ id, chrome, focus }: ChatProps) {
       </PaneFrame>
     );
   }
-  return <SessionBody session={session} chrome={chrome} focus={focus} />;
+  return (
+    <FileLinks folder={workRoot(session)}>
+      <SessionBody session={session} chrome={chrome} focus={focus} />
+    </FileLinks>
+  );
 }
 
 function SessionBody({
