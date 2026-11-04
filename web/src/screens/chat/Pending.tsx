@@ -4,6 +4,8 @@ import { asDraftFiles } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
 import { bashBlocks } from "../../transcript/build.ts";
 import { Icon } from "../../ui/Icon.tsx";
+import { fromQueued } from "../../ui/sentFile.ts";
+import { Sent } from "./ResultImages.tsx";
 import { usePrefill } from "./usePrefill.tsx";
 
 const WORKING = new Set<Session["state"]>(["starting", "running", "waiting"]);
@@ -61,7 +63,7 @@ export function Pending({ session, draft }: Props) {
               <div className="pmt">
                 <Text text={message.text} />
                 {message.attachments.length > 0 && (
-                  <small>{message.attachments.map((a) => a.filename).join(", ")}</small>
+                  <Sent files={message.attachments.map(fromQueued)} />
                 )}
                 <small className="pmw">{when(message, working)}</small>
               </div>

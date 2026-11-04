@@ -16,6 +16,7 @@ import type {
   PixieCallItem,
   PixieResultItem,
   ResultImage,
+  SentFile,
   SubStep,
   ThinkingItem,
   ToolItem,
@@ -42,7 +43,7 @@ import { PixieCard } from "./PixieCards.tsx";
 import { collapsedOutput, diffHunks, latestLine } from "./rowText.ts";
 import { useRows, type MessageActions } from "./rowsContext.ts";
 import { segments } from "./segments.ts";
-import { ImageSheet } from "./ImageSheet.tsx";
+import { ImageSheet, Sent } from "./ImageSheet.tsx";
 import "./chat.css";
 
 const KIND_GLYPHS: Record<ToolKind, GlyphName> = {
@@ -196,7 +197,7 @@ function FromPixie({ id }: { id: string }) {
 
 interface BubbleProps {
   text: string;
-  attachments: string[];
+  attachments: SentFile[];
   github?: GitHubPart | undefined;
   // The message's event, for Edit, Rewind and Fork; null for an answer.
   event: number | null;
@@ -212,9 +213,19 @@ function UserBubble({ text, attachments, github, event }: BubbleProps) {
   );
   const actions =
     event === null || Number.isNaN(event) ? null : (rows.messageActions?.(event) ?? null);
+  const hasText = text !== "" || github !== undefined;
   return (
     <div className="dc-ucol">
-      {(text !== "" || github !== undefined) && (
+      {attachments.length > 0 &&
+        (hasText ? (
+          <Sent files={attachments} />
+        ) : (
+          <div className="dc-ubub-w">
+            {actions !== null && <MessageActionsMenu actions={actions} />}
+            <Sent files={attachments} />
+          </div>
+        ))}
+      {hasText && (
         <div className="dc-ubub-w">
           {actions !== null && <MessageActionsMenu actions={actions} />}
           <div className="dc-ubub">
@@ -225,12 +236,6 @@ function UserBubble({ text, attachments, github, event }: BubbleProps) {
           </div>
         </div>
       )}
-      {attachments.map((name, index) => (
-        <span key={index} className="dc-chip">
-          <Glyph name="attach" size={10} />
-          <span>{name}</span>
-        </span>
-      ))}
     </div>
   );
 }

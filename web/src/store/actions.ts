@@ -142,6 +142,11 @@ const RESTORED: Record<Restore, string> = {
   both: "Rewound, and the files restored",
 };
 
+function goneOnMissing(error: unknown): "gone" {
+  if (error instanceof ApiError && error.status === 404) return "gone";
+  throw error;
+}
+
 /** A message's attachments as a draft holds them. */
 export function asDraftFiles(attachments: QueuedAttachment[]): Attachment[] {
   return attachments.map((a) => ({ ...a, created_at: "" }));
@@ -1144,6 +1149,16 @@ export function createActions(api: Api, dispatch: Dispatch, storage: () => Stora
     /** A stored image, such as one in a tool result; null when it cannot be had. */
     attachment(id: string): Promise<Blob | null> {
       return quietly(() => api.attachment(id));
+    },
+
+    /** A sent file's data; "gone" once it was deleted, null when it cannot be had now. */
+    sentFile(id: string): Promise<Blob | "gone" | null> {
+      return quietly(() => api.attachment(id).catch(goneOnMissing));
+    },
+
+    /** Whether a sent file was deleted; a failed check says no. */
+    async sentFileGone(id: string): Promise<boolean> {
+      return (await quietly(() => api.attachmentThere(id).catch(goneOnMissing))) === "gone";
     },
 
     /** Puts a message taken back into a draft, replacing it. */

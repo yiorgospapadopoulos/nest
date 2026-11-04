@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Actions } from "../../store/actions.ts";
 import { useStore } from "../../store/context.ts";
-import type { ResultImage } from "../../transcript/build.ts";
+import type { ResultImage, SentFile } from "../../transcript/build.ts";
+import { SentFiles, type ImageViewer } from "../../ui/SentFiles.tsx";
 import { Sheet } from "../../ui/Sheet.tsx";
+import { download } from "../artifacts/files.ts";
 
 // Each image's object URL, or null when it could not be had, fetched once per page: the
 // API wants the device's credentials, so it is read as data rather than linked.
@@ -64,16 +66,27 @@ function Thumbnail({ id, from }: { id: string; from: string }) {
         <img src={url} alt={alt} />
       </button>
       {open && (
-        <Sheet
-          title="Image"
-          full
+        <FullImage
+          url={url}
+          alt={alt}
           onClose={() => {
             setOpen(false);
           }}
-        >
-          <img className="timg-full" src={url} alt={alt} />
-        </Sheet>
+        />
       )}
     </>
   );
+}
+
+function FullImage({ url, alt, onClose }: ImageViewer) {
+  return (
+    <Sheet title="Image" full onClose={onClose}>
+      <img className="timg-full" src={url} alt={alt} />
+    </Sheet>
+  );
+}
+
+/** A message's sent images and files, on the phone. */
+export function Sent({ files, ev }: { files: SentFile[]; ev?: string | undefined }) {
+  return <SentFiles files={files} Viewer={FullImage} save={download} ev={ev} />;
 }

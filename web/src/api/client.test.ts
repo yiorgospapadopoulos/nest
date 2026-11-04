@@ -911,6 +911,19 @@ describe("HttpApi", () => {
     expect(init?.credentials).toBe("same-origin");
   });
 
+  it("checks a stored file without reading it, and raises a deleted one", async () => {
+    const cancel = vi.fn(() => Promise.resolve());
+    const reply = new Response("a large file");
+    vi.spyOn(reply.body as ReadableStream, "cancel").mockImplementation(cancel);
+    const found = new HttpApi(vi.fn<typeof fetch>(() => Promise.resolve(reply)));
+
+    await found.attachmentThere("a1");
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    const { api } = setup(404, { detail: "unknown attachment 'x'" });
+    await expect(api.attachmentThere("x")).rejects.toMatchObject({ status: 404 });
+  });
+
   it("raises an attachment the Mac does not have", async () => {
     const { api } = setup(404, { detail: "unknown attachment 'x'" });
 

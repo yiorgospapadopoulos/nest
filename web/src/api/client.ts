@@ -227,6 +227,7 @@ export interface Api {
   remember(sessionId: string, text: string, scope: MemoryScope): Promise<MemoryReply>;
   // A stored file, such as an image in a tool result, as data.
   attachment(id: string): Promise<Blob>;
+  attachmentThere(id: string): Promise<void>;
   // The dev server of the chat's folder (B108); start and restart answer 409 when the chat
   // has no run command.
   run(sessionId: string): Promise<RunStatus>;
@@ -726,6 +727,14 @@ export class HttpApi implements Api {
     const response = await this.request(path, {});
     if (!response.ok) throw failure(response.status, parse(await response.text()));
     return response.blob();
+  }
+
+  /** Whether a stored file is still there (404 otherwise), without reading all of it. */
+  async attachmentThere(id: string): Promise<void> {
+    const path = `/api/attachments/${encodeURIComponent(id)}`;
+    const response = await this.request(path, {});
+    if (!response.ok) throw failure(response.status, parse(await response.text()));
+    await response.body?.cancel();
   }
 
   run(sessionId: string) {

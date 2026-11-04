@@ -46,7 +46,9 @@ describe("messages sent while Claude works (B59)", () => {
     push(queuedEvent(5, [queuedMessage({ sent: true, attachments: [SHOT] })]));
     const row = within(pending()).getByRole("listitem");
     expect(row).toHaveTextContent("Then add tests");
-    expect(row).toHaveTextContent("shot.png");
+    await waitFor(() => {
+      expect(api.attachment).toHaveBeenCalledWith("a1");
+    });
     expect(row).toHaveTextContent("Claude reads this at its next step");
     // Not part of the transcript until Claude reads it.
     expect(defined(container.querySelector(".tx"))).not.toHaveTextContent("Then add tests");
