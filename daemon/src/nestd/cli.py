@@ -1,7 +1,7 @@
 """Command line entry point.
 
 `nestd serve | service install|uninstall|status | pair | design generate|check|icon |
-gates changed|record | engines install`.
+gates changed|record | engines install|selfcheck`.
 """
 
 import argparse
@@ -43,6 +43,8 @@ from nestd.service.base import ServiceError, ServiceManager
 from nestd.service.launchd import LEGACY_LABEL
 from nestd.service.manager import service_manager
 from nestd.storage.errors import DatabaseError
+from nestd.updates.boot import SWITCHED_ENV, Boot, TrialWatch, switch_environment
+from nestd.updates.selfcheck import run_selfcheck_here
 
 type Handler = Callable[[argparse.Namespace, AppPaths, Runtime], int]
 
@@ -125,6 +127,15 @@ def _parser() -> argparse.ArgumentParser:
     engines_actions.add_parser(
         "install", help="install every bundled engine's pinned version that is missing"
     ).set_defaults(handler=_engines_install)
+    selfcheck = engines_actions.add_parser(
+        "selfcheck",
+        help="check offline, on throwaway folders, that this environment runs the daemon and "
+        "its engines; prints JSON",
+    )
+    selfcheck.add_argument(
+        "--engines-dir", type=Path, help="where the fetched engines are (default: the data folder)"
+    )
+    selfcheck.set_defaults(handler=_engines_selfcheck)
     return parser
 
 
@@ -143,20 +154,36 @@ def _move_folders(paths: AppPaths, rt: Runtime) -> list[str]:
 
 def _serve(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
     configure_logging(rt.err)
-    # Engine processes inherit the daemon's environment (B98).
-    drop_leaked_env(os.environ)
+    # Before the switch, which writes in the data folder: a new one would stop the move.
     for note in _move_folders(paths, rt):
         logger.info(note)
+    # Before this process opens anything: it may be replaced here.
+    watch = switch_environment(
+        Boot(
+            root=paths.environments_dir,
+            prefix=rt.prefix,
+            executable=rt.executable,
+            env=rt.env,
+            exec_program=rt.exec_program,
+        ),
+        ["serve", *([] if args.port is None else ["--port", str(args.port)])],
+    )
+    os.environ.pop(SWITCHED_ENV, None)
+    # Engine processes inherit the daemon's environment (B98).
+    drop_leaked_env(os.environ)
     # The server reads its token at startup; a missing or locked secret store stops here
     # with what to do, not with a traceback from inside the server.
     rt.secrets.get(LOCAL_DEVICE_ACCOUNT)
-    asyncio.run(_run_server(paths, rt, args.port))
+    asyncio.run(_run_server(paths, rt, args.port, watch))
     return 0
 
 
-async def _run_server(paths: AppPaths, rt: Runtime, port: int | None) -> None:
+async def _run_server(
+    paths: AppPaths, rt: Runtime, port: int | None, watch: TrialWatch | None
+) -> None:
     ctx = await AppContext.build(paths, rt.secrets, rt.clock, platform=rt.platform)
     ctx.port_flag = port
+    ctx.updates.watch = watch
     try:
         app = create_app(ctx, restart=rt.restart)
         await rt.serve(app, ctx.serving_port())
@@ -254,6 +281,12 @@ def _design_check(args: argparse.Namespace, _paths: AppPaths, rt: Runtime) -> in
     return 1
 
 
+def _engines_selfcheck(args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
+    report = run_selfcheck_here(args.engines_dir or paths.engines_dir, rt.platform)
+    print(report.model_dump_json(), file=rt.out)
+    return 0 if report.ok else 1
+
+
 def _engines_install(_args: argparse.Namespace, paths: AppPaths, rt: Runtime) -> int:
     """Each bundled engine's pinned version (B107); quick when they are all there."""
     return asyncio.run(_install_engines(paths, rt))
@@ -269,7 +302,9 @@ async def _install_engines(paths: AppPaths, rt: Runtime) -> int:
     for engine in ACP_ENGINES:
         if engine.delivery != "bundled":
             continue
-        state = await EngineInstall(engine, paths.engines_dir, run_npm, env, rt.home).install()
+        state = await EngineInstall(
+            engine, paths.engines_dir, run_npm, env, rt.home, environments=paths.environments_dir
+        ).install()
         if state.state == "ready":
             print(f"{engine.name} {state.version} is installed", file=rt.out)
         else:
