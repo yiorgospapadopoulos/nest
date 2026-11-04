@@ -54,6 +54,12 @@
   --diff-added-text: #14723a;
   --diff-removed-fill: rgba(229,72,77,0.11);
   --diff-removed-text: #bd2c27;
+  --code-comment: #6b6b6b;
+  --code-string: #1d6f42;
+  --code-keyword: #7038ad;
+  --code-number: #9a5208;
+  --code-added: #14723a;
+  --code-removed: #b42b26;
   --signal-approve: #1f9a52;
   --signal-running-ring: rgba(10,122,255,0.45);
   --signal-attention-glow: rgba(240,154,18,0.55);
@@ -229,6 +235,12 @@
     --diff-added-text: #6be3a0;
     --diff-removed-fill: rgba(255,105,97,0.14);
     --diff-removed-text: #ff9a93;
+    --code-comment: #979797;
+    --code-string: #8fd3a6;
+    --code-keyword: #c3aaf5;
+    --code-number: #e6b27c;
+    --code-added: #6be3a0;
+    --code-removed: #ff9a93;
     --signal-approve: #23904e;
     --signal-running-ring: rgba(61,155,255,0.5);
     --signal-attention-glow: rgba(255,179,64,0.5);
@@ -343,6 +355,12 @@
   --diff-added-text: #6be3a0;
   --diff-removed-fill: rgba(255,105,97,0.14);
   --diff-removed-text: #ff9a93;
+  --code-comment: #979797;
+  --code-string: #8fd3a6;
+  --code-keyword: #c3aaf5;
+  --code-number: #e6b27c;
+  --code-added: #6be3a0;
+  --code-removed: #ff9a93;
   --signal-approve: #23904e;
   --signal-running-ring: rgba(61,155,255,0.5);
   --signal-attention-glow: rgba(255,179,64,0.5);

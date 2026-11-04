@@ -59,3 +59,21 @@ describe("tertiary text", () => {
     expect(tertiaryOn(DARK, color(DARK, "page-base"))).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe("code colours", () => {
+  const KINDS = ["comment", "string", "keyword", "number", "added", "removed"];
+
+  it.each([
+    ["light", ":root"],
+    ["dark", DARK],
+  ])("read at 4.5:1 on the code backgrounds in %s", (_name, root) => {
+    const window = color(root, "mac-window-opaque");
+    const pane = over(color(root, "mac-chat-pane"), window);
+    for (const fill of ["mac-soft", "mac-raised"]) {
+      const ground = over(color(root, fill), pane);
+      for (const kind of KINDS) {
+        expect(contrast(color(root, `code-${kind}`), ground), kind).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+});
