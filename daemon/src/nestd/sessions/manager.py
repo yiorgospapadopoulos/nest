@@ -68,11 +68,13 @@ from nestd.sessions.models import (
     UpdateSession,
     pixie_repo,
 )
+from nestd.sessions.moves import WorktreeMoves
 from nestd.sessions.ports import PortsSource
 from nestd.sessions.prompts import SessionPrompts
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rewinds import NO_CHECKPOINT, NO_PIXIE_RESTORE, Rewinds
 from nestd.sessions.rules import (
+    among,
     require_cwd,
     require_open,
     require_workspace,
@@ -180,6 +182,17 @@ class SessionManager:
         self._states = StateWriter(store, bus, hooks)
         self._limits = LimitPauses(store, bus, clock)
         self._limit_task: asyncio.Task[None] | None = None
+        self._moves = WorktreeMoves(
+            store=store,
+            bus=bus,
+            repos=repos,
+            worktrees=worktrees,
+            approvals=approvals,
+            hooks=hooks,
+            clock=clock,
+            remove=self._remove_worktree,
+            background=self.background_running,
+        )
         self._turns = TurnRunner(
             store=store,
             bus=bus,
@@ -195,6 +208,7 @@ class SessionManager:
             queue=queue,
             clock=clock,
             limits=self._limits,
+            moves=self._moves,
             extras=extras,
             agents=agents,
             calls=calls,
@@ -233,6 +247,7 @@ class SessionManager:
         """Follow the pixies runs call with call_pixie (B112), which needs the sessions."""
         self._bridge = calls
         self._turns.bridge = calls
+        self._moves.bridge = calls
 
     async def agent_event(
         self,
@@ -392,6 +407,7 @@ class SessionManager:
             started_by_pixie=started_by_pixie,
             pixie_batch=pixie_batch,
             issue=None if issue is None else issue.ref(),
+            movable=started_by_pixie is None,
         )
         await self._refuse_member_calls(new, request.prompt)
         attachments = await self._attachments.for_session(request.attachment_ids, None)
@@ -612,6 +628,7 @@ class SessionManager:
                 follows_claude_code_mode=False,
                 provider=engine.name,
                 base_ref=await self._worktrees.head_at(chat.cwd),
+                movable=True,
             )
         )
         session = await self._store.update(
@@ -839,6 +856,7 @@ class SessionManager:
             return session
         if changes.get("archived_at") is not None:
             await self._release(session_id, "the session was archived")
+            await self._moves.drop(session_id)
             await self._end_pause(session_id, "archived")
             if self._bridge is not None:
                 # The pixies it called stop with it, as subagents end with their run (B112).
@@ -936,6 +954,7 @@ class SessionManager:
         async with self._stopped(session_id, "the session was closed") as session:
             await self._limits.clear(session_id, "closed")
             await self._queue.clear(session_id)
+            await self._moves.drop(session_id)
             worktree = worktree_of(session)
             if remove_worktree and worktree is not None:
                 await self._remove_worktree(self._repos.get(session.repo), session, worktree)
@@ -955,14 +974,16 @@ class SessionManager:
         return not await self._remove_worktree(self._repos.get(session.repo), session, worktree)
 
     async def purge(self, session_id: str, along_with: Collection[str] = ()) -> None:
-        """Delete the session for good: its run, worktree and all it stored; its branch stays.
-        `along_with` are the other sessions deleted in the same operation: they do not keep
-        a worktree they share with this one.
+        """Delete the session for good: its run and all it stored. Its branch stays. Its
+        worktrees stay too when it is a movable chat: the user decides when a worktree goes
+        (B119), and any chat of the project can remove it. Any other chat's worktree goes
+        with it; `along_with` are the other sessions deleted in the same operation: they do
+        not keep a worktree they share with this one.
         """
         await self._store.get(session_id)
         self._limits.forget(session_id)
         async with self._stopped(session_id, "the session was deleted") as session:
-            worktree = worktree_of(session)
+            worktree = None if session.movable else worktree_of(session)
             if worktree is not None:
                 # Without the repo's config git cannot clean up; the rest is deleted anyway.
                 with suppress(RepoNotFoundError):
@@ -986,9 +1007,12 @@ class SessionManager:
         removed. Its branch always stays: Nest deletes no branch.
         """
         users = await self._store.worktree_users({session.id, *along_with})
-        if await asyncio.to_thread(_among, worktree.path, users):
+        if await asyncio.to_thread(among, worktree.path, users):
             return False
-        return await self._worktrees.remove(repo, worktree)
+        removed = await self._worktrees.remove(repo, worktree)
+        if removed:
+            await self._moves.worktree_removed(repo.name, worktree.path)
+        return removed
 
     @asynccontextmanager
     async def publishing(self, session_id: str) -> AsyncGenerator[None]:
@@ -1013,7 +1037,8 @@ class SessionManager:
 
     async def recover(self) -> None:
         """On startup, turns cut off by the previous process can only be resumed, and
-        messages written into them wait for a turn again (B59).
+        messages written into them wait for a turn again (B59). Worktree changes they
+        recorded are applied now, before any message can start (B119).
         """
         await self._queue.unsend_all()
         for session_id in await self._store.interrupt_in_flight():
@@ -1021,6 +1046,12 @@ class SessionManager:
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
             )
         await self._limits.load()
+        for session_id in await self._store.pending_worktree_changes():
+            self._finish_moves(session_id)
+
+    def _finish_moves(self, session_id: str) -> None:
+        live = self._live.setdefault(session_id, LiveSession(session_id))
+        live.start(lambda: self._turns.guard(live, self._turns.finish_moves(live)))
 
     async def start(self, tick: timedelta = LIMIT_TICK) -> None:
         """Go on with the chats paused at the usage limit when their time comes; those
@@ -1310,11 +1341,6 @@ class SessionManager:
             target = SessionState.WAITING if waiting else SessionState.RUNNING
             if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
                 await self._states.set(session_id, target)
-
-
-def _among(path: Path, paths: list[Path]) -> bool:
-    target = path.resolve()
-    return any(other.resolve() == target for other in paths)
 
 
 def _forked_worktree(session: Session) -> bool:

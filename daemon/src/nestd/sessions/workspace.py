@@ -1,6 +1,9 @@
 """Prepare a session's worktree: create, link, set up, and report each step as events."""
 
 import asyncio
+from pathlib import Path
+
+from pydantic import JsonValue
 
 from nestd.config.models import RepoConfig
 from nestd.events import types
@@ -26,12 +29,23 @@ async def prepare_worktree(
     # git finishes adding a worktree even when the session is interrupted meanwhile, so the
     # new worktree is always recorded: closing or deleting the session then removes it,
     # and the next message works in it (D048). Setup commands stay interruptible.
-    worktree = await _uninterrupted(
+    worktree = await uninterrupted(
         asyncio.ensure_future(_create(session, repo, worktrees, store, bus))
     )
     if worktree is None:
         return None
-    setup = await worktrees.run_setup(repo, worktree.path, session.id)
+    return await run_setup(session.id, repo, worktree, worktrees, bus)
+
+
+async def run_setup(
+    session_id: str,
+    repo: RepoConfig,
+    worktree: Worktree,
+    worktrees: WorktreeManager,
+    bus: EventBus,
+) -> SetupResult:
+    """The new worktree's setup commands; a failure is announced."""
+    setup = await worktrees.run_setup(repo, worktree.path, session_id)
     if not setup.ok:
         await bus.publish(
             types.SESSION_SETUP_FAILED,
@@ -41,7 +55,7 @@ async def prepare_worktree(
                 "timed_out": setup.timed_out,
                 "log_path": str(setup.log_path),
             },
-            session.id,
+            session_id,
         )
     return setup
 
@@ -118,20 +132,26 @@ async def publish_workspace(
     """Where the session works now, and what was linked into its worktree."""
     await bus.publish(
         types.SESSION_WORKSPACE,
-        {
-            "path": str(worktree.path),
-            "branch": worktree.branch,
-            "base_ref": worktree.base_ref,
-            "linked": [*links.linked],
-            "missing": [*links.missing],
-            "existing": [*links.existing],
-            "failed": [*links.failed],
-        },
+        workspace_payload(worktree.path, worktree.branch, worktree.base_ref, links),
         session_id,
     )
 
 
-async def _uninterrupted[T](task: asyncio.Future[T]) -> T:
+def workspace_payload(
+    path: Path, branch: str | None, base_ref: str | None, links: LinkResult
+) -> dict[str, JsonValue]:
+    return {
+        "path": str(path),
+        "branch": branch,
+        "base_ref": base_ref,
+        "linked": [*links.linked],
+        "missing": [*links.missing],
+        "existing": [*links.existing],
+        "failed": [*links.failed],
+    }
+
+
+async def uninterrupted[T](task: asyncio.Future[T]) -> T:
     """`task`'s result, waiting for it even when cancelled meanwhile (any number of times).
     Its own error comes first; otherwise a cancellation is raised once it is done.
     """

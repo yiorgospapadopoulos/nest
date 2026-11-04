@@ -65,3 +65,7 @@ class SessionHooks(Protocol):
         deleted (`conversation`), its files restored (`files`), or both (B59).
         """
         ...
+
+    async def moved(self, session: Session) -> None:
+        """The chat works in another folder now (B119), between two turns."""
+        ...

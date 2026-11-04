@@ -41,6 +41,8 @@ class Unsent:
 class LiveSession:
     session_id: str
     run: AgentRun | None = None
+    # The folder the run was opened in; a chat that moved needs a fresh run (B119).
+    run_cwd: Path | None = None
     # Extra directories the run was opened with; new ones need a fresh run.
     run_dirs: tuple[Path, ...] = ()
     # The thinking effort the run opened with; a different one needs a new run.

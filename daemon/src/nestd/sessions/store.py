@@ -1,5 +1,6 @@
 """Session rows in SQLite."""
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Collection
@@ -69,14 +70,65 @@ class SessionStore:
 
     async def worktree_bases(self, repo: str) -> dict[Path, str]:
         """The commit each worktree chat of the repo started from, by worktree path; closed,
-        archived and pixie chats included.
+        archived and pixie chats included, and the worktrees chats left (B119).
         """
         rows = await self._db.fetch_all(
-            "SELECT worktree_path, base_ref FROM sessions WHERE repo = ?"
-            " AND worktree_path IS NOT NULL AND base_ref IS NOT NULL",
+            "SELECT worktree_path, base_ref, earlier_worktrees FROM sessions WHERE repo = ?",
             (repo,),
         )
-        return {Path(row["worktree_path"]): row["base_ref"] for row in rows}
+        bases: dict[Path, str] = {
+            Path(entry["path"]): entry["base_ref"]
+            for row in rows
+            for entry in json.loads(row["earlier_worktrees"])
+            if entry["base_ref"] is not None
+        }
+        for row in rows:
+            if row["worktree_path"] is not None and row["base_ref"] is not None:
+                bases[Path(row["worktree_path"])] = row["base_ref"]
+        return bases
+
+    async def worktree_removed(self, repo: str, path: Path) -> list[str]:
+        """Mark the worktree deleted in the chats of `repo` that left it; returns those
+        chats (B119).
+        """
+        target = await asyncio.to_thread(path.resolve)
+        changed: list[str] = []
+        async with self._db.transaction() as tx:
+            rows = await tx.fetch_all(
+                "SELECT id, earlier_worktrees FROM sessions WHERE repo = ?"
+                " AND earlier_worktrees != '[]'",
+                (repo,),
+            )
+            for row in rows:
+                entries = json.loads(row["earlier_worktrees"])
+                paths = [entry["path"] for entry in entries]
+                same = await asyncio.to_thread(_at, target, paths)
+                kept = [e for e, here in zip(entries, same, strict=True) if here]
+                if not any(entry["state"] == "kept" for entry in kept):
+                    continue
+                for entry in kept:
+                    entry["state"] = "deleted"
+                await tx.execute(
+                    "UPDATE sessions SET earlier_worktrees = ? WHERE id = ?",
+                    (json.dumps(entries), row["id"]),
+                )
+                changed.append(row["id"])
+        return changed
+
+    async def called_followed(self, caller: str, cwd: Path) -> None:
+        """The pixies the chat called work in its folder, so they move with it (B119)."""
+        await self._db.execute(
+            "UPDATE sessions SET cwd = ? WHERE called_by = ? AND state != ?",
+            (str(cwd), caller, SessionState.CLOSED.value),
+        )
+
+    async def pending_worktree_changes(self) -> list[str]:
+        """The open chats with worktree changes waiting, as after a restart (B119)."""
+        rows = await self._db.fetch_all(
+            "SELECT id FROM sessions WHERE pending_worktree IS NOT NULL AND state != ?",
+            (SessionState.CLOSED.value,),
+        )
+        return [row["id"] for row in rows]
 
     async def worktree_users(self, excluding: Collection[str]) -> list[Path]:
         """The worktree path of each session that is not closed and not in `excluding`."""
@@ -274,6 +326,10 @@ class SessionStore:
         return [row["id"] for row in rows]
 
 
+def _at(target: Path, paths: list[str]) -> list[bool]:
+    return [Path(path).resolve() == target for path in paths]
+
+
 def _column(value: object) -> object:
     if isinstance(value, Path):
         return str(value)
@@ -289,6 +345,7 @@ def _column(value: object) -> object:
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
-    for column in ("context", "pr", "stuck", "limit_pause", "issue", "review"):
+    data["earlier_worktrees"] = json.loads(data["earlier_worktrees"])
+    for column in ("context", "pr", "stuck", "limit_pause", "issue", "review", "pending_worktree"):
         data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)

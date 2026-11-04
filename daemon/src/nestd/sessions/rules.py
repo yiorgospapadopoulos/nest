@@ -1,5 +1,6 @@
 """Small session rules shared by the manager."""
 
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
@@ -50,6 +51,19 @@ def worktree_of(session: Session) -> Worktree | None:
     if session.worktree_path is None or session.branch is None:
         return None
     return Worktree(session.worktree_path, session.branch, session.base_ref or "")
+
+
+def among(path: Path, paths: Iterable[Path]) -> bool:
+    """Whether `path` is one of `paths`, once resolved; reads the disk."""
+    target = path.resolve()
+    return any(other.resolve() == target for other in paths)
+
+
+def pr_finished(session: Session) -> bool:
+    """A chat that goes on after its pull request was merged or closed may open another
+    (B119); until then a chat has the one.
+    """
+    return session.movable and session.pr is not None and session.pr.state != "open"
 
 
 def user_input(text: str, attachments: list[Attachment]) -> UserInput:
