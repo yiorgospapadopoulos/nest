@@ -88,7 +88,7 @@ private struct LocalModelRow: View {
     }
 }
 
-/// The Add local model sheet over the Settings window, with a scrim, as its other forms.
+/// The Add local model sheet over Settings, with a scrim, as its other forms.
 struct AddLocalModal: View {
     @Environment(Shell.self) private var shell
 

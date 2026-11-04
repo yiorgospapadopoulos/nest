@@ -65,6 +65,10 @@ struct ShellView: View {
                 }
             }
             .padding(.top, Metrics.stripHeight + 12)
+            if shell.settingsOpen {
+                SettingsPanel()
+                    .transition(.opacity)
+            }
             OverlayLayer()
         }
         // Measured and named inside the safe area's edge, so the window space starts at the

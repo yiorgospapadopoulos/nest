@@ -138,7 +138,7 @@ private struct DaemonsSection: View {
     }
 }
 
-/// Pair a daemon, over the Settings window with a scrim like its other sheets.
+/// Pair a daemon, over Settings with a scrim like its other sheets.
 struct PairDaemonModal: View {
     @Environment(AppController.self) private var controller
 

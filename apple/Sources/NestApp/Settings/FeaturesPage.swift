@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Settings > Features (B103): what makes Nest different, one fold-open row per area. The
 /// features the page shows are reported at once; their "New", the groups' dots and the
-/// sidebar's count stay until the Settings window closes.
+/// sidebar's count stay until Settings closes.
 struct FeaturesPage: View {
     @Environment(Shell.self) private var shell
 

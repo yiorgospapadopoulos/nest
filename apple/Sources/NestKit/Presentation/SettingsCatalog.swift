@@ -1,6 +1,6 @@
 import Foundation
 
-/// A page of the Settings window (B81).
+/// A page of Settings (B81).
 public enum SettingsPage: Sendable, Hashable {
     case general, appearance, notifications, agents, usage, storage, pixies, accounts
     /// How fast and how costly Nest is, run on request (B115).

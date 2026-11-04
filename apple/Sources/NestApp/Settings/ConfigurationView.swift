@@ -1,6 +1,7 @@
 import AppKit
 import NestKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings > Configuration (B97): what the agents read. Shared instructions, skills and
 /// MCP servers on top, then a fold-open section per signed-in engine. The engines' own
@@ -837,6 +838,20 @@ enum LocalOpen {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: vscodeID)
         else {
             NSWorkspace.shared.open(url)
+            return
+        }
+        NSWorkspace.shared.open(
+            [url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// A file a message names, in the app that opens plain text whatever its kind, since the
+    /// file's own default could run it: a `.command` opens in Terminal. Shown in its folder
+    /// with no such app.
+    @MainActor
+    static func textFile(_ path: String) {
+        let url = URL(fileURLWithPath: path)
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: .plainText) else {
+            reveal(path)
             return
         }
         NSWorkspace.shared.open(
