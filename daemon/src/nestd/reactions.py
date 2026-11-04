@@ -130,6 +130,13 @@ class SessionReactions:
         if files and session.habit_run_id is None and await self._reviewable(session):
             await self._reviews.refresh(session)
 
+    async def moved(self, session: Session) -> None:
+        """What the new folder holds already is not the chat's work: only what later
+        turns change there is (B119).
+        """
+        if await self._reviewable(session):
+            await self._reviews.moved(session)
+
     async def purged(self, session_id: str) -> None:
         self._tracking.forget(session_id)
         self._reviews.forget(session_id)

@@ -267,6 +267,38 @@ describe("live events", () => {
     expect(state.sessions.s3).toBeUndefined();
   });
 
+  it("follows a chat out of a removed worktree into the project folder (B119)", () => {
+    const earlier = {
+      path: "/w/x",
+      branch: "agent/x",
+      base_ref: "abc",
+      started_at: "2026-11-04T10:00:00Z",
+      ended_at: "2026-11-04T11:00:00Z",
+      state: "deleted",
+    };
+    const state = apply(
+      loaded(),
+      event({
+        type: "session.workspace",
+        payload: {
+          path: "/projects/todo-ui",
+          branch: null,
+          base_ref: "def",
+          mode: "in_place",
+          worktree_path: null,
+          earlier_worktrees: [earlier],
+        },
+      }),
+    );
+
+    expect(state.sessions.s1).toMatchObject({
+      mode: "in_place",
+      worktree_path: null,
+      branch: null,
+      earlier_worktrees: [earlier],
+    });
+  });
+
   it("patch the state, workspace and pull request of known sessions", () => {
     let state = apply(
       loaded(),

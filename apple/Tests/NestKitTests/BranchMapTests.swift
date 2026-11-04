@@ -257,6 +257,33 @@ enum BranchMapFixture {
         }
     }
 
+    /// B119: a chat that left a kept worktree no longer lights its branch, and one back in
+    /// place follows the folder's branch.
+    @Test func dotsFollowAChatThatMoved() {
+        var moved = session("moved", worktree: "/r/.claude/worktrees/nest-b94", state: .running)
+        moved.branch = "b94-codex-settings"
+        moved.earlierWorktrees = [
+            EarlierWorktree(
+                path: "/r/.claude/worktrees/lazy", branch: "lazy-scroll", baseRef: nil,
+                startedAt: Date(timeIntervalSince1970: 0),
+                endedAt: Date(timeIntervalSince1970: 1), state: .kept)
+        ]
+        var removed = session("removed")
+        removed.earlierWorktrees = [
+            EarlierWorktree(
+                path: "/r/.claude/worktrees/nest-limits", branch: "wip-limits", baseRef: nil,
+                startedAt: Date(timeIntervalSince1970: 0),
+                endedAt: Date(timeIntervalSince1970: 1), state: .deleted)
+        ]
+
+        let found = links([moved, removed])
+
+        #expect(found["lazy-scroll"] == nil)
+        #expect(found["wip-limits"] == nil)
+        #expect(found["b94-codex-settings"] == .running)
+        #expect(found["wip"] == .idle)
+    }
+
     /// B96: a row's dot follows every Nest chat in its worktree folder or on its branch by
     /// name; a row with none has no dot.
     @Test func followsNestChatsByFolderAndBranch() {

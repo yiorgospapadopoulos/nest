@@ -73,6 +73,13 @@ class ReviewWatcher:
         self._starts.pop(session.id, None)
         await self.turn_ended(session)
 
+    async def moved(self, session: Session) -> None:
+        """The chat works in another folder now (B119): the work is compared with what that
+        folder holds, so the project's own changes never pass as this chat's.
+        """
+        self._starts.pop(session.id, None)
+        await self.turn_started(session)
+
     def forget(self, session_id: str) -> None:
         self._starts.pop(session_id, None)
 

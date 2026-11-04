@@ -805,6 +805,76 @@ a.b {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+/* A chat's earlier worktrees (B119): the count at its row's right end, a 44 px target,
+   and the list it folds out beneath the row. */
+.ewt {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--t3);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.ewt .ic {
+  width: 10px;
+  height: 10px;
+  transition: transform 0.2s;
+}
+.ewt[aria-expanded="true"] .ic {
+  transform: rotate(90deg);
+}
+.lrow > .ewt {
+  right: 0;
+  bottom: 0;
+  width: 60px;
+  height: 44px;
+  padding: 24px 16px 6px 0;
+}
+.lrow:has(> .ewt) .rsub {
+  padding-right: 32px;
+  overflow: hidden;
+}
+.lrow:has(> .ewt) .plm {
+  min-width: 0;
+}
+.ewl {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 16px 6px 36px;
+  list-style: none;
+  font-size: var(--fs-meta);
+  color: var(--t3);
+}
+.ewl li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.ewl li > :last-child {
+  flex: none;
+}
+.ewn {
+  display: flex;
+  min-width: 0;
+  font-family: var(--mono);
+  white-space: pre;
+}
+.ewn > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ewn > :last-child {
+  flex: none;
+}
 .sempty {
   padding: 24px 10px;
   text-align: center;

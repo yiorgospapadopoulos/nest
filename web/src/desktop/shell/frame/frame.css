@@ -811,6 +811,23 @@
   width: 9px;
   height: 9px;
 }
+/* Always clear of the "...": it must not move under the pointer as the row is hovered. */
+.fr-row > .ewt {
+  right: 36px;
+  bottom: 4px;
+  height: 16px;
+  font-size: 11px;
+}
+.fr-row > .ewt:hover {
+  color: var(--t1);
+}
+.fr-row:has(> .ewt) .dk-rb {
+  padding-right: 42px;
+}
+html.desk .ewl {
+  padding: 0 16px 4px 32px;
+  font-size: 11px;
+}
 .fr-renamerow {
   display: flex;
   align-items: center;

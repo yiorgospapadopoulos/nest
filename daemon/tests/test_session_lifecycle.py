@@ -15,6 +15,7 @@ from nestd.sessions.errors import (
 )
 from nestd.sessions.models import SessionState
 from nestd.sessions.turns import NEST_PROMPT
+from nestd.sessions.worktree_tool import WORKTREE_NOTE
 from nestd.storage.db import Database
 from tests.async_support import until_published
 from tests.fake_provider import crash, reply
@@ -71,7 +72,7 @@ async def test_worktree_session_runs_its_first_turn(env: Env) -> None:
     assert run.spec.permission_mode == "acceptEdits"
     assert run.spec.resume_id is None
     assert run.spec.extra_dirs == ()
-    assert run.spec.system_prompt_append == NEST_PROMPT
+    assert run.spec.system_prompt_append == f"{NEST_PROMPT} {WORKTREE_NOTE}"
     # B58: Claude commits when asked; it pushes or opens a pull request only when told to.
     assert run.spec.guard_git is False
     assert NEST_PROMPT.startswith(

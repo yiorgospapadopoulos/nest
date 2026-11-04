@@ -49,6 +49,7 @@ async def test_purge_deletes_the_session_and_everything_it_left(env: Env) -> Non
     session = await env.reach(created.id, SessionState.IDLE)
     await env.approvals.add(created.id, ApprovalKind.REVIEW, {}, "review")
     assert session.worktree_path is not None
+    await env.store.update(created.id, movable=False)
 
     await env.manager.purge(created.id)
 

@@ -262,6 +262,15 @@ added = 2026-10-15
 block = "B55"
 
 [[features]]
+id = "chat-outlives-worktree"
+group = "git"
+name = "Chats that outlive their worktree"
+text = "Tell a chat to delete its worktree or make a new one. It keeps its history, carries on, and lists where it worked before."
+where = "Chat"
+added = 2026-11-04
+block = "B119"
+
+[[features]]
 id = "branch-map"
 group = "git"
 name = "Branch map"

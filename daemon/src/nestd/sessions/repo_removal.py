@@ -19,7 +19,9 @@ async def remove_repo(
     """Without `purge_sessions`, a repo that still has sessions (archived too) is refused.
 
     Purging tolerates a missing repo folder: git cleanup is skipped, rows are deleted. The
-    runs in the repo's folders stop and their ports are freed (B108).
+    runs in the repo's folders stop and their ports are freed (B108). Worktrees of movable
+    chats stay in the folder as any deleted chat's do (B119); if the project is registered
+    again, its chats can remove them.
     """
     repo = repos.registered(name)
     owned = [

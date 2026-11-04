@@ -203,6 +203,31 @@ import Testing
         #expect(updated.baseRef == "abc")
     }
 
+    /// B119: the worktree was removed: `path` is the project folder, not a worktree, so the
+    /// next message must not look like one in a worktree.
+    @Test func aChatLeavesARemovedWorktree() async throws {
+        try await seed([Fixture.session("s1")])
+
+        store.apply(
+            Fixture.event(
+                EventType.sessionWorkspace,
+                #"""
+                {"path": "/r", "branch": null, "base_ref": "abc", "mode": "in_place",
+                 "worktree_path": null, "earlier_worktrees": [
+                   {"path": "/w/old", "branch": "agent/old", "base_ref": "abc",
+                    "started_at": "2026-11-04T10:00:00Z", "ended_at": "2026-11-04T11:00:00Z",
+                    "state": "deleted"}]}
+                """#
+            ))
+
+        let updated = try #require(store.session("s1"))
+        #expect(updated.mode == .inPlace)
+        #expect(updated.worktreePath == nil)
+        #expect(updated.branch == nil)
+        #expect(updated.folder == "/r")
+        #expect(updated.earlier.map(\.name) == ["agent/old"])
+    }
+
     /// After any 409 from Approve the chat and its diff are read again, so the chat as it
     /// is now and the moved branch show (audit BUG-50).
     @Test func aRefusedApproveReadsTheChatAndItsDiffAgain() async throws {

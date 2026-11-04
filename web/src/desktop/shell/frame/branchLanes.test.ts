@@ -121,4 +121,43 @@ describe("a branch's chat dot", () => {
     expect(found.has("lazy-scroll")).toBe(false);
     expect(found.has("main")).toBe(false);
   });
+
+  it("leaves a kept worktree when its chat moves, and follows the folder in place (B119)", () => {
+    const left = {
+      path: "/r/.claude/worktrees/lazy",
+      branch: "lazy-scroll",
+      base_ref: "abc",
+      started_at: "2026-11-04T10:00:00Z",
+      ended_at: "2026-11-04T11:00:00Z",
+      state: "kept" as const,
+    };
+    const found = branchChats(
+      fixture,
+      [
+        session({
+          id: "moved",
+          worktree_path: "/r/.claude/worktrees/nest-b94",
+          branch: "b94-codex-settings",
+          earlier_worktrees: [left],
+          state: "running",
+        }),
+        session({
+          id: "removed",
+          mode: "in_place",
+          worktree_path: null,
+          branch: null,
+          cwd: "/r",
+          earlier_worktrees: [{ ...left, branch: "wip-limits", state: "deleted" }],
+          state: "waiting",
+        }),
+      ],
+      [],
+      here,
+      tone,
+    );
+    expect(found.has("lazy-scroll")).toBe(false);
+    expect(found.has("wip-limits")).toBe(false);
+    expect(found.get("b94-codex-settings")).toBe("running");
+    expect(found.get("wip")).toBe("needsYou");
+  });
 });

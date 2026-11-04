@@ -41,7 +41,7 @@ from nestd.review.errors import (
     UnsafeRepoConfigError,
 )
 from nestd.sessions.models import Session
-from nestd.sessions.rules import require_cwd
+from nestd.sessions.rules import pr_finished, require_cwd
 from nestd.sessions.store import SessionStore
 
 
@@ -102,7 +102,7 @@ class GitPublisher:
         await self._step(session, "push", _git(*push), cwd)
         await self._track(session, cwd, branch)
         await self._bus.publish(types.GIT_PUSHED, {"remote": REMOTE, "branch": branch}, session.id)
-        if plan.pull_request is None or session.pr_url is not None:
+        if plan.pull_request is None or (session.pr_url is not None and not pr_finished(session)):
             return session
         pr = plan.pull_request
         # The confirmed remote names the repository, not gh's own pick among the remotes.
@@ -117,7 +117,9 @@ class GitPublisher:
             cwd if repo is None else self._neutral_cwd,
         )
         url = output.strip().splitlines()[-1]
-        session = await self._store.update(session.id, pr_url=url, pr_summary=pr.summary)
+        session = await self._store.update(
+            session.id, pr_url=url, pr_summary=pr.summary, pr=None, review=None
+        )
         await self._bus.publish(types.PR_OPENED, {"url": url}, session.id)
         return session
 

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 import shutil
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
@@ -116,16 +116,18 @@ class WorktreeManager:
         title: str,
         branch: str | None = None,
         base: str | None = None,
+        folder: str | None = None,
     ) -> Worktree:
-        """A new branch checked out in `<repo>/.claude/worktrees/nest-<short id>`: named
-        `branch` (checked with `check_new_branch`) or after the title, starting at commit
-        `base` or else at the default branch.
+        """A new branch checked out in `<repo>/.claude/worktrees/nest-<short id>`, or in
+        `folder` there (`free_folder`, for a chat's further worktrees): named `branch`
+        (checked with `check_new_branch`) or after the title, starting at commit `base` or
+        else at the default branch.
 
         The worktrees folder is added to the repo's local exclude file first, so neither
         `git status` in the checkout nor a commit picks the worktrees up.
         """
         await _exclude_worktrees(repo)
-        name = f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        name = folder or f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
         path = claude_worktrees_dir(repo.path) / name
         path.parent.mkdir(parents=True, exist_ok=True)
         base = base or await _base_commit(repo)
@@ -148,6 +150,17 @@ class WorktreeManager:
             await run_checkout_git(["worktree", "add", "-q", str(path), branch], repo.path)
         await self._branches_changed(repo)
         return Worktree(path=path, branch=branch, base_ref=base)
+
+    def free_folder(self, repo: RepoConfig, session_id: str, taken: Collection[str]) -> str:
+        """A folder name for the chat's next worktree: Nest's own (`nest-<short id>`, then
+        `-2`, `-3` and so on) that is not on disk and not in `taken`, names it had before.
+        """
+        base = f"{WORKTREE_PREFIX}{session_id[:SHORT_ID_LENGTH]}"
+        name, number = base, 1
+        while name in taken or (claude_worktrees_dir(repo.path) / name).exists():
+            number += 1
+            name = f"{base}-{number}"
+        return name
 
     async def has_branch(self, repo: RepoConfig, name: str) -> bool:
         """Whether `repo` has the local branch `name`."""
@@ -219,7 +232,7 @@ class WorktreeManager:
         What is already gone (the directory) is skipped, so removing twice is fine.
         Without the repo folder git cannot run; only the leftover directory is deleted.
         """
-        if not await asyncio.to_thread(self._owns, repo, worktree.path):
+        if not await asyncio.to_thread(self.owns, repo, worktree.path):
             return False
         await self._removing(worktree.path)
         has_repo = await asyncio.to_thread(repo.path.is_dir)
@@ -254,7 +267,7 @@ class WorktreeManager:
         except Exception as error:
             logger.warning("cleaning up after the worktree %s failed (%s)", path, error)
 
-    def _owns(self, repo: RepoConfig, path: Path) -> bool:
+    def owns(self, repo: RepoConfig, path: Path) -> bool:
         """Whether the worktree is where Nest puts its own: `<repo>/.claude/worktrees/nest-*`
         (`harness-*` before B43), or the data dir's worktrees of earlier versions.
         Claude Code's own worktrees next to them are not.

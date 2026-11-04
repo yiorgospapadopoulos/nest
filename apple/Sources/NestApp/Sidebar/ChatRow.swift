@@ -12,16 +12,33 @@ struct ChatRow: View {
     @Environment(Shell.self) private var shell
     @Environment(\.accentColors) private var accent
     @Environment(\.revealsHoverControls) private var revealsHoverControls
+    @Environment(\.reducedMotion) private var reduceMotion
     @State private var hovering = false
     @FocusState private var renameFocused: Bool
 
     private var showsMenu: Bool { hovering || revealsHoverControls }
 
+    /// Whether the row's earlier worktrees are folded out, kept with the shell's other
+    /// folds; closed until the user opens them.
+    private var earlierOpen: Bool { shell.foldedRows[session.earlierFoldKey] ?? false }
+
     var body: some View {
         if shell.renaming == session.id {
             renameField
         } else {
-            row
+            VStack(alignment: .leading, spacing: 0) {
+                row
+                if earlierOpen && !session.earlier.isEmpty {
+                    EarlierWorktreesList(worktrees: session.earlier)
+                        .transition(.opacity)
+                }
+            }
+        }
+    }
+
+    private func toggleEarlier() {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+            shell.foldedRows[session.earlierFoldKey] = !earlierOpen
         }
     }
 
@@ -70,6 +87,9 @@ struct ChatRow: View {
                     .font(.ui(TypeSize.meta))
                     .foregroundStyle(Palette.t3)
                     .lineLimit(1)
+                    // Room for the count of earlier worktrees at the line's end, which
+                    // stays put whether or not the "..." shows.
+                    .padding(.trailing, session.earlier.isEmpty ? 0 : (showsMenu ? 26 : 46))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,6 +107,17 @@ struct ChatRow: View {
                     .padding(.trailing, 3)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if !session.earlier.isEmpty {
+                EarlierCount(
+                    title: session.title, count: session.earlier.count, open: earlierOpen,
+                    toggle: toggleEarlier
+                )
+                // Always clear of the "...": it must not move under the pointer on hover.
+                .padding(.trailing, SidebarRowMetrics.inset + 20)
+                .padding(.bottom, 5)
+            }
+        }
         .contentShape(Rectangle())
         .pointerStyle(.link)
         .onHover { hovering = $0 }
@@ -101,10 +132,15 @@ struct ChatRow: View {
         .opacity(shell.dragging == .chat(session.id) ? 0.45 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(ChatPlace.issueAccessibility(of: session).map { ", \($0)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
+            "\(session.title), \(shell.statusLabel(of: session))\(place.map { ", \($0.accessibilityLabel)" } ?? "")\(session.earlierAccessibility.map { ", \($0)" } ?? "")\(ChatPlace.issueAccessibility(of: session).map { ", \($0)" } ?? "")\(session.stuck == nil ? "" : ", stuck")\(startedBy.map { ", \($0.text)" } ?? "")\(isOpen ? ", open" : "")\(session.pinned ? ", pinned" : "")"
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { shell.openChat(session.id) }
+        .accessibilityActions {
+            if !session.earlier.isEmpty {
+                Button("Earlier worktrees", action: toggleEarlier)
+            }
+        }
     }
 
     private var renameField: some View {
@@ -149,6 +185,61 @@ struct PlaceMark: View {
         }
         .help(place.help)
         .accessibilityHidden(true)
+    }
+}
+
+/// The count at a chat row's right end, which folds out its earlier worktrees (B119).
+private struct EarlierCount: View {
+    let title: String
+    let count: Int
+    let open: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 1) {
+                Image(systemName: Icon.chevronRight)
+                    .font(.system(size: 8, weight: .semibold))
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                Text("\(count)")
+                    .font(.ui(TypeSize.meta))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(Palette.t3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help("Earlier worktrees of \(title)")
+    }
+}
+
+/// A chat's earlier worktrees beneath its row, under its title: each one's branch and
+/// whether the worktree was kept or deleted.
+private struct EarlierWorktreesList: View {
+    let worktrees: [EarlierWorktree]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(worktrees, id: \.self) { worktree in
+                HStack(spacing: 8) {
+                    Text(worktree.name)
+                        .font(.mono(TypeSize.meta))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(worktree.state.rawValue)
+                        .font(.ui(TypeSize.meta))
+                }
+                .help(worktree.path)
+            }
+        }
+        .foregroundStyle(Palette.t3)
+        // Under the title: the row's inset, the 12 point mark slot and the 8 point gap.
+        .padding(
+            EdgeInsets(
+                top: 0, leading: SidebarRowMetrics.inset + 20, bottom: 4,
+                trailing: SidebarRowMetrics.inset))
     }
 }
 

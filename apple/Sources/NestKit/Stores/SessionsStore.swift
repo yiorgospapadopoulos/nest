@@ -396,7 +396,13 @@ public final class SessionsStore {
             sessions[id]?.stuck = nil
         case .workspace(let workspace):
             guard let id = event.sessionID, var session = sessions[id] else { return }
-            session.worktreePath = workspace.path
+            if let mode = workspace.mode {
+                session.mode = mode
+                session.worktreePath = workspace.worktreePath
+                session.earlierWorktrees = workspace.earlierWorktrees
+            } else {
+                session.worktreePath = workspace.path
+            }
             session.cwd = workspace.path
             session.branch = workspace.branch
             session.baseRef = workspace.baseRef

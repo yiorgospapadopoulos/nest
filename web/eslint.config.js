@@ -16,6 +16,7 @@ const DESKTOP_SHARED = [
   "screens/artifacts/html.ts",
   "screens/artifacts/view.ts",
   "screens/chat/ansi.ts",
+  "screens/chat/earlier.ts",
   "screens/chat/images.ts",
   "screens/chat/localCommands.ts",
   "screens/chat/options.ts",

@@ -15,6 +15,7 @@ from nestd.events import types
 from nestd.runs.blocks import PortBlock
 from nestd.runs.prompt import ports_prompt
 from nestd.sessions.turns import NEST_PROMPT
+from nestd.sessions.worktree_tool import WORKTREE_NOTE
 from tests.api_client import Api, running_api
 from tests.async_support import until
 from tests.fake_provider import reply
@@ -195,7 +196,7 @@ async def test_the_agent_hears_of_its_ports_and_the_command(api: Api) -> None:
     assert run.spec.env["NEST_PORT"] == "41000"
     assert run.spec.env["NEST_PORT_9"] == "41009"
     assert run.spec.system_prompt_append == (
-        f"{NEST_PROMPT} {ports_prompt(PortBlock(41000, 10), SERVE, None)}"
+        f"{NEST_PROMPT} {WORKTREE_NOTE} {ports_prompt(PortBlock(41000, 10), SERVE, None)}"
     )
 
 

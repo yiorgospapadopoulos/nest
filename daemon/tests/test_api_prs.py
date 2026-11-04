@@ -9,6 +9,7 @@ from nestd.events import types
 from nestd.gitops.runner import CommandError
 from nestd.sessions.store import SessionStore
 from tests.api_client import Api, running_api, wants_loops
+from tests.api_support import as_old_chats
 from tests.async_support import until
 from tests.fake_provider import hang
 from tests.fake_runner import PR_URL, check_run, pr_json
@@ -45,10 +46,14 @@ async def session_of(api: Api, session_id: str) -> dict[str, Any]:
     return (await api.http.get(f"/api/sessions/{session_id}")).json()
 
 
-async def opened(api: Api, view: str | None = None) -> str:
-    """A session whose work was approved and opened as a pull request, read once."""
+async def opened(api: Api, view: str | None = None, *, movable: bool = False) -> str:
+    """A session whose work was approved and opened as a pull request, read once; a chat
+    from before B119 unless `movable`.
+    """
     api.runner.pr_view = view
     session_id = await finished_with_changes(api)
+    if not movable:
+        await as_old_chats(api.ctx, session_id)
     approved = await approve(api, session_id)
     assert approved.status_code == 200, approved.text
     await until(lambda: len(api.runner.gh_calls("view")) >= 1)
@@ -126,6 +131,36 @@ async def test_a_pull_request_not_read_yet_lists_as_open(api: Api) -> None:
 
     assert (item["session_id"], item["pr"]) == (session_id, None)
     assert (await api.http.get("/api/prs", params={"state": "closed"})).json() == []
+
+
+async def test_merging_leaves_a_new_chat_open_with_its_worktree(api: Api) -> None:
+    session_id = await opened(api, pr_json(), movable=True)
+    before = await session_of(api, session_id)
+    api.runner.pr_view = pr_json(state="MERGED")
+
+    merged = await api.http.post(f"/api/sessions/{session_id}/merge")
+
+    assert merged.status_code == 200, merged.text
+    session = merged.json()
+    assert session["state"] == "idle"
+    assert session["movable"] is True
+    assert session["pr"]["state"] == "merged"
+    assert session["worktree_path"] == before["worktree_path"]
+    assert exists(before["worktree_path"])
+    assert (await session_of(api, session_id))["earlier_worktrees"] == []
+
+
+async def test_a_new_chat_opens_another_pull_request_after_a_merge(api: Api) -> None:
+    session_id = await opened(api, pr_json(), movable=True)
+    api.runner.pr_view = pr_json(state="MERGED")
+    await api.http.post(f"/api/sessions/{session_id}/merge")
+    session = await session_of(api, session_id)
+    (Path(session["worktree_path"]) / "more.txt").write_text("more", encoding="utf-8")
+
+    approved = await approve(api, session_id)
+
+    assert approved.status_code == 200, approved.text
+    assert len(api.runner.gh_calls("create")) == 2
 
 
 async def test_merging_squashes_closes_the_session_and_removes_the_worktree(api: Api) -> None:

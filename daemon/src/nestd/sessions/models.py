@@ -104,6 +104,42 @@ class NewSession(BaseModel):
     called_by: str | None = None
     # The GitHub issue a project chat was started from (B101).
     issue: IssueRef | None = None
+    # A chat that outlives its worktree (B119): merging leaves it open, deleting it keeps
+    # its worktrees, and its agent moves it between worktrees with its tool. Set when a
+    # chat is created, never on a pixie's chat, a habit run or a chat a pixie started.
+    movable: bool = False
+
+
+# What became of a worktree the chat left (B119).
+type EarlierState = Literal["kept", "deleted"]
+
+
+class EarlierWorktree(BaseModel):
+    """A worktree a chat worked in before it moved (B119)."""
+
+    path: Path
+    branch: str | None
+    base_ref: str | None
+    started_at: datetime
+    ended_at: datetime
+    state: EarlierState
+
+
+class WorktreeChange(BaseModel):
+    """What a chat's worktree tool recorded for the end of the turn (B119)."""
+
+    action: Literal["remove", "new", "back"]
+    # The worktree to remove or go back to; None going back to the project folder.
+    path: Path | None = None
+    # A new worktree's branch and starting commit; None chooses them as for a new chat.
+    branch: str | None = None
+    base: str | None = None
+
+
+class PendingWorktree(BaseModel):
+    """The changes a turn recorded, applied in order at its end (B119)."""
+
+    changes: list[WorktreeChange]
 
 
 class Session(NewSession):
@@ -139,6 +175,15 @@ class Session(NewSession):
     fork_from: str | None = Field(default=None, exclude=True)
     fork_at: str | None = Field(default=None, exclude=True)
     fork_drops: str | None = Field(default=None, exclude=True)
+    # The worktrees the chat left, oldest first; where it works now is `mode`, `cwd`,
+    # `worktree_path` and `branch` (B119).
+    earlier_worktrees: list[EarlierWorktree] = Field(default_factory=list[EarlierWorktree])
+    # When the chat last moved to another folder; None until it does (B119).
+    moved_at: datetime | None = None
+    # Changes waiting for the turn's end, and what the agent hears next about one that
+    # failed (B119).
+    pending_worktree: PendingWorktree | None = Field(default=None, exclude=True)
+    worktree_note: str | None = Field(default=None, exclude=True)
 
 
 type Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

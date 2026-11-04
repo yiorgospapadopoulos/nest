@@ -3,6 +3,7 @@
 // approval's Needs you row unfolding from outside (the pill).
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { EarlierWorktree } from "../../../api/types.ts";
 import type { Actions } from "../../../store/actions.ts";
 import { StoreContext } from "../../../store/context.ts";
 import { initialState, type State } from "../../../store/state.ts";
@@ -87,6 +88,44 @@ const openMenu = (button: HTMLElement) => {
   fireEvent.pointerDown(button, { button: 0 });
   fireEvent.pointerUp(document.body, { button: 0 });
 };
+
+describe("a chat's earlier worktrees (B119)", () => {
+  const moved = (earlier: EarlierWorktree[]) => ({
+    state: {
+      sessions: { moved: session({ id: "moved", title: "Moved", earlier_worktrees: earlier }) },
+    },
+  });
+
+  it("fold out beneath the row without opening the chat", () => {
+    const { shell } = setup(
+      moved([
+        {
+          path: "/w/gone",
+          branch: "agent/gone",
+          base_ref: null,
+          started_at: "2026-11-04T10:00:00Z",
+          ended_at: "2026-11-04T11:00:00Z",
+          state: "deleted",
+        },
+      ]),
+    );
+    const toggle = screen.getByRole("button", { name: "Earlier worktrees of Moved" });
+    expect(screen.queryByText("deleted")).toBeNull();
+
+    fireEvent.pointerDown(toggle, { button: 0 });
+    fireEvent.pointerUp(toggle, { button: 0 });
+    fireEvent.click(toggle);
+
+    expect(shell.openPane).not.toHaveBeenCalled();
+    expect(screen.getByText("deleted")).toBeInTheDocument();
+    expect(screen.getByTitle("agent/gone")).toBeInTheDocument();
+  });
+
+  it("show nothing on a chat that never moved", () => {
+    setup(moved([]));
+    expect(screen.queryByRole("button", { name: /^Earlier worktrees/ })).toBeNull();
+  });
+});
 
 describe("the + popover", () => {
   it("lists General and the closed projects, and opens one", () => {

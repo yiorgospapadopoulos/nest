@@ -43,6 +43,12 @@ class RecordingModule:
         self._log.append("stop")
 
 
+async def as_old_chats(ctx: AppContext, *session_ids: object) -> None:
+    """Chats from before B119, which close on merge and take their worktree when deleted."""
+    for session_id in session_ids:
+        await ctx.db.execute("UPDATE sessions SET movable = 0 WHERE id = ?", (str(session_id),))
+
+
 def make_paths(
     tmp_path: Path,
     modules: list[str] | None = None,

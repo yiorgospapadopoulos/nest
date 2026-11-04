@@ -10,6 +10,7 @@ import pytest
 
 from nestd.events import types
 from tests.api_client import Api, running_api
+from tests.api_support import as_old_chats
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
 from tests.git_support import commit_file, git, init_repo
@@ -241,6 +242,7 @@ async def pair(api: Api) -> tuple[dict[str, object], dict[str, object], Path]:
     first = await nest_worktree(api)
     path = Path(str(first["worktree_path"]))
     second = await started(api, worktree_path=str(path))
+    await as_old_chats(api.ctx, first["id"], second["id"])
     return first, second, path
 
 

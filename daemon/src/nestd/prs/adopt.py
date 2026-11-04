@@ -21,6 +21,7 @@ from nestd.events.bus import EventBus
 from nestd.gitops.runner import CommandError, CommandRunner
 from nestd.issues.service import github_repo_of
 from nestd.sessions.models import Session, SessionState
+from nestd.sessions.rules import pr_finished
 from nestd.sessions.store import SessionStore
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class PrAdopter:
     async def state_changed(self, session: Session) -> None:
         if session.state is not SessionState.IDLE or session.id in self._reads:
             return
-        if session.pr_url is not None or session.pixie_id is not None:
+        if session.pixie_id is not None or _follows_one(session):
             return
         if session.worktree_path is None or session.branch is None:
             return
@@ -129,8 +130,13 @@ class PrAdopter:
             session = await self._store.get(session_id)
         except NotFoundError:
             return
-        if session.pr_url is not None:
+        if _follows_one(session):
             return
-        await self._store.update(session_id, pr_url=url)
+        await self._store.update(session_id, pr_url=url, pr=None, review=None)
         await self._bus.publish(types.PR_OPENED, {"url": url}, session_id)
         self._check_soon(session_id)
+
+
+def _follows_one(session: Session) -> bool:
+    """A chat follows one pull request, until a merged or closed one leaves it free (B119)."""
+    return session.pr_url is not None and not pr_finished(session)

@@ -37,6 +37,7 @@ from nestd.sessions.limits import LimitPauses
 from nestd.sessions.live import BYPASS, LiveSession, Unsent
 from nestd.sessions.local import LocalSource, crosses_local, require
 from nestd.sessions.models import USER, NewSession, Sender, Session, SessionState
+from nestd.sessions.moves import WorktreeMoves, place_note
 from nestd.sessions.ports import NO_PORTS, FolderPorts, PortsSource
 from nestd.sessions.queue import MessageQueue
 from nestd.sessions.rules import attachment_summary, require_cwd, user_input
@@ -53,6 +54,7 @@ from nestd.sessions.subagents import (
     PixieCalls,
 )
 from nestd.sessions.workspace import prepare_worktree
+from nestd.sessions.worktree_tool import WORKTREE_NOTE, worktree_tool
 from nestd.worktrees.manager import WorktreeManager
 
 logger = logging.getLogger(__name__)
@@ -149,6 +151,7 @@ class TurnRunner:
         queue: MessageQueue,
         clock: Clock,
         limits: LimitPauses,
+        moves: WorktreeMoves,
         extras: RunExtrasSource | None = None,
         agents: ChatAgentsSource | None = None,
         calls: PixieCalls | None = None,
@@ -158,14 +161,16 @@ class TurnRunner:
         ports: PortsSource | None = None,
     ) -> None:
         """`on_mode` records a permission mode the engine switched to itself; `limits`
-        holds the chats paused at the usage limit (B78); `agents` gives a project chat's
-        run its subagents (B40), and `calls` follows the pixies it calls (B46).
+        holds the chats paused at the usage limit (B78); `moves` the worktree changes that
+        wait for the turn's end (B119); `agents` gives a project chat's run its subagents
+        (B40), and `calls` follows the pixies it calls (B46).
         `nest_tools` gives every run the tools all chats and pixies have (B79), and
         `call_tools` the tool that calls the pixies its engine cannot run inside (B91).
         `local` points runs on local models at their servers (B106). `ports` tells a
         project chat's agent about its folder's ports and dev server (B108).
         """
         self._ports = ports
+        self.moves = moves
         self._local = local
         self._nest_tools = nest_tools
         self._call_tools = call_tools
@@ -325,8 +330,16 @@ class TurnRunner:
         """`text` as the agent gets it: teams it calls get their instruction (B40), and
         pixies it calls again are continued (B46). The chat shows what was typed. What
         the daemon sends, such as a called pixie's report, reaches the agent as written:
-        a team or pixie it names is no call (B112).
+        a team or pixie it names is no call (B112). A worktree change that failed comes
+        first, once (B119).
         """
+        change = await isolated_or(
+            "the worktree note", live.session_id, self.moves.take_note(live.session_id), None
+        )
+        given = await self._called_text(live, text, sender)
+        return given if change is None else f"{change}\n\n{given}"
+
+    async def _called_text(self, live: LiveSession, text: str, sender: Sender) -> str:
         if sender.origin is not None:
             return text
         agents = live.run_agents
@@ -540,7 +553,18 @@ class TurnRunner:
         session never rests in between: after a turn that ended normally, or one the user
         interrupted to send a message (a nudge) right away (D032, D036). Otherwise the queue
         waits: the user stopped the agent on purpose, or the failure should show.
+
+        Worktree changes the turn recorded go first, in a task of their own: they close the
+        run, whose reader this may run in. The session stays busy, and this comes back with
+        the same outcome (B119).
         """
+        if await self._moves_due(live, state):
+            live.turn_active = False
+            previous = live.task
+            live.task = asyncio.create_task(
+                self.guard(live, self._apply_moves(live, previous, (state, error)))
+            )
+            return
         resume = state is SessionState.IDLE or (
             state is SessionState.INTERRUPTED and live.resume_queue
         )
@@ -560,6 +584,38 @@ class TurnRunner:
         live.task = asyncio.create_task(
             self.guard(live, self._deliver(live, previous, (state, error)))
         )
+
+    async def _moves_due(self, live: LiveSession, state: SessionState) -> bool:
+        """Whether the turn ended in a way that applies what it recorded: normally, or cut
+        short for the next message. A Stop or a failure cancels it (`_end_turn`).
+        """
+        normal = state is SessionState.IDLE and not live.interrupted
+        nudged = live.resume_queue and state in (SessionState.IDLE, SessionState.INTERRUPTED)
+        if live.stopped or not (normal or nudged):
+            return False
+        return await isolated_or(
+            "the worktree changes", live.session_id, self.moves.pending(live.session_id), False
+        )
+
+    async def _apply_moves(
+        self, live: LiveSession, previous: asyncio.Task[None] | None, ended: Outcome
+    ) -> Outcome:
+        """Apply the recorded changes, then end as `ended` says. A nudge waits for them
+        as for a worktree's setup; a Stop cuts off only the setup (BUG-95).
+        """
+        if previous is not None:
+            await asyncio.wait({previous})
+        live.preparing = True
+        try:
+            await self.moves.apply(live)
+        finally:
+            live.preparing = False
+        return ended
+
+    async def finish_moves(self, live: LiveSession) -> Outcome:
+        """After a restart: apply what a turn recorded before the daemon stopped (B119)."""
+        session = await self._store.get(live.session_id)
+        return await self._apply_moves(live, None, (session.state, session.last_error))
 
     def _paused(self, live: LiveSession) -> bool:
         return self._limits.paused(live.session_id)
@@ -638,6 +694,11 @@ class TurnRunner:
         # Free the session before announcing the outcome, so a client reacting to the
         # new state can send the next message straight away; it starts once the hooks,
         # which make the turn's review, are done.
+        if not live.stopped:
+            # A chat that closes or restarts settles this itself (B119).
+            await isolated(
+                "the worktree changes", live.session_id, self.moves.cancel(live.session_id)
+            )
         details = None if error is None else await self._local_down(live)
         duration = live.turn_ms(self._clock.now())
         live.end_turn(held=state is SessionState.IDLE)
@@ -721,7 +782,7 @@ class TurnRunner:
                     extras.system_prompt if extras else await self._nest_prompt(session, ports)
                 ),
                 tools=extras.tools if extras else (),
-                nest_tools=self._run_tools(session, agents),
+                nest_tools=await self._run_tools(session, agents),
                 write_root=extras.write_root if extras else None,
                 disallowed_tools=extras.disallowed_tools if extras else (),
                 skills=extras.skills if extras else (),
@@ -747,6 +808,7 @@ class TurnRunner:
                 bridge=self.bridge,
             )
             live.run = await engine.provider.open(spec, self._handler_for(live), sink)
+            live.run_cwd = cwd
             live.run_account = None if account is None else account.id
             live.run_dirs = dirs
             live.run_effort = session.effort
@@ -810,14 +872,19 @@ class TurnRunner:
             return NO_AGENTS
         return await self._agents(session)
 
-    def _run_tools(self, session: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
-        """The tools every run has (B79), and the call tool for the pixies it calls as
-        sessions of their own (B91). Every engine takes them: Claude in-process, Codex
-        from a local MCP server.
+    async def _run_tools(self, session: Session, agents: ChatAgents) -> tuple[AgentTool, ...]:
+        """The tools every run has (B79), the call tool for the pixies it calls as sessions
+        of their own (B91), and a movable chat's worktree tool (B119). Every engine takes
+        them: Claude in-process, Codex from a local MCP server.
         """
         tools = self._nest_tools(session) if self._nest_tools else ()
         calls = self._call_tools(session, agents) if self._call_tools else ()
-        return tools + calls
+        own = (worktree_tool(self.moves, session),) if await self._moves_folders(session) else ()
+        return tools + calls + own
+
+    async def _moves_folders(self, session: Session) -> bool:
+        """Whether the chat can change where it works: a movable chat in a git project."""
+        return session.movable and await self._repos.has_git(session.repo)
 
     async def _folder_ports(self, session: Session) -> FolderPorts:
         """The folder's ports; bookkeeping, so without them the run opens anyway."""
@@ -827,10 +894,15 @@ class TurnRunner:
 
     async def _nest_prompt(self, session: Session, ports: FolderPorts) -> str:
         """Without Claude Code's task list (Codex, B91), the prompt leaves out what it says
-        about it. The folder's ports end it (B108).
+        about it. A chat that can change where it works hears so, and where it works after
+        it moved: a resumed conversation still names the old folders (B119). The folder's
+        ports end it (B108).
         """
-        prompt = await self._base_prompt(session)
-        return prompt if ports.prompt is None else f"{prompt} {ports.prompt}"
+        parts: list[str | None] = [await self._base_prompt(session)]
+        if await self._moves_folders(session):
+            parts += [WORKTREE_NOTE, place_note(session)]
+        parts.append(ports.prompt)
+        return " ".join(part for part in parts if part is not None)
 
     async def _base_prompt(self, session: Session) -> str:
         # Only Claude Code plans with TaskCreate; other engines plan with their own tool,
@@ -873,6 +945,7 @@ def _fits(
     needs_bypass = session.permission_mode == BYPASS and not live.run_bypass
     same = (
         not crosses_local(live.run_model, session.model)
+        and live.run_cwd == session.cwd
         and set(dirs) <= set(live.run_dirs)
         and live.run_effort == session.effort
         and live.run_agents.fingerprint == agents.fingerprint

@@ -32,6 +32,9 @@ SESSION_CREATED: Final = "session.created"
 # Renamed, pinned, archived or new controls; carries the changed fields and the session.
 SESSION_UPDATED: Final = "session.updated"
 SESSION_STATE: Final = "session.state"
+# Where the session works now, `{path, branch, base_ref, linked, missing, existing, failed}`;
+# a chat that moved (B119) adds `{mode, worktree_path, earlier_worktrees}`, with `path` its
+# folder and `branch` null in the project folder, and a `session.updated` follows.
 SESSION_WORKSPACE: Final = "session.workspace"
 SESSION_SETUP_FAILED: Final = "session.setup_failed"
 SESSION_USER_MESSAGE: Final = "session.user_message"

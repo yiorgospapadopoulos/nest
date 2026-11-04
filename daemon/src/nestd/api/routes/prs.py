@@ -68,7 +68,8 @@ async def review_settings(session_id: str, body: ReviewSettings, ctx: Context) -
 
 @router.post("/sessions/{session_id}/merge")
 async def merge(session_id: str, ctx: Context, body: MergeRequest | None = None) -> Session:
-    """Merge the pull request with gh (squash by default), then close the session and
-    remove its worktree. A failed merge returns 502 with gh's stderr and changes nothing.
+    """Merge the pull request with gh (squash by default). A movable chat stays open with its
+    worktree; any other session closes and its worktree is removed. A failed merge returns
+    502 with gh's stderr and changes nothing.
     """
     return await ctx.prs.merge(session_id, body or MergeRequest())

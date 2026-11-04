@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tests.api_client import Api, running_api
+from tests.api_support import as_old_chats
 from tests.async_support import until
 from tests.fake_provider import reply
 from tests.fakes import FakeClock, FakeSecretStore
@@ -154,6 +155,7 @@ async def test_a_custom_branch_is_kept_when_its_worktree_is_removed(
         for s in (closed, purged)
     ]
 
+    await as_old_chats(api.ctx, purged["id"])
     await api.http.delete(f"/api/sessions/{closed['id']}", params={"remove_worktree": True})
     await api.http.delete(f"/api/sessions/{purged['id']}", params={"purge": True})
     await until(lambda: not any(path.exists() for path in paths))

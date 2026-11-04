@@ -15,6 +15,7 @@ from nestd.sessions.engines import Engine, Engines
 from nestd.sessions.errors import TaskNotFoundError, UnsupportedFeatureError
 from nestd.sessions.models import ChatImport, CreateSession, NewSession, SessionState, UpdateSession
 from nestd.sessions.turns import CODEX_GUARDED_PROMPT, CODEX_PLAIN_FOLDER_PROMPT, CODEX_PROMPT
+from nestd.sessions.worktree_tool import WORKTREE_NOTE
 from nestd.storage.db import Database
 from tests.async_support import until
 from tests.fake_provider import FakeProvider, reply
@@ -81,9 +82,9 @@ async def test_a_codex_chat_runs_on_codex_without_claudes_defaults(env: Env, cod
     assert not created.follows_claude_code_mode
     assert env.provider.runs == []
     [run] = codex.provider.runs
-    assert run.spec.system_prompt_append == CODEX_PROMPT
+    assert run.spec.system_prompt_append == f"{CODEX_PROMPT} {WORKTREE_NOTE}"
     assert run.spec.subagents == {}
-    assert run.spec.nest_tools == ()
+    assert [tool.name for tool in run.spec.nest_tools] == ["worktree"]
     assert idle.provider_session_id == "thread-1"
 
 
