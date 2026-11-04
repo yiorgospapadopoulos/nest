@@ -26,8 +26,7 @@ export function StatusBar() {
   const keysOf = useKeysText();
   const inProject = shell.project !== null;
   const pixies = !inProject;
-  // Settings shows in the window here (on the Mac it has a window of its own): no views then.
-  const hasViews = shell.settings == null && (inProject || pixieList(state).length > 0);
+  const hasViews = inProject || pixieList(state).length > 0;
   const view = shell.state.view;
   const left = shell.state.leftCollapsed;
   const right = shell.state.rightCollapsed;

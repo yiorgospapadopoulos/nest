@@ -64,12 +64,16 @@ public final class BashStore {
     }
 }
 
-/// Images of tool results, read once each with the device token (B59).
+/// Stored files with the device token: images of tool results and of sent messages, read
+/// once each (B59), and whether a sent file is still there. A failed read is tried again the
+/// next time it comes on screen; a deleted file is not.
 @MainActor @Observable
 public final class AttachmentImages {
     private var loaded: [String: Data] = [:]
     private var failures: Set<String> = []
+    private var deletions: Set<String> = []
     @ObservationIgnored private var requested: Set<String> = []
+    @ObservationIgnored private var checked: Set<String> = []
 
     let api: any NestAPI
 
@@ -85,13 +89,56 @@ public final class AttachmentImages {
         failures.contains(id)
     }
 
+    /// The daemon no longer has it: deleted in Settings, Storage.
+    public func deleted(_ id: String) -> Bool {
+        deletions.contains(id)
+    }
+
     public func load(_ id: String) async {
         guard !requested.contains(id) else { return }
         requested.insert(id)
         do {
             loaded[id] = try await api.attachmentData(id)
+            failures.remove(id)
         } catch {
             failures.insert(id)
+            if !noteDeleted(id, error) {
+                requested.remove(id)
+            }
         }
+    }
+
+    /// Finds out whether a sent file is still there, without reading all of it.
+    public func check(_ id: String) async {
+        guard !checked.contains(id), !deleted(id) else { return }
+        checked.insert(id)
+        do {
+            try await api.checkAttachment(id)
+        } catch {
+            if !noteDeleted(id, error) {
+                checked.remove(id)
+            }
+        }
+    }
+
+    /// A file's bytes, to save; nil when it was deleted.
+    public func file(_ id: String) async throws -> Data? {
+        if let data = loaded[id] {
+            return data
+        }
+        do {
+            return try await api.attachmentData(id)
+        } catch {
+            if noteDeleted(id, error) {
+                return nil
+            }
+            throw error
+        }
+    }
+
+    private func noteDeleted(_ id: String, _ error: any Error) -> Bool {
+        guard case APIError.notFound = error else { return false }
+        deletions.insert(id)
+        return true
     }
 }

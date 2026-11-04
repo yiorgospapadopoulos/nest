@@ -62,6 +62,35 @@ import Testing
             ])
     }
 
+    /// Foundation's parser does link bare addresses; what follows is what agents write.
+    @Test func aBareAddressLeavesThePunctuationAfterIt() {
+        let text =
+            "See https://a.dev/x. Or (https://b.dev/y), https://c.dev/p_(q) and https://d.dev?"
+        let runs = RichText.runs(text)
+        #expect(
+            runs.compactMap { $0.link?.absoluteString } == [
+                "https://a.dev/x", "https://b.dev/y", "https://c.dev/p_(q)", "https://d.dev",
+            ])
+        #expect(runs.map(\.text).joined() == text)
+    }
+
+    @Test func anAddressInAngleBracketsShowsNoBrackets() {
+        let runs = RichText.runs("Open <https://a.dev/x> now")
+        #expect(runs.compactMap { $0.link?.absoluteString } == ["https://a.dev/x"])
+        #expect(runs.map(\.text).joined() == "Open https://a.dev/x now")
+    }
+
+    @Test func onlyWebAddressesLinkAndALinkHoldsNoOther() {
+        let runs = RichText.runs("<javascript:alert(1)> ftp://a.dev [https://a.dev](https://b.dev)")
+        #expect(runs.compactMap { $0.link?.absoluteString } == ["https://b.dev"])
+    }
+
+    @Test func escapedMarksShowTheirCharacterButNotInCode() {
+        let runs = RichText.runs(##"\*not em\* \[a\](b) \# \| \` and `\*code\*`"##)
+        #expect(runs.map(\.text).joined() == #"*not em* [a](b) # | ` and \*code\*"#)
+        #expect(runs.filter { $0.style.contains(.italic) }.isEmpty)
+    }
+
     @Test func unreadableMarkdownIsShownAsWritten() {
         struct Unreadable: Error {}
         let runs = RichText.runs("**half") { _ in throw Unreadable() }
@@ -98,9 +127,122 @@ import Testing
             ])
     }
 
+    @Test func aTableBecomesOneParagraphWithInlineMarksInItsCells() {
+        let paragraphs = RichText.paragraphs("| a | b |\n|--|-:|\n| **x** | 1 |")
+        #expect(
+            paragraphs == [
+                RichParagraph(
+                    role: .table(
+                        RichTable(
+                            aligns: [.leading, .trailing],
+                            header: [[TextRun("a")], [TextRun("b")]],
+                            rows: [[[TextRun("x", style: .bold)], [TextRun("1")]]])),
+                    runs: [], spacing: .none)
+            ])
+    }
+
+    @Test func aQuoteMarksItsParagraphs() {
+        let paragraphs = RichText.paragraphs("> one\n>\n> two\n\nAfter")
+        #expect(paragraphs.map(\.quoted) == [true, true, false])
+    }
+
+    @Test func blocksUnderAnItemKeepItsLevelAndItsSublistsGoDeeper() {
+        let paragraphs = RichText.paragraphs("1. one\n\n   more\n\n   - sub\n\n     deep\n2. two")
+        #expect(
+            paragraphs.map(\.role) == [
+                .listItem(marker: "1.", level: 0), .body, .listItem(marker: "•", level: 1), .body,
+                .listItem(marker: "2.", level: 0),
+            ])
+        #expect(
+            paragraphs.map(\.under) == [
+                nil, RichParagraph.Under(level: 0, marker: "1."), nil,
+                RichParagraph.Under(level: 1, marker: "•"), nil,
+            ])
+    }
+
+    @Test func aRuleIsAParagraphThatCopiesAsItsMark() {
+        #expect(
+            RichText.paragraphs("---") == [
+                RichParagraph(role: .rule, runs: [TextRun("---")], spacing: .none)
+            ])
+    }
+
     @Test func listItemsShowTheirMarkerBeforeTheText() {
         let paragraphs = RichText.paragraphs("## Plan\n- **one**\n1. two\n\n```\na\nb\n```")
         #expect(paragraphs.map(\.prefix) == ["", "•\t", "1.\t", ""])
         #expect(paragraphs.map { $0.runs.map(\.text).joined() } == ["Plan", "one", "two", "a\nb"])
+    }
+}
+
+@Suite struct MessageCopyTests {
+    private func table() -> NSMutableAttributedString {
+        let text = NSMutableAttributedString(string: "Before\na\nb\n1\n2\nAfter")
+        for (location, mark) in [(8, "\t"), (10, "\n"), (12, "\t"), (14, "\n")] {
+            text.addAttribute(
+                .copiedAs, value: mark, range: NSRange(location: location, length: 1))
+        }
+        return text
+    }
+
+    @Test func aRowCopiesOnOneLineAndRowsOnTheirOwn() {
+        let text = table()
+        #expect(MessageCopy.applies(to: text))
+        #expect(
+            MessageCopy.text(of: text, in: [NSRange(location: 0, length: text.length)])
+                == "Before\na\tb\n1\t2\nAfter")
+    }
+
+    @Test func partOfARowCopiesOnlyWhatIsSelected() {
+        let text = table()
+        #expect(MessageCopy.text(of: text, in: [NSRange(location: 9, length: 3)]) == "b\n1")
+    }
+
+    @Test func textMarkedNotCopiedIsLeftOut() {
+        let text = NSMutableAttributedString(string: "12 line")
+        text.addAttribute(.notCopied, value: true, range: NSRange(location: 0, length: 3))
+        #expect(MessageCopy.applies(to: text))
+        #expect(MessageCopy.text(of: text, in: [NSRange(location: 0, length: 7)]) == "line")
+    }
+
+    @Test func plainTextCopiesTheUsualWay() {
+        #expect(!MessageCopy.applies(to: NSAttributedString(string: "plain")))
+    }
+}
+
+@Suite struct TableColumnsTests {
+    private func sum(_ widths: [Double]) -> Double {
+        widths.reduce(0, +)
+    }
+
+    @Test func columnsThatFitFillTheTableInProportion() {
+        #expect(
+            TableColumns.widths(longest: [100, 300], longestWord: [50, 50], room: 800) == [
+                200, 600,
+            ])
+    }
+
+    /// In a narrow pane too the short columns keep their numbers on one line; the long one
+    /// wraps. A regression: fixed shares broke "200,000" in two.
+    @Test(arguments: [640.0, 420.0, 300.0])
+    func aLongColumnWrapsBeforeShortOnesBreak(room: Double) {
+        let widths = TableColumns.widths(
+            longest: [80, 900, 70], longestWord: [80, 90, 70], room: room)
+        #expect(widths[0] >= 80)
+        #expect(widths[1] >= 90)
+        #expect(widths[2] >= 70)
+        #expect(abs(sum(widths) - room) < 0.001)
+    }
+
+    @Test func tooManyColumnsShareByTheirLongestWord() {
+        #expect(
+            TableColumns.widths(longest: [500, 500], longestWord: [300, 900], room: 600) == [
+                150, 450,
+            ]
+        )
+    }
+
+    @Test func anEmptyTableStillFillsItsRoom() {
+        #expect(
+            TableColumns.widths(longest: [0, 0], longestWord: [0, 0], room: 640) == [320, 320])
     }
 }

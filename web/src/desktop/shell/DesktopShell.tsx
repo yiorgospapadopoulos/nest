@@ -25,7 +25,7 @@ import { NoPixies } from "../pixies/NoPixies.tsx";
 import { PixieDetailsPanel } from "../pixies/PixieDetailsPanel.tsx";
 import { ShellSheets } from "../pixies/ShellSheets.tsx";
 import { placeOf } from "../settings/catalog.ts";
-import { SettingsView } from "../settings/SettingsView.tsx";
+import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { closeTopOverlay } from "../ui/overlays.ts";
 import type { Bridge } from "../bridge.ts";
 import { Board } from "./Board.tsx";
@@ -206,8 +206,7 @@ export function DesktopShell() {
         // From the Pixies tab, in the project it came from, as the Mac's newChat.
         const name = project ?? desk.tabs.last ?? desk.tabs.open[0];
         if (name === undefined) return;
-        // Settings shows in this window, so it gives way for the draft (the Mac's has a
-        // window of its own, and the draft shows in the main one).
+        // Settings sits over the chats, so it gives way for the draft.
         setSettings(null);
         setPalette(false);
         if (project === null) setTabs((tabs) => selectProject(tabs, name));
@@ -339,10 +338,8 @@ export function DesktopShell() {
     <ShellContext value={shell}>
       <div className="dk-win">
         <TabStrip />
-        {settings !== null ? (
-          <SettingsView />
-        ) : (
-          <div className="dk-body">
+        <div className="dk-under">
+          <div className="dk-body" inert={settings !== null}>
             {noPixies ? (
               <main className="dk-main" aria-label="Pixies">
                 <NoPixies />
@@ -366,8 +363,9 @@ export function DesktopShell() {
               </>
             )}
           </div>
-        )}
-        <StatusBar />
+          <StatusBar />
+          {settings !== null && <SettingsPanel />}
+        </div>
         <ShellSheets />
         {palette && <Palette />}
       </div>

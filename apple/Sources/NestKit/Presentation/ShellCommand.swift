@@ -40,11 +40,12 @@ public enum ShellCommand {
     }
 
     /// The message split around its shell command blocks; a message without any is one
-    /// markdown segment. A block still streaming (not closed) stays markdown.
+    /// markdown segment. A block still streaming (not closed) stays markdown, and so does
+    /// one indented under a list item, which would end its list here.
     public static func segments(_ markdown: String) -> [MessageSegment] {
         var segments: [MessageSegment] = []
         var pending: [String] = []
-        var block: (language: String?, lines: [String])?
+        var block: (language: String?, marks: String, lines: [String])?
 
         func flush() {
             let text = pending.joined(separator: "\n")
@@ -55,18 +56,16 @@ public enum ShellCommand {
         }
 
         for line in markdown.components(separatedBy: "\n") {
-            let isFence = line.trimmingCharacters(in: .whitespaces).hasPrefix("```")
             guard let open = block else {
-                if isFence {
-                    let info = line.trimmingCharacters(in: .whitespaces).dropFirst(3)
-                        .trimmingCharacters(in: .whitespaces)
-                    block = (info.isEmpty ? nil : info, [line])
+                if let marks = MarkdownBlock.fence(line), line.hasPrefix(marks) {
+                    let info = line.dropFirst(marks.count).trimmingCharacters(in: .whitespaces)
+                    block = (info.isEmpty ? nil : info, marks, [line])
                 } else {
                     pending.append(line)
                 }
                 continue
             }
-            guard isFence else {
+            guard line.trimmingCharacters(in: .whitespaces).hasPrefix(open.marks) else {
                 block?.lines.append(line)
                 continue
             }

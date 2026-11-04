@@ -70,9 +70,9 @@ function PlaceIcon({ place }: { place: SettingsPlace }) {
 }
 
 /**
- * Settings in the window, in place of the tab's content, as the Mac's Settings window
- * (SettingsWindow.swift): a sidebar with the search field, the pages, the projects and Add
- * project, and whether the Nest service answers; beside it the page's header and its body.
+ * What the Settings panel shows, as the Mac's SettingsView (SettingsPanel.swift): a sidebar
+ * with the search field, the pages, the projects and Add project, and whether the Nest
+ * service answers; beside it the page's header and its body.
  */
 export function SettingsView() {
   const { state, actions } = useStore();

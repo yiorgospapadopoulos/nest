@@ -826,12 +826,14 @@ struct HeadingAddMenu<Items: View>: View {
 /// Lays its views out in rows, wrapping to the next row when one is full.
 struct FlowLayout: Layout {
     var spacing = 6.0
+    /// Takes only the width its rows need, each row against the right edge.
+    var trailing = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
         let height = rows.map(\.height).reduce(0, +) + spacing * Double(max(rows.count - 1, 0))
         let width = rows.map(\.width).max() ?? 0
-        return CGSize(width: proposal.width ?? width, height: height)
+        return CGSize(width: trailing ? width : proposal.width ?? width, height: height)
     }
 
     func placeSubviews(
@@ -839,7 +841,7 @@ struct FlowLayout: Layout {
     ) {
         var y = bounds.minY
         for row in rows(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
+            var x = trailing ? bounds.maxX - row.width : bounds.minX
             for index in row.indices {
                 let size = subviews[index].sizeThatFits(.unspecified)
                 subviews[index].place(

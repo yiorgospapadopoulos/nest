@@ -598,6 +598,10 @@ a.dk-btn {
   background: none;
   padding: 0;
 }
+.dc-md .md table,
+.dc-plan .md table {
+  font-size: var(--dc-read);
+}
 .dc-md .md h1,
 .dc-md .md h2,
 .dc-md .md h3,
@@ -1654,9 +1658,11 @@ button.dc-line:disabled {
   font: var(--dc-meta) var(--mono);
   color: var(--t3);
 }
-.dc-pendatt {
-  display: flex;
-  gap: 4px;
+.dc-pendt .sf {
+  align-items: flex-start;
+}
+.dc-pendt .sf-imgs {
+  justify-content: flex-start;
 }
 .dc-pendn {
   font-size: var(--dc-meta);

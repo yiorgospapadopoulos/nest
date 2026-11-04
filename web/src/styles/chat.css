@@ -1847,6 +1847,94 @@
   color: var(--t3);
   font-variant-numeric: tabular-nums;
 }
+/* Holds the marker's width, so what sits under an item lines up with its text. */
+.md .mk.sp {
+  visibility: hidden;
+}
+.md-in {
+  flex: 1;
+  min-width: 0;
+}
+.md-in > *,
+.md blockquote > * {
+  margin: 0 0 8px;
+}
+.md-in > :last-child,
+.md blockquote > :last-child {
+  margin-bottom: 0;
+}
+.md-box {
+  flex: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-top: 0.2em;
+  border: 1px solid var(--t3);
+  border-radius: 4px;
+  font-size: 0.6471rem;
+  line-height: 12px;
+  text-align: center;
+}
+.md-box.on::after {
+  content: "\2713";
+}
+.md del {
+  color: var(--t3);
+}
+.md blockquote {
+  padding: 8px 12px;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  color: var(--t2);
+}
+/* A table in its soft box. On the phone a wide one scrolls in here and the message never
+   does; the desktop app's cells wrap to the pane instead, and only a word too long to wrap
+   scrolls. */
+.md-tw {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+}
+.md table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7647rem;
+  line-height: 1.45;
+}
+html.desk .md table {
+  width: 100%;
+}
+.md th,
+.md td {
+  max-width: 16rem;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+html.desk .md th,
+html.desk .md td {
+  max-width: none;
+}
+.md th {
+  font-weight: 600;
+  background: var(--soft);
+}
+.md td {
+  border-top: 1px solid var(--hair);
+}
+.md th.r,
+.md td.r {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.md th.c,
+.md td.c {
+  text-align: center;
+}
 .md code,
 .md pre {
   font-family: var(--mono);
@@ -1868,6 +1956,32 @@
 }
 .md a {
   color: var(--link);
+}
+.md a.md-file {
+  cursor: pointer;
+  text-decoration: underline;
+}
+.md a.md-file:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.md .code-comment {
+  color: var(--code-comment);
+}
+.md .code-string {
+  color: var(--code-string);
+}
+.md .code-keyword {
+  color: var(--code-keyword);
+}
+.md .code-number {
+  color: var(--code-number);
+}
+.md .code-added {
+  color: var(--code-added);
+}
+.md .code-removed {
+  color: var(--code-removed);
 }
 /* A reply as Markdown (B102), flat as the Mac's: at the reading size, its lines kept. */
 .m-a .md {
@@ -2166,6 +2280,109 @@
   font-size: 0.6471rem;
   color: var(--t3);
   cursor: default;
+}
+/* A message's images and files, on their own above its bubble. The image box is fixed, as
+   messages store no sizes and the transcript must not jump when one loads. */
+.sf {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.sf-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
+}
+.sf-img {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 240px;
+  height: 150px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  overflow: hidden;
+  font-size: 0.7059rem;
+  color: var(--t3);
+}
+button.sf-img {
+  cursor: zoom-in;
+}
+.sf-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.sf-img.gone {
+  height: 64px;
+  border: 1px dashed var(--hair);
+  background: none;
+}
+.sf-file {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 280px;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-mac-card);
+  background: var(--soft);
+  color: var(--t1);
+  text-align: left;
+}
+button.sf-file {
+  cursor: pointer;
+}
+.sf-file.gone {
+  opacity: 0.55;
+}
+.sf-tile {
+  flex: none;
+  width: 28px;
+  height: 32px;
+  border-radius: 4px;
+  background: var(--hair);
+  font-size: 0.5294rem;
+  font-weight: 600;
+  line-height: 32px;
+  text-align: center;
+  color: var(--t3);
+}
+.sf-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7647rem;
+}
+.sf-size {
+  flex: none;
+  font-size: 0.7059rem;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.pmt .sf {
+  align-self: flex-start;
+  align-items: flex-start;
+  padding: 4px 0;
+}
+.pmt .sf-imgs {
+  justify-content: flex-start;
 }
 .timg-full {
   display: block;

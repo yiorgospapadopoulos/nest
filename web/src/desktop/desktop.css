@@ -370,6 +370,15 @@ html.desk button {
   height: 12px;
 }
 
+/* All under the tab strip: what the Settings panel dims. */
+.dk-under {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* The body: sidebar, workspace or board, activity panel. */
 .dk-body {
   flex: 1 1 auto;

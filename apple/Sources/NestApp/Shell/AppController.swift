@@ -115,7 +115,7 @@ final class AppController {
     /// Puts a new model in the window. The old one stops first: its live sync, its
     /// notifications, its visibility reports and its island, and its terminal and browser
     /// panes end.
-    /// The Settings window keeps its page.
+    /// Settings stays open on its page.
     private func install(_ model: AppModel) {
         let shell = Shell(model: model)
         if let old = self.shell {

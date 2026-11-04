@@ -18,10 +18,12 @@ import { engineName, pendingFor } from "../../store/selectors.ts";
 import { bashBlocks } from "../../transcript/build.ts";
 import { elapsed } from "../../transcript/activity.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
+import { fromQueued } from "../../ui/sentFile.ts";
 import { Button } from "../ui/controls.tsx";
 import { DiffCounts } from "./bits.tsx";
 import { useOpen } from "./expanded.ts";
 import { Glyph } from "./glyphs.tsx";
+import { Sent } from "./ImageSheet.tsx";
 import { PublishSheet } from "./PublishSheet.tsx";
 import { DiffSheet } from "./ReviewSheets.tsx";
 import { StopTaskButton } from "./Rows.tsx";
@@ -249,14 +251,7 @@ export function PendingMessages({ session, draftKey }: { session: Session; draft
                   )}
                   <span className="dc-pendm">{rest}</span>
                   {message.attachments.length > 0 && (
-                    <span className="dc-pendatt">
-                      {message.attachments.map((a) => (
-                        <span key={a.id} className="dc-chip">
-                          <Glyph name="attach" size={10} />
-                          <span>{a.filename}</span>
-                        </span>
-                      ))}
-                    </span>
+                    <Sent files={message.attachments.map(fromQueued)} />
                   )}
                   <span className="dc-pendn">
                     {message.sent

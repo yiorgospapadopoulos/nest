@@ -31,48 +31,156 @@ enum TextStyling {
     private static let codeInset: CGFloat = 10
     private static let listIndent: CGFloat = 16
 
-    /// An assistant message: headings, paragraphs, lists and code blocks in one text.
-    static func message(_ paragraphs: [RichParagraph]) -> NSAttributedString {
+    /// An assistant message: headings, paragraphs, lists, quotes, tables and code blocks in
+    /// one text. With `fileLinks`, what names a file reads as a link and carries
+    /// `fileReference`; where nothing could open it, such as a remote daemon, it stays text.
+    static func message(_ paragraphs: [RichParagraph], fileLinks: Bool = false)
+        -> NSAttributedString
+    {
         let result = NSMutableAttributedString()
-        var previousWasCode = false
+        var previous: RichParagraph?
+        var quote: (start: Int, leading: CGFloat)?
         for (index, paragraph) in paragraphs.enumerated() {
-            if index > 0 {
-                result.append(NSAttributedString(string: "\n"))
+            if let open = quote, !paragraph.quoted {
+                closeQuote(from: open.start, leading: open.leading, in: result)
+                quote = nil
             }
-            let start = result.length
-            let base = baseFont(paragraph.role)
-            if !paragraph.prefix.isEmpty {
-                result.append(
-                    NSAttributedString(
-                        string: paragraph.prefix,
-                        attributes: [.font: base, .foregroundColor: secondary]))
-            }
-            for run in paragraph.runs {
-                result.append(styled(run, base: base, inCodeBlock: paragraph.role.isCode))
-            }
-            let range = NSRange(location: start, length: result.length - start)
+            let sameQuote = previous?.quoted == true && paragraph.quoted
+            let afterBox = previous.map { isBox($0) && !sameQuote } ?? false
+            let boxed = isBox(paragraph) && !sameQuote
             var gap: CGFloat =
                 switch paragraph.spacing {
                 case .none: 0
                 case .tight: listGap
                 case .block: blockGap
                 }
-            if previousWasCode {
+            if afterBox {
                 gap += codePadding
             }
-            if paragraph.role.isCode {
-                gap += paragraph.spacing == .none ? 0 : codePadding
-                result.addAttribute(
-                    .blockDecoration,
-                    value: BlockDecoration(
-                        fill: codeBackground, radius: Radius.card, outset: codePadding),
-                    range: range)
+            if boxed, paragraph.spacing != .none {
+                gap += codePadding
             }
-            applyParagraphStyle(
-                style(for: paragraph.role), spacingBefore: gap, to: range, in: result)
-            previousWasCode = paragraph.role.isCode
+            if previous?.role.isTable == false {
+                result.append(NSAttributedString(string: "\n"))
+            }
+            if paragraph.quoted, quote == nil {
+                // Its box reaches past the text like a code block's.
+                quote = (result.length, blockIndent(paragraph))
+            }
+            if case .table(let table) = paragraph.role {
+                if previous?.role.isTable == true {
+                    result.append(spacer(height: gap))
+                } else if previous != nil {
+                    addSpaceAfter(gap, in: result)
+                }
+                addTable(
+                    table, leading: blockIndent(paragraph) + (paragraph.quoted ? codeInset : 0),
+                    trailing: paragraph.quoted ? codeInset : 0,
+                    isLast: index == paragraphs.count - 1, fileLinks: fileLinks, to: result)
+            } else {
+                addText(paragraph, spacingBefore: gap, fileLinks: fileLinks, to: result)
+            }
+            previous = paragraph
+        }
+        if let quote {
+            closeQuote(from: quote.start, leading: quote.leading, in: result)
         }
         return result
+    }
+
+    private static func addText(
+        _ paragraph: RichParagraph, spacingBefore gap: CGFloat, fileLinks: Bool,
+        to result: NSMutableAttributedString
+    ) {
+        let start = result.length
+        let base = baseFont(paragraph.role)
+        if !paragraph.prefix.isEmpty {
+            result.append(
+                NSAttributedString(
+                    string: paragraph.prefix,
+                    attributes: [.font: base, .foregroundColor: secondary]))
+        }
+        var color = paragraph.quoted ? secondary : primary
+        if case .rule = paragraph.role {
+            color = .clear
+        }
+        let textStart = result.length
+        for run in paragraph.runs {
+            result.append(
+                styled(
+                    run, base: base, inCodeBlock: paragraph.role.isCode, color: color,
+                    fileLinks: fileLinks))
+        }
+        if case .code(let language) = paragraph.role {
+            addCodeColors(paragraph, language: language, from: textStart, in: result)
+        }
+        let range = NSRange(location: start, length: result.length - start)
+        if paragraph.role.isCode, !paragraph.quoted {
+            result.addAttribute(
+                .blockDecoration,
+                value: BlockDecoration(
+                    fill: codeBackground, radius: Radius.card, outset: codePadding,
+                    leading: blockIndent(paragraph)),
+                range: range)
+        }
+        if case .rule = paragraph.role {
+            result.addAttribute(
+                .blockDecoration,
+                value: BlockDecoration(
+                    fill: NSColor(Mac.divider), leading: blockIndent(paragraph), isRule: true),
+                range: range)
+        }
+        applyParagraphStyle(style(for: paragraph), spacingBefore: gap, to: range, in: result)
+    }
+
+    /// The block's colours, as attributes on the text, so drawing it costs nothing more.
+    private static func addCodeColors(
+        _ paragraph: RichParagraph, language: String?, from start: Int,
+        in result: NSMutableAttributedString
+    ) {
+        let code = paragraph.runs.map(\.text).joined()
+        for token in CodeColors.tokens(language: language, code: code) {
+            result.addAttribute(
+                .foregroundColor, value: codeColor(token.kind),
+                range: NSRange(location: start + token.start, length: token.end - token.start))
+        }
+    }
+
+    private static func codeColor(_ kind: CodeToken.Kind) -> NSColor {
+        switch kind {
+        case .comment: codeComment
+        case .string: codeString
+        case .keyword: codeKeyword
+        case .number: codeNumber
+        case .added: codeAdded
+        case .removed: codeRemoved
+        }
+    }
+
+    private static let codeComment = NSColor(Colors.Code.comment)
+    private static let codeString = NSColor(Colors.Code.string)
+    private static let codeKeyword = NSColor(Colors.Code.keyword)
+    private static let codeNumber = NSColor(Colors.Code.number)
+    private static let codeAdded = NSColor(Colors.Code.added)
+    private static let codeRemoved = NSColor(Colors.Code.removed)
+
+    /// Draws a box around a run of quoted paragraphs, gaps included.
+    private static func closeQuote(
+        from start: Int, leading: CGFloat, in result: NSMutableAttributedString
+    ) {
+        var end = result.length
+        if (result.string as NSString).character(at: end - 1) == 10 {
+            end -= 1
+        }
+        result.addAttribute(
+            .blockDecoration,
+            value: BlockDecoration(
+                fill: codeBackground, radius: Radius.card, outset: codePadding, leading: leading),
+            range: NSRange(location: start, length: end - start))
+    }
+
+    private static func isBox(_ paragraph: RichParagraph) -> Bool {
+        paragraph.role.isCode || paragraph.quoted
     }
 
     private static func baseFont(_ role: RichParagraph.Role) -> NSFont {
@@ -80,25 +188,38 @@ enum TextStyling {
         case .body, .listItem: ui(TypeSize.reading)
         case .heading(let level): ui(level <= 2 ? TypeSize.body : TypeSize.reading, .semibold)
         case .code: mono(TypeSize.meta)
+        case .table: ui(TypeSize.ui)
+        case .rule: ui(TypeSize.meta)
         }
     }
 
-    private static func style(for role: RichParagraph.Role) -> NSMutableParagraphStyle {
+    /// How far a list marker's text hangs from the marker.
+    private static func hang(_ marker: String) -> CGFloat {
+        marker.count > 2 ? 26 : 18
+    }
+
+    /// Where a block under a list item starts: at the item's text.
+    private static func blockIndent(_ paragraph: RichParagraph) -> CGFloat {
+        paragraph.under.map { CGFloat($0.level) * listIndent + hang($0.marker) } ?? 0
+    }
+
+    private static func style(for paragraph: RichParagraph) -> NSMutableParagraphStyle {
+        let role = paragraph.role
         let style = NSMutableParagraphStyle()
         style.lineSpacing = role.isCode ? 3 : lineSpacing
-        switch role {
-        case .body, .heading:
-            break
-        case .listItem(let marker, let level):
+        let block = blockIndent(paragraph)
+        let boxed = role.isCode || paragraph.quoted
+        let inset = boxed ? codeInset : 0
+        style.firstLineHeadIndent = block + inset
+        style.headIndent = block + inset
+        style.tailIndent = -inset
+        if case .listItem(let marker, let level) = role {
+            // Its level already counts the items it sits under.
             let indent = CGFloat(level) * listIndent
-            let hang = indent + (marker.count > 2 ? 26 : 18)
-            style.firstLineHeadIndent = indent
-            style.headIndent = hang
-            style.tabStops = [NSTextTab(textAlignment: .left, location: hang)]
-        case .code:
-            style.firstLineHeadIndent = codeInset
-            style.headIndent = codeInset
-            style.tailIndent = -codeInset
+            let hanging = indent + hang(marker) + inset
+            style.firstLineHeadIndent = indent + inset
+            style.headIndent = hanging
+            style.tabStops = [NSTextTab(textAlignment: .left, location: hanging)]
         }
         return style
     }
@@ -118,11 +239,145 @@ enum TextStyling {
             .paragraphStyle, value: leading, range: NSIntersectionRange(first, range))
     }
 
-    private static func styled(_ run: TextRun, base: NSFont, inCodeBlock: Bool)
-        -> NSAttributedString
-    {
+    // MARK: Tables
+
+    private static let cellPadding = (x: CGFloat(12), y: CGFloat(7))
+    private static let tableLineSpacing: CGFloat = 2
+
+    /// The gap above a table: table cells take no space before, so the line before it gives
+    /// it. The text ends with that line's break.
+    private static func addSpaceAfter(_ gap: CGFloat, in text: NSMutableAttributedString) {
+        let string = text.string as NSString
+        let last = string.paragraphRange(for: NSRange(location: text.length - 1, length: 0))
+        let style =
+            (text.attribute(.paragraphStyle, at: last.location, effectiveRange: nil)
+            as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
+            ?? NSMutableParagraphStyle()
+        style.paragraphSpacing = gap
+        text.addAttribute(.paragraphStyle, value: style, range: last)
+    }
+
+    /// An empty line between two tables, which would touch otherwise.
+    private static func spacer(height: CGFloat) -> NSAttributedString {
+        let style = NSMutableParagraphStyle()
+        style.minimumLineHeight = height
+        style.maximumLineHeight = height
+        return NSAttributedString(
+            string: "\n", attributes: [.paragraphStyle: style, .font: ui(TypeSize.meta)])
+    }
+
+    /// A table as an `NSTextTable`: each cell a paragraph, wrapping to its share of the width,
+    /// with its line break copied as a tab or, at a row's end, a line break.
+    private static func addTable(
+        _ table: RichTable, leading: CGFloat, trailing: CGFloat, isLast: Bool, fileLinks: Bool,
+        to result: NSMutableAttributedString
+    ) {
+        let frame = MessageTable(
+            columns: columnWidths(table), leading: leading, trailing: trailing,
+            padding: cellPadding.x)
+        let rows = [table.header] + table.rows
+        let start = result.length
+        var cellStarts: [[Int]] = []
+        for (rowIndex, row) in rows.enumerated() {
+            var starts: [Int] = []
+            for (column, cell) in row.enumerated() {
+                let cellStart = result.length
+                starts.append(cellStart - start)
+                let align = column < table.aligns.count ? table.aligns[column] : .leading
+                let isHeader = rowIndex == 0
+                let font = cellFont(align: align, isHeader: isHeader)
+                for run in cell {
+                    result.append(
+                        styled(
+                            run, base: font, inCodeBlock: false, color: primary,
+                            fileLinks: fileLinks))
+                }
+                let endsRow = column == row.count - 1
+                var breakAttributes: [NSAttributedString.Key: Any] = [.font: font]
+                if !endsRow {
+                    breakAttributes[.copiedAs] = "\t"
+                } else if isLast, rowIndex == rows.count - 1 {
+                    breakAttributes[.copiedAs] = ""
+                }
+                result.append(NSAttributedString(string: "\n", attributes: breakAttributes))
+                let block = NSTextTableBlock(
+                    table: frame, startingRow: rowIndex, rowSpan: 1, startingColumn: column,
+                    columnSpan: 1)
+                block.setWidth(cellPadding.x, type: .absoluteValueType, for: .padding, edge: .minX)
+                block.setWidth(cellPadding.x, type: .absoluteValueType, for: .padding, edge: .maxX)
+                block.setWidth(cellPadding.y, type: .absoluteValueType, for: .padding, edge: .minY)
+                block.setWidth(cellPadding.y, type: .absoluteValueType, for: .padding, edge: .maxY)
+                let style = NSMutableParagraphStyle()
+                style.textBlocks = [block]
+                style.alignment = alignment(align)
+                style.lineSpacing = tableLineSpacing
+                result.addAttribute(
+                    .paragraphStyle, value: style,
+                    range: NSRange(location: cellStart, length: result.length - cellStart))
+            }
+            cellStarts.append(starts)
+        }
+        result.addAttribute(
+            .tableDecoration,
+            value: TableDecoration(
+                fill: codeBackground, hairline: NSColor(Mac.divider), radius: Radius.card,
+                rows: cellStarts),
+            range: NSRange(location: start, length: result.length - start))
+    }
+
+    private static func alignment(_ align: MarkdownTable.Alignment) -> NSTextAlignment {
+        switch align {
+        case .leading: .left
+        case .center: .center
+        case .trailing: .right
+        }
+    }
+
+    /// Right aligned columns hold numbers: tabular digits keep them in line.
+    private static func cellFont(align: MarkdownTable.Alignment, isHeader: Bool) -> NSFont {
+        let weight: NSFont.Weight = isHeader ? .semibold : .regular
+        return align == .trailing
+            ? .monospacedDigitSystemFont(ofSize: TypeSize.ui, weight: weight)
+            : ui(TypeSize.ui, weight)
+    }
+
+    /// The width each column wants: its longest cell and its longest word, padding included.
+    private static func columnWidths(_ table: RichTable) -> MessageTable.Columns {
+        let padding = 2 * cellPadding.x
+        var columns = MessageTable.Columns(
+            longest: [Double](repeating: padding, count: table.header.count),
+            longestWord: [Double](repeating: padding, count: table.header.count))
+        for (rowIndex, row) in ([table.header] + table.rows).enumerated() {
+            for (column, cell) in row.enumerated() {
+                let align = column < table.aligns.count ? table.aligns[column] : .leading
+                let font = cellFont(align: align, isHeader: rowIndex == 0)
+                let width = cell.reduce(0.0) { width, run in
+                    let runFont = run.style.contains(.code) ? mono(TypeSize.meta) : font
+                    return width
+                        + (run.text as NSString).size(withAttributes: [.font: runFont]).width
+                }
+                // Words measured by their share of the characters: a table may hold many.
+                let characters = cell.reduce(0) { $0 + $1.text.count }
+                let word =
+                    cell.flatMap { $0.text.split(whereSeparator: \.isWhitespace) }.map(\.count)
+                    .max()
+                    ?? 0
+                let wordWidth = width * Double(word) / Double(max(characters, 1))
+                columns.longest[column] = max(columns.longest[column], ceil(width) + padding + 2)
+                columns.longestWord[column] = max(
+                    columns.longestWord[column], ceil(wordWidth) + padding + 2)
+            }
+        }
+        return columns
+    }
+
+    // MARK: Runs
+
+    private static func styled(
+        _ run: TextRun, base: NSFont, inCodeBlock: Bool, color: NSColor, fileLinks: Bool
+    ) -> NSAttributedString {
         var font = base
-        var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: primary]
+        var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color]
         if run.style.contains(.code), !inCodeBlock {
             font = mono(TypeSize.meta)
             attributes[.inlineChip] = codeBackground
@@ -138,9 +393,16 @@ enum TextStyling {
         attributes[.font] = font
         if run.style.contains(.strikethrough) {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+            attributes[.foregroundColor] = tertiary
         }
         if let link = run.link {
             attributes[.link] = link
+        }
+        if fileLinks, let file = run.file {
+            // Not `.link`, which AppKit opens by itself: `MessageTextView` takes the click.
+            attributes[.fileReference] = file
+            attributes[.foregroundColor] = NSColor(Mac.link)
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
         }
         return NSAttributedString(string: run.text, attributes: attributes)
     }
@@ -278,6 +540,13 @@ private struct DiffDecorations {
 extension RichParagraph.Role {
     var isCode: Bool {
         if case .code = self {
+            return true
+        }
+        return false
+    }
+
+    var isTable: Bool {
+        if case .table = self {
             return true
         }
         return false

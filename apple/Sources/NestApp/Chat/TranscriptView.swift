@@ -202,6 +202,7 @@ struct TranscriptView: View {
             }
             syncJump()
         }
+        .environment(\.fileOpener, fileOpener)
         .task(id: chat) { await load() }
         // A load that failed while the daemon was down is retried when it connects again.
         .onChange(of: store?.isLoaded) { _, loaded in
@@ -219,6 +220,16 @@ struct TranscriptView: View {
             if old != nil, new != nil {
                 Task { await reloadClaudeChat() }
             }
+        }
+    }
+
+    /// None for a chat with no folder here: on a remote daemon its paths are not this Mac's.
+    private var fileOpener: FileOpener? {
+        guard !shell.isRemote, let folder = shell.sessions.session(chat)?.folder else {
+            return nil
+        }
+        return FileOpener(root: folder) { [shell] path in
+            shell.openFile(path, root: folder)
         }
     }
 
@@ -250,9 +261,11 @@ struct TranscriptView: View {
         }
         // The chat opens on its latest messages; the rest are prepared behind them, so a
         // fast scroll up never builds and measures them as they come into view.
+        let fileLinks = fileOpener != nil
         await SelectableTextCache.warm(
-            MarkdownText.parts(of: transcript.visibleItems), kind: MarkdownText.kind,
-            build: MarkdownText.build)
+            MarkdownText.parts(of: transcript.visibleItems),
+            kind: MarkdownText.kind(fileLinks: fileLinks)
+        ) { MarkdownText.build($0, fileLinks: fileLinks) }
         await layOutEverything()
     }
 
@@ -415,8 +428,17 @@ private struct UserBubble: View {
     @State private var hovering = false
 
     var body: some View {
+        let hasBubble = !text.isEmpty || github != nil
         VStack(alignment: .trailing, spacing: 6) {
-            if !text.isEmpty || github != nil {
+            if !attachments.isEmpty {
+                SentAttachments(attachments: attachments)
+                    .overlay(alignment: .leading) {
+                        if !hasBubble {
+                            actionsMenu
+                        }
+                    }
+            }
+            if hasBubble {
                 // The solid accent bubble (B80): the accent's fill, its on colour for text.
                 let color = NSColor(accent.onFill)
                 SelectableText(
@@ -441,21 +463,20 @@ private struct UserBubble: View {
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
                 .background(accent.fill, in: .rounded(Radius.bubble))
-                .overlay(alignment: .leading) {
-                    if let actions, hovering || reveal {
-                        MessageActionsMenu(actions: actions)
-                            .offset(x: -30)
-                            .transition(.opacity)
-                    }
-                }
-            }
-            ForEach(attachments) { attachment in
-                Chip(icon: Icon.attach, text: attachment.filename)
+                .overlay(alignment: .leading) { actionsMenu }
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.leading, 48)
         .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder private var actionsMenu: some View {
+        if let actions, hovering || reveal {
+            MessageActionsMenu(actions: actions)
+                .offset(x: -30)
+                .transition(.opacity)
+        }
     }
 }
 
@@ -499,11 +520,23 @@ private enum GitHubBubbleText {
     }
 }
 
+/// How a chat opens the files its messages name, given only where the files are on this
+/// Mac. Equal for one folder, so a transcript's redraw leaves the messages alone.
+struct FileOpener: Equatable {
+    let root: String
+    let open: (String) -> Void
+
+    static func == (one: FileOpener, other: FileOpener) -> Bool {
+        one.root == other.root
+    }
+}
+
 /// Assistant text: headings, paragraphs, lists and code blocks as one selectable text.
 struct MarkdownText: View {
     let text: String
     /// Off inside a message that has its own Copy button.
     var copyable = true
+    @Environment(\.fileOpener) private var fileOpener
 
     var body: some View {
         if copyable {
@@ -516,17 +549,23 @@ struct MarkdownText: View {
     }
 
     private var content: some View {
-        SelectableText(key: text, linkColor: NSColor(Palette.Mac.link), kind: Self.kind) {
-            Self.build(text)
+        SelectableText(
+            key: text, linkColor: NSColor(Palette.Mac.link),
+            kind: Self.kind(fileLinks: fileOpener != nil), onFile: fileOpener?.open
+        ) {
+            Self.build(text, fileLinks: fileOpener != nil)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Its kind in `SelectableTextCache`, for preparing a chat's messages ahead.
-    static let kind = "markdown"
+    /// Its kind in `SelectableTextCache`, for preparing a chat's messages ahead; file links
+    /// make another text of the same message.
+    static func kind(fileLinks: Bool) -> String {
+        fileLinks ? "markdown files" : "markdown"
+    }
 
-    static func build(_ text: String) -> NSAttributedString {
-        TextStyling.message(RichText.paragraphs(text))
+    static func build(_ text: String, fileLinks: Bool) -> NSAttributedString {
+        TextStyling.message(RichText.paragraphs(text), fileLinks: fileLinks)
     }
 
     /// The markdown parts of finished assistant messages, newest first, as `AssistantText`

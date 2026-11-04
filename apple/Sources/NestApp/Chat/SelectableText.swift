@@ -1,16 +1,20 @@
 import AppKit
+import NestKit
 import SwiftUI
 
 extension NSAttributedString.Key {
     /// A `BlockDecoration` drawn behind the lines of the range: code blocks and diff lines.
     static let blockDecoration = NSAttributedString.Key("nest.blockDecoration")
-    /// Text that is shown but left out when copying, such as diff line numbers.
-    static let notCopied = NSAttributedString.Key("nest.notCopied")
+    /// A `TableDecoration` drawn behind the table in the range.
+    static let tableDecoration = NSAttributedString.Key("nest.tableDecoration")
     /// An `NSColor` drawn as a small rounded chip behind the range: inline code.
     static let inlineChip = NSAttributedString.Key("nest.inlineChip")
+    /// The path a file named in a message: a click goes to `MessageTextView.onFile`. Only
+    /// `TextStyling` sets it, from `RichText`'s runs, so no message text can forge it.
+    static let fileReference = NSAttributedString.Key("nest.fileReference")
 }
 
-/// A fill behind whole lines of text, the full width of the view.
+/// A fill behind whole lines of text, the width of the view from `leading`.
 final class BlockDecoration: NSObject {
     let fill: NSColor
     let stroke: NSColor?
@@ -18,12 +22,103 @@ final class BlockDecoration: NSObject {
     /// Room around the glyphs; with none, whole line fragments are filled edge to edge so
     /// neighbouring lines join up.
     let outset: CGFloat
+    /// Where the fill starts, for a block under a list item.
+    let leading: CGFloat
+    /// A one point line across the middle of the lines instead of a fill.
+    let isRule: Bool
 
-    init(fill: NSColor, stroke: NSColor? = nil, radius: CGFloat = 0, outset: CGFloat = 0) {
+    init(
+        fill: NSColor, stroke: NSColor? = nil, radius: CGFloat = 0, outset: CGFloat = 0,
+        leading: CGFloat = 0, isRule: Bool = false
+    ) {
         self.fill = fill
         self.stroke = stroke
         self.radius = radius
         self.outset = outset
+        self.leading = leading
+        self.isRule = isRule
+    }
+}
+
+/// A message's table, whose columns follow the width it is laid out at, measured or shown:
+/// `NSTextTable`'s own automatic layout gives every column the same width, and the text is
+/// shared by every width. The rows' heights stay `NSTextTable`'s. Keep margins off it: top
+/// and bottom ones measure differently from how they lay out.
+final class MessageTable: NSTextTable {
+    struct Columns {
+        var longest: [Double]
+        var longestWord: [Double]
+    }
+
+    private let columns: Columns
+    private let leading: CGFloat
+    private let trailing: CGFloat
+    private let padding: CGFloat
+
+    init(columns: Columns, leading: CGFloat, trailing: CGFloat, padding: CGFloat) {
+        self.columns = columns
+        self.leading = leading
+        self.trailing = trailing
+        self.padding = padding
+        super.init()
+        numberOfColumns = columns.longest.count
+        layoutAlgorithm = .fixedLayoutAlgorithm
+        setContentWidth(100, type: .percentageValueType)
+        hidesEmptyCells = false
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    private func place(_ column: Int, in rect: NSRect) -> (x: CGFloat, width: CGFloat) {
+        let widths = TableColumns.widths(
+            longest: columns.longest, longestWord: columns.longestWord,
+            room: rect.width - leading - trailing)
+        return (rect.minX + leading + widths[..<column].reduce(0, +), widths[column])
+    }
+
+    override func rect(
+        for block: NSTextTableBlock, layoutAt startingPoint: NSPoint, in rect: NSRect,
+        textContainer: NSTextContainer, characterRange: NSRange
+    ) -> NSRect {
+        var area = super.rect(
+            for: block, layoutAt: startingPoint, in: rect, textContainer: textContainer,
+            characterRange: characterRange)
+        let column = place(block.startingColumn, in: rect)
+        area.origin.x = column.x + padding
+        area.size.width = max(column.width - 2 * padding, 1)
+        return area
+    }
+
+    override func boundsRect(
+        for block: NSTextTableBlock, contentRect: NSRect, in rect: NSRect,
+        textContainer: NSTextContainer, characterRange: NSRange
+    ) -> NSRect {
+        var area = super.boundsRect(
+            for: block, contentRect: contentRect, in: rect, textContainer: textContainer,
+            characterRange: characterRange)
+        let column = place(block.startingColumn, in: rect)
+        area.origin.x = column.x
+        area.size.width = column.width
+        return area
+    }
+}
+
+/// A table's box: a rounded fill, a tinted header row and hairlines between the rows. The
+/// text is an `NSTextTable`, whose cells this finds through their first characters.
+final class TableDecoration: NSObject {
+    let fill: NSColor
+    let hairline: NSColor
+    let radius: CGFloat
+    /// The first character of each cell, by row, from the start of the table's range.
+    let rows: [[Int]]
+
+    init(fill: NSColor, hairline: NSColor, radius: CGFloat, rows: [[Int]]) {
+        self.fill = fill
+        self.hairline = hairline
+        self.radius = radius
+        self.rows = rows
     }
 }
 
@@ -41,17 +136,20 @@ struct SelectableText: NSViewRepresentable {
     let cacheID: String
     /// The kind whose offered width is noted, for preparing that kind ahead.
     let kind: String?
+    /// A click on a file the text names.
+    let onFile: ((String) -> Void)?
     let build: () -> NSAttributedString
 
     init(
         key: String, hugsWidth: Bool = false, linkColor: NSColor = .linkColor,
-        kind: String? = nil, file: String = #fileID, line: Int = #line,
-        build: @escaping () -> NSAttributedString
+        kind: String? = nil, onFile: ((String) -> Void)? = nil, file: String = #fileID,
+        line: Int = #line, build: @escaping () -> NSAttributedString
     ) {
         self.key = key
         self.hugsWidth = hugsWidth
         self.linkColor = linkColor
         self.kind = kind
+        self.onFile = onFile
         cacheID = SelectableTextCache.id(kind: kind ?? "\(file):\(line)", key: key)
         self.build = build
     }
@@ -71,6 +169,7 @@ struct SelectableText: NSViewRepresentable {
             .foregroundColor: linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand,
         ]
+        view.onFile = onFile
         guard context.coordinator.key != key else { return }
         context.coordinator.key = key
         view.setContent(SelectableTextCache.text(cacheID, build: build), cacheID: cacheID)
@@ -195,6 +294,11 @@ final class MessageTextView: NSTextView {
     private var topOverflow: CGFloat = 0
     /// The content's id in `SelectableTextCache`, for its shared sizes.
     private var cacheID: String?
+    /// A click on a file the text names.
+    var onFile: ((String) -> Void)?
+    /// Where the tables are at the container's width; every live text view draws on every
+    /// scroll frame, and most have none to look for.
+    private var tableBoxes: (width: CGFloat, boxes: [TableBox])?
 
     static func make() -> MessageTextView {
         let storage = NSTextStorage()
@@ -224,7 +328,9 @@ final class MessageTextView: NSTextView {
         textStorage?.setAttributedString(text)
         self.cacheID = cacheID
         measured = [:]
+        tableBoxes = nil
         needsDisplay = true
+        window?.invalidateCursorRects(for: self)
     }
 
     /// The size the text needs at `width`, decorations included.
@@ -245,7 +351,9 @@ final class MessageTextView: NSTextView {
         // Only a code block at the very top reaches above the text; that does not depend on
         // the width, so any measurement sets it.
         topOverflow = blocks.map(\.rect.minY).min().map { max(0, -$0) } ?? 0
-        let bottom = max(used.maxY, blocks.map(\.rect.maxY).max() ?? 0)
+        // A table ending the text ends in a line break, whose empty line takes no room.
+        let textBottom = used.maxY - measuring.extraLineFragmentUsedRect.height
+        let bottom = max(textBottom, blocks.map(\.rect.maxY).max() ?? 0)
         let size = CGSize(width: ceil(used.width) + 1, height: ceil(topOverflow + bottom))
         measured[width] = size
         if let cacheID {
@@ -265,9 +373,14 @@ final class MessageTextView: NSTextView {
         let origin = textContainerOrigin
         for (decoration, area) in decorationRects(in: manager) {
             var area = area.offsetBy(dx: origin.x, dy: origin.y)
-            area.origin.x = bounds.minX
-            area.size.width = bounds.width
+            area.origin.x = bounds.minX + decoration.leading
+            area.size.width = bounds.width - decoration.leading
             guard area.intersects(rect) else { continue }
+            if decoration.isRule {
+                decoration.fill.setFill()
+                NSRect(x: area.minX, y: floor(area.midY), width: area.width, height: 1).fill()
+                continue
+            }
             let path =
                 decoration.radius > 0
                 ? NSBezierPath(
@@ -282,7 +395,64 @@ final class MessageTextView: NSTextView {
                 path.stroke()
             }
         }
+        drawTables(in: rect, manager: manager, origin: origin)
         drawInlineChips(in: rect, manager: manager, origin: origin)
+    }
+
+    /// Each table's rounded box, its header row and the hairlines between rows.
+    private func drawTables(in rect: NSRect, manager: NSLayoutManager, origin: NSPoint) {
+        for table in tableBoxes(in: manager) {
+            let box = table.box.offsetBy(dx: origin.x, dy: origin.y)
+            guard box.intersects(rect) else { continue }
+            let path = NSBezierPath(
+                roundedRect: box, xRadius: table.decoration.radius,
+                yRadius: table.decoration.radius)
+            table.decoration.fill.setFill()
+            path.fill()
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            NSRect(
+                x: box.minX, y: box.minY, width: box.width, height: table.headerHeight
+            ).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            table.decoration.hairline.setFill()
+            for line in table.rowLines {
+                NSRect(x: box.minX, y: origin.y + line, width: box.width, height: 1).fill()
+            }
+        }
+    }
+
+    private func tableBoxes(in manager: NSLayoutManager) -> [TableBox] {
+        guard let storage = textStorage, let container = textContainer else { return [] }
+        if let tableBoxes, tableBoxes.width == container.size.width {
+            return tableBoxes.boxes
+        }
+        var boxes: [TableBox] = []
+        storage.enumerateAttribute(
+            .tableDecoration, in: NSRange(location: 0, length: storage.length)
+        ) { value, range, _ in
+            guard let decoration = value as? TableDecoration else { return }
+            manager.ensureLayout(forCharacterRange: range)
+            let rows = decoration.rows.map { row in
+                row.reduce(CGRect.null) { area, cell in
+                    let index = range.location + cell
+                    let style =
+                        storage.attribute(.paragraphStyle, at: index, effectiveRange: nil)
+                        as? NSParagraphStyle
+                    guard let block = style?.textBlocks.last else { return area }
+                    return area.union(
+                        manager.boundsRect(for: block, at: index, effectiveRange: nil))
+                }
+            }
+            let box = rows.reduce(CGRect.null) { $0.union($1) }
+            guard !box.isNull, let header = rows.first else { return }
+            boxes.append(
+                TableBox(
+                    decoration: decoration, box: box, headerHeight: header.height,
+                    rowLines: rows.dropFirst().map(\.minY)))
+        }
+        tableBoxes = (container.size.width, boxes)
+        return boxes
     }
 
     /// Inline code chips: a rounded fill around the glyphs of each line the range covers,
@@ -334,7 +504,7 @@ final class MessageTextView: NSTextView {
             let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
             var area = CGRect.null
             manager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, used, _, _, _ in
-                area = area.union(decoration.outset > 0 ? used : fragment)
+                area = area.union(decoration.outset > 0 || decoration.isRule ? used : fragment)
             }
             if !area.isNull {
                 rects.append((decoration, area.insetBy(dx: 0, dy: -decoration.outset)))
@@ -343,37 +513,76 @@ final class MessageTextView: NSTextView {
         return rects
     }
 
+    /// The press selects as ever; a plain click that selected nothing on a file opens it.
+    override func mouseDown(with event: NSEvent) {
+        let plain = event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+        let file = onFile != nil && plain && event.clickCount == 1 ? fileReference(at: event) : nil
+        super.mouseDown(with: event)
+        if let file, selectedRange().length == 0 {
+            onFile?(file)
+        }
+    }
+
+    private func fileReference(at event: NSEvent) -> String? {
+        guard let manager = layoutManager, let container = textContainer,
+            let storage = textStorage, storage.length > 0
+        else {
+            return nil
+        }
+        let origin = textContainerOrigin
+        let point = convert(event.locationInWindow, from: nil)
+        let inner = NSPoint(x: point.x - origin.x, y: point.y - origin.y)
+        let glyph = manager.glyphIndex(for: inner, in: container)
+        let box = manager.boundingRect(
+            forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        guard box.contains(inner) else { return nil }
+        let index = manager.characterIndexForGlyph(at: glyph)
+        return storage.attribute(.fileReference, at: index, effectiveRange: nil) as? String
+    }
+
+    /// The pointing hand over files, as `linkTextAttributes` gives web links.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let manager = layoutManager, let container = textContainer, let storage = textStorage
+        else {
+            return
+        }
+        let origin = textContainerOrigin
+        storage.enumerateAttribute(
+            .fileReference, in: NSRange(location: 0, length: storage.length)
+        ) { value, range, _ in
+            guard value != nil else { return }
+            let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            manager.enumerateEnclosingRects(
+                forGlyphRange: glyphs,
+                withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container
+            ) { rect, _ in
+                self.addCursorRect(rect.offsetBy(dx: origin.x, dy: origin.y), cursor: .pointingHand)
+            }
+        }
+    }
+
     override func copy(_ sender: Any?) {
-        guard let storage = textStorage, Self.containsNotCopied(storage) else {
+        guard let storage = textStorage, MessageCopy.applies(to: storage) else {
             super.copy(sender)
             return
         }
-        var text = ""
-        for value in selectedRanges {
-            storage.enumerateAttribute(.notCopied, in: value.rangeValue) { skip, part, _ in
-                if skip == nil {
-                    text += storage.attributedSubstring(from: part).string
-                }
-            }
-        }
+        let text = MessageCopy.text(of: storage, in: selectedRanges.map(\.rangeValue))
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-    }
-
-    private static func containsNotCopied(_ storage: NSTextStorage) -> Bool {
-        var found = false
-        storage.enumerateAttribute(.notCopied, in: NSRange(location: 0, length: storage.length)) {
-            value, _, stop in
-            if value != nil {
-                found = true
-                stop.pointee = true
-            }
-        }
-        return found
     }
 
     override func resignFirstResponder() -> Bool {
         setSelectedRange(NSRange(location: selectedRange().location, length: 0))
         return super.resignFirstResponder()
     }
+}
+
+/// Where a table's parts are, in text container coordinates.
+private struct TableBox {
+    let decoration: TableDecoration
+    let box: CGRect
+    let headerHeight: CGFloat
+    /// The top of each row after the header.
+    let rowLines: [CGFloat]
 }

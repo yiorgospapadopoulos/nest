@@ -49,6 +49,27 @@ pub fn path_in_home(path: &str, home: &Path) -> Result<PathBuf, String> {
     }
 }
 
+/// The regular file `path` names inside the folder `root`, with `..` and links resolved, so
+/// neither can lead out of it. `path` comes from a message and is untrusted; `root` must be
+/// in the home folder too. Every refusal reads the same.
+pub fn text_file_in(path: &str, root: &str, home: &Path) -> Result<PathBuf, String> {
+    const NOT_FOUND: &str = "File not found";
+    let folder = Path::new(root);
+    if !folder.is_absolute() {
+        return Err(NOT_FOUND.to_owned());
+    }
+    let folder = folder.canonicalize().map_err(|_| NOT_FOUND)?;
+    let home = home.canonicalize().map_err(|_| NOT_FOUND)?;
+    // Joining an absolute path gives that path, which has to pass the same check.
+    let file = folder.join(path).canonicalize().map_err(|_| NOT_FOUND)?;
+    let regular = file.metadata().is_ok_and(|found| found.is_file());
+    if regular && file.starts_with(&folder) && folder.starts_with(&home) {
+        Ok(file)
+    } else {
+        Err(NOT_FOUND.to_owned())
+    }
+}
+
 /// The name for the save dialog: the last part of what the page suggested, never a path.
 pub fn file_name(suggested: &str) -> String {
     let name = suggested
@@ -120,6 +141,54 @@ mod tests {
         assert!(path_in_home(&text(&home.join("link")), &home).is_err());
         assert!(path_in_home("project", &home).is_err());
         assert!(path_in_home(&text(&home.join("missing")), &home).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_regular_files_inside_the_chats_folder_open() {
+        let root = TempDir::new("text-files");
+        let home = root.path().join("home");
+        let project = home.join("project");
+        let outside = home.join("secrets");
+        std::fs::create_dir_all(project.join("docs")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(project.join("docs/plan.md"), "x").unwrap();
+        std::fs::write(outside.join("key.md"), "x").unwrap();
+        std::fs::write(root.path().join("out.md"), "x").unwrap();
+        std::os::unix::fs::symlink(outside.join("key.md"), project.join("key.md")).unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("away")).unwrap();
+        std::os::unix::fs::symlink(project.join("docs/plan.md"), project.join("near.md")).unwrap();
+        let text = |path: &Path| path.to_str().unwrap().to_owned();
+        let folder = text(&project);
+        let plan = project.join("docs/plan.md").canonicalize().unwrap();
+
+        assert_eq!(
+            text_file_in("docs/plan.md", &folder, &home),
+            Ok(plan.clone())
+        );
+        assert_eq!(
+            text_file_in("./docs/../docs/plan.md", &folder, &home),
+            Ok(plan.clone())
+        );
+        assert_eq!(text_file_in(&text(&plan), &folder, &home), Ok(plan.clone()));
+        assert_eq!(text_file_in("near.md", &folder, &home), Ok(plan));
+
+        for refused in [
+            "../secrets/key.md",
+            "docs/../../secrets/key.md",
+            "key.md",
+            "away/key.md",
+            &text(&outside.join("key.md")),
+            "/etc/passwd",
+            "docs",
+            ".",
+            "missing.md",
+        ] {
+            assert!(text_file_in(refused, &folder, &home).is_err(), "{refused}");
+        }
+        assert!(text_file_in("docs/plan.md", "project", &home).is_err());
+        assert!(text_file_in("out.md", &text(root.path()), &home).is_err());
+        assert!(text_file_in("docs/plan.md", &text(&project.join("gone")), &home).is_err());
     }
 
     #[test]

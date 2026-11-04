@@ -141,6 +141,12 @@ public struct APIClient: NestAPI {
         try await send(try encodedRequest("GET", ["attachments", id], query: [], body: nil)).body
     }
 
+    public func checkAttachment(_ id: String) async throws {
+        var request = try encodedRequest("GET", ["attachments", id], query: [], body: nil)
+        request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        _ = try await send(request)
+    }
+
     public func sendQueuedNow(_ id: String, queuedID: String) async throws {
         try await perform("POST", ["sessions", id, "queue", queuedID, "send-now"])
     }

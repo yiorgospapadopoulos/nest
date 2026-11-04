@@ -2,31 +2,66 @@ import AppKit
 import NestKit
 import SwiftUI
 
-/// The Settings window (B81): a category sidebar with a search field and the projects,
-/// and the chosen page beside it.
-struct SettingsWindow: View {
-    static let id = "settings"
+/// Settings inside the window (B118): a large panel over the dimmed chats, which stay mounted
+/// underneath, so that it stays in the window's own space. Esc, Cmd-W, the X or a click on
+/// the dim close it; the sheets of its pages sit over all of it.
+struct SettingsPanel: View {
+    private static let maxSize = CGSize(width: 1080, height: 820)
 
+    @Environment(Shell.self) private var shell
     @Environment(AppController.self) private var controller
 
     var body: some View {
-        Group {
-            if let shell = controller.shell {
-                // A new identity for each daemon's model, so the pages load from it.
-                SettingsView().environment(shell).id(ObjectIdentifier(shell))
-            } else {
-                Text("Nest is starting")
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(Palette.t3)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Palette.windowOpaque)
+        ZStack {
+            Palette.scrim
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { shell.closeSettings() }
+            SettingsView()
+                .overlay(alignment: .topTrailing) { closeButton }
+                .clipShape(.rounded(Radius.sheet))
+                .sheetSurface()
+                .frame(maxWidth: Self.maxSize.width, maxHeight: Self.maxSize.height)
+                .padding(.horizontal, 48)
+                .padding(.vertical, 32)
+            SettingsSheets()
+            // Esc closes the topmost thing only: a sheet has its own.
+            if shell.overlay == nil, !shell.settingsSheetOpen, controller.pairing == nil {
+                Button("Close") { shell.closeSettings() }
+                    .keyboardShortcut(.cancelAction)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
             }
         }
-        .frame(minWidth: 760, minHeight: 520)
+    }
+
+    private var closeButton: some View {
+        Button {
+            shell.closeSettings()
+        } label: {
+            Image(systemName: Icon.close).font(.system(size: 10, weight: .medium))
+        }
+        .buttonStyle(.nest(.soft, iconOnly: true))
+        .foregroundStyle(Palette.t2)
+        .padding(12)
+        .accessibilityLabel("Close settings")
     }
 }
 
-/// The sidebar and the page, in the app's accent and mode.
+/// The sheets Settings' pages open.
+struct SettingsSheets: View {
+    var body: some View {
+        ZStack {
+            ConfigurationModals()
+            PairDaemonModal()
+            AddLocalModal()
+        }
+    }
+}
+
+/// A category sidebar with a search field and the projects, and the chosen page beside it,
+/// in the app's accent and mode.
 struct SettingsView: View {
     @Environment(Shell.self) private var shell
 
@@ -41,9 +76,6 @@ struct SettingsView: View {
         }
         .background(Palette.windowOpaque)
         .ignoresSafeArea()
-        .overlay { ConfigurationModals() }
-        .overlay { PairDaemonModal() }
-        .overlay { AddLocalModal() }
         .overlay(alignment: .top) {
             if let toast = shell.toast {
                 ToastView(toast: toast)
@@ -54,7 +86,7 @@ struct SettingsView: View {
         .foregroundStyle(Palette.t1)
         .environment(\.accentColors, AccentColors(accent: settings.accent))
         .preferredColorScheme(settings.theme.colorScheme)
-        // Each opening of the window is a new visit: what was new during the last one shows no
+        // Each opening of the panel is a new visit: what was new during the last one shows no
         // badge now, and the Features row's count is current from the start.
         .task {
             shell.model.features.beginVisit()
@@ -131,7 +163,7 @@ private struct SettingsSidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             SearchField(text: $shell.settingsQuery)
                 .padding(.horizontal, 10)
-                .padding(.top, 40)
+                .padding(.top, 14)
                 .padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {

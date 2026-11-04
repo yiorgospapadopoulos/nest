@@ -136,7 +136,11 @@ final class Shell {
     /// Right panel rows opened or closed by the user, by row key; the rest keep their
     /// default (B77).
     var foldedRows: [String: Bool] = [:]
-    /// The Settings window's page, search text and tabs (B81).
+    /// Settings' page, search text and tabs (B81).
+    /// Settings is showing, as a panel over the window (B118).
+    private(set) var settingsOpen = false
+    /// What had the keyboard when Settings opened, to give it back on closing.
+    @ObservationIgnored private weak var focusBeforeSettings: NSResponder?
     var settingsPage = SettingsPage.general
     var settingsQuery = ""
     var projectTab = ProjectSettingsTab.general
@@ -146,7 +150,7 @@ final class Shell {
     var configurationForm: ConfigurationForm?
     /// The Add local model sheet over Settings (B106).
     var addLocal: AddLocalFlow?
-    /// Opens a window scene by id; the main window sets it once it shows.
+    /// Opens the window by scene id; the window sets it once it shows.
     @ObservationIgnored var openWindow: ((String) -> Void)?
     /// The Connections list's unfolded groups; all are folded at first.
     var connectorGroupsOpen: Set<ConnectorSectionKind> = []
@@ -217,10 +221,11 @@ final class Shell {
     var machineName: String { model.machineName }
 
     /// What a new window model takes over from the one it replaces when the window
-    /// switches daemons: the Settings window's page (a project page only stays on This
-    /// Mac's projects it has) and how windows open.
+    /// switches daemons: whether Settings is open, its page (a project page only stays on
+    /// This Mac's projects it has) and how the window opens.
     func keepSettings(of old: Shell) {
         openWindow = old.openWindow
+        settingsOpen = old.settingsOpen
         if case .project = old.settingsPage {
             settingsPage = .general
         } else {
@@ -721,6 +726,25 @@ final class Shell {
         }
     }
 
+    /// Saves a sent file where the user picks, read through the device's token; a file is
+    /// only ever written, never run. A deleted one marks its row instead.
+    func saveAttachment(_ attachment: Attachment) {
+        run("Could not read the file") {
+            guard let data = try await self.images.file(attachment.id) else { return }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = attachment.filename
+            panel.begin { response in
+                guard response == .OK, let url = panel.url else { return }
+                do {
+                    try data.write(to: url, options: .atomic)
+                    self.show("Saved \(url.lastPathComponent)", kind: .done)
+                } catch {
+                    self.show(error, doing: "Could not save the file")
+                }
+            }
+        }
+    }
+
     /// Writes the version as a file where the user picks; HTML without the injected
     /// policy, as it was saved, or a multi-file page as its built, self-contained page.
     func saveArtifact(_ content: ArtifactContent) {
@@ -883,11 +907,17 @@ final class Shell {
         draft.selection = TextSelection(insertionPoint: draft.text.endIndex)
     }
 
-    /// Cmd-W: closes the open sheet, else the focused pane (a chat's or a pixie's), else
-    /// the window.
+    /// Cmd-W: closes the open sheet, else Settings' sheet, else Settings, else the focused
+    /// pane (a chat's or a pixie's), else the window.
     func closeFocused() {
         if overlay != nil {
             close()
+        } else if settingsOpen {
+            if settingsSheetOpen {
+                closeSettingsSheet()
+            } else {
+                closeSettings()
+            }
         } else if let focused = workspaceState.layout.focused {
             closePane(focused)
         } else {
@@ -1670,15 +1700,52 @@ final class Shell {
         }
     }
 
-    // MARK: Settings window (B81)
+    // MARK: Settings (B81, B118)
 
-    /// Shows the Settings window on a page; a project's page opens on its General tab.
+    /// Shows Settings over the window, in the window's own space, on a page; a project's
+    /// page opens on its General tab. The keyboard leaves whatever is underneath.
     func openSettings(_ page: SettingsPage = .general) {
         if page != settingsPage, case .project = page {
             projectTab = .general
         }
         settingsPage = page
-        openWindow?(SettingsWindow.id)
+        if !settingsOpen {
+            let window = NSApp.keyWindow
+            focusBeforeSettings = window?.firstResponder
+            window?.makeFirstResponder(nil)
+            withAnimation(.smooth(duration: 0.2)) { settingsOpen = true }
+        }
+        openWindow?(NestApp.mainWindowID)
+    }
+
+    /// Back to the chats and panes, which stayed underneath.
+    func closeSettings() {
+        guard settingsOpen else { return }
+        withAnimation(.smooth(duration: 0.18)) { settingsOpen = false }
+        if let view = focusBeforeSettings as? NSView, let window = view.window {
+            window.makeFirstResponder(view)
+        }
+        focusBeforeSettings = nil
+    }
+
+    /// A form or sheet is open on top of Settings (the pairing sheet is the controller's).
+    var settingsSheetOpen: Bool {
+        let configuration = model.configuration
+        return configuration.editor != nil || configuration.copy != nil
+            || configurationForm != nil || addLocal != nil
+    }
+
+    private func closeSettingsSheet() {
+        let configuration = model.configuration
+        if configuration.editor != nil {
+            configuration.closeEditor()
+        } else if configuration.copy != nil {
+            configuration.cancelCopy()
+        } else if configurationForm != nil {
+            configurationForm = nil
+        } else {
+            addLocal = nil
+        }
     }
 
     /// Settings > Accounts with the Add local model sheet, on Find on this Mac (looking at
@@ -1704,8 +1771,10 @@ final class Shell {
         openSettings(.configuration)
     }
 
-    /// Brings the main window forward, such as after Open on a pixie in Settings.
+    /// Shows the window's content, such as after Open on a pixie in Settings: closes
+    /// Settings over it and brings the window forward.
     func showMainWindow() {
+        closeSettings()
         openWindow?(NestApp.mainWindowID)
     }
 
@@ -2057,6 +2126,16 @@ final class Shell {
         if let link = SafeLink.url(url) {
             NSWorkspace.shared.open(link)
         }
+    }
+
+    /// A file a message names. The path is the agent's: it opens only as a regular file
+    /// inside the chat's folder, on this Mac, in the app for plain text.
+    func openFile(_ path: String, root: String) {
+        guard !isRemote, let file = FileReference.resolve(path, in: root) else {
+            show("File not found", kind: .failed)
+            return
+        }
+        LocalOpen.textFile(file)
     }
 
     // MARK: Feedback

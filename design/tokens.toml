@@ -106,6 +106,15 @@ added_text = { light = "#14723a", dark = "#6be3a0" }
 removed_fill = { light = "rgba(229,72,77,0.11)", dark = "rgba(255,105,97,0.14)" }
 removed_text = { light = "#bd2c27", dark = "#ff9a93" }
 
+# Code blocks in messages (B118): quiet, and 4.5:1 or better on the code background.
+[colors.code]
+comment = { light = "#6b6b6b", dark = "#979797" }
+string = { light = "#1d6f42", dark = "#8fd3a6" }
+keyword = { light = "#7038ad", dark = "#c3aaf5" }
+number = { light = "#9a5208", dark = "#e6b27c" }
+added = { light = "#14723a", dark = "#6be3a0" }
+removed = { light = "#b42b26", dark = "#ff9a93" }
+
 [colors.signal]
 approve = { light = "#1f9a52", dark = "#23904e" }
 running_ring = { light = "rgba(10,122,255,0.45)", dark = "rgba(61,155,255,0.5)" }

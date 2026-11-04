@@ -31,14 +31,6 @@ struct NestApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
         .commands { NestCommands(controller: controller) }
-        // A window of its own (B81), opened with Settings, a project's settings or /mcp.
-        Window("Settings", id: SettingsWindow.id) {
-            SettingsWindow().environment(controller)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 980, height: 700)
-        .windowResizability(.contentMinSize)
-        .defaultPosition(.center)
     }
 }
 
@@ -48,13 +40,20 @@ struct NestCommands: Commands {
 
     private var shell: Shell? { controller.shell }
 
+    /// A command that shows something in the window leaves Settings for it.
+    private func inWindow(_ action: (Shell) -> Void) {
+        guard let shell else { return }
+        shell.closeSettings()
+        action(shell)
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { shell?.openSettings() }
                 .shortcut(.settings, shell)
         }
         CommandGroup(replacing: .newItem) {
-            Button("New Chat") { shell?.newChat() }
+            Button("New Chat") { inWindow { $0.newChat() } }
                 .shortcut(.newChat, shell)
                 .disabled(shell?.project == nil)
         }
@@ -63,12 +62,12 @@ struct NestCommands: Commands {
                 .shortcut(.closePane, shell)
         }
         CommandGroup(after: .newItem) {
-            Button("Search Chats and Commands") { shell?.toggle(.palette) }
+            Button("Search Chats and Commands") { inWindow { $0.toggle(.palette) } }
                 .shortcut(.palette, shell)
-            Button("New Terminal") { shell?.newTerminal() }
+            Button("New Terminal") { inWindow { $0.newTerminal() } }
                 .shortcut(.newTerminal, shell)
                 .disabled(shell?.project == nil || shell?.isRemote == true)
-            Button("New Browser") { shell?.newBrowser() }
+            Button("New Browser") { inWindow { $0.newBrowser() } }
                 .shortcut(.newBrowser, shell)
                 .disabled(shell?.project == nil)
             Button("Open Project in VS Code") { shell?.openProject(in: .vscode) }
@@ -85,24 +84,24 @@ struct NestCommands: Commands {
                 .shortcut(.toggleSidebar, shell)
             Button("Toggle Activity Panel") { shell?.update { $0.rightCollapsed.toggle() } }
                 .shortcut(.toggleActivity, shell)
-            Button("Workspace") { shell?.showView(.workspace) }
+            Button("Workspace") { inWindow { $0.showView(.workspace) } }
                 .shortcut(.workspace, shell)
-            Button("Board") { shell?.showView(.board) }
+            Button("Board") { inWindow { $0.showView(.board) } }
                 .shortcut(.board, shell)
-            Button("Artifacts") { shell?.showView(.artifacts) }
+            Button("Artifacts") { inWindow { $0.showView(.artifacts) } }
                 .shortcut(.artifacts, shell)
             Divider()
         }
         CommandMenu("Projects") {
-            Button("Previous Project") { shell?.selectProject(offset: -1) }
+            Button("Previous Project") { inWindow { $0.selectProject(offset: -1) } }
                 .shortcut(.previousProject, shell)
-            Button("Next Project") { shell?.selectProject(offset: 1) }
+            Button("Next Project") { inWindow { $0.selectProject(offset: 1) } }
                 .shortcut(.nextProject, shell)
             Divider()
-            Button("Pixies") { shell?.openPixies() }
+            Button("Pixies") { inWindow { $0.openPixies() } }
                 .shortcut(.pixies, shell)
             ForEach(1..<10) { number in
-                Button(projectTitle(number)) { shell?.selectProject(at: number - 1) }
+                Button(projectTitle(number)) { inWindow { $0.selectProject(at: number - 1) } }
                     .shortcut(.project, shell, digit: number)
             }
         }

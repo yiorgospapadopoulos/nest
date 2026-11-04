@@ -169,6 +169,24 @@ block = "B09"
 # Chats
 
 [[features]]
+id = "rich-messages"
+group = "chats"
+name = "Messages that read well"
+text = "Tables, quotes, task lists and coloured code show as they should, with no markdown marks left on screen. On the desktop apps a file named in a message opens in your text editor."
+where = "A chat"
+added = 2026-11-04
+block = "B118"
+
+[[features]]
+id = "sent-attachments"
+group = "chats"
+name = "Sent pictures and files stay visible"
+text = "Pictures you send show in your message and open larger on a click, and files show as rows you can save, also in queued messages and old chats."
+where = "A chat"
+added = 2026-11-04
+block = "B118"
+
+[[features]]
 id = "general-chats"
 group = "chats"
 name = "General"

@@ -50,7 +50,7 @@ import { ArtifactCard } from "../artifacts/ArtifactCard.tsx";
 import { chatScopes } from "../artifacts/view.ts";
 import { InlineApproval } from "./InlineApproval.tsx";
 import { PixieCard } from "./PixieCard.tsx";
-import { ResultImages } from "./ResultImages.tsx";
+import { ResultImages, Sent } from "./ResultImages.tsx";
 import { ActionSheet } from "../../ui/Sheet.tsx";
 import { changesFiles } from "./rewind.ts";
 import { EditSheet, RewindSheet } from "./RewindSheet.tsx";
@@ -554,18 +554,24 @@ interface EntryProps {
 export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryProps) {
   switch (item.kind) {
     case "user": {
-      const bubble = (
+      const sent = item.attachments.length > 0;
+      // A message of files alone has no bubble: they take its place.
+      const bare = sent && item.text === "" && item.github === undefined;
+      const bubble = bare ? (
+        <Sent files={item.attachments} ev={ev} />
+      ) : (
         <div className="m-u" data-ev={ev}>
           <UserText text={item.text} />
           {item.github !== undefined && <GitHubText part={item.github} />}
-          {item.attachments.length > 0 && <small>{item.attachments.join(", ")}</small>}
         </div>
       );
+      const files = sent && !bare ? <Sent files={item.attachments} /> : null;
       const from = item.from === undefined ? null : <FromPixie id={item.from} />;
       if (onActions === undefined) {
         return (
           <>
             {from}
+            {files}
             {bubble}
           </>
         );
@@ -573,6 +579,7 @@ export function MessageItem({ item, ev, running = NO_TASKS, onActions }: EntryPr
       return (
         <>
           {from}
+          {files}
           <div className="m-ur">
             <button
               className="rwd"

@@ -783,6 +783,29 @@ fn failure(doing: &str, ran: &Ran) -> String {
     }
 }
 
+/// `file` in the default app for plain text, named by `xdg-mime`, whatever kind of file it
+/// is, so nothing runs: false when there is no such app.
+pub fn open_in_text_editor(file: &Path) -> Result<bool, String> {
+    use gtk::gio::prelude::AppInfoExt;
+    let Ok(query) = std::process::Command::new("xdg-mime")
+        .args(["query", "default", "text/plain"])
+        .output()
+    else {
+        return Ok(false);
+    };
+    let app = String::from_utf8_lossy(&query.stdout).trim().to_owned();
+    let Some(editor) = gtk::gio::DesktopAppInfo::new(&app) else {
+        return Ok(false);
+    };
+    editor
+        .launch(
+            &[gtk::gio::File::for_path(file)],
+            None::<&gtk::gio::AppLaunchContext>,
+        )
+        .map(|()| true)
+        .map_err(|error| format!("Could not open {}: {error}", file.display()))
+}
+
 /// The address of `path` on one of the app's own schemes (Windows serves them as
 /// `http://<scheme>.localhost/` instead).
 pub fn custom_scheme_url(scheme: &str, path: &str) -> String {

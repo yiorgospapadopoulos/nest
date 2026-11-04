@@ -3,6 +3,7 @@
 // sprite, the name, @slug and the chat's status, then Details, maximise and close.
 import { useEffect, useRef } from "react";
 import type { Pixie, Session } from "../../api/types.ts";
+import { workRoot } from "../../screens/approvals/hooks.ts";
 import { useStore } from "../../store/context.ts";
 import { chatStatus, pendingFor, pixieWorking } from "../../store/selectors.ts";
 import { NO_BACKGROUND } from "../../store/state.ts";
@@ -10,6 +11,7 @@ import { Dot } from "../../ui/bits.tsx";
 import { LimitBar, ReviewBar } from "../chat/Bars.tsx";
 import type { PaneChrome } from "../chat/ChatPane.tsx";
 import { Composer } from "../chat/Composer.tsx";
+import { FileLinks } from "../chat/FileLinks.tsx";
 import { useFit } from "../chat/fit.ts";
 import { HeaderFrame, HeaderTitle } from "../chat/PaneHeader.tsx";
 import { Transcript } from "../chat/Transcript.tsx";
@@ -89,33 +91,35 @@ export function PixiePane({ id, chrome, focused }: Props) {
         <PixieHeaderParts pixie={pixie} session={session} />
       </HeaderFrame>
       <div className="dc-body">
-        {session === undefined ? (
-          <div className="dc-tx dpx-hi-wrap">{chat === null && <SayHi pixie={pixie} />}</div>
-        ) : (
-          <Transcript
-            key={session.id}
-            session={session}
-            background={state.tracking[session.id]?.background ?? NO_BACKGROUND}
-            focus={null}
-            history={state.history[session.id] ?? "loading"}
-            onRetry={() => void actions.reloadChat(session.id)}
-            dimmed={chrome.dimmed}
-            nav={{
-              openPixie: shell.openPixie,
-              openTeamWork: null,
-              openPixieWork: null,
-              openChat: (other) => {
-                shell.openChat(other);
-              },
-            }}
-            bottom={
-              <>
-                <ReviewBar session={session} />
-                <LimitBar session={session} />
-              </>
-            }
-          />
-        )}
+        <FileLinks folder={workRoot(session)}>
+          {session === undefined ? (
+            <div className="dc-tx dpx-hi-wrap">{chat === null && <SayHi pixie={pixie} />}</div>
+          ) : (
+            <Transcript
+              key={session.id}
+              session={session}
+              background={state.tracking[session.id]?.background ?? NO_BACKGROUND}
+              focus={null}
+              history={state.history[session.id] ?? "loading"}
+              onRetry={() => void actions.reloadChat(session.id)}
+              dimmed={chrome.dimmed}
+              nav={{
+                openPixie: shell.openPixie,
+                openTeamWork: null,
+                openPixieWork: null,
+                openChat: (other) => {
+                  shell.openChat(other);
+                },
+              }}
+              bottom={
+                <>
+                  <ReviewBar session={session} />
+                  <LimitBar session={session} />
+                </>
+              }
+            />
+          )}
+        </FileLinks>
         <Composer target={{ kind: "pixie", pixie: pixie.id, session }} />
       </div>
     </section>

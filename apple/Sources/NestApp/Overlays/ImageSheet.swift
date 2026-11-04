@@ -2,7 +2,8 @@ import AppKit
 import NestKit
 import SwiftUI
 
-/// A tool result's image at full size, scaled down to fit the window (B59).
+/// A tool result's or a sent message's image at full size, scaled down to fit the window
+/// (B59).
 struct ImageSheet: View {
     let attachment: String
     @Environment(Shell.self) private var shell
@@ -15,7 +16,7 @@ struct ImageSheet: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: picture.size.width, maxHeight: picture.size.height)
                     .padding(.vertical, 14)
-                    .accessibilityLabel("Image from the tool")
+                    .accessibilityLabel("Image")
             } else {
                 Text("Image not available")
                     .font(.ui(TypeSize.ui))

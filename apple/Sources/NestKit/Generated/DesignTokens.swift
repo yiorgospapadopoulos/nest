@@ -193,6 +193,14 @@ public enum DesignTokens {
             public static let removedFill = ThemedColor(light: RGBA(red: 0.898039, green: 0.282353, blue: 0.301961, alpha: 0.11), dark: RGBA(red: 1, green: 0.411765, blue: 0.380392, alpha: 0.14))
             public static let removedText = ThemedColor(light: RGBA(red: 0.741176, green: 0.172549, blue: 0.152941, alpha: 1), dark: RGBA(red: 1, green: 0.603922, blue: 0.576471, alpha: 1))
         }
+        public enum Code {
+            public static let comment = ThemedColor(light: RGBA(red: 0.419608, green: 0.419608, blue: 0.419608, alpha: 1), dark: RGBA(red: 0.592157, green: 0.592157, blue: 0.592157, alpha: 1))
+            public static let string = ThemedColor(light: RGBA(red: 0.113725, green: 0.435294, blue: 0.258824, alpha: 1), dark: RGBA(red: 0.560784, green: 0.827451, blue: 0.65098, alpha: 1))
+            public static let keyword = ThemedColor(light: RGBA(red: 0.439216, green: 0.219608, blue: 0.678431, alpha: 1), dark: RGBA(red: 0.764706, green: 0.666667, blue: 0.960784, alpha: 1))
+            public static let number = ThemedColor(light: RGBA(red: 0.603922, green: 0.321569, blue: 0.031373, alpha: 1), dark: RGBA(red: 0.901961, green: 0.698039, blue: 0.486275, alpha: 1))
+            public static let added = ThemedColor(light: RGBA(red: 0.078431, green: 0.447059, blue: 0.227451, alpha: 1), dark: RGBA(red: 0.419608, green: 0.890196, blue: 0.627451, alpha: 1))
+            public static let removed = ThemedColor(light: RGBA(red: 0.705882, green: 0.168627, blue: 0.14902, alpha: 1), dark: RGBA(red: 1, green: 0.603922, blue: 0.576471, alpha: 1))
+        }
         public enum Signal {
             public static let approve = ThemedColor(light: RGBA(red: 0.121569, green: 0.603922, blue: 0.321569, alpha: 1), dark: RGBA(red: 0.137255, green: 0.564706, blue: 0.305882, alpha: 1))
             public static let runningRing = ThemedColor(light: RGBA(red: 0.039216, green: 0.478431, blue: 1, alpha: 0.45), dark: RGBA(red: 0.239216, green: 0.607843, blue: 1, alpha: 0.5))

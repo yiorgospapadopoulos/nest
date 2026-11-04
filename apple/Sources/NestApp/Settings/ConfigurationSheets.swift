@@ -9,7 +9,7 @@ enum ConfigurationForm: Equatable {
     case skill(repo: String?)
 }
 
-/// The editor sheet, the copy popup and the forms, drawn over the Settings window with a
+/// The editor sheet, the copy popup and the forms, drawn over Settings with a
 /// scrim, as the main window draws its sheets.
 struct ConfigurationModals: View {
     @Environment(Shell.self) private var shell
