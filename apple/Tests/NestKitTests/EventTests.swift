@@ -193,6 +193,54 @@ import Testing
         #expect(Fixture.event(EventType.sessionWorkspace, #"{"branch": "b"}"#).body == .other)
     }
 
+    /// B119: a move says where the chat works now; it may have no branch or worktree.
+    @Test func aMoveReadsItsPlace() throws {
+        let body = Fixture.event(
+            EventType.sessionWorkspace,
+            #"""
+            {"path": "/r", "branch": null, "base_ref": "abc", "mode": "in_place",
+             "worktree_path": null, "earlier_worktrees": [
+               {"path": "/w/old", "branch": "agent/old", "base_ref": "abc",
+                "started_at": "2026-11-04T10:00:00Z", "ended_at": "2026-11-04T11:00:00Z",
+                "state": "deleted"}]}
+            """#
+        ).body
+        guard case .workspace(let workspace) = body else {
+            Issue.record("not a workspace event: \(body)")
+            return
+        }
+        #expect(workspace.path == "/r")
+        #expect(workspace.mode == .inPlace)
+        #expect(workspace.worktreePath == nil)
+        let earlier = try #require(workspace.earlierWorktrees?.first)
+        #expect(earlier.name == "agent/old")
+        #expect(earlier.state == .deleted)
+    }
+
+    /// B119: a session reads with and without the new fields, as older daemons send it.
+    @Test func sessionsReadWithAndWithoutTheirEarlierWorktrees() throws {
+        let plain = Fixture.text("session_detail")
+        let old = Fixture.decode(Session.self, json: plain)
+        #expect(old.movable == nil)
+        #expect(old.earlier.isEmpty)
+
+        let moved = plain.replacingOccurrences(
+            of: #""id""#,
+            with: #"""
+                "movable": true, "moved_at": "2026-11-04T11:00:00Z", "earlier_worktrees": [
+                  {"path": "/w/kept", "branch": null, "base_ref": null,
+                   "started_at": "2026-11-04T10:00:00Z", "ended_at": "2026-11-04T11:00:00Z",
+                   "state": "kept"}], "id"
+                """#,
+            options: [], range: plain.range(of: #""id""#))
+        let session = Fixture.decode(Session.self, json: moved)
+        #expect(session.movable == true)
+        #expect(session.movedAt != nil)
+        let earlier = try #require(session.earlier.first)
+        #expect(earlier.name == "kept")
+        #expect(earlier.state == .kept)
+    }
+
     @Test func unknownTypesAndBadPayloadsReadAsOther() {
         #expect(Fixture.event("daemon.started", #"{"version": "0.1.0"}"#).body == .other)
         #expect(Fixture.event(EventType.sessionDelta, #"{"text": 3}"#).body == .other)

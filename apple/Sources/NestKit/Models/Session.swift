@@ -67,6 +67,31 @@ public enum PermissionMode: String, UnknownSafeEnum {
     }
 }
 
+public enum EarlierWorktreeState: String, UnknownSafeEnum {
+    case kept, deleted
+    case unknown
+}
+
+/// A worktree a chat worked in before it moved (B119).
+public struct EarlierWorktree: Codable, Sendable, Hashable {
+    public var path: String
+    public var branch: String?
+    public var baseRef: String?
+    public var startedAt: Date
+    public var endedAt: Date
+    public var state: EarlierWorktreeState
+
+    /// Its branch, or its folder's name without one.
+    public var name: String { branch ?? URL(fileURLWithPath: path).lastPathComponent }
+
+    enum CodingKeys: String, CodingKey {
+        case path, branch, state
+        case baseRef = "base_ref"
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+    }
+}
+
 /// An agent session (a chat). Detail responses also carry its tasks, agents, background
 /// work and queued messages.
 public struct Session: Codable, Sendable, Hashable, Identifiable {
@@ -115,6 +140,12 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
     public var queued: [QueuedMessage]?
     /// Set while the chat is paused at the usage limit, the only sign that it is (B78).
     public var limitPause: LimitPause?
+    /// Whether the chat can change worktree (B119). This and the next two are missing on
+    /// daemons before it.
+    public var movable: Bool?
+    /// The worktrees it worked in before, oldest first, never the current one.
+    public var earlierWorktrees: [EarlierWorktree]?
+    public var movedAt: Date?
 
     public var isArchived: Bool { archivedAt != nil }
 
@@ -122,6 +153,20 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
 
     /// The folder the agent works in: its worktree, else the folder it runs in.
     public var folder: String? { worktreePath ?? cwd }
+
+    public var earlier: [EarlierWorktree] { earlierWorktrees ?? [] }
+
+    /// The key of its row's fold of earlier worktrees.
+    public var earlierFoldKey: String { "earlier-\(id)" }
+
+    /// What the row's accessibility label adds, after a comma.
+    public var earlierAccessibility: String? {
+        switch earlier.count {
+        case 0: nil
+        case 1: "1 earlier worktree"
+        case let count: "\(count) earlier worktrees"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, repo, title, prompt, mode, cwd, model, effort, provider, state, branch, pinned
@@ -141,6 +186,9 @@ public struct Session: Codable, Sendable, Hashable, Identifiable {
         case allowedTools = "allowed_tools"
         case archivedAt = "archived_at"
         case limitPause = "limit_pause"
+        case movable
+        case earlierWorktrees = "earlier_worktrees"
+        case movedAt = "moved_at"
     }
 }
 

@@ -390,21 +390,34 @@ public struct SessionRewind: Decodable, Sendable, Hashable {
     }
 }
 
-/// Where a worktree chat works, from `session.workspace`.
+/// Where a chat works, from `session.workspace`.
 public struct SessionWorkspace: Decodable, Sendable, Hashable {
+    /// The folder it works in, which after a move may be the project folder.
     public var path: String
     public var branch: String?
     public var baseRef: String?
+    /// Sent when a chat moves (B119), and only then.
+    public var mode: SessionMode?
+    public var worktreePath: String?
+    public var earlierWorktrees: [EarlierWorktree]?
 
-    public init(path: String, branch: String?, baseRef: String?) {
+    public init(
+        path: String, branch: String?, baseRef: String?, mode: SessionMode? = nil,
+        worktreePath: String? = nil, earlierWorktrees: [EarlierWorktree]? = nil
+    ) {
         self.path = path
         self.branch = branch
         self.baseRef = baseRef
+        self.mode = mode
+        self.worktreePath = worktreePath
+        self.earlierWorktrees = earlierWorktrees
     }
 
     enum CodingKeys: String, CodingKey {
-        case path, branch
+        case path, branch, mode
         case baseRef = "base_ref"
+        case worktreePath = "worktree_path"
+        case earlierWorktrees = "earlier_worktrees"
     }
 }
 
