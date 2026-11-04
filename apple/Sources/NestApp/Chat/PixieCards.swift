@@ -278,12 +278,9 @@ struct ReportCard: View {
                 .foregroundStyle(Palette.t1)
                 .fixedSize(horizontal: false, vertical: true)
             if !report.body.isEmpty {
-                Text(report.body)
-                    .font(.ui(TypeSize.ui))
-                    .foregroundStyle(Palette.t2)
-                    .lineSpacing(2)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                SelectableText(key: report.body, linkColor: NSColor(Palette.Mac.link)) {
+                    TextStyling.message(RichText.paragraphs(report.body))
+                }
             }
             if let link = report.link, SafeLink.url(link) != nil {
                 Button {
