@@ -155,6 +155,8 @@ final class FakeAPI: NestAPI {
         /// later start time), stop stops it; output answers `runOutputs` by session id.
         var runs: [String: RunStatus] = [:]
         var runOutputs: [String: String] = [:]
+        /// The engine updates (B121). An accepted relaunch reports none, as the daemon does.
+        var updates = EngineUpdates()
     }
 
     let state = Mutex(State())
@@ -1155,6 +1157,29 @@ final class FakeAPI: NestAPI {
 
     func restartService() async throws {
         try call("restartService") { _ in }
+    }
+
+    func updates() async throws -> EngineUpdates {
+        try call("updates") { $0.updates }
+    }
+
+    func checkUpdates() async throws -> EngineUpdates {
+        try call("checkUpdates") { $0.updates }
+    }
+
+    func relaunchUpdate() async throws {
+        try call("relaunchUpdate") { $0.updates = EngineUpdates(canUndo: $0.updates.canUndo) }
+    }
+
+    func undoUpdate() async throws {
+        try call("undoUpdate") { _ in }
+    }
+
+    func dismissUpdateNotice() async throws -> EngineUpdates {
+        try call("dismissUpdateNotice") {
+            $0.updates.notice = nil
+            return $0.updates
+        }
     }
 
     func features() async throws -> FeaturesCatalog {

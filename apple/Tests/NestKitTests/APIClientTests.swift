@@ -27,6 +27,7 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
     static let sessionJSON = Fixture.text("session_detail")
     static let approvalJSON = Fixture.json(Fixture.approval("ap-perm"))
     static let repoJSON = Fixture.json(Fixture.repos[0])
+    static let updatesJSON = Fixture.json(EngineUpdates())
     static let stuckJSON = """
         {"waiting_minutes": 15, "silent_minutes": 0, "repeated_calls": 4, "turn_minutes": 60}
         """
@@ -816,6 +817,21 @@ struct RouteCase: Sendable, CustomTestStringConvertible {
         },
         RouteCase("POST", "/api/service/restart", response: #"{"restarting": true}"#) {
             try await $0.restartService()
+        },
+        RouteCase("GET", "/api/updates", response: updatesJSON) {
+            _ = try await $0.updates()
+        },
+        RouteCase("POST", "/api/updates/check", response: updatesJSON) {
+            _ = try await $0.checkUpdates()
+        },
+        RouteCase("POST", "/api/updates/relaunch", response: #"{"restarting": true}"#) {
+            try await $0.relaunchUpdate()
+        },
+        RouteCase("POST", "/api/updates/undo", response: #"{"restarting": true}"#) {
+            try await $0.undoUpdate()
+        },
+        RouteCase("POST", "/api/updates/dismiss", response: updatesJSON) {
+            _ = try await $0.dismissUpdateNotice()
         },
         RouteCase(
             "POST", "/api/pairing/redeem", body: #"{"code":"K7QMR4XP","device_name":"Air"}"#,
