@@ -266,6 +266,169 @@ import Testing
     }
 }
 
+@Suite struct MarkdownTableTests {
+    private func table(_ text: String) -> MarkdownTable? {
+        for case .table(let table) in MarkdownBlock.parse(text) { return table }
+        return nil
+    }
+
+    @Test func aTableKeepsItsHeaderRowsAndAlignment() {
+        #expect(
+            MarkdownBlock.parse("| File | Size | Note |\n|:---|--:|:-:|\n| `a.ts` | 12 | **new** |")
+                == [
+                    .table(
+                        MarkdownTable(
+                            aligns: [.leading, .trailing, .center],
+                            header: ["File", "Size", "Note"],
+                            rows: [["`a.ts`", "12", "**new**"]]))
+                ])
+    }
+
+    @Test func pipesAtTheEndsAreOptional() {
+        let found = table("a | b\n--- | ---\n1 | 2")
+        #expect(found?.header == ["a", "b"])
+        #expect(found?.rows == [["1", "2"]])
+    }
+
+    /// Agents write `curl x | sh` in tables, escaped or not; neither may split the cell.
+    @Test func escapedPipesAndPipesInCodeStayInTheirCell() {
+        let found = table(
+            "| Command | Why |\n|---|---|\n| `curl x \\| sh` | a \\| b |\n| `grep a|b` | c |")
+        #expect(found?.rows == [["`curl x | sh`", "a \\| b"], ["`grep a|b`", "c"]])
+    }
+
+    @Test func unevenRowsArePaddedOrCut() {
+        #expect(table("| a | b |\n|---|---|\n| 1 |\n| 2 | 3 | 4 |")?.rows == [["1", ""], ["2", "3"]])
+    }
+
+    @Test func aMalformedTableStaysText() {
+        for text in [
+            "| a | b |\n| 1 | 2 |", "| a | b |\n|---|", "| a | b |\n|-x-|---|", "Use a | b for this",
+        ] {
+            #expect(MarkdownBlock.parse(text) == [.paragraph(text)], "\(text)")
+        }
+    }
+
+    /// Streaming: until the delimiter arrives, or while it is too short, the header stays text.
+    @Test func aHeaderWaitingForItsDelimiterStaysAParagraph() {
+        #expect(MarkdownBlock.parse("| a | b |") == [.paragraph("| a | b |")])
+        #expect(MarkdownBlock.parse("| a | b |\n|--") == [.paragraph("| a | b |\n|--")])
+    }
+
+    @Test func aTableStartsRightAfterAParagraphAndEndsAtTextWithNoPipes() {
+        #expect(
+            MarkdownBlock.parse("Here it is:\n| a |\n|---|\n| 1 |\nThat is all.") == [
+                .paragraph("Here it is:"),
+                .table(MarkdownTable(aligns: [.leading], header: ["a"], rows: [["1"]])),
+                .paragraph("That is all."),
+            ])
+    }
+}
+
+@Suite struct MarkdownSweepTests {
+    @Test func rulesInEachSpelling() {
+        for text in ["---", "***", "___", "- - -", "  ***  "] {
+            #expect(MarkdownBlock.parse("a\n\(text)\nb") == [.paragraph("a"), .rule, .paragraph("b")])
+        }
+    }
+
+    @Test func quotesJoinTheirLinesAndHoldBlocks() {
+        #expect(
+            MarkdownBlock.parse("> first\n> second\n>\n>> - item\n\nAfter") == [
+                .quote([
+                    .paragraph("first\nsecond"), .listItem(marker: "•", level: 0, text: "item"),
+                ]),
+                .paragraph("After"),
+            ])
+    }
+
+    @Test func taskItemsShowABox() {
+        #expect(
+            MarkdownBlock.parse("- [ ] open\n- [x] done\n- [X]\n- plain\n- [y] no") == [
+                .listItem(marker: MarkdownBlock.openTask, level: 0, text: "open"),
+                .listItem(marker: MarkdownBlock.doneTask, level: 0, text: "done"),
+                .listItem(marker: MarkdownBlock.doneTask, level: 0, text: ""),
+                .listItem(marker: "•", level: 0, text: "plain"),
+                .listItem(marker: "•", level: 0, text: "[y] no"),
+            ])
+    }
+
+    @Test func tildeFencesAndLongerFences() {
+        #expect(
+            MarkdownBlock.parse("~~~sh\nls\n```\n~~~\n````\n```\n````") == [
+                .code(language: "sh", text: "ls\n```"), .code(language: nil, text: "```"),
+            ])
+    }
+
+    @Test func aHeadingLosesItsClosingMarks() {
+        #expect(
+            MarkdownBlock.parse("## Two ##\n### C#") == [
+                .heading(level: 2, text: "Two"), .heading(level: 3, text: "C#"),
+            ])
+    }
+
+    @Test func aRowOfDashesIsNotAListItem() {
+        #expect(
+            MarkdownBlock.parse("- one\n---\n- two") == [
+                .listItem(marker: "•", level: 0, text: "one"), .rule,
+                .listItem(marker: "•", level: 0, text: "two"),
+            ])
+    }
+}
+
+@Suite struct MarkdownNestingTests {
+    private func levels(_ text: String) -> [Int] {
+        MarkdownBlock.parse(text).compactMap {
+            if case .listItem(_, let level, _) = $0 { level } else { nil }
+        }
+    }
+
+    @Test(arguments: ["1. one\n   - sub\n2. two", "- one\n    - sub\n- two", "- one\n  - sub\n- two"])
+    func aSublistIsOneLevelDeeperAtAnyIndent(text: String) {
+        #expect(levels(text) == [0, 1, 0])
+    }
+
+    @Test func eachLevelCountsFromTheItemsAroundIt() {
+        #expect(levels("- a\n    - b\n        - c\n    - d\n- e") == [0, 1, 2, 1, 0])
+    }
+
+    @Test func aFenceStaysUnderItsItemWithoutTheItemsIndent() {
+        #expect(
+            MarkdownBlock.parse("1. Install:\n\n   ```sh\n   npm i\n     nested\n   ```\n2. Run") == [
+                .listItem(marker: "1.", level: 0, text: "Install:"),
+                .underItem(
+                    level: 0, marker: "1.",
+                    blocks: [.code(language: "sh", text: "npm i\n  nested")]),
+                .listItem(marker: "2.", level: 0, text: "Run"),
+            ])
+    }
+
+    @Test func anIndentedParagraphStaysUnderItsItemInOrder() {
+        #expect(
+            MarkdownBlock.parse("- one\n  - sub\n\n  more on one\n- two\n\nOutside") == [
+                .listItem(marker: "•", level: 0, text: "one"),
+                .listItem(marker: "•", level: 1, text: "sub"),
+                .underItem(level: 0, marker: "•", blocks: [.paragraph("more on one")]),
+                .listItem(marker: "•", level: 0, text: "two"),
+                .paragraph("Outside"),
+            ])
+    }
+
+    @Test func aTableCanSitUnderAnItem() {
+        let blocks = MarkdownBlock.parse("- one\n\n  | a |\n  |---|\n  | 1 |\n- two")
+        #expect(
+            blocks[1]
+                == .underItem(
+                    level: 0, marker: "•",
+                    blocks: [.table(MarkdownTable(aligns: [.leading], header: ["a"], rows: [["1"]]))]))
+        #expect(blocks.count == 3)
+    }
+
+    @Test func aBlankLineDoesNotEndAList() {
+        #expect(levels("1. one\n\n   - sub\n\n2. two") == [0, 1, 0])
+    }
+}
+
 @Suite struct ToolSummaryTests {
     private func call(_ name: String, _ input: [String: JSONValue], result: String? = nil)
         -> ToolCall
