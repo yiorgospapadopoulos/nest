@@ -1,4 +1,5 @@
 #if DEBUG
+    import AppKit
     import Foundation
     import NestKit
 
@@ -345,7 +346,20 @@
         }
 
         func attachmentData(_ id: String) async throws -> Data {
+            if id.hasPrefix("sample-image") {
+                return SampleImage.png(wide: id.hasSuffix("wide"))
+            }
+            if id.hasPrefix("sample-file") {
+                return Data("sample".utf8)
+            }
+            if id == "sample-broken" {
+                throw APIError.server(status: 500, detail: "Sample failure")
+            }
             throw APIError.notFound("unknown attachment '\(id)'")
+        }
+
+        func checkAttachment(_ id: String) async throws {
+            _ = try await attachmentData(id)
         }
 
         func sessionCommands(_ id: String) async throws -> CommandList {
@@ -2563,7 +2577,7 @@
                 "id": id, "repo": repo, "title": title, "prompt": title, "mode": "worktree",
                 "model": model, "effort": effort, "permission_mode": permission,
                 "provider": "claude", "state": state, "branch": branch,
-                "created_at": ago(minutes + 30),
+                "cwd": "/Users/me/Projects/\(repo)", "created_at": ago(minutes + 30),
                 "updated_at": ago(minutes), "allowed_tools": [], "pinned": pinned,
             ]
             if archived {
@@ -2573,7 +2587,6 @@
                 // Works in the project folder: no branch of its own (B55).
                 object["mode"] = "in_place"
                 object["branch"] = NSNull()
-                object["cwd"] = "/Users/me/Projects/\(repo)"
             }
             if let pr {
                 object["pr"] = pr
@@ -3331,6 +3344,25 @@
             default:
                 LocalCheck(ok: false, error: .unreachable)
             }
+        }
+    }
+
+    /// A drawn picture for sent images in snapshots.
+    enum SampleImage {
+        static func png(wide: Bool) -> Data {
+            let size = wide ? NSSize(width: 1200, height: 500) : NSSize(width: 500, height: 900)
+            let image = NSImage(size: size, flipped: false) { rect in
+                NSGradient(starting: .systemTeal, ending: .systemIndigo)?.draw(in: rect, angle: 45)
+                NSColor.white.withAlphaComponent(0.8).setFill()
+                NSBezierPath(
+                    roundedRect: rect.insetBy(dx: 60, dy: 60), xRadius: 24, yRadius: 24
+                ).fill()
+                return true
+            }
+            guard let tiff = image.tiffRepresentation,
+                let bitmap = NSBitmapImageRep(data: tiff)
+            else { return Data() }
+            return bitmap.representation(using: .png, properties: [:]) ?? Data()
         }
     }
 #endif

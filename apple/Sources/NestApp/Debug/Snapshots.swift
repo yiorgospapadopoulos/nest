@@ -261,6 +261,10 @@
                 try await renderIssues(model, shell, controller, folder)
                 return
             }
+            if only == "b118" {
+                try await renderMessagesAndSettings(model, shell, controller, folder)
+                return
+            }
             if only == "b103" {
                 try await renderFeatures(model, shell, controller, folder)
                 return
@@ -408,6 +412,189 @@
             try await renderIssues(model, shell, controller, folder)
         }
 
+        /// B118: a message with tables, quotes, task lists and rules; messages with sent images
+        /// and files (deleted and failing ones too, and one with no text); and Settings as a
+        /// panel over the chats.
+        private static func renderMessagesAndSettings(
+            _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
+        ) async throws {
+            shell.close()
+            let workspace = CGSize(width: 828, height: 790)
+            let start = Date().addingTimeInterval(-60)
+            var id = 118_000
+            func receive(_ type: String, _ payload: [String: Any], at: Date) {
+                id += 1
+                let event: Event = try! SampleData.decode([
+                    "id": id, "type": type, "ts": SampleData.iso(at), "session_id": "c3",
+                    "payload": payload,
+                ])
+                model.transcripts.receive(event)
+            }
+            func file(_ id: String, _ name: String, _ type: String, _ size: Int) -> [String: Any] {
+                ["id": id, "filename": name, "media_type": type, "size": size]
+            }
+            let table = """
+                Here is what each engine does with a compact, checked on this Mac:
+
+                | Engine | Trigger | Default | Keeps the session |
+                |---|---|--:|---|
+                | **Claude** | Set in `settings.json` | 200,000 | Yes |
+                | **Codex** | Automatic near the model's limit, which can be a long way off on a \
+                big model and wraps in a narrow pane | 272,000 | Yes |
+                | **OpenCode** | Per model | 128,000 | ~~Yes~~ Only with a local model |
+
+                > The limit is the model's, not Nest's.
+                >
+                > Second paragraph of the quote, which **wraps** when the pane is narrow enough to need it.
+
+                - [x] Check Claude
+                - [ ] Check Codex after the update
+
+                ---
+
+                1. Install:
+
+                   ```sh
+                   npm i
+                     nested
+                   ```
+
+                   | Key | Value |
+                   |---|--:|
+                   | a | 1 |
+
+                   More on one, under the item.
+                2. Next I would check https://example.com/opencode.
+
+                | Last | Table |
+                |:-:|---|
+                | centred | ends the message |
+                """
+            receive(
+                "session.user_message",
+                [
+                    "text": "Here's the screen and the notes. Can you fix the cut off table?",
+                    "attachments": [
+                        file("sample-image-wide", "screen.png", "image/png", 240_000),
+                        file("sample-image-tall", "phone.png", "image/png", 180_000),
+                        file(
+                            "sample-file-pdf", "Quarterly-compaction-notes-final-v2-reviewed.pdf",
+                            "application/pdf", 2_400_000),
+                    ],
+                ], at: start)
+            receive(
+                "session.message",
+                ["blocks": [["type": "text", "text": table]], "parent_tool_use_id": NSNull()],
+                at: start + 3)
+            receive(
+                "session.result",
+                [
+                    "is_error": false, "subtype": "success", "duration_ms": 3_000,
+                    "num_turns": 1, "cost_usd": NSNull(), "errors": [],
+                ], at: start + 4)
+            receive(
+                "session.user_message",
+                [
+                    "text": "From an old chat, where the picture was deleted in Storage.",
+                    "attachments": [
+                        file("sample-deleted", "old.png", "image/png", 1_000),
+                        file("sample-broken", "broken.png", "image/png", 1_000),
+                        file("sample-deleted-file", "old-notes.zip", "application/zip", 9_000),
+                    ],
+                ], at: start + 5)
+            receive(
+                "session.user_message",
+                [
+                    "text": "",
+                    "attachments": [file("sample-file-log", "run.log", "text/plain", 12_400)],
+                ], at: start + 6)
+            let code = """
+                Fixed in `web/src/App.tsx:42` and index.html:111, see \
+                [the plan](plans/project-plan.md). Version 1.2.3 of example.com stays text.
+
+                ```ts
+                // Keeps the "newest" first
+                export const sorted = (rows: Row[]) =>
+                  [...rows].sort((a, b) => b.year - a.year || 0x10);
+                ```
+
+                ```python
+                def total(rows: list[int]) -> int:
+                    \"\"\"Adds them up.\"\"\"
+                    return sum(rows) + 1.5  # a comment
+                ```
+
+                ```diff
+                @@ -1,2 +1,2 @@
+                 kept
+                -old line
+                +new line
+                ```
+
+                ```unknown
+                const stays = "plain"
+                ```
+                """
+            receive(
+                "session.message",
+                ["blocks": [["type": "text", "text": code]], "parent_tool_use_id": NSNull()],
+                at: start + 7)
+            receive(
+                "session.result",
+                [
+                    "is_error": false, "subtype": "success", "duration_ms": 3_000,
+                    "num_turns": 1, "cost_usd": NSNull(), "errors": [],
+                ], at: start + 8)
+            model.app.selectProject("todo-ui")
+            model.app.update("todo-ui") { state in
+                state.view = .workspace
+                state.layout = WorkspaceLayout()
+                state.leftCollapsed = false
+                state.rightCollapsed = true
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            func scrolled(to index: Int) -> (NSView) async -> Void {
+                { host in
+                    guard
+                        let scroll = allScrollViews(in: host).max(by: {
+                            $0.documentView?.frame.height ?? 0 < $1.documentView?.frame.height ?? 0
+                        }), let document = scroll.documentView
+                    else { return }
+                    let step = max(scroll.contentView.bounds.height - 40, 200)
+                    scroll.contentView.scroll(
+                        to: NSPoint(x: 0, y: max(0, document.frame.height - step * Double(index))))
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
+            try await pair(controller, "b118-end", folder)
+            try await pair(controller, "b118-up1", folder, prepare: scrolled(to: 2))
+            try await pair(controller, "b118-up2", folder, prepare: scrolled(to: 3))
+            model.app.update("todo-ui") { state in
+                state.dropChat("c2", onto: "c3", side: .left)
+                state.focusPane("c3")
+            }
+            try await pair(controller, "b118-narrow", folder, prepare: scrolled(to: 3))
+            model.app.update("todo-ui") { state in
+                state.layout = WorkspaceLayout()
+                state.openChat("c3", in: workspace)
+                state.focusPane("c3")
+            }
+            shell.openSettings(.appearance)
+            try await pair(controller, "b118-settings", folder)
+            try await pair(
+                controller, "b118-settings-small", folder, size: CGSize(width: 1000, height: 640))
+            shell.openAddLocal(.address)
+            try await pair(controller, "b118-settings-sheet", folder)
+            shell.addLocal = nil
+            shell.closeSettings()
+        }
+
+        private static func allScrollViews(in view: NSView) -> [NSScrollView] {
+            let own = (view as? NSScrollView).map { [$0] } ?? []
+            return own + view.subviews.flatMap(allScrollViews)
+        }
+
         /// B103: General with the Features row's count and dot before the page is seen; then
         /// Settings > Features with the groups that hold something new open, their dots and New
         /// badges, the sidebar's count still there once the page showed; Chats opened too (its
@@ -418,7 +605,7 @@
         ) async throws {
             guard let sample = model.api as? SampleAPI else { return }
             let store = model.features
-            // One visit across several renders, each its own Settings window.
+            // One visit across several renders, each its own Settings.
             sample.holdFeatureReports(true)
             try await store.load()
             try await pairSettings(controller, .general, "b103-sidebar-count", folder)
@@ -4115,7 +4302,7 @@
 
         static let settingsSize = CGSize(width: 980, height: 700)
 
-        /// The Settings window on a page (B81), in light and dark.
+        /// Settings on a page (B81), in light and dark.
         private static func pairSettings(
             _ controller: AppController, _ page: SettingsPage, _ name: String, _ folder: URL,
             height: Double = settingsSize.height, prepare: () -> Void = {}
@@ -4141,7 +4328,9 @@
             window.ignoresMouseEvents = true
             window.appearance = NSAppearance(named: appearance)
             let host = NSHostingView(
-                rootView: SettingsWindow()
+                rootView: SettingsView()
+                    .overlay { SettingsSheets() }
+                    .environment(controller.shell)
                     .environment(controller)
                     .environment(\.offscreen, true)
                     .environment(\.reducedMotion, true))
@@ -4158,7 +4347,7 @@
             print("wrote \(name).png")
         }
 
-        /// B81: every page of the Settings window, a project's tabs, a search, the usage
+        /// B81: every page of Settings, a project's tabs, a search, the usage
         /// warning banner and a shortcut being recorded.
         private static func renderSettings(
             _ model: AppModel, _ shell: Shell, _ controller: AppController, _ folder: URL
