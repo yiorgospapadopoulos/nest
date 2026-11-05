@@ -369,6 +369,12 @@ async def test_hook_ignores_other_hook_events() -> None:
         "git worktree remove ../other",
         "git worktree remove --force ../other",
         "git -C .. worktree remove other",
+        "git config alias.w 'worktree remove'",
+        "git -c alias.w='worktree remove' w ../other",
+        "git-worktree remove ../other",
+        "sh -c 'git worktree remove ../other'",
+        'git worktree "$ACTION" ../other',
+        "W=worktree; git $W remove ../other",
     ],
 )
 def test_autopilot_also_blocks_what_changes_the_history(command: str) -> None:
@@ -377,7 +383,15 @@ def test_autopilot_also_blocks_what_changes_the_history(command: str) -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ["git status", "git log --grep commit", "git diff merge.py", "git add .", "git worktree list"],
+    [
+        "git status",
+        "git log --grep commit",
+        "git diff merge.py",
+        "git add .",
+        "git worktree list",
+        "git worktree add ../other",
+        'git worktree add "$DIR"',
+    ],
 )
 def test_autopilot_leaves_reading_and_staging_alone(command: str) -> None:
     assert not is_git_write(command, commits=True)

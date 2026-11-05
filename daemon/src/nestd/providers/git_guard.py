@@ -38,7 +38,10 @@ GIT_WRITE_RULES = (
     "Bash(gh pr merge:*)",
 )
 # Also blocked with `guard_commits` (Autopilot).
-GIT_HISTORY_RULES = tuple(f"Bash(git {name}:*)" for name in sorted(GIT_HISTORY))
+GIT_HISTORY_RULES = (
+    *(f"Bash(git {name}:*)" for name in sorted(GIT_HISTORY)),
+    "Bash(git worktree remove:*)",
+)
 DENY_REASON = (
     "Nest: pixies may commit, but pushing and opening or merging pull requests is left to you"
 )

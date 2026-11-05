@@ -60,6 +60,8 @@ _GH_MENTION = re.compile(r"\bgh\b.*?\bpr\b.*?\b(?:create|merge|new)\b", re.I | r
 _GIT_HISTORY_MENTION = re.compile(
     r"\bgit\b.*?\b(?:commit|merge|rebase|cherry-pick|revert|am|pull)\b", re.I | re.S
 )
+# Both words, in any order: a variable can hold either.
+_WORKTREE_REMOVE = re.compile(r"(?=.*\bworktree\b).*\bremove\b", re.I | re.S)
 _GH_DYNAMIC = re.compile(r"\bpr\b.*?\b(?:create|merge|new)\b", re.I | re.S)
 
 
@@ -71,9 +73,7 @@ def _writes(text: str, *, nested: bool, commits: bool) -> bool:
     if nested and _mentions_write(text, commits):
         return True
     if _DYNAMIC.search(text) and (
-        _WRITE_WORD.search(text)
-        or _GH_DYNAMIC.search(text)
-        or (commits and _GIT_HISTORY_MENTION.search(text))
+        _WRITE_WORD.search(text) or _GH_DYNAMIC.search(text) or (commits and _history_mention(text))
     ):
         return True
     try:
@@ -85,9 +85,13 @@ def _writes(text: str, *, nested: bool, commits: bool) -> bool:
 
 def _mentions_write(text: str, commits: bool) -> bool:
     plain = re.sub(r"[\"'\\]", "", text)
-    if commits and _GIT_HISTORY_MENTION.search(plain):
+    if commits and _history_mention(plain):
         return True
     return bool(_GIT_MENTION.search(plain) or _GH_MENTION.search(plain))
+
+
+def _history_mention(text: str) -> bool:
+    return bool(_GIT_HISTORY_MENTION.search(text) or _WORKTREE_REMOVE.search(text))
 
 
 def _words(text: str) -> list[str]:
@@ -105,6 +109,12 @@ def _words_write(words: Sequence[str], length: int, commits: bool) -> bool:
         if name in _DASHED_WRITES or (commits and name in _DASHED_HISTORY):
             return True
         if name == "git" and _git_writes(words[index + 1 :], {}, commits):
+            return True
+        if (
+            commits
+            and name == "git-worktree"
+            and _removes_worktree(_until_separator(words[index + 1 :]))
+        ):
             return True
         if name == "gh" and _gh_writes(words[index + 1 :]):
             return True
@@ -155,15 +165,26 @@ def _subcommand_writes(subcommand: str, tail: Sequence[str], commits: bool) -> b
     if subcommand == "subtree":
         return "push" in lowered
     if commits and subcommand == "worktree":
-        return "remove" in lowered
+        return _removes_worktree(lowered)
     # Defining an alias that pushes, to run it later.
     return (
         subcommand == "config"
         and any(word.startswith(_ALIAS_PREFIX) for word in lowered)
         and bool(
-            _WRITE_WORD.search(" ".join(tail)) or (commits and _HISTORY_WORD.search(" ".join(tail)))
+            _WRITE_WORD.search(" ".join(tail))
+            or (
+                commits
+                and (
+                    _HISTORY_WORD.search(" ".join(tail)) or _WORKTREE_REMOVE.search(" ".join(tail))
+                )
+            )
         )
     )
+
+
+def _removes_worktree(tail: Sequence[str]) -> bool:
+    """A worktree action held in a variable could be `remove`."""
+    return "remove" in tail or (len(tail) > 0 and bool(_DYNAMIC.search(tail[0])))
 
 
 def _alias_writes(
