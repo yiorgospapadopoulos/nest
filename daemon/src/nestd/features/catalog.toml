@@ -615,3 +615,12 @@ text = "Each chat draws only what is on screen, so scrolling stays smooth with f
 where = "Chat"
 added = 2026-11-05
 block = "B124"
+
+[[features]]
+id = "chat-names"
+group = "chats"
+name = "Chats named for what they are about"
+text = "A new chat takes a name that says what it is about a few seconds after your first message. A name you set yourself is never replaced."
+where = "Chat"
+added = 2026-11-05
+block = "B125"

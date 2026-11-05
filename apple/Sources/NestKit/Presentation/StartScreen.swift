@@ -67,7 +67,7 @@ public struct StartScreen: Sendable, Equatable {
             .filter { !$0.isArchived && !listed.contains($0.id) }
             .sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
             .prefix(Self.recentLimit)
-            .map { Recent(chat: $0.id, title: $0.title, date: $0.updatedAt) }
+            .map { Recent(chat: $0.id, title: $0.shownTitle, date: $0.updatedAt) }
         let open = issues.flatMap { $0.available ? $0.issues : nil } ?? []
         self.issues = open
         issueCount = open.count

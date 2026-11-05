@@ -18,7 +18,6 @@ from typing import Any, Protocol, cast
 from claude_agent_sdk import ClaudeAgentOptions, ContextUsageResponse, Message, ResultMessage
 from pydantic import JsonValue
 
-from nestd.perf.collectors.engines import NoTools
 from nestd.perf.formatting import compact
 from nestd.perf.models import Collected, Measured, Part
 from nestd.providers.base import (
@@ -27,6 +26,7 @@ from nestd.providers.base import (
     SessionSpec,
 )
 from nestd.providers.claude import build_options
+from nestd.providers.one_off import NoTools
 
 MODEL = "haiku"
 PROMPT = "Reply with OK"

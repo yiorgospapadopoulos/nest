@@ -136,7 +136,7 @@ async def test_a_codex_chat_calls_a_claude_pixie_through_its_mcp_server(api: Api
     api.provider.script(working)
     api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
 
-    chat = await create(api, provider="codex", mode="in_place")
+    chat = await create(api, title="Caller", provider="codex", mode="in_place")
     chat_id = str(chat["id"])
     await until(lambda: bool(api.codex.requests("turn/start")))
     [start] = api.codex.requests("thread/start")

@@ -180,7 +180,7 @@ private struct GoalRow: View {
             key: "goal-\(entry.session.id)", tone: shell.tone(of: entry.session),
             openByDefault: true
         ) {
-            ChatLink(chat: entry.session.id, title: entry.session.title)
+            ChatLink(chat: entry.session.id, title: entry.session.shownTitle)
         } line: {
             HStack(spacing: 8) {
                 Text(goals.progressLabel).monospacedDigit()

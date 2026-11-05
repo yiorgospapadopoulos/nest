@@ -14,6 +14,7 @@ from typing import cast
 
 from pydantic import JsonValue
 
+from nestd.claude_sessions.location import candidate_dirs
 from nestd.events import types
 from nestd.providers import base
 from nestd.sessions.titles import short_title
@@ -83,6 +84,17 @@ def parse_transcript(text: str) -> Transcript:
         entrypoint=next((value for entry in entries if (value := _str(entry, "entrypoint"))), None),
         history=history,
     )
+
+
+def find_title(projects_dir: Path, folder: Path, session_id: str) -> str | None:
+    """The title of the session run in `folder`; None without a transcript or a title yet."""
+    for directory in candidate_dirs(projects_dir, folder):
+        try:
+            text = (directory / f"{session_id}.jsonl").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        return _title(list(_entries(text)))
+    return None
 
 
 def _entries(text: str) -> Iterator[Raw]:

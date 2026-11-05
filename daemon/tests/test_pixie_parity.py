@@ -402,8 +402,13 @@ class Caller:
             await until(lambda: self.run is not None)
             return
         self.api.codex.script(note("turn/started", threadId="thread-1", turn={"id": "turn-1"}))
+        # A title of its own, so no small call for its name goes to the scripted engine.
         chat = await create(
-            self.api, provider="codex", mode="in_place", permission_mode=permission_mode
+            self.api,
+            title="Caller",
+            provider="codex",
+            mode="in_place",
+            permission_mode=permission_mode,
         )
         self.chat_id = str(chat["id"])
         await until(lambda: bool(self.api.codex.requests("turn/start")))

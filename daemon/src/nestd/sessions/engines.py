@@ -41,6 +41,8 @@ class Engine:
     models: ModelLookup | None = None
     ready: ReadyCheck | None = None
     default: DefaultModel | None = None
+    # Its cheapest model, for small calls of Nest's own; None leaves the engine's default.
+    small: DefaultModel | None = None
     # None: the engine has no accounts to choose from, as in tests.
     accounts: AccountSource | None = None
     # False when Nest cannot block the engine's git commands (B107): pixies, habits and
@@ -73,6 +75,9 @@ class Engine:
 
     async def default_model(self) -> str | None:
         return None if self.default is None else await self.default()
+
+    async def small_model(self) -> str | None:
+        return None if self.small is None else await self.small()
 
     def active_account(self) -> str | None:
         return None if self.accounts is None else self.accounts.active()

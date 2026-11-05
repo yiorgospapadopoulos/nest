@@ -1,9 +1,12 @@
-"""Concise session titles derived from the user's first prompt."""
+"""Concise session titles: the quick one from the user's first prompt, cut from its first
+words, and the clean-up of the name an engine gives a chat (B125).
+"""
 
 import re
 
 MAX_TITLE_LENGTH = 32
 MAX_TITLE_WORDS = 6
+MAX_NAME_LENGTH = 80
 UNTITLED = "Untitled"
 # Shorter results of a line say too little; the next line is tried instead.
 _MIN_TITLE_LENGTH = 3
@@ -34,6 +37,8 @@ _CLAUSE_END = re.compile(
     re.IGNORECASE,
 )
 _TRAILING = ".,;:!?-\u2026 "
+# What a reply wraps a name in.
+_WRAPPING = "\"'`*_#\u201c\u201d\u2018\u2019 "
 # Trailing punctuation and words that leave a title hanging.
 _DANGLING = re.compile(
     r"(?:[.,;:!?\-\u2026\s]|\s(?:an?|the|to|of|in|on|at|for|with|and|or|as|is|are|that"
@@ -58,6 +63,17 @@ def short_title(prompt: str) -> str:
         if title := _shorten(line, drop_dangling=False):
             return title
     return UNTITLED
+
+
+def clean_name(text: str) -> str | None:
+    """The first line of an engine's name for a chat, without markup or a final stop and at
+    most 80 characters long, cut at a word; None when nothing is left.
+    """
+    line = next((" ".join(line.split()) for line in text.splitlines() if line.strip()), "")
+    name = line.strip(_WRAPPING).rstrip(_TRAILING).rstrip(_WRAPPING)
+    if len(name) > MAX_NAME_LENGTH:
+        name = name[: MAX_NAME_LENGTH + 1].rsplit(" ", 1)[0]
+    return name or None
 
 
 def _drop_lead_ins(text: str) -> str:

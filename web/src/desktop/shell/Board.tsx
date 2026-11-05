@@ -3,7 +3,7 @@ import { ago } from "../../format.ts";
 import { workRoot } from "../../screens/approvals/hooks.ts";
 import { approvalLine, lineText } from "../../screens/inbox/needsLine.ts";
 import { useStore } from "../../store/context.ts";
-import { chatStatus, pendingFor } from "../../store/selectors.ts";
+import { chatStatus, pendingFor, shownTitle } from "../../store/selectors.ts";
 import { questionsOf, reviewOf } from "../../api/payloads.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Icon } from "../../ui/Icon.tsx";
@@ -57,7 +57,7 @@ function BoardCard({ session }: { session: Session }) {
         <span className={colored ? `dk-bw t-${status.tone}` : "dk-bw"}>{status.label}</span>
         <span>{ago(session.updated_at, new Date())}</span>
       </div>
-      <h3 className="dk-bt">{session.title}</h3>
+      <h3 className="dk-bt">{shownTitle(session)}</h3>
       {session.pr !== null && (
         <span className="fr-bpr">
           <PrChip session={session} pr={session.pr} />

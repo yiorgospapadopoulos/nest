@@ -684,6 +684,15 @@ class AgentRun(Protocol):
     # cannot gets them after the turn instead (B59).
     steers: bool
 
+    @property
+    def names_chats(self) -> bool:
+        """Whether the engine names its chats itself, read with `engine_title` (B125)."""
+        ...
+
+    async def engine_title(self, session_id: str) -> str | None:
+        """The engine's own name for its session `session_id`; None until it has one."""
+        ...
+
     async def send(self, user_input: UserInput) -> None:
         """Submit a user message; what the agent does comes through the sink."""
         ...

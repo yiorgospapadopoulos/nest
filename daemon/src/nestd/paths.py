@@ -111,6 +111,11 @@ class AppPaths:
         return self.data_dir / "probe"
 
     @property
+    def names_dir(self) -> Path:
+        """The empty folder of the small calls that name a chat (B125)."""
+        return self.data_dir / "names"
+
+    @property
     def ask_dir(self) -> Path:
         """The empty working directory of the Claude calls artifact pages make (B88)."""
         return self.data_dir / "ask"

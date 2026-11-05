@@ -52,7 +52,7 @@ struct ChatRow: View {
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             StatusMark(tone: tone)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.title)
+                Text(session.shownTitle)
                     .font(.ui(TypeSize.ui))
                     .foregroundStyle(
                         finished && rowState != .focused ? Palette.t2 : rowState.titleColor
