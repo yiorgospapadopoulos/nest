@@ -42,7 +42,7 @@
     }
   },
   "needs_you": {
-    "$comment": "The Needs you cards of a project, in this order. Approvals oldest first, failed checks by when their checks last changed (oldest first), stuck chats longest stuck first.",
+    "$comment": "The Needs you cards of a project, in this order. A review or merge is left out, of the cards and the count, while its chat is starting, running or waiting. Approvals oldest first, failed checks by when their checks last changed (oldest first), stuck chats longest stuck first.",
     "order": ["approvals", "checks_failed", "stuck"],
     "approvals": "oldest_first",
     "checks_failed": "oldest_check_change_first",
