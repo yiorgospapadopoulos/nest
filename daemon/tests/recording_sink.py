@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from nestd.config.models import PermissionMode
 from nestd.providers.base import (
     AgentTask,
@@ -81,6 +83,9 @@ class RecordingSink:
 
     async def checkpoint(self, checkpoint_id: str) -> None:
         self.calls.append(("checkpoint", checkpoint_id))
+
+    async def folder_changed(self, folder: Path, *, removed: bool) -> None:
+        self.calls.append(("folder_changed", (folder, removed)))
 
     async def message_taken(self, message_id: str, checkpoint_id: str) -> None:
         self.calls.append(("message_taken", (message_id, checkpoint_id)))

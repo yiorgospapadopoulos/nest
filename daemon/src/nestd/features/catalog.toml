@@ -265,9 +265,10 @@ block = "B55"
 id = "chat-outlives-worktree"
 group = "git"
 name = "Chats that outlive their worktree"
-text = "Tell a chat to delete its worktree or make a new one. It keeps its history, carries on, and lists where it worked before."
+text = "Tell a chat to delete its worktree or make a new one. It keeps its history, carries on, and lists where it worked before. If the agent moves on its own, the chat follows."
 where = "Chat"
 added = 2026-11-04
+changed = 2026-11-05
 block = "B119"
 
 [[features]]

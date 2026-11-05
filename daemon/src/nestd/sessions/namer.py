@@ -1,4 +1,4 @@
-"""A new chat's real name (B125, D152). The chat's name stays blank in the clients until the
+"""A new chat's real name (B125, D155). The chat's name stays blank in the clients until the
 engine's own arrives, once, after its first message. An engine that does not name its chats
 gets one small call of the chat's account on its cheapest model, in a folder of its own and
 with no history, so it reaches neither the chat nor its context. A name given by hand or

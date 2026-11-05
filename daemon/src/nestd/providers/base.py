@@ -577,6 +577,12 @@ class ProviderEventSink(Protocol):
 
     async def message(self, blocks: list[MessageBlock], parent_tool_use_id: str | None) -> None: ...
 
+    async def folder_changed(self, folder: Path, *, removed: bool) -> None:
+        """The main agent moved to `folder` with an engine tool of its own; `removed` when
+        the worktree it left went with that.
+        """
+        ...
+
     async def text_delta(self, text: str) -> None: ...
 
     async def thinking(self, active: bool) -> None:

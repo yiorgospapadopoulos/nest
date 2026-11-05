@@ -2,6 +2,7 @@ import asyncio
 import logging
 from contextlib import aclosing
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -59,6 +60,9 @@ class RecordingTurns:
 
     async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
         self.calls.append(("checkpoint", checkpoint_id))
+
+    async def folder_changed(self, live: LiveSession, folder: Path, *, removed: bool) -> None:
+        self.calls.append(("folder", folder, removed))
 
     async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
         self.calls.append(("taken", message_id, checkpoint_id))
@@ -437,6 +441,9 @@ class BrokenTurns:
 
     async def checkpoint(self, live: LiveSession, checkpoint_id: str) -> None:
         raise RuntimeError("checkpoint")
+
+    async def folder_changed(self, live: LiveSession, folder: Path, *, removed: bool) -> None:
+        raise RuntimeError("folder")
 
     async def message_taken(self, live: LiveSession, message_id: str, checkpoint_id: str) -> None:
         raise RuntimeError("taken")

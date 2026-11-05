@@ -5,6 +5,7 @@ that refuses tools and a sink that keeps only the reply. Runs on the engine's ow
 import asyncio
 import time
 from collections.abc import Sequence
+from pathlib import Path
 
 from nestd.config.models import PermissionMode
 from nestd.providers.base import (
@@ -102,6 +103,8 @@ class ReplySink:
     async def limit_hit(self, hit: LimitHit) -> None: ...
 
     async def provider_session_id(self, session_id: str) -> None: ...
+
+    async def folder_changed(self, folder: Path, *, removed: bool) -> None: ...
 
     async def connectors(self, servers: list[McpServer]) -> None: ...
 

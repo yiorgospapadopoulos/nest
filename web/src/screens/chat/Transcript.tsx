@@ -62,6 +62,7 @@ import { CallContext, useStopTask, type CallControls } from "./useStopTask.ts";
 import { Fireflies } from "../../ui/Fireflies.tsx";
 import { Markdown } from "../../ui/Markdown.tsx";
 import { ScrollFollow } from "./scrollFollow.ts";
+import { useJumpOnSend } from "./useJumpOnSend.ts";
 import { VirtualItems } from "./VirtualItems.tsx";
 import { nearestItem, VIRTUAL_FROM } from "./virtualRows.ts";
 
@@ -219,6 +220,7 @@ export function Transcript({
     setAway(false);
     setJumps((n) => n + 1);
   };
+  useJumpOnSend(items, state.queued[session.id]?.length ?? 0, loaded, jump);
 
   const itemOf = (item: TranscriptItem) => (
     <Item
