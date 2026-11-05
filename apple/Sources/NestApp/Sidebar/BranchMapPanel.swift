@@ -1,3 +1,4 @@
+import AppKit
 import NestKit
 import SwiftUI
 
@@ -190,20 +191,43 @@ private struct LaneGraph: View {
 private struct Pulse: View {
     let color: Color
     @Environment(\.reducedMotion) private var reduceMotion
-    @State private var grown = false
 
     var body: some View {
-        Circle()
-            .stroke(color, lineWidth: 1.4)
-            .frame(width: 9, height: 9)
-            .scaleEffect(grown ? 2.6 : 1)
-            .opacity(reduceMotion ? 0 : grown ? 0 : 0.7)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeOut(duration: 2).repeatForever(autoreverses: false)) {
-                    grown = true
-                }
-            }
+        if !reduceMotion {
+            ColoredLayerMark<BranchPulseLayer>(color: color)
+                .frame(width: BranchPulseLayer.side, height: BranchPulseLayer.side)
+                .frame(width: 9, height: 9)
+        }
+    }
+}
+
+private final class BranchPulseLayer: ColoredMotionView {
+    static let growth = 2.6
+    /// Holds the ring at its largest, with its stroke.
+    static let side = 28.0
+
+    override func startMotion(in layer: CALayer) {
+        guard let color else { return }
+        // A border runs inside its layer, a SwiftUI stroke either side of the circle.
+        let lineWidth = 1.4
+        let ring = CALayer()
+        ring.bounds = CGRect(x: 0, y: 0, width: 9 + lineWidth, height: 9 + lineWidth)
+        ring.position = CGPoint(x: Self.side / 2, y: Self.side / 2)
+        ring.cornerRadius = ring.bounds.width / 2
+        ring.borderWidth = lineWidth
+        ring.borderColor = color.cgColor
+        ring.opacity = 0
+        layer.sublayers = [ring]
+        let grow = CABasicAnimation(keyPath: "transform.scale")
+        grow.fromValue = 1
+        grow.toValue = Self.growth
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.7
+        fade.toValue = 0
+        for animation in [grow, fade] {
+            animation.timingFunction = LayerLoop.easeOut
+            LayerLoop.run(animation, period: 2, on: ring)
+        }
     }
 }
 
@@ -228,7 +252,6 @@ private struct ChatDot: View {
 /// stream is connected.
 struct LiveMark: View {
     @Environment(\.reducedMotion) private var reduceMotion
-    @State private var dim = false
 
     var body: some View {
         // The word goes first when the header is short of room.
@@ -241,18 +264,33 @@ struct LiveMark: View {
         }
         .font(.ui(TypeSize.micro))
         .foregroundStyle(Palette.t3)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 0.8).repeatForever()) { dim = true }
-        }
         .help("The branch map updates as branches and worktrees change")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live")
     }
 
     private var dot: some View {
-        Circle().fill(StatusTone.review.color)
-            .frame(width: 6, height: 6)
-            .opacity(dim ? 0.35 : 1)
+        Group {
+            if reduceMotion {
+                Circle().fill(StatusTone.review.color)
+            } else {
+                ColoredLayerMark<LiveDotLayer>(color: StatusTone.review.color)
+            }
+        }
+        .frame(width: 6, height: 6)
+    }
+}
+
+private final class LiveDotLayer: ColoredMotionView {
+    override func startMotion(in layer: CALayer) {
+        guard let color else { return }
+        layer.backgroundColor = color.cgColor
+        layer.cornerRadius = 3
+        let dim = CABasicAnimation(keyPath: "opacity")
+        dim.fromValue = 1
+        dim.toValue = 0.35
+        dim.timingFunction = LayerLoop.easeInOut
+        dim.autoreverses = true
+        LayerLoop.run(dim, period: 0.8, on: layer)
     }
 }

@@ -43,6 +43,13 @@ public enum SpriteMotion {
     /// differ too.
     static let cycle: UInt32 = 2040
 
+    /// How long the frames take to repeat, in seconds.
+    public static let loopDuration = Double(cycle) / 1000
+    /// One frame per step of that loop, from a clock of 0.
+    public static let loop: [SpriteFrame] = (0..<Int(cycle) / 170).map {
+        frame(at: Double($0) * 170 + 0.5)
+    }
+
     /// The frame at a time in milliseconds on a sprite's own clock (its phase added).
     public static func frame(at milliseconds: Double) -> SpriteFrame {
         let step = wrapped(milliseconds / 170, 4)

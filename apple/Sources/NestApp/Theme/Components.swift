@@ -1,3 +1,4 @@
+import AppKit
 import NestKit
 import SwiftUI
 
@@ -141,14 +142,66 @@ struct PulseRing: View {
     let size: Double
 
     var body: some View {
-        PhaseAnimator([false, true]) { expanded in
-            Circle()
-                .stroke(color.opacity(expanded ? 0 : 1), lineWidth: expanded ? 0.5 : 3)
-                .frame(width: size + (expanded ? 12 : 0), height: size + (expanded ? 12 : 0))
-        } animation: { expanded in
-            expanded ? .easeOut(duration: DesignTokens.Motion.Duration.pulse) : nil
+        PulseRingLayers(color: color, size: size)
+            .frame(width: size + 2 * PulseRingView.room, height: size + 2 * PulseRingView.room)
+            .allowsHitTesting(false)
+    }
+}
+
+private struct PulseRingLayers: NSViewRepresentable {
+    let color: Color
+    let size: Double
+
+    func makeNSView(context: Context) -> PulseRingView { PulseRingView(frame: .zero) }
+
+    func updateNSView(_ view: PulseRingView, context: Context) {
+        view.style = PulseRingView.Style(
+            color: color.resolve(in: context.environment), size: size)
+    }
+}
+
+private final class PulseRingView: LayerMotionView {
+    struct Style: Equatable {
+        let color: Color.Resolved
+        let size: Double
+    }
+
+    /// Around the ring at rest: how far it grows and the end of its stroke.
+    static let room = 8.0
+
+    var style: Style? {
+        didSet {
+            if style != oldValue { restartMotion() }
         }
-        .allowsHitTesting(false)
+    }
+
+    override func startMotion(in layer: CALayer) {
+        guard let style else { return }
+        func circle(growth: Double) -> CGPath {
+            let start = Self.room - growth / 2
+            let side = style.size + growth
+            return CGPath(
+                ellipseIn: CGRect(x: start, y: start, width: side, height: side), transform: nil)
+        }
+        let ring = CAShapeLayer()
+        ring.fillColor = nil
+        ring.strokeColor = style.color.cgColor
+        ring.opacity = 0
+        ring.contentsScale = backingScale
+        layer.sublayers = [ring]
+        let grow = CABasicAnimation(keyPath: "path")
+        grow.fromValue = circle(growth: 0)
+        grow.toValue = circle(growth: 12)
+        let thin = CABasicAnimation(keyPath: "lineWidth")
+        thin.fromValue = 3
+        thin.toValue = 0.5
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        for animation in [grow, thin, fade] {
+            animation.timingFunction = LayerLoop.easeOut
+            LayerLoop.run(animation, period: DesignTokens.Motion.Duration.pulse, on: ring)
+        }
     }
 }
 
@@ -273,32 +326,32 @@ struct Fireflies: View {
         // Room around the box so the glow is not cut off at its edges.
         let margin = 8 * unit
         let fill = color ?? accent.fill
-        TimelineView(.animation(paused: reduceMotion || time != nil)) { context in
-            let poses =
-                time.map(FireflyMotion.poses)
-                ?? (reduceMotion
-                    ? FireflyMotion.still
-                    : FireflyMotion.poses(at: context.date.timeIntervalSinceReferenceDate))
-            Canvas { canvas, _ in
-                for pose in poses {
-                    let center = CGPoint(x: margin + pose.x * unit, y: margin + pose.y * unit)
-                    let size = pose.scale * unit
-                    // CSS box-shadow 0 0 4px 1.5px: 1.5 wider all round, blurred 2.
-                    var glow = canvas
-                    glow.opacity = pose.opacity
-                    glow.addFilter(.blur(radius: 2 * size))
-                    glow.fill(
-                        Circle().path(in: square(center, (FireflyMotion.diameter + 3) * size)),
-                        with: .color(fill))
-                    var dot = canvas
-                    dot.opacity = pose.opacity
-                    dot.fill(
-                        Circle().path(in: square(center, FireflyMotion.diameter * size)),
-                        with: .color(fill))
+        Group {
+            if time == nil && !reduceMotion {
+                FireflyLayers(unit: unit, margin: margin, color: fill)
+            } else {
+                let poses = time.map(FireflyMotion.poses) ?? FireflyMotion.still
+                Canvas { canvas, _ in
+                    for pose in poses {
+                        let center = CGPoint(x: margin + pose.x * unit, y: margin + pose.y * unit)
+                        let size = pose.scale * unit
+                        // CSS box-shadow 0 0 4px 1.5px: 1.5 wider all round, blurred 2.
+                        var glow = canvas
+                        glow.opacity = pose.opacity
+                        glow.addFilter(.blur(radius: 2 * size))
+                        glow.fill(
+                            Circle().path(in: square(center, (FireflyMotion.diameter + 3) * size)),
+                            with: .color(fill))
+                        var dot = canvas
+                        dot.opacity = pose.opacity
+                        dot.fill(
+                            Circle().path(in: square(center, FireflyMotion.diameter * size)),
+                            with: .color(fill))
+                    }
                 }
             }
-            .frame(width: width + 2 * margin, height: height + 2 * margin)
         }
+        .frame(width: width + 2 * margin, height: height + 2 * margin)
         .frame(width: width, height: height)
         .accessibilityHidden(true)
     }
@@ -319,20 +372,28 @@ private struct RowGlowEffect: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay {
-            if active && (time != nil || !reduceMotion) {
-                TimelineView(.animation(paused: time != nil)) { context in
-                    let now = time ?? context.date.timeIntervalSinceReferenceDate
-                    GeometryReader { geometry in
-                        let size = geometry.size
-                        LinearGradient(
-                            colors: [.clear, accent.fill.opacity(RowGlow.peakOpacity), .clear],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                        .frame(width: size.width * RowGlow.bandWidth, height: size.height)
-                        .position(x: RowGlow.center(at: now) * size.width, y: size.height / 2)
+            if active {
+                Group {
+                    if let time {
+                        GeometryReader { geometry in
+                            let size = geometry.size
+                            LinearGradient(
+                                colors: [.clear, accent.fill.opacity(RowGlow.peakOpacity), .clear],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                            .frame(width: size.width * RowGlow.bandWidth, height: size.height)
+                            .position(x: RowGlow.center(at: time) * size.width, y: size.height / 2)
+                        }
+                        .clipShape(.rounded(radius))
+                    } else if !reduceMotion {
+                        LightSweep(
+                            color: accent.fill.opacity(RowGlow.peakOpacity),
+                            sweep: Sweep(
+                                from: -RowGlow.bandWidth / 2, to: 1 + RowGlow.bandWidth / 2,
+                                halfWidth: RowGlow.bandWidth / 2, period: RowGlow.period,
+                                eases: true, radius: radius))
                     }
                 }
-                .clipShape(.rounded(radius))
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }

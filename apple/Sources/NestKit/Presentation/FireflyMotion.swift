@@ -32,6 +32,14 @@ struct Firefly: Sendable {
     let keys: [FireflyKey]
 }
 
+/// A dot's whole loop, for a renderer that interpolates its own frames: `poses` at the
+/// fractions `times` of `period`, each eased into the next by CSS `ease-in-out`.
+public struct FireflyTrack: Sendable {
+    public let period: Double
+    public let times: [Double]
+    public let poses: [FireflyPose]
+}
+
 public enum FireflyMotion {
     public static let width = 16.0
     public static let height = 12.0
@@ -67,6 +75,16 @@ public enum FireflyMotion {
                 FireflyKey(at: 1, dx: 0, dy: 0, scale: 1.1, opacity: 1),
             ]),
     ]
+
+    public static let tracks: [FireflyTrack] = dots.map { dot in
+        FireflyTrack(
+            period: dot.period, times: dot.keys.map(\.at),
+            poses: dot.keys.map { key in
+                FireflyPose(
+                    x: dot.left + diameter / 2 + key.dx, y: dot.top + diameter / 2 + key.dy,
+                    scale: key.scale, opacity: key.opacity)
+            })
+    }
 
     /// The three dots at a time; each loops on its own period.
     public static func poses(at time: Double) -> [FireflyPose] {
