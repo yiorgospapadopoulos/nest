@@ -32,6 +32,9 @@ class RecordingHooks:
     async def state_changed(self, session: Session) -> None:
         self.states.append((session.id, session.state))
 
+    async def autopilot_ended(self, session: Session, text: str) -> None:
+        pass
+
     async def turn_starting(self, session: Session) -> None:
         self.starts.append((session.id, session.state))
 

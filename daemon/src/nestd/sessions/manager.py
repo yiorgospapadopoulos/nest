@@ -17,13 +17,16 @@ from pydantic import JsonValue, TypeAdapter
 from nestd.approvals.models import BLOCKING, ApprovalKind
 from nestd.approvals.queue import ApprovalQueue
 from nestd.attachments.store import Attachment, AttachmentStore
+from nestd.autopilot.keep_awake import KeepAwake
+from nestd.autopilot.models import Autopilot, AutopilotBudget, SetAutopilot
+from nestd.autopilot.runner import AutopilotRunner
 from nestd.claude_sessions.errors import ChatOpenElsewhereError
 from nestd.claude_sessions.live import LiveChats
 from nestd.clock import Clock
 from nestd.config.models import AgentDefaults, Effort, PermissionMode, RepoConfig, SessionMode
 from nestd.engine.models import closest_effort
 from nestd.engine.service import effort_problem, mode_problem
-from nestd.errors import InvalidInputError
+from nestd.errors import InvalidInputError, NestError
 from nestd.events import types
 from nestd.events.bus import EventBus
 from nestd.issues.message import issue_message, issue_meta
@@ -109,6 +112,7 @@ LIMIT_TICK = timedelta(seconds=5)
 # What a chat paused at the usage limit is sent when it goes on with nothing queued (B78).
 CONTINUE_TEXT = "Continue where you left off."
 LIMIT_RESUME = Sender(origin="limit_resume")
+AUTOPILOT = Sender(origin="autopilot")
 # A called pixie's events that are shown live and never stored (B112).
 _EPHEMERAL = frozenset(
     {types.SESSION_DELTA, types.SESSION_THINKING_DELTA, types.SESSION_SUBAGENT_DELTA}
@@ -151,6 +155,8 @@ class SessionManager:
         issues: IssueFetch | None = None,
         local: LocalSource | None = None,
         ports: PortsSource | None = None,
+        keep_awake: KeepAwake | None = None,
+        weekly_used: Callable[[Session], Awaitable[float | None]] | None = None,
     ) -> None:
         """`defaults` is read for each new session, so edits apply at once; `models`
         checks a new session's effort against its model (D038). `calls` follows the pixies
@@ -160,7 +166,8 @@ class SessionManager:
         can ask for, such as Codex (B91). `accounts` is the default engine's active
         account (B98). `issues` reads the issue a chat starts from (B101). `local` runs
         chats on local models (B106). `ports` tells a project chat's agent about its
-        folder's ports and dev server (B108).
+        folder's ports and dev server (B108). `keep_awake` and `weekly_used` serve Autopilot
+        (`AutopilotRunner`).
         """
         self._local = local
         self._issues = issues
@@ -182,6 +189,10 @@ class SessionManager:
         self._states = StateWriter(store, bus, hooks)
         self._limits = LimitPauses(store, bus, clock)
         self._limit_task: asyncio.Task[None] | None = None
+        self.autopilot = AutopilotRunner(
+            store, bus, approvals, clock, keep_awake, weekly_used or _no_usage, self._save_changes
+        )
+        self.autopilot.host = self
         self._moves = WorktreeMoves(
             store=store,
             bus=bus,
@@ -209,6 +220,7 @@ class SessionManager:
             clock=clock,
             limits=self._limits,
             moves=self._moves,
+            autopilot=self.autopilot,
             extras=extras,
             agents=agents,
             calls=calls,
@@ -376,6 +388,7 @@ class SessionManager:
             engine, model, defaults.permission_mode
         ):
             permission_mode = defaults.permission_mode
+        on_autopilot = request.autopilot is not None and request.autopilot.on
         place = await self._place(repo, request)
         issue = await self._issue(repo, request)
         joined = None if place is None else place.worktree
@@ -383,7 +396,12 @@ class SessionManager:
         mode: SessionMode = (
             place.mode
             if place is not None
-            else (request.mode or _repo_mode(repo) or defaults.default_mode)
+            else (
+                request.mode
+                or _autopilot_mode(request)
+                or _repo_mode(repo)
+                or defaults.default_mode
+            )
             if repo.git
             else "in_place"
         )
@@ -400,7 +418,7 @@ class SessionManager:
             model=model,
             effort=effort,
             # Nest always passes the mode; Ask when none fits (B94).
-            permission_mode=permission_mode or DEFAULT_MODE,
+            permission_mode=BYPASS if on_autopilot else permission_mode or DEFAULT_MODE,
             follows_claude_code_mode=False,
             provider=engine.name,
             base_ref=base_ref,
@@ -421,6 +439,11 @@ class SessionManager:
         session = await self._store.create(
             new, branch=branch, worktree_path=None if joined is None else joined.path
         )
+        if on_autopilot:
+            assert request.autopilot is not None  # noqa: S101 (`on_autopilot` says so)
+            session = await self.autopilot.start(
+                session, request.autopilot, permission_mode or DEFAULT_MODE, announce=False
+            )
         sender = Sender(
             from_pixie=started_by_pixie,
             extra=None if issue is None else {"issue": issue_meta(issue, request.prompt)},
@@ -519,12 +542,14 @@ class SessionManager:
         habit_run_id: str | None = None,
         provider: str | None = None,
         called_by: str | None = None,
+        autopilot: AutopilotBudget | None = None,
     ) -> Session:
         """A pixie's chat: in place in its workdir, with no project, review or git (D072).
         Refused (422) when the model does not run in the pixie's mode, as for any chat.
         With `habit_run_id` it is the session of one run of the pixie's habit (B42); with
         `called_by`, the pixie called from that chat, in `cwd`, the caller's folder (B91).
         `provider` is the pixie's engine (None: the default), which must be ready (409).
+        With `autopilot`, it starts on Autopilot.
         """
         engine = self._engines.default if provider is None else self._engines.by_name(provider)
         engine.require("pixies")
@@ -541,13 +566,17 @@ class SessionManager:
                 cwd=cwd,
                 model=model,
                 effort=await self._effort(engine, model, effort, None),
-                permission_mode=permission_mode,
+                permission_mode=permission_mode if autopilot is None else BYPASS,
                 provider=engine.name,
                 pixie_id=pixie_id,
                 habit_run_id=habit_run_id,
                 called_by=called_by,
             )
         )
+        if autopilot is not None:
+            session = await self.autopilot.start(
+                session, autopilot, permission_mode, announce=False
+            )
         await self._bus.publish(
             types.SESSION_CREATED, {"session": session.model_dump(mode="json")}, session.id
         )
@@ -784,9 +813,10 @@ class SessionManager:
         """Stop the turn. Messages written into it that the agent has not read are taken
         back first, so they wait for the next turn instead of running after the Stop (B59).
         A chat paused at the usage limit stops going on: the pause ends and its messages
-        wait, as after any Stop (B78).
+        wait, as after any Stop (B78). A Stop ends Autopilot: someone is watching.
         """
         await self._store.get(session_id)
+        await self.autopilot.end(session_id, "stopped")
         await self._approvals.expire(session_id, BLOCKING, "interrupted by the user")
         await self._approvals.expire_run(session_id, "interrupted by the user")
         live = self._live.get(session_id)
@@ -848,6 +878,9 @@ class SessionManager:
         Archiving closes the agent run but keeps the worktree; a new message resumes it.
         """
         session = await self._store.get(session_id)
+        if session.autopilot is not None and request.permission_mode not in (None, BYPASS):
+            msg = "Autopilot keeps the chat in Bypass. Turn it off to change the mode."
+            raise InvalidInputError(msg)
         if (request.model, request.permission_mode, request.effort) != (None, None, None):
             require_open(session)
             request = await self._fitting_mode(session, request)
@@ -867,6 +900,68 @@ class SessionManager:
             # Read back from the store, so of two quick changes the last one wins (D048).
             await self._turns.apply_controls(live)
         return session
+
+    async def set_autopilot(self, session_id: str, request: SetAutopilot) -> Session:
+        """Turn Autopilot on, off, or give a run in progress a new budget. Going on, a turn
+        in progress is left alone: the chat's next message opens the run Autopilot needs,
+        and what already waits for the user is answered at once.
+        """
+        session = await self._store.get(session_id)
+        if not request.on:
+            await self.autopilot.end(session_id, "off")
+            return await self._store.get(session_id)
+        if session.autopilot is not None:
+            return await self.autopilot.set_budget(session, request)
+        require_open(session)
+        if session.archived_at is not None:
+            raise InvalidInputError("Unarchive the chat to put it on Autopilot.")
+        await self._require_not_open_elsewhere(session)
+        mode = session.permission_mode
+        await self.update(session_id, UpdateSession(permission_mode=BYPASS))
+        started = await self.autopilot.start(session, request, mode)
+        await self.autopilot.answer_pending(session_id)
+        return started
+
+    # What Autopilot needs (`AutopilotHost`)
+
+    async def resting(self, session_id: str) -> bool:
+        live = self._live.get(session_id)
+        if self._limits.paused(session_id) or await self._queue.waiting(session_id):
+            return False
+        if live is None:
+            return True
+        return not (live.busy or live.publishing or live.stopped or live.background_tasks)
+
+    def worked(self, session_id: str) -> bool:
+        live = self._live.get(session_id)
+        if live is None:
+            return False
+        worked, live.worked = live.worked, False
+        return worked
+
+    async def continue_chat(self, session_id: str, text: str, interrupt: bool) -> None:
+        await self.send(session_id, text, [], interrupt, sender=AUTOPILOT)
+
+    async def stop_turn(self, session_id: str) -> None:
+        with suppress(NoTurnInProgressError):
+            await self.interrupt(session_id)
+
+    def in_turn(self, session_id: str) -> bool:
+        live = self._live.get(session_id)
+        return live is not None and live.busy and not live.holding
+
+    async def restore_mode(self, session: Session, run: Autopilot) -> None:
+        try:
+            await self.update(session.id, UpdateSession(permission_mode=run.mode))
+            if run.follows_claude_code_mode:
+                await self._save_changes(session.id, {"follows_claude_code_mode": True})
+        except NestError as error:
+            logger.warning("the mode of session %s stays (%s)", session.id, error)
+
+    async def run_ended(self, session: Session, text: str) -> None:
+        await isolated(
+            "the end of Autopilot", session.id, self._hooks.autopilot_ended(session, text)
+        )
 
     async def rewind(
         self, session_id: str, event_id: int, dry_run: bool, restore: Restore = "code"
@@ -1046,6 +1141,7 @@ class SessionManager:
                 types.SESSION_STATE, {"state": SessionState.INTERRUPTED, "error": None}, session_id
             )
         await self._limits.load()
+        await self.autopilot.load()
         for session_id in await self._store.pending_worktree_changes():
             self._finish_moves(session_id)
 
@@ -1062,6 +1158,7 @@ class SessionManager:
     async def _limit_loop(self, tick: timedelta) -> None:
         while True:
             await self.tick_limits()
+            await self.autopilot.tick()
             await asyncio.sleep(tick.total_seconds())
 
     async def tick_limits(self) -> None:
@@ -1141,6 +1238,7 @@ class SessionManager:
         for live, result in zip(lives, results, strict=True):
             if isinstance(result, Exception):
                 logger.error("stopping session %s failed", live.session_id, exc_info=result)
+        await self.autopilot.shutdown()
 
     async def _refuse_member_calls(self, session: NewSession, text: str) -> None:
         """422 for a message that calls a pixie of a team on its own: a team's pixies are
@@ -1309,6 +1407,7 @@ class SessionManager:
             self._on_waiting,
             on_mode,
             calls=self._calls,
+            autopilot=self.autopilot,
         )
 
     async def _engine_mode(self, live: LiveSession, mode: PermissionMode) -> None:
@@ -1341,6 +1440,15 @@ class SessionManager:
             target = SessionState.WAITING if waiting else SessionState.RUNNING
             if current in (SessionState.RUNNING, SessionState.WAITING) and current is not target:
                 await self._states.set(session_id, target)
+
+
+async def _no_usage(_session: Session) -> float | None:
+    return None
+
+
+def _autopilot_mode(request: CreateSession) -> SessionMode | None:
+    """A chat that starts on Autopilot works in a worktree unless told otherwise."""
+    return "worktree" if request.autopilot is not None and request.autopilot.on else None
 
 
 def _forked_worktree(session: Session) -> bool:

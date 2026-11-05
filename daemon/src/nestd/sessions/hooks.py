@@ -18,6 +18,10 @@ class SessionHooks(Protocol):
         """The session moved to `session.state`; called after the state event."""
         ...
 
+    async def autopilot_ended(self, session: Session, text: str) -> None:
+        """An Autopilot run ended; `text` says how."""
+        ...
+
     async def turn_starting(self, session: Session) -> None:
         """A message is about to go to the agent, after the session's running state; a turn
         the agent starts on its own has no such moment (B56).

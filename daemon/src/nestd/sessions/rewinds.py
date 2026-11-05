@@ -71,6 +71,8 @@ FORKED_TYPES = frozenset(
         types.SESSION_HOOK,
         types.SESSION_RESULT,
         types.SESSION_AGENT_TASK,
+        types.SESSION_AUTOPILOT_DECISION,
+        types.SESSION_AUTOPILOT_REPORT,
     }
 )
 FORK_SUFFIX = " (fork)"

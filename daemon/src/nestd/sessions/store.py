@@ -206,6 +206,13 @@ class SessionStore:
         )
         return [row["id"] for row in rows]
 
+    async def autopilots(self) -> list[str]:
+        """The chats with an Autopilot run in progress."""
+        rows = await self._db.fetch_all(
+            "SELECT id FROM sessions WHERE autopilot IS NOT NULL ORDER BY rowid"
+        )
+        return [row["id"] for row in rows]
+
     async def limit_pauses(self) -> list[tuple[str, LimitPause]]:
         """The chats paused at the usage limit, with their pauses (B78)."""
         rows = await self._db.fetch_all(
@@ -342,10 +349,22 @@ def _column(value: object) -> object:
     return value
 
 
+_JSON_COLUMNS = (
+    "context",
+    "pr",
+    "stuck",
+    "limit_pause",
+    "issue",
+    "review",
+    "pending_worktree",
+    "autopilot",
+)
+
+
 def _session(row: sqlite3.Row) -> Session:
     data = dict(row)
     data["allowed_tools"] = json.loads(data["allowed_tools"])
     data["earlier_worktrees"] = json.loads(data["earlier_worktrees"])
-    for column in ("context", "pr", "stuck", "limit_pause", "issue", "review", "pending_worktree"):
+    for column in _JSON_COLUMNS:
         data[column] = None if data[column] is None else json.loads(data[column])
     return Session.model_validate(data)

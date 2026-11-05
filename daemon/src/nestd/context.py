@@ -33,6 +33,8 @@ from nestd.attachments.store import AttachmentStore
 from nestd.auth.devices import DeviceService
 from nestd.auth.secrets import SecretStore
 from nestd.auth.token_socket import TokenSocket
+from nestd.autopilot.keep_awake import KeepAwake
+from nestd.autopilot.usage import weekly_used
 from nestd.claude_code.cli import ClaudeCli, ClaudeLocations
 from nestd.claude_code.extensions import Extensions
 from nestd.claude_sessions.archive import ChatArchive
@@ -594,6 +596,8 @@ class AppContext:
             accounts=active.source(CLAUDE_ACCOUNTS),
             local=local,
             ports=runs.agent_ports,
+            keep_awake=KeepAwake(system.name),
+            weekly_used=partial(weekly_used, usage),
         )
         call_runs: PixieCallRuns = PixieCallRuns(
             pixies=pixie_store,

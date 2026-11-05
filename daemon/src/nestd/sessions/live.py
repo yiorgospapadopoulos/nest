@@ -49,6 +49,10 @@ class LiveSession:
     run_effort: Effort | None = None
     # Whether the run opened in bypass: only such a run may switch into it live (D046).
     run_bypass: bool = False
+    # Whether the run opened on Autopilot: its git guard, tools and prompt come with that.
+    run_autopilot: bool = False
+    # The agent called a tool since Autopilot last asked.
+    worked: bool = False
     # The model and permission mode the run has now, to bring it to the saved ones (D048).
     run_model: str | None = None
     run_mode: PermissionMode | None = None

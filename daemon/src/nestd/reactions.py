@@ -87,6 +87,16 @@ class SessionReactions:
         for follower in self._followers:
             await follower.state_changed(session)
 
+    async def autopilot_ended(self, session: Session, text: str) -> None:
+        """What the run did goes to review, unless the chat is still in a turn; the user
+        hears once.
+        """
+        if session.habit_run_id is not None or session.called_by is not None:
+            return
+        if session.state is SessionState.IDLE and await self._reviewable(session):
+            await self._reviews.turn_ended(session)
+        await self._notify(session, "finished", text)
+
     async def turn_starting(self, session: Session) -> None:
         """Note the work before the agent gets the message, for the turn's end to compare
         with (B56). Queued turns that follow without an idle between are one run: the first
@@ -157,9 +167,13 @@ class SessionReactions:
 
 def _quiet(session: Session) -> bool:
     """A habit run speaks only through its reports (B42), a called pixie through the chat
-    that called it (B91).
+    that called it (B91), and a chat on Autopilot when its run ends.
     """
-    return session.habit_run_id is not None or session.called_by is not None
+    return (
+        session.habit_run_id is not None
+        or session.called_by is not None
+        or session.autopilot is not None
+    )
 
 
 def _limit_text(pause: LimitPause) -> str:

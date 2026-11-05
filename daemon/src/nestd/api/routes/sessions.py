@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, Response, status
 
 from nestd.api.deps import Context, RequireDevice
 from nestd.api.schemas import FileList, SessionDetail
+from nestd.autopilot.models import SetAutopilot
 from nestd.events.models import Event
 from nestd.sessions.commands import CommandList
 from nestd.sessions.errors import PixieChatError
@@ -115,6 +116,12 @@ async def session_files(
 async def interrupt(session_id: str, ctx: Context) -> Response:
     await ctx.sessions.interrupt(session_id)
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.put("/{session_id}/autopilot")
+async def set_autopilot(session_id: str, body: SetAutopilot, ctx: Context) -> Session:
+    """Turn Autopilot on or off, or give a run in progress a new budget."""
+    return await ctx.sessions.set_autopilot(session_id, body)
 
 
 @router.post("/{session_id}/limit/resume", status_code=status.HTTP_202_ACCEPTED)

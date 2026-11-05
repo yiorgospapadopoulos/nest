@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, model_validator
 
+from nestd.autopilot.models import Autopilot, SetAutopilot
 from nestd.config.models import Effort, ModelChoice, PermissionMode, SessionMode
 from nestd.issues.models import IssueRef
 from nestd.providers.base import ContextUsage, LimitWindow, RewindResult
@@ -23,8 +24,9 @@ def pixie_repo(pixie_id: str) -> str:
 # A user message the daemon sends: to a pixie, the outcome of chats it started (B41) or a
 # report one of its habit runs made (B42); to a chat going on after the usage limit reset
 # with nothing queued, the message that lets Claude continue (`limit_resume`, B78); to a
-# chat, the report of a pixie it called in the background (`pixie_result`, B112).
-type MessageOrigin = Literal["report_back", "report", "limit_resume", "pixie_result"]
+# chat, the report of a pixie it called in the background (`pixie_result`, B112); to a
+# chat on Autopilot, the message that keeps it going (`autopilot`).
+type MessageOrigin = Literal["report_back", "report", "limit_resume", "pixie_result", "autopilot"]
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,8 @@ class Session(NewSession):
     stuck: StuckFlag | None = None
     # Set while the chat is paused at the usage limit (B78).
     limit_pause: LimitPause | None = None
+    # The Autopilot run in progress, and the last one's report until it is dismissed.
+    autopilot: Autopilot | None = None
     # A rewound or forked conversation its next run cuts into a new engine session: resume
     # `fork_from` up to the entry `fork_at`, refusing unless only the turn of `fork_drops`
     # goes when that is set (B59). Cleared once the run reports the new session.
@@ -221,6 +225,8 @@ class CreateSession(BaseModel):
     # is on it, in the linked worktree that has it checked out, else in a new worktree of
     # Nest's with it checked out.
     on_branch: str | None = None
+    # Starts the chat on Autopilot, in a worktree unless `mode` says otherwise.
+    autopilot: SetAutopilot | None = None
 
     @model_validator(mode="after")
     def _prompt_or_issue(self) -> "CreateSession":

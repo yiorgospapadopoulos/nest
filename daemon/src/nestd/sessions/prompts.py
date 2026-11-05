@@ -8,6 +8,7 @@ from pydantic import JsonValue
 
 from nestd.approvals.models import Approval, ApprovalKind, ApprovalStatus
 from nestd.approvals.queue import ApprovalQueue
+from nestd.autopilot.runner import AutopilotRunner
 from nestd.config.models import PermissionMode, PlanApprovalMode
 from nestd.providers.base import (
     PermissionDecision,
@@ -53,8 +54,12 @@ class SessionPrompts:
         on_waiting: WaitingCallback,
         on_mode: ModeCallback,
         calls: PixieCalls | None = None,
+        autopilot: AutopilotRunner | None = None,
     ) -> None:
-        """`calls` names the pixie call an approval comes from (B114)."""
+        """`calls` names the pixie call an approval comes from (B114); `autopilot` answers
+        for a chat on Autopilot, and for the pixies it called.
+        """
+        self._autopilot = autopilot
         self._calls = calls
         self._session_id = session_id
         self._queue = queue
@@ -73,6 +78,10 @@ class SessionPrompts:
             caller = await self._store.get((await self._chain())[-1])
             if request.tool_name in caller.allowed_tools:
                 return PermissionDecision("allow")
+        if self._autopilot is not None:
+            auto = await self._autopilot.permission(await self._owner(), request)
+            if auto is not None:
+                return auto
         approval = await self._wait(
             ApprovalKind.PERMISSION,
             {
@@ -98,6 +107,10 @@ class SessionPrompts:
         return PermissionDecision("allow", _text(resolution.get("message")), always)
 
     async def ask(self, request: QuestionRequest) -> QuestionAnswer:
+        if self._autopilot is not None:
+            auto = await self._autopilot.question(await self._owner(), request)
+            if auto is not None:
+                return auto
         approval = await self._wait(
             ApprovalKind.QUESTION,
             {
@@ -116,6 +129,10 @@ class SessionPrompts:
         )
 
     async def review_plan(self, request: PlanRequest) -> PlanDecision:
+        if self._autopilot is not None:
+            auto = await self._autopilot.plan(await self._owner(), request)
+            if auto is not None:
+                return auto
         approval = await self._wait(
             ApprovalKind.PLAN,
             {"plan": request.plan, "tool_use_id": request.tool_use_id},
@@ -160,6 +177,9 @@ class SessionPrompts:
         return await self._queue.wait(
             owner, kind, payload, notice, on_waiting, run_session_id=self._session_id
         )
+
+    async def _owner(self) -> str:
+        return (await self._chain())[-1]
 
     async def _chain(self) -> list[str]:
         """The session, then each chat that called it, ending with the chat the calls
