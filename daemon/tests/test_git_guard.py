@@ -1,11 +1,19 @@
+from typing import cast
+
 import pytest
-from claude_agent_sdk.types import HookContext, PreToolUseHookInput, UserPromptSubmitHookInput
+from claude_agent_sdk.types import (
+    HookContext,
+    HookInput,
+    PreToolUseHookInput,
+    UserPromptSubmitHookInput,
+)
 
 from nestd.providers.git_guard import (
     DENY_REASON,
     GIT_WRITE_RULES,
     block_git_writes,
     is_git_write,
+    pixie_git_guard,
     tool_writes,
 )
 
@@ -338,6 +346,24 @@ async def test_hook_denies_other_tools_that_would_write() -> None:
 @pytest.mark.parametrize("tool_input", [{"command": "git status"}, {"command": 3}, {}])
 async def test_hook_passes_other_commands_through(tool_input: dict[str, object]) -> None:
     assert await block_git_writes(pre_tool_use(tool_input), "tu1", CONTEXT) == {}
+
+
+async def test_a_pixie_in_a_normal_chat_cannot_push_but_the_chat_can() -> None:
+    """B127: a chat may push when asked, but the pixie it calls never does."""
+    guard = pixie_git_guard(frozenset({"closer"}))
+    pixie = pre_tool_use({"command": "git push origin main"})
+    pixie["agent_type"] = "closer"
+    chat: dict[str, object] = dict(pre_tool_use({"command": "git push origin main"}))
+    del chat["agent_id"], chat["agent_type"]
+    other = pre_tool_use({"command": "git push origin main"})
+    other["agent_type"] = "Explore"
+    merge = pre_tool_use({"command": "git merge --no-ff topic"})
+    merge["agent_type"] = "closer"
+
+    assert await guard(pixie, "tu1", CONTEXT) == DENIED
+    assert await guard(cast(HookInput, chat), "tu1", CONTEXT) == {}
+    assert await guard(other, "tu1", CONTEXT) == {}
+    assert await guard(merge, "tu1", CONTEXT) == {}
 
 
 async def test_hook_ignores_other_hook_events() -> None:
