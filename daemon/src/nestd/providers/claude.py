@@ -27,6 +27,8 @@ from claude_agent_sdk.types import PermissionMode as SdkPermissionMode
 from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import JsonValue
 
+from nestd.accounts.profiles import CLAUDE_CONFIG_DIR
+from nestd.claude_sessions.transcript import find_title
 from nestd.config.models import PermissionMode
 from nestd.gitops.remotes import scrub_credentials
 from nestd.local.run import claude_env, claude_settings
@@ -318,15 +320,32 @@ class ClaudeRun:
     """
 
     steers = True
+    names_chats = True
 
-    def __init__(self, client: SdkClient, sink: ProviderEventSink, stderr: StderrTail) -> None:
+    def __init__(
+        self,
+        client: SdkClient,
+        sink: ProviderEventSink,
+        stderr: StderrTail,
+        transcripts: Path | None = None,
+        cwd: Path | None = None,
+    ) -> None:
+        """`transcripts` is the Claude Code `projects` folder of the run's account."""
         self._client = client
+        self._transcripts = transcripts
+        self._cwd = cwd
         self._sink = sink
         self._stderr = stderr
         self._tasks = BackgroundTasks()
         self._thinking = ThinkingTimer()
         self._output = TurnOutput()
         self._reader = asyncio.create_task(self._read())
+
+    async def engine_title(self, session_id: str) -> str | None:
+        """The title Claude Code writes into the transcript soon after the first message."""
+        if self._transcripts is None or self._cwd is None:
+            return None
+        return await asyncio.to_thread(find_title, self._transcripts, self._cwd, session_id)
 
     async def send(self, user_input: UserInput) -> None:
         self._thinking.mark()
@@ -454,7 +473,12 @@ class ClaudeProvider:
             with suppress(Exception):
                 await client.disconnect()
             raise
-        return ClaudeRun(client, sink, stderr)
+        return ClaudeRun(client, sink, stderr, self._projects(spec), spec.cwd)
+
+    def _projects(self, spec: SessionSpec) -> Path | None:
+        folder = None if spec.account is None else spec.account.env.get(CLAUDE_CONFIG_DIR)
+        home = Path(folder) if folder else self._claude_dir
+        return None if home is None else home / "projects"
 
     async def fork_point(self, cwd: Path, session_id: str, message_id: str) -> ForkPoint | None:
         if self._claude_dir is None:

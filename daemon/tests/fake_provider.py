@@ -68,6 +68,7 @@ class FakeRun:
         self.closed = False
         # Like Claude Code's queue of messages written into a running turn (B59).
         self.steers = provider.steering
+        self.names_chats = provider.names_chats
         self.steered: list[tuple[str, UserInput]] = []
         self._turns: asyncio.Queue[Turn] = asyncio.Queue()
         self._reader = asyncio.create_task(self._read())
@@ -78,6 +79,12 @@ class FakeRun:
         if self.provider.send_gate is not None:
             # The turn runs before send returns, as a fast reply could in the real engine.
             await self.provider.send_gate.wait()
+
+    async def engine_title(self, session_id: str) -> str | None:
+        self.provider.title_asks += 1
+        if self.provider.title_gate is not None:
+            await self.provider.title_gate.wait()
+        return self.provider.chat_title
 
     async def steer(self, user_input: UserInput, message_id: str) -> None:
         if self.provider.steer_error is not None:
@@ -193,6 +200,12 @@ class FakeProvider:
         # Where a conversation is cut to before a message, by (session id, message id).
         self.fork_points: dict[tuple[str, str], ForkPoint] = {}
         self.fork_calls: list[tuple[Path, str, str]] = []
+        # Whether runs have a name of the chat's own, the name once they do, and how often
+        # they were asked; when set, the gate holds the answer back (B125).
+        self.names_chats = True
+        self.chat_title: str | None = None
+        self.title_asks = 0
+        self.title_gate: asyncio.Event | None = None
 
     async def open(
         self, spec: SessionSpec, handler: ApprovalHandler, sink: ProviderEventSink
